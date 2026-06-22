@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
+import { Logo } from '@/components/brand/logo'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -43,9 +44,7 @@ export default function SignupPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <Link href="/" className="inline-flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-              B
-            </div>
+            <Logo size={40} showWordmark={false} />
           </Link>
           <h1 className="mt-6 text-2xl font-bold">Créer un compte</h1>
           <p className="mt-2 text-sm text-muted-foreground">

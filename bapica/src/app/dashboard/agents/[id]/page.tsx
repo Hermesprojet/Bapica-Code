@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
-import { Send, Bot, User, ArrowLeft, Sparkles } from 'lucide-react'
+import { Send, User, ArrowLeft, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { getAgentById } from '@/lib/agents'
+import { AgentAvatar } from '@/components/agents/agent-avatar'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -77,13 +78,14 @@ export default function AgentChatPage() {
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
+        <AgentAvatar agent={agent} size={44} className="shrink-0 rounded-full shadow-md" />
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="font-semibold">{agent.name}</h2>
+            <h2 className="font-semibold">{agent.persona}</h2>
             <Sparkles className="h-4 w-4 text-primary" />
           </div>
           <p className="text-xs text-muted-foreground">
-            Modèle : {agent.model} • Température : {agent.temperature}
+            {agent.name} • Modèle : {agent.model}
           </p>
         </div>
       </div>
@@ -93,10 +95,9 @@ export default function AgentChatPage() {
         {messages.length === 0 && (
           <div className="flex h-full items-center justify-center">
             <div className="max-w-md text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-                <Bot className="h-8 w-8 text-primary" />
-              </div>
-              <h3 className="font-semibold">{agent.name}</h3>
+              <AgentAvatar agent={agent} size={72} className="mx-auto mb-4 rounded-full shadow-lg" />
+              <h3 className="font-semibold">{agent.persona}</h3>
+              <p className="text-sm text-muted-foreground">{agent.name}</p>
               <p className="mt-2 text-sm text-muted-foreground">
                 {agent.description}
               </p>
@@ -112,9 +113,7 @@ export default function AgentChatPage() {
             className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}
           >
             {msg.role === 'assistant' && (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                <Bot className="h-4 w-4 text-primary" />
-              </div>
+              <AgentAvatar agent={agent} size={32} className="shrink-0 rounded-full" />
             )}
             <div
               className={`max-w-[80%] rounded-xl px-4 py-3 text-sm ${
@@ -134,9 +133,7 @@ export default function AgentChatPage() {
         ))}
         {loading && (
           <div className="flex gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-              <Bot className="h-4 w-4 text-primary" />
-            </div>
+            <AgentAvatar agent={agent} size={32} className="shrink-0 rounded-full" />
             <div className="rounded-xl bg-muted px-4 py-3">
               <div className="flex gap-1">
                 <div className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/40" />

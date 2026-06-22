@@ -1,8 +1,22 @@
 export type PlanKey = 'starter' | 'pro' | 'business'
 
+export type AvatarHair = 'short' | 'long' | 'bun' | 'curly' | 'buzz' | 'bald'
+export type AvatarAccessory = 'none' | 'glasses' | 'headset' | 'cap'
+
+// Paramètres de l'avatar illustré (rendu en SVG par <AgentAvatar />)
+export interface AgentAvatar {
+  from: string
+  to: string
+  skin: string
+  hair: AvatarHair
+  hairColor: string
+  accessory: AvatarAccessory
+}
+
 export interface AgentConfig {
   id: string
   name: string
+  persona: string
   description: string
   model: string
   temperature: number
@@ -11,12 +25,14 @@ export interface AgentConfig {
   icon: string
   tools: string[]
   color?: string
+  avatar: AgentAvatar
 }
 
 const AGENTS: AgentConfig[] = [
   {
     id: 'general',
     name: 'Agent Général',
+    persona: 'Léo',
     description: 'Point d\'entrée universel. Posez n\'importe quelle question.',
     model: 'claude-sonnet-4',
     temperature: 0.6,
@@ -24,10 +40,13 @@ const AGENTS: AgentConfig[] = [
     minPlan: 'starter',
     icon: 'Bot',
     tools: ['claude_api', 'openai'],
+    color: 'from-blue-500 to-blue-600',
+    avatar: { from: '#3b82f6', to: '#2563eb', skin: '#f1c9a5', hair: 'short', hairColor: '#4a3526', accessory: 'glasses' },
   },
   {
     id: 'support',
     name: 'Support Client',
+    persona: 'Sofia',
     description: 'Support 24/7 multilingue. Répond aux questions, résout les problèmes.',
     model: 'claude-sonnet-4',
     temperature: 0.3,
@@ -35,10 +54,13 @@ const AGENTS: AgentConfig[] = [
     minPlan: 'starter',
     icon: 'HeadphonesIcon',
     tools: ['crisp', 'intercom', 'whatsapp_api'],
+    color: 'from-emerald-500 to-emerald-600',
+    avatar: { from: '#10b981', to: '#059669', skin: '#eab891', hair: 'long', hairColor: '#2d2d2d', accessory: 'headset' },
   },
   {
     id: 'content',
     name: 'Créateur de Contenu',
+    persona: 'Camille',
     description: 'Articles SEO, posts réseaux, newsletters, scripts vidéo.',
     model: 'claude-sonnet-4',
     temperature: 0.7,
@@ -46,10 +68,13 @@ const AGENTS: AgentConfig[] = [
     minPlan: 'starter',
     icon: 'FileText',
     tools: ['claude_api', 'wordpress', 'buffer'],
+    color: 'from-violet-500 to-violet-600',
+    avatar: { from: '#8b5cf6', to: '#7c3aed', skin: '#f8d5b8', hair: 'curly', hairColor: '#6b4423', accessory: 'none' },
   },
   {
     id: 'prospector',
     name: 'Prospecteur Commercial',
+    persona: 'Marc',
     description: 'Identifie et qualifie des leads B2B, messages personnalisés.',
     model: 'claude-sonnet-4',
     temperature: 0.4,
@@ -57,10 +82,13 @@ const AGENTS: AgentConfig[] = [
     minPlan: 'pro',
     icon: 'Users',
     tools: ['apollo_io', 'linkedin_sales_navigator'],
+    color: 'from-orange-500 to-orange-600',
+    avatar: { from: '#f97316', to: '#ea580c', skin: '#d99a6c', hair: 'short', hairColor: '#2b2b2b', accessory: 'none' },
   },
   {
     id: 'closer',
     name: 'Closer Vocal',
+    persona: 'Nadia',
     description: 'Qualifie par téléphone, traite les objections, convertit en RDV.',
     model: 'claude-sonnet-4',
     temperature: 0.5,
@@ -68,10 +96,13 @@ const AGENTS: AgentConfig[] = [
     minPlan: 'pro',
     icon: 'Phone',
     tools: ['vapi', 'cal_com'],
+    color: 'from-rose-500 to-rose-600',
+    avatar: { from: '#f43f5e', to: '#e11d48', skin: '#eab891', hair: 'bun', hairColor: '#1a1a1a', accessory: 'headset' },
   },
   {
     id: 'telephone',
     name: 'Agent Téléphonique',
+    persona: 'Hugo',
     description: 'Standard virtuel intelligent, routage, prise de messages.',
     model: 'claude-sonnet-4',
     temperature: 0.4,
@@ -79,10 +110,13 @@ const AGENTS: AgentConfig[] = [
     minPlan: 'pro',
     icon: 'Building2',
     tools: ['vapi', 'twilio', 'elevenlabs'],
+    color: 'from-cyan-500 to-cyan-600',
+    avatar: { from: '#06b6d4', to: '#0891b2', skin: '#f1c9a5', hair: 'buzz', hairColor: '#3a3a3a', accessory: 'headset' },
   },
   {
     id: 'accounting',
     name: 'Agent Comptabilité',
+    persona: 'Claire',
     description: 'Factures, relances impayés, TVA, tableau de bord financier.',
     model: 'claude-sonnet-4',
     temperature: 0.2,
@@ -90,10 +124,13 @@ const AGENTS: AgentConfig[] = [
     minPlan: 'pro',
     icon: 'Calculator',
     tools: ['stripe', 'pennylane', 'qonto'],
+    color: 'from-amber-500 to-amber-600',
+    avatar: { from: '#f59e0b', to: '#d97706', skin: '#f8d5b8', hair: 'bun', hairColor: '#6b4423', accessory: 'glasses' },
   },
   {
     id: 'video',
     name: 'Créateur Vidéo IA',
+    persona: 'Maya',
     description: 'Vidéos promotionnelles, Reels, avatars IA multilingues.',
     model: 'claude-sonnet-4',
     temperature: 0.7,
@@ -101,10 +138,13 @@ const AGENTS: AgentConfig[] = [
     minPlan: 'business',
     icon: 'Video',
     tools: ['heygen', 'runway', 'elevenlabs'],
+    color: 'from-pink-500 to-pink-600',
+    avatar: { from: '#ec4899', to: '#db2777', skin: '#c68642', hair: 'long', hairColor: '#1a1a1a', accessory: 'none' },
   },
   {
     id: 'recruiter',
     name: 'Recruteur IA',
+    persona: 'Yanis',
     description: 'Rédaction d\'offres, tri CV, présélection vocale.',
     model: 'claude-sonnet-4',
     temperature: 0.3,
@@ -112,10 +152,13 @@ const AGENTS: AgentConfig[] = [
     minPlan: 'business',
     icon: 'Search',
     tools: ['vapi', 'linkedin', 'cal_com'],
+    color: 'from-indigo-500 to-indigo-600',
+    avatar: { from: '#6366f1', to: '#4f46e5', skin: '#d99a6c', hair: 'short', hairColor: '#2b2b2b', accessory: 'glasses' },
   },
   {
     id: 'legal',
     name: 'Administratif & Juridique',
+    persona: 'Inès',
     description: 'Contrats, CGV, RGPD, mentions légales, analyse documents.',
     model: 'claude-sonnet-4',
     temperature: 0.3,
@@ -123,10 +166,13 @@ const AGENTS: AgentConfig[] = [
     minPlan: 'business',
     icon: 'FileCheck',
     tools: ['claude_api', 'notion', 'docusign'],
+    color: 'from-slate-500 to-slate-600',
+    avatar: { from: '#64748b', to: '#475569', skin: '#eab891', hair: 'long', hairColor: '#4a3526', accessory: 'glasses' },
   },
   {
     id: 'analytics',
     name: 'Analytics & Reporting',
+    persona: 'Tom',
     description: 'Dashboards, tendances, prédictions, recommandations data.',
     model: 'claude-sonnet-4',
     temperature: 0.3,
@@ -135,10 +181,12 @@ const AGENTS: AgentConfig[] = [
     icon: 'BarChart3',
     tools: ['supabase', 'google_analytics_4', 'n8n'],
     color: 'from-teal-500 to-teal-600',
+    avatar: { from: '#14b8a6', to: '#0d9488', skin: '#f1c9a5', hair: 'short', hairColor: '#caa472', accessory: 'glasses' },
   },
   {
     id: 'trends',
     name: 'Analyse des Tendances Google',
+    persona: 'Lina',
     description: 'Surveille Google Trends, identifie les opportunités business émergentes.',
     model: 'claude-sonnet-4',
     temperature: 0.3,
@@ -147,6 +195,7 @@ const AGENTS: AgentConfig[] = [
     icon: 'TrendingUp',
     tools: ['google_trends', 'pytrends', 'web_search', 'serpapi'],
     color: 'from-lime-500 to-lime-600',
+    avatar: { from: '#84cc16', to: '#65a30d', skin: '#d99a6c', hair: 'curly', hairColor: '#2b2b2b', accessory: 'none' },
   },
 ]
 
