@@ -8,25 +8,26 @@
     "start": "next start"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.105.0",
+    "@stripe/stripe-js": "4.10.0",
+    "@supabase/ssr": "0.5.2",
+    "@supabase/supabase-js": "2.108.2",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "0.400.0",
     "next": "14.2.29",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "@supabase/supabase-js": "2.108.2",
-    "@supabase/ssr": "0.5.2",
     "stripe": "17.7.0",
-    "@stripe/stripe-js": "4.10.0",
-    "lucide-react": "0.400.0",
-    "clsx": "2.1.1",
-    "tailwind-merge": "2.6.1",
-    "class-variance-authority": "0.7.1"
+    "tailwind-merge": "2.6.1"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
     "@types/node": "20.19.43",
     "@types/react": "18.3.31",
     "@types/react-dom": "18.3.7",
-    "tailwindcss": "3.4.19",
+    "autoprefixer": "10.5.0",
     "postcss": "8.5.15",
-    "autoprefixer": "10.5.0"
+    "tailwindcss": "3.4.19",
+    "typescript": "5.9.3"
   }
 }
