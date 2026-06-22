@@ -34,9 +34,9 @@ export default function DashboardLayout({
           <div className="border-b border-border p-4">
             <Link href="/" className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-                H
+                B
               </div>
-              <span className="text-lg font-bold">Hermes SaaS</span>
+              <span className="text-lg font-bold">Bapica</span>
             </Link>
           </div>
 

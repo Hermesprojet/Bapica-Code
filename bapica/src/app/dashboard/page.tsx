@@ -41,7 +41,7 @@ export default function DashboardPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold">Tableau de bord</h1>
         <p className="mt-1 text-muted-foreground">
-          Bienvenue sur votre espace Hermes SaaS.
+          Bienvenue sur votre espace Bapica.
         </p>
       </div>
 

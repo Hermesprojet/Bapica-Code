@@ -30,7 +30,7 @@ const faqs = [
     a: "Oui ! Les formules Pro et Business incluent l'accès à n8n pour créer des workflows personnalisés, et l'API pour connecter vos propres outils.",
   },
   {
-    q: "Qu'est-ce qui différencie Hermes SaaS des autres solutions ?",
+    q: "Qu'est-ce qui différencie Bapica des autres solutions ?",
     a: "Notre plateforme propose 11 agents spécialisés couvrant tous les aspects de votre activité, le tout dans une interface unifiée. Pas besoin de jongler entre 5 outils différents.",
   },
   {

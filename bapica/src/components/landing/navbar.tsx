@@ -6,9 +6,9 @@ export function Navbar() {
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-            H
+            B
           </div>
-          <span className="text-xl font-bold">Hermes SaaS</span>
+          <span className="text-xl font-bold">Bapica</span>
         </Link>
         <nav className="hidden items-center gap-6 md:flex">
           <Link href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">

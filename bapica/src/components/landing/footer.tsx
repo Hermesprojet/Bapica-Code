@@ -8,9 +8,9 @@ export function Footer() {
           <div>
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-                H
+                B
               </div>
-              <span className="text-lg font-bold">Hermes SaaS</span>
+              <span className="text-lg font-bold">Bapica</span>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
               Plateforme multi-agents IA pour PME et indépendants.
@@ -45,7 +45,7 @@ export function Footer() {
           </div>
         </div>
         <div className="mt-12 border-t border-border pt-8 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} Hermes SaaS. Tous droits réservés.
+          © {new Date().getFullYear()} Bapica. Tous droits réservés.
         </div>
       </div>
     </footer>

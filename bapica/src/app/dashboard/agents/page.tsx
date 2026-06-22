@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 
 export const metadata: Metadata = {
-  title: 'Mes agents - Hermes SaaS',
+  title: 'Mes agents - Bapica',
 }
 
 const agentIcons: Record<string, React.ElementType> = {
