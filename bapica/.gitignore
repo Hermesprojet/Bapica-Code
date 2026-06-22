@@ -4,3 +4,6 @@ node_modules/
 .env*.local
 *.log
 package-lock.json
+
+# next.js (fichier de types généré automatiquement)
+next-env.d.ts
