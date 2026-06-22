@@ -3,7 +3,7 @@ import { Bot, Globe, Shield, Zap, Headphones, CreditCard } from "lucide-react"
 const features = [
   {
     icon: Bot,
-    title: "11 agents spécialisés",
+    title: "12 agents spécialisés",
     desc: "De la prospection à la comptabilité, chaque métier a son agent dédié.",
   },
   {

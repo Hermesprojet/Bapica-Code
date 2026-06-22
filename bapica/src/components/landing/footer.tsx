@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { Logo } from "@/components/brand/logo"
 
 export function Footer() {
   return (
@@ -6,12 +7,8 @@ export function Footer() {
       <div className="container mx-auto px-4">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-                H
-              </div>
-              <span className="text-lg font-bold">Hermes SaaS</span>
-            </div>
+            <Logo />
+
             <p className="mt-4 text-sm text-muted-foreground">
               Plateforme multi-agents IA pour PME et indépendants.
             </p>
@@ -45,7 +42,7 @@ export function Footer() {
           </div>
         </div>
         <div className="mt-12 border-t border-border pt-8 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} Hermes SaaS. Tous droits réservés.
+          © {new Date().getFullYear()} Bapica. Tous droits réservés.
         </div>
       </div>
     </footer>

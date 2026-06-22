@@ -1,14 +1,12 @@
 import Link from "next/link"
+import { Logo } from "@/components/brand/logo"
 
 export function Navbar() {
   return (
     <header className="fixed top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-            H
-          </div>
-          <span className="text-xl font-bold">Hermes SaaS</span>
+          <Logo wordmarkClassName="text-xl" />
         </Link>
         <nav className="hidden items-center gap-6 md:flex">
           <Link href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">

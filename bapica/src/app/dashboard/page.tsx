@@ -4,7 +4,7 @@ const cards = [
   {
     title: 'Agents actifs',
     value: '3',
-    desc: 'sur 11 disponibles',
+    desc: 'sur 12 disponibles',
     icon: Bot,
     change: '+2 ce mois',
     positive: true,
@@ -41,7 +41,7 @@ export default function DashboardPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold">Tableau de bord</h1>
         <p className="mt-1 text-muted-foreground">
-          Bienvenue sur votre espace Hermes SaaS.
+          Bienvenue sur votre espace Bapica.
         </p>
       </div>
 

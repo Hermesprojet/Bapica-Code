@@ -7,11 +7,11 @@ export function HeroSection() {
       <div className="container mx-auto px-4 text-center relative">
         <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-sm">
           <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-muted-foreground">11 agents IA prêts à l&apos;emploi</span>
+          <span className="text-muted-foreground">12 agents IA prêts à l&apos;emploi</span>
         </div>
         <h1 className="mx-auto max-w-4xl text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
           Propulsez votre PME avec{" "}
-          <span className="gradient-text">11 agents IA spécialisés</span>
+          <span className="gradient-text">12 agents IA spécialisés</span>
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
           Prospection, support client, contenu, voix, recrutement, comptabilité...

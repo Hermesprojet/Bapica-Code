@@ -9,7 +9,7 @@ const planOrder: PlanKey[] = ['starter', 'pro', 'business']
 const planDetails = {
   starter: { name: 'Starter', price: 29, agents: 3, messages: 1000, mins: 0, popular: false },
   pro: { name: 'Pro', price: 59, agents: 7, messages: 5000, mins: 60, popular: true },
-  business: { name: 'Business', price: 99, agents: 11, messages: -1, mins: 300, popular: false },
+  business: { name: 'Business', price: 99, agents: 12, messages: -1, mins: 300, popular: false },
 }
 
 export default function BillingPage() {
