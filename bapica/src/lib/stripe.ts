@@ -1,8 +1,25 @@
 import Stripe from 'stripe'
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-11-20.acacia',
-  typescript: true,
+// Instanciation paresseuse : le client Stripe n'est construit qu'à la
+// première utilisation (au moment d'une requête), pas à l'import du module.
+// Cela évite que le build échoue lorsque STRIPE_SECRET_KEY est absente,
+// car le SDK Stripe lève une erreur si aucune clé n'est fournie.
+let stripeClient: Stripe | null = null
+
+function getStripe(): Stripe {
+  if (!stripeClient) {
+    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+      apiVersion: '2025-02-24.acacia',
+      typescript: true,
+    })
+  }
+  return stripeClient
+}
+
+export const stripe = new Proxy({} as Stripe, {
+  get(_target, prop) {
+    return Reflect.get(getStripe(), prop, getStripe())
+  },
 })
 
 export const PLANS = {
