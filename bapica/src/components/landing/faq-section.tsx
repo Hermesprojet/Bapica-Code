@@ -31,7 +31,7 @@ const faqs = [
   },
   {
     q: "Qu'est-ce qui différencie Bapica des autres solutions ?",
-    a: "Notre plateforme propose 11 agents spécialisés couvrant tous les aspects de votre activité, le tout dans une interface unifiée. Pas besoin de jongler entre 5 outils différents.",
+    a: "Notre plateforme propose 12 agents spécialisés couvrant tous les aspects de votre activité, le tout dans une interface unifiée. Pas besoin de jongler entre 5 outils différents.",
   },
   {
     q: "Puis-je changer de formule ?",

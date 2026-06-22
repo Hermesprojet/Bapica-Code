@@ -4,7 +4,7 @@ const cards = [
   {
     title: 'Agents actifs',
     value: '3',
-    desc: 'sur 11 disponibles',
+    desc: 'sur 12 disponibles',
     icon: Bot,
     change: '+2 ce mois',
     positive: true,

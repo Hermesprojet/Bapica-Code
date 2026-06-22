@@ -43,7 +43,7 @@ export const PLANS = {
     name: 'Business',
     priceId: process.env.STRIPE_BUSINESS_PRICE_ID || '',
     price: 99,
-    agents: 11,
+    agents: 12,
     messagesPerMonth: -1, // illimité
     voiceMinutes: 300,
   },

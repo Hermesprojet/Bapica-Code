@@ -38,7 +38,7 @@ const plans = [
     desc: "Pour entreprises établies",
     popular: false,
     features: [
-      "11 agents IA (tous inclus)",
+      "12 agents IA (tous inclus)",
       "Créateur Vidéo IA (HeyGen)",
       "Recruteur IA",
       "Analytics & Reporting",
