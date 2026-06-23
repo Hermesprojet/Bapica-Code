@@ -22,10 +22,17 @@ export const stripe = new Proxy({} as Stripe, {
   },
 })
 
+// Accepte les deux conventions de nommage des variables d'env de prix Stripe
+// (STRIPE_PRICE_PRO ou STRIPE_PRO_PRICE_ID) pour éviter toute incohérence.
+const priceId = (plan: 'STARTER' | 'PRO' | 'BUSINESS') =>
+  process.env[`STRIPE_PRICE_${plan}`] ||
+  process.env[`STRIPE_${plan}_PRICE_ID`] ||
+  ''
+
 export const PLANS = {
   starter: {
     name: 'Starter',
-    priceId: process.env.STRIPE_STARTER_PRICE_ID || '',
+    priceId: priceId('STARTER'),
     price: 29,
     agents: 3,
     messagesPerMonth: 1000,
@@ -33,7 +40,7 @@ export const PLANS = {
   },
   pro: {
     name: 'Pro',
-    priceId: process.env.STRIPE_PRO_PRICE_ID || '',
+    priceId: priceId('PRO'),
     price: 59,
     agents: 7,
     messagesPerMonth: 5000,
@@ -41,12 +48,21 @@ export const PLANS = {
   },
   business: {
     name: 'Business',
-    priceId: process.env.STRIPE_BUSINESS_PRICE_ID || '',
+    priceId: priceId('BUSINESS'),
     price: 99,
     agents: 12,
     messagesPerMonth: -1, // illimité
     voiceMinutes: 300,
   },
-} as const
+}
 
 export type PlanKey = keyof typeof PLANS
+
+// Retrouve la formule à partir d'un identifiant de prix Stripe (utilisé par le webhook).
+export function planFromPriceId(id: string | null | undefined): PlanKey | null {
+  if (!id) return null
+  const entry = (Object.keys(PLANS) as PlanKey[]).find(
+    (k) => PLANS[k].priceId === id
+  )
+  return entry ?? null
+}
