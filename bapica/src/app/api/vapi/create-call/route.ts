@@ -1,15 +1,22 @@
-// /workspace/hermes-saas/platform/src/app/api/vapi/create-call/route.ts
-// API pour lancer un appel depuis ta plateforme
+// API pour lancer un appel vocal sortant via Vapi
+// POST /api/vapi/create-call
+// Body: { phoneNumber, prospectName?, context? }
 import { NextRequest, NextResponse } from 'next/server'
 
 const VAPI_API_URL = 'https://api.vapi.ai'
-const VAPI_API_KEY = process.env.VAPI_API_KEY || ''
-const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID || ''
 
 export async function POST(req: NextRequest) {
-  if (!VAPI_API_KEY) {
+  const VAPI_API_KEY = process.env.VAPI_API_KEY || ''
+  const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID || ''
+  // Numéro Vapi utilisé comme appelant (à configurer dans le dashboard Vapi).
+  const VAPI_PHONE_NUMBER_ID = process.env.VAPI_PHONE_NUMBER_ID || ''
+
+  if (!VAPI_API_KEY || !VAPI_ASSISTANT_ID || !VAPI_PHONE_NUMBER_ID) {
     return NextResponse.json(
-      { error: 'Vapi API key not configured' },
+      {
+        error:
+          'Configuration Vapi incomplète (VAPI_API_KEY, VAPI_ASSISTANT_ID, VAPI_PHONE_NUMBER_ID).',
+      },
       { status: 400 }
     )
   }
@@ -32,27 +39,37 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         assistantId: VAPI_ASSISTANT_ID,
-        phoneNumber,
+        phoneNumberId: VAPI_PHONE_NUMBER_ID,
         customer: {
+          number: phoneNumber,
           name: prospectName || 'Prospect',
         },
-        // Contexte passé à l'assistant vocal
-        variableValues: {
-          context: context || '',
+        // Variables transmises à l'assistant vocal (contexte du prospect).
+        assistantOverrides: {
+          variableValues: {
+            prospectName: prospectName || 'Prospect',
+            context: context || '',
+          },
         },
-        // Webhook pour recevoir le résultat
-        webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/vapi/webhook`,
       }),
     })
 
     const data = await response.json()
 
-    // TODO: Sauvegarder l'appel dans Supabase
+    if (!response.ok) {
+      console.error('Vapi call error:', data)
+      return NextResponse.json(
+        { error: data?.message || "Erreur lors du lancement de l'appel." },
+        { status: 502 }
+      )
+    }
+
+    // TODO: Sauvegarder l'appel dans Supabase (table à ajouter au schéma)
     return NextResponse.json({ success: true, callId: data.id })
   } catch (error) {
     console.error('Vapi call error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors du lancement de l\'appel' },
+      { error: "Erreur lors du lancement de l'appel." },
       { status: 500 }
     )
   }
