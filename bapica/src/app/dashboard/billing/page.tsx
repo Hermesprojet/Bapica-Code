@@ -201,7 +201,10 @@ export default function BillingPage() {
                   ) : (
                     <ArrowUpDown className="h-4 w-4" />
                   )}
-                  {key > currentPlan ? 'Passer à' : 'Revenir à'} {plan.name}
+                  {planOrder.indexOf(key) > planOrder.indexOf(currentPlan)
+                    ? 'Passer à'
+                    : 'Revenir à'}{' '}
+                  {plan.name}
                 </button>
               )}
 
