@@ -20,10 +20,14 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (!profile?.stripe_customer_id) {
-      return NextResponse.json(
-        { error: 'Aucun abonnement actif trouvé pour ce compte.' },
-        { status: 404 }
-      )
+      // Pas d'abonnement Stripe : on renvoie une réponse « douce » (200) avec un
+      // indicateur exploité par le frontend pour proposer de souscrire, plutôt
+      // qu'une erreur générique.
+      return NextResponse.json({
+        noSubscription: true,
+        error:
+          'Aucun abonnement actif. Souscrivez à une formule depuis la page facturation.',
+      })
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin

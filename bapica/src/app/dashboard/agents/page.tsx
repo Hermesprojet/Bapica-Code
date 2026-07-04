@@ -3,11 +3,20 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Sparkles, Loader2, Check, ArrowRight } from 'lucide-react'
-import AGENTS, { type PlanKey } from '@/lib/agents'
-import { AgentAvatar } from '@/components/agents/agent-avatar'
+import { Sparkles, Check, ArrowRight, Lock } from 'lucide-react'
+import { getAgentsForPlan, type PlanKey } from '@/lib/agents'
 import { getRecommendedAgentIds, type OnboardingData } from '@/lib/personalization'
+
+// Nombre d'agents supplémentaires débloqués en passant à Pro
+// (aligné avec la page facturation : Essentiel 8 → Pro 12).
+const PRO_EXTRA_AGENTS = 4
 import { CardSkeleton } from '@/components/ui/base'
+
+// Normalise n'importe quelle valeur de plan (ex: 'Pro', 'essential', 'PRO')
+// vers une clé de plan exploitable ('essential' | 'pro').
+function normalizePlan(value: unknown): PlanKey {
+  return String(value ?? '').toLowerCase().includes('pro') ? 'pro' : 'essential'
+}
 
 const planLabels: Record<PlanKey, string> = {
   essential: 'Essentiel',
@@ -33,15 +42,39 @@ export default function AgentsPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [recommendedIds, setRecommendedIds] = useState<string[]>([])
+  const [plan, setPlan] = useState<PlanKey>('essential')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return router.push('/login')
       const onboarding: OnboardingData | null = user.user_metadata?.onboarding_data || null
       setRecommendedIds(getRecommendedAgentIds(onboarding))
+
+      // Le plan effectif provient en priorité de profiles.plan (formule payée),
+      // avec repli sur les métadonnées d'onboarding (recommended_plan).
+      let resolvedPlan: PlanKey | null = null
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('plan')
+        .eq('id', user.id)
+        .single()
+      if (profile?.plan) {
+        resolvedPlan = normalizePlan(profile.plan)
+      } else {
+        const metaPlan =
+          user.user_metadata?.onboarding_data?.plan ??
+          user.user_metadata?.recommended_plan
+        if (metaPlan) resolvedPlan = normalizePlan(metaPlan)
+      }
+      setPlan(resolvedPlan ?? 'essential')
+
       setLoading(false)
     })
   }, [router])
+
+  // N'affiche QUE les agents accessibles pour la formule de l'utilisateur.
+  const availableAgents = getAgentsForPlan(plan)
+  const lockedCount = PRO_EXTRA_AGENTS
 
   return (
     <div>
@@ -60,7 +93,7 @@ export default function AgentsPage() {
             Recommandés pour vous
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {AGENTS.filter(a => recommendedIds.includes(a.id)).map((agent) => (
+            {availableAgents.filter(a => recommendedIds.includes(a.id)).map((agent) => (
               <a
                 key={agent.id}
                 href={`/dashboard/agents/${agent.id}`}
@@ -99,7 +132,7 @@ export default function AgentsPage() {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {AGENTS.map((agent) => {
+            {availableAgents.map((agent) => {
               const isRecommended = recommendedIds.includes(agent.id)
               return (
                 <a
@@ -145,6 +178,32 @@ export default function AgentsPage() {
               )
             })}
           </div>
+        )}
+
+        {/* Invitation à passer au plan Pro pour débloquer les agents avancés */}
+        {!loading && plan === 'essential' && lockedCount > 0 && (
+          <a
+            href="/dashboard/billing"
+            className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 to-purple-500/5 p-5 group transition-colors hover:border-primary/50"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                <Lock className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm">
+                  Passez au plan Pro pour débloquer les {lockedCount} agents supplémentaires
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Prospection, closing vocal, comptabilité, juridique et plus encore.
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground group-hover:opacity-90 transition-opacity">
+              Passer à Pro
+              <ArrowRight className="h-3.5 w-3.5" />
+            </span>
+          </a>
         )}
       </div>
     </div>

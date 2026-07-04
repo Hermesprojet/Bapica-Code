@@ -33,7 +33,7 @@ export const PLANS = {
   essential: {
     name: 'Essentiel',
     priceId: priceId('ESSENTIAL'),
-    price: 39,
+    price: 49,
     agents: 8,
     messagesPerMonth: -1, // illimité
     voiceMinutes: 0,

@@ -168,7 +168,7 @@ export function LiveDemo() {
                 <Lock className="mx-auto mb-2 h-5 w-5 text-primary" />
                 <p className="text-sm font-semibold">Vous avez aimé l&apos;échange ?</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Créez un compte gratuit pour continuer avec Léo et débloquer les 12 agents.
+                  Créez un compte gratuit pour continuer avec Léo et débloquer tous les agents.
                 </p>
                 <Link
                   href="/signup"

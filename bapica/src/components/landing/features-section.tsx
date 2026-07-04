@@ -3,7 +3,7 @@ import { Bot, Globe, Shield, Zap, Headphones, CreditCard, BarChart3, MessageCirc
 const features = [
   {
     icon: Bot,
-    title: "12 agents spécialisés",
+    title: "Jusqu'à 12 agents spécialisés",
     desc: "De la prospection à la comptabilité, chaque métier a son agent IA dédié.",
     gradient: "from-violet-500 to-purple-500",
   },

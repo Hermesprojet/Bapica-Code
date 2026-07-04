@@ -75,6 +75,13 @@ export default function BillingPage() {
       const data = await res.json()
       if (data.url) {
         window.location.href = data.url
+      } else if (data.noSubscription) {
+        // Pas encore d'abonnement Stripe : on invite à souscrire au lieu
+        // d'afficher une erreur générique.
+        setNotice(
+          "Vous n'avez pas encore d'abonnement Stripe. Souscrivez à un plan ci-dessous."
+        )
+        setPortalLoading(false)
       } else {
         setNotice(data.error || "Impossible d'ouvrir le portail.")
         setPortalLoading(false)
@@ -198,9 +205,25 @@ export default function BillingPage() {
               )}
 
               {key === currentPlan && (
-                <div className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary">
-                  <Check className="h-4 w-4" />
-                  Plan actuel
+                <div className="mt-6 space-y-2">
+                  <div className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary">
+                    <Check className="h-4 w-4" />
+                    Plan actuel
+                  </div>
+                  {/* Permet de souscrire via Stripe Checkout même sur le plan actuel
+                      (utile si aucun abonnement Stripe n'est encore actif). */}
+                  <button
+                    onClick={() => handleCheckout(key)}
+                    disabled={loadingPlan !== null}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium hover:bg-muted disabled:opacity-50 transition-colors"
+                  >
+                    {loadingPlan === key ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CreditCard className="h-4 w-4" />
+                    )}
+                    Souscrire à ce plan
+                  </button>
                 </div>
               )}
             </div>

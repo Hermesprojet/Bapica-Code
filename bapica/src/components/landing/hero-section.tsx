@@ -16,7 +16,7 @@ export function HeroSection() {
             <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
           </span>
           <span className="text-muted-foreground">
-            <span className="font-semibold text-foreground">12 agents IA</span> prêts à l&apos;emploi
+            <span className="font-semibold text-foreground">Jusqu&apos;à 12 agents IA</span> prêts à l&apos;emploi
           </span>
         </div>
 
