@@ -69,12 +69,11 @@ const SIZES = [
 ]
 
 const planLabel: Record<PlanKey, string> = {
-  starter: 'Starter',
+  essential: 'Essentiel',
   pro: 'Pro',
-  business: 'Business',
 }
-const planPrice: Record<PlanKey, number> = { starter: 29, pro: 59, business: 99 }
-const planRank: Record<PlanKey, number> = { starter: 0, pro: 1, business: 2 }
+const planPrice: Record<PlanKey, number> = { essential: 39, pro: 79 }
+const planRank: Record<PlanKey, number> = { essential: 0, pro: 1 }
 
 export function NeedsFinder() {
   const [step, setStep] = useState(0)
@@ -101,14 +100,11 @@ export function NeedsFinder() {
     .filter((a): a is NonNullable<ReturnType<typeof getAgentById>> => !!a)
 
   // Formule recommandée : plan le plus élevé requis par les agents, ajusté à la taille
-  let planNeeded: PlanKey = 'starter'
+  let planNeeded: PlanKey = 'essential'
   for (const a of recommendedAgents) {
     if (planRank[a.minPlan] > planRank[planNeeded]) planNeeded = a.minPlan
   }
-  if (size === 'pme' && planRank[planNeeded] < planRank['business'])
-    planNeeded = 'business'
-  else if (size === 'small' && planRank[planNeeded] < planRank['pro'])
-    planNeeded = 'pro'
+  if (size === 'pme' && planRank[planNeeded] < planRank['pro']) planNeeded = 'pro'
 
   const canNext =
     (step === 0 && sector) || (step === 1 && goals.length > 0) || (step === 2 && size)

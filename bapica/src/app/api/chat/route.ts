@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { getAgentById, type AgentConfig } from '@/lib/agents'
+import { createClient } from '@supabase/supabase-js'
 
 // Route API centrale pour les agents
 // POST /api/chat
@@ -9,6 +10,29 @@ import { getAgentById, type AgentConfig } from '@/lib/agents'
 interface HistoryMessage {
   role: 'user' | 'assistant'
   content: string
+}
+
+async function verifyAuth(req: NextRequest) {
+  const authHeader = req.headers.get('authorization')
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { error: 'Configuration Supabase manquante', status: 500 }
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  })
+
+  // Essayer l'auth via le cookie de session (navigateur)
+  const { data: { user }, error } = await supabase.auth.getUser()
+  
+  if (error || !user) {
+    return { error: 'Non authentifié. Connectez-vous pour utiliser cette API.', status: 401 }
+  }
+
+  return { user }
 }
 
 // Le modèle déclaré dans lib/agents.ts ('claude-sonnet-4') est un alias interne ;
@@ -40,6 +64,12 @@ function buildSystemPrompt(agent: AgentConfig): string {
 
 export async function POST(req: NextRequest) {
   try {
+    // Vérifier l'authentification
+    const auth = await verifyAuth(req)
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const { agentId, message, history } = await req.json()
 
     if (!agentId || !message) {

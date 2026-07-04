@@ -24,35 +24,29 @@ export const stripe = new Proxy({} as Stripe, {
 
 // Accepte les deux conventions de nommage des variables d'env de prix Stripe
 // (STRIPE_PRICE_PRO ou STRIPE_PRO_PRICE_ID) pour éviter toute incohérence.
-const priceId = (plan: 'STARTER' | 'PRO' | 'BUSINESS') =>
+const priceId = (plan: 'ESSENTIAL' | 'PRO') =>
   process.env[`STRIPE_PRICE_${plan}`] ||
   process.env[`STRIPE_${plan}_PRICE_ID`] ||
   ''
 
 export const PLANS = {
-  starter: {
-    name: 'Starter',
-    priceId: priceId('STARTER'),
-    price: 29,
-    agents: 3,
-    messagesPerMonth: 1000,
+  essential: {
+    name: 'Essentiel',
+    priceId: priceId('ESSENTIAL'),
+    price: 39,
+    agents: 8,
+    messagesPerMonth: -1, // illimité
     voiceMinutes: 0,
+    voiceRate: 0.20, // €/min
   },
   pro: {
     name: 'Pro',
     priceId: priceId('PRO'),
-    price: 59,
-    agents: 7,
-    messagesPerMonth: 5000,
-    voiceMinutes: 60,
-  },
-  business: {
-    name: 'Business',
-    priceId: priceId('BUSINESS'),
-    price: 99,
+    price: 79,
     agents: 12,
     messagesPerMonth: -1, // illimité
-    voiceMinutes: 300,
+    voiceMinutes: 0,
+    voiceRate: 0.20, // €/min
   },
 }
 

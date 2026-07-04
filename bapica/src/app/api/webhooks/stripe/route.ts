@@ -4,9 +4,8 @@ import { stripe, planFromPriceId, type PlanKey } from '@/lib/stripe'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const planLimits: Record<PlanKey, number> = {
-  starter: 1000,
-  pro: 5000,
-  business: -1,
+  essential: -1,
+  pro: -1,
 }
 
 async function setPlan(
@@ -19,7 +18,6 @@ async function setPlan(
     .from('profiles')
     .update({
       plan,
-      api_limit: planLimits[plan],
       ...(fields.customerId ? { stripe_customer_id: fields.customerId } : {}),
       ...(fields.subscriptionId !== undefined
         ? { stripe_subscription_id: fields.subscriptionId }
@@ -50,7 +48,7 @@ export async function POST(req: NextRequest) {
         const session = event.data.object as Stripe.Checkout.Session
         const userId =
           session.client_reference_id || session.metadata?.userId || ''
-        const plan = (session.metadata?.plan as PlanKey) || 'starter'
+        const plan = (session.metadata?.plan as PlanKey) || 'essential'
         if (userId) {
           await setPlan(userId, plan, {
             customerId:
@@ -85,8 +83,8 @@ export async function POST(req: NextRequest) {
         const sub = event.data.object as Stripe.Subscription
         const userId = sub.metadata?.userId || ''
         if (userId) {
-          // Résiliation : on repasse l'utilisateur en formule Starter.
-          await setPlan(userId, 'starter', { subscriptionId: null })
+          // Résiliation : on repasse l'utilisateur en formule Essentiel.
+          await setPlan(userId, 'essential', { subscriptionId: null })
         }
         break
       }

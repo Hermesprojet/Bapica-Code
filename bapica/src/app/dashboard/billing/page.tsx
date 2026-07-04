@@ -5,16 +5,15 @@ import { CreditCard, Check, Loader2, ArrowUpDown, Settings } from 'lucide-react'
 import { type PlanKey } from '@/lib/stripe'
 import { supabase } from '@/lib/supabase'
 
-const planOrder: PlanKey[] = ['starter', 'pro', 'business']
+const planOrder: PlanKey[] = ['essential', 'pro']
 
 const planDetails = {
-  starter: { name: 'Starter', price: 29, agents: 3, messages: 1000, mins: 0, popular: false },
-  pro: { name: 'Pro', price: 59, agents: 7, messages: 5000, mins: 60, popular: true },
-  business: { name: 'Business', price: 99, agents: 12, messages: -1, mins: 300, popular: false },
+  essential: { name: 'Essentiel', price: 39, agents: 8, popular: false },
+  pro: { name: 'Pro', price: 79, agents: 12, popular: true },
 }
 
 export default function BillingPage() {
-  const [currentPlan, setCurrentPlan] = useState<PlanKey>('starter')
+  const [currentPlan, setCurrentPlan] = useState<PlanKey>('essential')
   const [userId, setUserId] = useState<string | null>(null)
   const [email, setEmail] = useState<string | null>(null)
   const [loadingPlan, setLoadingPlan] = useState<PlanKey | null>(null)
@@ -77,7 +76,7 @@ export default function BillingPage() {
       if (data.url) {
         window.location.href = data.url
       } else {
-        setNotice(data.error || 'Impossible d\'ouvrir le portail.')
+        setNotice(data.error || "Impossible d'ouvrir le portail.")
         setPortalLoading(false)
       }
     } catch {
@@ -115,24 +114,14 @@ export default function BillingPage() {
             <CreditCard className="h-6 w-6 text-primary" />
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-4 border-t border-border pt-4 text-center text-sm">
+        <div className="mt-4 grid grid-cols-2 gap-4 border-t border-border pt-4 text-center text-sm">
           <div>
             <p className="font-semibold">{planDetails[currentPlan].agents}</p>
-            <p className="text-muted-foreground">Agents</p>
+            <p className="text-muted-foreground">Agents IA</p>
           </div>
           <div>
-            <p className="font-semibold">
-              {planDetails[currentPlan].messages === -1
-                ? '∞'
-                : `${planDetails[currentPlan].messages.toLocaleString()}`}
-            </p>
-            <p className="text-muted-foreground">Messages/mois</p>
-          </div>
-          <div>
-            <p className="font-semibold">
-              {planDetails[currentPlan].mins === 0 ? '0' : `${planDetails[currentPlan].mins}min`}
-            </p>
-            <p className="text-muted-foreground">Appels vocaux</p>
+            <p className="font-semibold">∞</p>
+            <p className="text-muted-foreground">Messages illimités</p>
           </div>
         </div>
         <button
@@ -150,7 +139,7 @@ export default function BillingPage() {
       </div>
 
       {/* All plans */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-2">
         {planOrder.map((key) => {
           const plan = planDetails[key]
           return (
@@ -178,11 +167,11 @@ export default function BillingPage() {
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-green-500" />
-                  {plan.messages === -1 ? 'Messages illimités' : `${plan.messages.toLocaleString()} messages/mois`}
+                  Messages illimités
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-green-500" />
-                  {plan.mins === 0 ? 'Sans appels vocaux' : `${plan.mins} min d'appels/mois`}
+                  Appels vocaux : 0,20€/min
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-green-500" />
@@ -201,7 +190,10 @@ export default function BillingPage() {
                   ) : (
                     <ArrowUpDown className="h-4 w-4" />
                   )}
-                  {key > currentPlan ? 'Passer à' : 'Revenir à'} {plan.name}
+                  {planOrder.indexOf(key) > planOrder.indexOf(currentPlan)
+                    ? 'Passer à'
+                    : 'Revenir à'}{' '}
+                  {plan.name}
                 </button>
               )}
 
