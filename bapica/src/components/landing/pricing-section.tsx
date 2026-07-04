@@ -77,7 +77,7 @@ export function PricingSection() {
               } p-8 transition-all duration-300 hover:shadow-xl hover:-translate-y-1`}
             >
               {plan.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-primary to-purple-500 px-4 py-1 text-xs font-semibold text-primary-foreground shadow-lg">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-primary to-blue-500 px-4 py-1 text-xs font-semibold text-primary-foreground shadow-lg">
                   Le plus populaire
                 </div>
               )}
@@ -108,7 +108,7 @@ export function PricingSection() {
                 href="/signup"
                 className={`mt-8 flex h-12 w-full items-center justify-center rounded-lg text-sm font-medium transition-all ${
                   plan.popular
-                    ? "bg-gradient-to-r from-primary to-purple-500 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02]"
+                    ? "bg-gradient-to-r from-primary to-blue-500 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02]"
                     : "border border-border bg-background hover:bg-muted"
                 }`}
               >

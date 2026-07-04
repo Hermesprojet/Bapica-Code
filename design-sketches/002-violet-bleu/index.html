@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bapica — Variant Violet + Bleu</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        violet: { 400: '#a78bfa', 500: '#8b5cf6', 600: '#7c3aed' },
+        blue: { 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb' },
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { background: #08060f; color: #e4def7; font-family: 'Inter', -apple-system, sans-serif; }
+  .gradient-text { background: linear-gradient(135deg, #a78bfa, #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .glow-purple { box-shadow: 0 0 60px -10px rgba(139,92,246,0.25); }
+  .glow-blue { box-shadow: 0 0 60px -10px rgba(59,130,246,0.25); }
+</style>
+</head>
+<body>
+<div class="min-h-screen flex flex-col" style="background: radial-gradient(ellipse at 50% 0%, rgba(139,92,246,0.08) 0%, transparent 60%), radial-gradient(ellipse at 80% 50%, rgba(59,130,246,0.05) 0%, transparent 50%), #08060f;">
+  <!-- Nav -->
+  <nav class="flex items-center justify-between px-8 py-5 max-w-7xl mx-auto w-full">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold text-sm">B</div>
+      <span class="font-semibold text-white text-lg">Bapica</span>
+    </div>
+    <div class="flex items-center gap-8 text-sm text-gray-400">
+      <a href="#" class="hover:text-white transition">Fonctionnalités</a>
+      <a href="#" class="hover:text-white transition">Agents</a>
+      <a href="#" class="hover:text-white transition">Tarifs</a>
+      <a href="#" class="text-white font-medium">Connexion</a>
+      <a href="#" class="bg-gradient-to-r from-violet-500 to-blue-500 text-white px-5 py-2.5 rounded-xl font-medium hover:opacity-90 transition-all glow-purple">Essai gratuit</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <main class="flex-1 flex items-center justify-center px-6">
+    <div class="max-w-4xl mx-auto text-center">
+      <div class="inline-flex items-center gap-2 rounded-full bg-violet-500/10 border border-violet-500/20 px-4 py-1.5 text-sm text-violet-400 mb-8">
+        🤝 12 agents IA en équipe
+      </div>
+      <h1 class="text-5xl md:text-7xl font-bold tracking-tight text-white leading-[1.1]">
+        Vos <span class="gradient-text">agents IA</span><br>
+        au service de votre<br>
+        <span class="gradient-text">entreprise</span>
+      </h1>
+      <p class="mt-6 text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed">
+        Prospection, support, contenu, voix, recrutement&hellip; Une équipe d'agents IA qui <span class="text-violet-400">collaborent</span>, orchestrée par <span class="text-blue-400">Léo</span>.
+      </p>
+      <div class="mt-10 flex items-center justify-center gap-4">
+        <a href="#" class="bg-gradient-to-r from-violet-500 to-blue-500 text-white px-8 py-3.5 rounded-xl font-medium text-base hover:opacity-90 transition-all glow-purple inline-flex items-center gap-2">
+          Commencer gratuitement
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+        </a>
+        <a href="#" class="border border-gray-700 text-gray-300 px-8 py-3.5 rounded-xl font-medium text-base hover:border-violet-500/50 hover:text-white transition-all">
+          Découvrir les agents
+        </a>
+      </div>
+      
+      <!-- Features mini-cards -->
+      <div class="mt-16 grid grid-cols-3 gap-4 max-w-2xl mx-auto">
+        <div class="rounded-xl border border-violet-500/10 bg-violet-500/5 p-4 text-left">
+          <div class="text-violet-400 text-lg mb-1">🎯</div>
+          <div class="text-sm font-medium text-white">Prospection</div>
+          <div class="text-xs text-gray-500 mt-0.5">Qualification automatique</div>
+        </div>
+        <div class="rounded-xl border border-blue-500/10 bg-blue-500/5 p-4 text-left">
+          <div class="text-blue-400 text-lg mb-1">🎧</div>
+          <div class="text-sm font-medium text-white">Support 24/7</div>
+          <div class="text-xs text-gray-500 mt-0.5">Multilingue FR/EN/AR</div>
+        </div>
+        <div class="rounded-xl border border-violet-500/10 bg-violet-500/5 p-4 text-left">
+          <div class="text-violet-400 text-lg mb-1">📊</div>
+          <div class="text-sm font-medium text-white">Analytics</div>
+          <div class="text-xs text-gray-500 mt-0.5">Rapports temps réel</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

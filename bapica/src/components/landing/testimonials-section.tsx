@@ -3,7 +3,7 @@ const testimonials = [
     name: 'Sophie Moreau',
     role: 'Dirigeante d\'une agence immo',
     avatar: 'SM',
-    gradient: 'from-violet-500 to-purple-500',
+    gradient: 'from-indigo-500 to-blue-500',
     content: 'Depuis qu\'on utilise Tom, on ne rate plus un seul appel. Même quand l\'équipe est en déplacement, nos clients sont pris en charge et les rendez-vous se placent tout seuls.',
     rating: 5,
   },

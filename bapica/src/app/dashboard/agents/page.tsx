@@ -24,15 +24,15 @@ const planLabels: Record<PlanKey, string> = {
 }
 
 const agentGradients: Record<string, string> = {
-  general: 'from-violet-500 to-purple-500',
+  general: 'from-indigo-500 to-blue-500',
   support: 'from-emerald-500 to-green-500',
-  content: 'from-violet-500 to-purple-500',
+  content: 'from-indigo-500 to-blue-500',
   prospector: 'from-orange-500 to-amber-500',
   closer: 'from-rose-500 to-pink-500',
   telephone: 'from-cyan-500 to-teal-500',
   accounting: 'from-amber-500 to-yellow-500',
   video: 'from-pink-500 to-rose-500',
-  recruiter: 'from-violet-500 to-purple-500',
+  recruiter: 'from-indigo-500 to-blue-500',
   legal: 'from-slate-500 to-gray-500',
   analytics: 'from-teal-500 to-emerald-500',
   trends: 'from-lime-500 to-green-500',
@@ -163,8 +163,8 @@ export default function AgentsPage() {
                     </p>
                     <div className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
                       agent.minPlan === 'essential'
-                        ? 'bg-violet-500/10 text-violet-400'
-                        : 'bg-purple-500/10 text-purple-400'
+                        ? 'bg-indigo-500/10 text-indigo-400'
+                        : 'bg-blue-500/10 text-blue-400'
                     }`}>
                       {planLabels[agent.minPlan]}
                     </div>

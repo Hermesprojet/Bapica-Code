@@ -8,40 +8,41 @@
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
-    --primary: 270 67% 55%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 270 30% 96%;
-    --secondary-foreground: 270 50% 15%;
-    --muted: 270 20% 96%;
-    --muted-foreground: 270 10% 46%;
-    --accent: 270 30% 96%;
-    --accent-foreground: 270 50% 15%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 231 30% 96%;
+    --secondary-foreground: 231 50% 15%;
+    --muted: 220 20% 96%;
+    --muted-foreground: 218 11% 46%;
+    --accent: 231 30% 96%;
+    --accent-foreground: 231 50% 15%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
-    --border: 270 20% 90%;
-    --input: 270 20% 90%;
-    --ring: 270 67% 55%;
+    --border: 220 20% 90%;
+    --input: 220 20% 90%;
+    --ring: 239 84% 67%;
     --radius: 0.75rem;
   }
 
   .dark {
-    --background: 270 50% 2%;
-    --foreground: 270 20% 98%;
-    --card: 270 40% 5%;
-    --card-foreground: 270 20% 98%;
-    --primary: 270 70% 60%;
-    --primary-foreground: 270 50% 5%;
-    --secondary: 270 30% 10%;
-    --secondary-foreground: 270 20% 98%;
-    --muted: 270 25% 10%;
-    --muted-foreground: 270 15% 60%;
-    --accent: 270 30% 10%;
-    --accent-foreground: 270 20% 98%;
+    /* Palette "Bleu Profond" */
+    --background: 225 21% 7%;         /* #0f1117 */
+    --foreground: 214 32% 91%;        /* #e2e8f0 */
+    --card: 231 28% 14%;              /* #1a1d2e */
+    --card-foreground: 214 32% 91%;   /* #e2e8f0 */
+    --primary: 239 84% 67%;           /* #6366f1 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 231 28% 14%;         /* #1a1d2e */
+    --secondary-foreground: 214 32% 91%;
+    --muted: 231 20% 16%;
+    --muted-foreground: 218 11% 65%;  /* #9ca3af */
+    --accent: 231 28% 16%;
+    --accent-foreground: 214 32% 91%;
     --destructive: 0 63% 31%;
-    --destructive-foreground: 270 20% 98%;
-    --border: 270 25% 12%;
-    --input: 270 25% 12%;
-    --ring: 270 70% 60%;
+    --destructive-foreground: 214 32% 91%;
+    --border: 215 28% 17%;            /* #1f2937 */
+    --input: 215 28% 17%;             /* #1f2937 */
+    --ring: 239 84% 67%;              /* #6366f1 */
   }
 }
 
@@ -60,11 +61,11 @@
 /* GRADIENTS            */
 /* ==================== */
 .gradient-hero {
-  background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 50%, #d946ef 100%);
+  background: linear-gradient(135deg, #6366f1 0%, #818cf8 50%, #a5b4fc 100%);
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #a78bfa 0%, #c084fc 40%, #f472b6 100%);
+  background: linear-gradient(135deg, #818cf8 0%, #a5b4fc 40%, #c7d2fe 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

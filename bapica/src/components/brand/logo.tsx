@@ -31,7 +31,7 @@ export function Logo({
           <linearGradient id="bapica-logo-grad" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#3b82f6" />
             <stop offset="50%" stopColor="#6366f1" />
-            <stop offset="100%" stopColor="#8b5cf6" />
+            <stop offset="100%" stopColor="#818cf8" />
           </linearGradient>
         </defs>
         <rect width="40" height="40" rx="11" fill="url(#bapica-logo-grad)" />

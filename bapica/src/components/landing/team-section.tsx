@@ -34,15 +34,15 @@ const iconMap: Record<string, LucideIcon> = {
 // Dégradés statiques (repris de la section agents) pour que Tailwind
 // détecte bien les classes au build plutôt que de les purger.
 const agentGradients: Record<string, string> = {
-  general: "from-violet-500 to-purple-500",
+  general: "from-indigo-500 to-blue-500",
   support: "from-emerald-500 to-green-500",
-  content: "from-violet-500 to-purple-500",
+  content: "from-indigo-500 to-blue-500",
   prospector: "from-orange-500 to-amber-500",
   closer: "from-rose-500 to-pink-500",
   telephone: "from-cyan-500 to-teal-500",
   accounting: "from-amber-500 to-yellow-500",
   video: "from-pink-500 to-rose-500",
-  recruiter: "from-violet-500 to-purple-500",
+  recruiter: "from-indigo-500 to-blue-500",
   legal: "from-slate-500 to-gray-500",
   analytics: "from-teal-500 to-emerald-500",
   trends: "from-lime-500 to-green-500",
@@ -70,7 +70,7 @@ const roleBadge: Record<
   coordinator: {
     label: "Coordinateur",
     className:
-      "bg-gradient-to-r from-violet-500 to-purple-500 text-white border-transparent shadow-[0_0_20px_-4px_rgba(139,92,246,0.6)]",
+      "bg-gradient-to-r from-indigo-500 to-blue-500 text-white border-transparent shadow-[0_0_20px_-4px_rgba(99,102,241,0.6)]",
   },
   specialist: {
     label: "Spécialiste",
@@ -93,7 +93,7 @@ export function TeamSection() {
       className="relative border-t border-border overflow-hidden py-20 md:py-28"
     >
       {/* Fond dégradé subtil violet/pourpre */}
-      <div className="absolute inset-0 bg-gradient-to-b from-violet-500/[0.06] via-transparent to-purple-500/[0.05]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/[0.06] via-transparent to-blue-500/[0.05]" />
       <div className="absolute inset-0 bg-grid opacity-20" />
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 h-[500px] w-[500px] rounded-full bg-primary/10 blur-[160px]" />
 
@@ -121,8 +121,8 @@ export function TeamSection() {
               <div className="h-40 w-40 rounded-full bg-primary/20 blur-2xl animate-pulse-glow" />
             </div>
 
-            <div className="relative rounded-2xl border border-accent bg-card/80 backdrop-blur px-8 py-6 text-center shadow-[0_0_50px_-12px_rgba(139,92,246,0.5)]">
-              <div className={`mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${agentGradients[leo.id] ?? "from-violet-500 to-purple-500"} text-white shadow-lg animate-float`}>
+            <div className="relative rounded-2xl border border-accent bg-card/80 backdrop-blur px-8 py-6 text-center shadow-[0_0_50px_-12px_rgba(99,102,241,0.5)]">
+              <div className={`mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${agentGradients[leo.id] ?? "from-indigo-500 to-blue-500"} text-white shadow-lg animate-float`}>
                 <LeoIcon className="h-8 w-8" />
               </div>
               <h3 className="text-lg font-bold">{leo.persona}</h3>
@@ -198,7 +198,7 @@ export function TeamSection() {
 
         {/* Message clé */}
         <div className="mx-auto mt-14 max-w-2xl text-center animate-slide-up animate-delay-2">
-          <div className="rounded-2xl border border-accent bg-gradient-to-br from-violet-500/10 to-purple-500/10 px-6 py-6">
+          <div className="rounded-2xl border border-accent bg-gradient-to-br from-indigo-500/10 to-blue-500/10 px-6 py-6">
             <p className="text-base font-medium sm:text-lg">
               Un seul point de contact&nbsp;:{" "}
               <span className="gradient-text font-bold">Léo</span>. Posez-lui

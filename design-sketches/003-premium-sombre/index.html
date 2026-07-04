@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bapica — Variant Premium Sombre</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        dark: { bg: '#020103', card: '#0d0a12', border: '#1a1525' },
+        plum: { 400: '#d4a0f0', 500: '#b77ae0', 600: '#9a5cc0' },
+        indigo: { 400: '#8899ff', 500: '#6677ee' },
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { background: #020103; color: #e8e0f0; font-family: 'Inter', -apple-system, sans-serif; }
+  .gradient-text { background: linear-gradient(135deg, #d4a0f0, #8899ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  .float { animation: float 6s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div class="min-h-screen flex flex-col relative overflow-hidden" style="background: #020103;">
+  <!-- Ambient orbs -->
+  <div class="absolute top-[-10%] left-[-5%] w-[600px] h-[600px] rounded-full bg-[#7c3aed]/10 blur-[150px]"></div>
+  <div class="absolute bottom-[-10%] right-[-5%] w-[500px] h-[500px] rounded-full bg-[#6366f1]/10 blur-[120px]"></div>
+  
+  <!-- Nav -->
+  <nav class="relative z-10 flex items-center justify-between px-8 py-5 max-w-7xl mx-auto w-full">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-plum-500 to-indigo-500 flex items-center justify-center text-white font-bold text-sm shadow-lg">B</div>
+      <span class="font-bold text-white text-xl tracking-tight">Bapica</span>
+    </div>
+    <div class="flex items-center gap-8 text-sm text-gray-500">
+      <a href="#" class="hover:text-plum-400 transition">Fonctionnalités</a>
+      <a href="#" class="hover:text-plum-400 transition">Agents</a>
+      <a href="#" class="hover:text-plum-400 transition">Tarifs</a>
+      <a href="#" class="text-gray-300 hover:text-white transition font-medium">Connexion</a>
+      <a href="#" class="bg-gradient-to-r from-plum-500 to-indigo-500 text-white px-5 py-2.5 rounded-xl font-medium hover:shadow-lg hover:shadow-plum-500/25 transition-all" style="box-shadow: 0 0 40px -8px rgba(183,122,224,0.3);">Essai gratuit</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <main class="relative z-10 flex-1 flex items-center justify-center px-6">
+    <div class="max-w-4xl mx-auto text-center">
+      <div class="inline-flex items-center gap-3 rounded-full border border-plum-500/20 bg-gradient-to-r from-plum-500/10 to-indigo-500/10 px-5 py-2 text-sm text-plum-400 mb-8 backdrop-blur-sm">
+        <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> 12 agents IA</span>
+        <span class="text-gray-600">·</span>
+        <span>Équipe collaborative</span>
+        <span class="text-gray-600">·</span>
+        <span>Orchestrée par Léo</span>
+      </div>
+      
+      <h1 class="text-5xl md:text-7xl font-bold tracking-tight text-white leading-[1.05]">
+        Vos <span class="gradient-text">agents IA</span><br>
+        au service de votre<br>
+        <span class="gradient-text">entreprise</span>
+      </h1>
+      
+      <p class="mt-6 text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed">
+        Prospection, support client, contenu, voix, recrutement, comptabilité&hellip;
+        <span class="text-gray-300 block mt-2">Une équipe complète d'agents IA qui collaborent entre eux, orchestrée par Léo. 24h/24 et 7j/7.</span>
+      </p>
+      
+      <div class="mt-10 flex items-center justify-center gap-4">
+        <a href="#" class="bg-gradient-to-r from-plum-500 to-indigo-500 text-white px-8 py-3.5 rounded-xl font-medium text-base hover:opacity-90 transition-all inline-flex items-center gap-2" style="box-shadow: 0 0 50px -8px rgba(102,119,238,0.4);">
+          Commencer gratuitement
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+        </a>
+        <a href="#" class="border border-[#1a1525] text-gray-400 px-8 py-3.5 rounded-xl font-medium text-base hover:border-plum-500/30 hover:text-plum-400 transition-all">
+          Voir les agents →
+        </a>
+      </div>
+      
+      <!-- Social proof -->
+      <div class="mt-16 flex items-center justify-center gap-10 text-sm">
+        <div class="text-center">
+          <div class="text-2xl font-bold text-white">30+</div>
+          <div class="text-gray-600">bêta-testeurs</div>
+        </div>
+        <div class="w-px h-10 bg-[#1a1525]"></div>
+        <div class="text-center">
+          <div class="text-2xl font-bold text-white">4.9/5</div>
+          <div class="text-gray-600">satisfaction</div>
+        </div>
+        <div class="w-px h-10 bg-[#1a1525]"></div>
+        <div class="text-center">
+          <div class="text-2xl font-bold text-white">15 jours</div>
+          <div class="text-gray-600">d'essai gratuit</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

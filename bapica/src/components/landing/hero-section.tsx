@@ -6,7 +6,7 @@ export function HeroSection() {
       {/* Background effects */}
       <div className="absolute inset-0 bg-grid" />
       <div className="absolute top-[-20%] left-[-10%] h-[500px] w-[500px] rounded-full bg-primary/10 blur-[120px] animate-pulse-glow" />
-      <div className="absolute bottom-[-10%] right-[-10%] h-[400px] w-[400px] rounded-full bg-purple-500/10 blur-[100px] animate-float" />
+      <div className="absolute bottom-[-10%] right-[-10%] h-[400px] w-[400px] rounded-full bg-indigo-500/10 blur-[100px] animate-float" />
       
       <div className="container mx-auto px-4 text-center relative">
         {/* Badge */}
@@ -62,7 +62,7 @@ export function HeroSection() {
           <div className="flex items-center gap-2 group">
             <div className="flex -space-x-2">
               {[1,2,3].map((i) => (
-                <div key={i} className="h-7 w-7 rounded-full border-2 border-background bg-gradient-to-br from-primary/40 to-purple-500/40" />
+                <div key={i} className="h-7 w-7 rounded-full border-2 border-background bg-gradient-to-br from-primary/40 to-blue-500/40" />
               ))}
             </div>
             <span className="text-muted-foreground">+<span className="font-semibold text-foreground">30</span> bêta-testeurs</span>

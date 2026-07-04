@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bapica — Premium Sombre</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{plum:{400:'#d4a0f0',500:'#b77ae0',600:'#9a5cc0'},indigo:{400:'#8899ff',500:'#6677ee'}}}}}
+</script>
+<style>
+body{background:#020103;color:#e8e0f0;font-family:'Inter',-apple-system,sans-serif}
+.gradient-text{background:linear-gradient(135deg,#d4a0f0,#8899ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.glow{box-shadow:0 0 60px -8px rgba(183,122,224,0.2)}
+</style>
+</head>
+<body style="background:#020103;">
+<div class="fixed inset-0 pointer-events-none" style="background:radial-gradient(ellipse at 50% 0%,rgba(183,122,224,0.06) 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,rgba(102,119,238,0.04) 0%,transparent 50%)"></div>
+
+<nav class="relative z-10 flex items-center justify-between px-8 py-5 max-w-7xl mx-auto w-full sticky top-0 bg-[#020103]/80 backdrop-blur-xl">
+  <div class="flex items-center gap-3"><div class="w-9 h-9 rounded-xl bg-gradient-to-br from-plum-500 to-indigo-500 flex items-center justify-center text-white font-bold text-sm shadow-lg">B</div><span class="font-bold text-white text-xl tracking-tight">Bapica</span></div>
+  <div class="flex items-center gap-8 text-sm text-gray-500"><a href="#" class="hover:text-plum-400 transition">Fonctionnalités</a><a href="#" class="hover:text-plum-400 transition">Agents</a><a href="#" class="hover:text-plum-400 transition">Tarifs</a><a href="#" class="text-gray-300 hover:text-white transition">Connexion</a><a href="#" class="bg-gradient-to-r from-plum-500 to-indigo-500 text-white px-5 py-2.5 rounded-xl font-medium glow hover:opacity-90 transition-all">Essai gratuit</a></div>
+</nav>
+
+<main class="relative z-10">
+<section class="flex items-center justify-center px-6 py-24">
+  <div class="max-w-4xl mx-auto text-center">
+    <div class="inline-flex items-center gap-3 rounded-full border border-plum-500/20 bg-gradient-to-r from-plum-500/10 to-indigo-500/10 px-5 py-2 text-sm text-plum-400 mb-8 backdrop-blur-sm"><span>12 agents IA</span><span class="text-gray-600">·</span><span>Équipe collaborative</span><span class="text-gray-600">·</span><span>Orchestrée par Léo</span></div>
+    <h1 class="text-5xl md:text-7xl font-bold tracking-tight text-white leading-[1.05]">Vos <span class="gradient-text">agents IA</span><br>au service de votre<br><span class="gradient-text">entreprise</span></h1>
+    <p class="mt-6 text-lg text-gray-500 max-w-2xl mx-auto">Une équipe complète d'agents IA qui collaborent entre eux, orchestrée par Léo. 24h/24 et 7j/7.</p>
+    <div class="mt-10 flex justify-center gap-4"><a href="#" class="bg-gradient-to-r from-plum-500 to-indigo-500 text-white px-8 py-3.5 rounded-xl font-medium glow inline-flex items-center gap-2">Commencer gratuitement →</a><a href="#" class="border border-[#1a1525] text-gray-400 px-8 py-3.5 rounded-xl font-medium hover:border-plum-500/30 hover:text-plum-400">Voir les agents →</a></div>
+    <div class="mt-16 flex justify-center gap-10 text-sm"><div><div class="text-2xl font-bold text-white">30+</div><div class="text-gray-600">bêta-testeurs</div></div><div class="w-px h-10 bg-[#1a1525]"></div><div><div class="text-2xl font-bold text-white">4.9/5</div><div class="text-gray-600">satisfaction</div></div><div class="w-px h-10 bg-[#1a1525]"></div><div><div class="text-2xl font-bold text-white">15 jours</div><div class="text-gray-600">d'essai gratuit</div></div></div>
+  </div>
+</section>
+
+<section class="border-t border-[#1a1525] py-20 px-6">
+  <div class="max-w-6xl mx-auto text-center">
+    <div class="text-plum-400 text-xs font-semibold tracking-widest uppercase mb-4">Fonctionnalités</div>
+    <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Tout ce dont vous avez besoin</h2>
+    <p class="text-gray-500 max-w-xl mx-auto mb-12">12 agents spécialisés, de la prospection à la comptabilité.</p>
+    <div class="grid grid-cols-3 gap-6 text-left">
+      <div class="rounded-xl bg-white/[0.02] p-6 border border-[#1a1525]"><div class="text-plum-400 text-2xl mb-3">🎯</div><h3 class="text-white font-semibold mb-2">12 agents spécialisés</h3><p class="text-gray-500 text-sm">Chaque métier a son agent IA dédié.</p></div>
+      <div class="rounded-xl bg-white/[0.02] p-6 border border-[#1a1525]"><div class="text-indigo-400 text-2xl mb-3">💬</div><h3 class="text-white font-semibold mb-2">WhatsApp & Web</h3><p class="text-gray-500 text-sm">Discutez depuis n'importe où.</p></div>
+      <div class="rounded-xl bg-white/[0.02] p-6 border border-[#1a1525]"><div class="text-plum-400 text-2xl mb-3">🌍</div><h3 class="text-white font-semibold mb-2">Trilingue</h3><p class="text-gray-500 text-sm">FR/EN/AR automatique.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="border-t border-[#1a1525] py-20 px-6">
+  <div class="max-w-6xl mx-auto text-center">
+    <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">🤝 Une équipe qui travaille pour vous</h2>
+    <p class="text-gray-500 max-w-xl mx-auto mb-12">Léo orchestre 11 agents spécialisés. Un seul point de contact.</p>
+    <div class="grid grid-cols-4 gap-4">
+      <div class="bg-gradient-to-br from-plum-500/20 to-indigo-500/10 rounded-xl p-4 border border-plum-500/30 col-span-4 md:col-span-4 max-w-xs mx-auto mb-4"><h3 class="text-white font-bold text-lg">Léo</h3><p class="text-plum-400 text-xs">Coordinateur</p></div>
+      <div class="rounded-xl bg-white/[0.02] p-4 border border-[#1a1525]"><span class="text-indigo-400 text-xs font-medium">Spécialiste</span><h3 class="text-white text-sm font-semibold mt-1">Sofia</h3><p class="text-gray-600 text-xs">Support 24/7</p></div>
+      <div class="rounded-xl bg-white/[0.02] p-4 border border-[#1a1525]"><span class="text-plum-400 text-xs font-medium">Spécialiste</span><h3 class="text-white text-sm font-semibold mt-1">Marc</h3><p class="text-gray-600 text-xs">Prospection</p></div>
+      <div class="rounded-xl bg-white/[0.02] p-4 border border-[#1a1525]"><span class="text-indigo-400 text-xs font-medium">Spécialiste</span><h3 class="text-white text-sm font-semibold mt-1">Nadia</h3><p class="text-gray-600 text-xs">Closer</p></div>
+      <div class="rounded-xl bg-white/[0.02] p-4 border border-[#1a1525]"><span class="text-teal-400 text-xs font-medium">Analyste</span><h3 class="text-white text-sm font-semibold mt-1">Claire</h3><p class="text-gray-600 text-xs">Compta</p></div>
+    </div>
+    <div class="mt-8 rounded-xl bg-gradient-to-r from-plum-500/10 to-indigo-500/10 border border-plum-500/20 p-6 max-w-lg mx-auto"><p class="text-gray-300">Un seul point de contact : <span class="text-plum-400 font-semibold">Léo</span>. Posez-lui votre demande, il mobilise l'équipe.</p></div>
+  </div>
+</section>
+
+<section class="border-t border-[#1a1525] py-20 px-6">
+  <div class="max-w-4xl mx-auto text-center">
+    <div class="text-plum-400 text-xs font-semibold tracking-widest uppercase mb-4">Tarifs</div>
+    <h2 class="text-3xl md:text-4xl font-bold text-white mb-2">Des tarifs transparents</h2>
+    <div class="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-4 py-1.5 text-sm text-emerald-400 mt-4 mb-10 glow">🎁 15 jours d'essai gratuit</div>
+    <div class="grid grid-cols-2 gap-6 text-left">
+      <div class="rounded-xl bg-white/[0.02] p-8 border border-[#1a1525]"><h3 class="text-white text-xl font-bold">Essentiel</h3><p class="text-3xl font-bold text-white mt-4">49€<span class="text-sm text-gray-500 font-normal">/mois</span></p><ul class="mt-6 space-y-3 text-sm"><li class="flex items-center gap-2 text-gray-400">✓ 8 agents IA</li><li class="flex items-center gap-2 text-gray-400">✓ Messages illimités</li></ul></div>
+      <div class="rounded-xl bg-gradient-to-b from-plum-500/10 to-indigo-500/5 p-8 border border-plum-500/30"><div class="text-xs text-plum-400 font-semibold mb-2">✦ LE PLUS POPULAIRE</div><h3 class="text-white text-xl font-bold">Pro</h3><p class="text-3xl font-bold text-white mt-4">79€<span class="text-sm text-gray-500 font-normal">/mois</span></p><ul class="mt-6 space-y-3 text-sm"><li class="flex items-center gap-2 text-gray-400">✓ 12 agents IA</li><li class="flex items-center gap-2 text-gray-400">✓ Tout inclus</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<footer class="border-t border-[#1a1525] py-12 px-6 text-center text-sm text-gray-600"><p>© 2026 Bapica — Plateforme multi-agents IA</p></footer>
+</main>
+</body>
+</html>

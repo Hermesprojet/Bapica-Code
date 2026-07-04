@@ -29,7 +29,7 @@ const useCases = [
     icon: TrendingUp,
     title: 'Marketing & SEO',
     subtitle: 'Contenu, réseaux sociaux, référencement',
-    gradient: 'from-violet-500 to-purple-500',
+    gradient: 'from-indigo-500 to-blue-500',
     description: 'John et Lou créent vos posts réseaux, articles SEO optimisés et visuels. Publication automatique sur WordPress, LinkedIn et Instagram.',
     benefits: ['1 article SEO/jour', 'Posts multi-plateformes', 'Audit concurrentiel automatique'],
   },

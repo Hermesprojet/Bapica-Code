@@ -5,7 +5,7 @@ const features = [
     icon: Bot,
     title: "Jusqu'à 12 agents spécialisés",
     desc: "De la prospection à la comptabilité, chaque métier a son agent IA dédié.",
-    gradient: "from-violet-500 to-purple-500",
+    gradient: "from-indigo-500 to-blue-500",
   },
   {
     icon: MessageCircle,
@@ -17,7 +17,7 @@ const features = [
     icon: Globe,
     title: "Trilingue FR/EN/AR",
     desc: "Détection automatique de la langue. Parlez français, anglais ou arabe.",
-    gradient: "from-violet-500 to-purple-500",
+    gradient: "from-indigo-500 to-blue-500",
   },
   {
     icon: Headphones,

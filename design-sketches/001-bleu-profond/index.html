@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bapica — Variant Bleu Profond</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        brand: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' },
+        surface: '#0f1117',
+        'surface-1': '#1a1d2e',
+        'surface-2': '#242842',
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { background: #0f1117; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  .gradient-text { background: linear-gradient(135deg, #818cf8, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .glow { box-shadow: 0 0 60px -10px rgba(99,102,241,0.3); }
+</style>
+</head>
+<body>
+<div class="min-h-screen flex flex-col">
+  <!-- Nav -->
+  <nav class="flex items-center justify-between px-8 py-5 max-w-7xl mx-auto w-full">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-bold text-sm">B</div>
+      <span class="font-semibold text-white text-lg">Bapica</span>
+    </div>
+    <div class="flex items-center gap-8 text-sm text-gray-400">
+      <a href="#" class="hover:text-white transition">Fonctionnalités</a>
+      <a href="#" class="hover:text-white transition">Agents</a>
+      <a href="#" class="hover:text-white transition">Tarifs</a>
+      <a href="#" class="text-white font-medium">Connexion</a>
+      <a href="#" class="bg-gradient-to-r from-brand-500 to-brand-600 text-white px-5 py-2.5 rounded-xl font-medium hover:from-brand-400 hover:to-brand-500 transition-all glow">Essai gratuit</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <main class="flex-1 flex items-center justify-center px-6">
+    <div class="max-w-4xl mx-auto text-center">
+      <div class="inline-flex items-center gap-2 rounded-full bg-brand-500/10 border border-brand-500/20 px-4 py-1.5 text-sm text-brand-300 mb-8">
+        <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+        Jusqu'à 12 agents IA en équipe
+      </div>
+      <h1 class="text-5xl md:text-7xl font-bold tracking-tight text-white leading-[1.1]">
+        Vos <span class="gradient-text">agents IA</span><br>
+        au service de votre<br>
+        <span class="gradient-text">entreprise</span>
+      </h1>
+      <p class="mt-6 text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed">
+        Prospection, support, contenu, voix, recrutement, compta&hellip; Une équipe d'agents IA qui collaborent, orchestrée par Léo.
+      </p>
+      <div class="mt-10 flex items-center justify-center gap-4">
+        <a href="#" class="bg-gradient-to-r from-brand-500 to-brand-600 text-white px-8 py-3.5 rounded-xl font-medium text-base hover:from-brand-400 hover:to-brand-500 transition-all glow inline-flex items-center gap-2">
+          Commencer gratuitement
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+        </a>
+        <a href="#" class="border border-gray-700 text-gray-300 px-8 py-3.5 rounded-xl font-medium text-base hover:border-gray-500 hover:text-white transition-all">
+          Voir les agents
+        </a>
+      </div>
+      <div class="mt-12 flex items-center justify-center gap-8 text-sm text-gray-500">
+        <span class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> Sans carte bancaire</span>
+        <span class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-brand-400"></span> 15 jours d'essai</span>
+        <span class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> 30 bêta-testeurs</span>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

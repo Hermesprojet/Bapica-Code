@@ -167,7 +167,7 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary to-purple-500 px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-primary/25"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary to-blue-500 px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-primary/25"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (
               <>

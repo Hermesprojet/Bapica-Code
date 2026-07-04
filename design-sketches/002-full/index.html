@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bapica — Violet + Bleu</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{violet:{400:'#a78bfa',500:'#8b5cf6',600:'#7c3aed'},blue:{400:'#60a5fa',500:'#3b82f6',600:'#2563eb'}}}}}
+</script>
+<style>
+body{background:#08060f;color:#e4def7;font-family:'Inter',-apple-system,sans-serif}
+.gradient-text{background:linear-gradient(135deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+</style>
+</head>
+<body style="background:radial-gradient(ellipse at 50% 0%,rgba(139,92,246,0.08) 0%,transparent 60%),radial-gradient(ellipse at 80% 50%,rgba(59,130,246,0.05) 0%,transparent 50%),#08060f">
+<nav class="flex items-center justify-between px-8 py-5 max-w-7xl mx-auto w-full sticky top-0 bg-[#08060f]/80 backdrop-blur-xl z-50">
+  <div class="flex items-center gap-2"><div class="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold text-sm">B</div><span class="font-semibold text-white text-lg">Bapica</span></div>
+  <div class="flex items-center gap-8 text-sm text-gray-400"><a href="#" class="hover:text-white transition">Fonctionnalités</a><a href="#" class="hover:text-white transition">Agents</a><a href="#" class="hover:text-white transition">Tarifs</a><a href="#" class="text-white font-medium">Connexion</a><a href="#" class="bg-gradient-to-r from-violet-500 to-blue-500 text-white px-5 py-2.5 rounded-xl font-medium hover:opacity-90 transition-all" style="box-shadow:0 0 40px -8px rgba(139,92,246,0.3)">Essai gratuit</a></div>
+</nav>
+
+<main>
+<section class="flex items-center justify-center px-6 py-24">
+  <div class="max-w-4xl mx-auto text-center">
+    <div class="inline-flex items-center gap-2 rounded-full bg-violet-500/10 border border-violet-500/20 px-4 py-1.5 text-sm text-violet-400 mb-8">🤝 Jusqu'à 12 agents IA en équipe</div>
+    <h1 class="text-5xl md:text-7xl font-bold tracking-tight text-white leading-[1.1]">Vos <span class="gradient-text">agents IA</span><br>au service de votre<br><span class="gradient-text">entreprise</span></h1>
+    <p class="mt-6 text-lg text-gray-400 max-w-2xl mx-auto">Une équipe d'agents IA qui <span class="text-violet-400">collaborent</span>, orchestrée par <span class="text-blue-400">Léo</span>.</p>
+    <div class="mt-10 flex justify-center gap-4"><a href="#" class="bg-gradient-to-r from-violet-500 to-blue-500 text-white px-8 py-3.5 rounded-xl font-medium inline-flex items-center gap-2" style="box-shadow:0 0 50px -8px rgba(139,92,246,0.4)">Commencer gratuitement →</a><a href="#" class="border border-gray-700 text-gray-300 px-8 py-3.5 rounded-xl font-medium hover:border-violet-500/50">Découvrir</a></div>
+    <div class="mt-16 grid grid-cols-3 gap-4 max-w-2xl mx-auto">
+      <div class="rounded-xl border border-violet-500/10 bg-violet-500/5 p-4 text-left"><div class="text-violet-400 text-lg mb-1">🎯</div><div class="text-sm font-medium text-white">Prospection</div><div class="text-xs text-gray-500">Qualification auto</div></div>
+      <div class="rounded-xl border border-blue-500/10 bg-blue-500/5 p-4 text-left"><div class="text-blue-400 text-lg mb-1">🎧</div><div class="text-sm font-medium text-white">Support 24/7</div><div class="text-xs text-gray-500">FR/EN/AR</div></div>
+      <div class="rounded-xl border border-violet-500/10 bg-violet-500/5 p-4 text-left"><div class="text-violet-400 text-lg mb-1">📊</div><div class="text-sm font-medium text-white">Analytics</div><div class="text-xs text-gray-500">Temps réel</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="border-t border-gray-800 py-20 px-6">
+  <div class="max-w-6xl mx-auto text-center">
+    <div class="text-violet-400 text-sm font-medium mb-4">FONCTIONNALITÉS</div>
+    <h2 class="text-3xl md:text-4xl font-bold text-white mb-12">Tout ce dont vous avez besoin</h2>
+    <div class="grid grid-cols-3 gap-6 text-left">
+      <div class="rounded-xl border border-violet-500/10 bg-violet-500/[0.03] p-6"><div class="text-violet-400 text-2xl mb-3">🤖</div><h3 class="text-white font-semibold mb-2">12 agents spécialisés</h3><p class="text-gray-400 text-sm">Chaque métier a son agent IA dédié.</p></div>
+      <div class="rounded-xl border border-blue-500/10 bg-blue-500/[0.03] p-6"><div class="text-blue-400 text-2xl mb-3">💬</div><h3 class="text-white font-semibold mb-2">WhatsApp & Web</h3><p class="text-gray-400 text-sm">Discutez avec vos agents depuis n'importe où.</p></div>
+      <div class="rounded-xl border border-violet-500/10 bg-violet-500/[0.03] p-6"><div class="text-violet-400 text-2xl mb-3">🌍</div><h3 class="text-white font-semibold mb-2">Trilingue</h3><p class="text-gray-400 text-sm">FR/EN/AR — détection automatique.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="border-t border-gray-800 py-20 px-6">
+  <div class="max-w-6xl mx-auto text-center">
+    <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">🤝 Une équipe qui travaille pour vous</h2>
+    <p class="text-gray-400 max-w-xl mx-auto mb-12">Léo orchestre 11 agents spécialisés.</p>
+    <div class="grid grid-cols-4 gap-4">
+      <div class="bg-gradient-to-br from-violet-500/20 to-blue-500/10 rounded-xl p-4 border border-violet-500/30 col-span-4 md:col-span-4 max-w-xs mx-auto mb-4"><div class="text-3xl mb-2">🤖</div><h3 class="text-white font-bold">Léo</h3><p class="text-violet-400 text-xs">Coordinateur</p></div>
+      <div class="rounded-xl border border-gray-800 bg-white/[0.02] p-4"><span class="text-blue-400 text-xs font-medium">Spécialiste</span><h3 class="text-white text-sm font-semibold mt-1">Sofia</h3><p class="text-gray-500 text-xs">Support</p></div>
+      <div class="rounded-xl border border-gray-800 bg-white/[0.02] p-4"><span class="text-violet-400 text-xs font-medium">Spécialiste</span><h3 class="text-white text-sm font-semibold mt-1">Marc</h3><p class="text-gray-500 text-xs">Prospection</p></div>
+      <div class="rounded-xl border border-gray-800 bg-white/[0.02] p-4"><span class="text-blue-400 text-xs font-medium">Spécialiste</span><h3 class="text-white text-sm font-semibold mt-1">Nadia</h3><p class="text-gray-500 text-xs">Closer</p></div>
+      <div class="rounded-xl border border-gray-800 bg-white/[0.02] p-4"><span class="text-teal-400 text-xs font-medium">Analyste</span><h3 class="text-white text-sm font-semibold mt-1">Claire</h3><p class="text-gray-500 text-xs">Compta</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="border-t border-gray-800 py-20 px-6">
+  <div class="max-w-4xl mx-auto text-center">
+    <div class="text-violet-400 text-sm font-medium mb-4">TARIFS</div>
+    <h2 class="text-3xl md:text-4xl font-bold text-white mb-2">Des tarifs transparents</h2>
+    <div class="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-4 py-1.5 text-sm text-emerald-400 mt-4 mb-10">🎁 15 jours d'essai gratuit</div>
+    <div class="grid grid-cols-2 gap-6 text-left">
+      <div class="rounded-xl border border-gray-800 bg-white/[0.02] p-8"><h3 class="text-white text-xl font-bold">Essentiel</h3><p class="text-3xl font-bold text-white mt-4">49€<span class="text-sm text-gray-400 font-normal">/mois</span></p><ul class="mt-6 space-y-3 text-sm"><li class="flex items-center gap-2 text-gray-300">✅ 8 agents IA</li><li class="flex items-center gap-2 text-gray-300">✅ Messages illimités</li></ul></div>
+      <div class="rounded-xl border border-violet-500/30 bg-gradient-to-b from-violet-500/10 to-blue-500/5 p-8"><div class="text-xs text-violet-400 font-semibold mb-2">POPULAIRE</div><h3 class="text-white text-xl font-bold">Pro</h3><p class="text-3xl font-bold text-white mt-4">79€<span class="text-sm text-gray-400 font-normal">/mois</span></p><ul class="mt-6 space-y-3 text-sm"><li class="flex items-center gap-2 text-gray-300">✅ 12 agents IA</li><li class="flex items-center gap-2 text-gray-300">✅ Tout inclus</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<footer class="border-t border-gray-800 py-12 px-6 text-center text-sm text-gray-600"><p>© 2026 Bapica</p></footer>
+</main>
+</body>
+</html>

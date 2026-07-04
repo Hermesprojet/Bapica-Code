@@ -16,7 +16,7 @@ export default function BlogPage() {
         <div className="absolute inset-0 bg-grid opacity-40" />
         <div className="absolute left-1/2 top-[-30%] h-[420px] w-[640px] -translate-x-1/2 rounded-full bg-primary/10 blur-[130px]" />
         <div className="container relative mx-auto max-w-2xl px-4 py-24 text-center md:py-32">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-purple-500 text-white shadow-lg shadow-primary/20">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-500 text-white shadow-lg shadow-primary/20">
             <Newspaper className="h-8 w-8" />
           </div>
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-sm text-muted-foreground">

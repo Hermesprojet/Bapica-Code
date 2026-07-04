@@ -61,7 +61,7 @@ export default function DashboardPage() {
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-primary to-purple-500 transition-all duration-700 ease-out"
+              className="h-full rounded-full bg-gradient-to-r from-primary to-blue-500 transition-all duration-700 ease-out"
               style={{ width: `${progressPct}%` }}
             />
           </div>
