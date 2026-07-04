@@ -16,7 +16,7 @@ export function HeroSection() {
             <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
           </span>
           <span className="text-muted-foreground">
-            <span className="font-semibold text-foreground">Jusqu&apos;à 12 agents IA</span> prêts à l&apos;emploi
+            <span className="font-semibold text-foreground">Jusqu&apos;à 12 agents IA en équipe</span> prêts à l&apos;emploi
           </span>
         </div>
 
@@ -30,7 +30,7 @@ export function HeroSection() {
         {/* Subtitle */}
         <p className="animate-slide-up animate-delay-2 mx-auto mt-6 max-w-2xl text-lg text-muted-foreground leading-relaxed">
           Prospection, support client, contenu, voix, recrutement, comptabilité&hellip;
-          Une équipe complète d&apos;agents IA pour développer votre activité, 24h/24 et 7j/7.
+          Une équipe complète d&apos;agents IA qui collaborent entre eux, orchestrée par Léo. Pour développer votre activité, 24h/24 et 7j/7.
           <span className="block mt-1 text-sm font-medium text-primary">Aucune compétence technique requise.</span>
         </p>
 

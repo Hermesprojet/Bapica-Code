@@ -1,7 +1,6 @@
 import { Navbar } from "@/components/landing/navbar"
 import { HeroSection } from "@/components/landing/hero-section"
 import { NeedsFinder } from "@/components/landing/needs-finder"
-import { LiveDemo } from "@/components/landing/live-demo"
 import { FeaturesSection } from "@/components/landing/features-section"
 import { UseCasesSection } from "@/components/landing/use-cases-section"
 import { AgentsSection } from "@/components/landing/agents-section"
@@ -20,7 +19,6 @@ export default function Home() {
       <main>
         <HeroSection />
         <NeedsFinder />
-        <LiveDemo />
         <FeaturesSection />
         <UseCasesSection />
         <AgentsSection />
