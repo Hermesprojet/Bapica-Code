@@ -9,15 +9,13 @@ export const metadata: Metadata = {
 }
 
 const planLabels: Record<PlanKey, string> = {
-  starter: 'Starter',
+  essential: 'Essentiel',
   pro: 'Pro',
-  business: 'Business',
 }
 
 const planColors: Record<PlanKey, string> = {
-  starter: 'bg-blue-500/10 text-blue-500',
-  pro: 'bg-orange-500/10 text-orange-500',
-  business: 'bg-purple-500/10 text-purple-500',
+  essential: 'bg-blue-500/10 text-blue-500',
+  pro: 'bg-purple-500/10 text-purple-500',
 }
 
 export default function AgentsPage() {

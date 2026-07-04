@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { stripe, PLANS, type PlanKey } from '@/lib/stripe'
 
 // POST /api/stripe/checkout
-// Body: { plan: 'starter' | 'pro' | 'business', userId, email }
+// Body: { plan: 'essential' | 'pro', userId, email }
 // Crée une session Stripe Checkout (abonnement) et renvoie l'URL de paiement.
 export async function POST(req: NextRequest) {
   try {

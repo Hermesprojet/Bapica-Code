@@ -2,9 +2,8 @@ import AGENTS, { type PlanKey } from "@/lib/agents"
 import { AgentAvatar } from "@/components/agents/agent-avatar"
 
 const planLabels: Record<PlanKey, string> = {
-  starter: "Starter",
-  pro: "Pro",
-  business: "Business",
+  essential: 'Essentiel',
+  pro: 'Pro',
 }
 
 export function AgentsSection() {
