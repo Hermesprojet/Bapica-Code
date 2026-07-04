@@ -41,9 +41,14 @@ const plans = [
 
 export function PricingSection() {
   return (
-    <section id="pricing" className="border-t border-border py-20 md:py-28">
-      <div className="container mx-auto px-4">
-        <div className="mx-auto mb-6 max-w-2xl text-center">
+    <section id="pricing" className="relative border-t border-border py-20 md:py-28 overflow-hidden">
+      <div className="absolute inset-0 bg-grid opacity-30" />
+      
+      <div className="container mx-auto px-4 relative">
+        <div className="mx-auto mb-4 max-w-2xl text-center">
+          <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-6">
+            💰 Tarifs
+          </div>
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
             Des tarifs <span className="gradient-text">transparents</span>
           </h2>
@@ -53,7 +58,7 @@ export function PricingSection() {
         </div>
 
         <div className="mx-auto mb-10 flex items-center justify-center gap-4 text-sm">
-          <div className="rounded-full bg-primary/10 px-4 py-1.5 text-primary font-medium">
+          <div className="rounded-full bg-primary/10 px-4 py-1.5 text-primary font-medium backdrop-blur-sm">
             🔥 OFFRE LANCEMENT : -10% avec le code <span className="font-bold">BAPICA10</span>
           </div>
         </div>
@@ -66,10 +71,10 @@ export function PricingSection() {
                 plan.popular
                   ? "border-primary bg-primary/5 shadow-lg shadow-primary/10 scale-105"
                   : "border-border bg-card"
-              } p-8 transition-all hover:shadow-xl`}
+              } p-8 transition-all duration-300 hover:shadow-xl hover:-translate-y-1`}
             >
               {plan.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-4 py-1 text-xs font-semibold text-primary-foreground">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-primary to-purple-500 px-4 py-1 text-xs font-semibold text-primary-foreground shadow-lg">
                   Le plus populaire
                 </div>
               )}
@@ -100,7 +105,7 @@ export function PricingSection() {
                 href="/signup"
                 className={`mt-8 flex h-12 w-full items-center justify-center rounded-lg text-sm font-medium transition-all ${
                   plan.popular
-                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90"
+                    ? "bg-gradient-to-r from-primary to-purple-500 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02]"
                     : "border border-border bg-background hover:bg-muted"
                 }`}
               >
