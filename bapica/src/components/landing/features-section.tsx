@@ -1,11 +1,11 @@
-import { Bot, Globe, Shield, Zap, Headphones, CreditCard, BarChart3, MessageCircle } from "lucide-react"
+import { Bot, Globe, Shield, Zap, Headphones, CreditCard, BarChart3, MessageCircle, Palette, TrendingUp } from "lucide-react"
 
 const features = [
   {
     icon: Bot,
     title: "12 agents spécialisés",
     desc: "De la prospection à la comptabilité, chaque métier a son agent IA dédié.",
-    gradient: "from-blue-500 to-cyan-500",
+    gradient: "from-violet-500 to-purple-500",
   },
   {
     icon: MessageCircle,

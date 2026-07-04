@@ -7,7 +7,7 @@ const planLabels: Record<PlanKey, string> = {
 }
 
 const agentGradients: Record<string, string> = {
-  general: 'from-blue-500 to-cyan-500',
+  general: 'from-violet-500 to-purple-500',
   support: 'from-emerald-500 to-green-500',
   content: 'from-violet-500 to-purple-500',
   prospector: 'from-orange-500 to-amber-500',
@@ -15,7 +15,7 @@ const agentGradients: Record<string, string> = {
   telephone: 'from-cyan-500 to-teal-500',
   accounting: 'from-amber-500 to-yellow-500',
   video: 'from-pink-500 to-rose-500',
-  recruiter: 'from-indigo-500 to-blue-500',
+  recruiter: 'from-violet-500 to-purple-500',
   legal: 'from-slate-500 to-gray-500',
   analytics: 'from-teal-500 to-emerald-500',
   trends: 'from-lime-500 to-green-500',
@@ -70,7 +70,7 @@ export function AgentsSection() {
                 {/* Plan badge */}
                 <div className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
                   agent.minPlan === 'essential'
-                    ? 'bg-blue-500/10 text-blue-400'
+                    ? 'bg-violet-500/10 text-violet-400'
                     : 'bg-purple-500/10 text-purple-400'
                 }`}>
                   {planLabels[agent.minPlan]}
