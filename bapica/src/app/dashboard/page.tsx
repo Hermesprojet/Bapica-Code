@@ -50,13 +50,23 @@ export default function DashboardPage() {
         router.push('/login')
         return
       }
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('onboarding_completed')
-        .eq('id', user.id)
-        .single()
+      // Vérifier l'onboarding dans user_metadata
+      const onboarded = user.user_metadata?.onboarding_completed
       
-      if (!profile?.onboarding_completed) {
+      // Fallback: vérifier aussi dans profiles
+      if (!onboarded) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('onboarding_completed')
+          .eq('id', user.id)
+          .single()
+        if (profile?.onboarding_completed) {
+          setLoading(false)
+          return
+        }
+      }
+      
+      if (!onboarded) {
         router.push('/onboarding')
         return
       }

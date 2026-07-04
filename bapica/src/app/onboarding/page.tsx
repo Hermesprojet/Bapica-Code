@@ -116,13 +116,25 @@ export default function OnboardingPage() {
 
     const recommendation = recommendPlan(data)
 
-    // Sauvegarder dans Supabase
-    await supabase.from('profiles').update({
-      onboarding_completed: true,
-      onboarding_data: data,
-      recommended_plan: recommendation.plan,
-      company_activity: data.activity,
-    }).eq('id', user.id)
+    // Sauvegarder dans user_metadata (pas besoin de modifier le schéma)
+    await supabase.auth.updateUser({
+      data: {
+        onboarding_completed: true,
+        onboarding_data: data,
+        recommended_plan: recommendation.plan,
+        company_activity: data.activity,
+      }
+    })
+
+    // Essayer aussi de sauvegarder dans profiles (si les colonnes existent)
+    try {
+      await supabase.from('profiles').update({
+        onboarding_completed: true,
+        recommended_plan: recommendation.plan,
+      }).eq('id', user.id)
+    } catch (e) {
+      // Les colonnes n'existent pas encore, ce n'est pas bloquant
+    }
 
     setSaving(false)
     router.push('/dashboard')
