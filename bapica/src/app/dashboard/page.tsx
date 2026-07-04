@@ -1,4 +1,9 @@
-import { Bot, Users, MessageSquare, TrendingUp } from 'lucide-react'
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { Bot, Users, MessageSquare, TrendingUp, Loader2 } from 'lucide-react'
 
 const cards = [
   {
@@ -20,7 +25,7 @@ const cards = [
   {
     title: 'Leads générés',
     value: '45',
-    desc: 'par l\'agent prospecteur',
+    desc: "par l'agent prospecteur",
     icon: Users,
     change: '+12 cette semaine',
     positive: true,
@@ -36,6 +41,37 @@ const cards = [
 ]
 
 export default function DashboardPage() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) {
+        router.push('/login')
+        return
+      }
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_completed')
+        .eq('id', user.id)
+        .single()
+      
+      if (!profile?.onboarding_completed) {
+        router.push('/onboarding')
+        return
+      }
+      setLoading(false)
+    })
+  }, [router])
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    )
+  }
+
   return (
     <div>
       <div className="mb-8">
