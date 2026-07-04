@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Sparkles, Check, ArrowRight, Lock } from 'lucide-react'
+import { Sparkles, Loader2, Check, ArrowRight, Lock } from 'lucide-react'
 import { getAgentsForPlan, type PlanKey } from '@/lib/agents'
 import { getRecommendedAgentIds, type OnboardingData } from '@/lib/personalization'
 

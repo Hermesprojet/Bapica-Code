@@ -1,11 +1,31 @@
 // Moteur de personnalisation intelligent
 // Analyse les réponses onboarding pour adapter l'expérience client
 
+// Une application connectée par le client lors de l'onboarding
+export interface ConnectedApp {
+  name: string
+  url?: string
+}
+
 export interface OnboardingData {
   activity?: string
+  activityOther?: string
   adminTasks?: string[]
+  adminTasksOther?: string
   contactMethods?: string[]
-  integrations?: string[]
+  contactMethodsOther?: string
+  apps?: ConnectedApp[]
+  appsOther?: string
+  businessDescription?: string
+  objectives?: string[]
+  objectivesOther?: string
+}
+
+// Vérifie si l'une des applications connectées correspond à un mot-clé
+// (ex: 'shopify', 'wordpress', 'google'). Comparaison insensible à la casse.
+function appsInclude(apps: ConnectedApp[], keyword: string): boolean {
+  const needle = keyword.toLowerCase()
+  return apps.some((app) => (app?.name || '').toLowerCase().includes(needle))
 }
 
 // Étapes de configuration recommandées après onboarding
@@ -27,7 +47,7 @@ export function getSetupSteps(onboarding: OnboardingData | null): SetupStep[] {
 
   const contact = onboarding.contactMethods || []
   const tasks = onboarding.adminTasks || []
-  const integrations = onboarding.integrations || []
+  const apps = onboarding.apps || []
 
   // Si le client utilise le téléphone → suggérer d'activer l'agent téléphonique
   if (contact.includes('telephone')) {
@@ -70,7 +90,7 @@ export function getSetupSteps(onboarding: OnboardingData | null): SetupStep[] {
   }
 
   // Si Google Agenda → suggérer connexion
-  if (integrations.includes('google')) {
+  if (appsInclude(apps, 'google')) {
     steps.push({
       key: 'calendar',
       label: 'Connecter Google Agenda',
@@ -98,7 +118,7 @@ export function getRecommendedWidgets(onboarding: OnboardingData | null): SmartW
 
   const contact = onboarding.contactMethods || []
   const tasks = onboarding.adminTasks || []
-  const integrations = onboarding.integrations || []
+  const apps = onboarding.apps || []
 
   // Widget appel téléphonique
   if (contact.includes('telephone')) {
@@ -137,7 +157,7 @@ export function getRecommendedWidgets(onboarding: OnboardingData | null): SmartW
   }
 
   // Widget SEO
-  if (onboarding.activity === 'ecommerce' || integrations.includes('shopify') || integrations.includes('wordpress')) {
+  if (onboarding.activity === 'ecommerce' || appsInclude(apps, 'shopify') || appsInclude(apps, 'wordpress')) {
     widgets.push({
       id: 'seo',
       title: 'Boostez votre SEO 📈',
@@ -153,7 +173,7 @@ export function getRecommendedWidgets(onboarding: OnboardingData | null): SmartW
     widgets.push({
       id: 'recruitment',
       title: 'Vous recrutez ? 👥',
-      description: 'Rony peut trier les CV et présélectionner les meilleurs candidats.',
+      description: 'Yanis peut trier les CV et présélectionner les meilleurs candidats.',
       cta: 'Configurer',
       href: '/dashboard/agents/recruiter',
       priority: 6,
@@ -161,7 +181,7 @@ export function getRecommendedWidgets(onboarding: OnboardingData | null): SmartW
   }
 
   // Suggestion d'intégration
-  if (!integrations.includes('google') && contact.includes('email')) {
+  if (!appsInclude(apps, 'google') && contact.includes('email')) {
     widgets.push({
       id: 'google-workspace',
       title: 'Connectez Google Workspace 🔌',
@@ -182,7 +202,7 @@ export function getRecommendedAgentIds(onboarding: OnboardingData | null): strin
   const ids: string[] = ['general'] // toujours l'agent général
   const contact = onboarding.contactMethods || []
   const tasks = onboarding.adminTasks || []
-  const integrations = onboarding.integrations || []
+  const apps = onboarding.apps || []
 
   if (contact.includes('telephone')) ids.push('telephone')
   if (contact.includes('whatsapp') || contact.includes('chat')) ids.push('support')
@@ -190,7 +210,7 @@ export function getRecommendedAgentIds(onboarding: OnboardingData | null): strin
   if (tasks.includes('comptabilite') || tasks.includes('factures')) ids.push('accounting')
   if (tasks.includes('juridique')) ids.push('legal')
   if (tasks.includes('paie')) ids.push('recruiter')
-  if (integrations.includes('shopify') || integrations.includes('wordpress')) ids.push('content')
+  if (appsInclude(apps, 'shopify') || appsInclude(apps, 'wordpress')) ids.push('content')
   if (onboarding.activity === 'ecommerce') ids.push('trends')
 
   return [...new Set(ids)] // déduplication

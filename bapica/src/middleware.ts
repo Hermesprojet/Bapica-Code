@@ -30,14 +30,31 @@ export function middleware(request: NextRequest) {
   response.headers.set('X-Content-Type-Options', 'nosniff')
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   response.headers.set('X-DNS-Prefetch-Control', 'on')
-  
-  // Strict CSP en production
-  if (process.env.NODE_ENV === 'production') {
-    response.headers.set(
-      'Content-Security-Policy',
-      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; frame-src https://js.stripe.com; connect-src 'self' https://api.stripe.com https://xlivseiybtkwkekyhqwg.supabase.co https://api.anthropic.com; img-src 'self' data: blob: https://*.supabase.co; style-src 'self' 'unsafe-inline';"
-    )
-  }
+  response.headers.set(
+    'Permissions-Policy',
+    'camera=(), microphone=(self), geolocation=(), browsing-topics=(), payment=(self)'
+  )
+
+  // Supprime la signature du framework pour ne pas exposer la stack technique
+  response.headers.delete('X-Powered-By')
+
+  // Content-Security-Policy strict (appliqué à toutes les routes)
+  response.headers.set(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com",
+      "frame-src https://js.stripe.com",
+      "connect-src 'self' https://api.stripe.com https://xlivseiybtkwkekyhqwg.supabase.co https://api.anthropic.com",
+      "img-src 'self' data: blob: https://*.supabase.co",
+      "style-src 'self' 'unsafe-inline'",
+      "font-src 'self' data:",
+    ].join('; ')
+  )
 
   // Vérifier si la route est publique
   const isPublic = publicRoutes.some(route => 
