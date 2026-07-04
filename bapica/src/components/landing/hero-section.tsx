@@ -25,10 +25,10 @@ export function HeroSection() {
             Commencer gratuitement
           </Link>
           <Link
-            href="#demo"
+            href="#diagnostic"
             className="inline-flex h-12 items-center justify-center rounded-lg border border-border bg-background px-8 text-sm font-medium hover:bg-muted transition-colors"
           >
-            Voir la démo
+            Diagnostic gratuit
           </Link>
         </div>
         <div className="mt-12 flex items-center justify-center gap-8 text-sm text-muted-foreground">
