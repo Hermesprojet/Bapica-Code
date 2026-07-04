@@ -1,3 +1,4 @@
+import Link from "next/link"
 import AGENTS, { type PlanKey } from "@/lib/agents"
 import { AgentAvatar } from "@/components/agents/agent-avatar"
 
@@ -43,9 +44,10 @@ export function AgentsSection() {
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mt-12">
           {AGENTS.map((agent, index) => (
-            <div
+            <Link
               key={agent.id}
-              className="agent-card group relative rounded-xl border border-border bg-card p-5 overflow-hidden"
+              href={`/agents/${agent.id}`}
+              className="agent-card group relative block rounded-xl border border-border bg-card p-5 overflow-hidden hover:border-primary/50 transition-colors"
             >
               {/* Hover gradient effect */}
               <div className={`absolute inset-0 bg-gradient-to-br ${agentGradients[agent.id] || 'from-primary to-primary'} opacity-0 group-hover:opacity-5 transition-opacity duration-500`} />
@@ -76,7 +78,7 @@ export function AgentsSection() {
                   {planLabels[agent.minPlan]}
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
