@@ -7,7 +7,7 @@ const comparison = [
   { feature: 'Onboarding personnalisé', us: 'Questionnaire intelligent ✓', them: 'Standard' },
   { feature: 'Dashboard adaptatif', us: 'Widgets selon vos besoins ✓', them: 'Fixe' },
   { feature: 'Assistant WhatsApp', us: 'Bientôt disponible', them: '✅ Inclus (Charly+)' },
-  { feature: 'Prix', us: 'À partir de 39€/mois', them: 'À partir de 29$/mois' },
+  { feature: 'Prix', us: 'À partir de 49€/mois', them: 'À partir de 29$/mois' },
   { feature: 'Hébergement', us: 'Vercel Edge (mondial)', them: 'Render (US)' },
   { feature: 'IA générative', us: 'Claude Haiku + Sonnet', them: 'GPT-4o + 4o-mini' },
 ]
@@ -37,7 +37,7 @@ export function ComparisonSection() {
                 <th className="px-6 py-4 text-center font-semibold">
                   <span className="gradient-text">Bapica</span>
                 </th>
-                <th className="px-6 py-4 text-center font-semibold text-muted-foreground/50">Autres</th>
+                <th className="px-6 py-4 text-center font-semibold text-muted-foreground">Autres</th>
               </tr>
             </thead>
             <tbody>
@@ -50,7 +50,7 @@ export function ComparisonSection() {
                       {row.us}
                     </span>
                   </td>
-                  <td className="px-6 py-3.5 text-center text-muted-foreground/40">{row.them}</td>
+                  <td className="px-6 py-3.5 text-center text-muted-foreground">{row.them}</td>
                 </tr>
               ))}
             </tbody>
@@ -58,7 +58,7 @@ export function ComparisonSection() {
         </div>
 
         <div className="mt-8 text-center">
-          <p className="text-xs text-muted-foreground/50">
+          <p className="text-xs text-muted-foreground">
             Comparaison basée sur les offres publiques de nos concurrents au moment de l&apos;analyse.
           </p>
         </div>

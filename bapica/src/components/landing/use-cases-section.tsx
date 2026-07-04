@@ -62,17 +62,17 @@ export function UseCasesSection() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold group-hover:text-primary transition-colors">{uc.title}</h3>
-                  <p className="text-xs text-muted-foreground/60 mt-0.5">{uc.subtitle}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{uc.subtitle}</p>
                 </div>
               </div>
 
-              <p className="mt-4 text-sm text-muted-foreground/80 leading-relaxed">
+              <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
                 {uc.description}
               </p>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {uc.benefits.map((b) => (
-                  <span key={b} className="inline-flex items-center rounded-full bg-white/[0.04] px-3 py-1 text-xs text-muted-foreground/70 border border-white/5">
+                  <span key={b} className="inline-flex items-center rounded-full bg-white/[0.04] px-3 py-1 text-xs text-muted-foreground border border-white/5">
                     {b}
                   </span>
                 ))}

@@ -60,12 +60,12 @@ export function AgentsSection() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-sm">{agent.name}</h3>
-                    <p className="text-xs text-muted-foreground/70">{agent.persona}</p>
+                    <p className="text-xs text-muted-foreground">{agent.persona}</p>
                   </div>
                 </div>
 
                 {/* Description */}
-                <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-2 mb-3">
+                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-3">
                   {agent.description}
                 </p>
 

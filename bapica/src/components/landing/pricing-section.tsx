@@ -3,8 +3,8 @@ import Link from "next/link"
 const plans = [
   {
     name: "Essentiel",
-    price: "39",
-    oldPrice: "58",
+    price: "49",
+    oldPrice: "69",
     desc: "Pour indépendants et TPE qui veulent automatiser leur quotidien",
     popular: false,
     features: [
@@ -57,9 +57,12 @@ export function PricingSection() {
           </p>
         </div>
 
-        <div className="mx-auto mb-10 flex items-center justify-center gap-4 text-sm">
+        <div className="mx-auto mb-10 flex items-center justify-center gap-4 text-sm flex-wrap">
           <div className="rounded-full bg-primary/10 px-4 py-1.5 text-primary font-medium backdrop-blur-sm">
             🔥 OFFRE LANCEMENT : -10% avec le code <span className="font-bold">BAPICA10</span>
+          </div>
+          <div className="rounded-full bg-emerald-500/10 px-4 py-1.5 text-emerald-400 font-medium backdrop-blur-sm border border-emerald-500/20">
+            🎁 15 jours d&apos;essai gratuit — sans carte bancaire
           </div>
         </div>
 

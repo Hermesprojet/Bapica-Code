@@ -5,6 +5,7 @@ import { LiveDemo } from "@/components/landing/live-demo"
 import { FeaturesSection } from "@/components/landing/features-section"
 import { UseCasesSection } from "@/components/landing/use-cases-section"
 import { AgentsSection } from "@/components/landing/agents-section"
+import { TeamSection } from "@/components/landing/team-section"
 import { PricingSection } from "@/components/landing/pricing-section"
 import { TestimonialsSection } from "@/components/landing/testimonials-section"
 import { ComparisonSection } from "@/components/landing/comparison-section"
@@ -23,6 +24,7 @@ export default function Home() {
         <FeaturesSection />
         <UseCasesSection />
         <AgentsSection />
+        <TeamSection />
         <PricingSection />
         <TestimonialsSection />
         <ComparisonSection />

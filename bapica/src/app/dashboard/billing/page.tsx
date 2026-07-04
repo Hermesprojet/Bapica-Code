@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 const planOrder: PlanKey[] = ['essential', 'pro']
 
 const planDetails = {
-  essential: { name: 'Essentiel', price: 39, agents: 8, popular: false },
+  essential: { name: 'Essentiel', price: 49, agents: 8, popular: false },
   pro: { name: 'Pro', price: 79, agents: 12, popular: true },
 }
 

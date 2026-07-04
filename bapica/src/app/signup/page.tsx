@@ -185,7 +185,7 @@ export default function SignupPage() {
           </Link>
         </p>
 
-        <p className="mt-4 text-center text-xs text-muted-foreground/50">
+        <p className="mt-4 text-center text-xs text-muted-foreground">
           En créant un compte, vous acceptez nos{' '}
           <Link href="/legal/cgv" className="hover:underline">CGV</Link>
         </p>

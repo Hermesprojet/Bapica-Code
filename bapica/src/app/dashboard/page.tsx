@@ -98,14 +98,14 @@ export default function DashboardPage() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Icon className="h-4.5 w-4.5" />
                 </div>
-                <span className="text-[11px] font-medium text-green-400/70">
+                <span className="text-[11px] font-medium text-green-400">
                   {card.change}
                 </span>
               </div>
               <div className="mt-4">
                 <p className="text-2xl font-bold">{card.value}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{card.title}</p>
-                <p className="text-[11px] text-muted-foreground/50">{card.desc}</p>
+                <p className="text-[11px] text-muted-foreground">{card.desc}</p>
               </div>
             </div>
           )

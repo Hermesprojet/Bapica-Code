@@ -44,7 +44,7 @@ export default function ForgotPasswordPage() {
           <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
             Si un compte existe avec <strong>{email}</strong>, vous recevrez un email avec un lien pour réinitialiser votre mot de passe.
           </p>
-          <p className="mt-2 text-xs text-muted-foreground/60">
+          <p className="mt-2 text-xs text-muted-foreground">
             Pensez à vérifier vos spams.
           </p>
           <Link

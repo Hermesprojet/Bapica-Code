@@ -28,7 +28,7 @@ export function HeroSection() {
         </h1>
 
         {/* Subtitle */}
-        <p className="animate-slide-up animate-delay-2 mx-auto mt-6 max-w-2xl text-lg text-muted-foreground/80 leading-relaxed">
+        <p className="animate-slide-up animate-delay-2 mx-auto mt-6 max-w-2xl text-lg text-muted-foreground leading-relaxed">
           Prospection, support client, contenu, voix, recrutement, comptabilité&hellip;
           Une équipe complète d&apos;agents IA pour développer votre activité, 24h/24 et 7j/7.
           <span className="block mt-1 text-sm font-medium text-primary">Aucune compétence technique requise.</span>
@@ -65,7 +65,7 @@ export function HeroSection() {
                 <div key={i} className="h-7 w-7 rounded-full border-2 border-background bg-gradient-to-br from-primary/40 to-purple-500/40" />
               ))}
             </div>
-            <span className="text-muted-foreground/70">+<span className="font-semibold text-foreground">30</span> bêta-testeurs</span>
+            <span className="text-muted-foreground">+<span className="font-semibold text-foreground">30</span> bêta-testeurs</span>
           </div>
           <div className="flex items-center gap-1.5">
             {[...Array(5)].map((_, i) => (
@@ -73,11 +73,11 @@ export function HeroSection() {
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
             ))}
-            <span className="ml-1 text-muted-foreground/70">4.9/5</span>
+            <span className="ml-1 text-muted-foreground">4.9/5</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="flex h-2 w-2 rounded-full bg-green-500" />
-            <span className="text-muted-foreground/70">Sans engagement</span>
+            <span className="text-muted-foreground">Sans engagement</span>
           </div>
         </div>
       </div>

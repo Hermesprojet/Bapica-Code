@@ -74,11 +74,11 @@ export default function AgentsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{agent.name}</h3>
-                      <p className="text-xs text-muted-foreground/70">{agent.persona}</p>
+                      <p className="text-xs text-muted-foreground">{agent.persona}</p>
                     </div>
-                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary transition-colors" />
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/60 group-hover:text-primary transition-colors" />
                   </div>
-                  <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-2">
+                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
                     {agent.description}
                   </p>
                 </div>
@@ -122,10 +122,10 @@ export default function AgentsPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{agent.name}</h3>
-                        <p className="text-xs text-muted-foreground/70">{agent.persona}</p>
+                        <p className="text-xs text-muted-foreground">{agent.persona}</p>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-2 mb-3">
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-3">
                       {agent.description}
                     </p>
                     <div className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${

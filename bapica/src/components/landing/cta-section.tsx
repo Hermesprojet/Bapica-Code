@@ -10,7 +10,7 @@ export function CTASection() {
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
               Prêt à propulser votre entreprise ?
             </h2>
-            <p className="mx-auto mt-4 max-w-xl text-lg text-white/80">
+            <p className="mx-auto mt-4 max-w-xl text-lg text-white/90">
               Rejoignez les PME qui automatisent leur croissance avec nos agents IA.
             </p>
             <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
@@ -27,7 +27,7 @@ export function CTASection() {
                 Parler à un conseiller
               </Link>
             </div>
-            <p className="mt-6 text-sm text-white/60">
+            <p className="mt-6 text-sm text-white/90">
               Sans engagement • Configuration en 5 minutes • Résiliation à tout moment
             </p>
           </div>

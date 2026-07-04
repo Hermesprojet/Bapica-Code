@@ -53,7 +53,7 @@ export function TestimonialsSection() {
               </div>
 
               {/* Content */}
-              <p className="text-sm text-muted-foreground/80 leading-relaxed flex-1 italic">
+              <p className="text-sm text-muted-foreground leading-relaxed flex-1 italic">
                 &ldquo;{t.content}&rdquo;
               </p>
 
@@ -64,7 +64,7 @@ export function TestimonialsSection() {
                 </div>
                 <div>
                   <p className="text-sm font-medium">{t.name}</p>
-                  <p className="text-xs text-muted-foreground/60">{t.role}</p>
+                  <p className="text-xs text-muted-foreground">{t.role}</p>
                 </div>
               </div>
             </div>
