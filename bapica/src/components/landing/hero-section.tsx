@@ -47,10 +47,10 @@ export function HeroSection() {
             </svg>
           </Link>
           <Link
-            href="#agents"
+            href="#diagnostic"
             className="group inline-flex h-12 items-center justify-center rounded-lg border border-border bg-background/50 backdrop-blur-sm px-8 text-sm font-medium hover:bg-muted transition-all hover:border-primary/50"
           >
-            Découvrir les agents
+            Diagnostic gratuit
             <svg className="ml-2 h-4 w-4 transition-transform group-hover:translate-y-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
             </svg>
