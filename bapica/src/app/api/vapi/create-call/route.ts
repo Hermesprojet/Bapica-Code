@@ -2,10 +2,22 @@
 // POST /api/vapi/create-call
 // Body: { phoneNumber, prospectName?, context? }
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
 const VAPI_API_URL = 'https://api.vapi.ai'
 
 export async function POST(req: NextRequest) {
+  // Vérifier l'authentification
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  )
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+  }
+
   const VAPI_API_KEY = process.env.VAPI_API_KEY || ''
   const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID || ''
   // Numéro Vapi utilisé comme appelant (à configurer dans le dashboard Vapi).

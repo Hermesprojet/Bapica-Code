@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
 // Dimensions par format (id envoyé par le formulaire vidéo).
 const DIMENSIONS: Record<string, { width: number; height: number }> = {
@@ -10,8 +11,19 @@ const DIMENSIONS: Record<string, { width: number; height: number }> = {
 // POST /api/video/generate
 // Body: { script, language, aspect_ratio, title }
 // Génère une vidéo avec avatar IA via l'API HeyGen v2.
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    // Vérifier l'authentification
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    )
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
+
     const body = await req.json()
     const { script, aspect_ratio } = body
 
