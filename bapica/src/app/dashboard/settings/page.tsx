@@ -1,12 +1,34 @@
 'use client'
 
-import { useState } from 'react'
-import { Save, Eye, EyeOff, Key } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { Save, Eye, EyeOff, Key, Loader2 } from 'lucide-react'
 
 export default function SettingsPage() {
-  const [showApiKey, setShowApiKey] = useState(false)
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
   const [apiKey, setApiKey] = useState('')
   const [saved, setSaved] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        router.push('/login')
+        return
+      }
+      setLoading(false)
+    })
+  }, [router])
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    )
+  }
 
   const handleSave = () => {
     // TODO: Sauvegarder dans Supabase
