@@ -11,7 +11,7 @@ const faqs = [
   },
   {
     q: "Puis-je essayer avant d'acheter ?",
-    a: "Oui ! Vous bénéficiez de 3 messages gratuits avec l'Agent Général pour tester la qualité des réponses avant de souscrire à un abonnement.",
+    a: "Oui ! Vous bénéficiez de 15 jours d'essai gratuit, sans engagement et sans carte bancaire. Tous les agents de votre formule sont accessibles pendant la période d'essai.",
   },
   {
     q: "Les agents parlent-ils vraiment plusieurs langues ?",
@@ -27,7 +27,7 @@ const faqs = [
   },
   {
     q: "Puis-je intégrer mes propres outils ?",
-    a: "Oui ! Les formules Pro et Business incluent l'accès à n8n pour créer des workflows personnalisés, et l'API pour connecter vos propres outils.",
+    a: "Oui ! La formule Pro inclut l'accès à n8n pour créer des workflows personnalisés, et l'API pour connecter vos propres outils.",
   },
   {
     q: "Qu'est-ce qui différencie Bapica des autres solutions ?",

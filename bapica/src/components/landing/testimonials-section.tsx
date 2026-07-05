@@ -1,26 +1,26 @@
 const testimonials = [
   {
-    name: 'Sophie Moreau',
-    role: 'Dirigeante d\'une agence immo',
-    avatar: 'SM',
-    gradient: 'from-indigo-500 to-blue-500',
-    content: 'Depuis qu\'on utilise Tom, on ne rate plus un seul appel. Même quand l\'équipe est en déplacement, nos clients sont pris en charge et les rendez-vous se placent tout seuls.',
+    name: "Sophie Moreau",
+    role: "Dirigeante d'une agence immo",
+    avatar: "SM",
+    gradient: "from-indigo-500 to-blue-500",
+    content: `Depuis qu'on utilise Hugo, on ne rate plus un seul appel. Même quand l'équipe est en déplacement, nos clients sont pris en charge et les rendez-vous se placent tout seuls.`,
     rating: 5,
   },
   {
-    name: 'Thibault Martin',
-    role: 'Responsable e-commerce',
-    avatar: 'TM',
-    gradient: 'from-cyan-500 to-teal-500',
-    content: 'Grâce à Lou, on a triplé notre trafic SEO en trois mois. Il publie un article par jour sur notre blog avec une qualité qu\'on n\'arrivait pas à tenir en interne.',
+    name: "Thibault Martin",
+    role: "Responsable e-commerce",
+    avatar: "TM",
+    gradient: "from-cyan-500 to-teal-500",
+    content: `Grâce à Camille, on a triplé notre trafic SEO en trois mois. Elle publie un article par jour sur notre blog avec une qualité qu'on n'arrivait pas à tenir en interne.`,
     rating: 5,
   },
   {
-    name: 'Claire Dubois',
-    role: 'Directrice d\'une TPE',
-    avatar: 'CD',
-    gradient: 'from-rose-500 to-pink-500',
-    content: 'Charly, c\'est mon bras droit digital. J\'écris un message le matin, elle gère mes rendez-vous, mes mails, mon équipe IA. C\'est de la magie.',
+    name: "Claire Dubois",
+    role: "Directrice d'une TPE",
+    avatar: "CD",
+    gradient: "from-rose-500 to-pink-500",
+    content: `Léo, c'est mon bras droit digital. J'écris un message le matin, il gère mes rendez-vous, coordonne mon équipe IA. C'est de la magie.`,
     rating: 5,
   },
 ]
@@ -29,7 +29,6 @@ export function TestimonialsSection() {
   return (
     <section className="relative border-t border-border py-20 md:py-28 overflow-hidden">
       <div className="absolute top-1/3 left-1/4 h-64 w-64 rounded-full bg-primary/5 blur-[120px]" />
-      
       <div className="container mx-auto px-4 relative">
         <div className="mx-auto mb-4 max-w-2xl text-center">
           <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-6">
@@ -39,11 +38,9 @@ export function TestimonialsSection() {
             Ce que nos <span className="gradient-text">clients</span> en disent
           </h2>
         </div>
-
         <div className="grid gap-6 md:grid-cols-3 mt-12">
           {testimonials.map((t) => (
             <div key={t.name} className="card-elevated p-6 flex flex-col">
-              {/* Stars */}
               <div className="flex gap-1 mb-4">
                 {[...Array(t.rating)].map((_, i) => (
                   <svg key={i} className="h-4 w-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
@@ -51,13 +48,9 @@ export function TestimonialsSection() {
                   </svg>
                 ))}
               </div>
-
-              {/* Content */}
               <p className="text-sm text-muted-foreground leading-relaxed flex-1 italic">
                 &ldquo;{t.content}&rdquo;
               </p>
-
-              {/* Author */}
               <div className="flex items-center gap-3 mt-6 pt-4 border-t border-white/5">
                 <div className={`flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br ${t.gradient} text-white text-xs font-bold`}>
                   {t.avatar}
