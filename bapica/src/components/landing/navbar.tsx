@@ -1,39 +1,43 @@
 import Link from "next/link"
-import { Logo } from "@/components/brand/logo"
 
 export function Navbar() {
   return (
-    <header className="fixed top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2">
-          <Logo wordmarkClassName="text-xl" />
+    <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
+      <div className="container mx-auto max-w-6xl flex h-16 items-center justify-between px-4">
+        {/* Logo */}
+        <Link href="/" className="text-xl font-bold tracking-tight text-foreground">
+          Bapica
         </Link>
-        <nav className="hidden items-center gap-6 md:flex">
-          <Link href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+
+        {/* Navigation */}
+        <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
+          <Link href="#features" className="hover:text-foreground transition-colors">
             Fonctionnalités
           </Link>
-          <Link href="#agents" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <Link href="#use-cases" className="hover:text-foreground transition-colors">
+            Cas d&apos;usage
+          </Link>
+          <Link href="#agents" className="hover:text-foreground transition-colors">
             Agents
           </Link>
-          <Link href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <Link href="#pricing" className="hover:text-foreground transition-colors">
             Tarifs
           </Link>
-          <Link href="#faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            FAQ
-          </Link>
         </nav>
-        <div className="flex items-center gap-3">
+
+        {/* CTA buttons */}
+        <div className="flex items-center gap-4">
           <Link
             href="/login"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            Connexion
+            Se connecter
           </Link>
           <Link
             href="/signup"
-            className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="bg-foreground text-background rounded-lg px-4 py-2 text-sm font-medium hover:bg-foreground/90 transition-all"
           >
-            Essai gratuit
+            Essayer gratuitement
           </Link>
         </div>
       </div>

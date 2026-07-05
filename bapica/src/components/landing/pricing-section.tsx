@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { Check, ArrowRight } from "lucide-react"
 
 const plans = [
   {
@@ -27,7 +28,7 @@ const plans = [
     popular: true,
     features: [
       "12 agents IA (tous inclus)",
-      "Agent Téléphonique IA (Tom)",
+      "Agent Téléphonique IA",
       "Créateur Vidéo IA (HeyGen)",
       "Agent Juridique & Comptable",
       "Recruteur IA",
@@ -41,78 +42,70 @@ const plans = [
 
 export function PricingSection() {
   return (
-    <section id="pricing" className="relative border-t border-border py-20 md:py-28 overflow-hidden">
-      <div className="absolute inset-0 bg-grid opacity-30" />
-      
-      <div className="container mx-auto px-4 relative">
-        <div className="mx-auto mb-4 max-w-2xl text-center">
-          <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-6">
-            💰 Tarifs
-          </div>
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+    <section id="pricing" className="py-16 md:py-24">
+      <div className="container mx-auto max-w-6xl px-4">
+        <div className="mb-12">
+          <p className="section-label">TARIFS</p>
+          <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
             Des tarifs <span className="gradient-text">transparents</span>
           </h2>
-          <p className="mt-4 text-lg text-muted-foreground">
-            5x plus productif, 10x moins cher. Pas de frais cachés.
+          <p className="mt-4 text-muted-foreground max-w-xl">
+            Pas de frais cachés. Pas de contrat. Résiliez à tout moment.
           </p>
         </div>
 
-        <div className="mx-auto mb-10 flex items-center justify-center gap-4 text-sm flex-wrap">
-          <div className="rounded-full bg-primary/10 px-4 py-1.5 text-primary font-medium backdrop-blur-sm">
-            🔥 OFFRE LANCEMENT : -10% avec le code <span className="font-bold">BAPICA10</span>
-          </div>
-          <div className="rounded-full bg-emerald-500/10 px-4 py-1.5 text-emerald-400 font-medium backdrop-blur-sm border border-emerald-500/20">
-            🎁 15 jours d&apos;essai gratuit — sans carte bancaire
-          </div>
-        </div>
-
-        <div className="grid gap-8 lg:grid-cols-2 max-w-4xl mx-auto">
+        <div className="grid gap-8 lg:grid-cols-2 max-w-4xl">
           {plans.map((plan) => (
             <div
               key={plan.name}
-              className={`relative rounded-xl border ${
+              className={`relative rounded-xl border p-8 transition-all ${
                 plan.popular
-                  ? "border-primary bg-primary/5 shadow-lg shadow-primary/10 scale-105"
+                  ? "border-foreground/20 bg-foreground/[0.02] shadow-sm"
                   : "border-border bg-card"
-              } p-8 transition-all duration-300 hover:shadow-xl hover:-translate-y-1`}
+              }`}
             >
               {plan.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-primary to-blue-500 px-4 py-1 text-xs font-semibold text-primary-foreground shadow-lg">
+                <div className="absolute -top-3 left-6 rounded-full bg-foreground px-4 py-1 text-xs font-semibold text-background">
                   Le plus populaire
                 </div>
               )}
-              <h3 className="text-xl font-bold">{plan.name}</h3>
-              <p className="mt-2 text-sm text-muted-foreground">{plan.desc}</p>
+
+              <h3 className="text-lg font-bold">{plan.name}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{plan.desc}</p>
+
               <div className="mt-6 flex items-baseline gap-2">
-                <span className="text-sm text-muted-foreground line-through">{plan.oldPrice}€</span>
-                <span className="text-4xl font-bold">{plan.price}€</span>
+                <span className="text-sm text-muted-foreground/50 line-through">{plan.oldPrice}€</span>
+                <span className="text-4xl font-bold tracking-tight">{plan.price}€</span>
                 <span className="text-muted-foreground">/mois</span>
               </div>
+
               <p className="mt-1 text-xs text-muted-foreground">
-                Code <span className="font-mono font-medium text-primary">{plan.code}</span> : -10%
+                Code <span className="font-mono font-medium text-foreground">{plan.code}</span> : -10%
               </p>
-              <div className="mt-4 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground border border-border">
+
+              <p className="mt-4 text-xs text-muted-foreground/70 bg-muted/50 rounded-lg px-3 py-2">
                 {plan.extra}
-              </div>
+              </p>
+
               <ul className="mt-6 space-y-3">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-3 text-sm">
-                    <svg className="mt-0.5 h-4 w-4 shrink-0 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span>{feature}</span>
+                {plan.features.map((f) => (
+                  <li key={f} className="flex items-start gap-3 text-sm">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                    <span>{f}</span>
                   </li>
                 ))}
               </ul>
+
               <Link
                 href="/signup"
-                className={`mt-8 flex h-12 w-full items-center justify-center rounded-lg text-sm font-medium transition-all ${
+                className={`mt-8 flex h-12 w-full items-center justify-center gap-2 rounded-lg text-sm font-medium transition-all group ${
                   plan.popular
-                    ? "bg-gradient-to-r from-primary to-blue-500 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02]"
-                    : "border border-border bg-background hover:bg-muted"
+                    ? "bg-foreground text-background hover:bg-foreground/90"
+                    : "border border-border bg-card hover:bg-muted"
                 }`}
               >
                 Commencer avec {plan.name}
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Link>
             </div>
           ))}
