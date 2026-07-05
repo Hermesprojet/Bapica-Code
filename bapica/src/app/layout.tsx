@@ -87,16 +87,24 @@ export const metadata: Metadata = {
     },
   },
 
-  // App icons
+  // App icons (SVG for modern browsers, ICO fallback)
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico" },
+    ],
     apple: "/apple-icon.png",
+    other: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
   },
 
-  // Verification for Google Search Console (à remplacer par la vraie valeur)
-  // verification: {
-  //   google: "VOTRE_CODE_GOOGLE_SEARCH_CONSOLE",
-  // },
+  // Google Search Console — remplace "GOOGLE_SITE_VERIFICATION" par le code
+  // fourni par https://search.google.com/search-console > Ajouter une propriété > Balise HTML
+  verification: {
+    google: "GOOGLE_SITE_VERIFICATION",
+  },
 
   category: "technology",
 }
