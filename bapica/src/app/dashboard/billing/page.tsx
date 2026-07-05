@@ -143,6 +143,9 @@ export default function BillingPage() {
           )}
           Gérer mon abonnement
         </button>
+        <p className="mt-2 text-xs text-center text-muted-foreground/50">
+          Vous serez redirigé vers le portail de facturation Stripe.
+        </p>
       </div>
 
       {/* All plans */}
