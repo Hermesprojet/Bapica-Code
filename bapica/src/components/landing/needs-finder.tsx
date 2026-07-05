@@ -72,13 +72,15 @@ const planLabel: Record<PlanKey, string> = {
   essential: 'Essentiel',
   pro: 'Pro',
 }
-const planPrice: Record<PlanKey, number> = { essential: 39, pro: 79 }
+const planPrice: Record<PlanKey, number> = { essential: 49, pro: 79 }
 const planRank: Record<PlanKey, number> = { essential: 0, pro: 1 }
 
 export function NeedsFinder() {
   const [step, setStep] = useState(0)
   const [sector, setSector] = useState<string | null>(null)
+  const [customSector, setCustomSector] = useState('')
   const [goals, setGoals] = useState<string[]>([])
+  const [customGoal, setCustomGoal] = useState('')
   const [size, setSize] = useState<string | null>(null)
 
   const toggleGoal = (id: string) =>
@@ -87,7 +89,9 @@ export function NeedsFinder() {
   const reset = () => {
     setStep(0)
     setSector(null)
+    setCustomSector('')
     setGoals([])
+    setCustomGoal('')
     setSize(null)
   }
 
@@ -107,7 +111,9 @@ export function NeedsFinder() {
   if (size === 'pme' && planRank[planNeeded] < planRank['pro']) planNeeded = 'pro'
 
   const canNext =
-    (step === 0 && sector) || (step === 1 && goals.length > 0) || (step === 2 && size)
+    (step === 0 && sector && (sector !== 'Autre' || customSector.trim())) ||
+    (step === 1 && (goals.length > 0 || customGoal.trim())) ||
+    (step === 2 && size)
   const totalSteps = 3
 
   return (
@@ -160,6 +166,16 @@ export function NeedsFinder() {
                       </button>
                     ))}
                   </div>
+                  {sector === 'Autre' && (
+                    <input
+                      type="text"
+                      value={customSector}
+                      onChange={(e) => setCustomSector(e.target.value)}
+                      placeholder="Précisez votre activité..."
+                      className="mt-3 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
+                      autoFocus
+                    />
+                  )}
                 </div>
               )}
 
@@ -195,6 +211,21 @@ export function NeedsFinder() {
                         </button>
                       )
                     })}
+                    {/* Option "Autre" avec input conditionnel */}
+                    <div className={`rounded-xl border p-4 text-left transition-all ${
+                      customGoal.trim()
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    }`}>
+                      <span className="block text-sm font-medium">Autre (précisez)</span>
+                      <input
+                        type="text"
+                        value={customGoal}
+                        onChange={(e) => setCustomGoal(e.target.value)}
+                        placeholder="Décrivez votre objectif..."
+                        className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -251,7 +282,7 @@ export function NeedsFinder() {
                   Votre équipe Bapica sur mesure
                 </h3>
                 <p className="mt-2 text-muted-foreground">
-                  Pour {sector?.toLowerCase()}, voici les agents qui vont vous aider à atteindre vos objectifs.
+                  Pour {sector === 'Autre' && customSector.trim() ? customSector.trim().toLowerCase() : sector?.toLowerCase()}, voici les agents qui vont vous aider à atteindre vos objectifs.
                 </p>
               </div>
 
