@@ -21,10 +21,10 @@ export default function MentionsLegalesPage() {
           capital de 1&nbsp;000&nbsp;€.
         </p>
         <ul className="list-disc space-y-1 pl-5">
-          <li>SIRET : 000&nbsp;000&nbsp;000</li>
+          <li>SIRET : En cours d&apos;immatriculation</li>
           <li>Siège social : Paris, France</li>
           <li>Adresse e-mail : contact@bapica.com</li>
-          <li>Numéro de TVA intracommunautaire : à déterminer</li>
+          <li>Numéro de TVA intracommunautaire : En cours d&apos;attribution</li>
         </ul>
       </LegalSection>
 

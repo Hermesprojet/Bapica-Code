@@ -6,7 +6,9 @@ export async function POST(req: Request) {
     const { event, call_id, status } = body
 
     // Vapi webhook handler
-    console.log(`Vapi event: ${event}`, { call_id, status })
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Vapi event: ${event}`, { call_id, status })
+    }
 
     // TODO: Sauvegarder dans Supabase
     // const { getSupabaseAdmin } = await import("@/lib/supabase-admin")

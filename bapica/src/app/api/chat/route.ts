@@ -3,6 +3,23 @@ import Anthropic from '@anthropic-ai/sdk'
 import { getAgentById, type AgentConfig } from '@/lib/agents'
 import { createClient } from '@supabase/supabase-js'
 
+// Helpers CORS
+function corsHeaders(origin: string | null) {
+  const allowed = process.env.NEXT_PUBLIC_SITE_URL
+    ? [process.env.NEXT_PUBLIC_SITE_URL, 'https://bapica.com']
+    : ['https://bapica.com']
+  return {
+    'Access-Control-Allow-Origin': allowed.includes(origin ?? '') || !origin ? origin ?? 'https://bapica.com' : 'https://bapica.com',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
+  }
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return NextResponse.json({}, { headers: corsHeaders(req.headers.get('origin')) })
+}
+
 // Route API centrale pour les agents
 // POST /api/chat
 // Body: { agentId, message, history }
@@ -51,7 +68,7 @@ function buildSystemPrompt(agent: AgentConfig): string {
       ? `Outils/intégrations à ta disposition : ${agent.tools.join(', ')}.`
       : '',
     'Réponds de manière professionnelle, claire et utile pour des PME et indépendants.',
-    "Détecte automatiquement la langue de l'utilisateur (français, anglais ou arabe) et réponds dans cette même langue.",
+    "Détecte automatiquement la langue de l'utilisateur et réponds dans cette même langue, quelle qu'elle soit.",
     "Si une demande sort de ton domaine, dis-le honnêtement et oriente l'utilisateur vers l'agent adapté.",
     'Adopte un ton professionnel, courtois et sobre.',
     "N'utilise pas d'émojis ni d'icônes.",
@@ -67,7 +84,7 @@ export async function POST(req: NextRequest) {
     // Vérifier l'authentification
     const auth = await verifyAuth(req)
     if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status })
+      return NextResponse.json({ error: auth.error }, { status: auth.status, headers: corsHeaders(req.headers.get('origin')) })
     }
 
     const { agentId, message, history } = await req.json()
@@ -75,20 +92,20 @@ export async function POST(req: NextRequest) {
     if (!agentId || !message) {
       return NextResponse.json(
         { error: 'agentId et message requis' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders(req.headers.get('origin')) }
       )
     }
 
     const agent = getAgentById(agentId)
     if (!agent) {
-      return NextResponse.json({ error: 'Agent introuvable' }, { status: 404 })
+      return NextResponse.json({ error: 'Agent introuvable' }, { status: 404, headers: corsHeaders(req.headers.get('origin')) })
     }
 
     // TODO: Vérifier l'abonnement de l'utilisateur et le rate limiting
 
     const response = await callClaude(agent, message, history ?? [])
 
-    return NextResponse.json({ response, agentId })
+    return NextResponse.json({ response, agentId }, { headers: corsHeaders(req.headers.get('origin')) })
   } catch (error) {
     console.error('Chat API error:', error)
     if (error instanceof Anthropic.APIError) {

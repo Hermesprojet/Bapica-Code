@@ -182,7 +182,7 @@ export default function BillingPage() {
                 </li>
                 <li className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-green-500" />
-                  Multilingue FR/EN/AR
+                  Polyglotte (toutes langues)
                 </li>
               </ul>
 

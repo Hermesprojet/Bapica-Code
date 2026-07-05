@@ -15,7 +15,7 @@ const faqs = [
   },
   {
     q: "Les agents parlent-ils vraiment plusieurs langues ?",
-    a: "Absolument. Tous nos agents détectent automatiquement la langue de l'utilisateur et répondent en français, anglais ou arabe avec la même qualité.",
+    a: "Absolument. Tous nos agents détectent automatiquement la langue de l'utilisateur et répondent dans cette même langue, quelle qu'elle soit, avec la même qualité.",
   },
   {
     q: "Comment se passe la facturation ?",

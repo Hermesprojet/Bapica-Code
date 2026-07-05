@@ -23,7 +23,7 @@ export const AGENT_CONTENT: Record<string, AgentPageContent> = {
     keyResult: 'Une réponse utile en quelques secondes, 24h/24.',
   },
   support: {
-    tagline: 'Sofia répond à vos clients 24h/24, en 3 langues, et n’escalade vers vous que ce qui le mérite.',
+    tagline: 'Sofia répond à vos clients 24h/24, dans toutes les langues, et n’escalade vers vous que ce qui le mérite.',
     useCases: [
       { title: 'Questions fréquentes', desc: 'Livraison, remboursement, fonctionnement : réponses instantanées et cohérentes.' },
       { title: 'Support hors horaires', desc: 'Vos clients sont pris en charge le soir et le week-end, sans embaucher.' },
@@ -101,11 +101,11 @@ export const AGENT_CONTENT: Record<string, AgentPageContent> = {
     keyResult: 'Des délais de paiement réduits sans abîmer la relation client.',
   },
   video: {
-    tagline: 'Maya transforme vos idées en vidéos avec avatar IA : promotions, Reels, présentations — en 3 langues.',
+    tagline: 'Maya transforme vos idées en vidéos avec avatar IA : promotions, Reels, présentations — dans toutes les langues.',
     useCases: [
       { title: 'Vidéos promotionnelles', desc: 'Présentez une offre ou un produit avec un avatar professionnel.' },
       { title: 'Reels & formats courts', desc: 'Des vidéos verticales régulières pour Instagram et TikTok.' },
-      { title: 'Vidéos multilingues', desc: 'La même vidéo déclinée en français, anglais et arabe.' },
+      { title: 'Vidéos multilingues', desc: 'La même vidéo déclinée automatiquement dans la langue de votre audience.' },
     ],
     conversation: [
       { role: 'user', text: 'Je veux une vidéo de 30 secondes pour promouvoir mes soldes d’été.' },

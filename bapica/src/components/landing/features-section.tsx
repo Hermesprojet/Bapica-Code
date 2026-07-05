@@ -15,8 +15,8 @@ const features = [
   },
   {
     icon: Globe,
-    title: "Trilingue FR/EN/AR",
-    desc: "Détection automatique de la langue. Parlez français, anglais ou arabe.",
+    title: "Polyglotte",
+    desc: "Détection automatique de la langue. Parlez-lui dans votre langue, il vous répond dans la même.",
     gradient: "from-indigo-500 to-blue-500",
   },
   {

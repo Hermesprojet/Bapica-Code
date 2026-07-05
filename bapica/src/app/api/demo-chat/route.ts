@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
+// CORS
+function corsHeaders(origin: string | null) {
+  return {
+    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+  }
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return NextResponse.json({}, { headers: corsHeaders(req.headers.get('origin')) })
+}
+
 // Route de démonstration publique (sans compte) pour la page d'accueil.
 // POST /api/demo-chat — Body: { message, history }
 //
@@ -22,7 +36,7 @@ const DEMO_SYSTEM_PROMPT = [
   "Tu discutes avec un visiteur du site en mode démonstration : il teste la qualité des réponses avant de créer un compte.",
   "Réponds à sa question de façon réellement utile et concrète, comme un excellent consultant : c'est la meilleure démonstration possible.",
   "Si sa question touche à un métier couvert par un agent Bapica (trouver des clients, support, contenu, factures, recrutement...), mentionne naturellement en une phrase l'agent concerné.",
-  "Détecte la langue du visiteur (français, anglais ou arabe) et réponds dans cette langue.",
+  "Détecte automatiquement la langue du visiteur et réponds dans cette même langue, quelle qu'elle soit.",
   'Ton professionnel, courtois et sobre. Pas d\'émojis. Pas de mise en forme Markdown (pas de #, de **, ni de symboles de liste).',
   'Réponses courtes : 4 à 6 phrases maximum.',
   "Ne demande jamais d'informations personnelles ou sensibles.",
@@ -33,12 +47,12 @@ export async function POST(req: NextRequest) {
     const { message, history } = await req.json()
 
     if (!message || typeof message !== 'string' || !message.trim()) {
-      return NextResponse.json({ error: 'Message requis' }, { status: 400 })
+      return NextResponse.json({ error: 'Message requis' }, { status: 400, headers: corsHeaders(req.headers.get('origin')) })
     }
     if (message.length > MAX_MESSAGE_LENGTH) {
       return NextResponse.json(
         { error: `Message trop long (max ${MAX_MESSAGE_LENGTH} caractères).` },
-        { status: 400 }
+        { status: 400, headers: corsHeaders(req.headers.get('origin')) }
       )
     }
 
@@ -66,7 +80,7 @@ export async function POST(req: NextRequest) {
           response:
             'Vous avez utilisé vos messages de démonstration. Créez un compte gratuit pour continuer la conversation avec vos agents.',
         },
-        { status: 200 }
+        { status: 200, headers: corsHeaders(req.headers.get('origin')) }
       )
     }
 
@@ -74,7 +88,7 @@ export async function POST(req: NextRequest) {
     if (!apiKey) {
       return NextResponse.json(
         { error: 'Démo momentanément indisponible.' },
-        { status: 503 }
+        { status: 503, headers: corsHeaders(req.headers.get('origin')) }
       )
     }
 
@@ -96,12 +110,12 @@ export async function POST(req: NextRequest) {
       .trim()
 
     const remaining = MAX_USER_MESSAGES - userTurns - 1
-    return NextResponse.json({ response: text, remaining })
+    return NextResponse.json({ response: text, remaining }, { headers: corsHeaders(req.headers.get('origin')) })
   } catch (error) {
     console.error('Demo chat error:', error)
     return NextResponse.json(
       { error: 'Démo momentanément indisponible.' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders(req.headers.get('origin')) }
     )
   }
 }
