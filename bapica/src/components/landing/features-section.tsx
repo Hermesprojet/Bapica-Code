@@ -41,7 +41,7 @@ const features = [
 
 export function FeaturesSection() {
   return (
-    <section id="features" className="py-16 md:py-24 bg-muted/30">
+    <section id="features" className="py-16 md:py-24 section-tinted-full">
       <div className="container mx-auto max-w-6xl px-4">
         <div className="mb-12">
           <p className="section-label">UNE PLATEFORME COMPLÈTE</p>

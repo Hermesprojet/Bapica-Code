@@ -3,7 +3,7 @@ import { ArrowRight, Play } from "lucide-react"
 
 export function HeroSection() {
   return (
-    <section className="relative overflow-hidden pt-20 sm:pt-24 pb-12 sm:pb-16 md:pt-36 md:pb-24">
+    <section className="relative overflow-hidden pt-20 sm:pt-24 pb-12 sm:pb-16 md:pt-36 md:pb-24 section-glow section-glow-tr">
       <div className="container mx-auto max-w-6xl px-4">
         <div className="grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
           
