@@ -4,22 +4,22 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 0 0% 100%;            /* #ffffff */
+    --foreground: 240 30% 14%;          /* #191927 */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 239 84% 67%;
+    --card-foreground: 240 30% 14%;
+    --primary: 239 84% 67%;             /* #6366f1 (indigo) */
     --primary-foreground: 0 0% 100%;
-    --secondary: 231 30% 96%;
-    --secondary-foreground: 231 50% 15%;
-    --muted: 220 20% 96%;
-    --muted-foreground: 218 11% 46%;
+    --secondary: 231 30% 96%;           /* #f4f5fa */
+    --secondary-foreground: 240 30% 14%;
+    --muted: 240 20% 97%;               /* #f6f6f9 */
+    --muted-foreground: 218 15% 50%;    /* #6b7280 */
     --accent: 231 30% 96%;
-    --accent-foreground: 231 50% 15%;
+    --accent-foreground: 240 30% 14%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
-    --border: 220 20% 90%;
-    --input: 220 20% 90%;
+    --border: 220 20% 92%;              /* #e5e7eb */
+    --input: 220 20% 92%;
     --ring: 239 84% 67%;
     --radius: 0.75rem;
   }
@@ -61,11 +61,11 @@
 /* GRADIENTS            */
 /* ==================== */
 .gradient-hero {
-  background: linear-gradient(135deg, #6366f1 0%, #818cf8 50%, #a5b4fc 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%);
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #818cf8 0%, #a5b4fc 40%, #c7d2fe 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 40%, #818cf8 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
