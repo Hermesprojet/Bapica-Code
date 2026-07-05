@@ -6,7 +6,7 @@ export function HeroSection() {
     <section className="relative overflow-hidden pt-20 sm:pt-24 pb-12 sm:pb-16 md:pt-36 md:pb-24 section-glow section-glow-tr">
       <div className="container mx-auto max-w-6xl px-4">
         <div className="grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
-          
+
           {/* Left column - Text */}
           <div className="animate-fade-in text-center lg:text-left">
             <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.15] sm:leading-[1.1] tracking-tight text-foreground">
@@ -37,28 +37,23 @@ export function HeroSection() {
             </div>
           </div>
 
-          {/* Right column - Visual (hidden on mobile) */}
+          {/* Right column - Demo video */}
           <div className="animate-fade-in relative hidden lg:block">
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex gap-1.5">
-                  <span className="h-3 w-3 rounded-full bg-red-400" />
-                  <span className="h-3 w-3 rounded-full bg-yellow-400" />
-                  <span className="h-3 w-3 rounded-full bg-green-400" />
-                </div>
-                <span className="text-xs text-muted-foreground/50">terminal · bapica</span>
-              </div>
-              <div className="space-y-2 font-mono text-sm text-muted-foreground">
-                <p><span className="text-foreground">$</span> bapica assist</p>
-                <p className="text-green-600">✓ Agent Léo connecté</p>
-                <p className="text-green-600">✓ 12 agents disponibles</p>
-                <p><span className="text-foreground">$</span> bapica automate --task factures</p>
-                <p className="text-blue-600">→ L&apos;agent Comptable traite vos factures...</p>
-                <p className="text-blue-600">→ 23 factures traitées en 2.4s</p>
-                <p className="text-blue-600">→ Rapport envoyé par email</p>
-                <p className="animate-pulse"><span className="text-foreground">$</span> _</p>
-              </div>
+            <div className="rounded-2xl border border-border overflow-hidden shadow-lg">
+              <video
+                src="/bapica-demo.mp4"
+                poster="/opengraph-image"
+                controls
+                preload="metadata"
+                className="w-full aspect-video"
+                style={{ background: "#0a1628" }}
+              >
+                Votre navigateur ne supporte pas la lecture vidéo.
+              </video>
             </div>
+            <p className="mt-3 text-center text-xs text-muted-foreground/50">
+              Vidéo de présentation · 1 min 18 s
+            </p>
           </div>
         </div>
       </div>
