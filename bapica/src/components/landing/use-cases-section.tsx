@@ -55,24 +55,24 @@ export function UseCasesSection() {
 
         <div className="grid gap-6 md:grid-cols-2 mt-12">
           {useCases.map((uc) => (
-            <div key={uc.title} className="card-elevated p-6 group">
-              <div className="flex items-start gap-4">
-                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${uc.gradient} text-white shadow-lg transition-transform duration-300 group-hover:scale-110`}>
-                  <uc.icon className="h-6 w-6" />
+            <div key={uc.title} className="card-professional p-5 sm:p-6 group">
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${uc.gradient} text-white shadow-sm transition-transform duration-300 group-hover:scale-110`}>
+                  <uc.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-white/90 group-hover:text-primary transition-colors">{uc.title}</h3>
-                  <p className="text-xs text-white/50 mt-0.5">{uc.subtitle}</p>
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base">{uc.title}</h3>
+                  <p className="text-xs text-muted-foreground/60 mt-0.5">{uc.subtitle}</p>
                 </div>
               </div>
 
-              <p className="mt-4 text-sm text-white/60 leading-relaxed">
+              <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-muted-foreground/70 leading-relaxed">
                 {uc.description}
               </p>
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-3 sm:mt-4 flex flex-wrap gap-2">
                 {uc.benefits.map((b) => (
-                  <span key={b} className="inline-flex items-center rounded-full bg-white/[0.08] px-3 py-1 text-xs text-white/60 border border-white/10">
+                  <span key={b} className="inline-flex items-center rounded-full bg-muted/50 px-2.5 sm:px-3 py-1 text-[11px] sm:text-xs text-muted-foreground/70 border border-border">
                     {b}
                   </span>
                 ))}

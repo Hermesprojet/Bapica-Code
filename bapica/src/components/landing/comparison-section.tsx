@@ -29,10 +29,10 @@ export function ComparisonSection() {
           </p>
         </div>
 
-        <div className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02]">
+        <div className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-border bg-card">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/5">
+              <tr className="border-b border-border">
                 <th className="px-6 py-4 text-left font-semibold text-foreground">Fonctionnalité</th>
                 <th className="px-6 py-4 text-center font-semibold">
                   <span className="gradient-text">Bapica</span>
@@ -42,7 +42,7 @@ export function ComparisonSection() {
             </thead>
             <tbody>
               {comparison.map((row, i) => (
-                <tr key={row.feature} className={`border-b border-white/[0.03] transition-colors hover:bg-white/[0.02] ${row.us.startsWith('Bientôt') ? 'opacity-60' : ''}`}>
+                <tr key={row.feature} className={`border-b border-border transition-colors hover:bg-muted/50 ${row.us.startsWith('Bientôt') ? 'opacity-60' : ''}`}>
                   <td className="px-6 py-3.5 text-muted-foreground">{row.feature}</td>
                   <td className="px-6 py-3.5 text-center">
                     <span className={`inline-flex items-center gap-1.5 font-medium ${row.us.startsWith('✓') || row.us.startsWith('Bientôt') ? 'text-primary' : 'text-foreground'}`}>
