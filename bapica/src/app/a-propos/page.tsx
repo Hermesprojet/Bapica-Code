@@ -4,9 +4,25 @@ import { Target, Heart, Sparkles, Users, ArrowRight } from "lucide-react"
 import { PublicPage } from "@/components/pages/public-page"
 
 export const metadata: Metadata = {
-  title: "À propos — Bapica",
+  title: "À propos — L'équipe derrière les agents IA Bapica",
   description:
-    "Bapica démocratise l'intelligence artificielle pour les PME et indépendants avec une équipe complète d'agents IA.",
+    "Bapica démocratise l'intelligence artificielle pour les PME et indépendants avec une équipe complète d'agents IA. Découvrez notre mission, nos valeurs et notre vision.",
+  keywords: [
+    "à propos Bapica",
+    "équipe Bapica",
+    "mission IA",
+    "agents IA France",
+    "startup IA française",
+    "PME intelligence artificielle",
+  ],
+  alternates: {
+    canonical: "https://bapica.com/a-propos",
+  },
+  openGraph: {
+    title: "À propos de Bapica — Notre mission : démocratiser l'IA pour les PME",
+    description:
+      "Nous créons des agents IA spécialisés pour que chaque PME et indépendant puisse bénéficier de l'intelligence artificielle, sans compétences techniques.",
+  },
 }
 
 const values = [

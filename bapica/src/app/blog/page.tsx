@@ -4,9 +4,25 @@ import { Newspaper, ArrowRight } from "lucide-react"
 import { PublicPage } from "@/components/pages/public-page"
 
 export const metadata: Metadata = {
-  title: "Blog — Bapica",
+  title: "Blog IA & Productivité — Conseils pour PME et indépendants",
   description:
-    "Le blog de Bapica : conseils IA, productivité et automatisation pour PME et indépendants. Bientôt disponible.",
+    "Le blog de Bapica : conseils IA, productivité et automatisation pour PME et indépendants. Articles sur les agents IA, la prospection, le support client et plus.",
+  keywords: [
+    "blog IA",
+    "conseils productivité",
+    "automatisation PME",
+    "agents IA",
+    "intelligence artificielle entreprise",
+    "blog Bapica",
+  ],
+  alternates: {
+    canonical: "https://bapica.com/blog",
+  },
+  openGraph: {
+    title: "Blog Bapica — IA, productivité et automatisation pour les PME",
+    description:
+      "Découvrez nos articles sur l'intelligence artificielle, les agents IA et l'automatisation pour les PME et indépendants.",
+  },
 }
 
 export default function BlogPage() {

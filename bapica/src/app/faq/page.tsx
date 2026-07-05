@@ -3,16 +3,36 @@ import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import { PublicPage } from "@/components/pages/public-page"
 import { FAQSection } from "@/components/landing/faq-section"
+import { getFAQSchema, JsonLdScript } from "@/lib/jsonld"
 
 export const metadata: Metadata = {
-  title: "FAQ — Bapica",
+  title: "FAQ — Questions fréquentes sur nos agents IA",
   description:
-    "Toutes les réponses à vos questions sur Bapica : fonctionnement, essai gratuit, facturation, sécurité et plus.",
+    "Toutes les réponses à vos questions sur Bapica : fonctionnement des agents IA, essai gratuit 14 jours, tarifs (49€ et 79€/mois), sécurité RGPD, langues supportées et plus.",
+  keywords: [
+    "FAQ Bapica",
+    "questions agents IA",
+    "tarifs Bapica",
+    "essai gratuit IA",
+    "sécurité données IA",
+    "fonctionnement Bapica",
+  ],
+  alternates: {
+    canonical: "https://bapica.com/faq",
+  },
+  openGraph: {
+    title: "FAQ — Toutes vos questions sur Bapica et ses agents IA",
+    description:
+      "Fonctionnement, essai gratuit, tarifs, sécurité, langues : retrouvez toutes les réponses à vos questions sur la plateforme Bapica.",
+  },
 }
 
 export default function FAQPage() {
   return (
     <PublicPage>
+      {/* JSON-LD FAQ structured data for Google rich results */}
+      <JsonLdScript data={getFAQSchema() as unknown as Record<string, unknown>} />
+
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-grid opacity-40" />
         <div className="absolute left-1/2 top-[-30%] h-[380px] w-[600px] -translate-x-1/2 rounded-full bg-primary/10 blur-[130px]" />
