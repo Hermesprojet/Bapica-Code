@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       .from('profiles')
       .select('stripe_customer_id')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
 
     if (!profile?.stripe_customer_id) {
       // Pas d'abonnement Stripe : on renvoie une réponse « douce » (200) avec un
