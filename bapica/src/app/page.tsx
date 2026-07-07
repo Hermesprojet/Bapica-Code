@@ -10,6 +10,7 @@ import { TestimonialsSection } from "@/components/landing/testimonials-section"
 import { ComparisonSection } from "@/components/landing/comparison-section"
 import { FAQSection } from "@/components/landing/faq-section"
 import { CTASection } from "@/components/landing/cta-section"
+import { LimovaFeatures } from "@/components/landing/limova-features"
 import { Footer } from "@/components/landing/footer"
 
 export default function Home() {
@@ -23,6 +24,7 @@ export default function Home() {
         <UseCasesSection />
         <AgentsSection />
         <TeamSection />
+        <LimovaFeatures />
         <PricingSection />
         <TestimonialsSection />
         <ComparisonSection />

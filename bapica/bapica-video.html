@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#061126; width:1920px; height:1080px; overflow:hidden; font-family:system-ui,sans-serif; }
+
+.particle {
+  position:absolute; border-radius:50%; background:rgba(45,90,158,0.15);
+  animation: float linear infinite;
+}
+@keyframes float {
+  0% { transform:translateY(0) translateX(0) scale(1); opacity:0; }
+  10% { opacity:1; }
+  90% { opacity:1; }
+  100% { transform:translateY(-1100px) translateX(100px) scale(0.3); opacity:0; }
+}
+
+.scene { position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; opacity:0; }
+.scene.active { opacity:1; }
+
+.text-main { color:#fff; font-weight:800; text-align:center; animation:textIn 0.8s ease-out; }
+.text-sub { color:#b4c3dc; font-weight:400; text-align:center; animation:textIn 0.8s ease-out 0.3s both; }
+.text-green { color:#22c55e; }
+
+@keyframes textIn {
+  from { opacity:0; transform:translateY(40px); }
+  to { opacity:1; transform:translateY(0); }
+}
+
+.agent-card {
+  display:inline-flex; align-items:center; gap:20px;
+  background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+  border-radius:12px; padding:20px 30px; margin:10px;
+  animation: cardIn 0.6s ease-out both;
+}
+@keyframes cardIn {
+  from { opacity:0; transform:translateX(-60px); }
+  to { opacity:1; transform:translateX(0); }
+}
+
+.logo { font-size:140px; font-weight:900; background:linear-gradient(135deg,#5088cc,#22c55e);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+</style>
+</head>
+<body>
+<script>
+const W=1920,H=1080;
+
+// Particles
+for(let i=0;i<25;i++){
+  let p=document.createElement('div');
+  p.className='particle';
+  p.style.left=Math.random()*W+'px';
+  p.style.bottom='-10px';
+  p.style.width=p.style.height=(2+Math.random()*6)+'px';
+  p.style.animationDuration=(8+Math.random()*12)+'s';
+  p.style.animationDelay=Math.random()*15+'s';
+  document.body.appendChild(p);
+}
+
+// Scenes
+const scenes=[
+  `<div style="font-size:52px" class="text-sub">Bienvenue sur</div>
+   <div class="logo" style="font-size:160px">Bapica</div>
+   <div style="font-size:38px;margin-top:20px" class="text-sub">Vos agents IA. Votre équipe. Votre succès.</div>`,
+
+  `<div style="font-size:68px;font-weight:800;color:#fff">Léo, votre agent général</div>
+   <div style="font-size:34px;margin-top:50px" class="text-sub">Il comprend vos demandes</div>
+   <div style="font-size:34px;margin-top:30px" class="text-sub">Analyse vos besoins</div>
+   <div style="font-size:34px;margin-top:30px" class="text-sub">Et coordonne toute l'équipe</div>`,
+
+  `<div style="font-size:58px;font-weight:800;color:#fff;margin-bottom:60px">12 agents spécialisés</div>
+   <div style="display:flex;flex-wrap:wrap;justify-content:center;max-width:1400px">
+     ${[[
+       ['Marc','Prospection LinkedIn'],['Sofia','Support 24/7'],['Camille','Contenu & SEO'],
+       ['Claire','Comptabilité'],['Nadia','Closer téléphonique'],['Hugo','Standard virtuel']
+     ].map(([n,r],i)=>`<div class="agent-card" style="animation-delay:${0.3+i*0.15}s">
+       <div style="width:50px;height:50px;border-radius:12px;background:linear-gradient(135deg,#5088cc,#22c55e);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff">${n[0]}</div>
+       <div><div style="font-size:24px;font-weight:700;color:#fff">${n}</div><div style="font-size:16px;color:#b4c3dc">${r}</div></div>
+     </div>`).join('')}
+   </div>`,
+
+  `<div style="font-size:64px;font-weight:800;color:#fff;margin-bottom:60px">Les résultats</div>
+   ${[
+     'Prospection automatisée 24h/24',
+     'Support client qui ne dort jamais',  
+     'Contenu SEO publié automatiquement',
+     'Factures et compta à jour',
+     '+30% de productivité en moyenne'
+   ].map((t,i)=>`<div style="font-size:34px;color:#22c55e;margin:12px 0;animation:textIn 0.6s ease-out ${0.5+i*0.25}s both">✓  ${t}</div>`).join('')}`,
+
+  `<div class="logo" style="font-size:160px">Bapica</div>
+   <div style="font-size:44px;color:#5088cc;margin-top:40px;font-weight:600">Commencez gratuitement</div>
+   <div style="font-size:30px;color:#b4c3dc;margin-top:25px">bapica.com</div>`
+];
+
+let current=0;
+const container=document.createElement('div');
+container.style.cssText='position:absolute;inset:0';
+document.body.appendChild(container);
+
+function showScene(i){
+  container.innerHTML='<div class="scene active">'+scenes[i]+'</div>';
+}
+
+showScene(0);
+
+// Auto-advance scenes
+const timings=[0,10,22,38,52,65];
+setInterval(()=>{
+  current++;
+  if(current<scenes.length) showScene(current);
+},10000);
+
+// Signal ready
+document.title='READY';
+</script>
+</body>
+</html>

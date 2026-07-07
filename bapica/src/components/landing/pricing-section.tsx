@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Check, ArrowRight } from "lucide-react"
+import { Check, ArrowRight, Sparkles } from "lucide-react"
 
 const plans = [
   {
@@ -18,7 +18,8 @@ const plans = [
       "Messages illimités",
     ],
     extra: "Appels vocaux : 0,20€/min",
-    code: "BAPICA10",
+    promoCode: "BAPICA10",
+    promoLabel: "-10% avec le code",
   },
   {
     name: "Pro",
@@ -36,14 +37,21 @@ const plans = [
       "Messages illimités",
     ],
     extra: "Appels vocaux : 0,20€/min",
-    code: "BAPICA10",
+    promoCode: "BAPICA10",
+    promoLabel: "-10% avec le code",
   },
 ]
 
 export function PricingSection() {
   return (
     <section id="pricing" className="py-16 md:py-24">
-      <div className="container mx-auto max-w-6xl px-4">
+      {/* 🔥 Banner promo - like Limova */}
+      <div className="bg-foreground text-background py-3 text-center text-sm font-medium px-4">
+        <Sparkles className="inline h-4 w-4 mr-2" />
+        Offre lancement : <code className="bg-background/20 px-2 py-0.5 rounded font-mono text-xs">BAPICA10</code> = -10% sur les offres mensuelles · <code className="bg-background/20 px-2 py-0.5 rounded font-mono text-xs">BAPICA25</code> = -25% sur les offres annuelles
+      </div>
+
+      <div className="container mx-auto max-w-6xl px-4 mt-16">
         <div className="mb-12">
           <p className="section-label">TARIFS</p>
           <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
@@ -76,14 +84,17 @@ export function PricingSection() {
               <div className="mt-6 flex items-baseline gap-2">
                 <span className="text-sm text-muted-foreground/50 line-through">{plan.oldPrice}€</span>
                 <span className="text-4xl font-bold tracking-tight">{plan.price}€</span>
-                <span className="text-muted-foreground">/mois</span>
+                <span className="text-muted-foreground">HT/mois</span>
               </div>
 
-              <p className="mt-1 text-xs text-muted-foreground">
-                Code <span className="font-mono font-medium text-foreground">{plan.code}</span> : -10%
-              </p>
+              {/* Promo code - visible like Limova */}
+              <div className="mt-3 flex items-center gap-2 rounded-lg bg-green-500/10 border border-green-500/20 px-3 py-2">
+                <span className="text-[11px] font-semibold uppercase text-green-600 tracking-wide">Code promo</span>
+                <code className="font-mono text-sm font-bold text-green-600">{plan.promoCode}</code>
+                <span className="text-[11px] text-green-600/70">{plan.promoLabel}</span>
+              </div>
 
-              <p className="mt-4 text-xs text-muted-foreground/70 bg-muted/50 rounded-lg px-3 py-2">
+              <p className="mt-3 text-xs text-muted-foreground/70 bg-muted/50 rounded-lg px-3 py-2">
                 {plan.extra}
               </p>
 
