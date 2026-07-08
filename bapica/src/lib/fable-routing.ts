@@ -4,8 +4,26 @@
  * Les patterns Claude Fable 5 appliqués à des modèles économiques
  * (Haiku, GPT-4o-mini, Deepseek) pour un rendement élevé à petit prix.
  * 
- * Économie estimée : 10-20x moins cher que Sonnet/Opus
+ * Supporte Anthropic (Claude) + OpenAI (GPT)
+ * Économie estimée : 4-20x moins cher que Sonnet
  */
+
+import Anthropic from '@anthropic-ai/sdk'
+
+// ============================================================
+// COMPARAISON COÛTS (par million de tokens)
+// ============================================================
+
+/*
+Modèle              Input      Output     Ratio vs Sonnet
+─────────────────────────────────────────────────────────
+Claude Opus 4.8     $15.00     $75.00     5x plus cher
+Claude Sonnet 4.6    $3.00     $15.00     1x (référence)
+Claude Haiku 4.5     $0.80      $4.00     0.25x (4x moins cher)
+GPT-4o               $2.50     $10.00     0.7x
+GPT-4o-mini          $0.15      $0.60     0.05x (20x moins cher)
+Deepseek V3          $0.27      $1.10     0.07x (14x moins cher)
+*/
 
 // ============================================================
 // COMPARAISON COÛTS (par million de tokens)
@@ -180,4 +198,82 @@ Avec routing intelligent :
 - Spécialistes (50% des requêtes) → Haiku = 0.28€  
 - Chat démo (20% des requêtes) → Mini = 0.02€
 TOTAL = 0.98€/mois pour 1000 conversations
+
+Avec GPT-4o-mini pour tout :
+- 1000 conversations × (500+200 tokens) × $0.00075/1K
+- TOTAL = 0.04€/mois pour 1000 conversations (50x moins cher que Sonnet !)
 */
+
+// ============================================================
+// APPEL OPENAI AVEC PATTERNS FABLE
+// ============================================================
+
+export async function callGPT(
+  systemPrompt: string,
+  userMessage: string,
+  model: 'gpt-4o' | 'gpt-4o-mini' = 'gpt-4o-mini'
+): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY non configurée')
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      max_tokens: 300,
+      temperature: 0.5,
+    }),
+  })
+
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content || ''
+}
+
+/**
+ * Appel unifié — Anthropic ou OpenAI selon dispo et coût
+ */
+export async function callWithFableRouting(
+  agentId: string,
+  message: string,
+  clientContext?: string
+): Promise<{ response: string; model: string; cost: number }> {
+  const tier = routeModel(agentId, message.length)
+  const basePrompt = `Tu es un agent Bapica spécialisé (agent: ${agentId}).`
+  
+  // Essayer OpenAI d'abord si GPT-4o-mini (moins cher)
+  if (tier === 'mini' && process.env.OPENAI_API_KEY) {
+    try {
+      const fablePrompt = buildFablePrompt(basePrompt, 'mini', clientContext)
+      const response = await callGPT(fablePrompt, message, 'gpt-4o-mini')
+      if (response) {
+        const est = estimateCost('mini', 500, 200)
+        return { response, model: 'gpt-4o-mini', cost: est.cost }
+      }
+    } catch {}
+  }
+
+  // Fallback Anthropic
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || '' })
+  const fablePrompt = buildFablePrompt(basePrompt, tier, clientContext)
+  
+  const modelMap = { fable: 'claude-sonnet-4-6', sonnet: 'claude-sonnet-4-6', haiku: 'claude-haiku-4-5', mini: 'claude-haiku-4-5' }
+  const msg = await anthropic.messages.create({
+    model: modelMap[tier] as string,
+    max_tokens: tier === 'mini' ? 250 : 400,
+    system: fablePrompt,
+    messages: [{ role: 'user', content: message }],
+  })
+  
+  const text = (msg.content as any[]).find((b: any) => b.type === 'text')?.text || ''
+  const est = estimateCost(tier, 500, 200)
+  return { response: text, model: modelMap[tier], cost: est.cost }
+}
+
