@@ -77,7 +77,7 @@ Règles : prose naturelle sans listes, intègre le contexte sans dire "je vois q
 // MATRICE DE ROUTAGE INTELLIGENT
 // ============================================================
 
-export type ModelTier = 'fable' | 'sonnet' | 'haiku' | 'mini'
+export type ModelTier = 'fable' | 'sonnet' | 'gpt4o' | 'haiku' | 'mini'
 
 interface RoutingRule {
   agentTypes: string[]
@@ -97,10 +97,10 @@ export const ROUTING_MATRIX: RoutingRule[] = [
   { agentTypes: ['accounting', 'legal', 'analytics', 'scaling'], taskComplexity: 'medium', model: 'sonnet', estimatedCostPer1k: 0.018 },
   { agentTypes: ['accounting', 'legal', 'analytics', 'scaling'], taskComplexity: 'low', model: 'haiku', estimatedCostPer1k: 0.004 },
   
-  // Spécialistes — Haiku + Fable patterns (80% de la qualité, 25% du prix)
-  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'video', 'recruiter', 'trends'], taskComplexity: 'high', model: 'haiku', estimatedCostPer1k: 0.004 },
-  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'video', 'recruiter', 'trends'], taskComplexity: 'medium', model: 'haiku', estimatedCostPer1k: 0.004 },
-  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'video', 'recruiter', 'trends'], taskComplexity: 'low', model: 'mini', estimatedCostPer1k: 0.0006 },
+  // GPT-4o pour les spécialistes si clé OpenAI disponible (qualité > Haiku)
+  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'trends'], taskComplexity: 'high', model: 'gpt4o', estimatedCostPer1k: 0.012 },
+  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'trends'], taskComplexity: 'medium', model: 'haiku', estimatedCostPer1k: 0.004 },
+  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'trends'], taskComplexity: 'low', model: 'mini', estimatedCostPer1k: 0.0006 },
   
   // Demo chat — Mini (public, gratuit)
   { agentTypes: ['demo'], taskComplexity: 'low', model: 'mini', estimatedCostPer1k: 0.0006 },
@@ -159,6 +159,7 @@ export function estimateCost(
   const rates: Record<ModelTier, { input: number; output: number }> = {
     fable: { input: 15.00, output: 75.00 },
     sonnet: { input: 3.00, output: 15.00 },
+    gpt4o: { input: 2.50, output: 10.00 },
     haiku: { input: 0.80, output: 4.00 },
     mini: { input: 0.15, output: 0.60 },
   }
@@ -264,7 +265,7 @@ export async function callWithFableRouting(
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || '' })
   const fablePrompt = buildFablePrompt(basePrompt, tier, clientContext)
   
-  const modelMap = { fable: 'claude-sonnet-4-6', sonnet: 'claude-sonnet-4-6', haiku: 'claude-haiku-4-5', mini: 'claude-haiku-4-5' }
+  const modelMap: Record<ModelTier, string> = { fable: 'claude-sonnet-4-6', sonnet: 'claude-sonnet-4-6', gpt4o: 'gpt-4o', haiku: 'claude-haiku-4-5', mini: 'claude-haiku-4-5' }
   const msg = await anthropic.messages.create({
     model: modelMap[tier] as string,
     max_tokens: tier === 'mini' ? 250 : 400,

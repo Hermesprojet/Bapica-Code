@@ -130,6 +130,7 @@ export async function POST(req: NextRequest) {
     const modelMap: Record<ModelTier, string> = {
       fable: 'claude-sonnet-4-6',
       sonnet: 'claude-sonnet-4-6',
+      gpt4o: 'gpt-4o',
       haiku: 'claude-haiku-4-5',
       mini: 'claude-haiku-4-5',
     }
