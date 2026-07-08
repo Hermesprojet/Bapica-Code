@@ -18,11 +18,6 @@ import {
   MessageSquare,
   FileText,
   Search,
-  Phone,
-  TrendingUp,
-  Calculator,
-  Video,
-  FileCheck,
   HeadphonesIcon,
   Bot,
 } from 'lucide-react'
@@ -184,7 +179,7 @@ const TOOLS_USED = [
 
 const planLabel: Record<PlanKey, string> = { essential: 'Essentiel', pro: 'Pro' }
 const planPrice: Record<PlanKey, number> = { essential: 49, pro: 79 }
-const planRank: Record<PlanKey, number> = { essential: 0, pro: 1 }
+const _planRank: Record<PlanKey, number> = { essential: 0, pro: 1 }
 
 const PLAN_AGENT_LIMIT: Record<PlanKey, number> = { essential: 8, pro: 12 }
 
