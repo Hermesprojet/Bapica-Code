@@ -1,6 +1,7 @@
 import { Navbar } from "@/components/landing/navbar"
 import { HeroSection } from "@/components/landing/hero-section"
 import { IntelligenceSection } from "@/components/landing/intelligence-section"
+import { ROIStats } from "@/components/landing/roi-stats"
 import { NeedsFinder } from "@/components/landing/needs-finder"
 import { FeaturesSection } from "@/components/landing/features-section"
 import { UseCasesSection } from "@/components/landing/use-cases-section"
@@ -21,6 +22,7 @@ export default function Home() {
       <main>
         <HeroSection />
         <IntelligenceSection />
+        <ROIStats />
         <NeedsFinder />
         <FeaturesSection />
         <UseCasesSection />

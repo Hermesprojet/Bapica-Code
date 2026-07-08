@@ -20,6 +20,23 @@ const agentGradients: Record<string, string> = {
   legal: 'from-slate-500 to-gray-500',
   analytics: 'from-teal-500 to-emerald-500',
   trends: 'from-lime-500 to-green-500',
+  scaling: 'from-purple-500 to-violet-500',
+}
+
+const replacesData: Record<string, { tool: string; cost: string }> = {
+  general: { tool: 'Un assistant de direction', cost: '2500€/mois' },
+  support: { tool: 'Zendesk, Intercom, 1 support agent', cost: '3000€/mois' },
+  content: { tool: 'Un rédacteur SEO + community manager', cost: '3500€/mois' },
+  prospector: { tool: 'Apollo, Zoominfo, un SDR', cost: '4000€/mois' },
+  closer: { tool: 'Un closer commercial', cost: '5000€/mois' },
+  telephone: { tool: 'Un standardiste + standard pro', cost: '2500€/mois' },
+  accounting: { tool: 'Un comptable à temps partiel', cost: '1500€/mois' },
+  video: { tool: 'Un monteur vidéo freelance', cost: '2000€/mois' },
+  recruiter: { tool: 'Un chasseur de têtes junior', cost: '3000€/mois' },
+  legal: { tool: 'Un juriste à temps partiel', cost: '2000€/mois' },
+  analytics: { tool: 'Un data analyst + BI tool', cost: '3500€/mois' },
+  trends: { tool: 'Une veille marché manuelle', cost: '1000€/mois' },
+  scaling: { tool: 'Un consultant en stratégie', cost: '5000€/mois' },
 }
 
 export function AgentsSection() {
@@ -77,6 +94,15 @@ export function AgentsSection() {
                 }`}>
                   {planLabels[agent.minPlan]}
                 </div>
+
+                {/* Remplace tag */}
+                {replacesData[agent.id] && (
+                  <div className="mt-2 pt-2 border-t border-border/50">
+                    <span className="text-[10px] text-muted-foreground/40 uppercase tracking-wider">Remplace</span>
+                    <p className="text-[10px] text-green-600 font-medium">{replacesData[agent.id].tool}</p>
+                    <p className="text-[10px] text-muted-foreground/40">Économie : {replacesData[agent.id].cost}</p>
+                  </div>
+                )}
               </div>
             </Link>
           ))}
