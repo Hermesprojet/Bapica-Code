@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Navbar } from '@/components/landing/navbar'
 import { Footer } from '@/components/landing/footer'
 
-export const metadata: Metadata = { title: 'Conditions Générales de Vente | Bapica' }
+export const metadata: Metadata = { title: 'Conditions Générales de Vente' }
 
 export default function CGVPage() {
   return (

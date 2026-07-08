@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { LegalShell, LegalSection } from "@/components/pages/legal-shell"
 
 export const metadata: Metadata = {
-  title: "Mentions légales — Bapica",
+  title: "Mentions légales",
   description:
     "Mentions légales de Bapica : éditeur, hébergeur et informations de contact.",
 }

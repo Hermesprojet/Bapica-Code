@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { LegalShell, LegalSection } from "@/components/pages/legal-shell"
 
 export const metadata: Metadata = {
-  title: "Conditions Générales d'Utilisation — Bapica",
+  title: "Conditions Générales d'Utilisation",
   description:
     "Conditions Générales d'Utilisation de la plateforme d'agents IA Bapica.",
 }

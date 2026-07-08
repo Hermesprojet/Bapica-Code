@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { LegalShell, LegalSection } from "@/components/pages/legal-shell"
 
 export const metadata: Metadata = {
-  title: "RGPD — Bapica",
+  title: "RGPD",
   description:
     "Protection des données personnelles chez Bapica : vos droits, nos sous-traitants et nos engagements RGPD.",
 }

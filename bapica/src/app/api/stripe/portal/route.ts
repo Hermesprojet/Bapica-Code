@@ -3,7 +3,7 @@ import { stripe } from '@/lib/stripe'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const corsHeaders = () => ({
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://bapica.com',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 })
