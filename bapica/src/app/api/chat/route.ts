@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { getAgentById, type AgentConfig } from '@/lib/agents'
 import { createClient } from '@supabase/supabase-js'
+import { sanitizeUserMessage, isValidAgentId } from '@/lib/security'
 
 // Helpers CORS
 function corsHeaders(origin: string | null) {
@@ -95,6 +96,14 @@ export async function POST(req: NextRequest) {
         { status: 400, headers: corsHeaders(req.headers.get('origin')) }
       )
     }
+
+    // Valider l'agentId (liste blanche)
+    if (!isValidAgentId(agentId)) {
+      return NextResponse.json({ error: 'Agent invalide' }, { status: 400, headers: corsHeaders(req.headers.get('origin')) })
+    }
+
+    // Sanitize le message utilisateur
+    const safeMessage = sanitizeUserMessage(message)
 
     const agent = getAgentById(agentId)
     if (!agent) {
