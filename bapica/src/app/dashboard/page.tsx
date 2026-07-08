@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Bot, Users, MessageSquare, TrendingUp, Loader2, ArrowRight, Sparkles } from 'lucide-react'
+import { Bot, Users, MessageSquare, TrendingUp, Loader2, ArrowRight, Sparkles, Lightbulb, AlertTriangle, Target } from 'lucide-react'
 import { getSetupSteps, getRecommendedWidgets, getRecommendedAgentIds, type OnboardingData } from '@/lib/personalization'
+import { analyzeBusinessProfile, type BusinessProfile } from '@/lib/business-profile'
 import { DashboardSkeleton } from '@/components/ui/base'
 
 export default function DashboardPage() {
@@ -33,6 +34,7 @@ export default function DashboardPage() {
 
   if (loading) return <DashboardSkeleton />
 
+  const profile: BusinessProfile = analyzeBusinessProfile(onboarding || {})
   const steps = getSetupSteps(onboarding)
   const widgets = getRecommendedWidgets(onboarding)
   const doneSteps = steps.filter(s => s.done).length
@@ -49,9 +51,59 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {/* Profil Business Intelligent */}
+      {profile.profileSummary && (
+        <div className="card-professional mb-8 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="h-5 w-5 text-amber-500" />
+            <h3 className="font-semibold">Votre profil business</h3>
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+            {profile.profileSummary}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-lg bg-muted/50 p-3">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
+                Opportunités
+              </div>
+              <ul className="space-y-1">
+                {profile.growthOpportunities.slice(0, 3).map((o, i) => (
+                  <li key={i} className="text-xs text-muted-foreground/80">• {o}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-lg bg-muted/50 p-3">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
+                Points de vigilance
+              </div>
+              <ul className="space-y-1">
+                {profile.riskFactors.slice(0, 3).map((r, i) => (
+                  <li key={i} className="text-xs text-muted-foreground/80">• {r}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-lg bg-muted/50 p-3">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                <Target className="h-3.5 w-3.5 text-green-500" />
+                Agents recommandés
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {profile.recommendedAgents.slice(0, 4).map(a => (
+                  <span key={a} className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                    {a}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barre de progression configuration */}
       {!allDone && steps.length > 1 && (
-        <div className="card-elevated mb-8 p-5">
+        <div className="card-professional mb-8 p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
