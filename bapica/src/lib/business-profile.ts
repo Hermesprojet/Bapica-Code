@@ -66,6 +66,7 @@ export function analyzeBusinessProfile(data: any): BusinessProfile {
     recommendedAgents: [],
     growthOpportunities: [],
     riskFactors: [],
+    timeWasters: [],
   }
 
   // Déduire le business model du secteur
