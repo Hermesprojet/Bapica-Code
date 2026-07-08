@@ -21,6 +21,18 @@ export default function SignupPage() {
     setLoading(true)
     setError('')
 
+    // Password strength validation
+    if (password.length < 6) {
+      setError('Le mot de passe doit faire au moins 6 caractères.')
+      setLoading(false)
+      return
+    }
+    if (!/[A-Z]/.test(password) && !/[0-9]/.test(password) && !/[^A-Za-z0-9]/.test(password)) {
+      setError('Ajoutez au moins un chiffre, une majuscule ou un caractère spécial.')
+      setLoading(false)
+      return
+    }
+
     const { data, error: authError } = await supabase.auth.signUp({
       email,
       password,

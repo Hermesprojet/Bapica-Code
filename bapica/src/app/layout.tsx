@@ -117,6 +117,9 @@ export default function RootLayout({
   return (
     <html lang="fr" suppressHydrationWarning>
       <head>
+        {/* PWA */}
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#061126" />
         {/* JSON-LD Structured Data */}
         <JsonLdScript data={getOrganizationSchema() as unknown as Record<string, unknown>} />
         <JsonLdScript data={getWebSiteSchema() as unknown as Record<string, unknown>} />
@@ -130,6 +133,15 @@ export default function RootLayout({
           window.addEventListener('beforeunload', () => {
             window.scrollTo(0, 0);
           });
+          
+          // Register Service Worker for PWA
+          if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+              navigator.serviceWorker.register('/sw.js').then(() => {
+                console.log('SW registered');
+              }).catch(() => {});
+            });
+          }
         `}} />
         <ToastProvider>
           {children}
