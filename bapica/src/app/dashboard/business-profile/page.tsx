@@ -359,6 +359,115 @@ export default function BusinessProfilePage() {
           })}
         </div>
       </div>
+
+      {/* Business Analyst Chat */}
+      <BusinessAnalystChat profile={profile} />
+
+    </div>
+  )
+}
+
+function BusinessAnalystChat({ profile }: { profile: BusinessProfile }) {
+  const [chat, setChat] = useState<Array<{role: string, content: string}>>([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const suggestedQuestions = [
+    'Quel est mon plus gros risque actuellement ?',
+    'Comment augmenter mes revenus de 30% ?',
+    'Quel agent dois-je activer en premier ?',
+    'Suis-je en retard par rapport à mon secteur ?',
+    'Combien puis-je économiser par mois ?',
+  ]
+
+  const handleSend = async (question?: string) => {
+    const q = question || input.trim()
+    if (!q || loading) return
+    setLoading(true)
+    setInput('')
+    setChat(prev => [...prev, { role: 'user', content: q }])
+
+    try {
+      const res = await fetch('/api/business-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q, profile, history: chat.slice(-4) })
+      })
+      const data = await res.json()
+      setChat(prev => [...prev, { role: 'assistant', content: data.response || 'Analyse indisponible.' }])
+    } catch {
+      setChat(prev => [...prev, { role: 'assistant', content: 'Désolé, l\'analyse est momentanément indisponible.' }])
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="card-professional p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <Brain className="h-5 w-5 text-purple-500" />
+        <h3 className="font-semibold text-lg">💬 Votre Analyste Business IA</h3>
+      </div>
+      <p className="text-sm text-muted-foreground mb-4">
+        Posez n&apos;importe quelle question sur votre entreprise. L&apos;analyste connaît votre profil et vous répond de façon personnalisée.
+      </p>
+
+      {/* Chat messages */}
+      {chat.length > 0 && (
+        <div className="space-y-3 mb-4 max-h-80 overflow-y-auto">
+          {chat.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] rounded-xl px-4 py-2.5 text-sm ${
+                msg.role === 'user'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-foreground'
+              }`}>
+                {msg.content}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="bg-muted rounded-xl px-4 py-2.5">
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Suggested questions */}
+      {chat.length === 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {suggestedQuestions.map((q, i) => (
+            <button
+              key={i}
+              onClick={() => handleSend(q)}
+              className="text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted transition-colors text-muted-foreground"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSend()}
+          placeholder="Posez une question sur votre business..."
+          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        <button
+          onClick={() => handleSend()}
+          disabled={!input.trim() || loading}
+          className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+        >
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   )
 }
