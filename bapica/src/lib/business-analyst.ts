@@ -1,6 +1,12 @@
 /**
- * Contexte sectoriel enrichi pour des réponses ultra-personnalisées
+ * Business Analyst IA conversationnel + Contexte sectoriel enrichi
  */
+import Anthropic from '@anthropic-ai/sdk'
+
+// ============================================================
+// CONTEXTE SECTORIEL ENRICHI
+// ============================================================
+
 function getSectorContext(profile: any): string {
   const sector = profile.sector || 'services'
   const size = profile.companySize || 'TPE'
@@ -8,85 +14,126 @@ function getSectorContext(profile: any): string {
   const employees = profile.employeeCount || 1
   
   const contexts: Record<string, string> = {
-    ecommerce: `CONTEXTE SECTORIEL E-COMMERCE :
-- Enjeux clés : taux de conversion (moy 2-3%), panier moyen, taux d'abandon panier (70%), fidélisation client
-- Canaux critiques : SEO produit, ads (Meta/Google), email marketing, marketplace (Amazon, Cdiscount)
-- Risques typiques : dépendance à un canal d'acquisition, rupture de stock, logistique, saisonnalité
-- Opportunités IA : génération de fiches produits optimisées SEO, support client 24/7 (retours, SAV), emails de relance panier abandonné, analyse des avis clients
-- Pour ${employees} personne(s) : automatiser la création de contenu et le support est le levier n°1
-- Si maturité digitale ${profile.digitalMaturity || 'medium'} : ${profile.digitalMaturity === 'low' ? 'URGENT — automatiser les fiches produits et le SAV' : profile.digitalMaturity === 'high' ? 'optimiser les marges via analytics' : 'passer à l\'étape supérieure avec l\'IA'}`,
+    ecommerce: `CONTEXTE E-COMMERCE :
+Enjeux : taux de conversion (2-3%), panier moyen, abandon panier (70%), fidélisation. Canaux : SEO produit, ads, email, marketplace. Risques : dépendance canal, rupture stock, saisonnalité. Opportunités IA : fiches produits SEO, support 24/7, relance panier, analyse avis. Pour ${employees} personne(s) : automatiser contenu et support = levier n°1.`,
 
-    services: `CONTEXTE SECTORIEL SERVICES & CONSEIL :
-- Enjeux clés : taux de conversion devis (20-40%), valeur vie client (LTV), taux d'occupation/horaire facturable, référencement
-- Canaux critiques : recommandation/bouche-à-oreille, LinkedIn, site vitrine, networking
-- Risques typiques : dépendance au fondateur, irrégularité des revenus, périmètre flou, impayés
-- Opportunités IA : prospection LinkedIn automatisée, relance devis, rédaction de propositions commerciales, facturation et relances automatiques, génération de contenu expert (articles, études de cas)
-- Pour ${employees} personne(s) : la prospection et l'admin sont les 2 postes qui tuent la rentabilité
-- Si stade ${profile.stage} : ${profile.stage === 'early' ? 'priorité ABSOLUE à la prospection pour sécuriser le pipeline' : profile.stage === 'growth' ? 'structurer les processus avant de recruter' : 'automatiser pour scaler sans perdre en qualité'}`,
+    services: `CONTEXTE SERVICES & CONSEIL :
+Enjeux : conversion devis (20-40%), LTV, taux horaire facturable, référencement. Canaux : recommandation, LinkedIn, site vitrine. Risques : dépendance fondateur, irrégularité revenus, impayés. Opportunités IA : prospection LinkedIn, relance devis, rédaction propositions, facturation auto, contenu expert. Pour ${employees} personne(s) : prospection + admin tuent la rentabilité. Stade ${stage} : ${stage === 'early' ? 'priorité ABSOLUE prospection' : stage === 'growth' ? 'structurer processus avant recruter' : 'automatiser pour scaler'}.`,
 
-    immobilier: `CONTEXTE SECTORIEL IMMOBILIER :
-- Enjeux clés : nombre de mandats, taux de conversion visites→ventes, délai de vente, panier moyen
-- Canaux critiques : téléphone (crucial — 1 appel manqué = 1 mandat perdu), portails (SeLoger, Leboncoin), recommandation
-- Risques typiques : appels manqués (50%+ des prospects), administrative lourd, saisonnalité, concurrence locale
-- Opportunités IA : agent téléphonique 24/7 (ne rate aucun appel), suivi automatique des prospects, création de contenus pour annonces, relance des anciens contacts, automatisation des documents administratifs`,
+    sante: `CONTEXTE SANTÉ & BIEN-ÊTRE :
+Enjeux : remplissage agenda, no-show patients (20-30%), fidélisation, RGPD données santé. Canaux : téléphone (80% RDV), Doctolib, recommandation. Risques : RDV non honorés, admin lourd, réglementation. Opportunités IA : standard téléphonique 24/7, relance SMS pré-RDV, gestion prescriptions, FAQ patients, compta. Pour ${employees} personne(s) : téléphone = outil n°1, automatiser libère 15-20h/semaine.`,
 
-    sante: `CONTEXTE SECTORIEL SANTÉ & BIEN-ÊTRE :
-- Enjeux clés : taux de remplissage agenda, no-show patients (20-30%), fidélisation, conformité RGPD données santé
-- Canaux critiques : téléphone (80% des RDV), Doctolib/Maiia, recommandation, Google My Business
-- Risques typiques : RDV non honorés, temps administratif excessif, rappels patients chronophages, réglementation stricte
-- Opportunités IA : standard téléphonique IA pour prise de RDV 24/7, relance SMS/email automatique avant RDV, gestion des prescriptions et ordonnances, réponse aux questions patients fréquentes, comptabilité simplifiée
-- Pour ${employees} personne(s) : le téléphone est votre 1er outil — l'automatiser libère 15-20h/semaine
-- CRITIQUE : ne JAMAIS stocker de données médicales sans consentement explicite RGPD`,
+    formation: `CONTEXTE FORMATION & COACHING :
+Enjeux : remplissage sessions, coût acquisition élève, complétion, Qualiopi. Canaux : contenu (SEO, blog, YouTube), LinkedIn, partenariats. Risques : saisonnalité inscriptions, concurrence plateformes, pédagogie chronophage. Opportunités IA : contenu pédagogique (modules, quiz), posts LinkedIn, automatisation inscriptions, supports de cours, suivi élèves. Pour ${employees} personne(s) : le contenu = votre produit, IA multiplie production par 5.`,
 
-    formation: `CONTEXTE SECTORIEL FORMATION & COACHING :
-- Enjeux clés : taux de remplissage sessions, coût d'acquisition élève, taux de complétion, certification Qualiopi
-- Canaux critiques : contenu (SEO, blog, YouTube), LinkedIn, partenariats, bouche-à-oreille
-- Risques typiques : saisonnalité des inscriptions, concurrence des plateformes (Udemy, OpenClassrooms), pédagogie chronophage, administratif Qualiopi
-- Opportunités IA : création de contenu pédagogique (modules, exercices, quiz), posts LinkedIn et articles SEO, automatisation des inscriptions et relances, génération de supports de cours, suivi personnalisé des élèves
-- Pour ${employees} personne(s) : le contenu est votre produit — l'IA peut multiplier votre production par 5`,
+    immobilier: `CONTEXTE IMMOBILIER :
+Enjeux : mandats, conversion visites→ventes, délai vente. Canaux : téléphone (1 appel manqué = 1 mandat perdu), portails, recommandation. Risques : appels manqués (50%+), admin lourd, saisonnalité. Opportunités IA : agent téléphonique 24/7, suivi prospects auto, contenu annonces, relance contacts, docs admin.`,
 
-    btp: `CONTEXTE SECTORIEL BTP & ARTISANAT :
-- Enjeux clés : taux de conversion devis (10-30%), marge chantier, délais de paiement, gestion des sous-traitants
-- Canaux critiques : téléphone (vital — clients appellent pour urgence), recommandation, Google Maps, PagesJaunes
-- Risques typiques : appels manqués = chantiers perdus, devis chronophages, impayés, gestion planning complexe
-- Opportunités IA : réception d'appels 24/7 avec qualification des urgences, génération de devis types, relance factures impayées, suivi de chantier automatisé, réponse aux avis Google`,
+    btp: `CONTEXTE BTP & ARTISANAT :
+Enjeux : conversion devis (10-30%), marge chantier, délais paiement. Canaux : téléphone (urgences), recommandation, Google Maps. Risques : appels manqués = chantiers perdus, devis chronophages, impayés. Opportunités IA : réception appels 24/7, devis types, relance factures, suivi chantier, réponse avis Google.`,
 
-    saas: `CONTEXTE SECTORIEL SAAS & TECH :
-- Enjeux clés : MRR growth rate (cible 10-20%/mois), churn rate (cible <5%), CAC payback (<12 mois), NPS
-- Canaux critiques : content marketing (SEO, blog), Product Hunt, LinkedIn, outbound sales, partnerships
-- Risques typiques : churn élevé, product-market fit incertain, concurrence US bien financée, burnout fondateur
-- Opportunités IA : content marketing automatisé (articles, docs, landing pages), support client technique IA, analyse de churn et prédiction, prospection outbound ciblée, génération de code et documentation`,
+    saas: `CONTEXTE SAAS & TECH :
+Enjeux : MRR growth (10-20%/mois), churn (<5%), CAC payback, NPS. Canaux : content marketing, Product Hunt, outbound. Risques : churn, product-market fit, concurrence US. Opportunités IA : content marketing auto, support technique IA, analyse churn, prospection outbound, génération code/doc.`,
 
-    commerce: `CONTEXTE SECTORIEL COMMERCE LOCAL :
-- Enjeux clés : panier moyen, fréquence de visite, taux de rétention, visibilité locale
-- Canaux critiques : Google My Business, réseaux sociaux locaux, vitrine physique, SMS/WhatsApp
-- Risques typiques : dépendance au passage physique, concurrence e-commerce, saisonnalité, trésorerie
-- Opportunités IA : création de contenu local (posts, stories), réponse aux avis Google automatique, campagnes SMS personnalisées, gestion des stocks simplifiée, fidélisation automatisée`,
+    commerce: `CONTEXTE COMMERCE LOCAL :
+Enjeux : panier moyen, fréquence visite, rétention, visibilité locale. Canaux : Google My Business, réseaux sociaux, vitrine, SMS/WhatsApp. Risques : dépendance passage physique, concurrence e-commerce, saisonnalité. Opportunités IA : contenu local, réponse avis Google auto, campagnes SMS, gestion stocks, fidélisation.`,
 
-    freelance: `CONTEXTE SECTORIEL FREELANCE :
-- Enjeux clés : taux journalier, pipeline de missions, temps non facturable (admin, prospection = 30-40%), diversification clients
-- Canaux critiques : LinkedIn, plateformes (Malt, Upwork), recommandation, site portfolio
-- Risques typiques : tout repose sur UNE personne, irrégularité revenus, pas de backup, admin qui tue la productivité
-- Opportunités IA : prospection LinkedIn automatisée, facturation et relances automatiques, création de contenu portfolio, assistant admin (emails, devis, contrats), recherche de missions`,
+    freelance: `CONTEXTE FREELANCE :
+Enjeux : taux journalier, pipeline missions, temps non facturable (30-40%). Risques : tout repose sur UNE personne, irrégularité revenus. Opportunités IA : prospection LinkedIn, facturation/relances auto, contenu portfolio, assistant admin, recherche missions. Pour ${employees} personne : admin qui tue productivité = priorité n°1.`,
 
-    logistique: `CONTEXTE SECTORIEL LOGISTIQUE & TRANSPORT :
-- Enjeux clés : taux de remplissage, coût au km, délais de livraison, satisfaction client (SLA)
-- Canaux critiques : téléphone (urgences transport), email, plateformes (Chronopost, DHL), appels d'offres
-- Risques typiques : appels urgents 24/7, optimisation tournées complexe, fluctuation prix carburant, litiges livraison
-- Opportunités IA : gestion des appels urgents et suivi colis automatisé, optimisation de tournées, relation client proactive (alerte retard), analyse des coûts de transport`,
+    logistique: `CONTEXTE LOGISTIQUE & TRANSPORT :
+Enjeux : taux remplissage, coût/km, délais, SLA. Canaux : téléphone urgences, email, plateformes. Risques : appels urgents 24/7, optimisation tournées, prix carburant. Opportunités IA : appels urgents auto, suivi colis, optimisation tournées, relation client proactive, analyse coûts.`,
 
-    finance: `CONTEXTE SECTORIEL FINANCE & ASSURANCE :
-- Enjeux clés : coût d'acquisition client (CAC élevé), valeur vie client, conformité réglementaire (ACPR, AMF), taux de closing
-- Canaux critiques : recommandation, networking, LinkedIn, événements professionnels
-- Risques typiques : conformité réglementaire lourde, cycle de vente long, concurrence des néo-banques/assurtechs
-- Opportunités IA : analyse de portefeuille et recommandations personnalisées, création de rapports financiers, conformité documentaire automatisée, prospection ciblée entreprises, support client réglementaire`,
+    finance: `CONTEXTE FINANCE & ASSURANCE :
+Enjeux : CAC élevé, LTV, conformité (ACPR/AMF), taux closing. Risques : conformité lourde, cycle vente long, concurrence assurtechs. Opportunités IA : analyse portefeuille, rapports financiers, conformité documentaire, prospection B2B, support client.`,
 
-    restauration: `CONTEXTE SECTORIEL RESTAURATION :
-- Enjeux clés : taux de remplissage (midi/soir), panier moyen, note Google/ TripAdvisor (crucial), gestion des stocks/perte
-- Canaux critiques : téléphone (réservations = 60%+ du CA), Google Maps, réseaux sociaux (Instagram), TheFork
-- Risques typiques : appels pendant le service = injoignable, avis négatifs non répondus, gestion des stocks imprécise, turn-over staff
-- Opportunités IA : prise de réservation téléphonique 24/7, réponse automatique aux avis, création de contenu Instagram, gestion des menus et suggestions personnalisées`,
+    restauration: `CONTEXTE RESTAURATION :
+Enjeux : taux remplissage, panier moyen, note Google (crucial), gestion stocks. Canaux : téléphone (60%+ CA), Google Maps, Instagram, TheFork. Risques : appels pendant service, avis négatifs, stocks. Opportunités IA : réservation téléphonique 24/7, réponse avis auto, contenu Instagram, menus personnalisés.`,
   }
 
   return contexts[sector] || contexts.services
+}
+
+// ============================================================
+// ANALYSE CONVERSATIONNELLE
+// ============================================================
+
+export async function analyzeUserQuery(
+  query: string,
+  profile: any,
+  chatHistory: Array<{role: string, content: string}> = []
+): Promise<string> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || '' })
+
+  const systemPrompt = `Tu es l'analyste business IA de Bapica. Tu as accès au profil complet de l'entreprise ET à des données sectorielles précises.
+
+Tu es :
+- Direct et pragmatique (pas de blabla)
+- Concret (des chiffres, des actions, pas de théorie)
+- Challengeant (tu dis ce qui ne va pas)
+- Ultra-contextuel (tu utilises les données du profil ET le contexte sectoriel)
+
+Tu réponds en 4-8 phrases. Tu cites des chiffres spécifiques au secteur.
+Tu mentionnes toujours le nom du secteur dans ta réponse.`
+
+  const contextPrompt = `Profil complet :
+
+🏢 ${profile.companyName || 'Entreprise'}
+📊 Secteur : ${profile.sector || 'Non spécifié'}
+👥 Taille : ${profile.companySize || 'TPE'} — ${profile.employeeCount || 1} pers
+📈 Stade : ${profile.stage || 'early'}
+🎯 Maturité digitale : ${profile.maturityScore || 'N/A'}/100
+📋 Priorités : ${(profile.priorities || []).join(', ') || 'Non définies'}
+⚠️ Points de douleur : ${(profile.painPoints || []).join(', ') || 'Aucun'}
+📣 Acquisition : ${(profile.customerAcquisition || []).join(', ') || 'N/A'}
+🔧 Outils : ${(profile.currentTools || []).join(', ') || 'Aucun'}
+🤖 Agents : ${(profile.recommendedAgents || []).join(', ')}
+
+${getSectorContext(profile)}
+
+Question : ${query}
+
+Réponds en utilisant le contexte sectoriel ET le profil. Sois ultra-spécifique.`
+
+  const messages: any[] = [
+    ...chatHistory.slice(-6).map(m => ({ role: m.role, content: m.content })),
+    { role: 'user', content: contextPrompt },
+  ]
+
+  const msg = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 500,
+    system: systemPrompt,
+    temperature: 0.6,
+    messages,
+  })
+
+  return (msg.content as any[]).find((b: any) => b.type === 'text')?.text || 'Analyse indisponible.'
+}
+
+// ============================================================
+// INSIGHTS PROACTIFS
+// ============================================================
+
+export async function generateInsights(profile: any): Promise<string[]> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || '' })
+
+  const prompt = `Génère 3 insights ACTIONABLES pour cette entreprise :
+🏢 ${profile.companyName} — Secteur : ${profile.sector}
+👥 ${profile.employeeCount || 1} pers — stade ${profile.stage}
+🎯 Maturité : ${profile.maturityScore}/100
+
+${getSectorContext(profile)}
+
+Format : UNIQUEMENT 3 phrases séparées par |. Chaque phrase doit mentionner le secteur.`
+
+  const msg = await anthropic.messages.create({
+    model: 'claude-haiku-4-5',
+    max_tokens: 300,
+    temperature: 0.7,
+    messages: [{ role: 'user', content: prompt }],
+  })
+
+  const text = (msg.content as any[]).find((b: any) => b.type === 'text')?.text || ''
+  return text.split('|').map((s: string) => s.trim()).filter(Boolean).slice(0, 3)
 }
