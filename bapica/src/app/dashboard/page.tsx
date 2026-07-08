@@ -101,6 +101,49 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* ROI + Plan d'action */}
+      {profile.roiEstimates.length > 0 && (
+        <div className="grid gap-6 md:grid-cols-2 mb-8">
+          {/* ROI */}
+          <div className="card-professional p-5">
+            <h3 className="font-semibold text-sm mb-4">💰 ROI estimé</h3>
+            <div className="space-y-3">
+              {profile.roiEstimates.slice(0, 3).map((r, i) => (
+                <div key={i} className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{r.area}</span>
+                  <span className="font-medium text-green-600">{r.costSaved}</span>
+                </div>
+              ))}
+              {profile.roiEstimates.length > 3 && (
+                <div className="pt-3 border-t border-border">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-semibold">{profile.roiEstimates[profile.roiEstimates.length - 1].area}</span>
+                    <span className="font-bold text-green-600">{profile.roiEstimates[profile.roiEstimates.length - 1].costSaved}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Priority Actions */}
+          <div className="card-professional p-5">
+            <h3 className="font-semibold text-sm mb-4">🎯 Actions prioritaires</h3>
+            <div className="space-y-2">
+              {profile.priorityActions.slice(0, 4).map((a, i) => (
+                <div key={i} className="flex items-center gap-3 text-xs">
+                  <span className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    a.timeframe === 'immediate' ? 'bg-red-500/10 text-red-500' :
+                    a.timeframe === '1-month' ? 'bg-amber-500/10 text-amber-500' :
+                    'bg-blue-500/10 text-blue-500'
+                  }`}>{i + 1}</span>
+                  <span className="text-muted-foreground">{a.action}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barre de progression configuration */}
       {!allDone && steps.length > 1 && (
         <div className="card-professional mb-8 p-5">
