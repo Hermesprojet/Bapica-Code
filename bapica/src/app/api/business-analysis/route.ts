@@ -57,10 +57,15 @@ Problèmes : ${(profile.riskFactors || []).map((r: any) => typeof r === 'string'
       messages: [{ role: 'user', content: userPrompt }],
     })
 
-    const text = msg.content.find((b: any) => b.type === 'text')?.text || ''
+    const text = (msg.content as any[]).find((b: any) => b.type === 'text')?.text || ''
     
     // Extraire le JSON
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    let jsonMatch = null
+    try {
+      jsonMatch = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1))
+    } catch {
+      // fallback: utiliser le texte brut
+    }
     if (!jsonMatch) {
       return NextResponse.json({ 
         strategicMemo: text.trim(),
@@ -71,7 +76,7 @@ Problèmes : ${(profile.riskFactors || []).map((r: any) => typeof r === 'string'
       }, { headers: corsHeaders() })
     }
 
-    const analysis = JSON.parse(jsonMatch[0])
+    const analysis = jsonMatch
     return NextResponse.json(analysis, { headers: corsHeaders() })
 
   } catch (error) {
