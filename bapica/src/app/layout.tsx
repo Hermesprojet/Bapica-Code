@@ -122,6 +122,15 @@ export default function RootLayout({
         <JsonLdScript data={getWebSiteSchema() as unknown as Record<string, unknown>} />
       </head>
       <body className={manrope.className}>
+        <script dangerouslySetInnerHTML={{ __html: `
+          // Force scroll to top on page load/refresh
+          if ('scrollRestoration' in history) {
+            history.scrollRestoration = 'manual';
+          }
+          window.addEventListener('beforeunload', () => {
+            window.scrollTo(0, 0);
+          });
+        `}} />
         <ToastProvider>
           {children}
           <CookieBanner />
