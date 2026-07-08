@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { getAgentById } from '@/lib/agents'
+import { buildFablePrompt, routeModel, type ModelTier } from '@/lib/fable-routing'
 
 // Route de démonstration publique (sans compte)
 // POST /api/demo-chat — Body: { agentId, message, history }
@@ -120,15 +121,26 @@ export async function POST(req: NextRequest) {
     }
 
     const agent = getAgentById(agentId || 'general')
-    const systemPrompt = buildSystemPrompt(agentId || 'general')
-    const model = agent?.model === 'claude-sonnet-4' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5'
-    const maxTokens = agent?.maxTokens ? Math.min(agent.maxTokens, 600) : 400
+    const tier = routeModel(agentId || 'general', message.length)
+    
+    // Appliquer les patterns Fable au prompt système
+    const fablePrompt = buildFablePrompt(buildSystemPrompt(agentId || 'general'), tier)
+    
+    // Sélectionner le modèle selon le tier
+    const modelMap: Record<ModelTier, string> = {
+      fable: 'claude-sonnet-4-6',
+      sonnet: 'claude-sonnet-4-6',
+      haiku: 'claude-haiku-4-5',
+      mini: 'claude-haiku-4-5',
+    }
+    const model = modelMap[tier]
+    const maxTokens = tier === 'mini' ? 250 : tier === 'haiku' ? 400 : 600
 
     const client = new Anthropic({ apiKey })
     const completion = await client.messages.create({
       model,
       max_tokens: maxTokens,
-      system: systemPrompt,
+      system: fablePrompt,
       messages: [
         ...cleanHistory,
         { role: 'user' as const, content: message.trim() },
