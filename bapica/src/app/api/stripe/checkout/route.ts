@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe, PLANS, type PlanKey } from '@/lib/stripe'
 
+const corsHeaders = () => ({
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+})
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders() })
+}
+
 // POST /api/stripe/checkout
 // Body: { plan: 'essential' | 'pro', userId, email }
 // Crée une session Stripe Checkout (abonnement) et renvoie l'URL de paiement.

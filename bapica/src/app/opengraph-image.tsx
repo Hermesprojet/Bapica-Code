@@ -152,7 +152,7 @@ export default function OpenGraphImage() {
             color: "#64748b",
           }}
         >
-          bapica.com · Essai gratuit 14 jours
+          bapica.com · Essai gratuit 15 jours
         </div>
       </div>
     ),

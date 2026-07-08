@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 export const metadata: Metadata = {
   title: "Contactez-nous — Parlez à un expert IA",
   description:
-    "Une question sur Bapica ou nos agents IA ? Contactez notre équipe. Nous répondons en moins de 24h. Essai gratuit 14 jours, sans engagement.",
+    "Une question sur Bapica ou nos agents IA ? Contactez notre équipe. Nous répondons en moins de 24h. Essai gratuit 15 jours, sans engagement.",
   keywords: [
     "contact Bapica",
     "contacter Bapica",

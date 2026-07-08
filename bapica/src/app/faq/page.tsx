@@ -8,7 +8,7 @@ import { getFAQSchema, JsonLdScript } from "@/lib/jsonld"
 export const metadata: Metadata = {
   title: "FAQ — Questions fréquentes sur nos agents IA",
   description:
-    "Toutes les réponses à vos questions sur Bapica : fonctionnement des agents IA, essai gratuit 14 jours, tarifs (49€ et 79€/mois), sécurité RGPD, langues supportées et plus.",
+    "Toutes les réponses à vos questions sur Bapica : fonctionnement des agents IA, essai gratuit 15 jours, tarifs (49€ et 79€/mois), sécurité RGPD, langues supportées et plus.",
   keywords: [
     "FAQ Bapica",
     "questions agents IA",

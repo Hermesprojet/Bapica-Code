@@ -112,7 +112,7 @@ export function getFAQSchema(): FAQSchema {
         name: "Comment fonctionne l'essai gratuit ?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "L'essai gratuit vous donne accès à tous les agents Bapica pendant 14 jours, sans engagement et sans carte bancaire. Vous pouvez tester toutes les fonctionnalités et découvrir les agents adaptés à votre activité.",
+          text: "L'essai gratuit vous donne accès à tous les agents Bapica pendant 15 jours, sans engagement et sans carte bancaire. Vous pouvez tester toutes les fonctionnalités et découvrir les agents adaptés à votre activité.",
         },
       },
       {
