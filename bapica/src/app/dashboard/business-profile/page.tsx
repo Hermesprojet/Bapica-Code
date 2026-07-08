@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { analyzeBusinessProfile, type BusinessProfile } from '@/lib/business-profile'
+import { generateProgressTracker, getMaturityLevel, getCumulativeImpact, type ProgressTracker } from '@/lib/progress-tracker'
 import { type OnboardingData } from '@/lib/personalization'
 import { DashboardSkeleton } from '@/components/ui/base'
 import { 
@@ -55,6 +56,10 @@ export default function BusinessProfilePage() {
 
   if (loading) return <DashboardSkeleton />
   if (!profile) return null
+
+  const tracker = generateProgressTracker(profile)
+  const maturity = getMaturityLevel(profile)
+  const impact = getCumulativeImpact(profile)
 
   const healthColor = aiAnalysis?.healthScore 
     ? aiAnalysis.healthScore >= 80 ? 'text-green-500' 
@@ -158,6 +163,100 @@ export default function BusinessProfilePage() {
           </div>
         </div>
       )}
+
+      {/* Progression & Maturité */}
+      <div className="grid gap-6 md:grid-cols-2 mb-8">
+        {/* Niveau de maturité */}
+        <div className="card-professional p-6">
+          <h3 className="font-semibold text-lg mb-4">🏆 Niveau de Maturité</h3>
+          <div className="flex items-center gap-4 mb-4">
+            <div className="text-5xl font-bold text-primary">{maturity.level}/5</div>
+            <div>
+              <div className="font-semibold text-lg">{maturity.label}</div>
+              <div className="text-sm text-muted-foreground">{maturity.description}</div>
+            </div>
+          </div>
+          <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-700"
+              style={{ width: `${(maturity.level / 5) * 100}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-2 text-[10px] text-muted-foreground">
+            <span>Nouveau</span>
+            <span>Débutant</span>
+            <span>Intermédiaire</span>
+            <span>Confirmé</span>
+            <span>Expert</span>
+          </div>
+        </div>
+
+        {/* Impact cumulé */}
+        <div className="card-professional p-6">
+          <h3 className="font-semibold text-lg mb-4">📈 Impact Cumulé Estimé</h3>
+          <div className="space-y-4">
+            <div>
+              <div className="text-3xl font-bold text-primary">{impact.hoursSavedPerMonth}h</div>
+              <div className="text-sm text-muted-foreground">heures économisées / mois</div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold text-green-600">{impact.revenuePotential}</div>
+              <div className="text-sm text-muted-foreground">potentiel de revenus</div>
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-purple-600">{impact.growthAcceleration}</div>
+              <div className="text-sm text-muted-foreground">accélération de croissance</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Timeline de progression */}
+      <div className="card-professional mb-8 p-6">
+        <h3 className="font-semibold text-lg mb-4">🗺️ Parcours de Progression</h3>
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-sm text-muted-foreground">
+            {tracker.completedMilestones}/{tracker.totalMilestones} étapes complétées
+          </span>
+          <span className="text-sm font-semibold text-primary">{tracker.overallProgress}%</span>
+        </div>
+        <div className="h-1.5 w-full bg-muted rounded-full mb-6">
+          <div 
+            className="h-full bg-gradient-to-r from-green-500 to-primary rounded-full transition-all duration-700"
+            style={{ width: `${tracker.overallProgress}%` }}
+          />
+        </div>
+        <div className="space-y-1">
+          {['onboarding', 'activation', 'growth', 'optimization'].map(stage => (
+            <div key={stage} className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className={`w-2 h-2 rounded-full ${
+                tracker.stage === stage ? 'bg-primary' :
+                ['onboarding'].includes(stage) && tracker.stage !== stage ? 'bg-green-400' :
+                'bg-muted'
+              }`} />
+              <span className="capitalize">{stage}</span>
+            </div>
+          ))}
+        </div>
+        {tracker.nextMilestone && (
+          <div className="mt-4 p-4 rounded-lg bg-primary/5 border border-primary/10">
+            <div className="flex items-center gap-2 mb-1">
+              <Zap className="h-4 w-4 text-primary" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-primary">Prochaine étape</span>
+            </div>
+            <p className="font-medium">{tracker.nextMilestone.title}</p>
+            <p className="text-sm text-muted-foreground mt-1">{tracker.nextMilestone.description}</p>
+          </div>
+        )}
+        {tracker.recentAchievements.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Récemment accompli</p>
+            {tracker.recentAchievements.map((a, i) => (
+              <p key={i} className="text-sm text-green-600">{a}</p>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Benchmarks sectoriels */}
       <div className="card-professional mb-8 p-6">
