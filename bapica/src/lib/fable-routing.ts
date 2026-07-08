@@ -87,33 +87,20 @@ interface RoutingRule {
 }
 
 export const ROUTING_MATRIX: RoutingRule[] = [
-  // Coordinateur — toujours Sonnet (qualité max)
-  { agentTypes: ['general'], taskComplexity: 'high', model: 'sonnet', estimatedCostPer1k: 0.018 },
-  { agentTypes: ['general'], taskComplexity: 'medium', model: 'sonnet', estimatedCostPer1k: 0.018 },
-  { agentTypes: ['general'], taskComplexity: 'low', model: 'sonnet', estimatedCostPer1k: 0.018 },
+  // Critiques — Sonnet (risque zéro)
+  { agentTypes: ['general', 'accounting', 'legal', 'analytics', 'scaling'], taskComplexity: 'high', model: 'sonnet', estimatedCostPer1k: 0.018 },
+  { agentTypes: ['general', 'accounting', 'legal', 'analytics', 'scaling'], taskComplexity: 'medium', model: 'sonnet', estimatedCostPer1k: 0.018 },
+  { agentTypes: ['general', 'accounting', 'legal', 'analytics', 'scaling'], taskComplexity: 'low', model: 'sonnet', estimatedCostPer1k: 0.018 },
   
-  // Analystes — Sonnet pour précision
-  { agentTypes: ['accounting', 'legal', 'analytics', 'scaling'], taskComplexity: 'high', model: 'sonnet', estimatedCostPer1k: 0.018 },
-  { agentTypes: ['accounting', 'legal', 'analytics', 'scaling'], taskComplexity: 'medium', model: 'sonnet', estimatedCostPer1k: 0.018 },
-  { agentTypes: ['accounting', 'legal', 'analytics', 'scaling'], taskComplexity: 'low', model: 'haiku', estimatedCostPer1k: 0.004 },
-  
-  // GPT-4o pour les spécialistes si clé OpenAI disponible (qualité > Haiku)
-  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'trends'], taskComplexity: 'high', model: 'gpt4o', estimatedCostPer1k: 0.012 },
-  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'trends'], taskComplexity: 'medium', model: 'haiku', estimatedCostPer1k: 0.004 },
-  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'trends'], taskComplexity: 'low', model: 'mini', estimatedCostPer1k: 0.0006 },
-  
-  // Demo chat — Mini (public, gratuit)
-  { agentTypes: ['demo'], taskComplexity: 'low', model: 'mini', estimatedCostPer1k: 0.0006 },
+  // Tous les autres — GPT-4o + Fable (qualité pro, 3x moins cher que Sonnet)
+  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'video', 'recruiter', 'trends', 'demo'], taskComplexity: 'high', model: 'gpt4o', estimatedCostPer1k: 0.012 },
+  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'video', 'recruiter', 'trends', 'demo'], taskComplexity: 'medium', model: 'gpt4o', estimatedCostPer1k: 0.012 },
+  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'video', 'recruiter', 'trends', 'demo'], taskComplexity: 'low', model: 'gpt4o', estimatedCostPer1k: 0.012 },
 ]
 
-export function routeModel(agentType: string, messageLength: number): ModelTier {
-  const complexity = messageLength > 200 ? 'high' : messageLength > 80 ? 'medium' : 'low'
-  
-  const rule = ROUTING_MATRIX.find(
-    r => r.agentTypes.includes(agentType) && r.taskComplexity === complexity
-  )
-  
-  return rule?.model || 'haiku'
+export function routeModel(agentType: string): ModelTier {
+  const rule = ROUTING_MATRIX.find(r => r.agentTypes.includes(agentType))
+  return rule?.model || 'gpt4o'
 }
 
 // ============================================================

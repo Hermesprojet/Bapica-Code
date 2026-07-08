@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
     }
 
     const agent = getAgentById(agentId || 'general')
-    const tier = routeModel(agentId || 'general', message.length)
+    const tier = routeModel(agentId || 'general')
     
     // Appliquer les patterns Fable au prompt système
     const fablePrompt = buildFablePrompt(buildSystemPrompt(agentId || 'general'), tier)
