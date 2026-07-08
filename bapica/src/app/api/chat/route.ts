@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { getAgentById, type AgentConfig } from '@/lib/agents'
 import { createClient } from '@supabase/supabase-js'
 import { sanitizeUserMessage, isValidAgentId } from '@/lib/security'
+import { buildClientMemory, buildMemoryContext, addToMemory, type ClientMemory, type ConversationSummary } from '@/lib/client-memory'
 
 // Helpers CORS
 function corsHeaders(origin: string | null) {
@@ -115,9 +116,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Agent introuvable' }, { status: 404, headers: corsHeaders(req.headers.get('origin')) })
     }
 
-    // TODO: Vérifier l'abonnement de l'utilisateur et le rate limiting
+    // Charger ou créer la mémoire client
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    
+    let clientMemory: ClientMemory
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', auth.user.id)
+        .single()
+      
+      const onboarding = profile?.onboarding_data || {}
+      const history = profile?.conversation_history || []
+      clientMemory = buildClientMemory(onboarding, history)
+    } catch {
+      clientMemory = buildClientMemory({}, [])
+    }
 
-    const response = await callClaude(agent, message, history ?? [])
+    // Injecter le contexte mémoire dans le system prompt
+    const memoryContext = buildMemoryContext(clientMemory)
+    const response = await callClaude(agent, safeMessage, history ?? [], memoryContext)
+
+    // Sauvegarder la conversation dans la mémoire
+    const summary: ConversationSummary = {
+      timestamp: new Date().toISOString(),
+      agentId: agent.id,
+      topic: safeMessage.slice(0, 80),
+      outcome: response.slice(0, 80),
+      keyPoints: [],
+    }
+    clientMemory = addToMemory(clientMemory, summary)
+    
+    // Persister dans Supabase
+    try {
+      await supabase
+        .from('profiles')
+        .update({ conversation_history: clientMemory.conversationHistory })
+        .eq('id', auth.user.id)
+    } catch {}
 
     return NextResponse.json({ response, agentId }, { headers: corsHeaders(req.headers.get('origin')) })
   } catch (error) {
@@ -142,7 +181,8 @@ export async function POST(req: NextRequest) {
 async function callClaude(
   agent: AgentConfig,
   message: string,
-  history: HistoryMessage[]
+  history: HistoryMessage[],
+  memoryContext: string = ''
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
 
@@ -169,7 +209,7 @@ async function callClaude(
     model: resolveModel(agent.model),
     max_tokens: agent.maxTokens,
     temperature: agent.temperature,
-    system: buildSystemPrompt(agent),
+    system: buildSystemPrompt(agent) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
     messages,
   })
 
