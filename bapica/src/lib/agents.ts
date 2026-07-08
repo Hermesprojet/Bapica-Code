@@ -221,6 +221,22 @@ const AGENTS: AgentConfig[] = [
     color: 'from-lime-500 to-lime-600',
     avatar: { from: '#84cc16', to: '#65a30d', skin: '#d99a6c', hair: 'curly', hairColor: '#2b2b2b', accessory: 'none' },
   },
+  {
+    id: 'scaling',
+    name: 'Agent Croissance & Scaling',
+    persona: 'Roxane',
+    description: 'Stratégie de croissance : diagnostic de scalabilité, optimisation des processus, levée de fonds, recrutement, expansion marché. Elle analyse votre business model, identifie les goulots d\'étranglement et vous donne un plan d\'action concret pour passer à l\'échelle supérieure.',
+    model: 'claude-sonnet-4',
+    temperature: 0.4,
+    maxTokens: 3000,
+    minPlan: 'pro',
+    icon: 'TrendingUp',
+    tools: ['stripe', 'google_analytics', 'hubspot', 'notion'],
+    teamRole: 'analyst',
+
+    color: 'from-purple-500 to-violet-600',
+    avatar: { from: '#8b5cf6', to: '#7c3aed', skin: '#f8d5b8', hair: 'long', hairColor: '#4a3526', accessory: 'glasses' },
+  },
 ]
 
 export function getAgentsForPlan(plan: PlanKey): AgentConfig[] {

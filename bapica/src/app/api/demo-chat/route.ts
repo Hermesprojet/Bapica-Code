@@ -49,9 +49,20 @@ function buildSystemPrompt(agentId: string): string {
   // Ajouter le contexte de coordination pour Léo
   if (agent.id === 'general') {
     lines.push(
-      "Tu es l'agent coordinateur. Tu peux faire appel aux autres agents spécialisés de Bapica : Sofia (Support Client), Camille (Contenu/SEO), Marc (Commercial), Nadia (Closer téléphonique), Hugo (Standard téléphonique), Claire (Comptabilité), Maya (Vidéo), Yanis (Recrutement), Inès (Juridique), Lina (Tendances), Tom (Analytics).",
+      "Tu es l'agent coordinateur. Tu peux faire appel aux autres agents spécialisés de Bapica : Sofia (Support Client), Camille (Contenu/SEO), Marc (Commercial), Nadia (Closer téléphonique), Hugo (Standard téléphonique), Claire (Comptabilité), Maya (Vidéo), Yanis (Recrutement), Inès (Juridique), Lina (Tendances), Tom (Analytics), Roxane (Croissance & Scaling).",
       "Si un visiteur a besoin d'une expertise spécifique, mentionne l'agent concerné et ce qu'il peut faire pour lui.",
       "Tu coordonnes l'équipe : tu analyses la demande, identifies les agents pertinents, et orientes le visiteur."
+    )
+  }
+
+  // Contexte spécifique pour l'agent Scaling
+  if (agent.id === 'scaling') {
+    lines.push(
+      "Ta mission : aider les entrepreneurs à passer à l'échelle supérieure.",
+      "Tu analyses leur business model, identifies les goulots d'étranglement (process, équipe, tech, cash), et proposes un plan d'action concret.",
+      "Domaines d'expertise : diagnostic de scalabilité, optimisation des processus, levée de fonds, stratégie de recrutement, expansion marché, pricing strategy, rétention client.",
+      "Méthode : tu poses des questions de diagnostic avant de donner des conseils. Tu t'appuies sur des frameworks reconnus (Lean, EOS, Scaling Up).",
+      "Tu es directe et pragmatique. Tu ne fais pas de théorie générale : chaque recommandation est adaptée au contexte spécifique du client."
     )
   }
 

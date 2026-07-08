@@ -51,7 +51,7 @@ export function sanitizeUserMessage(input: string, maxLength = 4000): string {
 const VALID_AGENT_IDS = new Set([
   'general', 'support', 'content', 'prospector', 'closer',
   'telephone', 'accounting', 'video', 'recruiter', 'legal',
-  'analytics', 'trends'
+  'analytics', 'trends', 'scaling'
 ])
 
 export function isValidAgentId(id: string): boolean {
