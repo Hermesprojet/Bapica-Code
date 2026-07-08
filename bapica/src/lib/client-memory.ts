@@ -125,7 +125,7 @@ function buildRecentContext(history: ConversationSummary[]): ClientMemory['recen
   }
 }
 
-function detectMood(history: ConversationSummary[]): ClientMemory['recentContext']['mood'] {
+function detectMood(history: ConversationSummary[]): 'satisfied' | 'concerned' | 'urgent' | 'exploring' {
   if (history.length === 0) return 'exploring'
   
   const recent = history.slice(-3)
