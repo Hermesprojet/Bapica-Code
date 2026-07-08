@@ -19,6 +19,9 @@ import {
   FileText,
   Search,
   HeadphonesIcon,
+  TrendingUp,
+  Calculator,
+  Video,
   Bot,
 } from 'lucide-react'
 import { getAgentById, type PlanKey, type AgentConfig } from '@/lib/agents'
