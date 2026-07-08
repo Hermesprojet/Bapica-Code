@@ -80,7 +80,7 @@ export default function DashboardPage() {
               </div>
               <ul className="space-y-1">
                 {profile.riskFactors.slice(0, 3).map((r, i) => (
-                  <li key={i} className="text-xs text-muted-foreground/80">• {r}</li>
+                  <li key={i} className="text-xs text-muted-foreground/80">• {typeof r === 'string' ? r : r.risk}</li>
                 ))}
               </ul>
             </div>
