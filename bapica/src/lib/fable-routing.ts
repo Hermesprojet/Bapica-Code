@@ -233,7 +233,7 @@ export async function callWithFableRouting(
   message: string,
   clientContext?: string
 ): Promise<{ response: string; model: string; cost: number }> {
-  const tier = routeModel(agentId, message.length)
+  const tier = routeModel(agentId)
   const basePrompt = `Tu es un agent Bapica spécialisé (agent: ${agentId}).`
   
   // Essayer OpenAI d'abord si GPT-4o-mini (moins cher)
