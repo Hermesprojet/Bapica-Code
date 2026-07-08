@@ -101,10 +101,10 @@ Réponds en utilisant le contexte sectoriel ET le profil. Sois ultra-spécifique
   ]
 
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 500,
+    model: 'claude-haiku-4-5',
+    max_tokens: 400,
     system: systemPrompt,
-    temperature: 0.6,
+    temperature: 0.5,
     messages,
   })
 
