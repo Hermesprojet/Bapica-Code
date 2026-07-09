@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bapica — Vidéo de présentation</title>
+<style>
+  :root {
+    --bg: #0d0d1a;
+    --fg: #f5f5f7;
+    --muted: #a1a1aa;
+    --accent: #0082e6;
+    --teal: #2dd4bf;
+    --border: rgba(255,255,255,0.08);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  .player {
+    width: 100vw; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+
+  .scene {
+    position: absolute;
+    width: 100%; height: 100%;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 60px;
+  }
+  .scene.active { display: flex; }
+
+  .scene h1 {
+    font-size: clamp(2rem, 6vw, 5rem);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1.1;
+    max-width: 900px;
+  }
+  .scene h2 {
+    font-size: clamp(1.5rem, 4vw, 3rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    max-width: 800px;
+  }
+  .scene p {
+    font-size: clamp(1rem, 2vw, 1.3rem);
+    color: var(--muted);
+    max-width: 600px;
+    margin-top: 16px;
+    line-height: 1.6;
+  }
+
+  .highlight {
+    background: linear-gradient(135deg, var(--teal), var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .label {
+    font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.15em;
+    color: var(--teal); margin-bottom: 20px;
+  }
+
+  .logo {
+    position: absolute; top: 32px; left: 40px;
+    font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em;
+    z-index: 10;
+  }
+
+  /* Animations */
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(30px); }
+    to { opacity:1; transform:translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity:0; }
+    to { opacity:1; }
+  }
+  @keyframes scaleIn {
+    from { opacity:0; transform:scale(0.8); }
+    to { opacity:1; transform:scale(1); }
+  }
+  @keyframes slideRight {
+    from { opacity:0; transform:translateX(-30px); }
+    to { opacity:1; transform:translateX(0); }
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; }
+    50% { opacity:0.6; }
+  }
+  @keyframes countUp {
+    from { opacity:0; filter:blur(10px); }
+    to { opacity:1; filter:blur(0); }
+  }
+
+  .anim-fade-up { animation: fadeUp 0.7s ease-out both; }
+  .anim-fade-in { animation: fadeIn 0.6s ease-out both; }
+  .anim-scale { animation: scaleIn 0.5s ease-out both; }
+  .anim-slide { animation: slideRight 0.5s ease-out both; }
+  .anim-pulse { animation: pulse 2s ease-in-out infinite; }
+  .anim-count { animation: countUp 1s ease-out both; }
+
+  .delay-1 { animation-delay: 0.15s; }
+  .delay-2 { animation-delay: 0.3s; }
+  .delay-3 { animation-delay: 0.5s; }
+  .delay-4 { animation-delay: 0.7s; }
+
+  /* Scene elements */
+  .stat-row { display:flex; gap:48px; margin-top:40px; }
+  .stat { text-align:center; }
+  .stat .num { font-size:3.5rem; font-weight:700; letter-spacing:-0.04em; }
+  .stat .lbl { font-size:0.9rem; color:var(--muted); margin-top:4px; }
+
+  .card-row { display:flex; gap:20px; margin-top:40px; width:100%; max-width:1000px; }
+  .card {
+    flex:1; background:rgba(255,255,255,0.03);
+    border:1px solid var(--border); border-radius:16px;
+    padding:28px; text-align:left;
+  }
+  .card h3 { font-size:1.1rem; margin-bottom:8px; }
+  .card p { font-size:0.9rem; margin-top:0; }
+
+  .agent-grid {
+    display:grid; grid-template-columns:repeat(3,1fr); gap:16px;
+    margin-top:36px; width:100%; max-width:800px;
+  }
+  .agent-item {
+    display:flex; align-items:center; gap:12px;
+    padding:12px; background:rgba(255,255,255,0.02);
+    border:1px solid var(--border); border-radius:12px;
+  }
+  .agent-avatar {
+    width:36px; height:36px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:14px; color:white; flex-shrink:0;
+  }
+  .agent-info { text-align:left; }
+  .agent-info strong { font-size:14px; }
+  .agent-info span { font-size:11px; color:var(--muted); display:block; }
+
+  .pricing-row { display:flex; gap:20px; margin-top:40px; }
+  .price-card {
+    background:rgba(255,255,255,0.02); border:1px solid var(--border);
+    border-radius:20px; padding:40px; text-align:center; width:260px;
+  }
+  .price-card.featured {
+    border-color:rgba(0,130,230,0.3);
+    background:linear-gradient(180deg, rgba(0,130,230,0.06), rgba(255,255,255,0.02));
+    position:relative;
+  }
+  .price-card.featured::before {
+    content:'Recommandé'; position:absolute; top:-13px; left:50%; transform:translateX(-50%);
+    background:var(--accent); color:white; padding:3px 14px; border-radius:100px;
+    font-size:11px; font-weight:600;
+  }
+  .price-card .amount { font-size:2.5rem; font-weight:700; }
+  .price-card .period { font-size:0.9rem; color:var(--muted); }
+
+  /* Controls */
+  .controls {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px; z-index: 100;
+  }
+  .controls button {
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--fg); padding: 6px 14px;
+    cursor: pointer; font-size: 14px; transition: all 0.2s;
+  }
+  .controls button:hover { background: rgba(255,255,255,0.1); }
+  .dot { width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,0.15); border:none; cursor:pointer; transition:all 0.2s; }
+  .dot.active { background:var(--accent); width:16px; border-radius:3px; }
+
+  .timer {
+    position: fixed; bottom: 60px; left: 24px;
+    font-size: 11px; color: var(--muted); z-index: 100;
+  }
+
+  .progress {
+    position: fixed; top: 0; left: 0; height: 2px;
+    background: var(--accent); z-index: 200;
+    transition: width 0.3s linear;
+  }
+
+  /* Glow effects */
+  .glow {
+    position: absolute; border-radius: 50%;
+    filter: blur(80px); opacity: 0.08; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<span class="logo">Bapica</span>
+<span class="timer" id="timer">0:00</span>
+
+<div class="player" id="player">
+
+<!-- SCENE 1: Title -->
+<div class="scene active" data-scene="0">
+  <div class="glow" style="width:500px;height:500px;background:var(--teal);top:-100px;right:-100px;opacity:0.1;"></div>
+  <span class="label anim-fade-up">Présentation</span>
+  <h1 class="anim-fade-up delay-1">Des agents IA qui <span class="highlight">comprennent votre business</span></h1>
+  <p class="anim-fade-up delay-2">13 agents spécialisés. Une plateforme. Zéro configuration.</p>
+</div>
+
+<!-- SCENE 2: Problem -->
+<div class="scene" data-scene="1">
+  <span class="label anim-fade-up">Le constat</span>
+  <h2 class="anim-fade-up delay-1"><span class="highlight">32 heures</span> par semaine perdues</h2>
+  <div class="card-row">
+    <div class="card anim-scale delay-2"><h3>📞 Appels manqués</h3><p>Chaque appel sans réponse = un client perdu.</p></div>
+    <div class="card anim-scale delay-3"><h3>📧 Admin chronophage</h3><p>Factures, relances, devis — des heures chaque jour.</p></div>
+    <div class="card anim-scale delay-4"><h3>🔍 Prospection lente</h3><p>Trouver des leads sans outil prend 70% du temps.</p></div>
+  </div>
+</div>
+
+<!-- SCENE 3: Solution -->
+<div class="scene" data-scene="2">
+  <span class="label anim-fade-up">La solution</span>
+  <h2 class="anim-fade-up delay-1">Une équipe d'agents IA qui <span class="highlight">travaille pour vous</span></h2>
+  <div class="agent-grid">
+    <div class="agent-item anim-slide delay-2"><div class="agent-avatar" style="background:linear-gradient(135deg,#3b82f6,#6366f1);">L</div><div class="agent-info"><strong>Léo</strong><span>Coordinateur</span></div></div>
+    <div class="agent-item anim-slide delay-2"><div class="agent-avatar" style="background:linear-gradient(135deg,#10b981,#059669);">S</div><div class="agent-info"><strong>Sofia</strong><span>Support Client</span></div></div>
+    <div class="agent-item anim-slide delay-2"><div class="agent-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706);">M</div><div class="agent-info"><strong>Marc</strong><span>Commercial</span></div></div>
+    <div class="agent-item anim-slide delay-3"><div class="agent-avatar" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed);">R</div><div class="agent-info"><strong>Roxane</strong><span>Croissance</span></div></div>
+    <div class="agent-item anim-slide delay-3"><div class="agent-avatar" style="background:linear-gradient(135deg,#ec4899,#db2777);">C</div><div class="agent-info"><strong>Camille</strong><span>Contenu & SEO</span></div></div>
+    <div class="agent-item anim-slide delay-3"><div class="agent-avatar" style="background:linear-gradient(135deg,#06b6d4,#0891b2);">H</div><div class="agent-info"><strong>Hugo</strong><span>Téléphone</span></div></div>
+  </div>
+  <p class="anim-fade-up delay-4" style="margin-top:24px;">Et 7 autres agents — compta, juridique, vidéo, recrutement, analytics, tendances.</p>
+</div>
+
+<!-- SCENE 4: Intelligence -->
+<div class="scene" data-scene="3">
+  <span class="label anim-fade-up">Intelligence</span>
+  <h2 class="anim-fade-up delay-1">Pas de configuration. <span class="highlight">L'IA comprend</span> automatiquement.</h2>
+  <div class="stat-row">
+    <div class="stat anim-count delay-2"><div class="num highlight">5 min</div><div class="lbl">pour analyser votre business</div></div>
+    <div class="stat anim-count delay-3"><div class="num highlight">72/100</div><div class="lbl">score de maturité calculé</div></div>
+    <div class="stat anim-count delay-4"><div class="num highlight">3</div><div class="lbl">agents recommandés automatiquement</div></div>
+  </div>
+</div>
+
+<!-- SCENE 5: ROI -->
+<div class="scene" data-scene="4">
+  <span class="label anim-fade-up">Résultats</span>
+  <h2 class="anim-fade-up delay-1">Mesurable. <span class="highlight">Immédiat.</span></h2>
+  <div class="stat-row">
+    <div class="stat anim-count delay-2"><div class="num" style="color:var(--teal);">3×</div><div class="lbl">plus de leads qualifiés</div></div>
+    <div class="stat anim-count delay-3"><div class="num" style="color:var(--teal);">32h</div><div class="lbl">économisées / semaine</div></div>
+    <div class="stat anim-count delay-4"><div class="num" style="color:var(--teal);">−80%</div><div class="lbl">de coûts vs un employé</div></div>
+  </div>
+</div>
+
+<!-- SCENE 6: Why Bapica -->
+<div class="scene" data-scene="5">
+  <span class="label anim-fade-up">Pourquoi Bapica</span>
+  <h2 class="anim-fade-up delay-1"><span class="highlight">13 agents</span> coordonnés. Une seule plateforme.</h2>
+  <div class="card-row">
+    <div class="card anim-scale delay-2"><h3>🧠 IA Supérieure</h3><p>Claude Sonnet vs GPT-4o-mini — la qualité fait la différence.</p></div>
+    <div class="card anim-scale delay-3"><h3>📊 Business Intelligence</h3><p>Seule plateforme avec analyse stratégique et ROI en temps réel.</p></div>
+    <div class="card anim-scale delay-4"><h3>🤝 Coordination native</h3><p>Léo orchestre l'équipe. Les concurrents ont des agents isolés.</p></div>
+  </div>
+</div>
+
+<!-- SCENE 7: Pricing -->
+<div class="scene" data-scene="6">
+  <span class="label anim-fade-up">Tarifs</span>
+  <h2 class="anim-fade-up delay-1">Simple. <span class="highlight">Transparent.</span></h2>
+  <div class="pricing-row">
+    <div class="price-card anim-scale delay-2">
+      <div style="color:var(--muted);font-size:0.9rem;margin-bottom:12px;">Essentiel</div>
+      <div class="amount">49€<span class="period">/mois</span></div>
+      <div style="color:var(--muted);font-size:0.85rem;margin-top:16px;">8 agents IA<br>Messages illimités</div>
+    </div>
+    <div class="price-card featured anim-scale delay-3">
+      <div style="color:var(--muted);font-size:0.9rem;margin-bottom:12px;">Pro</div>
+      <div class="amount">79€<span class="period">/mois</span></div>
+      <div style="color:var(--muted);font-size:0.85rem;margin-top:16px;">13 agents IA<br>Appels 0,20€/min</div>
+    </div>
+  </div>
+</div>
+
+<!-- SCENE 8: CTA -->
+<div class="scene" data-scene="7">
+  <div class="glow" style="width:600px;height:600px;background:var(--teal);top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.1;"></div>
+  <span class="label anim-fade-up">C'est parti</span>
+  <h1 class="anim-fade-up delay-1">Prêt à automatiser <span class="highlight">votre croissance</span> ?</h1>
+  <p class="anim-fade-up delay-2">15 jours d'essai gratuit. Sans CB. 5 minutes de configuration.</p>
+  <div style="margin-top:36px;" class="anim-fade-up delay-3">
+    <span style="display:inline-flex;align-items:center;gap:8px;padding:16px 36px;background:var(--accent);color:white;border-radius:12px;font-size:1.2rem;font-weight:600;box-shadow:0 4px 24px rgba(0,130,230,0.3);">
+      bapica.com →
+    </span>
+  </div>
+</div>
+
+<!-- Controls -->
+<div class="controls">
+  <button onclick="prev()">←</button>
+  <div id="dots"></div>
+  <button onclick="next()">→</button>
+  <button onclick="toggleAuto()" id="autobtn" style="font-size:12px;">▶ Auto</button>
+</div>
+
+</div>
+
+<script>
+  const SCENES = 8;
+  const SCENE_DURATION = 7000; // 7s per scene
+  let current = 0;
+  let autoPlaying = true;
+  let timer = null;
+  let startTime = Date.now();
+  let elapsed = 0;
+
+  const scenes = document.querySelectorAll('.scene');
+  const progress = document.getElementById('progress');
+  const dotsContainer = document.getElementById('dots');
+
+  // Create dots
+  for (let i = 0; i < SCENES; i++) {
+    const d = document.createElement('button');
+    d.className = 'dot' + (i === 0 ? ' active' : '');
+    d.onclick = () => goTo(i);
+    dotsContainer.appendChild(d);
+  }
+  const dots = document.querySelectorAll('.dot');
+
+  function showScene(n) {
+    scenes[current].classList.remove('active');
+    dots[current].classList.remove('active');
+    current = (n + SCENES) % SCENES;
+    scenes[current].classList.add('active');
+    dots[current].classList.add('active');
+    progress.style.width = ((current + 1) / SCENES * 100) + '%';
+    updateTimer();
+    resetAnimations(current);
+    startTime = Date.now();
+    elapsed = 0;
+  }
+
+  function resetAnimations(sceneIdx) {
+    const scene = scenes[sceneIdx];
+    const animated = scene.querySelectorAll('[class*="anim-"]');
+    animated.forEach(el => {
+      el.style.animation = 'none';
+      el.offsetHeight;
+      el.style.animation = '';
+    });
+  }
+
+  function next() { showScene(current + 1); }
+  function prev() { showScene(current - 1); }
+  function goTo(n) { showScene(n); }
+
+  function updateTimer() {
+    const total = current * SCENE_DURATION + elapsed;
+    const min = Math.floor(total / 60000);
+    const sec = Math.floor((total % 60000) / 1000);
+    document.getElementById('timer').textContent = `${min}:${sec.toString().padStart(2,'0')}`;
+  }
+
+  function toggleAuto() {
+    autoPlaying = !autoPlaying;
+    document.getElementById('autobtn').textContent = autoPlaying ? '⏸ Pause' : '▶ Auto';
+    if (autoPlaying) {
+      startTime = Date.now();
+      elapsed = 0;
+      scheduleNext();
+    } else {
+      clearTimeout(timer);
+      elapsed += Date.now() - startTime;
+      updateTimer();
+    }
+  }
+
+  function scheduleNext() {
+    if (!autoPlaying) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      showScene(current + 1);
+      scheduleNext();
+    }, SCENE_DURATION);
+  }
+
+  // Keyboard
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+    if (e.key === 'p') toggleAuto();
+  });
+
+  // Touch
+  let touchX = 0;
+  document.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchX;
+    if (dx < -50) next();
+    if (dx > 50) prev();
+  });
+
+  // Timer tick
+  setInterval(() => {
+    if (autoPlaying) {
+      elapsed = Date.now() - startTime;
+      updateTimer();
+    }
+  }, 1000);
+
+  // Start
+  scheduleNext();
+  document.getElementById('autobtn').textContent = '⏸ Pause';
+</script>
+
+</body>
+</html>
