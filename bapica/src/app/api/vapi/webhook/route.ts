@@ -7,7 +7,7 @@ export async function POST(req: Request) {
 
     // Vapi webhook handler
     if (process.env.NODE_ENV === 'development') {
-      console.log(`Vapi event: ${event}`, { call_id, status })
+      if (process.env.NODE_ENV === 'development') console.log(`Vapi event: ${event}`, { call_id, status })
     }
 
     // TODO: Sauvegarder dans Supabase
