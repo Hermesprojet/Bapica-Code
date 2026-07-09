@@ -22,7 +22,7 @@ const sceneData = [
   },
   {
     label: 'La solution',
-    title: <>Une équipe d'agents IA qui <span className="bg-gradient-to-r from-[#2dd4bf] to-[#0082e6] bg-clip-text text-transparent">travaille pour vous</span></>,
+    title: <>Une équipe d&apos;agents IA qui <span className="bg-gradient-to-r from-[#2dd4bf] to-[#0082e6] bg-clip-text text-transparent">travaille pour vous</span></>,
     agents: [
       { letter: 'L', name: 'Léo', role: 'Coordinateur', gradient: 'from-blue-500 to-indigo-600' },
       { letter: 'S', name: 'Sofia', role: 'Support Client', gradient: 'from-emerald-500 to-green-600' },
