@@ -28,7 +28,7 @@ const plans = [
     desc: "Pour PME qui veulent accélérer leur croissance",
     popular: true,
     features: [
-      "12 agents IA (tous inclus)",
+      "13 agents IA (tous inclus)",
       "Agent Téléphonique IA",
       "Créateur Vidéo IA (HeyGen)",
       "Agent Juridique & Comptable",
