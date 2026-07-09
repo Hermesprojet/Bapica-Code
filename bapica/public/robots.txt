@@ -1,0 +1,9 @@
+User-Agent: *
+Allow: /
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /onboarding/
+
+Sitemap: https://bapica.com/sitemap.xml
+
+# Crawl-delay: 10
