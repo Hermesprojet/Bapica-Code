@@ -127,14 +127,18 @@ export async function POST(req: NextRequest) {
     const fablePrompt = buildFablePrompt(buildSystemPrompt(agentId || 'general'), tier)
     
     // Sélectionner le modèle selon le tier
+    // GPT-4o → fallback Sonnet si pas de clé OpenAI
+    const hasOpenAI = !!process.env.OPENAI_API_KEY
+    const effectiveTier = tier === 'gpt4o' && !hasOpenAI ? 'sonnet' : tier
+    
     const modelMap: Record<ModelTier, string> = {
       fable: 'claude-sonnet-4-6',
       sonnet: 'claude-sonnet-4-6',
-      gpt4o: 'gpt-4o',
+      gpt4o: hasOpenAI ? 'gpt-4o' : 'claude-sonnet-4-6',
       haiku: 'claude-haiku-4-5',
       mini: 'claude-haiku-4-5',
     }
-    const model = modelMap[tier]
+    const model = modelMap[effectiveTier]
     const maxTokens = tier === 'mini' ? 250 : tier === 'haiku' ? 400 : 600
 
     const client = new Anthropic({ apiKey })
