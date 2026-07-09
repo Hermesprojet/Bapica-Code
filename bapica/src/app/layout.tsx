@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Manrope } from "next/font/google"
+import { Inter } from "next/font/google"
 import "./globals.css"
 import { ToastProvider } from "@/components/ui/toast"
 import { CookieBanner } from "@/components/ui/cookie-banner"
@@ -9,7 +9,7 @@ import {
   JsonLdScript,
 } from "@/lib/jsonld"
 
-const manrope = Manrope({ subsets: ["latin"] })
+const inter = Inter({ subsets: ["latin"] })
 
 const baseUrl = "https://bapica.com"
 
@@ -121,7 +121,7 @@ export default function RootLayout({
         <JsonLdScript data={getOrganizationSchema() as unknown as Record<string, unknown>} />
         <JsonLdScript data={getWebSiteSchema() as unknown as Record<string, unknown>} />
       </head>
-      <body className={manrope.className}>
+      <body className={inter.className}>
         <script dangerouslySetInnerHTML={{ __html: `
           // Force scroll to top on page load/refresh
           if ('scrollRestoration' in history) {
