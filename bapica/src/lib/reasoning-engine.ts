@@ -1053,8 +1053,6 @@ export class AdvancedReasoning {
     const scores: Record<string, number[]> = {}
     const totals: Record<string, number> = {}
 
-    const isSmall = (this.profile.employeeCount || 0) <= 3
-    
     options.forEach(opt => {
       if (opt.toLowerCase().includes('automatis') || opt.toLowerCase().includes('ia') || opt.toLowerCase().includes('agent')) {
         scores[opt] = [90, 85, 90, 80, 95, 95]
