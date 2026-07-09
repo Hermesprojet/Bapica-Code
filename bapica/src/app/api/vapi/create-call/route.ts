@@ -86,7 +86,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // TODO: Sauvegarder l'appel dans Supabase (table à ajouter au schéma)
+    // Sauvegarder l'appel dans Supabase
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+      if (supabaseUrl && supabaseKey) {
+        const { createClient } = await import("@supabase/supabase-js")
+        const supabase = createClient(supabaseUrl, supabaseKey)
+        await supabase.from("vapi_calls").insert({ call_id: data.id, phone_number: phoneNumber, assistant_id: VAPI_ASSISTANT_ID, created_at: new Date().toISOString(), user_id: user?.id })
+      }
+    } catch (e) {
+      console.error("Vapi call save failed:", e)
+    }
     return NextResponse.json({ success: true, callId: data.id })
   } catch (error) {
     console.error('Vapi call error:', error)

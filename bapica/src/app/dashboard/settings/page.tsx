@@ -30,10 +30,11 @@ export default function SettingsPage() {
     )
   }
 
-  const handleSave = () => {
-    // TODO: Sauvegarder dans Supabase
+  const handleSave = async () => {
+    // Save to localStorage + notify
+    localStorage.setItem("bapica-api-key", apiKey)
     setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    setTimeout(() => setSaved(false), 3000)
   }
 
   return (

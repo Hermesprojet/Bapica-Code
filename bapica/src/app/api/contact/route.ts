@@ -48,9 +48,17 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // TODO: Send email notification (Resend/SendGrid) or store in Supabase
-    if (process.env.NODE_ENV === "development") {
-      console.log(`[Contact] ${name} <${email}>: ${message.slice(0, 100)}...`)
+    // Store contact in Supabase for follow-up
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+      if (supabaseUrl && supabaseKey) {
+        const { createClient } = await import("@supabase/supabase-js")
+        const supabase = createClient(supabaseUrl, supabaseKey)
+        await supabase.from("contacts").insert({ name, email, message, created_at: new Date().toISOString() })
+      }
+    } catch (e) {
+      console.error("Contact save failed:", e)
     }
 
     return NextResponse.json({ success: true })

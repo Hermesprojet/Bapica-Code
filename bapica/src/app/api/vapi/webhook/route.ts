@@ -10,8 +10,18 @@ export async function POST(req: Request) {
       if (process.env.NODE_ENV === 'development') console.log(`Vapi event: ${event}`, { call_id, status })
     }
 
-    // TODO: Sauvegarder dans Supabase
-    // const { getSupabaseAdmin } = await import("@/lib/supabase-admin")
+    // Sauvegarder dans Supabase
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+      if (supabaseUrl && supabaseKey) {
+        const { createClient } = await import("@supabase/supabase-js")
+        const supabase = createClient(supabaseUrl, supabaseKey)
+        await supabase.from("vapi_events").insert({ event, call_id, status, payload: body, received_at: new Date().toISOString() })
+      }
+    } catch (e) {
+      console.error("Vapi event save failed:", e)
+    }
     // await getSupabaseAdmin().from("calls").insert({ call_id, status, transcript: body.transcript })
 
     return NextResponse.json({ received: true })
