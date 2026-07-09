@@ -3,14 +3,14 @@ import Link from "next/link"
 
 export const metadata: Metadata = {
   title: "Blog Bapica — IA et automatisation pour PME",
-  description: "Conseils, comparatifs et guides sur l'IA et l'automatisation pour les PME et indépendants.",
+  description: "Conseils, comparatifs et guides sur l&apos;IA et l&apos;automatisation pour les PME et indépendants.",
 }
 
 const articles = [
   {
     title: "Limova vs Bapica — Quel agent IA choisir en 2026 ?",
     slug: "limova-vs-bapica",
-    excerpt: "Comparatif complet entre les deux principales plateformes françaises d'agents IA.",
+    excerpt: "Comparatif complet entre les deux principales plateformes françaises d&apos;agents IA.",
     date: "8 juillet 2026",
   },
 ]
@@ -21,7 +21,7 @@ export default function BlogPage() {
       <div className="mx-auto max-w-3xl px-4">
         <h1 className="mb-8 text-4xl font-bold">Blog Bapica</h1>
         <p className="mb-10 text-muted-foreground">
-          Conseils, comparatifs et guides sur l'IA et l'automatisation pour dirigeants de PME.
+          Conseils, comparatifs et guides sur l&apos;IA et l&apos;automatisation pour dirigeants de PME.
         </p>
         <div className="space-y-8">
           {articles.map((article) => (
