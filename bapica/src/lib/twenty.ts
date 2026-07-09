@@ -17,7 +17,9 @@ export interface TwentyCredentials {
 export async function getTwentyCredentials(
   userId: string
 ): Promise<TwentyCredentials | null> {
-  const supabase = createClient() as SupabaseClient
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+  const supabase = createClient(supabaseUrl, supabaseKey) as SupabaseClient
   const { data, error } = await supabase
     .from("integrations")
     .select("api_url, api_key")
