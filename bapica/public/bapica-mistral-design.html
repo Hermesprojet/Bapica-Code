@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bapica Design System — Mistral-inspired</title>
+<style>
+  :root {
+    --bg-primary: #0d0d1a;
+    --bg-secondary: #13132b;
+    --bg-card: rgba(255,255,255,0.03);
+    --fg-primary: #f5f5f7;
+    --fg-secondary: #a1a1aa;
+    --fg-muted: #71717a;
+    --accent-blue: #0082e6;
+    --accent-teal: #2dd4bf;
+    --accent-orange: #f97316;
+    --border: rgba(255,255,255,0.06);
+    --border-hover: rgba(255,255,255,0.12);
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --shadow-glow: 0 0 60px rgba(0,130,230,0.08);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Inter', 'Manrope', system-ui, sans-serif;
+    background: var(--bg-primary);
+    color: var(--fg-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+
+  /* Sections */
+  .section { padding: 120px 0; }
+  .section-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--accent-teal);
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 3rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin-bottom: 24px;
+  }
+  .section-desc {
+    font-size: 1.15rem;
+    color: var(--fg-secondary);
+    max-width: 560px;
+    line-height: 1.7;
+  }
+
+  /* Grids */
+  .grid { display: grid; gap: 24px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  /* Cards */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+  }
+  .card-icon {
+    width: 44px; height: 44px;
+    border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 20px;
+    font-size: 20px;
+  }
+  .card h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+  .card p { font-size: 0.9rem; color: var(--fg-secondary); line-height: 1.6; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 24px; border-radius: var(--radius);
+    font-size: 14px; font-weight: 600; text-decoration: none;
+    transition: all 0.2s; cursor: pointer; border: none;
+  }
+  .btn-primary {
+    background: var(--fg-primary); color: var(--bg-primary);
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-secondary {
+    background: transparent; color: var(--fg-primary);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--border-hover); background: var(--bg-card); }
+  .btn-accent {
+    background: var(--accent-blue); color: white;
+    box-shadow: 0 2px 20px rgba(0,130,230,0.25);
+  }
+  .btn-accent:hover { background: #0073cc; }
+
+  /* Badges */
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 14px; border-radius: 100px;
+    font-size: 12px; font-weight: 600;
+  }
+  .badge-outline { border: 1px solid var(--border); }
+  .badge-teal { background: rgba(45,212,191,0.1); color: var(--accent-teal); border: 1px solid rgba(45,212,191,0.2); }
+
+  /* Tags */
+  .tag {
+    display: inline-flex; align-items: center;
+    padding: 4px 10px; border-radius: 6px;
+    font-size: 12px; font-weight: 500;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    color: var(--fg-secondary);
+  }
+
+  /* Stats */
+  .stat-value {
+    font-size: 3.5rem; font-weight: 700;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, var(--fg-primary), var(--accent-teal));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat-label { font-size: 0.9rem; color: var(--fg-secondary); margin-top: 4px; }
+
+  /* Pricing */
+  .pricing-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: 40px;
+    position: relative;
+  }
+  .pricing-card.featured {
+    border-color: rgba(0,130,230,0.3);
+    background: linear-gradient(180deg, rgba(0,130,230,0.06), var(--bg-card));
+  }
+  .pricing-card.featured::before {
+    content: 'Recommandé';
+    position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+    background: var(--accent-blue); color: white;
+    padding: 4px 16px; border-radius: 100px;
+    font-size: 12px; font-weight: 600;
+  }
+
+  /* Hero glow */
+  .hero-glow {
+    position: absolute;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    pointer-events: none;
+  }
+
+  /* Animation */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate { animation: fadeUp 0.6s ease-out; }
+
+  /* Divider */
+  .divider { height: 1px; background: var(--border); margin: 0; }
+
+  /* Footer */
+  .footer { padding: 48px 0; border-top: 1px solid var(--border); }
+  .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; }
+  .footer h4 { font-size: 13px; font-weight: 600; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--fg-muted); }
+  .footer a { display: block; color: var(--fg-secondary); text-decoration: none; font-size: 14px; margin-bottom: 8px; }
+  .footer a:hover { color: var(--fg-primary); }
+
+  @media (max-width: 768px) {
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    .section-title { font-size: 2rem; }
+    .footer-grid { grid-template-columns: 1fr 1fr; }
+    .container { padding: 0 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<section style="position:relative; min-height:100vh; display:flex; align-items:center; overflow:hidden;">
+  <div class="hero-glow" style="top:-100px; right:-100px; background:var(--accent-blue);"></div>
+  <div class="hero-glow" style="bottom:-200px; left:-100px; background:var(--accent-teal); opacity:0.08;"></div>
+
+  <div class="container" style="position:relative; z-index:1;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:32px;">
+      <span class="badge badge-teal">✦ Nouveau</span>
+      <span class="tag">13 agents IA</span>
+    </div>
+
+    <h1 style="font-size:clamp(2.5rem, 6vw, 5rem); font-weight:700; letter-spacing:-0.04em; line-height:1.05; max-width:800px;">
+      Des agents IA qui<br>
+      <span style="background:linear-gradient(135deg, var(--accent-teal), var(--accent-blue)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">
+        comprennent votre business
+      </span>
+    </h1>
+
+    <p style="font-size:1.2rem; color:var(--fg-secondary); max-width:500px; margin-top:24px; line-height:1.7;">
+      Bapica analyse votre entreprise en profondeur et déploie une équipe d'agents IA sur mesure. Pas de configuration compliquée — l'intelligence est automatique.
+    </p>
+
+    <div style="display:flex; gap:12px; margin-top:40px;">
+      <a href="/signup" class="btn btn-accent">Commencer gratuitement →</a>
+      <a href="#design" class="btn btn-secondary">Voir le design system</a>
+    </div>
+
+    <div style="display:flex; gap:32px; margin-top:48px;">
+      <div class="stat-value" style="font-size:2rem;">13</div>
+      <div style="font-size:0.85rem; color:var(--fg-muted);">agents IA<br>spécialisés</div>
+      <div style="width:1px; background:var(--border);"></div>
+      <div class="stat-value" style="font-size:2rem;">15j</div>
+      <div style="font-size:0.85rem; color:var(--fg-muted);">essai gratuit<br>sans CB</div>
+      <div style="width:1px; background:var(--border);"></div>
+      <div class="stat-value" style="font-size:2rem;">49€</div>
+      <div style="font-size:0.85rem; color:var(--fg-muted);">à partir de<br>par mois</div>
+    </div>
+  </div>
+
+  <!-- Bottom fade -->
+  <div style="position:absolute; bottom:0; left:0; right:0; height:200px; background:linear-gradient(transparent, var(--bg-primary)); pointer-events:none;"></div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ DESIGN SYSTEM ============ -->
+<section id="design">
+  <div class="container">
+    <div class="section-label">Design System</div>
+    <h2 class="section-title">Palette & Typographie</h2>
+    <p class="section-desc">Inspiré de l'esthétique européenne — sombre, précis, minimal.</p>
+
+    <!-- Colors -->
+    <h3 style="font-size:1rem; margin-top:64px; margin-bottom:20px; color:var(--fg-muted);">🎨 Couleurs</h3>
+    <div class="grid grid-4" style="margin-bottom:64px;">
+      <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius); padding:20px; height:100px; display:flex; align-items:flex-end; font-size:12px;"><div>#0D0D1A<br><span style="color:var(--fg-muted);">Background</span></div></div>
+      <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius); padding:20px; height:100px; display:flex; align-items:flex-end; font-size:12px;"><div>#13132B<br><span style="color:var(--fg-muted);">Surface</span></div></div>
+      <div style="background:var(--accent-blue); border-radius:var(--radius); padding:20px; height:100px; display:flex; align-items:flex-end; font-size:12px;"><div>#0082E6<br><span style="color:rgba(255,255,255,0.6);">Accent Blue</span></div></div>
+      <div style="background:var(--accent-teal); border-radius:var(--radius); padding:20px; height:100px; display:flex; align-items:flex-end; font-size:12px; color:var(--bg-primary);"><div>#2DD4BF<br><span style="color:rgba(0,0,0,0.5);">Accent Teal</span></div></div>
+    </div>
+
+    <!-- Typography -->
+    <h3 style="font-size:1rem; margin-bottom:20px; color:var(--fg-muted);">🔤 Typographie — Inter</h3>
+    <div style="display:flex; flex-direction:column; gap:32px; margin-bottom:64px;">
+      <div>
+        <span class="tag" style="margin-bottom:8px; display:inline-block;">H1 • 5rem / 700</span>
+        <div style="font-size:4rem; font-weight:700; letter-spacing:-0.04em;">Bapica</div>
+      </div>
+      <div>
+        <span class="tag" style="margin-bottom:8px; display:inline-block;">H2 • 3rem / 700</span>
+        <div style="font-size:2.5rem; font-weight:700; letter-spacing:-0.03em;">Des agents qui comprennent</div>
+      </div>
+      <div>
+        <span class="tag" style="margin-bottom:8px; display:inline-block;">Body • 1rem / 400</span>
+        <div style="font-size:1rem; color:var(--fg-secondary); max-width:500px; line-height:1.7;">
+          Bapica n'est pas un simple chatbot. C'est une plateforme qui analyse votre entreprise en profondeur, comprend vos enjeux, et déploie une équipe d'agents IA sur mesure.
+        </div>
+      </div>
+    </div>
+
+    <!-- Components -->
+    <h3 style="font-size:1rem; margin-bottom:20px; color:var(--fg-muted);">🧩 Composants</h3>
+    <div class="grid grid-3" style="margin-bottom:64px;">
+      <div class="card">
+        <div class="card-icon" style="background:rgba(0,130,230,0.1);">🧠</div>
+        <h3>Intelligence adaptative</h3>
+        <p>Chaque agent s'adapte à votre secteur, taille et objectifs. Pas de configuration manuelle.</p>
+        <div style="margin-top:16px;"><span class="tag">Claude Sonnet</span></div>
+      </div>
+      <div class="card">
+        <div class="card-icon" style="background:rgba(45,212,191,0.1);">📊</div>
+        <h3>Dashboard analytics</h3>
+        <p>Score de maturité, benchmarks sectoriels, ROI en temps réel. Pilotez votre croissance.</p>
+        <div style="margin-top:16px;"><span class="tag">Business Intelligence</span></div>
+      </div>
+      <div class="card">
+        <div class="card-icon" style="background:rgba(249,115,22,0.1);">⚡</div>
+        <h3>13 agents coordonnés</h3>
+        <p>Léo orchestre l'équipe. Support, prospection, contenu, compta — tout est connecté.</p>
+        <div style="margin-top:16px;"><span class="tag">Multi-agent</span></div>
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <h3 style="font-size:1rem; margin-bottom:20px; color:var(--fg-muted);">🔘 Boutons</h3>
+    <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:64px;">
+      <button class="btn btn-accent">Commencer gratuitement →</button>
+      <button class="btn btn-primary">Essai 15 jours</button>
+      <button class="btn btn-secondary">En savoir plus</button>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ PRICING ============ -->
+<section>
+  <div class="container">
+    <div class="section-label">Tarifs</div>
+    <h2 class="section-title">Simple, transparent</h2>
+    <p class="section-desc">Deux plans. Tout inclus. 15 jours d'essai gratuit.</p>
+
+    <div class="grid grid-2" style="max-width:700px; margin-top:48px;">
+      <div class="pricing-card">
+        <h3 style="font-size:1rem; color:var(--fg-secondary); margin-bottom:16px;">Essentiel</h3>
+        <div style="font-size:2.5rem; font-weight:700;">49€<span style="font-size:1rem; color:var(--fg-muted);">/mois</span></div>
+        <div style="margin-top:24px; display:flex; flex-direction:column; gap:12px;">
+          <span style="font-size:0.9rem; color:var(--fg-secondary);">8 agents IA</span>
+          <span style="font-size:0.9rem; color:var(--fg-secondary);">Messages illimités</span>
+          <span style="font-size:0.9rem; color:var(--fg-secondary);">Dashboard de pilotage</span>
+        </div>
+        <a href="/signup" class="btn btn-secondary" style="margin-top:32px; width:100%; text-align:center; justify-content:center;">Essai gratuit →</a>
+      </div>
+      <div class="pricing-card featured">
+        <h3 style="font-size:1rem; color:var(--fg-secondary); margin-bottom:16px;">Pro</h3>
+        <div style="font-size:2.5rem; font-weight:700;">79€<span style="font-size:1rem; color:var(--fg-muted);">/mois</span></div>
+        <div style="margin-top:24px; display:flex; flex-direction:column; gap:12px;">
+          <span style="font-size:0.9rem; color:var(--fg-secondary);">13 agents IA</span>
+          <span style="font-size:0.9rem; color:var(--fg-secondary);">Appels 0,20€/min</span>
+          <span style="font-size:0.9rem; color:var(--fg-secondary);">Business Intelligence</span>
+          <span style="font-size:0.9rem; color:var(--fg-secondary);">Onboarding personnalisé</span>
+        </div>
+        <a href="/signup" class="btn btn-accent" style="margin-top:32px; width:100%; text-align:center; justify-content:center;">Essai gratuit →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div style="font-size:1.2rem; font-weight:700; margin-bottom:12px;">Bapica</div>
+        <p style="font-size:13px; color:var(--fg-muted); max-width:250px;">Plateforme multi-agents IA pour PME et indépendants. Design system v2.0 — Mistral-inspired.</p>
+      </div>
+      <div>
+        <h4>Agents</h4>
+        <a href="#">Léo — Coordinateur</a>
+        <a href="#">Sofia — Support</a>
+        <a href="#">Marc — Commercial</a>
+        <a href="#">Roxane — Scaling</a>
+      </div>
+      <div>
+        <h4>Entreprise</h4>
+        <a href="#">À propos</a>
+        <a href="#">Blog</a>
+        <a href="#">Contact</a>
+      </div>
+      <div>
+        <h4>Légal</h4>
+        <a href="#">CGV</a>
+        <a href="#">Confidentialité</a>
+        <a href="#">RGPD</a>
+      </div>
+    </div>
+    <div style="margin-top:48px; padding-top:24px; border-top:1px solid var(--border); display:flex; justify-content:space-between; color:var(--fg-muted); font-size:13px;">
+      <span>© 2026 Bapica</span>
+      <span>Design inspiré par l'esthétique européenne</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

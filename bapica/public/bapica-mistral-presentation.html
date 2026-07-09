@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bapica — Présentation</title>
+<style>
+  :root {
+    --bg: #0d0d1a;
+    --fg: #f5f5f7;
+    --muted: #a1a1aa;
+    --accent: #0082e6;
+    --teal: #2dd4bf;
+    --border: rgba(255,255,255,0.08);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+
+  .deck { width: 1920px; height: 1080px; position: relative; overflow: hidden; transform-origin: top left; }
+  .slide { width:100%; height:100%; display:none; position:absolute; top:0; left:0; align-items:center; padding: 0 180px; }
+  .slide.active { display:flex; }
+
+  .slide-left { flex:1; }
+  .slide-right { flex:1; display:flex; align-items:center; justify-content:center; }
+
+  .label { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.15em; color: var(--teal); margin-bottom: 20px; }
+  .slide-title { font-size: 3.5rem; font-weight: 700; letter-spacing: -0.04em; line-height: 1.1; }
+  .slide-subtitle { font-size: 1.2rem; color: var(--muted); margin-top: 20px; line-height: 1.6; max-width: 650px; }
+  .slide-number { position:absolute; bottom:40px; right:60px; font-size:13px; color:var(--muted); }
+
+  .logo { position:absolute; top:48px; left:60px; font-size:1.3rem; font-weight:700; letter-spacing:-0.02em; }
+
+  .highlight { background:linear-gradient(135deg, var(--teal), var(--accent)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+
+  .stat { text-align:center; }
+  .stat-val { font-size:4.5rem; font-weight:700; letter-spacing:-0.04em; line-height:1; }
+  .stat-label { font-size:0.9rem; color:var(--muted); margin-top:8px; }
+
+  .card { background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:20px; padding:36px; }
+  .card h3 { font-size:1.2rem; margin-bottom:8px; }
+  .card p { font-size:0.95rem; color:var(--muted); line-height:1.6; }
+
+  .agent-item { display:flex; align-items:center; gap:16px; padding:14px 0; border-bottom:1px solid var(--border); }
+  .agent-avatar { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; color:white; }
+
+  .price-card { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:24px; padding:48px; text-align:center; }
+  .price-card.featured { border-color:rgba(0,130,230,0.3); background:linear-gradient(180deg, rgba(0,130,230,0.06), rgba(255,255,255,0.02)); position:relative; }
+  .price-card.featured::before { content:'Recommandé'; position:absolute; top:-13px; left:50%; transform:translateX(-50%); background:var(--accent); color:white; padding:4px 16px; border-radius:100px; font-size:12px; font-weight:600; }
+
+  .btn { display:inline-flex; align-items:center; gap:8px; padding:14px 28px; border-radius:12px; font-size:15px; font-weight:600; text-decoration:none; transition:all 0.2s; }
+  .btn-white { background:white; color:var(--bg); }
+  .btn-white:hover { opacity:0.9; }
+  .btn-outline { border:1px solid var(--border); color:var(--fg); }
+  .btn-outline:hover { border-color:rgba(255,255,255,0.2); }
+  .btn-accent { background:var(--accent); color:white; }
+  .btn-accent:hover { background:#0073cc; }
+
+  .nav { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); display:flex; gap:8px; align-items:center; z-index:100; }
+  .nav-dot { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.15); border:none; cursor:pointer; transition:all 0.2s; }
+  .nav-dot.active { background:var(--accent); width:24px; border-radius:4px; }
+  .nav-arrow { background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:8px; color:var(--fg); padding:6px 12px; cursor:pointer; font-size:14px; }
+
+  .glow { position:absolute; border-radius:50%; filter:blur(100px); opacity:0.1; pointer-events:none; }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+<!-- ===== SLIDE 1: Title ===== -->
+<div class="slide active" data-slide="0" style="flex-direction:column; justify-content:center; text-align:center;">
+  <span class="logo">Bapica</span>
+  <div class="glow" style="width:500px;height:500px;background:var(--teal);top:-100px;right:-100px;"></div>
+  <div class="glow" style="width:400px;height:400px;background:var(--accent);bottom:-100px;left:-100px;"></div>
+  <h1 class="slide-title" style="font-size:5rem; text-align:center;">Des agents IA qui <span class="highlight">comprennent votre business</span></h1>
+  <p class="slide-subtitle" style="text-align:center;">13 agents spécialisés, orchestrés par l'IA. Analyse, automatisation, croissance.</p>
+  <div style="margin-top:48px; display:flex; gap:16px;">
+    <span class="btn btn-accent">bapica.com →</span>
+  </div>
+  <span class="slide-number">1 / 8</span>
+</div>
+
+<!-- ===== SLIDE 2: Problem ===== -->
+<div class="slide" data-slide="1" style="flex-direction:column; justify-content:center;">
+  <span class="logo">Bapica</span>
+  <div class="label">Le constat</div>
+  <h2 class="slide-title" style="font-size:3rem;">32 heures par semaine perdues sur des tâches répétitives</h2>
+  <div style="display:flex; gap:24px; margin-top:60px; width:100%;">
+    <div class="card" style="flex:1;"><h3>📞 Appels manqués</h3><p>Chaque appel sans réponse = une opportunité perdue. 24/7 devient indispensable.</p></div>
+    <div class="card" style="flex:1;"><h3>📧 Tâches administratives</h3><p>Factures, relances, devis — des heures consommées chaque jour.</p></div>
+    <div class="card" style="flex:1;"><h3>🔍 Prospection manuelle</h3><p>Trouver et qualifier des leads sans outil prend 70% du temps commercial.</p></div>
+  </div>
+  <span class="slide-number">2 / 8</span>
+</div>
+
+<!-- ===== SLIDE 3: Solution ===== -->
+<div class="slide" data-slide="2" style="flex-direction:column; justify-content:center;">
+  <span class="logo">Bapica</span>
+  <div class="label">La solution</div>
+  <h2 class="slide-title" style="font-size:3rem;">Une équipe d'agents IA qui travaille pour vous</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:48px; width:100%; max-width:900px;">
+    <div class="agent-item"><div class="agent-avatar" style="background:linear-gradient(135deg,#3b82f6,#6366f1);">L</div><div><strong>Léo</strong><br><span style="font-size:13px;color:var(--muted);">Coordinateur</span></div></div>
+    <div class="agent-item"><div class="agent-avatar" style="background:linear-gradient(135deg,#10b981,#059669);">S</div><div><strong>Sofia</strong><br><span style="font-size:13px;color:var(--muted);">Support Client</span></div></div>
+    <div class="agent-item"><div class="agent-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706);">M</div><div><strong>Marc</strong><br><span style="font-size:13px;color:var(--muted);">Commercial</span></div></div>
+    <div class="agent-item"><div class="agent-avatar" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed);">R</div><div><strong>Roxane</strong><br><span style="font-size:13px;color:var(--muted);">Croissance</span></div></div>
+    <div class="agent-item"><div class="agent-avatar" style="background:linear-gradient(135deg,#ec4899,#db2777);">C</div><div><strong>Camille</strong><br><span style="font-size:13px;color:var(--muted);">Contenu & SEO</span></div></div>
+    <div class="agent-item"><div class="agent-avatar" style="background:linear-gradient(135deg,#06b6d4,#0891b2);">H</div><div><strong>Hugo</strong><br><span style="font-size:13px;color:var(--muted);">Standard téléphonique</span></div></div>
+  </div>
+  <span class="slide-number">3 / 8</span>
+</div>
+
+<!-- ===== SLIDE 4: Intelligence ===== -->
+<div class="slide" data-slide="3">
+  <span class="logo">Bapica</span>
+  <div class="slide-left">
+    <div class="label">Intelligence adaptative</div>
+    <h2 class="slide-title">L'IA qui analyse votre business d'abord</h2>
+    <p class="slide-subtitle">En 5 minutes, Bapica analyse votre secteur, votre taille, vos objectifs. Score de maturité, benchmarks, risques identifiés — puis déploie les agents adaptés.</p>
+    <div style="display:flex; gap:32px; margin-top:40px;">
+      <div class="stat"><div class="stat-val" style="font-size:2.5rem;color:var(--teal);">72/100</div><div class="stat-label">Score de maturité</div></div>
+      <div class="stat"><div class="stat-val" style="font-size:2.5rem;color:var(--teal);">3</div><div class="stat-label">agents recommandés</div></div>
+      <div class="stat"><div class="stat-val" style="font-size:2.5rem;color:var(--teal);">850€</div><div class="stat-label">ROI estimé/mois</div></div>
+    </div>
+  </div>
+  <div class="slide-right">
+    <div style="background:var(--bg-card, rgba(255,255,255,0.03)); border:1px solid var(--border); border-radius:20px; padding:36px; width:400px;">
+      <div style="font-size:13px; color:var(--muted); margin-bottom:16px;">Bapica Intelligence Engine</div>
+      <div style="display:flex; flex-direction:column; gap:12px; font-size:14px;">
+        <div style="color:var(--teal);">✓ Analyse du secteur</div>
+        <div style="color:var(--teal);">✓ Benchmarks chargés</div>
+        <div style="color:var(--muted);">◌ Calcul du ROI...</div>
+        <div style="color:var(--muted);">◌ Agents recommandés</div>
+      </div>
+      <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border);">
+        <div style="color:var(--accent);">Diagnostic prêt</div>
+      </div>
+    </div>
+  </div>
+  <span class="slide-number">4 / 8</span>
+</div>
+
+<!-- ===== SLIDE 5: ROI ===== -->
+<div class="slide" data-slide="4" style="flex-direction:column; justify-content:center;">
+  <span class="logo">Bapica</span>
+  <div class="label">Résultats</div>
+  <h2 class="slide-title" style="font-size:3rem;">Mesurable. Immédiat.</h2>
+  <div style="display:flex; gap:48px; margin-top:80px; width:100%; max-width:1200px; justify-content:center;">
+    <div class="stat"><div class="stat-val"><span class="highlight">3×</span></div><div class="stat-label">plus de leads qualifiés</div></div>
+    <div class="stat"><div class="stat-val"><span class="highlight">32h</span></div><div class="stat-label">économisées / semaine</div></div>
+    <div class="stat"><div class="stat-val"><span class="highlight">−80%</span></div><div class="stat-label">de coûts vs un employé</div></div>
+    <div class="stat"><div class="stat-val"><span class="highlight">+55%</span></div><div class="stat-label">de taux de réponse</div></div>
+  </div>
+  <span class="slide-number">5 / 8</span>
+</div>
+
+<!-- ===== SLIDE 6: Why Bapica ===== -->
+<div class="slide" data-slide="5">
+  <span class="logo">Bapica</span>
+  <div class="slide-left">
+    <div class="label">Pourquoi Bapica</div>
+    <h2 class="slide-title">Ce qui fait la différence</h2>
+    <div style="display:flex; flex-direction:column; gap:16px; margin-top:36px;">
+      <div class="card"><h3>🧠 IA Claude Sonnet</h3><p>Qualité supérieure aux GPT-4o-mini des concurrents.</p></div>
+      <div class="card"><h3>📊 Business Intelligence</h3><p>Seule plateforme avec analyse stratégique et ROI.</p></div>
+      <div class="card"><h3>🤝 Coordination native</h3><p>Léo orchestre 13 agents. Les concurrents ont des agents isolés.</p></div>
+    </div>
+  </div>
+  <div class="slide-right">
+    <div style="font-size:6rem; font-weight:700; text-align:center;"><span class="highlight">13</span></div>
+    <div style="text-align:center; color:var(--muted);">agents spécialisés<br>une seule plateforme</div>
+  </div>
+  <span class="slide-number">6 / 8</span>
+</div>
+
+<!-- ===== SLIDE 7: Pricing ===== -->
+<div class="slide" data-slide="6" style="flex-direction:column; justify-content:center;">
+  <span class="logo">Bapica</span>
+  <div class="label">Tarifs</div>
+  <h2 class="slide-title" style="font-size:3rem;">Simple, transparent</h2>
+  <div style="display:flex; gap:24px; margin-top:60px; max-width:800px; width:100%;">
+    <div class="price-card" style="flex:1;">
+      <h3 style="color:var(--muted); font-size:1rem;">Essentiel</h3>
+      <div style="font-size:3rem; font-weight:700; margin:16px 0;">49€<span style="font-size:1rem;color:var(--muted);">/mois</span></div>
+      <p style="color:var(--muted); font-size:0.9rem;">8 agents IA<br>Messages illimités<br>15 jours d'essai</p>
+    </div>
+    <div class="price-card featured" style="flex:1;">
+      <h3 style="color:var(--muted); font-size:1rem;">Pro</h3>
+      <div style="font-size:3rem; font-weight:700; margin:16px 0;">79€<span style="font-size:1rem;color:var(--muted);">/mois</span></div>
+      <p style="color:var(--muted); font-size:0.9rem;">13 agents IA<br>Appels 0,20€/min<br>15 jours d'essai</p>
+    </div>
+  </div>
+  <span class="slide-number">7 / 8</span>
+</div>
+
+<!-- ===== SLIDE 8: CTA ===== -->
+<div class="slide" data-slide="7" style="flex-direction:column; justify-content:center; text-align:center;">
+  <span class="logo">Bapica</span>
+  <div class="glow" style="width:600px;height:600px;background:var(--teal);top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.08;"></div>
+  <h1 class="slide-title" style="font-size:5rem;">Prêt ?</h1>
+  <p class="slide-subtitle" style="text-align:center;">15 jours d'essai gratuit. Sans CB. 5 minutes de configuration.</p>
+  <div style="margin-top:48px;">
+    <span class="btn btn-accent" style="font-size:1.2rem; padding:18px 48px;">bapica.com →</span>
+  </div>
+  <span class="slide-number">8 / 8</span>
+</div>
+
+<!-- Navigation -->
+<div class="nav">
+  <button class="nav-arrow" onclick="prevSlide()">←</button>
+  <button class="nav-dot active" onclick="goSlide(0)"></button>
+  <button class="nav-dot" onclick="goSlide(1)"></button>
+  <button class="nav-dot" onclick="goSlide(2)"></button>
+  <button class="nav-dot" onclick="goSlide(3)"></button>
+  <button class="nav-dot" onclick="goSlide(4)"></button>
+  <button class="nav-dot" onclick="goSlide(5)"></button>
+  <button class="nav-dot" onclick="goSlide(6)"></button>
+  <button class="nav-dot" onclick="goSlide(7)"></button>
+  <button class="nav-arrow" onclick="nextSlide()">→</button>
+</div>
+</div>
+
+<script>
+  let current = 0;
+  const slides = document.querySelectorAll('.slide');
+  const dots = document.querySelectorAll('.nav-dot');
+  function showSlide(n) {
+    slides[current].classList.remove('active');
+    dots[current].classList.remove('active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    dots[current].classList.add('active');
+  }
+  function nextSlide() { showSlide(current + 1); }
+  function prevSlide() { showSlide(current - 1); }
+  function goSlide(n) { showSlide(n); }
+  function scale() {
+    const deck = document.getElementById('deck');
+    const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    deck.style.transform = `scale(${s})`;
+    document.body.style.width = (1920 * s) + 'px';
+    document.body.style.height = (1080 * s) + 'px';
+  }
+  scale();
+  window.addEventListener('resize', scale);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+    if (e.key === 'ArrowLeft') prevSlide();
+  });
+  let touchX = 0;
+  document.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    if (e.changedTouches[0].clientX - touchX < -50) nextSlide();
+    if (e.changedTouches[0].clientX - touchX > 50) prevSlide();
+  });
+</script>
+</body>
+</html>
