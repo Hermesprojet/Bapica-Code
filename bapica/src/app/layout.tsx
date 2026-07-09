@@ -116,7 +116,7 @@ export default function RootLayout({
       <head>
         {/* PWA */}
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#061126" />
+        <meta name="theme-color" content="#0d0d1a" />
         {/* JSON-LD Structured Data */}
         <JsonLdScript data={getOrganizationSchema() as unknown as Record<string, unknown>} />
         <JsonLdScript data={getWebSiteSchema() as unknown as Record<string, unknown>} />
