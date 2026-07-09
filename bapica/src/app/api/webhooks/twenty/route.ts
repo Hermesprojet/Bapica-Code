@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase"
+import { createClient } from "@supabase/supabase-js"
 
 interface TwentyWebhookPayload {
   eventName: string
@@ -20,7 +20,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  const supabase = createClient() as any
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+  const supabase = createClient(supabaseUrl, supabaseKey)
 
   await supabase.from("crm_events").insert({
     event_name: payload.eventName,

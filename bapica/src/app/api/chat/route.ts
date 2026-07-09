@@ -104,12 +104,12 @@ export async function POST(req: NextRequest) {
 
     if (!agentId || !message) {
       return NextResponse.json(
-        { error: 'agentId et message requis' },
+        { error: 'agent.id et message requis' },
         { status: 400, headers: corsHeaders(req.headers.get('origin')) }
       )
     }
 
-    // Valider l'agentId (liste blanche)
+    // Valider l'agent.id (liste blanche)
     if (!isValidAgentId(agentId)) {
       return NextResponse.json({ error: 'Agent invalide' }, { status: 400, headers: corsHeaders(req.headers.get('origin')) })
     }
@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
         .eq('id', auth.user.id)
     } catch {}
 
-    return NextResponse.json({ response, agentId }, { headers: corsHeaders(req.headers.get('origin')) })
+    return NextResponse.json({ response, agentId: agent.id }, { headers: corsHeaders(req.headers.get('origin')) })
   } catch (error) {
     console.error('Chat API error:', error)
     if (error instanceof Anthropic.APIError) {
@@ -212,9 +212,9 @@ async function callClaude(
   ]
 
   // Ajouter les tools CRM si l'agent a accès
-  const agentForTools = getAgentById(agentId || 'general')
+  const agentForTools = agent
   const tools = (agentForTools?.id === 'prospector' || agentForTools?.id === 'closer' || agentForTools?.id === 'general')
-    ? twentyTools as any[]
+    ? twentyTools as unknown as any[]
     : undefined
 
   const completion = await client.messages.create({

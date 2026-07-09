@@ -6,7 +6,7 @@
  *   TWENTY_API_KEY   clé générée dans Twenty > Settings > API & Webhooks
  */
 
-import { createClient } from "@/lib/supabase"
+import { createClient } from "@supabase/supabase-js"
 import { type SupabaseClient } from "@supabase/supabase-js"
 
 export interface TwentyCredentials {
