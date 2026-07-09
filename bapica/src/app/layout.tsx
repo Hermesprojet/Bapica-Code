@@ -100,10 +100,8 @@ export const metadata: Metadata = {
     ],
   },
 
-  // Google Search Console — remplacer par le vrai code Google
-  verification: {
-    google: "REMOVED_PLACEHOLDER_GET_CODE_FROM_SEARCH_CONSOLE",
-  },
+  // Google Search Console — supprimer ce bloc et ajouter le vrai code
+  // quand il sera disponible. En attendant, pas de balise de vérification.
 
   category: "technology",
 }
