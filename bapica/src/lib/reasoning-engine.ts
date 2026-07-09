@@ -17,6 +17,16 @@
  * 16. Second-order — conséquences des conséquences
  * 17. Rasoir d'Occam — l'explication la plus simple
  * 18. Minimisation des regrets — que regretterez-vous dans 5 ans ?
+ * 
+ * NOUVEAU v4 — Sagesse appliquée :
+ * 19. Questionnement socratique — creuser les hypothèses par questions successives
+ * 20. Modèles mentaux — appliquer des frameworks de pensée (cercle de compétence, carte vs territoire...)
+ * 21. Matrice de décision — critères pondérés, scoring objectif
+ * 22. Coût d'opportunité — que sacrifiez-vous en faisant ce choix ?
+ * 23. Marge de sécurité — quel buffer pour absorber l'inattendu ?
+ * 24. Antifragilité — ce choix rend-il l'entreprise plus forte face au chaos ?
+ * 25. Analyse des incitations — qu'est-ce qui motive vraiment chaque acteur ?
+ * 26. Réversibilité — peut-on revenir en arrière si on se trompe ?
  */
 
 import type { BusinessProfile } from './business-profile'
@@ -941,6 +951,293 @@ export class AdvancedReasoning {
         'Avoir libéré du temps pour la stratégie plutôt que l\'opérationnel',
       ],
       framework: 'Imaginez-vous dans 5 ans, en train de regarder en arrière. Quelle décision prise AUJOURD\'HUI vous remplira de fierté ? Quelle inaction vous remplira de regret ? Faites aujourd\'hui ce que votre "vous" de 2031 vous remerciera d\'avoir fait.',
+    }
+  }
+
+  /**
+   * QUESTIONNEMENT SOCRATIQUE
+   * Creuser 5 niveaux de "pourquoi" pour trouver la racine
+   */
+  socratic(problem: string): { questions: { level: number; question: string; typicalAnswer: string }[]; rootCause: string } {
+    const sector = this.profile.sector || 'services'
+    const questions = []
+
+    if (problem.includes('temps') || problem.includes('surchargé')) {
+      questions.push(
+        { level: 1, question: 'Pourquoi êtes-vous surchargé ?', typicalAnswer: 'Parce que j\'ai trop de choses à faire' },
+        { level: 2, question: 'Pourquoi avez-vous trop de choses à faire ?', typicalAnswer: 'Parce que je fais tout moi-même' },
+        { level: 3, question: 'Pourquoi faites-vous tout vous-même ?', typicalAnswer: 'Parce que je n\'ai personne à qui déléguer / les outils ne sont pas en place' },
+        { level: 4, question: 'Pourquoi n\'avez-vous pas mis en place des systèmes de délégation ?', typicalAnswer: 'Parce que je n\'ai jamais pris le temps de le faire' },
+        { level: 5, question: 'Pourquoi n\'avez-vous jamais pris le temps ?', typicalAnswer: 'Parce que... je suis trop occupé à faire les choses moi-même. C\'est un cercle vicieux.' },
+      )
+    } else {
+      questions.push(
+        { level: 1, question: `Pourquoi ce problème persiste-t-il ?`, typicalAnswer: 'Parce que les solutions évidentes n\'ont pas été appliquées' },
+        { level: 2, question: 'Pourquoi les solutions n\'ont pas été appliquées ?', typicalAnswer: 'Manque de temps ou de priorité' },
+        { level: 3, question: 'Pourquoi n\'est-ce pas une priorité ?', typicalAnswer: 'L\'urgence du quotidien prend le dessus' },
+        { level: 4, question: 'Pourquoi l\'urgence du quotidien prend le dessus ?', typicalAnswer: 'Parce qu\'il n\'y a pas de système pour filtrer et prioriser' },
+        { level: 5, question: 'Et pourquoi n\'y a-t-il pas de système ?', typicalAnswer: 'C\'est le problème originel — on soigne les symptômes, pas la cause.' },
+      )
+    }
+
+    return {
+      questions,
+      rootCause: 'La cause racine est presque toujours : absence de système. On confond "être occupé" avec "être productif". La solution n\'est pas de travailler plus, mais de construire des systèmes qui travaillent pour vous.',
+    }
+  }
+
+  /**
+   * MODÈLES MENTAUX
+   * Appliquer des frameworks de pensée éprouvés
+   */
+  mentalModels(): { model: string; definition: string; application: string; insight: string }[] {
+    const name = this.profile.companyName || 'votre entreprise'
+    const size = this.profile.employeeCount || 1
+    const maturity = this.profile.maturityScore || 50
+
+    return [
+      {
+        model: 'Cercle de compétence (Buffett/Munger)',
+        definition: 'On ne gagne pas en jouant sur tous les terrains — on gagne en restant dans ce qu\'on maîtrise',
+        application: `${name} : votre cercle de compétence est votre métier de ${this.profile.sector || 'services'}. L\'IA n\'est pas votre cercle — mais vous n\'avez pas besoin de maîtriser l\'IA, juste de l\'utiliser. Déléguez la technique, concentrez-vous sur votre métier.`,
+        insight: size <= 3 ? 'Votre avantage concurrentiel est votre expertise métier, pas votre capacité technique. Arrêtez d\'essayer de tout maîtriser.' : 'À votre taille, vous pouvez avoir une personne dédiée à la tech — mais le dirigeant doit rester dans son cercle.',
+      },
+      {
+        model: 'Carte vs Territoire (Korzybski)',
+        definition: 'La carte n\'est pas le territoire. Votre perception du marché n\'est pas le marché.',
+        application: `Votre "carte" : "mon secteur est différent, l\'IA ne s\'applique pas". Le territoire : l\'IA s\'applique déjà dans votre secteur (benchmark : ${maturity < 40 ? 'les concurrents automatisés gagnent des parts' : 'vous êtes dans la moyenne, ce qui est dangereux car la moyenne monte'}).`,
+        insight: 'Mettez à jour votre carte. La question n\'est pas "est-ce que l\'IA peut aider mon secteur ?" mais "qu\'est-ce que je rate en ne l\'utilisant pas ?"',
+      },
+      {
+        model: 'Loi de Parkinson',
+        definition: 'Le travail s\'étale pour remplir le temps disponible',
+        application: `Avec ${size} personne(s), si vous avez 40h de travail et 50h disponibles, le travail prendra 50h. L\'automatisation réduit le travail à 25h — magiquement, vous accomplirez la même chose en 25h.`,
+        insight: 'Ne cherchez pas à "avoir le temps" d\'automatiser. Automatisez D\'ABORD, le temps apparaîtra.',
+      },
+      {
+        model: 'Rasoir de Hanlon',
+        definition: 'Ne jamais attribuer à la malveillance ce qui s\'explique par l\'incompétence ou la négligence',
+        application: 'Vos concurrents qui n\'automatisent pas ne sont pas vos ennemis — ils sont juste occupés, comme vous. Celui qui automatise le premier prend l\'avantage.',
+        insight: 'Ne surestimez pas la menace, ne sous-estimez pas l\'opportunité. Agissez avant que l\'incompétence des autres ne se transforme en compétence.',
+      },
+      {
+        model: 'Deuxième ordre (Munger)',
+        definition: 'Toujours se demander : "Et ensuite ?"',
+        application: `Automatiser → libérer du temps → et ensuite ? Prospecter → plus de clients → et ensuite ? Plus de revenus → et ensuite ? Vous avez créé une machine de croissance qui s\'auto-alimente.`,
+        insight: 'Les gens ordinaires pensent au premier ordre. Les excellents pensent au deuxième. Les légendaires pensent au troisième. L\'automatisation est un levier de premier ordre — ses effets de deuxième et troisième ordre sont exponentiels.',
+      },
+      {
+        model: 'Inversion (Jacobi)',
+        definition: 'Pour résoudre un problème difficile, inversez-le : "Comment rendre ça pire ?"',
+        application: `Comment rendre ${name} moins performante ? Continuer à tout faire manuellement. Ignorer l\'IA. Ne pas former l\'équipe. Ne pas mesurer. Félicitations, vous avez la recette de l\'échec. Maintenant, faites l\'inverse.`,
+        insight: 'Le chemin de la réussite est souvent plus clair quand on regarde d\'abord le chemin de l\'échec.',
+      },
+    ]
+  }
+
+  /**
+   * MATRICE DE DÉCISION
+   * Critères pondérés pour décider objectivement
+   */
+  decisionMatrix(options: string[]): { criteria: { name: string; weight: number }[]; scores: Record<string, number[]>; totals: Record<string, number>; recommendation: string } {
+    const criteria = [
+      { name: 'Impact sur le CA', weight: 25 },
+      { name: 'Temps de mise en œuvre', weight: 20 },
+      { name: 'Coût', weight: 15 },
+      { name: 'Risque', weight: 15 },
+      { name: 'Scalabilité', weight: 15 },
+      { name: 'Indépendance fondateur', weight: 10 },
+    ]
+
+    // Scoring automatique basé sur le profil
+    const scores: Record<string, number[]> = {}
+    const totals: Record<string, number> = {}
+
+    const isSmall = (this.profile.employeeCount || 0) <= 3
+    
+    options.forEach(opt => {
+      if (opt.toLowerCase().includes('automatis') || opt.toLowerCase().includes('ia') || opt.toLowerCase().includes('agent')) {
+        scores[opt] = [90, 85, 90, 80, 95, 95]
+      } else if (opt.toLowerCase().includes('recrut')) {
+        scores[opt] = [70, 40, 40, 60, 70, 30]
+      } else if (opt.toLowerCase().includes('marketing') || opt.toLowerCase().includes('pub')) {
+        scores[opt] = [75, 60, 50, 65, 60, 40]
+      } else {
+        scores[opt] = [60, 50, 60, 70, 50, 50]
+      }
+
+      totals[opt] = Math.round(
+        scores[opt].reduce((sum, s, i) => sum + s * criteria[i].weight / 100, 0)
+      )
+    })
+
+    const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1])
+    
+    return {
+      criteria,
+      scores,
+      totals,
+      recommendation: `${sorted[0][0]} (score: ${sorted[0][1]}/100) est la décision optimale selon une analyse pondérée de 6 critères. ${sorted.length > 1 ? `L'alternative "${sorted[1][0]}" obtient ${sorted[1][1]}/100.` : ''}`,
+    }
+  }
+
+  /**
+   * COÛT D'OPPORTUNITÉ
+   * Que sacrifiez-vous ?
+   */
+  opportunityCost(action: string): { action: string; cost: string; whatYouGiveUp: string[]; implicitCosts: string[]; verdict: string } {
+    return {
+      action,
+      cost: 'Le coût n\'est pas que financier — c\'est tout ce que vous ne ferez pas pendant ce temps',
+      whatYouGiveUp: [
+        'Le temps passé à faire cette tâche manuellement',
+        'L\'énergie mentale consommée par des décisions répétitives',
+        'Les opportunités que vous ne voyez pas parce que vous êtes dans l\'opérationnel',
+      ],
+      implicitCosts: [
+        `Si vous gagnez 50€/h et passez 10h/semaine sur des tâches automatisables, vous "payez" 2000€/mois en coût d'opportunité — pour une tâche qu'une IA fait pour 49€/mois`,
+        'Le coût de ne pas automatiser n\'est pas 49€ — c\'est 2000€ par mois de valeur non créée',
+      ],
+      verdict: 'Ne pas automatiser est la décision la plus chère que vous puissiez prendre. Le vrai coût n\'est pas le prix de l\'automatisation — c\'est le prix de TOUT ce que vous ne ferez pas à la place.',
+    }
+  }
+
+  /**
+   * MARGE DE SÉCURITÉ
+   * Quel buffer pour absorber l'inattendu ?
+   */
+  marginOfSafety(): { areas: { area: string; currentBuffer: string; recommended: string; gap: string }[]; overallAssessment: string } {
+    const hasBuffer = (this.profile.employeeCount || 0) > 1
+    
+    return {
+      areas: [
+        {
+          area: 'Trésorerie',
+          currentBuffer: hasBuffer ? '1-2 mois' : '<1 mois',
+          recommended: '3-6 mois de charges fixes',
+          gap: hasBuffer ? 'Insuffisant' : 'Critique',
+        },
+        {
+          area: 'Dépendance client',
+          currentBuffer: 'Non mesuré (risque élevé)',
+          recommended: 'Aucun client >25% du CA',
+          gap: 'À auditer en priorité',
+        },
+        {
+          area: 'Dépendance fondateur',
+          currentBuffer: hasBuffer ? 'Partielle (l\'équipe peut tourner quelques jours)' : 'Totale (si le fondateur s\'arrête, tout s\'arrête)',
+          recommended: 'L\'entreprise doit pouvoir fonctionner 2 semaines sans le fondateur',
+          gap: hasBuffer ? 'Significatif' : 'Critique',
+        },
+        {
+          area: 'Technologie',
+          currentBuffer: 'Minimal (pas de backup, pas de plan B)',
+          recommended: 'Fournisseur alternatif identifié, données sauvegardées',
+          gap: 'À construire',
+        },
+        {
+          area: 'Compétences',
+          currentBuffer: 'Concentrées sur 1-2 personnes',
+          recommended: 'Au moins 2 personnes par fonction critique, ou processus documentés',
+          gap: 'Significatif',
+        },
+      ],
+      overallAssessment: 'Votre marge de sécurité est faible — l\'entreprise est fragile face aux chocs. L\'automatisation est la façon la plus rapide de créer des buffers sans coût supplémentaire : un agent IA ne tombe pas malade, ne démissionne pas, et travaille 24/7.',
+    }
+  }
+
+  /**
+   * ANTIFRAGILITÉ
+   * Ce choix rend-il l'entreprise plus forte face au chaos ?
+   */
+  antifragility(): { stressors: { stressor: string; fragileResponse: string; antifragileResponse: string }[]; assessment: string } {
+    return {
+      stressors: [
+        {
+          stressor: 'Arrivée d\'un concurrent low-cost',
+          fragileResponse: 'Baisser les prix → course vers le bas → destruction de valeur',
+          antifragileResponse: 'Automatiser pour proposer PLUS de valeur au MÊME prix → le concurrent ne peut pas suivre',
+        },
+        {
+          stressor: 'Perte d\'un employé clé',
+          fragileResponse: 'Panique, recrutement d\'urgence, erreur de casting',
+          antifragileResponse: 'Processus documentés + agents IA = l\'entreprise continue de tourner',
+        },
+        {
+          stressor: 'Crise économique',
+          fragileResponse: 'Couper les coûts → dégrader le service → perdre des clients',
+          antifragileResponse: 'L\'IA maintient la qualité de service sans coût proportionnel',
+        },
+        {
+          stressor: 'Changement technologique',
+          fragileResponse: 'Ignorer → se faire dépasser',
+          antifragileResponse: 'Adopter tôt → accumuler de l\'expérience → avantage compétitif',
+        },
+      ],
+      assessment: 'Une entreprise manuelle est fragile — chaque stress la dégrade. Une entreprise automatisée est antifragile — chaque stress révèle des opportunités d\'automatisation supplémentaires, la rendant plus forte.',
+    }
+  }
+
+  /**
+   * ANALYSE DES INCITATIONS
+   * Qu'est-ce qui motive vraiment chaque acteur ?
+   */
+  incentives(): { stakeholder: string; statedGoal: string; realIncentive: string; misalignment: string }[] {
+    return [
+      {
+        stakeholder: 'Vous (le dirigeant)',
+        statedGoal: 'Croître et libérer du temps',
+        realIncentive: 'Garder le contrôle (l\'automatisation fait peur car elle change votre rôle)',
+        misalignment: 'Vous voulez croître mais votre incentive réelle vous pousse à tout contrôler — c\'est contradictoire',
+      },
+      {
+        stakeholder: 'Vos employés',
+        statedGoal: 'Bien faire leur travail',
+        realIncentive: 'Sécurité de l\'emploi (l\'IA est perçue comme une menace)',
+        misalignment: 'Ils devraient être les premiers à vouloir l\'IA (elle enlève les tâches pénibles), mais la peur du remplacement bloque l\'adoption',
+      },
+      {
+        stakeholder: 'Vos clients',
+        statedGoal: 'Bon service au bon prix',
+        realIncentive: 'Disponibilité immédiate et personnalisation',
+        misalignment: 'Ils disent vouloir de l\'humain mais leur comportement montre qu\'ils préfèrent la rapidité — 90% prennent le chatbot plutôt que d\'attendre un humain',
+      },
+      {
+        stakeholder: 'Vos concurrents',
+        statedGoal: 'Servir leurs clients',
+        realIncentive: 'Maximiser leur profit à court terme',
+        misalignment: 'Ceux qui n\'automatisent pas subventionnent votre avantage concurrentiel',
+      },
+    ]
+  }
+
+  /**
+   * RÉVERSIBILITÉ
+   * Peut-on revenir en arrière ?
+   */
+  reversibility(decision: string): { reversible: boolean; costOfReversal: string; timeToReverse: string; recommendation: string } {
+    const isTech = decision.toLowerCase().includes('ia') || decision.toLowerCase().includes('tech') || decision.toLowerCase().includes('automatis')
+    const isHire = decision.toLowerCase().includes('recrut') || decision.toLowerCase().includes('embauche')
+    const isPrice = decision.toLowerCase().includes('prix')
+    const isContract = decision.toLowerCase().includes('bail') || decision.toLowerCase().includes('contrat')
+
+    return {
+      reversible: isTech,
+      costOfReversal: isTech
+        ? 'Faible — changer de fournisseur IA prend quelques heures. Annuler un abonnement est immédiat.'
+        : isHire
+        ? 'Élevé — licencier coûte cher (indemnités, risque prud\'homal, impact équipe)'
+        : isPrice
+        ? 'Moyen — remonter les prix après les avoir baissés est très difficile'
+        : isContract
+        ? 'Variable selon les clauses de sortie'
+        : 'Moyen',
+      timeToReverse: isTech ? 'Immédiat à 30 jours' : isHire ? '3-12 mois (procédure + préavis)' : isPrice ? '6-18 mois (reconstruire la perception de valeur)' : 'Variable',
+      recommendation: isTech
+        ? 'Les décisions tech sont réversibles et peu coûteuses à annuler. Il n\'y a AUCUNE raison de ne pas essayer. Le risque de ne rien faire est bien plus grand que le risque d\'essayer.'
+        : isHire
+        ? 'Les décisions de recrutement sont peu réversibles et très coûteuses. Automatisez d\'abord, recrutez ensuite — l\'ordre est crucial.'
+        : 'Évaluez la réversibilité avant de décider. Les décisions réversibles doivent être prises VITE. Les décisions irréversibles doivent être prises LENTEMENT.',
     }
   }
 }
