@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 
 export const metadata: Metadata = {
   title: "Limova vs Bapica — Quel agent IA choisir en 2026 ?",
-  description: "Comparatif complet : Limova.ai vs Bapica. Nombre d'agents, qualité IA, prix, fonctionnalités, avis. Découvrez quelle plateforme d'agents IA correspond le mieux à votre PME.",
+  description: "Comparatif complet : Limova.ai vs Bapica. Nombre d&apos;agents, qualité IA, prix, fonctionnalités, avis. Découvrez quelle plateforme d&apos;agents IA correspond le mieux à votre PME.",
 }
 
 export default function LimovaVsBapicaPage() {
@@ -15,7 +15,7 @@ export default function LimovaVsBapicaPage() {
 
         <p className="mb-8 text-lg text-muted-foreground">
           Vous cherchez à automatiser votre PME avec des agents IA ? Voici un comparatif objectif entre Limova.ai 
-          et Bapica, les deux principales plateformes françaises d'agents IA pour les indépendants et PME.
+          et Bapica, les deux principales plateformes françaises d&apos;agents IA pour les indépendants et PME.
         </p>
 
         {/* Tableau comparatif */}
@@ -30,7 +30,7 @@ export default function LimovaVsBapicaPage() {
             </thead>
             <tbody className="divide-y divide-border">
               <tr>
-                <td className="py-3 text-sm font-medium">Nombre d'agents</td>
+                <td className="py-3 text-sm font-medium">Nombre d&apos;agents</td>
                 <td className="py-3 text-sm">8 agents</td>
                 <td className="py-3 text-sm font-semibold">✅ 13 agents spécialisés</td>
               </tr>
@@ -83,7 +83,7 @@ export default function LimovaVsBapicaPage() {
           <li>• Vous voulez interagir avec vos agents via WhatsApp</li>
           <li>• Vous préférez un onboarding humain (RDV téléphonique)</li>
           <li>• Votre budget est serré et 39€/mois fait la différence</li>
-          <li>• Vous avez besoin d'un standard téléphonique simple</li>
+          <li>• Vous avez besoin d&apos;un standard téléphonique simple</li>
         </ul>
 
         <h2 className="mb-4 mt-12 text-2xl font-bold">Quand choisir Bapica ?</h2>
@@ -91,7 +91,7 @@ export default function LimovaVsBapicaPage() {
           <li>• Vous voulez une IA qui comprend vraiment votre métier</li>
           <li>• Vous avez besoin de plusieurs agents qui collaborent</li>
           <li>• Le dashboard et le suivi ROI sont importants pour vous</li>
-          <li>• Vous voulez la meilleure qualité d'IA (Claude Sonnet)</li>
+          <li>• Vous voulez la meilleure qualité d&apos;IA (Claude Sonnet)</li>
           <li>• Vous cherchez plus que du standard téléphonique</li>
         </ul>
 
@@ -105,7 +105,7 @@ export default function LimovaVsBapicaPage() {
         </p>
         <p className="text-muted-foreground">
           Notre recommandation ? <strong>Testez les deux</strong> — Limova et Bapica offrent des essais gratuits.
-          Comparez par vous-même la qualité des réponses et l'adaptation à votre business.
+          Comparez par vous-même la qualité des réponses et l&apos;adaptation à votre business.
         </p>
 
         <div className="mt-12 rounded-lg border border-border bg-card p-6 text-center">
