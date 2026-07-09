@@ -21,7 +21,7 @@ export function CTASection() {
                 Essai gratuit
               </Link>
               <Link
-                href="#demo"
+                href="#agents"
                 className="inline-flex h-12 items-center justify-center rounded-lg border border-white/30 px-8 text-sm font-medium text-white hover:bg-white/10 transition-colors"
               >
                 Parler à un conseiller

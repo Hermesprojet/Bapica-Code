@@ -1,7 +1,7 @@
 {
   "name": "Bapica — Agents IA pour votre entreprise",
   "short_name": "Bapica",
-  "description": "Plateforme multi-agents IA pour PME et indépendants. 12 agents spécialisés, messagerie illimitée.",
+  "description": "Plateforme multi-agents IA pour PME et indépendants. 13 agents spécialisés, messagerie illimitée.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#061126",

@@ -29,7 +29,7 @@ export function getOrganizationSchema(): OrganizationSchema {
     "@type": "Organization",
     name: "Bapica",
     url: "https://bapica.com",
-    logo: "https://bapica.com/og-image.png",
+    logo: "https://bapica.com/opengraph-image",
     description:
       "Plateforme multi-agents IA pour PME et indépendants. Prospection, support, contenu, voix, recrutement, comptabilité et plus encore.",
     sameAs: [
@@ -120,7 +120,7 @@ export function getFAQSchema(): FAQSchema {
         name: "Quels sont les tarifs de Bapica ?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Bapica propose deux formules : Essentiel à 49€/mois avec 4 agents (Général, Support, Contenu, Téléphonique) et Pro à 79€/mois avec 13 agents + appels téléphoniques (0,20€/min) + analytics + onboarding personnalisé.",
+          text: "Bapica propose deux formules : Essentiel à 49€/mois avec 8 agents (Général, Support, Contenu, Téléphonique) et Pro à 79€/mois avec 13 agents + appels téléphoniques (0,20€/min) + analytics + onboarding personnalisé.",
         },
       },
       {
