@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bapica Design System</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #061126;
+    --fg-muted: #64748b;
+    --border: #e5e7eb;
+    --card: #ffffff;
+    --accent: #0b66ff;
+    --accent-light: #0090ff;
+    --accent-glow: rgba(11,102,255,0.08);
+    --surface-1: #f8f9fb;
+    --surface-2: #f1f4f9;
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.06);
+    --shadow-xl: 0 8px 24px rgba(0,0,0,0.08);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Manrope', 'Inter', system-ui, sans-serif; background: var(--surface-1); color: var(--fg); line-height:1.6; }
+  h1,h2,h3 { font-weight:700; letter-spacing:-0.02em; }
+  h1 { font-size:3rem; }
+  h2 { font-size:2rem; }
+  h3 { font-size:1.25rem; }
+
+  .container { max-width:1280px; margin:0 auto; padding:0 24px; }
+  .section { padding:80px 0; border-bottom:1px solid var(--border); }
+  .section-title { margin-bottom:40px; }
+
+  /* Color swatches */
+  .swatches { display:flex; gap:16px; flex-wrap:wrap; }
+  .swatch { width:120px; height:120px; border-radius:var(--radius); display:flex; flex-direction:column; justify-content:flex-end; padding:12px; font-size:12px; font-weight:600; position:relative; overflow:hidden; }
+  .swatch::after { content:attr(data-name); position:absolute; top:12px; left:12px; font-size:10px; opacity:0.7; text-transform:uppercase; letter-spacing:0.1em; }
+  .swatch .hex { font-size:11px; opacity:0.7; }
+
+  /* Typography */
+  .type-scale { display:flex; flex-direction:column; gap:24px; }
+  .type-row { display:flex; align-items:baseline; gap:16px; padding:8px 0; border-bottom:1px solid var(--border); }
+  .type-label { font-size:11px; color:var(--fg-muted); width:80px; text-transform:uppercase; letter-spacing:0.1em; }
+
+  /* Components */
+  .components { display:grid; gap:32px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+
+  .card-professional { background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; }
+  .card-elevated { background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; box-shadow:var(--shadow-lg); }
+  .card-gradient { background:linear-gradient(135deg, var(--accent-glow), #f0f4ff); border:1px solid rgba(11,102,255,0.1); border-radius:var(--radius-lg); padding:24px; }
+
+  .btn { display:inline-flex; align-items:center; gap:8px; padding:10px 20px; border-radius:var(--radius-sm); font-size:14px; font-weight:600; cursor:pointer; border:none; transition:all 0.2s; }
+  .btn-primary { background:var(--fg); color:white; }
+  .btn-primary:hover { opacity:0.9; transform:translateY(-1px); }
+  .btn-secondary { background:transparent; color:var(--fg); border:1px solid var(--border); }
+  .btn-secondary:hover { background:var(--surface-2); }
+  .btn-accent { background:var(--accent); color:white; box-shadow:0 2px 8px rgba(11,102,255,0.2); }
+  .btn-accent:hover { background:var(--accent-light); }
+
+  .badge { display:inline-flex; align-items:center; gap:4px; padding:4px 12px; border-radius:100px; font-size:12px; font-weight:600; }
+  .badge-primary { background:rgba(11,102,255,0.1); color:var(--accent); }
+  .badge-success { background:rgba(34,197,94,0.1); color:#16a34a; }
+
+  .gradient-text { background:linear-gradient(135deg, var(--accent), #6366f1); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+
+  .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
+  .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:24px; }
+
+  @media (max-width:768px) {
+    .grid-3, .grid-4 { grid-template-columns:1fr; }
+    h1 { font-size:2rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<section class="section">
+  <div class="container">
+    <span class="badge badge-primary" style="margin-bottom:16px;">DESIGN SYSTEM</span>
+    <h1>Bapica<br><span class="gradient-text">Design System</span></h1>
+    <p style="color:var(--fg-muted); max-width:600px; margin-top:16px;">
+      Système de design unifié pour la plateforme Bapica — agents IA pour PME.
+      Fondé sur la clarté, la confiance et l'intelligence visuelle.
+    </p>
+  </div>
+</section>
+
+<!-- Colors -->
+<section class="section" style="background:var(--bg);">
+  <div class="container">
+    <h2 class="section-title">🎨 Palette</h2>
+    <div class="swatches">
+      <div class="swatch" style="background:var(--fg); color:white;" data-name="Foreground"><span class="hex">#061126</span></div>
+      <div class="swatch" style="background:var(--bg); border:1px solid var(--border);" data-name="Background"><span class="hex">#FFFFFF</span></div>
+      <div class="swatch" style="background:var(--accent); color:white;" data-name="Accent"><span class="hex">#0B66FF</span></div>
+      <div class="swatch" style="background:var(--accent-light); color:white;" data-name="Accent Light"><span class="hex">#0090FF</span></div>
+      <div class="swatch" style="background:var(--surface-1);" data-name="Surface 1"><span class="hex">#F8F9FB</span></div>
+      <div class="swatch" style="background:var(--surface-2);" data-name="Surface 2"><span class="hex">#F1F4F9</span></div>
+      <div class="swatch" style="background:var(--fg-muted); color:white;" data-name="Muted"><span class="hex">#64748B</span></div>
+      <div class="swatch" style="background:var(--border);" data-name="Border"><span class="hex">#E5E7EB</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- Typography -->
+<section class="section" style="background:var(--surface-1);">
+  <div class="container">
+    <h2 class="section-title">🔤 Typographie — Manrope</h2>
+    <div class="type-scale">
+      <div class="type-row"><span class="type-label">H1</span><span style="font-size:3rem; font-weight:700;">Bapica désigne l'excellence</span></div>
+      <div class="type-row"><span class="type-label">H2</span><span style="font-size:2rem; font-weight:700;">Des agents qui comprennent votre business</span></div>
+      <div class="type-row"><span class="type-label">H3</span><span style="font-size:1.25rem; font-weight:700;">Intelligence adaptative</span></div>
+      <div class="type-row"><span class="type-label">Body</span><span style="font-size:1rem;">Bapica n'est pas un simple chatbot. C'est une plateforme qui analyse votre entreprise en profondeur, comprend vos enjeux, et déploie une équipe d'agents IA sur mesure.</span></div>
+      <div class="type-row"><span class="type-label">Small</span><span style="font-size:0.875rem; color:var(--fg-muted);">Configuration en 5 minutes • Résiliation à tout moment</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- Components -->
+<section class="section" style="background:var(--bg);">
+  <div class="container">
+    <h2 class="section-title">🧩 Composants</h2>
+    <div class="components">
+      <div>
+        <h3 style="margin-bottom:16px;">Boutons</h3>
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+          <button class="btn btn-primary">Commencer gratuitement →</button>
+          <button class="btn btn-secondary">Comment ça marche</button>
+          <button class="btn btn-accent">Essai gratuit</button>
+        </div>
+      </div>
+      <div>
+        <h3 style="margin-bottom:16px;">Badges</h3>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <span class="badge badge-primary">13 agents IA</span>
+          <span class="badge badge-success">15 jours gratuits</span>
+          <span class="badge" style="background:var(--surface-2);">2026</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Cards -->
+<section class="section" style="background:var(--surface-1);">
+  <div class="container">
+    <h2 class="section-title">🃏 Cartes</h2>
+    <div class="grid-3">
+      <div class="card-professional">
+        <span class="badge badge-primary" style="margin-bottom:12px;">Standard</span>
+        <h3>Card Professional</h3>
+        <p style="color:var(--fg-muted); font-size:14px; margin-top:8px;">Bordure subtile, fond blanc, pour les listes et grilles d'agents.</p>
+      </div>
+      <div class="card-elevated">
+        <span class="badge badge-success" style="margin-bottom:12px;">Élevée</span>
+        <h3>Card Elevated</h3>
+        <p style="color:var(--fg-muted); font-size:14px; margin-top:8px;">Ombre légère pour les témoignages et sections importantes.</p>
+      </div>
+      <div class="card-gradient">
+        <span class="badge badge-primary" style="margin-bottom:12px;">Gradient</span>
+        <h3>Card Gradient</h3>
+        <p style="color:var(--fg-muted); font-size:14px; margin-top:8px;">Dégradé subtil pour les CTA et moments clés.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Agent Cards -->
+<section class="section" style="background:var(--bg);">
+  <div class="container">
+    <h2 class="section-title">🤖 Cartes Agent</h2>
+    <div class="grid-3">
+      <div class="card-professional" style="text-align:center;">
+        <div style="width:48px;height:48px;background:linear-gradient(135deg,var(--accent),#6366f1);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:white;font-weight:700;font-size:20px;">L</div>
+        <h3>Léo</h3>
+        <p style="color:var(--fg-muted);font-size:13px;">Agent Général</p>
+        <span class="badge badge-primary" style="margin-top:8px;">Coordinateur</span>
+      </div>
+      <div class="card-professional" style="text-align:center;">
+        <div style="width:48px;height:48px;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:white;font-weight:700;font-size:20px;">M</div>
+        <h3>Marc</h3>
+        <p style="color:var(--fg-muted);font-size:13px;">Prospecteur Commercial</p>
+        <span class="badge" style="background:var(--surface-2);margin-top:8px;">Spécialiste</span>
+      </div>
+      <div class="card-professional" style="text-align:center;">
+        <div style="width:48px;height:48px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:white;font-weight:700;font-size:20px;">R</div>
+        <h3>Roxane</h3>
+        <p style="color:var(--fg-muted);font-size:13px;">Croissance & Scaling</p>
+        <span class="badge" style="background:var(--surface-2);margin-top:8px;">Analyste</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section class="section" style="background:var(--surface-1);">
+  <div class="container">
+    <h2 class="section-title">💰 Pricing Cards</h2>
+    <div style="display:flex; gap:24px; max-width:700px;">
+      <div class="card-professional" style="flex:1;">
+        <span class="badge" style="background:var(--surface-2);margin-bottom:12px;">Essentiel</span>
+        <div style="font-size:2.5rem;font-weight:700;">49€<span style="font-size:1rem;color:var(--fg-muted);">/mois</span></div>
+        <p style="color:var(--fg-muted);font-size:14px;margin:12px 0;">8 agents IA • Messages illimités</p>
+        <button class="btn btn-secondary" style="width:100%;">Essai 15 jours</button>
+      </div>
+      <div class="card-gradient" style="flex:1;position:relative;">
+        <span class="badge badge-primary" style="margin-bottom:12px;">Pro — Recommandé</span>
+        <div style="font-size:2.5rem;font-weight:700;">79€<span style="font-size:1rem;color:var(--fg-muted);">/mois</span></div>
+        <p style="color:var(--fg-muted);font-size:14px;margin:12px 0;">13 agents IA • Appels inclus</p>
+        <button class="btn btn-accent" style="width:100%;">Essai 15 jours</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Design Principles -->
+<section class="section" style="background:var(--bg);">
+  <div class="container">
+    <h2 class="section-title">📐 Principes</h2>
+    <div class="grid-3">
+      <div>
+        <h3>Clarté</h3>
+        <p style="color:var(--fg-muted);font-size:14px;">Fond blanc, texte navy, bordures subtiles. Rien ne distrait du message.</p>
+      </div>
+      <div>
+        <h3>Confiance</h3>
+        <p style="color:var(--fg-muted);font-size:14px;">Pas de glassmorphisme, pas de dégradés agressifs. Le design respire la fiabilité.</p>
+      </div>
+      <div>
+        <h3>Intelligence</h3>
+        <p style="color:var(--fg-muted);font-size:14px;">L'accent bleu (#0b66ff) est utilisé avec parcimonie — uniquement pour guider l'attention.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer style="padding:40px 0; text-align:center; color:var(--fg-muted); font-size:14px; border-top:1px solid var(--border);">
+  Bapica Design System v1.0 — Manrope • Navy/White • 13 agents • 49€/79€ • 15 jours d'essai
+</footer>
+
+</body>
+</html>
