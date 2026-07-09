@@ -22,6 +22,17 @@ export default function Home() {
       <h1 className="sr-only">Bapica — Agents IA pour votre entreprise | Automatisation PME</h1>
       <Navbar />
         <VideoPresentation />
+        <div className="container mx-auto max-w-6xl px-4 py-16">
+          <video 
+            src="/bapica-video.mp4" 
+            controls 
+            poster="/opengraph-image"
+            className="mx-auto w-full max-w-4xl rounded-2xl border border-white/[0.06] shadow-2xl"
+            preload="metadata"
+          >
+            Votre navigateur ne supporte pas la lecture vidéo.
+          </video>
+        </div>
         <HeroSection />
         <IntelligenceSection />
         <ROIStats />
