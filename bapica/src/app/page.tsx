@@ -1,3 +1,4 @@
+import { VideoPresentation } from "@/components/landing/video-presentation"
 import { Navbar } from "@/components/landing/navbar"
 import { HeroSection } from "@/components/landing/hero-section"
 import { IntelligenceSection } from "@/components/landing/intelligence-section"
@@ -20,6 +21,7 @@ export default function Home() {
     <main>
       <h1 className="sr-only">Bapica — Agents IA pour votre entreprise | Automatisation PME</h1>
       <Navbar />
+        <VideoPresentation />
         <HeroSection />
         <IntelligenceSection />
         <ROIStats />
