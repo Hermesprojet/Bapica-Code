@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 
   title: {
     default: "Bapica — Agents IA pour votre entreprise",
-    template: "%s — Bapica",
+    template: "%s | Bapica",
   },
 
   description:
