@@ -56,7 +56,7 @@ export default function LimovaVsBapicaPage() {
               </tr>
               <tr>
                 <td className="py-3 text-sm font-medium">Prix entrée</td>
-                <td className="py-3 text-sm font-semibold">~39€/mois</td>
+                <td className="py-3 text-sm font-semibold">39€/mois</td>
                 <td className="py-3 text-sm">49€/mois</td>
               </tr>
               <tr>
