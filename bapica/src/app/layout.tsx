@@ -100,10 +100,9 @@ export const metadata: Metadata = {
     ],
   },
 
-  // Google Search Console — remplace "GOOGLE_SITE_VERIFICATION" par le code
-  // fourni par https://search.google.com/search-console > Ajouter une propriété > Balise HTML
+  // Google Search Console — remplacer par le vrai code Google
   verification: {
-    google: "GOOGLE_SITE_VERIFICATION",
+    google: "REMOVED_PLACEHOLDER_GET_CODE_FROM_SEARCH_CONSOLE",
   },
 
   category: "technology",

@@ -17,9 +17,9 @@ import { Footer } from "@/components/landing/footer"
 
 export default function Home() {
   return (
-    <>
+    <main>
+      <h1 className="sr-only">Bapica — Agents IA pour votre entreprise | Automatisation PME</h1>
       <Navbar />
-      <main>
         <HeroSection />
         <IntelligenceSection />
         <ROIStats />
@@ -34,8 +34,7 @@ export default function Home() {
         <ComparisonSection />
         <FAQSection />
         <CTASection />
-      </main>
       <Footer />
-    </>
+    </main>
   )
 }
