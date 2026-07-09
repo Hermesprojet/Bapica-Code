@@ -8,7 +8,7 @@ import { getAgentsForPlan, type PlanKey } from '@/lib/agents'
 import { getRecommendedAgentIds, type OnboardingData } from '@/lib/personalization'
 
 // Nombre d'agents supplémentaires débloqués en passant à Pro
-// (aligné avec la page facturation : Essentiel 8 → Pro 12).
+// (aligné avec la page facturation : Essentiel 8 → Pro 13).
 const PRO_EXTRA_AGENTS = 4
 import { CardSkeleton } from '@/components/ui/base'
 

@@ -184,7 +184,7 @@ const planLabel: Record<PlanKey, string> = { essential: 'Essentiel', pro: 'Pro' 
 const planPrice: Record<PlanKey, number> = { essential: 49, pro: 79 }
 const _planRank: Record<PlanKey, number> = { essential: 0, pro: 1 }
 
-const PLAN_AGENT_LIMIT: Record<PlanKey, number> = { essential: 8, pro: 12 }
+const PLAN_AGENT_LIMIT: Record<PlanKey, number> = { essential: 8, pro: 13 }
 
 interface QuestionStep {
   title: string

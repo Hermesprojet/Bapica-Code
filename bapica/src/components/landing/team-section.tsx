@@ -46,7 +46,8 @@ const agentGradients: Record<string, string> = {
   legal: "from-slate-500 to-gray-500",
   analytics: "from-teal-500 to-emerald-500",
   trends: "from-lime-500 to-green-500",
-}
+  scaling: "from-violet-500 to-purple-500",
+  scaling: "Croissance & Scaling",}
 
 // Spécialité courte affichée sous chaque agent
 const specialties: Record<string, string> = {
