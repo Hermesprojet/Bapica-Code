@@ -49,7 +49,9 @@ export default function BusinessProfilePage() {
         })
         const data = await res.json()
         if (!data.error) setAiAnalysis(data)
-      } catch {}
+      } catch (e) {
+        console.error('Business profile load failed:', e)
+      }
       setAiLoading(false)
     })
   }, [router])

@@ -245,7 +245,9 @@ export async function callWithFableRouting(
         const est = estimateCost('mini', 500, 200)
         return { response, model: 'gpt-4o-mini', cost: est.cost }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('Fable routing fallback:', e)
+    }
   }
 
   // Fallback Anthropic

@@ -52,5 +52,7 @@ async function notifyAgent(agentId: string, event: Record<string, unknown>) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(event),
     })
-  } catch {}
+  } catch (e) {
+    console.error('Twenty webhook notify failed:', e)
+  }
 }

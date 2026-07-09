@@ -162,7 +162,9 @@ export async function POST(req: NextRequest) {
         .from('profiles')
         .update({ conversation_history: clientMemory.conversationHistory })
         .eq('id', auth.user.id)
-    } catch {}
+    } catch (e) {
+      console.error('Memory save failed:', e)
+    }
 
     return NextResponse.json({ response, agentId: agent.id }, { headers: corsHeaders(req.headers.get('origin')) })
   } catch (error) {

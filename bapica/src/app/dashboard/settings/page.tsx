@@ -65,7 +65,7 @@ export default function SettingsPage() {
                 type={showApiKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-ant-... ou sk-proj-..."
+                placeholder="••••••••"
                 className="w-full rounded-lg border border-border bg-background px-4 py-2.5 pr-10 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <button

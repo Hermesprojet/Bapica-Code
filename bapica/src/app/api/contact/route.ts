@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
 
+// Rate limiting simple (50 req / 15 min par IP)
+const rateLimit = new Map<string, { count: number; reset: number }>()
+
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown"
+  const now = Date.now()
+  const limit = rateLimit.get(ip)
+  
+  if (limit && now < limit.reset && limit.count >= 50) {
+    return NextResponse.json({ error: "Trop de requêtes." }, { status: 429 })
+  }
+  if (!limit || now >= limit.reset) {
+    rateLimit.set(ip, { count: 1, reset: now + 15 * 60 * 1000 })
+  } else {
+    limit.count++
+  }
+  
   try {
     const { name, email, message } = await req.json()
 
