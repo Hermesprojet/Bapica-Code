@@ -9,7 +9,9 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   }
 
   return {
-    title: `${agent.persona} — ${agent.name} | Agent IA Bapica`,
+    title: {
+      absolute: `${agent.persona} — ${agent.name} | Agent IA Bapica`,
+    },
     description: `${agent.persona} est votre ${agent.name.toLowerCase()} chez Bapica. ${agent.description}. Découvrez comment cet agent IA peut automatiser votre entreprise.`,
   }
 }
