@@ -4,6 +4,12 @@ import { getAgentById, type AgentConfig } from '@/lib/agents'
 import { createClient } from '@supabase/supabase-js'
 import { sanitizeUserMessage, isValidAgentId } from '@/lib/security'
 import { buildClientMemory, buildMemoryContext, addToMemory, type ClientMemory, type ConversationSummary } from '@/lib/client-memory'
+import { twentyTools, TWENTY_TOOL_NAMES } from '@/lib/tools/twenty-tools'
+import {
+  getTwentyCredentials, searchPeople, createPerson,
+  searchCompanies, createCompany,
+  searchOpportunities, createOpportunity, updateOpportunityStage,
+} from '@/lib/twenty'
 
 // Helpers CORS
 function corsHeaders(origin: string | null) {
@@ -205,11 +211,18 @@ async function callClaude(
     { role: 'user' as const, content: message },
   ]
 
+  // Ajouter les tools CRM si l'agent a accès
+  const agentForTools = getAgentById(agentId || 'general')
+  const tools = (agentForTools?.id === 'prospector' || agentForTools?.id === 'closer' || agentForTools?.id === 'general')
+    ? twentyTools as any[]
+    : undefined
+
   const completion = await client.messages.create({
     model: resolveModel(agent.model),
     max_tokens: agent.maxTokens,
     temperature: agent.temperature,
     system: buildSystemPrompt(agent) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
+    tools,
     messages,
   })
 
