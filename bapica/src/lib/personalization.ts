@@ -139,7 +139,7 @@ export function getRecommendedWidgets(onboarding: OnboardingData | null): SmartW
       title: 'Prospection LinkedIn 🔗',
       description: 'Laissez Elio prospecter et qualifier des leads pour vous sur LinkedIn.',
       cta: 'Configurer',
-      href: '/dashboard/agents/prospector',
+      href: '/dashboard/agents/prospection-strategie',
       priority: 8,
     })
   }
@@ -206,7 +206,7 @@ export function getRecommendedAgentIds(onboarding: OnboardingData | null): strin
 
   if (contact.includes('telephone')) ids.push('telephone')
   if (contact.includes('whatsapp') || contact.includes('chat')) ids.push('support')
-  if (contact.includes('linkedin')) ids.push('prospector')
+  if (contact.includes('linkedin')) ids.push('prospection-strategie')
   if (tasks.includes('comptabilite') || tasks.includes('factures')) ids.push('accounting')
   if (tasks.includes('juridique')) ids.push('legal')
   if (tasks.includes('paie')) ids.push('recruiter')

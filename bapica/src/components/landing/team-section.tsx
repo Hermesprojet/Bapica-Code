@@ -37,7 +37,7 @@ const agentGradients: Record<string, string> = {
   general: "from-indigo-500 to-blue-500",
   support: "from-emerald-500 to-green-500",
   content: "from-indigo-500 to-blue-500",
-  prospector: "from-orange-500 to-amber-500",
+  'prospection-strategie': "from-emerald-500 to-teal-500",
   closer: "from-rose-500 to-pink-500",
   telephone: "from-cyan-500 to-teal-500",
   accounting: "from-amber-500 to-yellow-500",
@@ -53,7 +53,7 @@ const agentGradients: Record<string, string> = {
 const specialties: Record<string, string> = {
   support: "Support 24/7",
   content: "Contenu & SEO",
-  prospector: "Prospection B2B",
+  'prospection-strategie': "Croissance & Prospection",
   closer: "Closing vocal",
   telephone: "Standard virtuel",
   accounting: "Comptabilité",

@@ -232,16 +232,16 @@ const AGENT_EFFICIENCY: Record<string, { timeSaved: string; costEquivalent: stri
 const AGENT_MAP: Record<string, string[]> = {
   ecommerce: ['content', 'support', 'telephone', 'analytics'],
   restauration: ['telephone', 'content', 'general', 'support'],
-  immobilier: ['prospector', 'closer', 'telephone', 'content', 'legal'],
-  services: ['legal', 'accounting', 'prospector', 'content', 'general'],
+  immobilier: ['prospection-strategie', 'closer', 'telephone', 'content', 'legal'],
+  services: ['legal', 'accounting', 'prospection-strategie', 'content', 'general'],
   sante: ['telephone', 'support', 'legal', 'accounting'],
   formation: ['content', 'video', 'support', 'general'],
-  btp: ['telephone', 'accounting', 'legal', 'prospector'],
-  saas: ['analytics', 'content', 'support', 'scaling', 'prospector'],
+  btp: ['telephone', 'accounting', 'legal', 'prospection-strategie'],
+  saas: ['analytics', 'content', 'support', 'scaling', 'prospection-strategie'],
   commerce: ['content', 'telephone', 'support', 'general'],
-  freelance: ['accounting', 'content', 'prospector', 'general'],
+  freelance: ['accounting', 'content', 'prospection-strategie', 'general'],
   logistique: ['telephone', 'analytics', 'accounting', 'support'],
-  finance: ['prospector', 'closer', 'legal', 'analytics', 'scaling'],
+  finance: ['prospection-strategie', 'closer', 'legal', 'analytics', 'scaling'],
 }
 
 // ============================================================

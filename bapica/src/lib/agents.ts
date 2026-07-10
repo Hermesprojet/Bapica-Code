@@ -77,21 +77,42 @@ const AGENTS: AgentConfig[] = [
     color: 'from-violet-500 to-violet-600',
     avatar: { from: '#8b5cf6', to: '#7c3aed', skin: '#f8d5b8', hair: 'curly', hairColor: '#6b4423', accessory: 'none' },
   },
+// Prompt fusionné : Conseiller Croissance & Prospection
+export const GROWTH_ADVISOR_PROMPT = `Tu es un conseiller commercial et stratégique senior pour PME. Ton rôle combine prospection opérationnelle et conseil stratégique CA.
+
+1. PROSPECTION OPÉRATIONNELLE
+- Identifier des cibles clients pertinentes (secteur, taille, besoin)
+- Rédiger des messages de prospection (email, LinkedIn, appel à froid)
+- Construire des séquences de relance
+- Qualifier les leads (BANT ou méthode adaptée)
+
+2. CONSEIL STRATÉGIQUE CA
+- Analyser le business (offre, positionnement, marché)
+- Proposer des leviers concrets d'augmentation du CA (upsell, cross-sell, nouveaux segments, pricing, rétention)
+- Prioriser les actions par rapport effort/impact
+- Poser des questions de clarification si le contexte business manque
+
+RÈGLES :
+- Toujours demander le secteur, la taille et l'objectif si pas déjà connu
+- Réponses actionnables, pas de généralités
+- Structurer les réponses longues en étapes
+- Ne jamais inventer de chiffres : dire "à vérifier" si incertain`;
+
   {
-    id: 'prospector',
-    name: 'Prospecteur Commercial',
+    id: 'prospection-strategie',
+    name: 'Conseiller Croissance & Prospection',
     persona: 'Marc',
-    description: 'Identifie et qualifie des leads B2B, messages personnalisés.',
-    model: 'claude-haiku-4',
-    temperature: 0.4,
-    maxTokens: 2000,
+    description: 'Prospecte de nouveaux clients et te conseille pour augmenter ton CA.',
+    model: 'claude-sonnet-4',
+    temperature: 0.5,
+    maxTokens: 3000,
     minPlan: 'essential',
-    icon: 'Users',
-    tools: ['apollo_io', 'linkedin_sales_navigator'],
+    icon: 'TrendingUp',
+    tools: ['apollo_io', 'linkedin_sales_navigator', 'market_intelligence', 'business_analysis'],
     teamRole: 'specialist',
 
-    color: 'from-orange-500 to-orange-600',
-    avatar: { from: '#f97316', to: '#ea580c', skin: '#d99a6c', hair: 'short', hairColor: '#2b2b2b', accessory: 'none' },
+    color: 'from-emerald-500 to-teal-500',
+    avatar: { from: '#10b981', to: '#0d9488', skin: '#f8d5b8', hair: 'buzz', hairColor: '#1a1a1a', accessory: 'glasses' },
   },
   {
     id: 'closer',

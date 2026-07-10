@@ -93,9 +93,9 @@ export const ROUTING_MATRIX: RoutingRule[] = [
   { agentTypes: ['general', 'accounting', 'legal', 'analytics', 'scaling'], taskComplexity: 'low', model: 'sonnet', estimatedCostPer1k: 0.018 },
   
   // Tous les autres — GPT-4o + Fable (qualité pro, 3x moins cher que Sonnet)
-  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'video', 'recruiter', 'trends', 'demo'], taskComplexity: 'high', model: 'gpt4o', estimatedCostPer1k: 0.012 },
-  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'video', 'recruiter', 'trends', 'demo'], taskComplexity: 'medium', model: 'gpt4o', estimatedCostPer1k: 0.012 },
-  { agentTypes: ['support', 'content', 'prospector', 'closer', 'telephone', 'video', 'recruiter', 'trends', 'demo'], taskComplexity: 'low', model: 'gpt4o', estimatedCostPer1k: 0.012 },
+  { agentTypes: ['support', 'content', 'prospection-strategie', 'closer', 'telephone', 'video', 'recruiter', 'trends', 'demo'], taskComplexity: 'high', model: 'gpt4o', estimatedCostPer1k: 0.012 },
+  { agentTypes: ['support', 'content', 'prospection-strategie', 'closer', 'telephone', 'video', 'recruiter', 'trends', 'demo'], taskComplexity: 'medium', model: 'gpt4o', estimatedCostPer1k: 0.012 },
+  { agentTypes: ['support', 'content', 'prospection-strategie', 'closer', 'telephone', 'video', 'recruiter', 'trends', 'demo'], taskComplexity: 'low', model: 'gpt4o', estimatedCostPer1k: 0.012 },
 ]
 
 export function routeModel(agentType: string): ModelTier {

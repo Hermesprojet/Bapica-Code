@@ -48,7 +48,7 @@ export const AGENT_CONTENT: Record<string, AgentPageContent> = {
     ],
     keyResult: 'Un mois de contenu produit en une après-midi.',
   },
-  prospector: {
+  'prospection-strategie': {
     tagline: 'Marc identifie vos prospects idéaux et rédige des messages d’approche personnalisés qui obtiennent des réponses.',
     useCases: [
       { title: 'Ciblage B2B', desc: 'Définir et qualifier votre client idéal, secteur par secteur.' },

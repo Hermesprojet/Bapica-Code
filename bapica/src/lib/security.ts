@@ -49,7 +49,7 @@ export function sanitizeUserMessage(input: string, maxLength = 4000): string {
  * Valider un agentId (liste blanche — protection contre injection)
  */
 const VALID_AGENT_IDS = new Set([
-  'general', 'support', 'content', 'prospector', 'closer',
+  'general', 'support', 'content', 'prospection-strategie', 'closer',
   'telephone', 'accounting', 'video', 'recruiter', 'legal',
   'analytics', 'trends', 'scaling'
 ])

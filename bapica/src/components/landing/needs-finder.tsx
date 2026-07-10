@@ -49,17 +49,17 @@ const SIZES = [
 // Objectifs prioritaires (max 3)
 const GOALS = [
   {
-    id: 'prospection',
+    id: 'prospection-strategie',
     label: 'Trouver plus de clients',
     desc: 'Prospection, leads, prise de rendez-vous',
-    agents: ['prospector', 'closer'],
+    agents: ['prospection-strategie', 'closer'],
     icon: Users,
   },
   {
     id: 'ventes',
     label: 'Augmenter mon chiffre d\'affaires',
     desc: 'Conversion, suivi commercial, closing',
-    agents: ['closer', 'prospector', 'analytics'],
+    agents: ['closer', 'prospection-strategie', 'analytics'],
     icon: TrendingUp,
   },
   {
@@ -126,7 +126,7 @@ const TIME_WASTERS = [
     id: 'lead_gen',
     label: 'Chercher des prospects',
     desc: 'Listes, qualification, relances',
-    agents: ['prospector', 'closer'],
+    agents: ['prospection-strategie', 'closer'],
     icon: Users,
   },
   {
@@ -248,12 +248,12 @@ function computeRecommendation(params: {
 
   // Boost volume
   if (params.volume === 'medium') {
-    add('prospector', 1)
+    add('prospection-strategie', 1)
     add('support', 1)
     add('analytics', 1)
   }
   if (params.volume === 'high') {
-    add('prospector', 2)
+    add('prospection-strategie', 2)
     add('support', 2)
     add('analytics', 2)
     add('telephone', 2)

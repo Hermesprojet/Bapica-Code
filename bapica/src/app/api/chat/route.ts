@@ -210,7 +210,7 @@ async function callClaude(
 
   // Ajouter les tools CRM si l'agent a accès
   const agentForTools = agent
-  const tools = (agentForTools?.id === 'prospector' || agentForTools?.id === 'closer' || agentForTools?.id === 'general')
+  const tools = (agentForTools?.id === 'prospection-strategie' || agentForTools?.id === 'closer' || agentForTools?.id === 'general')
     ? twentyTools as unknown as any[]
     : undefined
 
