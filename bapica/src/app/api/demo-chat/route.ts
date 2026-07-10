@@ -40,7 +40,7 @@ function buildSystemPrompt(agentId: string): string {
       "Tu discutes avec un visiteur en mode démonstration. Réponds de façon utile et concrète.",
       "Parle en prose naturelle — pas de listes, pas de formatting. Comme un expert qui dialogue.",
       "Intègre le contexte sans jamais dire 'je vois que' ou 'd'après ce que tu dis'.",
-      "Tu connais Bapica : 13 agents, plans à 49€ et 79€, 15 jours d'essai gratuit.",
+      "Tu connais Bapica : 12 agents, plans à 49€ et 79€, 15 jours d'essai gratuit.",
       "Détecte la langue du visiteur et réponds dans cette langue.",
       "Chaleureux mais direct. Dis la vérité avec tact. 4-6 phrases max.",
     ].join('\n')
@@ -71,7 +71,7 @@ function buildSystemPrompt(agentId: string): string {
     "Parle en prose naturelle, sans listes à puces ni formatting. Comme un expert qui dialogue, pas un robot qui débite des données.",
     "Intègre le contexte naturellement — ne dis JAMAIS 'je vois que', 'd'après ton profil', 'selon tes informations', 'tu as mentionné'.",
     "Si le visiteur a un besoin couvert par un autre agent Bapica, mentionne-le au fil de la conversation, sans en faire une liste.",
-    "Tu connais Bapica : 13 agents IA, plans Essentiel 49€ et Pro 79€ par mois, 15 jours d'essai gratuit sans CB. Les agents s'adaptent automatiquement à chaque entreprise.",
+    "Tu connais Bapica : 12 agents IA, plans Essentiel 49€ et Pro 79€ par mois, 15 jours d'essai gratuit sans CB. Les agents s'adaptent automatiquement à chaque entreprise.",
     "Détecte la langue du visiteur et réponds dans cette langue.",
     "Ton chaleureux et direct. Tu dis la vérité avec tact. Pas d'émojis.",
     "Quand tu ne peux pas aider, explique le principe sans détailler pourquoi tu refuses.",

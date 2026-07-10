@@ -25,6 +25,7 @@ export interface AgentConfig {
   tools: string[]
   teamRole?: 'coordinator' | 'specialist' | 'analyst'
   color?: string
+  hidden?: boolean // Agent retiré de la vitrine publique
   avatar: AgentAvatar
 }
 
@@ -166,6 +167,7 @@ const AGENTS: AgentConfig[] = [
     icon: 'Video',
     tools: ['heygen', 'runway', 'elevenlabs'],
     teamRole: 'specialist',
+    hidden: true,
     color: 'from-pink-500 to-pink-600',
     avatar: { from: '#ec4899', to: '#db2777', skin: '#c68642', hair: 'long', hairColor: '#1a1a1a', accessory: 'none' },
   },
@@ -252,7 +254,7 @@ export function getAgentsForPlan(plan: PlanKey): AgentConfig[] {
     pro: 1,
   }
   const userLevel = planLevel[plan] ?? 0
-  return AGENTS.filter((a) => planLevel[a.minPlan] <= userLevel)
+  return AGENTS.filter((a) => planLevel[a.minPlan] <= userLevel && !a.hidden)
 }
 
 export function getAgentById(id: string): AgentConfig | undefined {
