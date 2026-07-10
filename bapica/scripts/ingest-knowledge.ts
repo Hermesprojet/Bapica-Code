@@ -1,51 +1,43 @@
 #!/usr/bin/env tsx
-/**
- * Ingère des fiches de connaissance dans la base RAG
- * Usage: npx tsx scripts/ingest-knowledge.ts <fichier.json> [agent_id]
- */
+import { readFileSync } from "fs"
+import { ingestKnowledge } from "../src/lib/rag"
 
-import { readFileSync } from 'fs'
-import { insertKnowledge } from '../src/lib/rag'
-
-interface KnowledgeCard {
-  title: string
-  content: string
-  category: string
-  tags?: string[]
+interface KnowledgeItem {
   agent_id?: string
+  source: string
+  category: string
+  content: string
 }
 
-async function main() {
-  const file = process.argv[2]
-  const defaultAgent = process.argv[3] || undefined
+const DEFAULT_AGENT = "prospection-strategie"
 
-  if (!file) {
-    console.error('Usage: npx tsx scripts/ingest-knowledge.ts <fichier.json> [agent_id]')
+async function main() {
+  const filePath = process.argv[2]
+  if (!filePath) {
+    console.error("Usage: npx tsx scripts/ingest-knowledge.ts <fichier.json>")
     process.exit(1)
   }
 
-  const raw = readFileSync(file, 'utf-8')
-  const cards: KnowledgeCard[] = JSON.parse(raw)
+  const items: KnowledgeItem[] = JSON.parse(readFileSync(filePath, "utf-8"))
+  console.log(`${items.length} fiches à ingérer...`)
 
-  console.log(`Ingestion de ${cards.length} fiches...`)
-
-  let ok = 0
-  for (const card of cards) {
-    try {
-      const agentId = card.agent_id || defaultAgent
-      const n = await insertKnowledge(card.title, card.content, card.category, card.tags || [], agentId)
-      if (n > 0) {
-        ok++
-        console.log(`  ✅ ${card.title} (${n} chunks)`)
-      } else {
-        console.log(`  ❌ ${card.title}`)
-      }
-    } catch (e) {
-      console.log(`  ❌ ${card.title} — ${e}`)
-    }
+  let total = 0
+  for (const item of items) {
+    const agentId = item.agent_id ?? DEFAULT_AGENT
+    const { inserted } = await ingestKnowledge({
+      text: item.content,
+      source: item.source,
+      category: item.category,
+      agentId,
+    })
+    total += inserted
+    console.log(`  ✓ [${agentId}] ${item.source} (${inserted} chunk(s))`)
   }
 
-  console.log(`\n${ok}/${cards.length} fiches ingérées.`)
+  console.log(`\nTerminé. ${total} chunk(s) insérés.`)
 }
 
-main()
+main().catch((err) => {
+  console.error("Erreur:", err)
+  process.exit(1)
+})
