@@ -155,7 +155,7 @@ async function generateVideo(job: VideoJob, voiceId?: string, avatarId?: string)
         const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId || '21m00Tcm4TlvDq8ikWAM'}`, {
           method: 'POST',
           headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: job.script, model_id: 'eleven_multilingual_v2' }),
+          body: JSON.stringify({ text: job.script, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.3 } }),
         })
 
         if (!res.ok) throw new Error('Erreur ElevenLabs')
