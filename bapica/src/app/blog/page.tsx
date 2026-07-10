@@ -13,7 +13,7 @@ export default function BlogPage() {
       <div className="mx-auto max-w-3xl px-4">
         <h1 className="mb-8 text-4xl font-bold">Blog Bapica</h1>
         <p className="mb-10 text-muted-foreground">
-          Conseils et guides sur l'IA et l'automatisation pour dirigeants de PME.
+          Conseils et guides sur l&apos;IA et l&apos;automatisation pour dirigeants de PME.
         </p>
         {articles.length === 0 ? (
           <p className="text-muted-foreground">Aucun article pour le moment. Revenez bientôt !</p>
