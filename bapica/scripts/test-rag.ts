@@ -20,7 +20,7 @@ async function main() {
   for (const question of TEST_QUESTIONS) {
     console.log(`❓ ${question}`)
     try {
-      const matches = await searchKnowledge(question, 'test-user', 0.3, 5)
+      const matches = await searchKnowledge(question, 'test-user', undefined, 0.3, 5)
       if (matches.length === 0) {
         console.log('   ⚠️ Aucun résultat\n')
       } else {
