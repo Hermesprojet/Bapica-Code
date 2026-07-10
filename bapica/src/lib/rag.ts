@@ -61,7 +61,7 @@ export async function retrieveContext(question: string, agentId: string): Promis
   const { data, error } = await supabase.rpc("match_agent_knowledge", {
     query_embedding: queryEmbedding,
     filter_agent_id: agentId,
-    match_threshold: 0.5,
+    match_threshold: 0.35,
     match_count: 5,
   })
   if (error || !data?.length) return ""
