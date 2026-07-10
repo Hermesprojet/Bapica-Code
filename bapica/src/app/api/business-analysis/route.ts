@@ -50,7 +50,7 @@ Agents recommandés : ${(profile.recommendedAgents || []).join(', ')}
 Problèmes : ${(profile.riskFactors || []).map((r: any) => typeof r === 'string' ? r : r.risk).join('; ') || 'Aucun'}`
 
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5',
       max_tokens: 600,
       system: systemPrompt,
       temperature: 0.4,

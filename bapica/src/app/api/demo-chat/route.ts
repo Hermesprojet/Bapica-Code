@@ -23,6 +23,9 @@ export async function OPTIONS(req: NextRequest) {
 const MAX_USER_MESSAGES = 3
 const MAX_MESSAGE_LENGTH = 500
 
+// Rate limiting par IP (côté serveur, pas basé sur l'historique client)
+const demoRateLimit = new Map<string, number>()
+
 interface HistoryMessage {
   role: 'user' | 'assistant'
   content: string
@@ -107,13 +110,18 @@ export async function POST(req: NextRequest) {
           }))
       : []
 
-    const userTurns = cleanHistory.filter((m) => m.role === 'user').length
-    if (userTurns >= MAX_USER_MESSAGES) {
+    // Rate limiting serveur par IP
+    const ip = req.headers.get('x-forwarded-for') || 'unknown'
+    const ipMsgs = demoRateLimit.get(ip) || 0
+    if (ipMsgs >= MAX_USER_MESSAGES) {
       return NextResponse.json(
-        { limitReached: true, response: 'Vous avez utilisé vos messages de démonstration. Créez un compte gratuit pour continuer.' },
+        { limitReached: true, response: 'Démonstration terminée. Créez un compte gratuit pour continuer.' },
         { status: 200, headers: corsHeaders(req.headers.get('origin')) }
       )
     }
+    demoRateLimit.set(ip, ipMsgs + 1)
+
+    const userTurns = 0 // Plus basé sur l'historique client
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {
@@ -132,9 +140,9 @@ export async function POST(req: NextRequest) {
     const effectiveTier = tier === 'gpt4o' && !hasOpenAI ? 'sonnet' : tier
     
     const modelMap: Record<ModelTier, string> = {
-      fable: 'claude-sonnet-4-6',
-      sonnet: 'claude-sonnet-4-6',
-      gpt4o: hasOpenAI ? 'gpt-4o' : 'claude-sonnet-4-6',
+      fable: 'claude-sonnet-4-5',
+      sonnet: 'claude-sonnet-4-5',
+      gpt4o: hasOpenAI ? 'gpt-4o' : 'claude-sonnet-4-5',
       haiku: 'claude-haiku-4-5',
       mini: 'claude-haiku-4-5',
     }

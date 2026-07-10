@@ -17,12 +17,20 @@ export async function OPTIONS() {
 // Ouvre le portail de facturation Stripe pour gérer/résilier l'abonnement.
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await req.json()
-    if (!userId) {
-      return NextResponse.json({ error: 'userId requis' }, { status: 400 })
+    // Récupérer l'utilisateur depuis le token Supabase (pas depuis le body !)
+    const authHeader = req.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    if (!token) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
 
     const supabase = getSupabaseAdmin()
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
+
+    const userId = user.id
     const { data: profile } = await supabase
       .from('profiles')
       .select('stripe_customer_id')

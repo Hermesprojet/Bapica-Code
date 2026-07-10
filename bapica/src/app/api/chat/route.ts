@@ -63,9 +63,9 @@ async function verifyAuth(req: NextRequest) {
 // Le modèle déclaré dans lib/agents.ts ('claude-sonnet-4') est un alias interne ;
 // on le résout vers un identifiant de modèle valide de l'API Claude.
 function resolveModel(model: string): string {
-  if (model.startsWith('claude-opus')) return 'claude-opus-4-8'
+  if (model.startsWith('claude-opus')) return 'claude-opus-4-1'
   if (model.startsWith('claude-haiku')) return 'claude-haiku-4-5'
-  return 'claude-sonnet-4-6'
+  return 'claude-sonnet-4-5'
 }
 
 function buildSystemPrompt(agent: AgentConfig): string {

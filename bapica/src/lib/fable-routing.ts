@@ -254,7 +254,7 @@ export async function callWithFableRouting(
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || '' })
   const fablePrompt = buildFablePrompt(basePrompt, tier, clientContext)
   
-  const modelMap: Record<ModelTier, string> = { fable: 'claude-sonnet-4-6', sonnet: 'claude-sonnet-4-6', gpt4o: 'gpt-4o', haiku: 'claude-haiku-4-5', mini: 'claude-haiku-4-5' }
+  const modelMap: Record<ModelTier, string> = { fable: 'claude-sonnet-4-5', sonnet: 'claude-sonnet-4-5', gpt4o: 'gpt-4o', haiku: 'claude-haiku-4-5', mini: 'claude-haiku-4-5' }
   const msg = await anthropic.messages.create({
     model: modelMap[tier] as string,
     max_tokens: tier === 'mini' ? 250 : 400,

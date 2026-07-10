@@ -16,10 +16,25 @@ export async function OPTIONS() {
 // Crée une session Stripe Checkout (abonnement) et renvoie l'URL de paiement.
 export async function POST(req: NextRequest) {
   try {
-    const { plan, userId, email } = await req.json()
+    const { plan } = await req.json()
 
     if (!plan || !(plan in PLANS)) {
       return NextResponse.json({ error: 'Formule invalide' }, { status: 400 })
+    }
+
+    // Récupérer l'utilisateur depuis le token (pas depuis le body !)
+    const authHeader = req.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    const supabaseAdmin = getSupabaseAdmin()
+    
+    let userId = ''
+    let email = ''
+    if (token) {
+      const { data: { user } } = await supabaseAdmin.auth.getUser(token)
+      if (user) {
+        userId = user.id
+        email = user.email || ''
+      }
     }
 
     const planConfig = PLANS[plan as PlanKey]
