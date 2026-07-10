@@ -141,11 +141,12 @@ export async function POST(req: NextRequest) {
     // Injecter le contexte mémoire dans le system prompt
     const memoryContext = buildMemoryContext(clientMemory)
 
-    // RAG — enrichir avec connaissances métier pour le Conseiller Croissance
+    // RAG — enrichir avec connaissances métier pour les agents concernés
     let ragContext = ''
-    if (agent.id === 'prospection-strategie') {
+    const ragAgents = ['prospection-strategie', 'support', 'recruiter', 'legal', 'accounting', 'analytics', 'trends']
+    if (ragAgents.includes(agent.id)) {
       try {
-        const matches = await searchKnowledge(safeMessage, auth.user.id)
+        const matches = await searchKnowledge(safeMessage, auth.user.id, agent.id)
         ragContext = formatKnowledgeContext(matches)
       } catch { /* RAG silencieux si pas dispo */ }
     }

@@ -12,15 +12,17 @@ export interface KnowledgeMatch {
   title: string
   content: string
   category: string
+  agentId: string | null
   similarity: number
 }
 
 /**
- * Recherche les connaissances les plus pertinentes pour une question
+ * Recherche les connaissances les plus pertinentes, filtrées par agent
  */
 export async function searchKnowledge(
   query: string,
   userId: string,
+  agentId?: string,
   matchThreshold: number = 0.5,
   maxResults: number = 5
 ): Promise<KnowledgeMatch[]> {
@@ -29,14 +31,13 @@ export async function searchKnowledge(
     process.env.SUPABASE_SERVICE_ROLE_KEY || ''
   )
 
-  // Générer l'embedding via OpenAI
   const embedding = await getEmbedding(query)
 
-  // Recherche vectorielle
   const { data, error } = await supabase.rpc('search_growth_knowledge', {
     query_embedding: embedding,
     match_threshold: matchThreshold,
     match_count: maxResults,
+    agent_filter: agentId || null,
   })
 
   if (error || !data) return []
@@ -46,6 +47,7 @@ export async function searchKnowledge(
     title: row.title,
     content: row.content,
     category: row.category,
+    agentId: row.agent_id || null,
     similarity: row.similarity,
   }))
 }
