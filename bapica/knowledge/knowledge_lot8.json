@@ -1,0 +1,38 @@
+[
+  {
+    "agent_id": "prospection-strategie",
+    "source": "Guide SEO Local Google Business",
+    "category": "SEO Local",
+    "content": "Optimisation Google Business Profile: 1) Compléter tous les champs (nom, adresse, téléphone, horaires). 2) Ajouter photos de qualité (façade, équipe, produits). 3) Collecter avis clients et répondre rapidement. 4) Créer posts réguliers avec mots-clés locaux. 5) Vérifier cohérence NAP (nom-adresse-téléphone) sur le web. 6) Ajouter services/produits avec descriptions détaillées. 7) Utiliser attributs (PME, certifications, prix). 8) Intégrer mots-clés géographiques dans description. 9) Mettre à jour informations avant fermetures/changements. 10) Analyser performances via Google Analytics intégré."
+  },
+  {
+    "agent_id": "general",
+    "source": "Stack Technologique PME Recommandée",
+    "category": "Infrastructure Tech",
+    "content": "Stack moderne PME optimisée: Frontend: React/Vue.js + TypeScript. Backend: Node.js/Python (FastAPI). Base données: PostgreSQL + Redis cache. Infrastructure: Docker + Kubernetes ou Vercel/Railway. CDN: Cloudflare. Email: SendGrid/Brevo. Authentification: Auth0/Supabase. Monitoring: Datadog/New Relic. CRM: HubSpot/Pipedrive. ERP léger: Odoo Community. Comptabilité: Sage/Cegid. Coûts estimés: 500-2000€/mois. Avantages: Scalabilité, maintenance simplifiée, communauté active."
+  },
+  {
+    "agent_id": "general",
+    "source": "Checklist Cybersécurité PME",
+    "category": "Cybersécurité",
+    "content": "Checklist essentielle: ☐ MFA activé tous accès critiques. ☐ Mots de passe 12+ caractères, gestionnaire password. ☐ Sauvegardes quotidiennes (3-2-1 rule). ☐ VPN pour accès distants. ☐ Firewall configuré + IDS/IPS. ☐ Antivirus/EDR sur tous postes. ☐ Mises à jour systèmes mensuelles. ☐ Chiffrage données sensibles. ☐ Tests phishing trimestriels. ☐ Politique accès minimaux (zero trust). ☐ Logs centralisés 90+ jours. ☐ Assurance cyber. ☐ Plan réponse incidents. ☐ Formation annuelle équipe."
+  },
+  {
+    "agent_id": "juridique",
+    "source": "RGPD Opérationnel Checklist",
+    "category": "Conformité RGPD",
+    "content": "Actions RGPD obligatoires: 1) Registre traitement données documenté. 2) DPO désigné si secteur public/sensible. 3) Consentement explicite avant collecte (cookies bandeaux). 4) Politique confidentialité accessible/compréhensible. 5) Droit oubli implémenté (suppression données). 6) Droit accès données (export format standard). 7) Durée conservation définie par type donnée. 8) Processus demandes CNIL (30j maximum). 9) Clauses data processing dans contrats prestataires. 10) AIPD pour traitements risqués. 11) Incident data: notification CNIL si risque. 12) Formation équipe annuelle RGPD."
+  },
+  {
+    "agent_id": "support",
+    "source": "Intelligence Émotionnelle Support Client",
+    "category": "Ressources Humaines",
+    "content": "Développer IE équipe support: 1) Auto-conscience: reconnaître ses émotions sous stress. 2) Auto-régulation: techniques respiration avant appel difficile. 3) Motivation: valoriser résolutions clients. 4) Empathie: écoute active, reformulation client. 5) Relations: tone professionnel+bienveillant, apologies sincères. Techniques: Pause 3s avant répondre, validation sentiment client ('je comprends votre frustration'), clarifier raison appel, solutions plutôt que refus. Formation: 2h/mois simulations. Score: mesurer CSAT (satisfaction) post-interaction. Outils: Slack wellness, coaching individuel pour tensions."
+  },
+  {
+    "agent_id": "recrutement",
+    "source": "Grilles Salariales Europe 2024",
+    "category": "Ressources Humaines",
+    "content": "Salaires annuels bruts (€) secteur IT/Tech: BELGIQUE - Junior Dev: 35-42k | Dev confirmé: 50-65k | Senior: 70-90k | Manager tech: 80-110k. ESPAGNE - Junior: 28-35k | Confirmé: 40-50k | Senior: 55-70k | Manager: 65-85k. ITALIE - Junior: 26-32k | Confirmé: 38-48k | Senior: 52-65k | Manager: 60-80k. ALLEMAGNE - Junior: 42-50k | Confirmé: 58-75k | Senior: 80-100k | Manager: 95-130k. POLOGNE - Junior: 22-28k | Confirmé: 32-42k | Senior: 48-60k | Manager: 55-75k. Charges sociales: 25-35% selon pays. Télétravail +5-10% flexibilité salariale."
+  }
+]
