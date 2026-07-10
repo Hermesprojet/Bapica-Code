@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { sanitizeUserMessage, isValidAgentId } from '@/lib/security'
 import { buildClientMemory, buildMemoryContext, addToMemory, type ClientMemory, type ConversationSummary } from '@/lib/client-memory'
 import { twentyTools } from '@/lib/tools/twenty-tools'
+import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 
 // Helpers CORS
 function corsHeaders(origin: string | null) {
@@ -139,7 +140,17 @@ export async function POST(req: NextRequest) {
 
     // Injecter le contexte mémoire dans le system prompt
     const memoryContext = buildMemoryContext(clientMemory)
-    const response = await callClaude(agent, safeMessage, history ?? [], memoryContext)
+
+    // RAG — enrichir avec connaissances métier pour le Conseiller Croissance
+    let ragContext = ''
+    if (agent.id === 'prospection-strategie') {
+      try {
+        const matches = await searchKnowledge(safeMessage, auth.user.id)
+        ragContext = formatKnowledgeContext(matches)
+      } catch { /* RAG silencieux si pas dispo */ }
+    }
+
+    const response = await callClaude(agent, safeMessage, history ?? [], memoryContext + ragContext)
 
     // Sauvegarder la conversation dans la mémoire
     const summary: ConversationSummary = {
