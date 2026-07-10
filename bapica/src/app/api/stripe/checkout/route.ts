@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe, PLANS, type PlanKey } from '@/lib/stripe'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const corsHeaders = () => ({
   'Access-Control-Allow-Origin': 'https://bapica.com',
