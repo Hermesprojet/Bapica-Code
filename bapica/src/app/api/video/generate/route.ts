@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// Dimensions par format (id envoyé par le formulaire vidéo).
-const DIMENSIONS: Record<string, { width: number; height: number }> = {
-  landscape: { width: 1920, height: 1080 },
-  portrait: { width: 1080, height: 1920 },
-  square: { width: 1080, height: 1080 },
+interface VideoJob {
+  id: string
+  user_id: string
+  provider: 'heygen' | 'runway' | 'elevenlabs'
+  type: 'avatar' | 'generative' | 'voiceover'
+  script: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  video_url?: string
+  error?: string
+  created_at: string
 }
 
-// POST /api/video/generate
-// Body: { script, language, aspect_ratio, title }
-// Génère une vidéo avec avatar IA via l'API HeyGen v2.
+// POST /api/video/generate — Lance un job vidéo non-bloquant
 export async function POST(req: NextRequest) {
   try {
-    // Vérifier l'authentification
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
@@ -24,89 +26,173 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
 
-    const body = await req.json()
-    const { script, aspect_ratio } = body
-
-    const apiKey = process.env.HEYGEN_API_KEY
-    const avatarId = process.env.HEYGEN_AVATAR_ID
-    const voiceId = process.env.HEYGEN_VOICE_ID
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { success: false, error: 'Clé API HeyGen (HEYGEN_API_KEY) non configurée.' },
-        { status: 400 }
-      )
-    }
-    if (!avatarId || !voiceId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Avatar/voix HeyGen non configurés (HEYGEN_AVATAR_ID, HEYGEN_VOICE_ID).',
-        },
-        { status: 400 }
-      )
-    }
-    if (!script || typeof script !== 'string' || !script.trim()) {
-      return NextResponse.json(
-        { success: false, error: 'Script requis.' },
-        { status: 400 }
-      )
+    // Vérifier le quota utilisateur (max 5 vidéos/mois en gratuit)
+    const { count } = await supabase
+      .from('video_jobs')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+    
+    const maxVideos = 5
+    if (count && count >= maxVideos) {
+      return NextResponse.json({ 
+        success: false, 
+        error: `Quota atteint (${maxVideos} vidéos/mois). Passez au plan Pro pour plus.` 
+      }, { status: 429 })
     }
 
-    const dimension = DIMENSIONS[aspect_ratio as string] || DIMENSIONS.landscape
+    const { script, provider = 'heygen', type = 'avatar', voiceId, avatarId } = await req.json()
 
-    const response = await fetch('https://api.heygen.com/v2/video/generate', {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        video_inputs: [
-          {
-            character: {
-              type: 'avatar',
-              avatar_id: avatarId,
-              avatar_style: 'normal',
-            },
-            voice: {
-              type: 'text',
-              input_text: script,
-              voice_id: voiceId,
-            },
-          },
-        ],
-        dimension,
-      }),
+    if (!script?.trim()) {
+      return NextResponse.json({ success: false, error: 'Script requis.' }, { status: 400 })
+    }
+
+    // Créer le job
+    const jobId = crypto.randomUUID()
+    const job: VideoJob = {
+      id: jobId,
+      user_id: user.id,
+      provider,
+      type,
+      script: script.slice(0, 5000),
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    }
+
+    await supabase.from('video_jobs').insert(job)
+
+    // Lancer la génération en arrière-plan (non-bloquant)
+    generateVideo(job, voiceId, avatarId).catch(err => {
+      console.error('Video generation failed:', err)
+      supabase.from('video_jobs').update({ status: 'failed', error: String(err) }).eq('id', jobId)
     })
 
-    const data = await response.json()
-
-    if (!response.ok || data.error) {
-      console.error('HeyGen API error:', data)
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            data?.error?.message ||
-            data?.message ||
-            'Erreur lors de la génération de la vidéo.',
-        },
-        { status: 502 }
-      )
-    }
-
-    // L'identifiant de vidéo permet d'interroger le statut côté HeyGen.
-    return NextResponse.json({
-      success: true,
-      videoId: data?.data?.video_id ?? null,
-    })
+    return NextResponse.json({ success: true, jobId, status: 'pending' })
   } catch (error) {
-    console.error('Video generation error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Erreur interne du serveur' },
-      { status: 500 }
-    )
+    console.error('Video route error:', error)
+    return NextResponse.json({ success: false, error: 'Erreur interne' }, { status: 500 })
+  }
+}
+
+// GET /api/video/generate?jobId=xxx — Poll le statut
+export async function GET(req: NextRequest) {
+  const jobId = req.nextUrl.searchParams.get('jobId')
+  if (!jobId) {
+    return NextResponse.json({ error: 'jobId requis' }, { status: 400 })
+  }
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  )
+
+  const { data } = await supabase.from('video_jobs').select('*').eq('id', jobId).single()
+  if (!data) {
+    return NextResponse.json({ error: 'Job introuvable' }, { status: 404 })
+  }
+
+  return NextResponse.json({ 
+    status: data.status, 
+    videoUrl: data.video_url, 
+    error: data.error 
+  })
+}
+
+// Génération asynchrone (appelée en arrière-plan, pas dans la réponse HTTP)
+async function generateVideo(job: VideoJob, voiceId?: string, avatarId?: string) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  )
+
+  await supabase.from('video_jobs').update({ status: 'processing' }).eq('id', job.id)
+
+  try {
+    let result: string | null = null
+
+    switch (job.provider) {
+      case 'heygen': {
+        const apiKey = process.env.HEYGEN_API_KEY
+        if (!apiKey) throw new Error('HEYGEN_API_KEY non configurée')
+
+        const res = await fetch('https://api.heygen.com/v2/video/generate', {
+          method: 'POST',
+          headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            video_inputs: [{
+              character: { type: 'avatar', avatar_id: avatarId || process.env.HEYGEN_AVATAR_ID, avatar_style: 'normal' },
+              voice: { type: 'text', input_text: job.script, voice_id: voiceId || process.env.HEYGEN_VOICE_ID },
+            }],
+            dimension: { width: 1920, height: 1080 },
+          }),
+        })
+
+        const data = await res.json()
+        if (!res.ok) throw new Error(data?.error?.message || 'Erreur HeyGen')
+        
+        const videoId = data?.data?.video_id
+        if (!videoId) throw new Error('Pas de video_id retourné')
+
+        // Polling (max 2 min) — pour la prod, utiliser un webhook HeyGen
+        for (let i = 0; i < 24; i++) {
+          await new Promise(r => setTimeout(r, 5000))
+          const statusRes = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${videoId}`, {
+            headers: { 'X-Api-Key': apiKey },
+          })
+          const statusData = await statusRes.json()
+          if (statusData?.data?.status === 'completed') {
+            result = statusData.data.video_url
+            break
+          }
+          if (statusData?.data?.status === 'failed') {
+            throw new Error(statusData.data.error || 'Échec HeyGen')
+          }
+        }
+        if (!result) throw new Error('Timeout — la vidéo prend plus de 2 min')
+        break
+      }
+
+      case 'elevenlabs': {
+        const apiKey = process.env.ELEVENLABS_API_KEY
+        if (!apiKey) throw new Error('ELEVENLABS_API_KEY non configurée')
+
+        const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId || '21m00Tcm4TlvDq8ikWAM'}`, {
+          method: 'POST',
+          headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: job.script, model_id: 'eleven_multilingual_v2' }),
+        })
+
+        if (!res.ok) throw new Error('Erreur ElevenLabs')
+        const buffer = await res.arrayBuffer()
+        // Stocker dans Supabase Storage
+        const fileName = `voiceovers/${job.id}.mp3`
+        const { error: uploadError } = await supabase.storage.from('media').upload(fileName, buffer, { contentType: 'audio/mpeg', upsert: true })
+        if (uploadError) throw new Error('Erreur upload')
+        
+        const { data: urlData } = supabase.storage.from('media').getPublicUrl(fileName)
+        result = urlData.publicUrl
+        break
+      }
+
+      case 'runway': {
+        const apiKey = process.env.RUNWAY_API_KEY
+        if (!apiKey) throw new Error('RUNWAY_API_KEY non configurée')
+
+        const res = await fetch('https://api.runwayml.com/v1/generate', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: job.script, model: 'gen3', num_results: 1 }),
+        })
+
+        const data = await res.json()
+        result = data?.output?.[0] || null
+        if (!result) throw new Error('Erreur Runway')
+        break
+      }
+    }
+
+    await supabase.from('video_jobs').update({ status: 'completed', video_url: result }).eq('id', job.id)
+  } catch (error) {
+    await supabase.from('video_jobs').update({ status: 'failed', error: String(error) }).eq('id', job.id)
   }
 }
