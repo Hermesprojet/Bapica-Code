@@ -1,0 +1,62 @@
+[
+  {
+    "agent_id": "support",
+    "source": "Support - structure d'une \nbonne réponse (reformulé)",
+    "category": "support",
+    "content": "Une réponse de support \nefficace suit une structure constante : \naccuser réception du problème et montrer \nqu'on l'a compris (reformuler si \nnécessaire), apporter la solution de façon \nclaire et ordonnée, confirmer que le \nproblème est résolu et proposer une aide \nsupplémentaire. Le ton doit être empathique \net rassurant, surtout face à un client \nfrustré : reconnaître l'agacement avant de \nrésoudre désamorce la tension. Éviter le \njargon technique et privilégier des étapes \nnumérotées quand il y a une manipulation à \nfaire. Toujours répondre à la question \nposée avant d'ajouter des informations \ncomplémentaires. Une réponse trop longue \nnoie la solution : aller à l'essentiel. Si \nplusieurs solutions existent, proposer la \nplus simple d'abord."
+  },
+  {
+    "agent_id": "support",
+    "source": "Support - gérer un client \nmécontent (reformulé)",
+    "category": "support",
+    "content": "Face à un client en colère, \nla priorité est de baisser la tension avant \nde traiter le fond. Écouter sans \ninterrompre, reconnaître le ressenti ('je \ncomprends que ce soit frustrant'), ne \njamais se justifier ou se défendre en \npremier. S'excuser sincèrement quand c'est \njustifié, sans minimiser. Ensuite \nseulement, se concentrer sur la solution et \nl'annoncer clairement avec un délai. \nDépasser légèrement les attentes dans la \nréparation transforme souvent un client \nmécontent en client fidèle. Ne jamais \npromettre ce qui ne pourra être tenu, car \nune promesse non respectée aggrave tout. \nRester calme et professionnel même si le \nclient est agressif : la maîtrise de soi \nfait redescendre la pression. Si le cas \ndépasse le périmètre, escalader vers un \nhumain en expliquant pourquoi, sans laisser \nle client dans le flou."
+  },
+  {
+    "agent_id": "support",
+    "source": "Support - escalade et \nlimites (reformulé)",
+    "category": "support",
+    "content": "Un bon agent de support \nsait reconnaître les situations qu'il ne \ndoit pas traiter seul et les escalader. Les \ncas d'escalade typiques : demande dépassant \nles règles ou les droits accordés, \nréclamation sensible (remboursement \nimportant, litige), problème technique \ncomplexe non documenté, client menaçant de \npartir ou de nuire à la réputation. \nL'escalade n'est pas un échec mais une \nprotection du client et de l'entreprise. \nBien escalader consiste à transmettre le \ncontexte complet à l'humain (historique, \nproblème, ce qui a déjà été tenté) pour \néviter au client de tout répéter. \nCommuniquer clairement au client ce qui va \nse passer et sous quel délai. Ne jamais \ninventer une réponse pour éviter \nd'escalader : une information fausse coûte \nplus cher que l'attente d'une réponse \nfiable."
+  },
+  {
+    "agent_id": "support",
+    "source": "Support - transformer le \nsupport en fidélisation (reformulé)",
+    "category": "support",
+    "content": "Chaque interaction de \nsupport est une occasion de renforcer la \nrelation client, pas seulement de régler un \nincident. Un problème bien traité crée \nsouvent plus de fidélité qu'une absence de \nproblème. Au-delà de la résolution, un bon \nsupport anticipe : proposer un conseil pour \néviter que le souci se reproduise, signaler \nune fonctionnalité utile, vérifier que tout \nva bien par ailleurs. Le suivi (revenir \nvers le client pour confirmer que la \nsolution a fonctionné) marque les esprits. \nRecueillir le retour du client après \nrésolution alimente l'amélioration continue \net montre qu'on tient à son avis. Un \nsupport qui traite le client comme une \npersonne et non comme un ticket construit \nun attachement durable à la marque. La \nrapidité de première réponse est un facteur \nmajeur de satisfaction, même quand la \nrésolution complète prend plus de temps."
+  },
+  {
+    "agent_id": "support",
+    "source": "Support - clarté et \npédagogie (reformulé)",
+    "category": "support",
+    "content": "La qualité perçue du \nsupport dépend beaucoup de la clarté des \nexplications. Adapter le niveau de détail à \nl'interlocuteur : un utilisateur novice a \nbesoin d'étapes explicites, un utilisateur \navancé veut une réponse directe. Utiliser \nun langage simple, définir les termes \ntechniques inévitables, et illustrer par un \nexemple concret quand c'est utile. Découper \nles procédures en étapes courtes et \nvérifiables. Confirmer la compréhension \nplutôt que de supposer ('dites-moi si cette \nétape a fonctionné'). Anticiper les points \nde blocage courants et les prévenir. Une \ncapture d'écran ou un exemple vaut souvent \nmieux qu'un long paragraphe. L'objectif est \nque le client réussisse par lui-même, pas \nseulement qu'il reçoive une réponse. Un \nsupport pédagogique réduit aussi le volume \nde demandes répétées en rendant les clients \nautonomes."
+  },
+  {
+    "agent_id": "recrutement",
+    "source": "Recrutement - rédiger une \nfiche de poste (reformulé)",
+    "category": "recrutement",
+    "content": "Une fiche de poste efficace \nattire les bons candidats et décourage les \nmauvais. Elle contient : un intitulé clair, \nla mission principale en une phrase, les \nresponsabilités concrètes (ce que la \npersonne fera vraiment), les compétences \nindispensables distinguées des compétences \nsouhaitables, et les critères de réussite \ndu poste. Décrire aussi le contexte \n(équipe, environnement, évolution possible) \net ce que l'entreprise offre. Éviter les \nlistes de compétences interminables qui \nfont fuir les bons profils : se concentrer \nsur l'essentiel. Le ton doit refléter la \nculture de l'entreprise. Une bonne fiche \nparle autant de ce que le candidat va \napporter que de ce qu'il va y gagner. \nFormuler les exigences en termes de \nrésultats attendus plutôt que d'années \nd'expérience arbitraires élargit le vivier \nde candidats pertinents."
+  },
+  {
+    "agent_id": "recrutement",
+    "source": "Recrutement - questions \nd'entretien comportementales (reformulé)",
+    "category": "recrutement",
+    "content": "Les meilleures questions \nd'entretien révèlent le comportement réel \ndu candidat plutôt que ses intentions \nthéoriques. La technique consiste à \ndemander des exemples concrets du passé \n('racontez-moi une situation où vous avez \ndû gérer un conflit / respecter un délai \nserré / résoudre un problème imprévu'). Le \npassé prédit mieux que les réponses \nhypothétiques. Pour chaque réponse, creuser \n: quelle était la situation, quelle a été \nl'action précise du candidat, quel \nrésultat. Se méfier des réponses vagues ou \nuniquement collectives ('nous avons...') : \nchercher la contribution personnelle. Poser \nles mêmes questions clés à tous les \ncandidats permet de comparer objectivement. \nÉcouter plus que parler pendant \nl'entretien. Les questions doivent cibler \nles compétences réellement nécessaires au \nposte, définies à l'avance."
+  },
+  {
+    "agent_id": "recrutement",
+    "source": "Recrutement - évaluation \nobjective et non-discrimination \n(reformulé)",
+    "category": "recrutement",
+    "content": "Une évaluation équitable et \nefficace repose sur des critères objectifs \ndéfinis avant de rencontrer les candidats, \nliés uniquement aux exigences du poste. \nUtiliser une grille d'évaluation commune \nréduit les biais et permet de comparer sur \nles mêmes bases. Il est essentiel et \nlégalement obligatoire de ne jamais fonder \nune décision sur des critères \ndiscriminatoires (âge, genre, origine, \nsituation familiale, apparence, etc.) : \nseules comptent les compétences et \nl'adéquation au poste. Se méfier des biais \ncourants : l'effet de halo (une qualité qui \ninfluence tout le jugement), le biais de \nsimilarité (préférer qui nous ressemble), \nla première impression. Impliquer plusieurs \névaluateurs limite la subjectivité. \nDocumenter les raisons factuelles de chaque \ndécision. La décision finale d'embauche \nrevient toujours à un responsable humain, \nl'IA n'étant qu'une aide à la structuration \net à la préparation."
+  },
+  {
+    "agent_id": "recrutement",
+    "source": "Recrutement - onboarding \nréussi (reformulé)",
+    "category": "recrutement",
+    "content": "Le recrutement ne s'arrête \npas à la signature : l'intégration \n(onboarding) détermine si la nouvelle \nrecrue reste et devient performante. Un \nonboarding réussi commence avant le premier \njour (préparer le poste, le matériel, \nprévenir l'équipe) et s'étale sur les \npremières semaines. Les éléments clés : \naccueil chaleureux, présentation claire des \nattentes et objectifs, accès aux outils et \ninformations, désignation d'un référent, et \npoints réguliers pour ajuster. Les \npremières semaines forgent l'engagement : \nune recrue livrée à elle-même se démotive \nvite. Fixer des objectifs simples et \natteignables sur la période d'essai crée \ndes premières réussites qui ancrent la \nconfiance. Un bon onboarding réduit \nfortement le turnover précoce, qui coûte \ncher. Recueillir le ressenti de la recrue \naprès quelques semaines permet d'améliorer \nle processus et de détecter tôt les \ndifficultés."
+  },
+  {
+    "agent_id": "recrutement",
+    "source": "Recrutement - attirer les \ncandidats (marque employeur) (reformulé)",
+    "category": "recrutement",
+    "content": "Pour une PME en concurrence \navec de plus grandes structures, attirer \nles bons candidats passe par une marque \nemployeur soignée plutôt que par le seul \nsalaire. Les candidats évaluent la culture, \nle sens du travail, les perspectives \nd'évolution, la flexibilité et l'ambiance \nautant que la rémunération. Communiquer \nauthentiquement sur ce qu'est réellement \nl'entreprise (valeurs, quotidien, équipe) \nattire les profils qui s'y épanouiront et \nrepousse les autres. Les canaux : réseaux \nprofessionnels, recommandation par les \nemployés actuels (souvent la meilleure \nsource), présence en ligne. Un processus de \nrecrutement rapide et respectueux \n(réponses, feedback) marque positivement \nles candidats, même non retenus. Une PME \npeut se différencier par la proximité, la \npolyvalence des missions et l'impact réel \ndu travail, arguments que les grandes \nstructures offrent difficilement. Soigner \nl'expérience candidat, c'est déjà fidéliser \navant l'embauche."
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "agent_id": "vocal",
+    "source": "Vocal - écrire pour \nl'oreille (reformulé)",
+    "category": "vocal",
+    "content": "Un texte destiné à être \nentendu s'écrit différemment d'un texte \ndestiné à être lu. Phrases courtes, une \nidée par phrase, vocabulaire simple : \nl'auditeur ne peut pas revenir en arrière \ncomme un lecteur. La ponctuation guide le \nsouffle et le rythme : les virgules et les \npoints créent les pauses naturelles. Éviter \nles subordonnées empilées et les chiffres \ncomplexes difficiles à suivre à l'oral. \nLire son texte à voix haute est le meilleur \ntest : ce qui accroche à la lecture \naccrochera à l'écoute. Varier la longueur \ndes phrases crée du rythme et évite la \nmonotonie. Commencer fort pour capter \nl'attention dès les premières secondes. Un \nbon script audio sonne comme quelqu'un qui \nparle naturellement, pas comme un document \nrécité."
+  },
+  {
+    "agent_id": "vocal",
+    "source": "Vocal - adapter le ton à \nl'intention (reformulé)",
+    "category": "vocal",
+    "content": "Le ton d'un contenu vocal \ndoit correspondre à son intention et à son \naudience. Un message de bienvenue est \nchaleureux et accueillant ; une annonce \ncommerciale est dynamique et enthousiaste ; \nun message d'information est clair et posé \n; un message de réassurance (après un \nincident) est calme et empathique. Indiquer \nles intentions d'intonation dans le script \n(accentuation, pause, montée d'énergie) \naide à obtenir le bon rendu, surtout avec \nune voix de synthèse. Le débit compte : \ntrop rapide perd l'auditeur, trop lent \nl'ennuie. Adapter le registre de langue au \npublic (professionnel, grand public, \ntechnique). Une même information peut être \ndite de plusieurs façons selon l'émotion \nrecherchée. La cohérence entre le ton et \nl'image de marque de la PME renforce la \nreconnaissance et la confiance."
+  },
+  {
+    "agent_id": "vocal",
+    "source": "Vocal - messagerie et \nannonces professionnelles (reformulé)",
+    "category": "vocal",
+    "content": "Un message d'accueil \ntéléphonique ou une annonce professionnelle \ndonne une première impression de \nl'entreprise. La structure efficace d'un \nmessage d'accueil : saluer, identifier \nl'entreprise, donner l'information utile ou \nl'option, indiquer la suite (rappel, \nhoraires, alternative). Rester bref : \nl'appelant veut aller vite. Un ton \nprofessionnel et chaleureux rassure. Pour \nun message d'absence, préciser quand la \npersonne sera disponible et comment obtenir \nde l'aide entre-temps. Éviter les \nformulations négatives ou froides. Pour les \nannonces marketing, capter l'attention dès \nle début et finir par un appel à l'action \nclair. La qualité de la voix et de \nl'enregistrement reflète le sérieux de \nl'entreprise : un message bâclé donne une \nmauvaise image. Tester le message en \nconditions réelles avant de le diffuser."
+  },
+  {
+    "agent_id": "video",
+    "source": "Vidéo - structurer une vidéo \nqui retient l'attention (reformulé)",
+    "category": "video",
+    "content": "Les premières secondes \nd'une vidéo décident si le spectateur \nreste. L'accroche (les 3 premières \nsecondes) doit intriguer, poser un problème \nou promettre un bénéfice, sans introduction \nlente. La structure classique : accroche, \ndéveloppement (le message principal), appel \nà l'action final. Chaque plan doit avoir \nune raison d'être ; couper tout ce qui \nn'apporte rien. Le rythme soutient \nl'attention : alterner les plans, éviter \nles longueurs. Sur les réseaux sociaux, la \nvidéo doit fonctionner même sans le son \n(sous-titres, visuel parlant). Montrer \nplutôt que dire : illustrer le bénéfice à \nl'écran est plus fort qu'une description. \nTerminer par un appel à l'action unique et \nclair. Adapter la durée au canal : très \ncourt pour les réseaux, plus long pour une \ndémonstration produit sur un site."
+  },
+  {
+    "agent_id": "video",
+    "source": "Vidéo - le storyboard et le \ndécoupage en plans (reformulé)",
+    "category": "video",
+    "content": "Un storyboard planifie la \nvidéo plan par plan avant la production, ce \nqui évite les pertes de temps et garantit \nla cohérence. Pour chaque plan, définir : \nce qu'on voit (le visuel), ce qu'on entend \n(voix off, dialogue, son), et la durée. \nPenser la transition entre les plans pour \nun enchaînement fluide. Un découpage clair \npermet de générer ou tourner chaque segment \nséparément puis de les assembler. Les plans \ncourts (quelques secondes) maintiennent le \ndynamisme ; les plans longs conviennent aux \nmoments d'explication ou d'émotion. Varier \nles angles et les échelles (plan large, \ngros plan) crée du relief visuel. Le \nstoryboard aligne aussi les intervenants \nsur le résultat attendu. Même sommaire, il \nvaut mieux qu'une production improvisée. \nPour une vidéo générée par IA, un découpage \nprécis en clips courts donne de bien \nmeilleurs résultats qu'une demande d'un \nseul long plan."
+  },
+  {
+    "agent_id": "video",
+    "source": "Vidéo - concevoir une vidéo \npublicitaire pour PME (reformulé)",
+    "category": "video",
+    "content": "Une vidéo publicitaire \nefficace pour une PME se concentre sur le \nclient, pas sur l'entreprise. Elle part \nd'un problème que vit le client cible, \nprésente la solution (le produit ou \nservice), et montre le résultat ou la \ntransformation. Le bénéfice doit être \nvisible et concret, pas une liste de \ncaractéristiques. Une seule idée forte par \nvidéo vaut mieux qu'un catalogue confus. \nL'émotion (soulagement, désir, confiance) \nmarque plus que l'argument rationnel seul. \nIntégrer une preuve (témoignage, résultat \nchiffré) renforce la crédibilité. L'appel à \nl'action final doit être unique et évident. \nAdapter le format et la durée au canal de \ndiffusion et à l'audience. Une bonne pub \nraconte une petite histoire à laquelle le \nspectateur s'identifie, avec le client en \nhéros et la marque en guide qui l'aide à \nréussir."
+  },
+  {
+    "agent_id": "telephone",
+    "source": "Téléphone - réussir les \npremières secondes d'un appel (reformulé)",
+    "category": "telephone",
+    "content": "Au téléphone, les 15 à 20 \npremières secondes déterminent la suite de \nl'échange. L'ouverture doit être claire : \nse présenter, nommer l'entreprise, et \nannoncer immédiatement la raison de l'appel \nde façon centrée sur l'interlocuteur, pas \nsur soi. Demander si c'est le bon moment \nrespecte la personne et augmente l'écoute. \nUn ton naturel, souriant (le sourire \ns'entend) et posé met en confiance. Éviter \nle script robotique récité : il faut sonner \ncomme une vraie conversation. Pour un appel \nsortant, une accroche liée à un besoin ou \nun contexte précis du prospect capte \nl'attention mieux qu'une présentation \ngénérique du produit. Le but des premières \nsecondes n'est pas de vendre mais de gagner \nle droit de continuer la conversation."
+  },
+  {
+    "agent_id": "telephone",
+    "source": "Téléphone - structurer un \nappel vers une prochaine étape \n(reformulé)",
+    "category": "telephone",
+    "content": "Un appel professionnel doit \ntoujours viser une prochaine étape \nconcrète, jamais se terminer dans le flou. \nLa structure : ouverture, raison de \nl'appel, échange (questions et écoute), \npuis proposition d'une étape suivante \nprécise (rendez-vous, envoi d'informations, \nrappel à une date). En prospection, \nl'objectif d'un premier appel est rarement \nla vente directe mais l'obtention du \nrendez-vous. Écouter plus que parler permet \nde comprendre le besoin réel et d'adapter \nle discours. Reformuler ce que dit \nl'interlocuteur montre qu'on écoute et \nclarifie. Noter les informations clés \npendant l'appel pour le suivi. Conclure en \nrécapitulant ce qui a été convenu et \nl'étape suivante avec une date. Un appel \nsans prochaine action définie est une \nopportunité laissée en suspens qui se perd \nsouvent."
+  },
+  {
+    "agent_id": "telephone",
+    "source": "Téléphone - gérer les \nobjections au téléphone (reformulé)",
+    "category": "telephone",
+    "content": "Les objections au téléphone \nsont fréquentes et se gèrent par l'écoute \nplutôt que la confrontation. Ne pas couper \nl'interlocuteur ni contre-argumenter \nimmédiatement : laisser l'objection \ns'exprimer, la reconnaître, puis clarifier \nce qui la sous-tend. 'Je n'ai pas le temps' \npeut signifier 'ce n'est pas prioritaire' : \nproposer un moment plus court ou plus tard. \n'Ça ne m'intéresse pas' mérite une question \nouverte pour comprendre. 'C'est trop cher' \nappelle à recentrer sur la valeur. \nL'objectif n'est pas de gagner un bras de \nfer mais d'aider l'interlocuteur à avancer \ndans sa réflexion. Face à un refus net et \nrépété, rester courtois et ne pas insister \nlourdement : préserver la relation compte \nplus qu'un appel. Un refus aujourd'hui \nn'est pas définitif ; une bonne impression \nlaisse la porte ouverte pour plus tard."
+  }
+]

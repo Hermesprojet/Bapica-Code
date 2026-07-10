@@ -1,0 +1,56 @@
+[
+  {
+    "agent_id": "analytics",
+    "source": "Analytics - choisir des \nindicateurs actionnables (reformulé)",
+    "category": "analytics",
+    "content": "Un bon indicateur est \nactionnable : il indique clairement quoi \nfaire s'il évolue. Distinguer les \nindicateurs de résultat (chiffre \nd'affaires, conversion, rétention) des \nindicateurs d'activité (nombre d'appels, de \ncontenus publiés), et se méfier des \nindicateurs de vanité (vues, abonnés) qui \nflattent sans se traduire en valeur. Pour \nune PME, cinq à sept indicateurs clés \nsuffisent à piloter : mieux vaut un tableau \nde bord simple suivi régulièrement qu'une \nmasse de données jamais exploitée. Chaque \nindicateur doit être relié à un objectif. \nSuivre les tendances dans le temps est plus \nrévélateur que les valeurs isolées. \nL'analyse ne vaut que si elle débouche sur \nune décision : traduire chaque constat en \naction concrète. Avant d'analyser, \ns'assurer de la fiabilité et de la \ncomplétude des données fournies."
+  },
+  {
+    "agent_id": "analytics",
+    "source": "Analytics - interpréter sans \nsurinterpréter (reformulé)",
+    "category": "analytics",
+    "content": "Analyser des données \ndemande de la rigueur pour ne pas tirer de \nfausses conclusions. Principe fondamental : \ncorrélation n'est pas causalité. Deux \nphénomènes qui évoluent ensemble ne sont \npas forcément liés par une cause. Se méfier \ndes conclusions hâtives sur de petits \néchantillons ou de courtes périodes, où le \nhasard domine. Toujours considérer les \nfacteurs externes (saisonnalité, contexte, \névénements ponctuels) qui peuvent expliquer \nune variation. Comparer ce qui est \ncomparable et sur des périodes suffisantes. \nSignaler les limites des données (données \nmanquantes, biais de collecte) plutôt que \nde présenter une analyse comme certaine. \nUne bonne analyse reste honnête sur son \ndegré de confiance. L'objectif n'est pas \nd'impressionner par des chiffres mais \nd'éclairer une décision avec lucidité. Face \nà des données insuffisantes, il vaut mieux \ndire ce qui manque que d'inventer une \nconclusion."
+  },
+  {
+    "agent_id": "analytics",
+    "source": "Analytics - transformer les \ndonnées en décisions (reformulé)",
+    "category": "analytics",
+    "content": "La valeur de l'analyse ne \nréside pas dans le constat mais dans la \ndécision qu'elle permet. Après avoir \nobservé une donnée, la question utile est : \nqu'est-ce que cela change dans ce qu'on \ndoit faire ? Un taux de conversion en \nbaisse appelle à examiner le parcours de \nvente ; un panier moyen stagnant suggère \nd'activer l'upsell ; un churn élevé oriente \nvers l'expérience client. Prioriser les \nanalyses selon leur impact potentiel sur \nles résultats. Présenter les conclusions de \nfaçon claire et orientée action, avec des \nrecommandations concrètes et hiérarchisées. \nÉviter les rapports noyés de chiffres sans \nfil conducteur. Un bon travail analytique \npour une PME répond à trois questions : que \nse passe-t-il, pourquoi, et que faire. \nRelier systématiquement l'analyse aux \nobjectifs de l'entreprise garantit qu'elle \nserve réellement à décider et pas seulement \nà décrire."
+  },
+  {
+    "agent_id": "tendances",
+    "source": "Tendances - distinguer \ntendance de fond et effet de mode \n(reformulé)",
+    "category": "tendances",
+    "content": "Toutes les nouveautés ne se \nvalent pas : il faut distinguer les \ntendances de fond, durables et \nstructurantes, des effets de mode \npassagers. Une tendance de fond répond à un \nchangement réel de comportement, de \ntechnologie ou de société, et s'inscrit \ndans la durée. Un effet de mode monte vite \net retombe. Investir dans un effet de mode \npeut faire perdre du temps et de l'argent, \ntandis que rater une tendance de fond peut \nmenacer l'entreprise. Pour évaluer une \ntendance : repose-t-elle sur un besoin \ndurable ? Est-elle adoptée largement ou par \nune niche éphémère ? A-t-elle un impact \nconcret sur mon secteur et mes clients ? \nL'enjeu pour une PME n'est pas de suivre \ntoutes les tendances mais d'identifier \ncelles qui comptent pour son activité et \nd'agir au bon moment. Comme les tendances \névoluent, toute analyse doit s'appuyer sur \ndes informations récentes et être \nréactualisée régulièrement."
+  },
+  {
+    "agent_id": "tendances",
+    "source": "Tendances - traduire une \ntendance en opportunité (reformulé)",
+    "category": "tendances",
+    "content": "Une tendance n'a de valeur \npour une PME que si elle se traduit en \naction concrète : opportunité à saisir ou \nrisque à anticiper. La démarche : \nidentifier la tendance pertinente pour son \nsecteur, comprendre comment elle change les \nattentes des clients ou les règles du jeu, \npuis en déduire ce que l'entreprise peut \nfaire (nouvelle offre, adaptation, \npositionnement) ou doit éviter. Une \ntendance technologique peut ouvrir un \nnouveau service ; une évolution \nréglementaire peut imposer une adaptation ; \nun changement de comportement client peut \ndemander de revoir sa communication. Agir \ntôt sur une tendance porteuse procure un \navantage concurrentiel ; réagir trop tard \nfait subir. Mais toute action doit rester \nalignée avec le cœur de métier et les \nmoyens de l'entreprise : suivre une \ntendance sans cohérence stratégique \ndisperse. L'analyse de tendances doit \ns'appuyer sur des données actuelles, car \nune information périmée peut induire en \nerreur."
+  },
+  {
+    "agent_id": "tendances",
+    "source": "Tendances - organiser sa \nveille (reformulé)",
+    "category": "tendances",
+    "content": "Une veille efficace permet \nde rester informé sans se noyer. Le \nprincipe : cibler les sources pertinentes \npour son secteur et ses clients plutôt que \nde tout suivre. Définir quelques thèmes de \nveille prioritaires (évolutions du marché, \nconcurrents, technologies, réglementation) \net y consacrer un temps régulier. Croiser \nplusieurs sources fiables évite les biais \net les fausses informations. Distinguer \nl'information vérifiée de la rumeur ou de \nla spéculation. Noter et partager les \nsignaux importants pour qu'ils débouchent \nsur des décisions. Une bonne veille est \ncontinue et non ponctuelle : les \nchangements se détectent dans la durée. \nPour une PME, même une veille légère mais \nrégulière vaut mieux qu'une analyse \nexhaustive occasionnelle. L'important est \nde transformer l'information en avantage : \nanticiper plutôt que subir. Comme les \ndonnées de marché évoluent vite, il est \nessentiel de vérifier la fraîcheur des \ninformations et de recouper avant d'agir."
+  },
+  {
+    "agent_id": "general",
+    "source": "Général - clarifier le \nbesoin avant de répondre (reformulé)",
+    "category": "general",
+    "content": "Un assistant polyvalent \nefficace commence par bien comprendre le \nbesoin réel derrière une demande, qui n'est \npas toujours celui exprimé littéralement. \nQuand une demande est ambiguë ou peut mener \nà des réponses très différentes, poser une \nquestion de clarification ciblée fait \ngagner du temps à tous. Reformuler le \nbesoin confirme la bonne compréhension. \nCerner le contexte (objectif, destinataire, \ncontraintes) permet une réponse réellement \nutile plutôt que générique. Un bon \nassistant adapte le niveau de détail et le \nformat à la situation. L'objectif est de \nproduire une réponse directement \nexploitable, pas seulement correcte. Savoir \nquand orienter vers une ressource ou un \nspécialiste plus adapté fait aussi partie \nd'un bon accompagnement."
+  },
+  {
+    "agent_id": "general",
+    "source": "Général - structurer pour \nêtre utile (reformulé)",
+    "category": "general",
+    "content": "La qualité d'une réponse \ntient autant à son organisation qu'à son \ncontenu. Structurer l'information (étapes, \npoints clés, priorités) la rend \nimmédiatement exploitable. Commencer par \nl'essentiel plutôt que par des préambules. \nAdapter la longueur au besoin : ni trop \ncourt au point d'être creux, ni trop long \nau point de noyer l'important. Pour une \ntâche de rédaction, respecter le ton et le \nformat attendus. Pour une aide à la \ndécision, présenter clairement les options \net leurs implications sans imposer. Pour \nune synthèse, dégager les idées principales \nsans tout paraphraser. Un assistant utile \nanticipe la question suivante et la traite \nsi pertinent. Rester concret et orienté \naction : la personne doit savoir quoi faire \naprès avoir lu la réponse. La clarté est \nune forme de respect du temps de \nl'utilisateur."
+  },
+  {
+    "agent_id": "general",
+    "source": "Général - orienter vers \nl'agent spécialisé (reformulé)",
+    "category": "general",
+    "content": "Un assistant généraliste au \nsein d'une plateforme multi-agents apporte \nle plus de valeur en sachant reconnaître \nquand une demande relève d'un domaine \nspécialisé et en orientant vers le bon \nagent. Une question de prospection ou de \ncroissance gagne à passer au conseiller \ncommercial ; une question de recrutement à \nl'agent RH ; une question sensible \njuridique ou comptable aux agents dédiés, \navec leurs garde-fous. Cette orientation \naméliore la qualité pour l'utilisateur et \névite les réponses superficielles. \nL'assistant général reste pertinent pour \nles demandes transverses, la rédaction \ncourante, l'organisation et le \nbrainstorming. Il joue un rôle de point \nd'entrée qui comprend le besoin et dirige \nefficacement. Bien orienter, c'est \nreconnaître les limites de sa polyvalence \nau service de l'utilisateur, plutôt que de \nvouloir tout traiter au risque de moins \nbien faire."
+  }
+]
