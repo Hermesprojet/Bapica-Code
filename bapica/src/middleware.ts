@@ -49,7 +49,7 @@ export function middleware(request: NextRequest) {
       "frame-ancestors 'none'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com",
       "frame-src https://js.stripe.com",
-      "connect-src 'self' https://api.stripe.com https://xlivseiybtkwkekyhqwg.supabase.co https://api.anthropic.com",
+      `connect-src 'self' https://api.stripe.com ${process.env.NEXT_PUBLIC_SUPABASE_URL || ''} https://api.anthropic.com`,
       "img-src 'self' data: blob: https://*.supabase.co",
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:",

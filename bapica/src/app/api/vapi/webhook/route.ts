@@ -2,13 +2,16 @@ import { NextResponse } from "next/server"
 
 export async function POST(req: Request) {
   try {
+    // Signature check
+    const sig = req.headers.get('x-vapi-signature')
+    if (process.env.VAPI_WEBHOOK_SECRET && sig !== process.env.VAPI_WEBHOOK_SECRET) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await req.json()
     const { event, call_id, status } = body
 
     // Vapi webhook handler
-    if (process.env.NODE_ENV === 'development') {
-      if (process.env.NODE_ENV === 'development') console.log(`Vapi event: ${event}`, { call_id, status })
-    }
 
     // Sauvegarder dans Supabase
     try {

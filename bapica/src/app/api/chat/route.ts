@@ -4,12 +4,7 @@ import { getAgentById, type AgentConfig } from '@/lib/agents'
 import { createClient } from '@supabase/supabase-js'
 import { sanitizeUserMessage, isValidAgentId } from '@/lib/security'
 import { buildClientMemory, buildMemoryContext, addToMemory, type ClientMemory, type ConversationSummary } from '@/lib/client-memory'
-import { twentyTools, TWENTY_TOOL_NAMES } from '@/lib/tools/twenty-tools'
-import {
-  getTwentyCredentials, searchPeople, createPerson,
-  searchCompanies, createCompany,
-  searchOpportunities, createOpportunity, updateOpportunityStage,
-} from '@/lib/twenty'
+import { twentyTools } from '@/lib/tools/twenty-tools'
 
 // Helpers CORS
 function corsHeaders(origin: string | null) {
@@ -217,20 +212,55 @@ async function callClaude(
   const agentForTools = agent
   const tools = (agentForTools?.id === 'prospector' || agentForTools?.id === 'closer' || agentForTools?.id === 'general')
     ? twentyTools as unknown as any[]
-    : undefined
+    ) : undefined
 
-  const completion = await client.messages.create({
-    model: resolveModel(agent.model),
-    max_tokens: agent.maxTokens,
-    temperature: agent.temperature,
-    system: buildSystemPrompt(agent) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
-    tools,
-    messages,
-  })
+    const completion = await client.messages.create({
+      model: resolveModel(agent.model),
+      max_tokens: agent.maxTokens,
+      temperature: agent.temperature,
+      system: buildSystemPrompt(agent) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
+      tools,
+      messages,
+    })
 
-  return completion.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
+    // Boucle tool_use → tool_result (CRM integration)
+    let response = completion
+    const maxToolRounds = 3
+    for (let round = 0; round < maxToolRounds; round++) {
+      const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+      if (toolUses.length === 0) break
+
+      const toolResults: Anthropic.ToolResultBlockParam[] = []
+      for (const tool of toolUses) {
+        let result = ''
+        try {
+          // Les credentials CRM doivent être fournis par l'utilisateur connecté
+          // Pour l'instant, on retourne un message informatif
+          result = JSON.stringify({ message: `Outil ${tool.name} appelé avec ${JSON.stringify(tool.input)}. Configuration CRM requise.` })
+        } catch (e) {
+          result = JSON.stringify({ error: 'Échec outil' })
+        }
+        toolResults.push({ type: 'tool_result', tool_use_id: tool.id, content: result })
+      }
+
+      const allMessages = [...messages, 
+        { role: 'assistant' as const, content: response.content },
+        { role: 'user' as const, content: toolResults }
+      ]
+
+      response = await client.messages.create({
+        model: resolveModel(agent.model),
+        max_tokens: agent.maxTokens,
+        temperature: agent.temperature,
+        system: buildSystemPrompt(agent) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
+        tools,
+        messages: allMessages as any,
+      })
+    }
+
+    return response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n')
     .trim()
 }

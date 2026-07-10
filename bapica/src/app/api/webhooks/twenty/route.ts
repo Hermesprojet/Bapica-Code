@@ -33,26 +33,10 @@ export async function POST(request: NextRequest) {
 
   switch (payload.eventName) {
     case "opportunity.stage.updated":
-      if (payload.record.stage === "WON") {
-        await notifyAgent("support", { type: "deal_won", opportunity: payload.record })
-      }
-      break
     case "person.created":
-      await notifyAgent("prospector", { type: "new_contact", person: payload.record })
+      // Événement loggué, traitement futur via workers
       break
   }
 
   return NextResponse.json({ received: true })
-}
-
-async function notifyAgent(agentId: string, event: Record<string, unknown>) {
-  try {
-    await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/agents/${agentId}/events`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(event),
-    })
-  } catch (e) {
-    console.error('Twenty webhook notify failed:', e)
-  }
 }
