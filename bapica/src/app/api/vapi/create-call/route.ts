@@ -3,6 +3,7 @@
 // Body: { phoneNumber, prospectName?, context? }
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getCurrentUsage, isWithinQuota, logUsage, getQuotaMessage } from '@/lib/usage-limits'
 
 const corsHeaders = () => ({
   'Access-Control-Allow-Origin': 'https://bapica.com',
@@ -37,10 +38,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Configuration Vapi incomplète (VAPI_API_KEY, VAPI_ASSISTANT_ID, VAPI_PHONE_NUMBER_ID).',
+          'Configuration Vapi manquante. Veuillez configurer VAPI_API_KEY, VAPI_ASSISTANT_ID et VAPI_PHONE_NUMBER_ID.',
       },
-      { status: 400 }
+      { status: 400, headers: corsHeaders() }
     )
+  }
+
+  // Vérifier quota appels
+  const currentUsage = await getCurrentUsage(user.id)
+  const plan = user.user_metadata?.plan || 'essential'
+  const quotaMsg = getQuotaMessage(currentUsage, plan, 'calls')
+  if (quotaMsg) {
+    return NextResponse.json({ error: quotaMsg }, { status: 429, headers: corsHeaders() })
   }
 
   const { phoneNumber, prospectName, context } = await req.json()
@@ -86,6 +95,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Log usage
+    logUsage(user.id, 'calls').catch(() => {})
+    
     // Sauvegarder l'appel dans Supabase
     try {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
