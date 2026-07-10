@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getCurrentUsage, isWithinQuota, logUsage, getQuotaMessage } from '@/lib/usage-limits'
 
 interface VideoJob {
   id: string
@@ -26,19 +27,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
     }
 
-    // Vérifier le quota utilisateur (max 5 vidéos/mois en gratuit)
-    const { count } = await supabase
-      .from('video_jobs')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+    // Vérifier le quota utilisateur
+    const currentUsage = await getCurrentUsage(user.id)
+    const plan = user.user_metadata?.plan || 'essential'
     
-    const maxVideos = 5
-    if (count && count >= maxVideos) {
-      return NextResponse.json({ 
-        success: false, 
-        error: `Quota atteint (${maxVideos} vidéos/mois). Passez au plan Pro pour plus.` 
-      }, { status: 429 })
+    const quotaMsg = getQuotaMessage(currentUsage, plan, 'videos')
+    if (quotaMsg) {
+      return NextResponse.json({ success: false, error: quotaMsg }, { status: 429 })
     }
 
     const { script, provider = 'heygen', type = 'avatar', voiceId, avatarId } = await req.json()
@@ -62,6 +57,7 @@ export async function POST(req: NextRequest) {
     await supabase.from('video_jobs').insert(job)
 
     // Lancer la génération en arrière-plan (non-bloquant)
+    logUsage(user.id, 'videos').catch(() => {})
     generateVideo(job, voiceId, avatarId).catch(err => {
       console.error('Video generation failed:', err)
       supabase.from('video_jobs').update({ status: 'failed', error: String(err) }).eq('id', jobId)
