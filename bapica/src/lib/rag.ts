@@ -95,37 +95,52 @@ export async function getEmbedding(text: string): Promise<number[]> {
 }
 
 /**
- * Insère une fiche de connaissance dans la base vectorielle
+ * Découpe un texte long en chunks avec chevauchement
+ */
+function chunkText(text: string, chunkSize = 500, overlap = 50): string[] {
+  const words = text.split(/\s+/)
+  const chunks: string[] = []
+  for (let i = 0; i < words.length; i += chunkSize - overlap) {
+    chunks.push(words.slice(i, i + chunkSize).join(' '))
+  }
+  return chunks
+}
+
+/**
+ * Insère une fiche de connaissance avec chunking automatique
  */
 export async function insertKnowledge(
   title: string,
   content: string,
   category: string,
-  tags: string[] = []
-): Promise<string | null> {
+  tags: string[] = [],
+  agentId?: string
+): Promise<number> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     process.env.SUPABASE_SERVICE_ROLE_KEY || ''
   )
 
-  const embedding = await getEmbedding(`${title}\n${content}`)
+  let inserted = 0
+  const chunks = chunkText(content)
+  if (chunks.length === 0) chunks.push(content)
 
-  const { data, error } = await supabase
-    .from('growth_knowledge')
-    .insert({
-      title,
-      content,
-      category,
-      tags,
-      embedding,
-    })
-    .select('id')
-    .single()
-
-  if (error) {
-    console.error('Insert knowledge error:', error)
-    return null
+  for (const chunk of chunks) {
+    if (chunk.trim().length < 30) continue
+    try {
+      const embedding = await getEmbedding(`${title}\n${chunk}`)
+      const { error } = await supabase.from('growth_knowledge').insert({
+        title: title + (chunks.length > 1 ? ` (part ${inserted + 1}/${chunks.length})` : ''),
+        content: chunk,
+        category,
+        tags,
+        agent_id: agentId || null,
+        embedding,
+      })
+      if (!error) inserted++
+    } catch (e) {
+      console.error(`Chunk insert failed: ${e}`)
+    }
   }
-
-  return data.id
+  return inserted
 }
