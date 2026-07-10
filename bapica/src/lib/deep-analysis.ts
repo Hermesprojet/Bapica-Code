@@ -685,7 +685,7 @@ export function generateCompetitiveGameTheory(profile: BusinessProfile): Competi
         probability: 60,
       },
       {
-        competitor: 'Limova.ai (si pertinent)',
+        competitor: 'Concurrent A',
         likelyResponse: 'Ajouter des agents similaires dans les 6 mois',
         probability: 75,
       },

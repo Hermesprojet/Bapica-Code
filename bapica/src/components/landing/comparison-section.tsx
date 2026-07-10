@@ -6,7 +6,6 @@ const comparison = [
   { feature: 'Appels vocaux', us: '0,20€/min', them: '0,20€/min' },
   { feature: 'Onboarding personnalisé', us: 'Questionnaire intelligent ✓', them: 'Standard' },
   { feature: 'Dashboard adaptatif', us: 'Widgets selon vos besoins ✓', them: 'Fixe' },
-  { feature: 'Assistant WhatsApp', us: 'Bientôt disponible', them: '✅ Inclus (Charly+)' },
   { feature: 'Prix', us: 'À partir de 49€/mois', them: 'À partir de 39€/mois' },
   { feature: 'Hébergement', us: 'Vercel Edge (mondial)', them: 'Render (US)' },
   { feature: 'IA générative', us: 'Claude Haiku + Sonnet', them: 'GPT-4o + 4o-mini' },

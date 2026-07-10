@@ -23,14 +23,14 @@ interface CompetitorProfile {
 }
 
 const COMPETITOR_DB: Record<string, CompetitorProfile> = {
-  limova: {
-    name: 'Limova.ai',
-    url: 'limova.ai',
+  concurrentA: {
+    name: 'Concurrent A',
+    url: 'concurrent-a.com',
     type: 'direct',
     pricing: { entry: '~39€/mois', pro: '~79€/mois' },
     agents: 8,
     strengths: [
-      'WhatsApp-first (Charly+) — très accessible pour PME non tech',
+      'WhatsApp-first (Assistant WhatsApp) — très accessible pour PME non tech',
       'Onboarding humain 1:1 inclus dans tous les plans',
       'Notoriété forte via l\'émission Legend (M6)',
       'Codes promo permanents (LEGEND10, LEGEND25)',
@@ -205,7 +205,7 @@ export interface CompetitiveAnalysis {
 interface ComparisonPoint {
   dimension: string
   bapica: string
-  limova: string
+  concurrentA: string
   substi: string
   advantage: 'bapica' | 'competitor' | 'tie'
 }
@@ -223,49 +223,49 @@ export function generateCompetitiveAnalysis(sector: string): CompetitiveAnalysis
     {
       dimension: 'Nombre d\'agents IA',
       bapica: '13 agents spécialisés',
-      limova: '8 agents',
+      concurrentA: '8 agents',
       substi: '3 agents',
       advantage: 'bapica',
     },
     {
       dimension: 'Qualité IA',
       bapica: 'Claude Sonnet + Haiku',
-      limova: 'GPT-4o-mini',
+      concurrentA: 'GPT-4o-mini',
       substi: 'GPT-4o-mini',
       advantage: 'bapica',
     },
     {
       dimension: 'Intelligence business',
       bapica: 'Score santé, ROI, benchmarks',
-      limova: 'Non',
+      concurrentA: 'Non',
       substi: 'Non',
       advantage: 'bapica',
     },
     {
       dimension: 'WhatsApp',
       bapica: 'Non (web app native)',
-      limova: 'Oui (Charly+)',
+      concurrentA: 'Oui (Assistant WhatsApp)',
       substi: 'Non',
       advantage: 'competitor',
     },
     {
       dimension: 'Prix entrée',
       bapica: '49€/mois',
-      limova: '~39€/mois',
+      concurrentA: '~39€/mois',
       substi: '~29€/mois',
       advantage: 'competitor',
     },
     {
       dimension: 'Onboarding',
       bapica: 'Automatique intelligent',
-      limova: 'Humain 1:1',
+      concurrentA: 'Humain 1:1',
       substi: 'Standard',
       advantage: 'tie',
     },
     {
       dimension: 'Dashboard analytics',
       bapica: 'Oui, complet',
-      limova: 'Non',
+      concurrentA: 'Non',
       substi: 'Non',
       advantage: 'bapica',
     },
@@ -387,10 +387,10 @@ export interface CompetitiveIntel {
 export function getCompetitiveIntel(): CompetitiveIntel[] {
   return [
     {
-      competitor: 'Limova.ai',
+      competitor: 'Concurrent A',
       lastChecked: '2026-07-08',
       pricingChanged: false,
-      newFeatures: ['WhatsApp Charly+ amélioré'],
+      newFeatures: ['WhatsApp Assistant WhatsApp amélioré'],
       marketMoves: ['Partenariat avec BFM Business', 'Campagne TV Legend'],
       threatLevel: 'high',
     },

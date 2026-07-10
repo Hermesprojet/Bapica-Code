@@ -10,7 +10,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${baseUrl}/signup`, lastModified: today, changeFrequency: "monthly" as const, priority: 0.9 },
     { url: `${baseUrl}/faq`, lastModified: today, changeFrequency: "weekly" as const, priority: 0.7 },
     { url: `${baseUrl}/blog`, lastModified: today, changeFrequency: "weekly" as const, priority: 0.7 },
-    { url: `${baseUrl}/blog/limova-vs-bapica`, lastModified: today, changeFrequency: "monthly" as const, priority: 0.7 },
     { url: `${baseUrl}/contact`, lastModified: today, changeFrequency: "monthly" as const, priority: 0.6 },
     { url: `${baseUrl}/affiliation`, lastModified: today, changeFrequency: "monthly" as const, priority: 0.6 },
     { url: `${baseUrl}/a-propos`, lastModified: today, changeFrequency: "monthly" as const, priority: 0.5 },

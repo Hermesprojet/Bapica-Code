@@ -45,7 +45,6 @@ const plans = [
 export function PricingSection() {
   return (
     <section id="pricing" className="py-16 md:py-24">
-      {/* 🔥 Banner promo - like Limova */}
       <div className="bg-foreground text-background py-3 text-center text-sm font-medium px-4">
         <Sparkles className="inline h-4 w-4 mr-2" />
         Offre lancement : <code className="bg-background/20 px-2 py-0.5 rounded font-mono text-xs">BAPICA10</code> = -10% sur les offres mensuelles · <code className="bg-background/20 px-2 py-0.5 rounded font-mono text-xs">BAPICA25</code> = -25% sur les offres annuelles
@@ -87,7 +86,6 @@ export function PricingSection() {
                 <span className="text-muted-foreground">HT/mois</span>
               </div>
 
-              {/* Promo code - visible like Limova */}
               <div className="mt-3 flex items-center gap-2 rounded-lg bg-green-500/10 border border-green-500/20 px-3 py-2">
                 <span className="text-[11px] font-semibold uppercase text-green-600 tracking-wide">Code promo</span>
                 <code className="font-mono text-sm font-bold text-green-600">{plan.promoCode}</code>
