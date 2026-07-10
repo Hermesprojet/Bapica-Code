@@ -24,7 +24,7 @@ export default function Home() {
         <VideoPresentation />
         <div className="container mx-auto max-w-6xl px-4 py-16">
           <video 
-            src="/bapica-video.mp4" 
+            src="/bapica-11agents.mp4" 
             controls 
             poster="/opengraph-image"
             className="mx-auto w-full max-w-4xl rounded-2xl border border-white/[0.06] shadow-2xl"
