@@ -212,7 +212,7 @@ async function callClaude(
   const agentForTools = agent
   const tools = (agentForTools?.id === 'prospector' || agentForTools?.id === 'closer' || agentForTools?.id === 'general')
     ? twentyTools as unknown as any[]
-    ) : undefined
+    : undefined
 
     const completion = await client.messages.create({
       model: resolveModel(agent.model),
