@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * Ingère des fiches de connaissance dans la base RAG
- * Usage: npx tsx scripts/ingest-knowledge.ts <fichier.json>
+ * Usage: npx tsx scripts/ingest-knowledge.ts <fichier.json> [agent_id]
  */
 
 import { readFileSync } from 'fs'
@@ -12,12 +12,15 @@ interface KnowledgeCard {
   content: string
   category: string
   tags?: string[]
+  agent_id?: string
 }
 
 async function main() {
   const file = process.argv[2]
+  const defaultAgent = process.argv[3] || undefined
+
   if (!file) {
-    console.error('Usage: npx tsx scripts/ingest-knowledge.ts <fichier.json>')
+    console.error('Usage: npx tsx scripts/ingest-knowledge.ts <fichier.json> [agent_id]')
     process.exit(1)
   }
 
@@ -29,10 +32,11 @@ async function main() {
   let ok = 0
   for (const card of cards) {
     try {
-      const id = await insertKnowledge(card.title, card.content, card.category, card.tags || [])
-      if (id) {
+      const agentId = card.agent_id || defaultAgent
+      const n = await insertKnowledge(card.title, card.content, card.category, card.tags || [], agentId)
+      if (n > 0) {
         ok++
-        console.log(`  ✅ ${card.title}`)
+        console.log(`  ✅ ${card.title} (${n} chunks)`)
       } else {
         console.log(`  ❌ ${card.title}`)
       }
