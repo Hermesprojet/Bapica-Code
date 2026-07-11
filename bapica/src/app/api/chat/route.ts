@@ -7,6 +7,7 @@ import { buildClientMemory, buildMemoryContext, addToMemory, type ClientMemory, 
 import { twentyTools } from '@/lib/tools/twenty-tools'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
+import { getOptimalModel, compressPrompt, getCachedRAG, setCachedRAG, ragCacheKey, memoizeRAG, extractDeliverables } from '@/lib/optimizations'
 
 // Helpers CORS
 function corsHeaders(origin: string | null) {
@@ -59,9 +60,14 @@ async function verifyAuth(req: NextRequest) {
 
 // Le modèle déclaré dans lib/agents.ts ('claude-sonnet-4') est un alias interne ;
 // on le résout vers un identifiant de modèle valide de l'API Claude.
-function resolveModel(model: string): string {
-  if (model.startsWith('claude-opus')) return 'claude-opus-4-1'
-  if (model.startsWith('claude-haiku')) return 'claude-haiku-4-5'
+function resolveModel(agentModel: string, message?: string): string {
+  // Router intelligent si message fourni
+  if (message) {
+    const optimal = getOptimalModel(agentModel === 'claude-sonnet-4' ? 'analytics' : 'general', message)
+    return optimal.model
+  }
+  if (agentModel.startsWith('claude-opus')) return 'claude-opus-4-1'
+  if (agentModel.startsWith('claude-haiku')) return 'claude-haiku-4-5'
   return 'claude-sonnet-4-5'
 }
 
@@ -142,14 +148,22 @@ export async function POST(req: NextRequest) {
     // Injecter le contexte mémoire dans le system prompt
     const memoryContext = buildMemoryContext(clientMemory)
 
-    // RAG + Live data — enrichir avec connaissances métier et données temps réel
+    // RAG + Live data — avec cache pour les questions fréquentes
     let ragContext = ''
-    const ragAgents = ['prospection-strategie', 'support', 'recruiter', 'legal', 'accounting', 'analytics', 'trends']
-    if (ragAgents.includes(agent.id)) {
-      try {
-        const matches = await searchKnowledge(safeMessage, auth.user.id, agent.id)
-        ragContext = formatKnowledgeContext(matches)
-      } catch { /* RAG silencieux */ }
+    const ragKey = ragCacheKey(agent.id, safeMessage)
+    const cachedRAG = getCachedRAG(ragKey)
+
+    if (cachedRAG) {
+      ragContext = cachedRAG
+    } else {
+      const ragAgents = ['prospection-strategie', 'support', 'recruiter', 'legal', 'accounting', 'analytics', 'trends']
+      if (ragAgents.includes(agent.id)) {
+        try {
+          const matches = await searchKnowledge(safeMessage, auth.user.id, agent.id)
+          ragContext = formatKnowledgeContext(matches)
+          if (ragContext) setCachedRAG(ragKey, ragContext)
+        } catch { /* RAG silencieux */ }
+      }
     }
 
     // Live data — concurrence locale, offres d'emploi, actualités secteur
@@ -249,10 +263,10 @@ async function callClaude(
     : undefined
 
     const completion = await client.messages.create({
-      model: resolveModel(agent.model),
+      model: resolveModel(agent.model, message),
       max_tokens: agent.maxTokens,
       temperature: agent.temperature,
-      system: buildSystemPrompt(agent) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
+      system: compressPrompt(buildSystemPrompt(agent), agent.id) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
       tools,
       messages,
     })
@@ -283,7 +297,7 @@ async function callClaude(
       ]
 
       response = await client.messages.create({
-        model: resolveModel(agent.model),
+        model: resolveModel(agent.model, message),
         max_tokens: agent.maxTokens,
         temperature: agent.temperature,
         system: buildSystemPrompt(agent) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
