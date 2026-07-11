@@ -1,34 +1,85 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { discoverPlatform, detectAuth, learnFromExample, routeWebhook } from '@/lib/universal-connector'
+import { generateConsentRequest, formatConsentMessage, recordConsent, hasConsent, type UserConsent } from '@/lib/consent-manager'
 
 /**
- * POST /api/connect/discover — Tente de découvrir automatiquement un SaaS
+ * POST /api/connect/discover — Découverte + demande de consentement
  */
 export async function POST(req: NextRequest) {
   try {
-    const { url } = await req.json()
+    const { url, userId, action } = await req.json()
+
+    // Si c'est une demande de consentement explicite
+    if (action === 'consent' && userId && url) {
+      const consentGranted = req.nextUrl.searchParams.get('grant') === 'true'
+      
+      if (consentGranted) {
+        const consent: UserConsent = {
+          userId,
+          platformName: new URL(url).hostname,
+          platformUrl: url,
+          granted: true,
+          grantedAt: new Date().toISOString(),
+          scope: ['read', 'write'],
+          riskLevel: 'medium',
+        }
+        recordConsent(consent)
+        return NextResponse.json({ consented: true, message: '✅ Connexion autorisée' })
+      } else {
+        return NextResponse.json({ consented: false, message: '❌ Connexion refusée' })
+      }
+    }
+
+    // Sinon, découvrir la plateforme et générer une demande de consentement
     if (!url) return NextResponse.json({ error: 'URL requise' }, { status: 400 })
 
     const discovery = await discoverPlatform(url)
     const auth = await detectAuth(url)
+    const platformName = discovery.name || new URL(url).hostname
+    const category = guessCategory(url, discovery)
+
+    // Générer la demande de consentement
+    const consentRequest = generateConsentRequest({ name: platformName, url, category })
+    const message = formatConsentMessage(consentRequest)
+
+    // Si userId fourni, vérifier s'il a déjà consenti
+    const alreadyConsented = userId ? hasConsent(userId, platformName) : false
 
     return NextResponse.json({
       discovered: {
         ...discovery,
         auth,
         endpointCount: discovery.endpoints?.length || 0,
-        confidence: discovery.endpoints?.length ? 'high' : 'medium',
-        message: discovery.endpoints?.length
-          ? `✅ ${discovery.endpoints.length} endpoints découverts automatiquement`
-          : '⚠️ Aucun endpoint standard détecté. Utilisez le mode apprentissage (copier-coller une requête Postman).',
+        category,
+        alreadyConsented,
       },
-      nextSteps: discovery.endpoints?.length
-        ? ['Configurer les credentials', 'Tester une requête', 'Connecter aux agents']
-        : ['Fournir un exemple de requête', 'Spécifier manuellement les endpoints'],
+      consentRequired: !alreadyConsented,
+      consentRequest: alreadyConsented ? null : {
+        ...consentRequest,
+        message,
+        actions: {
+          grant: `/api/connect?action=consent&grant=true&url=${encodeURIComponent(url)}`,
+          deny: `/api/connect?action=consent&grant=false&url=${encodeURIComponent(url)}`,
+        },
+      },
+      nextSteps: alreadyConsented
+        ? ['✅ Déjà connecté — utilisation immédiate']
+        : ['📋 Lire la demande de consentement', '✅ Accepter ou ❌ Refuser'],
     })
   } catch (e) {
-    return NextResponse.json({ error: 'Échec de la découverte', details: String(e) }, { status: 422 })
+    return NextResponse.json({ error: 'Échec', details: String(e) }, { status: 422 })
   }
+}
+
+function guessCategory(url: string, discovery: any): string {
+  const u = url.toLowerCase()
+  if (u.includes('mail') || u.includes('slack') || u.includes('whatsapp')) return 'Communication'
+  if (u.includes('stripe') || u.includes('compta') || u.includes('factur') || u.includes('pennylane')) return 'Finance'
+  if (u.includes('crm') || u.includes('hubspot') || u.includes('salesforce')) return 'CRM'
+  if (u.includes('twitter') || u.includes('linkedin') || u.includes('facebook')) return 'Social'
+  if (u.includes('drive') || u.includes('dropbox') || u.includes('onedrive')) return 'Cloud'
+  if (u.includes('shopify') || u.includes('woocommerce')) return 'Ecommerce'
+  return 'Autre'
 }
 
 /**
