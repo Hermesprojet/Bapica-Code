@@ -1,6 +1,6 @@
 {
-  "date": "2026-07-11T11:18:22.350Z",
-  "avg": 1.75,
+  "date": "2026-07-11T11:22:13.078Z",
+  "avg": 2,
   "results": [
     {
       "scenario_id": "S057",
@@ -28,7 +28,7 @@
       "agent": "juridique",
       "question": "Un client ne  me paie pas depuis 4 mois. Je fais quoi  légalement ?",
       "response": "Démo momentanément indisponible.",
-      "note": 1
+      "note": 2
     },
     {
       "scenario_id": "S061",
@@ -42,7 +42,7 @@
       "agent": "juridique",
       "question": "Puis-je  licencier un salarié qui ne performe pas  ?",
       "response": "Démo momentanément indisponible.",
-      "note": 1
+      "note": 2
     },
     {
       "scenario_id": "S063",
@@ -61,7 +61,7 @@
   ],
   "byAgent": {
     "juridique": {
-      "total": 14,
+      "total": 16,
       "count": 8
     }
   }

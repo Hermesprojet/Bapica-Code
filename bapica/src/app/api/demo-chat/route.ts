@@ -1,18 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { getAgentById } from '@/lib/agents'
-import { buildFablePrompt, routeModel, type ModelTier } from '@/lib/fable-routing'
-
-// Route de démonstration publique (sans compte)
-// POST /api/demo-chat — Body: { agentId, message, history }
-// Patterns Claude Fable 5 appliqués : prose naturelle, natural memory, product knowledge
+import { AGENTS, getAgentById } from '@/lib/agents'
 
 function corsHeaders(origin: string | null) {
+  const allowed = ['https://bapica.com', 'https://bapica-code.vercel.app', 'http://localhost:3000']
+  const o = allowed.includes(origin || '') ? origin : ''
   return {
-    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Origin': o || 'https://bapica.com',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Max-Age': '86400',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   }
 }
 
@@ -20,166 +16,62 @@ export async function OPTIONS(req: NextRequest) {
   return NextResponse.json({}, { headers: corsHeaders(req.headers.get('origin')) })
 }
 
-const MAX_USER_MESSAGES = 20 // Augmenté pour les tests
-const MAX_MESSAGE_LENGTH = 500
-
-// Rate limiting par IP (côté serveur, pas basé sur l'historique client)
-const demoRateLimit = new Map<string, number>()
-
-interface HistoryMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-function buildSystemPrompt(agentId: string): string {
-  const agent = getAgentById(agentId)
-  
-  if (!agent) {
-    return [
-      "Tu es Léo, l'agent général de Bapica — une plateforme qui donne aux PME une équipe d'agents IA spécialisés (prospection-strategie, support, contenu, compta, téléphone, recrutement, juridique, vidéo, analytics, scaling).",
-      "Tu discutes avec un visiteur en mode démonstration. Réponds de façon utile et concrète.",
-      "Parle en prose naturelle — pas de listes, pas de formatting. Comme un expert qui dialogue.",
-      "Intègre le contexte sans jamais dire 'je vois que' ou 'd'après ce que tu dis'.",
-      "Tu connais Bapica : 12 agents, plans à 49€ et 79€, 15 jours d'essai gratuit.",
-      "Détecte la langue du visiteur et réponds dans cette langue.",
-      "Chaleureux mais direct. Dis la vérité avec tact. 4-6 phrases max.",
-    ].join('\n')
-  }
-
-  const lines = [
-    `Tu es ${agent.persona}, ${agent.name} chez Bapica. ${agent.description}`,
-  ]
-
-  if (agent.id === 'general') {
-    lines.push(
-      "Tu coordonnes l'équipe Bapica : Sofia (Support), Camille (Contenu/SEO), Marc (Commercial), Nadia (Closer), Hugo (Téléphone), Claire (Comptabilité), Maya (Vidéo), Yanis (Recrutement), Inès (Juridique), Lina (Tendances), Tom (Analytics), Roxane (Scaling).",
-      "Quand un visiteur a besoin d'une expertise spécifique, oriente-le naturellement vers l'agent concerné — sans faire une liste, juste en conversation.",
-      "Tu analyses la demande, identifies qui peut aider, et tu orientes."
-    )
-  }
-
-  if (agent.id === 'scaling') {
-    lines.push(
-      "Tu aides les entrepreneurs à passer à l'échelle. Tu analyses leur business, identifies les goulots (process, équipe, cash), et proposes un plan concret.",
-      "Tu poses des questions de diagnostic avant de conseiller. Frameworks : Lean, EOS, Scaling Up.",
-      "Tu es directe et pragmatique. Chaque recommandation est adaptée au contexte, pas de théorie générale."
-    )
-  }
-
-  // Patterns Claude Fable 5 — appliqués à TOUS les agents
-  lines.push(
-    "Parle en prose naturelle, sans listes à puces ni formatting. Comme un expert qui dialogue, pas un robot qui débite des données.",
-    "Intègre le contexte naturellement — ne dis JAMAIS 'je vois que', 'd'après ton profil', 'selon tes informations', 'tu as mentionné'.",
-    "Si le visiteur a un besoin couvert par un autre agent Bapica, mentionne-le au fil de la conversation, sans en faire une liste.",
-    "Tu connais Bapica : 12 agents IA, plans Essentiel 49€ et Pro 79€ par mois, 15 jours d'essai gratuit sans CB. Les agents s'adaptent automatiquement à chaque entreprise.",
-    "Détecte la langue du visiteur et réponds dans cette langue.",
-    "Ton chaleureux et direct. Tu dis la vérité avec tact. Pas d'émojis.",
-    "Quand tu ne peux pas aider, explique le principe sans détailler pourquoi tu refuses.",
-    "4 à 6 phrases maximum. Une question de clarification si nécessaire, pas plus."
-  )
-
-  return lines.join('\n')
-}
+interface ChatMessage { role: 'user' | 'assistant'; content: string }
 
 export async function POST(req: NextRequest) {
   try {
     const { agentId, message, history } = await req.json()
-
-    if (!message || typeof message !== 'string' || !message.trim()) {
-      return NextResponse.json({ error: 'Message requis' }, { status: 400, headers: corsHeaders(req.headers.get('origin')) })
-    }
-    if (message.length > MAX_MESSAGE_LENGTH) {
-      return NextResponse.json(
-        { error: `Message trop long (max ${MAX_MESSAGE_LENGTH} caractères).` },
-        { status: 400, headers: corsHeaders(req.headers.get('origin')) }
-      )
-    }
-
-    const cleanHistory: HistoryMessage[] = Array.isArray(history)
-      ? history
-          .filter(
-            (m: HistoryMessage) =>
-              (m?.role === 'user' || m?.role === 'assistant') &&
-              typeof m?.content === 'string' &&
-              m.content.trim().length > 0
-          )
-          .slice(-2 * MAX_USER_MESSAGES)
-          .map((m: HistoryMessage) => ({
-            role: m.role,
-            content: m.content.slice(0, MAX_MESSAGE_LENGTH),
-          }))
-      : []
-
-    // Rate limiting serveur par IP
-    const ip = req.headers.get('x-forwarded-for') || 'unknown'
-    const ipMsgs = demoRateLimit.get(ip) || 0
-    if (ipMsgs >= MAX_USER_MESSAGES) {
-      return NextResponse.json(
-        { limitReached: true, response: 'Démonstration terminée. Créez un compte gratuit pour continuer.' },
-        { status: 200, headers: corsHeaders(req.headers.get('origin')) }
-      )
-    }
-    demoRateLimit.set(ip, ipMsgs + 1)
-
-    const userTurns = 0 // Plus basé sur l'historique client
-
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Démo momentanément indisponible.' }, { status: 503, headers: corsHeaders(req.headers.get('origin')) })
+    if (!message?.trim()) {
+      return NextResponse.json({ error: 'Message requis' }, { status: 400 })
     }
 
     const agent = getAgentById(agentId || 'general')
-    const tier = routeModel(agentId || 'general')
-    
-    // Appliquer les patterns Fable au prompt système (avec fallback si trop long)
-    let fablePrompt: string
-    try {
-      const basePrompt = buildSystemPrompt(agentId || 'general')
-      fablePrompt = buildFablePrompt(basePrompt, tier)
-      // Limiter à 8000 caractères pour éviter rejet API
-      if (fablePrompt.length > 8000) fablePrompt = fablePrompt.slice(0, 8000)
-    } catch {
-      fablePrompt = buildSystemPrompt(agentId || 'general')
+    const systemPrompt = buildSystemPrompt(agentId || 'general')
+
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: 'Service momentanément indisponible (clé API).' }, { status: 503 })
     }
-    
-    // Sélectionner le modèle selon le tier
-    // GPT-4o → fallback Sonnet si pas de clé OpenAI
-    const hasOpenAI = !!process.env.OPENAI_API_KEY
-    const effectiveTier = tier === 'gpt4o' && !hasOpenAI ? 'sonnet' : tier
-    
-    const modelMap: Record<ModelTier, string> = {
-      fable: 'claude-sonnet-4-5',
-      sonnet: 'claude-sonnet-4-5',
-      gpt4o: hasOpenAI ? 'gpt-4o' : 'claude-sonnet-4-5',
-      haiku: 'claude-haiku-4-5',
-      mini: 'claude-haiku-4-5',
-    }
-    const model = modelMap[effectiveTier]
-    const maxTokens = tier === 'mini' ? 250 : tier === 'haiku' ? 400 : 600
 
     const client = new Anthropic({ apiKey, timeout: 15000 })
     const completion = await client.messages.create({
-      model,
-      max_tokens: maxTokens,
-      system: fablePrompt,
+      model: 'claude-haiku-4-5',
+      max_tokens: 300,
+      system: systemPrompt.slice(0, 4000),
       messages: [
-        ...cleanHistory,
-        { role: 'user' as const, content: message.trim() },
+        ...(Array.isArray(history) ? history : []).slice(-5),
+        { role: 'user' as const, content: message.slice(0, 500) },
       ],
     })
 
     const text = completion.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text)
       .join('\n')
       .trim()
 
-    const remaining = MAX_USER_MESSAGES - userTurns - 1
-    return NextResponse.json({ response: text, remaining, agent: agent?.persona || 'Léo' }, { headers: corsHeaders(req.headers.get('origin')) })
+    return NextResponse.json({
+      response: text,
+      agent: agent?.persona || 'Léo',
+    }, { headers: corsHeaders(req.headers.get('origin')) })
   } catch (error) {
     console.error('Demo chat error:', String(error))
-    // Log détaillé pour diagnostic
-    try { console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error))) } catch {}
-    return NextResponse.json({ error: 'Démo momentanément indisponible.' }, { status: 500, headers: corsHeaders(req.headers.get('origin')) })
+    return NextResponse.json({ error: 'Service momentanément indisponible.' }, { status: 500, headers: corsHeaders(req.headers.get('origin')) })
   }
+}
+
+function buildSystemPrompt(agentId: string): string {
+  const agent = getAgentById(agentId)
+  if (!agent) {
+    return `Tu es Léo, assistant général de Bapica, une plateforme 12 agents IA pour PME (49-79€, 15 jours essai). Sois utile, concret, en français. 4-6 phrases max.`
+  }
+  
+  let prompt = `Tu es ${agent.persona}, ${agent.name} chez Bapica. ${agent.description}. `
+  
+  if (agent.id === 'legal' || agent.id === 'accounting') {
+    prompt += `ATTENTION: Tu ne remplaces JAMAIS un professionnel. Pour toute question engageante, recommande un avocat/expert-comptable. Les règles varient par pays.`
+  }
+  
+  prompt += ` Sois concret et actionnable. 4-6 phrases. Réponds dans la langue du visiteur.`
+  return prompt
 }
