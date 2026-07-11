@@ -6,6 +6,7 @@ import { sanitizeUserMessage, isValidAgentId } from '@/lib/security'
 import { buildClientMemory, buildMemoryContext, addToMemory, type ClientMemory, type ConversationSummary } from '@/lib/client-memory'
 import { twentyTools } from '@/lib/tools/twenty-tools'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
+import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
 
 // Helpers CORS
 function corsHeaders(origin: string | null) {
@@ -141,17 +142,38 @@ export async function POST(req: NextRequest) {
     // Injecter le contexte mémoire dans le system prompt
     const memoryContext = buildMemoryContext(clientMemory)
 
-    // RAG — enrichir avec connaissances métier pour les agents concernés
+    // RAG + Live data — enrichir avec connaissances métier et données temps réel
     let ragContext = ''
     const ragAgents = ['prospection-strategie', 'support', 'recruiter', 'legal', 'accounting', 'analytics', 'trends']
     if (ragAgents.includes(agent.id)) {
       try {
         const matches = await searchKnowledge(safeMessage, auth.user.id, agent.id)
         ragContext = formatKnowledgeContext(matches)
-      } catch { /* RAG silencieux si pas dispo */ }
+      } catch { /* RAG silencieux */ }
     }
 
-    const response = await callClaude(agent, safeMessage, history ?? [], memoryContext + ragContext)
+    // Live data — concurrence locale, offres d'emploi, actualités secteur
+    let liveContext = ''
+    try {
+      const sector = auth.user.user_metadata?.sector || auth.user.user_metadata?.activity || ''
+      const location = auth.user.user_metadata?.location || ''
+      
+      if (agent.id === 'prospection-strategie' && sector && location) {
+        liveContext += await searchLocalCompetitors(sector, location)
+      }
+      if (agent.id === 'recruiter' && location) {
+        liveContext += await searchJobTrends(sector || 'commercial', location)
+      }
+      if (agent.id === 'trends' && sector) {
+        const mapped = sector.includes('tech') || sector.includes('saas') ? 'tech' 
+          : sector.includes('retail') || sector.includes('commerce') ? 'retail'
+          : sector.includes('finance') || sector.includes('banque') ? 'finance'
+          : 'general'
+        liveContext += await getSectorNews(mapped)
+      }
+    } catch { /* Live data silencieux */ }
+
+    const response = await callClaude(agent, safeMessage, history ?? [], memoryContext + ragContext + liveContext)
 
     // Sauvegarder la conversation dans la mémoire
     const summary: ConversationSummary = {
