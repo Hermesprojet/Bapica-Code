@@ -131,8 +131,14 @@ export async function POST(req: NextRequest) {
     const agent = getAgentById(agentId || 'general')
     const tier = routeModel(agentId || 'general')
     
-    // Appliquer les patterns Fable au prompt système
-    const fablePrompt = buildFablePrompt(buildSystemPrompt(agentId || 'general'), tier)
+    // Appliquer les patterns Fable au prompt système (avec fallback si trop long)
+    let fablePrompt: string
+    try {
+      const basePrompt = buildSystemPrompt(agentId || 'general')
+      fablePrompt = buildFablePrompt(basePrompt, tier)
+    } catch {
+      fablePrompt = buildSystemPrompt(agentId || 'general')
+    }
     
     // Sélectionner le modèle selon le tier
     // GPT-4o → fallback Sonnet si pas de clé OpenAI
@@ -149,8 +155,10 @@ export async function POST(req: NextRequest) {
     const model = modelMap[effectiveTier]
     const maxTokens = tier === 'mini' ? 250 : tier === 'haiku' ? 400 : 600
 
-    const client = new Anthropic({ apiKey })
-    const completion = await client.messages.create({
+    const client = new Anthropic({ apiKey, timeout: 15000 })
+    let completion
+    try {
+      completion = await client.messages.create({
       model,
       max_tokens: maxTokens,
       system: fablePrompt,
@@ -169,7 +177,9 @@ export async function POST(req: NextRequest) {
     const remaining = MAX_USER_MESSAGES - userTurns - 1
     return NextResponse.json({ response: text, remaining, agent: agent?.persona || 'Léo' }, { headers: corsHeaders(req.headers.get('origin')) })
   } catch (error) {
-    console.error('Demo chat error:', error)
+    console.error('Demo chat error:', String(error))
+    // Log détaillé pour diagnostic
+    try { console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error))) } catch {}
     return NextResponse.json({ error: 'Démo momentanément indisponible.' }, { status: 500, headers: corsHeaders(req.headers.get('origin')) })
   }
 }
