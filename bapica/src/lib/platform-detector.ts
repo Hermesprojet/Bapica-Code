@@ -265,33 +265,19 @@ export function generateIntegrationSuggestions(ecosystem: PlatformEcosystem): st
  * Liste des plateformes que Bapica peut intégrer, groupées par usage
  */
 export function getPlatformCategories() {
-  return [
-    {
-      name: 'Communication',
-      platforms: [
-        { id: 'gmail' as IntegrationProvider, name: 'Gmail / Google Workspace', description: 'Envoyez des emails professionnels depuis Bapica' },
-        { id: 'slack' as IntegrationProvider, name: 'Slack', description: 'Notifications et messages d\'équipe' },
-      ]
-    },
-    {
-      name: 'Comptabilité & Finance',
-      platforms: [
-        { id: 'pennylane' as IntegrationProvider, name: 'Pennylane', description: 'Facturation, comptabilité, trésorerie' },
-        { id: 'stripe' as IntegrationProvider, name: 'Stripe', description: 'Paiements en ligne et abonnements' },
-      ]
-    },
-    {
-      name: 'Organisation',
-      platforms: [
-        { id: 'google_calendar' as IntegrationProvider, name: 'Google Calendar', description: 'Prise de rendez-vous automatique' },
-        { id: 'notion' as IntegrationProvider, name: 'Notion', description: 'Documentation et base de connaissances' },
-      ]
-    },
-    {
-      name: 'CRM',
-      platforms: [
-        { id: 'twenty' as IntegrationProvider, name: 'Twenty CRM', description: 'Contacts, pipeline, opportunités' },
-      ]
-    },
-  ]
+  const integrations = getAvailableIntegrations()
+  const categories = new Map<string, any[]>()
+  
+  for (const integration of integrations) {
+    if (!categories.has(integration.category)) {
+      categories.set(integration.category, [])
+    }
+    categories.get(integration.category)!.push({
+      id: integration.id,
+      name: integration.name,
+      description: integration.description,
+    })
+  }
+
+  return Array.from(categories.entries()).map(([name, platforms]) => ({ name, platforms }))
 }

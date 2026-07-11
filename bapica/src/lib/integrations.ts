@@ -14,9 +14,43 @@
  */
 
 // Types génériques
-export type IntegrationProvider = 'gmail' | 'pennylane' | 'stripe' | 'twenty' | 'google_calendar' | 'notion' | 'slack' 
-  | 'google_drive' | 'dropbox' | 'office365' | 'github' | 'figma' | 'hubspot' | 'salesforce' 
-  | 'quickbooks' | 'xero' | 'trello' | 'asana' | 'zapier' | 'make' | 'brevo'
+export type IntegrationProvider = 
+  // Communication
+  'gmail' | 'outlook' | 'office365' | 'slack' | 'teams' | 'discord' | 'whatsapp' | 'telegram' |
+  // Comptabilité & Finance
+  'pennylane' | 'quickbooks' | 'xero' | 'sage' | 'cegid' | 'zoho_books' | 'wave' | 'stripe' | 'paypal' | 'square' | 'mollie' | 'adyen' | 'qonto' | 'revolut' | 'wise' |
+  // CRM
+  'twenty' | 'hubspot' | 'salesforce' | 'pipedrive' | 'zoho_crm' | 'monday_crm' |
+  // Email Marketing
+  'brevo' | 'mailchimp' | 'mailjet' | 'sendgrid' | 'resend' |
+  // E-commerce
+  'shopify' | 'woocommerce' | 'prestashop' | 'magento' | 'wix' |
+  // Calendrier
+  'google_calendar' | 'calendly' | 'outlook_calendar' |
+  // Gestion de projet
+  'trello' | 'asana' | 'monday' | 'jira' | 'clickup' | 'notion' |
+  // Cloud Storage
+  'google_drive' | 'dropbox' | 'onedrive' | 'box' |
+  // Dev
+  'github' | 'gitlab' | 'bitbucket' | 'vercel' | 'netlify' |
+  // Design
+  'figma' | 'canva' | 'adobe' |
+  // Automatisation
+  'zapier' | 'make' | 'n8n' | 'ifttt' |
+  // RH & Paie
+  'payfit' | 'lucca' | 'adp' | 'bamboohr' |
+  // Analytics
+  'google_analytics' | 'matomo' | 'hotjar' | 'mixpanel' |
+  // Social Media
+  'linkedin' | 'twitter' | 'instagram' | 'facebook' | 'tiktok' |
+  // Documents & Signature
+  'google_docs' | 'docusign' | 'hellosign' | 'pandadoc' |
+  // Support Client
+  'zendesk' | 'intercom' | 'freshdesk' | 'crisp' |
+  // Téléphonie VoIP
+  'aircall' | 'ringcentral' | 'twilio' | 'vapi' |
+  // Juridique
+  'legalstart' | 'captain_contrat' | 'leeway'
 
 export interface IntegrationCredentials {
   provider: IntegrationProvider
@@ -288,34 +322,103 @@ export async function dispatchAction(
 /**
  * Liste les intégrations disponibles pour un utilisateur
  */
-export function getAvailableIntegrations(): { id: IntegrationProvider; name: string; description: string; icon: string }[] {
+export function getAvailableIntegrations(): { id: IntegrationProvider; name: string; description: string; icon: string; category: string }[] {
   return [
-    // Communication
-    { id: 'gmail', name: 'Gmail', description: 'Envoyer et lire des emails', icon: '📧' },
-    { id: 'slack', name: 'Slack', description: 'Notifications et messages d\'équipe', icon: '💬' },
-    { id: 'office365', name: 'Outlook / Office 365', description: 'Emails professionnels Microsoft', icon: '📨' },
-    // Comptabilité & Finance
-    { id: 'pennylane', name: 'Pennylane', description: 'Comptabilité et facturation', icon: '📊' },
-    { id: 'stripe', name: 'Stripe', description: 'Paiements et abonnements', icon: '💳' },
-    { id: 'quickbooks', name: 'QuickBooks', description: 'Comptabilité internationale', icon: '📒' },
-    { id: 'xero', name: 'Xero', description: 'Comptabilité cloud', icon: '📕' },
-    // CRM
-    { id: 'twenty', name: 'Twenty CRM', description: 'Contacts et pipeline', icon: '👥' },
-    { id: 'hubspot', name: 'HubSpot', description: 'CRM et marketing', icon: '🎯' },
-    { id: 'salesforce', name: 'Salesforce', description: 'CRM enterprise', icon: '☁️' },
-    // Organisation
-    { id: 'google_calendar', name: 'Google Calendar', description: 'Rendez-vous et agenda', icon: '📅' },
-    { id: 'notion', name: 'Notion', description: 'Documentation et wiki', icon: '📝' },
-    { id: 'trello', name: 'Trello', description: 'Gestion de projet visuelle', icon: '📋' },
-    { id: 'asana', name: 'Asana', description: 'Gestion de projet avancée', icon: '✅' },
-    // Cloud & Dev
-    { id: 'google_drive', name: 'Google Drive', description: 'Stockage et partage de fichiers', icon: '📁' },
-    { id: 'dropbox', name: 'Dropbox', description: 'Stockage cloud', icon: '📦' },
-    { id: 'github', name: 'GitHub', description: 'Code source et versioning', icon: '🐙' },
-    { id: 'figma', name: 'Figma', description: 'Design et prototypes', icon: '🎨' },
-    // Automatisation
-    { id: 'zapier', name: 'Zapier', description: 'Automatisation no-code', icon: '⚡' },
-    { id: 'make', name: 'Make', description: 'Automatisation avancée', icon: '🔧' },
-    { id: 'brevo', name: 'Brevo (Sendinblue)', description: 'Email marketing et CRM', icon: '📬' },
+    // 📧 Communication
+    { id: 'gmail', name: 'Gmail', description: 'Emails Google', icon: '📧', category: 'Communication' },
+    { id: 'outlook', name: 'Outlook', description: 'Emails Microsoft', icon: '📨', category: 'Communication' },
+    { id: 'office365', name: 'Office 365', description: 'Suite Microsoft complète', icon: '📦', category: 'Communication' },
+    { id: 'slack', name: 'Slack', description: 'Messagerie équipe', icon: '💬', category: 'Communication' },
+    { id: 'teams', name: 'Microsoft Teams', description: 'Visio et collaboration', icon: '📹', category: 'Communication' },
+    { id: 'discord', name: 'Discord', description: 'Communauté et vocal', icon: '🎮', category: 'Communication' },
+    { id: 'whatsapp', name: 'WhatsApp Business', description: 'Messages clients', icon: '💚', category: 'Communication' },
+    { id: 'telegram', name: 'Telegram', description: 'Messagerie instantanée', icon: '✈️', category: 'Communication' },
+    // 📊 Compta & Finance
+    { id: 'pennylane', name: 'Pennylane', description: 'Compta & facturation FR', icon: '📊', category: 'Finance' },
+    { id: 'quickbooks', name: 'QuickBooks', description: 'Compta internationale', icon: '📒', category: 'Finance' },
+    { id: 'xero', name: 'Xero', description: 'Compta cloud', icon: '📕', category: 'Finance' },
+    { id: 'sage', name: 'Sage', description: 'Compta & paie', icon: '📗', category: 'Finance' },
+    { id: 'cegid', name: 'Cegid', description: 'ERP & compta FR', icon: '📘', category: 'Finance' },
+    { id: 'zoho_books', name: 'Zoho Books', description: 'Compta en ligne', icon: '📙', category: 'Finance' },
+    { id: 'stripe', name: 'Stripe', description: 'Paiements en ligne', icon: '💳', category: 'Finance' },
+    { id: 'paypal', name: 'PayPal', description: 'Paiements internationaux', icon: '💰', category: 'Finance' },
+    { id: 'square', name: 'Square', description: 'Paiement physique & web', icon: '🏪', category: 'Finance' },
+    { id: 'mollie', name: 'Mollie', description: 'Paiements EU', icon: '💶', category: 'Finance' },
+    { id: 'qonto', name: 'Qonto', description: 'Banque pro en ligne', icon: '🏦', category: 'Finance' },
+    { id: 'revolut', name: 'Revolut Business', description: 'Banque internationale', icon: '🌍', category: 'Finance' },
+    // 👥 CRM
+    { id: 'twenty', name: 'Twenty CRM', description: 'CRM open-source', icon: '👥', category: 'CRM' },
+    { id: 'hubspot', name: 'HubSpot', description: 'CRM & marketing', icon: '🎯', category: 'CRM' },
+    { id: 'salesforce', name: 'Salesforce', description: 'CRM enterprise', icon: '☁️', category: 'CRM' },
+    { id: 'pipedrive', name: 'Pipedrive', description: 'Pipeline commercial', icon: '📈', category: 'CRM' },
+    { id: 'zoho_crm', name: 'Zoho CRM', description: 'CRM tout-en-un', icon: '🔵', category: 'CRM' },
+    // 📬 Email Marketing
+    { id: 'brevo', name: 'Brevo', description: 'Email & SMS marketing', icon: '📬', category: 'Marketing' },
+    { id: 'mailchimp', name: 'Mailchimp', description: 'Newsletters', icon: '🐵', category: 'Marketing' },
+    { id: 'mailjet', name: 'Mailjet', description: 'Emails transactionnels', icon: '✉️', category: 'Marketing' },
+    { id: 'sendgrid', name: 'SendGrid', description: 'API email', icon: '📤', category: 'Marketing' },
+    // 🛒 E-commerce
+    { id: 'shopify', name: 'Shopify', description: 'Boutique en ligne', icon: '🛍️', category: 'E-commerce' },
+    { id: 'woocommerce', name: 'WooCommerce', description: 'E-commerce WordPress', icon: '🔌', category: 'E-commerce' },
+    { id: 'prestashop', name: 'PrestaShop', description: 'E-commerce FR', icon: '🇫🇷', category: 'E-commerce' },
+    // 📅 Calendrier
+    { id: 'google_calendar', name: 'Google Calendar', description: 'Agenda Google', icon: '📅', category: 'Organisation' },
+    { id: 'calendly', name: 'Calendly', description: 'Prise de RDV auto', icon: '🔗', category: 'Organisation' },
+    { id: 'outlook_calendar', name: 'Outlook Calendar', description: 'Agenda Microsoft', icon: '📆', category: 'Organisation' },
+    // 📋 Gestion de projet
+    { id: 'trello', name: 'Trello', description: 'Kanban visuel', icon: '📋', category: 'Organisation' },
+    { id: 'asana', name: 'Asana', description: 'Gestion de projet', icon: '✅', category: 'Organisation' },
+    { id: 'monday', name: 'Monday.com', description: 'Work OS', icon: '🔷', category: 'Organisation' },
+    { id: 'jira', name: 'Jira', description: 'Dev & agile', icon: '🐛', category: 'Organisation' },
+    { id: 'clickup', name: 'ClickUp', description: 'Productivité tout-en-un', icon: '⚡', category: 'Organisation' },
+    { id: 'notion', name: 'Notion', description: 'Docs & wiki', icon: '📝', category: 'Organisation' },
+    // ☁️ Cloud Storage
+    { id: 'google_drive', name: 'Google Drive', description: 'Stockage Google', icon: '📁', category: 'Cloud' },
+    { id: 'dropbox', name: 'Dropbox', description: 'Stockage cloud', icon: '📦', category: 'Cloud' },
+    { id: 'onedrive', name: 'OneDrive', description: 'Stockage Microsoft', icon: '☁️', category: 'Cloud' },
+    // 💻 Dev
+    { id: 'github', name: 'GitHub', description: 'Code & CI/CD', icon: '🐙', category: 'Dev' },
+    { id: 'gitlab', name: 'GitLab', description: 'DevOps', icon: '🦊', category: 'Dev' },
+    { id: 'vercel', name: 'Vercel', description: 'Déploiement web', icon: '▲', category: 'Dev' },
+    // 🎨 Design
+    { id: 'figma', name: 'Figma', description: 'Design collaboratif', icon: '🎨', category: 'Design' },
+    { id: 'canva', name: 'Canva', description: 'Design facile', icon: '🖼️', category: 'Design' },
+    { id: 'adobe', name: 'Adobe CC', description: 'Suite créative', icon: '🌈', category: 'Design' },
+    // ⚡ Automatisation
+    { id: 'zapier', name: 'Zapier', description: 'Automatisation no-code', icon: '⚡', category: 'Automatisation' },
+    { id: 'make', name: 'Make (Integromat)', description: 'Automatisation avancée', icon: '🔧', category: 'Automatisation' },
+    { id: 'n8n', name: 'n8n', description: 'Automatisation open-source', icon: '🔗', category: 'Automatisation' },
+    // 👔 RH & Paie
+    { id: 'payfit', name: 'PayFit', description: 'Paie & RH', icon: '💼', category: 'RH' },
+    { id: 'lucca', name: 'Lucca', description: 'Congés & notes de frais', icon: '🏖️', category: 'RH' },
+    { id: 'bamboohr', name: 'BambooHR', description: 'SIRH PME', icon: '🎋', category: 'RH' },
+    // 📈 Analytics
+    { id: 'google_analytics', name: 'Google Analytics', description: 'Trafic & audiences', icon: '📈', category: 'Analytics' },
+    { id: 'matomo', name: 'Matomo', description: 'Analytics RGPD', icon: '🔒', category: 'Analytics' },
+    { id: 'hotjar', name: 'Hotjar', description: 'Heatmaps & sessions', icon: '🔥', category: 'Analytics' },
+    { id: 'mixpanel', name: 'Mixpanel', description: 'Product analytics', icon: '📊', category: 'Analytics' },
+    // 📱 Social Media
+    { id: 'linkedin', name: 'LinkedIn', description: 'Prospection B2B', icon: '🔗', category: 'Social' },
+    { id: 'twitter', name: 'Twitter / X', description: 'Veille & actualité', icon: '🐦', category: 'Social' },
+    { id: 'instagram', name: 'Instagram', description: 'Visuel & marque', icon: '📸', category: 'Social' },
+    { id: 'facebook', name: 'Facebook', description: 'Audience large', icon: '👤', category: 'Social' },
+    { id: 'tiktok', name: 'TikTok', description: 'Vidéo courte', icon: '🎵', category: 'Social' },
+    // 📄 Documents & Signature
+    { id: 'google_docs', name: 'Google Docs', description: 'Documents collaboratifs', icon: '📄', category: 'Documents' },
+    { id: 'docusign', name: 'DocuSign', description: 'Signature électronique', icon: '✍️', category: 'Documents' },
+    { id: 'pandadoc', name: 'PandaDoc', description: 'Devis & contrats', icon: '🐼', category: 'Documents' },
+    // 🎧 Support
+    { id: 'zendesk', name: 'Zendesk', description: 'Support client', icon: '🎧', category: 'Support' },
+    { id: 'intercom', name: 'Intercom', description: 'Chat & support', icon: '💬', category: 'Support' },
+    { id: 'freshdesk', name: 'Freshdesk', description: 'Helpdesk', icon: '🍃', category: 'Support' },
+    { id: 'crisp', name: 'Crisp', description: 'Chat & CRM', icon: '💙', category: 'Support' },
+    // 📞 Téléphonie
+    { id: 'aircall', name: 'Aircall', description: 'Téléphonie pro', icon: '📞', category: 'Téléphonie' },
+    { id: 'ringcentral', name: 'RingCentral', description: 'VoIP entreprise', icon: '🔔', category: 'Téléphonie' },
+    { id: 'twilio', name: 'Twilio', description: 'API communications', icon: '📡', category: 'Téléphonie' },
+    { id: 'vapi', name: 'Vapi', description: 'Agents vocaux IA', icon: '🤖', category: 'Téléphonie' },
+    // ⚖️ Juridique
+    { id: 'legalstart', name: 'Legalstart', description: 'Documents juridiques', icon: '⚖️', category: 'Juridique' },
+    { id: 'captain_contrat', name: 'Captain Contrat', description: 'Contrats pros', icon: '📜', category: 'Juridique' },
   ]
 }
