@@ -241,35 +241,44 @@ export async function dispatchAction(
   action: IntegrationAction,
   credentials: Record<string, string>
 ): Promise<any> {
-  switch (action.provider) {
-    case 'gmail':
-      if (action.action === 'send') {
-        return gmailSend({ ...action.params, accessToken: credentials.gmail_token })
-      }
-      break
-    case 'pennylane':
-      if (action.action === 'get_invoices') {
-        return pennylaneGetInvoices(credentials.pennylane_key)
-      }
-      if (action.action === 'create_invoice') {
-        return pennylaneCreateInvoice(credentials.pennylane_key, action.params)
-      }
-      break
-    case 'google_calendar':
-      if (action.action === 'create_event') {
-        return calendarCreateEvent({ ...action.params, accessToken: credentials.calendar_token })
-      }
-      break
-    case 'slack':
-      if (action.action === 'send') {
-        return slackSendMessage({ ...action.params, webhookUrl: credentials.slack_webhook })
-      }
-      break
-    case 'notion':
-      if (action.action === 'create_page') {
-        return notionCreatePage({ ...action.params, accessToken: credentials.notion_token })
-      }
-      break
+  try {
+    switch (action.provider) {
+      case 'gmail':
+        if (action.action === 'send') {
+          const p = action.params as { to: string; subject: string; body: string; cc?: string; bcc?: string }
+          return gmailSend({ to: p.to, subject: p.subject, body: p.body, cc: p.cc, bcc: p.bcc, accessToken: credentials.gmail_token })
+        }
+        break
+      case 'pennylane':
+        if (action.action === 'get_invoices') {
+          return pennylaneGetInvoices(credentials.pennylane_key)
+        }
+        if (action.action === 'create_invoice') {
+          const p = action.params as { customer_id: string; date: string; deadline: string; items: { label: string; quantity: number; unit_price: number }[] }
+          return pennylaneCreateInvoice(credentials.pennylane_key, p)
+        }
+        break
+      case 'google_calendar':
+        if (action.action === 'create_event') {
+          const p = action.params as { summary: string; description?: string; startTime: string; endTime: string; attendees?: string[] }
+          return calendarCreateEvent({ summary: p.summary, description: p.description, startTime: p.startTime, endTime: p.endTime, attendees: p.attendees, accessToken: credentials.calendar_token })
+        }
+        break
+      case 'slack':
+        if (action.action === 'send') {
+          const p = action.params as { channel: string; text: string }
+          return slackSendMessage({ channel: p.channel, text: p.text, webhookUrl: credentials.slack_webhook })
+        }
+        break
+      case 'notion':
+        if (action.action === 'create_page') {
+          const p = action.params as { parentId: string; title: string; content: string }
+          return notionCreatePage({ parentId: p.parentId, title: p.title, content: p.content, accessToken: credentials.notion_token })
+        }
+        break
+    }
+  } catch (e) {
+    return { success: false, error: String(e) }
   }
   return { success: false, error: 'Action non supportée' }
 }
