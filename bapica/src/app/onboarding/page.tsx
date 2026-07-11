@@ -160,7 +160,7 @@ function ProfileStep({ data, setData, onNext, onBack }: { data: any; setData: an
           <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://www.monsite.com" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1.5">Chiffre d'affaires annuel</label>
+          <label className="block text-sm font-medium mb-1.5">Chiffre d&apos;affaires annuel</label>
           <select value={revenue} onChange={e => setRevenue(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground">
             <option value="">Sélectionnez...</option>
             <option value="< 100K">Moins de 100K€</option>
