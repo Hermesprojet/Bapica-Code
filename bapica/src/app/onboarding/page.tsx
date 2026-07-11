@@ -132,6 +132,81 @@ function suggestAgents(data: OnboardingData): AgentSuggestion[] {
   return suggestions
 }
 
+function ProfileStep({ data, setData, onNext, onBack }: { data: any; setData: any; onNext: () => void; onBack: () => void }) {
+  const [companyName, setCompanyName] = useState(data.companyName || '')
+  const [website, setWebsite] = useState(data.website || '')
+  const [revenue, setRevenue] = useState(data.revenue || '')
+  const [country, setCountry] = useState(data.country || 'France')
+  const [city, setCity] = useState(data.city || '')
+  const [mainProblem, setMainProblem] = useState(data.mainProblem || '')
+  const [growthGoal, setGrowthGoal] = useState(data.growthGoal || '')
+
+  const handleNext = () => {
+    setData({ ...data, companyName, website, revenue, country, city, mainProblem, growthGoal })
+    onNext()
+  }
+
+  return (
+    <div className="animate-slide-up">
+      <h2 className="text-2xl font-bold mb-2">Mieux vous connaître</h2>
+      <p className="text-muted-foreground mb-8">Ces informations permettent de personnaliser vos agents.</p>
+      <div className="space-y-6 max-w-lg mx-auto text-left">
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Nom de votre société</label>
+          <input value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Ex: SARL Dubois" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Site web</label>
+          <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://www.monsite.com" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Chiffre d'affaires annuel</label>
+          <select value={revenue} onChange={e => setRevenue(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground">
+            <option value="">Sélectionnez...</option>
+            <option value="< 100K">Moins de 100K€</option>
+            <option value="100K-500K">100K€ - 500K€</option>
+            <option value="500K-2M">500K€ - 2M€</option>
+            <option value="2M-10M">2M€ - 10M€</option>
+            <option value="> 10M">Plus de 10M€</option>
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Pays</label>
+            <select value={country} onChange={e => setCountry(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground">
+              <option>France</option><option>Belgique</option><option>Espagne</option><option>Italie</option><option>Allemagne</option><option>Pologne</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Ville</label>
+            <input value={city} onChange={e => setCity(e.target.value)} placeholder="Ex: Lyon" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Plus grand défi actuel</label>
+          <textarea value={mainProblem} onChange={e => setMainProblem(e.target.value)} placeholder="Décrivez votre préoccupation principale..." className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground resize-none" rows={2} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Objectif principal</label>
+          <select value={growthGoal} onChange={e => setGrowthGoal(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground">
+            <option value="">Sélectionnez...</option>
+            <option value="ca">Augmenter mon CA</option>
+            <option value="temps">Gagner du temps</option>
+            <option value="clients">Mieux gérer mes clients</option>
+            <option value="compta">Automatiser la compta</option>
+            <option value="prospection">Trouver des clients</option>
+            <option value="tout">Tout ça !</option>
+          </select>
+        </div>
+      </div>
+      <div className="flex justify-between pt-8 max-w-lg mx-auto">
+        <button onClick={onBack} className="px-6 py-3 rounded-xl border border-border text-muted-foreground">Retour</button>
+        <button onClick={handleNext} className="px-6 py-3 rounded-xl bg-primary text-white font-medium">Continuer</button>
+      </div>
+    </div>
+  )
+}
+
 function recommendPlan(data: OnboardingData) {
   const appsText = data.apps.map((a) => a.name.toLowerCase()).join(' ')
   const needsPhone = data.contactMethods.includes('telephone')
@@ -271,9 +346,9 @@ export default function OnboardingPage() {
     )
   }
 
-  const recommendation = step === 5 ? recommendPlan(data) : null
-  const agentSuggestions = step === 5 ? suggestAgents(data) : []
-  const totalSteps = 6
+  const recommendation = step === 6 ? recommendPlan(data) : null
+  const agentSuggestions = step === 6 ? suggestAgents(data) : []
+  const totalSteps = 7
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-primary/[0.02]">
@@ -644,8 +719,13 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Step 5: Recommandation */}
-        {step === 5 && recommendation && (
+        {/* Step 5: Profil détaillé */}
+        {step === 5 && (
+          <ProfileStep data={data} setData={setData} onNext={() => setStep(6)} onBack={() => setStep(4)} />
+        )}
+
+        {/* Step 6: Recommandation */}
+        {step === 6 && recommendation && (
           <div className="animate-slide-up text-center">
             <div className="inline-flex items-center justify-center h-20 w-20 rounded-full bg-gradient-to-br from-primary to-purple-500 text-4xl mb-6 shadow-lg shadow-primary/25">
               🎯
