@@ -34,6 +34,9 @@ function Hero() {
             une équipe d&apos;agents spécialisés. Prospecter, facturer, recruter, 
             décider : ils gèrent. Vous pilotez.
           </p>
+          <p className="text-sm text-[#9CA3AF] mb-8">
+            📱 Disponible sur navigateur, WhatsApp, Messenger et Telegram
+          </p>
           <div className="flex flex-wrap gap-4">
             <a href="/signup" className="inline-flex items-center gap-2 px-8 py-4 bg-[#2563EB] text-white rounded-lg font-semibold hover:bg-[#1D4ED8] transition-colors text-lg">
               Essayer gratuitement 15 jours
