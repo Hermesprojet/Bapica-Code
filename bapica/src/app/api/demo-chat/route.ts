@@ -136,6 +136,8 @@ export async function POST(req: NextRequest) {
     try {
       const basePrompt = buildSystemPrompt(agentId || 'general')
       fablePrompt = buildFablePrompt(basePrompt, tier)
+      // Limiter à 8000 caractères pour éviter rejet API
+      if (fablePrompt.length > 8000) fablePrompt = fablePrompt.slice(0, 8000)
     } catch {
       fablePrompt = buildSystemPrompt(agentId || 'general')
     }
