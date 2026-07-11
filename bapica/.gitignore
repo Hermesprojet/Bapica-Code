@@ -10,3 +10,4 @@ next-env.d.ts
 
 # TypeScript (cache de build incrémental)
 *.tsbuildinfo
+scripts/test-results.json
