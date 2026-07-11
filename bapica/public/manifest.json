@@ -1,15 +1,18 @@
 {
-  "name": "Bapica — Agents IA pour votre entreprise",
+  "name": "Bapica — Agents IA pour votre PME",
   "short_name": "Bapica",
-  "description": "Plateforme multi-agents IA pour PME et indépendants. 13 agents spécialisés, messagerie illimitée.",
-  "start_url": "/",
+  "description": "12 agents IA spécialisés pour automatiser votre entreprise. Disponible sur mobile, WhatsApp, Telegram et Messenger.",
+  "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#061126",
-  "theme_color": "#061126",
+  "background_color": "#FFFFFF",
+  "theme_color": "#2563EB",
+  "orientation": "portrait-primary",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
   "lang": "fr",
-  "categories": ["business", "productivity"]
+  "categories": ["business", "productivity"],
+  "screenshots": [],
+  "prefer_related_applications": false
 }
