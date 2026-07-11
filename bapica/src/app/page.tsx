@@ -12,6 +12,7 @@ export default function HomePage() {
       <Chiffres />
       <Agents />
       <Connecteurs />
+      <Omnichannel />
       <Pricing />
       <CTAFinal />
       <Footer />
@@ -35,8 +36,13 @@ function Hero() {
             décider : ils gèrent. Vous pilotez.
           </p>
           <p className="text-sm text-[#9CA3AF] mb-8">
-            📱 Disponible sur navigateur, WhatsApp, Messenger et Telegram
+            Rejoignable sur navigateur, WhatsApp, Messenger et Telegram
           </p>
+          <div className="flex items-center gap-4 mb-10">
+            <span className="flex items-center gap-1.5 text-sm text-[#6B7280] bg-[#F3F4F6] px-3 py-1.5 rounded-full">💚 WhatsApp</span>
+            <span className="flex items-center gap-1.5 text-sm text-[#6B7280] bg-[#F3F4F6] px-3 py-1.5 rounded-full">✈️ Telegram</span>
+            <span className="flex items-center gap-1.5 text-sm text-[#6B7280] bg-[#F3F4F6] px-3 py-1.5 rounded-full">💬 Messenger</span>
+          </div>
           <div className="flex flex-wrap gap-4">
             <a href="/signup" className="inline-flex items-center gap-2 px-8 py-4 bg-[#2563EB] text-white rounded-lg font-semibold hover:bg-[#1D4ED8] transition-colors text-lg">
               Essayer gratuitement 15 jours
@@ -206,6 +212,37 @@ function Connecteurs() {
             <span key={i} className="px-4 py-2 bg-white border border-[#E5E7EB] text-[#6B7280] rounded-lg text-sm hover:border-[#2563EB] hover:text-[#2563EB] transition-colors">{p}</span>
           ))}
           <span className="px-4 py-2 bg-[#2563EB]/5 border border-[#2563EB]/20 text-[#2563EB] rounded-lg text-sm font-medium">+ toutes les API</span>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── OMNICHANNEL ───────────────────────────────────────────
+function Omnichannel() {
+  const channels = [
+    { icon: "💚", name: "WhatsApp", desc: "Le canal préféré des PME. Vos agents répondent directement dans WhatsApp.", color: "#25D366" },
+    { icon: "✈️", name: "Telegram", desc: "Rapide, sécurisé. Idéal pour les échanges professionnels et les notifications.", color: "#0088CC" },
+    { icon: "💬", name: "Messenger", desc: "Vos clients vous contactent sur Facebook. Bapica gère la conversation.", color: "#006AFF" },
+    { icon: "🌐", name: "Web", desc: "L'interface complète sur bapica.com. Tous les agents, tous les outils.", color: "#2563EB" },
+  ]
+
+  return (
+    <section className="py-24 bg-white">
+      <div className="container mx-auto max-w-7xl px-6">
+        <div className="mb-16">
+          <p className="text-sm font-medium text-[#2563EB] uppercase tracking-wider mb-4">Canaux</p>
+          <h2 className="text-4xl md:text-5xl font-bold text-[#111827] mb-4">Bapica vous répond là où vous êtes.</h2>
+          <p className="text-xl text-[#6B7280] max-w-2xl">WhatsApp, Messenger, Telegram, navigateur. Une seule conversation, synchronisée partout.</p>
+        </div>
+        <div className="grid md:grid-cols-4 gap-6">
+          {channels.map((c, i) => (
+            <div key={i} className="p-8 rounded-2xl border border-[#F3F4F6] hover:border-[#E5E7EB] transition-colors text-center">
+              <div className="text-5xl mb-4">{c.icon}</div>
+              <h3 className="text-lg font-bold text-[#111827] mb-2">{c.name}</h3>
+              <p className="text-sm text-[#6B7280] leading-relaxed">{c.desc}</p>
+            </div>
+          ))}
         </div>
       </div>
     </section>
