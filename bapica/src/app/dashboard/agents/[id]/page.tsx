@@ -6,7 +6,7 @@ import { Send, User, ArrowLeft, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { getAgentById } from '@/lib/agents'
 import { AgentAvatar } from '@/components/agents/agent-avatar'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -19,7 +19,7 @@ export default function AgentChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const supabase = createClientComponentClient()
+  
 
   if (!agent) {
     return (
