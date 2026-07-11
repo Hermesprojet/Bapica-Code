@@ -26,8 +26,8 @@ function Hero() {
       <div className="container mx-auto max-w-7xl px-6 py-24">
         <div className="max-w-4xl">
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-[#111827] leading-[1.08] mb-8">
-            Vos 12 agents IA. En 5 minutes.<br />
-            <span className="text-[#2563EB]">Sans recruter.</span>
+            Automatisez votre entreprise<br />
+            <span className="text-[#2563EB]">avec 12 agents intelligents.</span>
           </h1>
           <p className="text-xl md:text-2xl text-[#6B7280] max-w-2xl mb-12 leading-relaxed">
             Bapica se connecte à vos outils, analyse votre activité et met au travail 
