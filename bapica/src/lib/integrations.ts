@@ -14,7 +14,9 @@
  */
 
 // Types génériques
-export type IntegrationProvider = 'gmail' | 'pennylane' | 'stripe' | 'twenty' | 'google_calendar' | 'notion' | 'slack'
+export type IntegrationProvider = 'gmail' | 'pennylane' | 'stripe' | 'twenty' | 'google_calendar' | 'notion' | 'slack' 
+  | 'google_drive' | 'dropbox' | 'office365' | 'github' | 'figma' | 'hubspot' | 'salesforce' 
+  | 'quickbooks' | 'xero' | 'trello' | 'asana' | 'zapier' | 'make' | 'brevo'
 
 export interface IntegrationCredentials {
   provider: IntegrationProvider
@@ -288,12 +290,32 @@ export async function dispatchAction(
  */
 export function getAvailableIntegrations(): { id: IntegrationProvider; name: string; description: string; icon: string }[] {
   return [
+    // Communication
     { id: 'gmail', name: 'Gmail', description: 'Envoyer et lire des emails', icon: '📧' },
+    { id: 'slack', name: 'Slack', description: 'Notifications et messages d\'équipe', icon: '💬' },
+    { id: 'office365', name: 'Outlook / Office 365', description: 'Emails professionnels Microsoft', icon: '📨' },
+    // Comptabilité & Finance
     { id: 'pennylane', name: 'Pennylane', description: 'Comptabilité et facturation', icon: '📊' },
     { id: 'stripe', name: 'Stripe', description: 'Paiements et abonnements', icon: '💳' },
+    { id: 'quickbooks', name: 'QuickBooks', description: 'Comptabilité internationale', icon: '📒' },
+    { id: 'xero', name: 'Xero', description: 'Comptabilité cloud', icon: '📕' },
+    // CRM
     { id: 'twenty', name: 'Twenty CRM', description: 'Contacts et pipeline', icon: '👥' },
+    { id: 'hubspot', name: 'HubSpot', description: 'CRM et marketing', icon: '🎯' },
+    { id: 'salesforce', name: 'Salesforce', description: 'CRM enterprise', icon: '☁️' },
+    // Organisation
     { id: 'google_calendar', name: 'Google Calendar', description: 'Rendez-vous et agenda', icon: '📅' },
     { id: 'notion', name: 'Notion', description: 'Documentation et wiki', icon: '📝' },
-    { id: 'slack', name: 'Slack', description: 'Notifications et messages', icon: '💬' },
+    { id: 'trello', name: 'Trello', description: 'Gestion de projet visuelle', icon: '📋' },
+    { id: 'asana', name: 'Asana', description: 'Gestion de projet avancée', icon: '✅' },
+    // Cloud & Dev
+    { id: 'google_drive', name: 'Google Drive', description: 'Stockage et partage de fichiers', icon: '📁' },
+    { id: 'dropbox', name: 'Dropbox', description: 'Stockage cloud', icon: '📦' },
+    { id: 'github', name: 'GitHub', description: 'Code source et versioning', icon: '🐙' },
+    { id: 'figma', name: 'Figma', description: 'Design et prototypes', icon: '🎨' },
+    // Automatisation
+    { id: 'zapier', name: 'Zapier', description: 'Automatisation no-code', icon: '⚡' },
+    { id: 'make', name: 'Make', description: 'Automatisation avancée', icon: '🔧' },
+    { id: 'brevo', name: 'Brevo (Sendinblue)', description: 'Email marketing et CRM', icon: '📬' },
   ]
 }

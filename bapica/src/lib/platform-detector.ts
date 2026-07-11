@@ -85,6 +85,95 @@ export function detectPlatformsFromProfile(profile: {
     })
   }
 
+  // 5. SaaS & Cloud — détection par secteur et taille
+  if (domain && domain !== 'gmail.com') {
+    // Stockage cloud
+    detected.push({
+      provider: 'google_drive', name: 'Google Drive',
+      confidence: 'medium', detectedBy: 'domain',
+      reason: 'Domaine pro → Google Workspace probable',
+      readyToConnect: false,
+    })
+    detected.push({
+      provider: 'dropbox', name: 'Dropbox',
+      confidence: 'low', detectedBy: 'heuristic',
+      reason: 'Alternative stockage cloud fréquente',
+      readyToConnect: false,
+    })
+  }
+
+  // Secteur tech → GitHub, Figma
+  if (profile.sector?.match(/tech|saas|web|digital|informatique|dev/i)) {
+    detected.push({
+      provider: 'github', name: 'GitHub',
+      confidence: 'high', detectedBy: 'heuristic',
+      reason: 'Secteur tech — code source probable',
+      readyToConnect: false,
+    })
+    detected.push({
+      provider: 'figma', name: 'Figma',
+      confidence: 'medium', detectedBy: 'heuristic',
+      reason: 'Secteur tech — design probable',
+      readyToConnect: false,
+    })
+  }
+
+  // PME > 10 → CRM, ERP probables
+  if (employees >= 10) {
+    detected.push({
+      provider: 'hubspot', name: 'HubSpot',
+      confidence: 'medium', detectedBy: 'heuristic',
+      reason: 'PME structurée — CRM probable',
+      readyToConnect: false,
+    })
+    detected.push({
+      provider: 'salesforce', name: 'Salesforce',
+      confidence: 'low', detectedBy: 'heuristic',
+      reason: 'Alternative CRM entreprises',
+      readyToConnect: false,
+    })
+    detected.push({
+      provider: 'trello', name: 'Trello',
+      confidence: 'low', detectedBy: 'heuristic',
+      reason: 'Gestion de projet',
+      readyToConnect: false,
+    })
+    detected.push({
+      provider: 'asana', name: 'Asana',
+      confidence: 'low', detectedBy: 'heuristic',
+      reason: 'Gestion de projet',
+      readyToConnect: false,
+    })
+  }
+
+  // Comptabilité internationale
+  detected.push({
+    provider: 'quickbooks', name: 'QuickBooks',
+    confidence: 'low', detectedBy: 'heuristic',
+    reason: 'Alternative compta internationale',
+    readyToConnect: false,
+  })
+  detected.push({
+    provider: 'xero', name: 'Xero',
+    confidence: 'low', detectedBy: 'heuristic',
+    reason: 'Alternative compta cloud',
+    readyToConnect: false,
+  })
+
+  // Automatisation
+  detected.push({
+    provider: 'zapier', name: 'Zapier',
+    confidence: 'low', detectedBy: 'heuristic',
+    reason: 'Automatisation no-code',
+    readyToConnect: false,
+  })
+  detected.push({
+    provider: 'make', name: 'Make (Integromat)',
+    confidence: 'low', detectedBy: 'heuristic',
+    reason: 'Automatisation avancée',
+    readyToConnect: false,
+  })
+
   return detected
 }
 
