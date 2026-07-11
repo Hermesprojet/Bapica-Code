@@ -6,6 +6,7 @@ import { Send, User, ArrowLeft, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { getAgentById } from '@/lib/agents'
 import { AgentAvatar } from '@/components/agents/agent-avatar'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -18,6 +19,7 @@ export default function AgentChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const supabase = createClientComponentClient()
 
   if (!agent) {
     return (
@@ -44,9 +46,15 @@ export default function AgentChatPage() {
     setLoading(true)
 
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token || ''
+      
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({
           agentId: agent.id,
           message: userMessage,

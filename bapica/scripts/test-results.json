@@ -1,68 +1,752 @@
 {
-  "date": "2026-07-11T11:22:13.078Z",
-  "avg": 2,
+  "date": "2026-07-11T11:38:16.134Z",
+  "avg": 7.71,
   "results": [
+    {
+      "scenario_id": "S001",
+      "agent": "prospection-strategie",
+      "question": "Mon restaurant tourne mais je gagne de  moins en moins. Comment je fais pour  augmenter mes revenus ?",
+      "response": "Salut ! Quelques leviers rapides à explorer : **augmente tes couverts** en travaillant ta visibilité locale (Google My Business, avis clients, réseaux sociaux) et ton taux de remplissage en optimisant les horaires creuses ; **améliore ton panier moyen** avec des suggestions intelligentes, des menus ",
+      "note": 7
+    },
+    {
+      "scenario_id": "S002",
+      "agent": "prospection-strategie",
+      "question": "80% de mon CA vient de 2 clients. Comment  je diversifie ?",
+      "response": "# C'est une dépendance risquée, voici comment agir :\n\n**Court terme** : Identifie les 5-10 prospects similaires à tes 2 gros clients (même secteur, taille, problématiques) et lance une campagne de prospection ciblée. Focus sur des quick wins avec 30-50k€ de CA pour commencer.\n\n**Moyen terme** : Mets",
+      "note": 8
+    },
+    {
+      "scenario_id": "S003",
+      "agent": "prospection-strategie",
+      "question": "Comment prospecter des PME industrielles  allemandes ?",
+      "response": "# Prospecter les PME industrielles allemandes 🇩🇪\n\nVoici ma stratégie :\n\n**1. LinkedIn B2B** : Cible directement les directeurs commerciaux et PDG de PME via des recherches géolocalisées (Allemagne) + mots-clés sectoriels (mécanique, chimie, électronique). Envoie des messages personnalisés mentionn",
+      "note": 8
+    },
+    {
+      "scenario_id": "S004",
+      "agent": "prospection-strategie",
+      "question": "Je facture 300€ une séance photo, tout le  monde trouve ça cher. Je baisse ?",
+      "response": "Non, ne baisse pas ! Le problème n'est pas ton prix mais ta **proposition de valeur**. À 300€, les gens ne voient qu'une séance photo standard, d'où le \"c'est cher\". \n\nPlutôt que baisser, **repackage** ton offre : crée des formules avec livrable clair (10 photos retouchées + albums imprimés + droit ",
+      "note": 8
+    },
+    {
+      "scenario_id": "S005",
+      "agent": "prospection-strategie",
+      "question": "J'ai du trafic mais personne n'achète. Que  faire ?",
+      "response": "# 🎯 Diagnostic trafic sans conversion\n\nC'est un classique ! Avant d'agir, pose-toi ces questions :\n\n**Tes visiteurs sont-ils qualifiés ?** (Viennent-ils vraiment chercher ce que tu vends ?) \n**Ton landing/site inspire-t-il confiance ?** (Design professionnel, témoignages, garanties visibles ?)\n**L'",
+      "note": 8
+    },
+    {
+      "scenario_id": "S006",
+      "agent": "prospection-strategie",
+      "question": "Comment vendre mes services de dev à des  clients allemands et belges ?",
+      "response": "# Stratégie pour les marchés allemand et belge 🎯\n\n**Allemagne** : Les clients allemands valorisent la stabilité, la documentation et les références solides. Crée des case studies détaillées en allemand, certifie-toi (ISO, Scrum Master), et prospère via LinkedIn avec des contenus sur les bonnes prat",
+      "note": 8
+    },
+    {
+      "scenario_id": "S007",
+      "agent": "prospection-strategie",
+      "question": "Je veux augmenter mes prix de 15% mais  j'ai peur de perdre mes clients.",
+      "response": "C'est une crainte légitime, mais voici comment l'aborder : **teste d'abord auprès de 20-30% de ta clientèle** (tes clients les moins price-sensitive ou les plus fidèles) pour mesurer l'impact réel avant de généraliser. **Justifie l'augmentation** en communiquant la valeur ajoutée : améliorations de ",
+      "note": 8
+    },
+    {
+      "scenario_id": "S008",
+      "agent": "prospection-strategie",
+      "question": "Je dépends d'un seul client à 90%. Ça  m'inquiète.",
+      "response": "C'est une excellente prise de conscience – beaucoup d'entrepreneurs réalisent trop tard qu'ils sont trop dépendants. Voici ce que je te conseille **concrètement** : \n\n**En parallèle immédiat**, identifie 3-5 prospects similaires à ce client (même secteur, même profil, même budget) et lance une mini-",
+      "note": 8
+    },
+    {
+      "scenario_id": "S009",
+      "agent": "prospection-strategie",
+      "question": "J'ai lancé ma boutique il y a 3 mois,  presque aucune vente. Je fais quoi ?",
+      "response": "# 3 mois, c'est normal d'être frustré, mais tu es encore en phase de décollage ! 🚀\n\n**Le vrai problème : personne ne sait que tu existes.** 90% des nouvelles boutiques meurent de manque de visibilité, pas de manque de qualité. Ma question : **comment tes futurs clients te trouvent-ils actuellement ",
+      "note": 7
+    },
+    {
+      "scenario_id": "S010",
+      "agent": "prospection-strategie",
+      "question": "Mon restaurant est plein le soir mais vide  le midi.",
+      "response": "# Gaspillage d'opportunité ! 🎯\n\nTu as une vraie mine d'or inexploitée : tes tables vides le midi représentent 30-40% de CA potentiel. Voici ce qu'on fait chez nos clients resto : **ciblage des salariés des entreprises proches** (LinkedIn Ads, Google Ads local) avec une offre déjeuner attrayante (fo",
+      "note": 8
+    },
+    {
+      "scenario_id": "S011",
+      "agent": "prospection-strategie",
+      "question": "Mon agenda est plein, je ne peux plus  prendre de patients. Comment gagner plus  ?",
+      "response": "Excellent problème à avoir ! 🎯 Voici tes leviers sans augmenter ta charge de travail :\n\n1. **Augmente tes tarifs** (+15-20%) - tes patients fidèles paieront, et tu filtres naturellement la demande\n2. **Crée des offres packagées** - forfaits annuels, programmes de suivi : plus de valeur perçue = mei",
+      "note": 8
+    },
+    {
+      "scenario_id": "S012",
+      "agent": "prospection-strategie",
+      "question": "Je vends beaucoup à la Saint-Valentin et à  la Toussaint, le reste de l'année c'est  mort.",
+      "response": "Salut ! Je comprends cette volatilité saisonnière - c'est courant mais très risqué pour la trésorerie. **Avant tout, explorons tes pics existants** : peux-tu lancer des promotions \"hors-saison\" 2-3 mois avant (décembre pour la Saint-Valentin) pour lisser tes ventes ? \n\nEnsuite, **créons de nouvelles",
+      "note": 8
+    },
+    {
+      "scenario_id": "S013",
+      "agent": "prospection-strategie",
+      "question": "Mes marges sont trop faibles et je dépends  de 3 gros clients.",
+      "response": "Salut ! Je comprends parfaitement cette situation délicate. Voici ce qu'on peut activer ensemble :\n\n**D'abord, augmenter tes marges** : audit de ta grille tarifaire pour identifier les prestations à repriser (souvent +15-20% possible sans perdre clients), puis revoir tes coûts de production ou nego ",
+      "note": 8
+    },
+    {
+      "scenario_id": "S014",
+      "agent": "prospection-strategie",
+      "question": "Comment développer mon agence de design à  l'international ?",
+      "response": "# Développer ton agence de design à l'international\n\nExcellent objectif ! Voici comment procéder concrètement :\n\n**Commencez par consolider votre positioning** sur un ou deux marchés clés proches (Benelux, Allemagne, Suisse) avant d'expérimenter plus loin – c'est moins coûteux qu'une expansion tous ",
+      "note": 8
+    },
+    {
+      "scenario_id": "S015",
+      "agent": "prospection-strategie",
+      "question": "Je fais du coaching individuel, je veux  passer aux formats collectifs.",
+      "response": "Excellent move ! Voici comment **monétiser rapidement** :\n\n1. **Lance d'abord des mini-groupes** (4-6 pers) sur un sujet spécifique (ex: \"Débloquer sa confiance en 4 semaines\") → moins risqué qu'une formation complète, meilleure rétention qu'une conférence.\n\n2. **Tire parti de ton audience existante",
+      "note": 8
+    },
+    {
+      "scenario_id": "S016",
+      "agent": "prospection-strategie",
+      "question": "Je veux vendre en direct au lieu de passer  par les plateformes.",
+      "response": "# Super ambition ! Voici comment la concrétiser :\n\n**D'abord, construis ta base client directe** : scrappe les contacts des acheteurs actuels sur les plateformes, lance une newsletter avec du contenu utile (guides, tips métier), et propose-leur une réduction pour acheter hors plateforme. Ça te perme",
+      "note": 7
+    },
+    {
+      "scenario_id": "S017",
+      "agent": "prospection-strategie",
+      "question": "Hoe kan ik meer klanten krijgen in mijn  winkel?",
+      "response": "# Meer klanten in je winkel? Hier zijn concrete stappen:\n\n**Lokale zichtbaarheid:** Zorg dat je goed op Google Maps staat, vraag klanten om reviews en zorg voor een helder Google Bedrijfsprofiel. Dit helpt lokale klanten je makkelijk te vinden.\n\n**Social media & content:** Post regelmatig op Instagr",
+      "note": 8
+    },
+    {
+      "scenario_id": "S018",
+      "agent": "prospection-strategie",
+      "question": "I  miei clienti sono anziani, come attiro i  giovani?",
+      "response": "# Strategie per attrarre giovani clienti\n\nOttima domanda! Ecco come ampliare il tuo target:\n\n**Crea una presenza digitale forte** – investi in Instagram/TikTok con contenuti visivi che parlano ai giovani (video brevi, testimonial, dietro le quinte). I giovani cercano online prima di acquistare.\n\n**S",
+      "note": 8
+    },
+    {
+      "scenario_id": "S019",
+      "agent": "prospection-strategie",
+      "question": "Jak zwiększyć marżę w moim sklepie  internetowym?",
+      "response": "# Zwiększanie marży w sklepie internetowym\n\nOto 5 sprawdzonych sposobów:\n\n**1. Optymalizacja asortymentu**\nZidentyfikuj produkty z najwyższą marżą i zwiększ ich widoczność (SEO, kampanie). Wyeliminuj slow-movery'ów, które tylko zamrażają kapitał.\n\n**2. Bundling i upselling**\nŁącz produkty w zestawy ",
+      "note": 7
+    },
+    {
+      "scenario_id": "S020",
+      "agent": "prospection-strategie",
+      "question": "Wie kann ich meine Neukundengewinnung  digitalisieren?",
+      "response": "# Digitalisierung der Neukundengewinnung\n\nDie gute Nachricht: Es geht schneller als du denkst! Starten solltest du mit einer **automatisierten Lead-Generierung** über LinkedIn oder Google Ads, um gezielt deine Zielkunden zu erreichen – das spart Zeit und Geld im Vergleich zu klassischem Networking. ",
+      "note": 7
+    },
+    {
+      "scenario_id": "S021",
+      "agent": "prospection-strategie",
+      "question": "Écris-moi un email de prospection pour une  PME du bâtiment.",
+      "response": "# Objet : Augmenter vos marges sur les devis bâtiment 📈\n\nBonjour,\n\nJ'ai remarqué que beaucoup de PME du bâtiment perdent du temps et de l'argent avec des processus de devis ou facturation mal structurés. Chez Bapica, nous aidons les entreprises comme la vôtre à **automatiser ces tâches et regagner ",
+      "note": 7
+    },
+    {
+      "scenario_id": "S022",
+      "agent": "prospection-strategie",
+      "question": "Mon cycle de vente dure 6 mois, c'est trop  long.",
+      "response": "Je comprends - 6 mois, c'est un vrai frein pour votre croissance ! 🎯\n\nAvant d'actionner les leviers, il faut diagnostiquer : est-ce que la longueur vient de **votre process** (étapes inutiles, approbations multiples), de vos **clients** (ils prennent du temps à décider), ou de **votre positionnemen",
+      "note": 8
+    },
+    {
+      "scenario_id": "S023",
+      "agent": "prospection-strategie",
+      "question": "Je passe de food truck à local fixe, bonne  idée ?",
+      "response": "Bonne question ! Le passage à un local fixe peut être excellent **si tu as validé la demande locale** (foot traffic, clientèle fidèle identifiée) et si tu maîtrises tes coûts fixes (loyer, charges, staff). \n\nAvant de te lancer, je te recommande de : **tester avec un petit local les 3 premiers mois**",
+      "note": 8
+    },
+    {
+      "scenario_id": "S024",
+      "agent": "prospection-strategie",
+      "question": "Amazon me tue. Comment survivre ?",
+      "response": "Je comprends - la concurrence Amazon est féroce 😅 Quelques leviers concrets pour survivre : **spécialise-toi** sur un segment de niche où tu peux vraiment faire la différence (expert local, produits premium/artisanaux, service client supérieur), **construis une communauté** autour de ta marque (new",
+      "note": 8
+    },
+    {
+      "scenario_id": "S025",
+      "agent": "prospection-strategie",
+      "question": "Je veux exporter mon vin vers l'Allemagne  et la Belgique.",
+      "response": "# Excellente opportunité ! 🍷\n\nL'Allemagne et la Belgique sont des marchés premium pour le vin français avec une forte demande. Avant de te lancer, **identifie tes cibles** : importateurs spécialisés, cavistes haut de gamme, restaurateurs et chaînes de distribution. **Prépare un dossier solide** ave",
+      "note": 8
+    },
+    {
+      "scenario_id": "S026",
+      "agent": "prospection-strategie",
+      "question": "Comment me spécialiser pour me  différencier ?",
+      "response": "# Ma recommandation pour te différencier 🎯\n\n**Choisis une niche avant tout.** Au lieu de servir \"tous les entrepreneurs\", cible un secteur spécifique (e-commerce de mode, SaaS B2B, artisans locaux...) où tu peux devenir LE spécialiste. C'est 10x plus facile de convaincre et de facturer premium.\n\n**",
+      "note": 8
+    },
+    {
+      "scenario_id": "S027",
+      "agent": "prospection-strategie",
+      "question": "Comment vendre de l'entretien récurrent en  plus des vélos ?",
+      "response": "# Excellent question ! 🎯\n\nVoici le combo gagnant : **bundler l'entretien dès la vente** en proposant un forfait annuel incluant révisions, pneus, freins (3-4 interventions/an). Ça sécurise le client, crée de la prévisibilité et augmente ton panier moyen de 20-30%.\n\n**Concrètement** : créer 2-3 offr",
+      "note": 8
+    },
+    {
+      "scenario_id": "S028",
+      "agent": "prospection-strategie",
+      "question": "Je veux vendre du conseil en plus de la  compta à mes clients.",
+      "response": "Excellente stratégie pour augmenter ton CA ! 🎯\n\nAvant de te lancer, tu dois **identifier qui de tes clients compta a réellement besoin de conseil** (croissance, optimisation fiscale, restructuring...) et quel type spécifiquement - ne vise pas tout le marché. Commence par proposer du conseil à **5-1",
+      "note": 8
+    },
+    {
+      "scenario_id": "S029",
+      "agent": "prospection-strategie",
+      "question": "¿Debería abrir un tercer local?",
+      "response": "Esa es una gran pregunta. Antes de expandir, te recomendaría analizar: **¿tus dos locales actuales están saturados y generan demanda que no puedas cubrir?** Si la respuesta es sí, es un buen indicador. También verifica que tus márgenes sean saludables (idealmente >30%) y que tengas al menos 6 meses ",
+      "note": 8
+    },
+    {
+      "scenario_id": "S030",
+      "agent": "prospection-strategie",
+      "question": "Ich bin ein guter Berater, aber niemand  kennt mich.",
+      "response": "# Marc hier 👋\n\nDas kenne ich! Viele großartige Berater haben das gleiche Problem: Sie sind exzellent in ihrer Arbeit, aber ihre Sichtbarkeit ist gleich Null. Meine Frage: **Wo hält sich deine Zielgruppe auf?** (LinkedIn, Branchenverbände, lokale Events?) Der erste Schritt ist, dort präsent zu sein,",
+      "note": 8
+    },
+    {
+      "scenario_id": "S031",
+      "agent": "support",
+      "question": "A customer is  furious because his delivery is 3 days  late. Draft a reply.",
+      "response": "# Réponse au client en colère\n\nBonjour,\n\nJe suis vraiment désolée pour ce retard de 3 jours sur votre livraison – je comprends votre frustration et je m'excuse sincèrement. Je vais immédiatement localiser votre commande et vous fournir un statut précis avec une date de livraison estimée dans les 30 ",
+      "note": 8
+    },
+    {
+      "scenario_id": "S032",
+      "agent": "support",
+      "question": "Une cliente  veut un remboursement hors délai. Que je  réponds ?",
+      "response": "# Remboursement hors délai - Ma réponse\n\nBonjour! Je comprends que vous souhaitez obtenir un remboursement au-delà du délai standard. **Je peux vous aider**, mais j'aurai besoin de quelques informations : votre numéro de commande, la date de votre achat et la raison de votre demande (produit défectu",
+      "note": 7
+    },
+    {
+      "scenario_id": "S033",
+      "agent": "support",
+      "question": "Ein Kunde  droht mit einer schlechten Bewertung.",
+      "response": "Ich verstehe, dass das frustrierend ist. Mein Ziel ist, dein Problem schnell zu lösen und deine Zufriedenheit wiederherzustellen. Kannst du mir konkret beschreiben, was schief gelaufen ist – welches Produkt, welche Dienstleistung oder welcher Service betroffen ist? Je mehr Details du mir gibst, dest",
+      "note": 8
+    },
+    {
+      "scenario_id": "S034",
+      "agent": "support",
+      "question": "Un cliente  dice che il prodotto è arrivato  danneggiato.",
+      "response": "# Assistenza Prodotto Danneggiato\n\nMi dispiace molto! Ecco come risolviamo rapidamente:\n\n1. **Foto del danno** - Puoi inviarmi 2-3 foto chiare del prodotto danneggiato e della confezione?\n2. **Dettagli ordine** - Mi serve il numero d'ordine e la data di acquisto\n3. **Soluzione immediata** - Offriamo",
+      "note": 8
+    },
+    {
+      "scenario_id": "S035",
+      "agent": "support",
+      "question": "Klient jest  wściekły, bo mebel przyszedł uszkodzony.",
+      "response": "Rozumiem Twoją frustrację – to naprawdę irytujące, gdy meble przychodzą w złym stanie. 🙁\n\nOto co robimy natychmiast:\n1. **Poproś o zdjęcia** uszkodzenia z różnych kątów\n2. **Zaproponuj rozwiązanie** – wymiana, refundacja lub zniżka na naprawę (w zależności od skali uszkodzenia)\n3. **Przygotuj bezpł",
+      "note": 8
+    },
+    {
+      "scenario_id": "S036",
+      "agent": "support",
+      "question": "Un client  m'insulte dans un message. Je réponds quoi  ?",
+      "response": "# Gestion d'un client insultant\n\nVoici comment répondre avec professionnalisme :\n\n1. **Restez calme et neutre** - Ne relevez pas les insultes, concentrez-vous sur le problème réel\n2. **Validez sa frustration** - \"Je comprends que vous êtes frustré par cette situation\"\n3. **Recentrez sur la solution*",
+      "note": 8
+    },
+    {
+      "scenario_id": "S037",
+      "agent": "support",
+      "question": "Un patient se  plaint d'avoir attendu 40 minutes.",
+      "response": "Je suis vraiment désolée pour cette attente prolongée de 40 minutes, c'est loin de l'expérience que nous souhaitons offrir. Pouvez-vous me donner plus de détails : s'agit-il d'une attente en salle d'attente avant une consultation, ou d'un délai pour recevoir une réponse à votre demande ? Une fois ce",
+      "note": 8
+    },
+    {
+      "scenario_id": "S038",
+      "agent": "support",
+      "question": "Un client  demande un geste commercial que je ne peux  pas faire.",
+      "response": "# Gestion d'une demande de geste commercial\n\nVoici comment procéder :\n\n1. **Reconnaître et remercier** : \"Je comprends votre situation et j'apprécie votre confiance envers Bapica.\"\n\n2. **Être honnête** : Expliquez clairement pourquoi vous ne pouvez pas (politique de l'entreprise, limitation de votre",
+      "note": 7
+    },
+    {
+      "scenario_id": "S039",
+      "agent": "support",
+      "question": "Comment  réduire mon volume de tickets support ?",
+      "response": "# Réduire votre volume de tickets support\n\nExcellente question ! Voici les leviers les plus efficaces :\n\n1. **Base de connaissances robuste** - Créez un centre d'aide complet avec vos FAQ, tutoriels vidéo et guides d'onboarding. Cela détourne 30-40% des tickets simples.\n\n2. **Chatbot IA 24/7** - Aut",
+      "note": 7
+    },
+    {
+      "scenario_id": "S040",
+      "agent": "support",
+      "question": "Un client me  demande des infos que je n'ai pas.",
+      "response": "# Bonne question ! Voici comment je gère ça :\n\n✅ **Ce que tu peux faire :**\n- **Être honnête** : \"Je n'ai pas cette info précise, mais je vais te trouver la réponse\"\n- **Proposer des solutions** : Rediriger vers un collègue spécialisé, une doc interne, ou prendre le contact pour revenir rapidement\n-",
+      "note": 8
+    },
+    {
+      "scenario_id": "S041",
+      "agent": "telephone",
+      "question": "Écris-moi un  script d'appel pour prospecter des  restaurants.",
+      "response": "# Script de prospection téléphonique - Restaurants\n\n**Accroche (15 sec)**\n\"Bonjour, c'est Hugo de Bapica. Je vous appelle car nous aidons les restaurants à gérer leurs appels de réservation et leurs commandes en livraison via un standard virtuel 24/7. Vous avez 2 minutes?\"\n\n**Découverte (30 sec)**\n\"",
+      "note": 7
+    },
+    {
+      "scenario_id": "S042",
+      "agent": "telephone",
+      "question": "Je rate  beaucoup d'appels, je perds des patients.",
+      "response": "Je comprends que c'est critique pour vous. Avec un agent téléphonique IA comme moi chez Bapica, vous **ne rateriez plus aucun appel** : réception 24/7, prise de rendez-vous automatique, messages vocaux transcrits et envoyés par SMS/email aux bons interlocuteurs.\n\nConcrètement, chaque appel manqué de",
+      "note": 8
+    },
+    {
+      "scenario_id": "S043",
+      "agent": "telephone",
+      "question": "Comment gérer  un client qui dit 'c'est trop cher' au  téléphone ?",
+      "response": "# Gérer l'objection \"C'est trop cher\"\n\n**Écoute d'abord** : Ne vends pas immédiatement, pose des questions pour comprendre si c'est le prix absolu ou la valeur perçue qui pose problème. **Clarifiez l'offre** : Détaillez ce que le client obtient réellement – fonctionnalités, service client, durabilit",
+      "note": 7
+    },
+    {
+      "scenario_id": "S044",
+      "agent": "telephone",
+      "question": "Comment  réduire les rendez-vous manqués ?",
+      "response": "# Solutions pour réduire les rendez-vous manqués\n\nChez Bapica, nous proposons plusieurs actions concrètes :\n\n1. **Rappels automatisés** - SMS/email 24h et 2h avant le rendez-vous (taux de présence +30%)\n2. **Confirmation interactive** - Notre standard virtuel demande confirmation lors de la prise de",
+      "note": 7
+    },
+    {
+      "scenario_id": "S045",
+      "agent": "telephone",
+      "question": "Comment  ouvrir un appel de prospection à froid en  anglais ?",
+      "response": "# Ouverture d'appel de prospection en anglais\n\nVoici une structure éprouvée et percutante :\n\n**1. Salutation + Identification** (10 sec)\n\"Hi [Name], this is [Your Name] from [Company]. Do you have 30 seconds?\"\n\n**2. Raison de l'appel + Valeur** (15 sec)\n\"I'm calling because [companies like yours / p",
+      "note": 7
+    },
+    {
+      "scenario_id": "S046",
+      "agent": "telephone",
+      "question": "Mon équipe  commerciale récite un script robotique.",
+      "response": "Je comprends le problème : un script trop rigide tue la naturel et la connexion avec le prospect. Voici ce que je propose :\n\n**Structurer sans étouffer** : gardez les points clés (accroche, valeur, CTA), mais laissez de la flexibilité dans le ton et l'ordre. Un agent qui s'adapte au client semble pl",
+      "note": 8
+    },
+    {
+      "scenario_id": "S047",
+      "agent": "telephone",
+      "question": "Un prospect  me dit 'rappelez-moi dans 6 mois'. Je fais  quoi ?",
+      "response": "# Bonne question ! Voici comment gérer ça :\n\n**Créer un rappel** : Note précisément la date (6 mois = date exacte) et le contexte de l'appel dans ta fiche prospect, puis programme un rappel dans ton CRM ou agenda pour relancer à cette date.\n\n**Qualifier le besoin** : Avant de raccrocher, creuse un p",
+      "note": 7
+    },
+    {
+      "scenario_id": "S048",
+      "agent": "telephone",
+      "question": "Comment  structurer mes appels pour obtenir des  rendez-vous ?",
+      "response": "# Structurer tes appels pour des rendez-vous 📞\n\n**1. Accroche (10 sec)** : Présente-toi, cite la raison de l'appel en une phrase percutante (\"Je t'appelle car vous aviez mentionné un besoin en [domaine]\").\n\n**2. Qualification rapide (20 sec)** : Pose 1-2 questions pour confirmer qu'il est le bon in",
+      "note": 8
+    },
+    {
+      "scenario_id": "S049",
+      "agent": "recrutement",
+      "question": "Je n'arrive  pas à recruter des plombiers qualifiés.",
+      "response": "# Le défi des plombiers qualifiés 🔧\n\nJe comprends – c'est l'un des secteurs les plus tendus ! Voici ce qui fonctionne vraiment :\n\n**1. Élargissez votre sourcing** : Ne pas se limiter aux jobboards classiques. Cherchez sur les groupes Facebook de plombiers, les écoles de formation, les anciens salar",
+      "note": 8
+    },
+    {
+      "scenario_id": "S050",
+      "agent": "recrutement",
+      "question": "J'ai un  turnover énorme, les gens partent en 3  mois.",
+      "response": "Ça, c'est un signal d'alerte fort ! 3 mois, c'est exactement quand les nouveaux réalisent que la réalité ne correspond pas à ce qu'on leur a vendu. Trois pistes à creuser rapidement : **d'abord, refondez vos offres d'emploi** – soyez honnête sur les conditions réelles, le contexte, les défis. Ensuit",
+      "note": 7
+    },
+    {
+      "scenario_id": "S051",
+      "agent": "recrutement",
+      "question": "Écris-moi une  fiche de poste pour un boulanger.",
+      "response": "# Fiche de Poste - Boulanger\n\n**Entreprise :** Bapica  \n**Localisation :** [À compléter]  \n**Type de contrat :** CDI/CDD\n\n---\n\n## 📋 Description du rôle\nVous pilotez la production artisanale de pain et viennoiseries en respectant nos recettes et nos standards de qualité. Vous gérez la levée, la cuis",
+      "note": 7
+    },
+    {
+      "scenario_id": "S052",
+      "agent": "recrutement",
+      "question": "Quelles  questions poser en entretien pour un  commercial ?",
+      "response": "# Questions clés pour un commercial\n\n**Sur la motivation commerciale :**\n- \"Décris-moi ta meilleure vente. Qu'est-ce qui t'a permis de conclure ?\" (révèle la méthode et les résultats)\n- \"Comment tu trouves des prospects quand tu n'en as plus ?\" (teste l'autonomie et la prospection)\n\n**Sur la gestion",
+      "note": 8
+    },
+    {
+      "scenario_id": "S053",
+      "agent": "recrutement",
+      "question": "Je préfère  embaucher des jeunes, ils coûtent moins  cher. Comment filtrer ?",
+      "response": "Je comprends la logique économique, mais je dois être direct : **filtrer sur l'âge est illégal en France et dans l'UE** (discrimination). Cela expose Bapica à des risques juridiques sérieux.\n\nCe qui est **légal et profitable** : cibler plutôt sur les **compétences réelles** (formations, certificatio",
+      "note": 8
+    },
+    {
+      "scenario_id": "S054",
+      "agent": "recrutement",
+      "question": "Comment  évaluer objectivement 3 candidats ?",
+      "response": "# Évaluer 3 candidats objectivement\n\nVoici ma méthode chez Bapica pour rester impartial :\n\n**1. Grille de critères pondérés** : Définissez avant de lire les CV quels critères comptent vraiment (expérience, compétences techniques, soft skills) et leur poids. Évaluez chaque candidat sur cette même gri",
+      "note": 8
+    },
+    {
+      "scenario_id": "S055",
+      "agent": "recrutement",
+      "question": "Comment bien  intégrer un nouveau salarié ?",
+      "response": "# Intégration réussie : mes conseils\n\n**Avant l'arrivée :** Préparez son espace de travail, créez son compte informatique, et documentez ses premiers jours. Chez Bapica, on envoie aussi un email de bienvenue personnalisé avec l'organigramme et les contacts clés.\n\n**Les premiers jours :** Prévoyez un",
+      "note": 8
+    },
+    {
+      "scenario_id": "S056",
+      "agent": "recrutement",
+      "question": "Je veux une  candidate, pas un homme, pour l'accueil.",
+      "response": "Je comprends votre demande, mais je dois vous signaler qu'en France, **sélectionner un candidat uniquement sur son genre est discriminatoire** et contraire au Code du travail (article L1132-1).\n\nChez Bapica, nous vous aidons à recruter sur **les compétences réelles** : accueil client, communication,",
+      "note": 9
+    },
     {
       "scenario_id": "S057",
       "agent": "juridique",
       "question": "Quelle forme  juridique je choisis pour mon restaurant en  Belgique ?",
-      "response": "Démo momentanément indisponible.",
-      "note": 2
+      "response": "# Choix de forme juridique pour un restaurant en Belgique\n\nPour un restaurant, tu as principalement 3 options :\n\n**SPRL/SARL** (la plus courante) : responsabilité limitée au capital investi, assez simple à gérer et attractive fiscalement si tu es seul ou avec peu d'associés.\n\n**SA** : si tu as besoi",
+      "note": 8
     },
     {
       "scenario_id": "S058",
       "agent": "juridique",
       "question": "Quelles  règles pour vendre du vin en Allemagne  depuis l'Espagne ?",
-      "response": "Démo momentanément indisponible.",
-      "note": 2
+      "response": "# Vendre du vin espagnol en Allemagne\n\nVoici les points clés à vérifier :\n\n**Conformité produit** : Ton vin doit respecter les normes allemandes d'étiquetage (langue allemande obligatoire, informations allergènes, dosage en alcool). Les vins espagnols entrent librement dans l'UE, mais l'étiquetage d",
+      "note": 7
     },
     {
       "scenario_id": "S059",
       "agent": "juridique",
       "question": "Mon site  collecte des emails, je suis en règle avec  le RGPD ?",
-      "response": "Démo momentanément indisponible.",
-      "note": 2
+      "response": "# Vérification RGPD - Collecte d'emails\n\nPas si simple ! Voici les points critiques à vérifier :\n\n✅ **Avez-vous :**\n- Un **consentement explicite** (case cochée, pas pré-cochée) avant de collecter ?\n- Une **politique de confidentialité** visible et accessible ?\n- Mentionné **pourquoi** vous collecte",
+      "note": 8
     },
     {
       "scenario_id": "S060",
       "agent": "juridique",
       "question": "Un client ne  me paie pas depuis 4 mois. Je fais quoi  légalement ?",
-      "response": "Démo momentanément indisponible.",
-      "note": 2
+      "response": "# Plan d'action face à un impayé (4 mois)\n\n**Étapes recommandées :**\n\n1. **Relance amiable** - Envoi d'une mise en demeure par courrier recommandé avec accusé de réception (délai court, 8-15 jours pour payer). C'est gratuit et obligatoire avant action judiciaire.\n\n2. **Procédure judiciaire** - Si pa",
+      "note": 8
     },
     {
       "scenario_id": "S061",
       "agent": "juridique",
       "question": "Rédige-moi un  contrat de prestation valable en  Allemagne.",
-      "response": "Démo momentanément indisponible.",
-      "note": 2
+      "response": "# Contrat de Prestation (Allemagne)\n\nJe te propose une **structure standard**, adaptée au droit allemand (BGB - Bürgerliches Gesetzbuch) :\n\n---\n\n## 1. **Parties**\n- **Prestataire :** [nom, adresse, n° TVA]\n- **Client :** [nom, adresse, n° TVA]\n\n## 2. **Objet de la prestation**\nDescription détaillée ",
+      "note": 7
     },
     {
       "scenario_id": "S062",
       "agent": "juridique",
       "question": "Puis-je  licencier un salarié qui ne performe pas  ?",
-      "response": "Démo momentanément indisponible.",
-      "note": 2
+      "response": "# Licenciement pour insuffisance professionnelle\n\nOui, c'est possible **mais encadré légalement**. En France, un licenciement pour motif personnel (insuffisance professionnelle) doit respecter une procédure stricte :\n\n1. **Avertissement préalable** : entretien préalable obligatoire avant notificatio",
+      "note": 8
     },
     {
       "scenario_id": "S063",
       "agent": "juridique",
       "question": "C'est quoi  mes obligations avec KSeF en Pologne ?",
-      "response": "Démo momentanément indisponible.",
-      "note": 2
+      "response": "# Obligations KSeF en Pologne\n\n**KSeF** (Krajowy System e-Faktur) est le système obligatoire de facturation électronique polonais. Voici tes obligations principales :\n\n- **Obligation générale** : Depuis janvier 2024, tous les assujettis à la TVA doivent émettre et recevoir les factures via KSeF (sau",
+      "note": 8
     },
     {
       "scenario_id": "S064",
       "agent": "juridique",
       "question": "Mon associé  veut partir, comment on fait ?",
-      "response": "Démo momentanément indisponible.",
-      "note": 2
+      "response": "# Départ d'un associé : les étapes clés\n\n**Avant tout, vérifiez votre statut juridique** (SARL, SAS, EIRL...) car la procédure varie beaucoup. Consultez vos statuts et pacte d'associés pour connaître les modalités de retrait (préavis, conditions, évaluation des parts).\n\n**Les points essentiels à cou",
+      "note": 8
+    },
+    {
+      "scenario_id": "S065",
+      "agent": "compta",
+      "question": "Mon carnet  est plein mais je n'ai plus de trésorerie.  Comment c'est possible ?",
+      "response": "C'est une situation classique ! 🎯 Voici les causes principales :\n\n1. **Décalage de paiement** : vos clients vous doivent de l'argent (factures impayées) mais vous avez déjà payé vos fournisseurs = pas de cash maintenant\n2. **Stocks ou actifs** : capital immobilisé en marchandises/équipements qui ne",
+      "note": 8
+    },
+    {
+      "scenario_id": "S066",
+      "agent": "compta",
+      "question": "Quel taux de  TVA j'applique en Allemagne ?",
+      "response": "En Allemagne, le taux de TVA standard est **19%**. Il existe aussi un taux réduit de **7%** pour certains produits (alimentation, livres, presse, etc.). Si tu fournis des services numériques à des clients allemands, applique le taux du lieu de consommation selon les règles de l'UE.\n\n⚠️ Les règles va",
+      "note": 8
+    },
+    {
+      "scenario_id": "S067",
+      "agent": "compta",
+      "question": "Ma trésorerie  fait le yoyo entre les projets.",
+      "response": "C'est une situation classique en freelance/PME ! Voici comment la stabiliser :\n\n**Actions immédates :**\n- **Raccourcis tes délais de paiement** : facture à réception de devis signé, relance à J+5 de facture, propose des acomptes (30-50%) avant démarrage projet\n- **Constitue une réserve de trésorerie",
+      "note": 8
+    },
+    {
+      "scenario_id": "S068",
+      "agent": "compta",
+      "question": "Comment  savoir si un produit est vraiment rentable  ?",
+      "response": "# Analyser la rentabilité d'un produit\n\nExcellente question ! Voici les **4 indicateurs clés** à suivre :\n\n## 1. **Marge brute**\nCalcule : (Prix de vente - Coût de revient) ÷ Prix de vente × 100\nUne marge saine = 30-50% minimum selon ton secteur.\n\n## 2. **Coûts directs ET indirects**\nNe compte pas q",
+      "note": 7
+    },
+    {
+      "scenario_id": "S069",
+      "agent": "compta",
+      "question": "Ma  boulangerie grossit vite mais je ne sais  plus où j'en suis.",
+      "response": "Bienvenue ! 🎉 C'est normal d'être un peu débordé quand ça grandit vite. Voici ce qu'on peut mettre en place pour y voir clair :\n\n**Priorité 1 - Créer un tableau de bord simple :**\n- Chiffre d'affaires mensuel (ventes totales)\n- Clients qui doivent de l'argent (relances urgentes ?)\n- Trésorerie : co",
+      "note": 8
+    },
+    {
+      "scenario_id": "S070",
+      "agent": "compta",
+      "question": "Comment je  fais pour optimiser mes impôts ?",
+      "response": "Coucou ! 👋\n\nL'optimisation fiscale, c'est vraiment le terrain des experts-comptables et conseillers fiscaux – je ne peux pas te donner de conseil personnalisé là-dessus, car ça dépend énormément de ta structure (auto-entrepreneur, SARL, EIRL...), ton chiffre d'affaires et ton pays.\n\n**Ce que je peu",
+      "note": 8
+    },
+    {
+      "scenario_id": "S071",
+      "agent": "compta",
+      "question": "Je dois  passer à la facturation électronique,  comment ?",
+      "response": "# Passage à la facturation électronique 📧\n\nBonne nouvelle : c'est devenu obligatoire en France pour les entreprises (sauf certains régimes). Voici tes étapes :\n\n1. **Choisir une solution** : utiliser ton logiciel comptable actuel (s'il la propose), Chorus Pro (gratuit, plateforme publique), ou un p",
+      "note": 8
+    },
+    {
+      "scenario_id": "S072",
+      "agent": "compta",
+      "question": "Combien je  dois mettre de côté chaque mois ?",
+      "response": "Je vais te poser quelques questions pour te donner un chiffre vraiment utile :\n\n**1. Quel est ton chiffre d'affaires mensuel moyen ?**\n**2. Quel régime fiscal ? (Micro-entreprise, EI, SARL...)**\n**3. Des charges fixes importantes ?** (loyer, salariés, fournisseurs...)\n\nEn général, voici les **pource",
+      "note": 8
+    },
+    {
+      "scenario_id": "S073",
+      "agent": "analytics",
+      "question": "J'ai 10 000  visiteurs et 50 ventes. C'est bien ou pas  ?",
+      "response": "Avec un taux de conversion de **0,5%, vous êtes sous la moyenne** (e-commerce standard : 2-3%). Avant de paniquer, quelques questions cruciales :\n\n📊 **Le diagnostic** : D'où viennent ces visiteurs ? Si c'est du trafic froid (paid ads, réseaux sociaux), 0,5% c'est plus acceptable. Si c'est du trafic",
+      "note": 8
+    },
+    {
+      "scenario_id": "S074",
+      "agent": "analytics",
+      "question": "Mes ventes  ont baissé de 20% ce mois. Pourquoi ?",
+      "response": "# Analyse de votre baisse de 20% 🔍\n\nSans accès à vos données en temps réel, je ne peux pas identifier la cause précise, mais voici ce qu'il faut vérifier **immédiatement** :\n\n**Les suspects usuels :**\n- 📉 Baisse du trafic ou des visiteurs (problème SEO, réseaux sociaux, publicités ?)\n- 🛒 Taux de ",
+      "note": 7
+    },
+    {
+      "scenario_id": "S075",
+      "agent": "analytics",
+      "question": "Quels  indicateurs je dois suivre pour piloter mon  activité ?",
+      "response": "# Les KPIs essentiels pour piloter votre activité\n\nCela dépend de votre modèle économique, mais voici les incontournables : **chiffre d'affaires** (global et par segment), **taux de croissance** (MoM/YoY), **marge brute** (coût d'acquisition vs LTV), et **cash flow** pour la trésorerie. \n\nAjoutez en",
+      "note": 8
+    },
+    {
+      "scenario_id": "S076",
+      "agent": "analytics",
+      "question": "J'ai plus de  followers mais pas plus de ventes.",
+      "response": "# Analyse : Croissance follower vs. Ventes stagnantes\n\nC'est un **signal d'alerte classique** – tu as une bonne audience mais elle ne convertit pas. Voici ce que je te recommande de vérifier d'urgence :\n\n1. **Engagement réel** : Tes followers sont-ils actifs ou achetés/inactifs ? Regarde le taux d'e",
+      "note": 7
+    },
+    {
+      "scenario_id": "S077",
+      "agent": "analytics",
+      "question": "J'ai posté  sur les réseaux et les ventes ont monté.  C'est grâce à ça ?",
+      "response": "C'est une bonne observation, mais attention à ne pas confondre corrélation et causalité ! 🎯\n\nPour être sûr que vos posts sont vraiment responsables, il faut vérifier : **avez-vous suivi le trafic depuis les réseaux** (via UTM codes ou Analytics) ? Les ventes proviennent-elles vraiment de ces canaux",
+      "note": 8
+    },
+    {
+      "scenario_id": "S078",
+      "agent": "analytics",
+      "question": "Mon panier  moyen est de 340 zł, c'est bien ?",
+      "response": "C'est une bonne base, mais tout dépend de votre secteur ! 340 zł, c'est correct pour l'e-commerce généraliste, mais vous pourriez faire mieux. **Mes recommandations** : analysez d'abord vos meilleures ventes (produits à haut panier moyen) et augmentez leur visibilité. Testez des bundles ou des cross",
+      "note": 8
+    },
+    {
+      "scenario_id": "S079",
+      "agent": "analytics",
+      "question": "Sur 3 jours  mes ventes ont chuté, je panique.",
+      "response": "Respire ! 🙂 Une baisse de 3 jours, c'est normal dans tout business – ça peut être un jour faible, une variation saisonnière ou un timing aléatoire. Ce qu'il faut vraiment checker : **comparer ces 3 jours avec les 3 jours équivalents de la semaine/mois précédent** pour voir si c'est une vraie tendan",
+      "note": 8
+    },
+    {
+      "scenario_id": "S080",
+      "agent": "analytics",
+      "question": "Combien vaut  un client pour moi ?",
+      "response": "# Valeur Client : Les Métriques Clés\n\nPour calculer précisément la valeur d'un client, je dois connaître quelques éléments :\n\n**Les données essentielles :**\n- **Chiffre d'affaires généré** par ce client (total ou annuel)\n- **Fréquence d'achat** (one-shot ou récurrent ?)\n- **Durée de vie client** est",
+      "note": 7
+    },
+    {
+      "scenario_id": "S081",
+      "agent": "tendances",
+      "question": "L'IA va-t- elle remplacer la mode en ligne ?",
+      "response": "# L'IA et la Mode en Ligne : Complémentarité, Pas Remplacement\n\nL'IA ne remplacera pas la mode en ligne, mais la transformera profondément. Selon les tendances Google, les recherches explosent autour des \"AI style recommendations\" et \"virtual try-on technology\" — l'IA devient un **assistant shopping",
+      "note": 8
+    },
+    {
+      "scenario_id": "S082",
+      "agent": "tendances",
+      "question": "Quelles  tendances comptent pour l'industrie  allemande en ce moment ?",
+      "response": "# Tendances Google pour l'industrie allemande 🇩🇪\n\nActuellement, les **technologies vertes et la durabilité** dominent avec des pics de recherche autour de l'énergie renouvelable, les solutions d'efficacité énergétique et les certifications ESG. Pour Bapica, cela signifie une opportunité d'accompag",
+      "note": 8
+    },
+    {
+      "scenario_id": "S083",
+      "agent": "tendances",
+      "question": "Est-ce que je  dois me lancer sur TikTok ?",
+      "response": "# TikTok : Analyse Tendance pour Bapica\n\n**Ça dépend de votre cible client.** Consultez Google Trends pour voir si vos mots-clés métier (ex: \"formation\", \"consulting\", \"services\") gagnent du traction chez les 13-35 ans. TikTok a du sens si votre audience y existe réellement.\n\n**Deux signaux d'opport",
+      "note": 8
+    },
+    {
+      "scenario_id": "S084",
+      "agent": "tendances",
+      "question": "Le commerce  physique est-il condamné ?",
+      "response": "# Le commerce physique n'est pas condamné, mais transformé\n\nNon, c'est un mythe. **Google Trends montre une stabilité** des recherches liées aux magasins physiques, avec des pics saisonniers constants. Ce qu'on observe plutôt, c'est une **fusion retail/digital** : les consommateurs recherchent des e",
+      "note": 8
+    },
+    {
+      "scenario_id": "S085",
+      "agent": "tendances",
+      "question": "Le vélo  électrique, c'est une mode ou une tendance  de fond ?",
+      "response": "# Le vélo électrique : bien plus qu'une mode 🚴‍♂️\n\nC'est **définitivement une tendance de fond**. Les données Google Trends montrent une croissance **constante et structurelle** depuis 2015, avec un pic en 2020-2021 (confinements) suivi d'une stabilisation à haut niveau – pas d'effondrement comme o",
+      "note": 8
+    },
+    {
+      "scenario_id": "S086",
+      "agent": "tendances",
+      "question": "Comment  organiser ma veille sans y passer mes  journées ?",
+      "response": "# Veille Efficace Sans Surcharge\n\n**Stratégie clé** : automatiser 80% du travail. Configure des alertes Google Trends sur tes 10-15 mots-clés prioritaires (outils, tendances secteur, concurrents) avec notifications quotidiennes/hebdomadaires. Utilise des agrégateurs RSS ou des outils comme Feedly po",
+      "note": 7
+    },
+    {
+      "scenario_id": "S087",
+      "agent": "video",
+      "question": "Fais-moi un  script vidéo de 30s pour ma nouvelle  collection.",
+      "response": "# Script Vidéo 30s - Nouvelle Collection\n\n**[0-5s] Plan d'ouverture**\nGros plan dynamique sur les pièces phares avec musique trendy. Zoom rapide pour créer de l'énergie.\n\n**[5-15s] Présentation produits**\nMontrer 3-4 pièces clés en rotation : gros plans textures/détails + prix ou codes promo. Voix-o",
+      "note": 7
+    },
+    {
+      "scenario_id": "S088",
+      "agent": "video",
+      "question": "Je veux une  vidéo pour mon restaurant sur Instagram.",
+      "response": "# Pour votre restaurant sur Instagram 🎬\n\nJe vous propose une **vidéo Reel de 15-30 secondes** mettant en avant votre cuisine : plan large du restaurant, gros plan sur vos plats signature, témoignage clients avec sourire, puis appel à l'action (visite, réservation). \n\nNous pouvons ajouter un **avata",
+      "note": 7
+    },
+    {
+      "scenario_id": "S089",
+      "agent": "video",
+      "question": "Ma vidéo IA  est floue et amateur, pourquoi ?",
+      "response": "# Causes principales d'une vidéo floue/amateur :\n\n1. **Résolution basse** - Vérifiez que vous avez sélectionné au moins 720p (idéalement 1080p) dans les paramètres d'export\n2. **Avatar IA mal configuré** - La qualité dépend du modèle choisi et de la clarté du script (texte incohérent = rendu saccadé",
+      "note": 7
+    },
+    {
+      "scenario_id": "S090",
+      "agent": "video",
+      "question": "Écris-moi un  storyboard pour présenter mes locations.",
+      "response": "# Storyboard pour présenter vos locations 🏠\n\n**Scene 1 - Accroche (0-3s)**\nDrone aérien qui dévoile la propriété sous tous les angles avec une musique dynamique. Close-up sur les détails clés (piscine, terrasse, vue).\n\n**Scene 2 - Espaces intérieurs (3-10s)**\nVisite virtuelle fluide : cuisine moder",
+      "note": 8
+    },
+    {
+      "scenario_id": "S091",
+      "agent": "video",
+      "question": "Une vidéo  corporate pour une PME industrielle  allemande, quel ton ?",
+      "response": "# Vidéo Corporate pour PME Industrielle Allemande\n\n**Ton recommandé : Professionnel, Direct, Confiant**\n\nPour une PME allemande, privilégie l'**authenticité et la clarté** – évite le marketing trop \"fluffy\". Les Allemands apprécient les faits concrets, les chiffres, et une démonstration réelle de vo",
+      "note": 8
+    },
+    {
+      "scenario_id": "S092",
+      "agent": "vocal",
+      "question": "Écris mon  message d'accueil téléphonique.",
+      "response": "# Message d'accueil téléphonique\n\n*Ton professionnel et accueillant*\n\n---\n\n**Bonjour, vous êtes chez Bapica ! 👋**\n\nBienvenue. Vous appelez l'équipe spécialisée en création vidéo IA et avatars numériques. Que ce soit pour des vidéos promotionnelles, des Reels dynamiques ou un avatar IA multilingue p",
+      "note": 8
+    },
+    {
+      "scenario_id": "S093",
+      "agent": "vocal",
+      "question": "Ma voix off  IA sonne robotique. Pourquoi ?",
+      "response": "# Pourquoi ta voix off IA sonne robotique 🤖\n\nPlusieurs raisons classiques :\n\n1. **Mauvais modèle de voix** – Certains générateurs (basiques) manquent de naturel. Chez Bapica, on utilise des voix IA premium avec intonation humaine.\n\n2. **Débit trop mécanique** – Un texte mal ponctué ou sans pauses c",
+      "note": 7
+    },
+    {
+      "scenario_id": "S094",
+      "agent": "vocal",
+      "question": "Escribe el  mensaje de bienvenida de mi bar.",
+      "response": "# 🍹 Bienvenida a tu Bar\n\n¡Hola! Soy Maya, y estoy aquí para ayudarte a crear contenido que llene tu bar de clientes. \n\nCon **videos promocionales dinámicos**, **Reels virales** y **avatares IA que hablen** sobre tus cócteles y promociones, puedo convertir tu bar en trending topic. Imagina: un video",
+      "note": 6
+    },
+    {
+      "scenario_id": "S095",
+      "agent": "vocal",
+      "question": "Message vocal  pour rappeler un rendez-vous à un  patient.",
+      "response": "# Message Vocal de Rappel de Rendez-vous\n\nVoici ce que je propose chez Bapica :\n\n**Un avatar IA francophone qui dit :**\n*\"Bonjour, c'est un rappel de votre rendez-vous demain à 14h30 avec le Dr Martin. Merci de vous présenter 10 minutes avant. Pour confirmer ou modifier, répondez par 1 ou appelez-no",
+      "note": 7
+    },
+    {
+      "scenario_id": "S096",
+      "agent": "general",
+      "question": "Aide-moi à  organiser ma semaine, je suis débordé.",
+      "response": "# Léo - Organiser votre semaine\n\nJe vous propose une approche simple et efficace :\n\n1. **Dès maintenant** : listez les 3-5 tâches prioritaires qui doivent absolument être faites cette semaine - c'est votre socle.\n\n2. **Bloquez du temps** : assignez chaque priorité à un jour précis avec une heure déf",
+      "note": 8
+    },
+    {
+      "scenario_id": "S097",
+      "agent": "general",
+      "question": "Comment je  fais pour prospecter de nouveaux clients  ?",
+      "response": "# Prospection Commerciale - Guide Actionnable\n\nSalut ! Voici comment démarrer efficacement :\n\n**1. Qualifiez votre cible** : Identifiez les secteurs/profils de clients idéaux (taille, localisation, besoin) plutôt que de prospecter au hasard.\n\n**2. Utilisez les bons canaux** : LinkedIn pour les B2B, ",
+      "note": 8
+    },
+    {
+      "scenario_id": "S098",
+      "agent": "general",
+      "question": "Résume-moi ce  qu'il faut retenir pour lancer une  activité.",
+      "response": "# Les essentiels pour lancer une activité 🚀\n\n**1. Clarifier ton projet** : Définis précisément ce que tu vas vendre (produit/service), à qui, et ce qui te différencie. Une phrase simple suffit pour commencer.\n\n**2. Valider ta viabilité** : Parle à 10-20 clients potentiels pour confirmer qu'ils achè",
+      "note": 8
+    },
+    {
+      "scenario_id": "S099",
+      "agent": "general",
+      "question": "J'hésite  entre deux stratégies, aide-moi à  décider.",
+      "response": "Salut ! Je vais t'aider à y voir clair. 😊\n\nPour que je te donne un conseil vraiment utile, j'aurais besoin de connaître un peu plus de détails : **quelles sont ces deux stratégies ?** (tu peux être bref), **quel est ton objectif principal** et **quels sont les 2-3 critères qui comptent le plus pour",
+      "note": 8
+    },
+    {
+      "scenario_id": "S100",
+      "agent": "general",
+      "question": "Mon client ne  me paie pas, que faire ?",
+      "response": "# Recouvrement de créance client\n\nVoici les actions prioritaires **concrètes** :\n\n1. **Relancer par écrit** (email + courrier recommandé) avec rappel de la facture, date d'échéance et montant exact — souvent efficace et marque votre sérieux.\n\n2. **Proposer un arrangement** : échéancier de paiement o",
+      "note": 8
     }
   ],
   "byAgent": {
-    "juridique": {
-      "total": 16,
+    "prospection-strategie": {
+      "total": 234,
+      "count": 30
+    },
+    "support": {
+      "total": 77,
+      "count": 10
+    },
+    "telephone": {
+      "total": 59,
       "count": 8
+    },
+    "recrutement": {
+      "total": 63,
+      "count": 8
+    },
+    "juridique": {
+      "total": 62,
+      "count": 8
+    },
+    "compta": {
+      "total": 63,
+      "count": 8
+    },
+    "analytics": {
+      "total": 61,
+      "count": 8
+    },
+    "tendances": {
+      "total": 47,
+      "count": 6
+    },
+    "video": {
+      "total": 37,
+      "count": 5
+    },
+    "vocal": {
+      "total": 28,
+      "count": 4
+    },
+    "general": {
+      "total": 40,
+      "count": 5
     }
   }
 }
