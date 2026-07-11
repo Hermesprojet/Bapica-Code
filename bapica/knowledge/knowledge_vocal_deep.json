@@ -1,0 +1,38 @@
+[
+  {
+    "agent_id": "vocal",
+    "source": "Scripts Podcast - Structure Narrative",
+    "category": "vocal",
+    "content": "STRUCTURE OPTIMALE PODCAST: Hook (0-10s): Question provocante ou stat choquante. Exemple: 'Savez-vous que 73% des entrepreneurs échouent faute de clarté?' | Présentation (10-30s): Nom, expertise, promesse. 'Je suis [Nom], expert en scaling, et aujourd'hui je vous révèle les 3 piliers du succès.' | Corps (5-15min): 3 points max avec micro-histoires (30s chacune). Utiliser le principe: Situation → Complication → Résolution. | CTA (30s): Action spécifique et urgente. 'Rendez-vous sur [lien], offre valide 48h.' | Tonalité: Conversationnel, pauses stratégiques de 2-3s, variation de débit (120-150 mots/min). Éviter ton monotone. Respirer entre idées principales."
+  },
+  {
+    "agent_id": "vocal",
+    "source": "Voix Off Marketing - Positionnement Sensoriel",
+    "category": "vocal",
+    "content": "VOIX OFF B2B vs B2C: B2B (autorité): Débit 140 mots/min, tessiture grave-médium, timbre confiant. Exemple: 'Solutions d'automatisation pour entreprises exigeantes.' Pause de 1.5s après chaque proposition de valeur. | B2C (séduction): Débit 130 mots/min, plus chaud, intonation montante. Exemple: 'Découvrez le bien-être qui change la vie.' | TECHNIQUE: Enregistrement en chambre sourde, micro cardioïde à 15cm, normalisation -3dB. Supprimer respirations bruyantes, laisser micro-respires naturels. Compression légère (ratio 4:1). | TIMING: Logo/produit = 2-3s silence après (impact visuel). Appel à action finale = augmenter volume de +2dB pour détacher."
+  },
+  {
+    "agent_id": "vocal",
+    "source": "Message d'Accueil Professionnel - Protocole",
+    "category": "vocal",
+    "content": "STRUCTURE ACCUEIL SIV: Ligne 1 (5s): 'Bienvenue chez [Entreprise]. Pour la facturation, tapez 1. Pour le support, tapez 2.' Ton neutre-chaleureux, débit 130 mots/min. | Identification rapide: Nom complet entreprise en 2s maximum. Éviter les acronymes mal prononcés. | Proposition valeur: 1 phrase unique. 'Nous traitons vos demandes en moins de 24h.' | Options claires: Max 4 choix, numéroté 1-4, répétable. | Fermeture: 'Restez en ligne, un conseiller vous répond.' Ton bienveillant, pas robotoïde. | PARAMÈTRES: Niveau audio -6dB, proéminence fréquences 2-4kHz (clarté), zéro effet ou très subtil (légère réverbération 0.3s max)."
+  },
+  {
+    "agent_id": "vocal",
+    "source": "Ton et Rythme - Grille de Performance",
+    "category": "vocal",
+    "content": "CALIBRAGE TON: Enthousiaste (ventes): +15% énergie vocale, intonation montante, débit accéléré 150 mots/min, pauses courtes (0.8s). Ex: 'Découvrez MAINTENANT notre offre exclusive!' | Rassurant (healthcare): Débit lent 110 mots/min, ton grave-mélodieux, pauses longues (2.5s), articulation très claire. Ex: 'Nous prenons soin de vous, ensemble.' | Urgent (promo): Débit 160 mots/min, emphase sur chiffres et deadline, respiration audible contrôlée. | RYTHME: Alterner bloc parlé dense (20s) + silence blanc (1s) pour absorption. Varier tessiture toutes les 3 phrases. Crescendo émotionnel sur CTA (derniers 10s). | PIÈGE À ÉVITER: Monotonie = audition impossible après 20s. Tester débit avec métronome pour calibrage."
+  },
+  {
+    "agent_id": "vocal",
+    "source": "Storytelling Audio - Architecture Émotionnelle",
+    "category": "vocal",
+    "content": "MODÈLE SCA (Situation-Complication-Action): SITUATION (0-30s): Planter décor sensoriel via adjectifs auditifs. 'Marie se réveille, son alarme crie 6h du matin. Elle panique: encore 100 emails en attente.' Voix légèrement haletante, bruits d'ambiance (alarme, clics). | COMPLICATION (30s-2min): Amplifier tension. 'Elle réalise qu'elle a raté le deadline client. Panique croissante.' Débit accéléré, silence angoissant (3s). | ACTION (2-3min): Présenter solution progressivement. 'Elle découvre [Produit]. Test. Résultat.' Débit ralenti, soulagement vocal, musique légère montante. | RÉSOLUTION (final 20s): Transformation audible. 'Maintenant, elle se réveille sereine.' Ton reposé, lumineux, basse musique apaisante. | INGRÉDIENT CLÉE: Voix personnage (variation d'accent/tessiture si multiple speakers) + soundscape minimaliste (2-3 layers max)."
+  },
+  {
+    "agent_id": "vocal",
+    "source": "Formats Longs/Courts - Optimisation Segmentation",
+    "category": "vocal",
+    "content": "FORMAT COURT (15-30s): Hook brutal (2s), 1 seule promesse, CTA ultra-ciblé. Débit 150 mots/min, énergie maximale. Ex pour TikTok/Reels: 'Vous travaillez 80h/semaine? Stoppez. [Produit] = -50% temps. Essayez 7j gratuit.' Fond sonore percussif (140bpm). | FORMAT MOYEN (2-3min): Podcast court, reel podcast. Hook (15s) + story (100s) + CTA (15s). Débit flexible (120-140 mots/min), 2-3 pauses stratégiques. Bande sonore thématique douce. | FORMAT LONG (10-45min): Podcast complet, audiobook promo. Intro musicale (10s) + 3-5 segments thématiques (2min chacun) + micro-transitions (5s). Débit 130 mots/min, variation tonale toutes les 2min. Chapters ajoutés (texte/timestamps). | RÈGLE TRANSITION: Silence blanc 2s + musique 1s (long), silence 0.8s direct (court). Respecter rythme auriculaire par format."
+  }
+]

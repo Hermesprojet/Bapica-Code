@@ -1,0 +1,38 @@
+[
+  {
+    "agent_id": "telephone",
+    "source": "Script appel entrant PME",
+    "category": "telephone",
+    "content": "ACCUEIL STANDARD: 1) Décrocher avant 3ème sonnerie. 2) Formule: 'Bonjour, [Nom entreprise], [Votre prénom] à l'appareil, comment puis-je vous aider?' 3) Écoute active 10 secondes sans interrompre. 4) Identifier: nom appelant, entreprise, sujet. 5) Si demande directe: 'Je vous passe [Nom], un instant svp'. 6) Si demande complexe: 'Je note vos coordonnées, [Nom] vous rappellera dans l'heure'. 7) Recueillir: numéro/email/meilleur moment rappel. 8) Confirmer: 'Merci, on vous recontacte rapidement'. NE PAS laisser appel sans réponse >4 sonneries. NE PAS promettre rappel >2h."
+  },
+  {
+    "agent_id": "telephone",
+    "source": "Script appel sortant PME",
+    "category": "telephone",
+    "content": "PROSPECTION/RELANCE: 1) Préparer avant d'appeler: fiche prospect, objectif clair, 3 arguments clés. 2) Ouverture: 'Bonjour [Prénom], c'est [Votre nom] de [Entreprise]. Avez-vous 2min?' (ATTENDRE réponse). 3) Pitch 30sec max: 'On aide les PME à [bénéfice]. Vu votre secteur, pensais que [pertinence]'. 4) Question de qualification: 'Actuellement, comment gérez-vous [problème]?' 5) Écoute réponse 30sec. 6) Si intérêt: 'Super! On pourrait faire un point rapide mardi 14h?' (proposer 2 créneaux). 7) Si désintérêt: 'Pas de souci, je vous laisse mon contact au cas où'. 8) RACCROCHER avec 'Merci et bonne journée!'."
+  },
+  {
+    "agent_id": "telephone",
+    "source": "Objection handling téléphone",
+    "category": "telephone",
+    "content": "'Pas intéressé': Valider > 'Je comprends, ce n'est jamais le bon moment. Juste pour info, [spécificité] vous manque actuellement?' 'Trop cher': Évaluer > 'Combien pensiez-vous budgéter?' puis repositionner > 'On propose [options], sans engagement 15j'. 'Déjà client concurrent': Reconnaissance > 'Ah d'accord. Juste curieux, [point faible concurrent]?' puis creuser besoin. 'Pas décideur': Qualifier > 'Qui je dois contacter pour [problème]? Vous pouvez m'envoyer un mail d'intro?'. 'Rappelez plus tard': Fixer date > 'Parfait, mercredi 10h ou jeudi 14h?'. JAMAIS insister >2 fois. TOUJOURS terminer par: 'Merci de votre temps'."
+  },
+  {
+    "agent_id": "telephone",
+    "source": "Qualification RDV téléphone PME",
+    "category": "telephone",
+    "content": "AVANT RDV: 1) Vérifier besoin réel: 'Vous avez un problème d'[X] à résoudre avant fin [mois]?' 2) Budget existe-t-il? 'Vous avez une enveloppe dédiée?' (éviter directement, jauger réaction). 3) Timeline: 'Quand envisagez-vous une décision?' 4) Décideur présent? 'Il faudra que [Patron/DAF] soit dispo pour valider, OK?' 5) Blocages identifiés? 'Qu'est-ce qui pourrait vous freiner?' QUALIFICATION OK = réponses positives 4/5 critères. 6) Confirmer RDV: 'Lundi 14h30, cabinet [Adresse] ou visio?' Envoyer CONFIRMATION SMS + mail 24h avant avec: lieu/heure/durée/ordre du jour/contact backup. RDV sans réponse aux 5 points = classement 'suivi 3 mois'."
+  },
+  {
+    "agent_id": "telephone",
+    "source": "Ton professionnel PME",
+    "category": "telephone",
+    "content": "RÈGLES TON: 1) Débit 120-140 mots/min (ni rapide ni lent). 2) Volume normal, articuler chaque syllabe. 3) Sourire au téléphone = audible (avant d'appeler, sourire 3sec). 4) Pas de 'hein?', 'genre', 'bah', 'ouais'. 5) Terminer phrases sur ton montant (pas descendant). 6) Pauses 2-3sec après question. 7) Empathie: 'Je comprends que...' plutôt que 'C'est normal'. 8) Utiliser prénom appelant 2-3x max (pas robotique). 9) PAS d'arrière-fond bruyant, fermer portes. 10) Si stress détecté chez appelant: baisser débit, ralentir, clarifier. INTERDITS: mâcher, boire, soupirer, taper clavier pendant appel. VÉRIFIER microphone qualité hi-fi (USB recommandé)."
+  },
+  {
+    "agent_id": "telephone",
+    "source": "Messagerie vocale et standard",
+    "category": "telephone",
+    "content": "MESSAGERIE VOCALE: Texte standard: 'Bonjour, vous êtes en contact avec [Entreprise]. Actuellement indisponible. Laissez nom, numéro, raison appel, meilleur moment rappel après bip. Merci!' Durée max 25sec. Vérifier mise à jour quotidienne ('En déplacement jusqu'à vendredi'). Rappel OBLIGATOIRE <24h. STANDARD: 1) Transfert appel: 'Je vous passe [Prénom du collègue], ne quittez pas'. Silence max 30sec (sinon: 'Toujours en attente, 20sec'). 2) Absence collègue: 'Il est en réunion/déplacement. Je le note pour rappel ou je vous transfère [Alternative]?'. 3) Fax/Email: 'Vous pouvez aussi envoyer à [email] ou fax [Numéro], plus rapide'. 4) Urgence: 'C'est urgent? Je le/la contacte de suite'. 5) Raccrocher: 'Merci, excellente journée!'."
+  }
+]

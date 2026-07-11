@@ -1,0 +1,38 @@
+[
+  {
+    "agent_id": "analytics",
+    "source": "Google Analytics 4 - Configuration de base",
+    "category": "analytics",
+    "content": "Google Analytics 4 (GA4) est la nouvelle plateforme de mesure de Google remplaçant Universal Analytics. Configuration initiale: créer un compte GA4, ajouter la propriété, installer le tag Global Site Tag (gtag.js) ou Google Tag Manager. GA4 utilise un modèle événementiel centré sur les utilisateurs avec tracking automatique des événements: page_view, scroll, click_outbound, search, video_engagement, file_download. Paramètres de configuration essentiels: activer la collecte de données cross-domain, configurer les filtres de données, définir les utilisateurs excluded, activer Google Signal pour le cross-device tracking."
+  },
+  {
+    "agent_id": "analytics",
+    "source": "KPIs essentiels - Engagement et conversion",
+    "category": "analytics",
+    "content": "KPIs critiques pour GA4: Sessions (interactions de l'utilisateur), Users (utilisateurs uniques), Engagement rate (pourcentage de sessions engagées basé sur scroll 90%, durée 10s, événements), Bounce rate (sessions avec 1 événement), Average session duration (durée moyenne de session), Conversion rate (pourcentage de sessions avec événement de conversion), ROAS (Return On Ad Spend), Cost per Acquisition (CPA), Customer Lifetime Value (CLV), Pages per session. Metrics d'événement: Event count, Event value (valeur monétaire associée), User-ID (identification client unique). Key insights: comparaison semaine/semaine, évolution des segments, analyse de cohortes, entonnoirs de conversion."
+  },
+  {
+    "agent_id": "analytics",
+    "source": "Tableaux de bord GA4 - Structure et widgets",
+    "category": "analytics",
+    "content": "Structure recommandée des tableaux de bord dans GA4: 1) Vue d'ensemble - Users, Sessions, Engagement rate, Bounce rate avec comparaison périodes. 2) Acquisition - Source/Medium, Campaign, Canal (Organic, Paid, Direct, Referral), Cost per user. 3) Comportement - Pages les plus visitées, Durée moyenne page, Scrolls, Événements de conversion. 4) Conversion - Entonnoir d'achat, Taux de conversion par source, Transaction revenue. 5) Audience - Segments utilisateurs, Données démographiques, Intérêts, Appareils. Widgets couramment utilisés: Scorecard (métriques clés), Time series (évolution temporelle), Pie chart (répartition source), Table (données détaillées), Geo chart (performance géographique)."
+  },
+  {
+    "agent_id": "analytics",
+    "source": "Événements personnalisés GA4 - Implémentation",
+    "category": "analytics",
+    "content": "Événements personnalisés GA4 permettent tracker des actions spécifiques. Structure: event_name (identifiant unique), event_parameters (données additionnelles). Événements recommandés: add_to_cart (produit ajouté), begin_checkout (début achat), purchase (achat complété avec value, currency, transaction_id), login/signup (authentification), search (terme recherché), newsletter_signup (inscription). Implémentation via GTM (Google Tag Manager) ou gtag.js directement. Exemple gtag.js: gtag('event', 'purchase', {transaction_id: '123', value: 99.99, currency: 'EUR'}). Limites: max 500 événements personnalisés par propriété, 100 paramètres par événement. Validation via DebugView en temps réel avant publication."
+  },
+  {
+    "agent_id": "analytics",
+    "source": "Segmentation et audiences GA4",
+    "category": "analytics",
+    "content": "Segmentation dans GA4 permet analyser sous-ensembles de données. Types: segments simples (dimension unique comme Device = mobile), segments combinés (AND/OR), segments basés événements (utilisateurs ayant triggé purchase). Audiences GA4 pour remarketing et export vers Google Ads: audiences prédéfinies (acheteurs, utilisateurs engagés), audiences créées (comportement custom, événements, paramètres). Exemple audience: utilisateurs ayant ajouté produit au panier mais pas acheté. Données démographiques: âge, sexe, intérêts (GA4 collecte via Google Signal si consentement). Exploration: créer segmentations ad-hoc pour analysis, définir segments permanents pour réutilisation. Limite: jusqu'à 100 audiences par propriété GA4."
+  },
+  {
+    "agent_id": "analytics",
+    "source": "Rapports GA4 - Exploration avancée et troubleshooting",
+    "category": "analytics",
+    "content": "Explorations avancées GA4: Rapport de trajectoire (user journey visualization), Analyse de cohortes (cohort retention), Analyse d'entonnoir (conversion funnel steps), Technique d'analyse (pattern matching), Analyse de distribution (données comparées). Troubleshooting: vérifier événements via DebugView (real-time), valider gtag implementation, checker consentement RGPD, auditer filtres de données appliqués. Problèmes courants: discréptence Universal Analytics/GA4 (modèle différent), données manquantes (blocages ad-blockers, consentement non accordé), délai de traitement (temps réel vs rapports standards). Intégration: connecter GA4 à BigQuery pour data warehouse, exporter rapports vers Data Studio, lier à Google Ads pour mesure de conversion. Attribution: GA4 utilise data-driven attribution (IA) par défaut, configurable par canal."
+  }
+]

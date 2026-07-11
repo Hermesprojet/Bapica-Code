@@ -1,0 +1,38 @@
+[
+  {
+    "agent_id": "video",
+    "source": "Script Pub 15 secondes - Formule AIDA",
+    "category": "video",
+    "content": "ATTENTION (0-2s): Ouvrez avec une statistique choc ou un problème relatable. Ex: 'Les 87% des gens abandonnent leur panier' + visuel impactant. ACTION (2-8s): Montrez la solution en action, 2-3 bénéfices max. Démo rapide du produit. INTÉRÊT (8-13s): Témoignage client 10 secondes ou CTA social proof. DÉSIR (13-15s): CTA clair avec urgence (code promo limité, stock). Exemple complet: Pub E-commerce: 0-2s 'Vos cheveux s'abîment?' (image cheveux secs) | 2-8s 'Spray réparateur - 3 minutes' (application rapide) | 8-13s 'Avant/après + avis 4.9★' | 13-15s 'CODE2024 -30% - Aujourd'hui seulement'"
+  },
+  {
+    "agent_id": "video",
+    "source": "Storyboard 30 secondes - Structure Shot par Shot",
+    "category": "video",
+    "content": "PLAN 1 (0-3s): Establishing shot grand angle, musique monte. Plan B-roll contextuel. PLAN 2 (3-8s): Gros plan détail produit/problème. Zoom lent. Titre texte apparaît. PLAN 3 (8-15s): Action/transformation. Cut dynamique. Sous-titre clé. PLAN 4 (15-23s): Bénéfices visuels. Montage rapide 2-3 cuts. B-roll intensité. PLAN 5 (23-30s): CTA. Logo marque. Numéro/URL. Transition fondu vers noir. CHECKLIST: 1 cut/2-3 secondes minimum | Musique synchronisée | Texte lisible 3 secondes | Pas plus de 3 transitions différentes"
+  },
+  {
+    "agent_id": "video",
+    "source": "Formats Réseaux Sociaux - Specs Techniques",
+    "category": "video",
+    "content": "INSTAGRAM REELS: 1080x1920px (9:16), durée 15-90s, poids max 4GB. Hook première frame visible. TikTok pareil. YOUTUBE SHORTS: 1080x1920px (9:16), 15-60s. FACEBOOK: 1200x628px (1.91:1) ou vertical 1080x1920. Max 4GB. LINKEDIN: 1200x675px (16:9) ou 1080x1350 (4:5). Max 10min, 5GB. TWITTER/X: 1280x720px (16:9) minimum. PRATIQUE: Tournez TOUJOURS en 9:16 vertical natif | Exporter en H.264, bitrate 8-10Mbps | Ajouter sous-titres brûlés (max 3 lignes) | Fond sombre pour Instagram, clips très courts pour TikTok"
+  },
+  {
+    "agent_id": "video",
+    "source": "Hook 3 Secondes - Formules Éprouvées",
+    "category": "video",
+    "content": "FORMULE 1 - CHOC VISUEL (0-1s): Image extrême, couleur saturée, contraste maximal. Ex: Produit défectueux vs réparé. Musique cut sec. FORMULE 2 - QUESTION (0-1.5s): 'Vous êtes...?' / 'Qui d'autre...?' Texte grand gras. Pause 1 seconde. FORMULE 3 - CONTRADICTION (0-2s): Montrer l'inverse du message. 'Vous pensiez...?' puis révélation. FORMULE 4 - TRANSITION RAPIDE (0-3s): Cut musique, apparition logo/produit, zoom rapide. FORMULE 5 - CHIFFRE CHOC (0-2s): '300% de gains' texte apparition + visuel métrique. FORMULE 6 - MOUVEMENT RAPIDE (0-3s): Caméra qui bouge, pan, tilt, dolly avant. Rien de statique. ACTION IMMÉDIATE: 1-3 premier cuts vaut 1 million dans les algos"
+  },
+  {
+    "agent_id": "video",
+    "source": "Viralité - Formule d'Engagement",
+    "category": "video",
+    "content": "PILIERS VIRALITÉ: 1) ÉMOTION (peur/joie/colère > 10x partages): Contenu relatif au pain quotidien. Raconter une histoire personnelle. 2) SURPRISE (plot twist obligatoire): Inattendance à 50% de la vidéo. 3) SHAREABILITÉ: Contenu qui fait 'rire/crier/partager à ami'. 4) TIMING: Poster 18h-21h entre mar-jeu. Lundi/vendredi = taux bas. 5) CALL-TO-ACTION: 'Taggez quelqu'un qui...' / 'Continuons en DM?' = +40% engagement. CHIMIE VIDÉO VIRALE: Hook 3s + transformation visuelle + émotion + CTA tagging = 70% d'algorithme satisfait. BONUS: Répondre 100% des DM premiers 24h = signal viralité boosté. Reposter 48h après en story = 2ème vague"
+  },
+  {
+    "agent_id": "video",
+    "source": "SEO YouTube + Sous-titres Strategy",
+    "category": "video",
+    "content": "SEO YOUTUBE: TITRE (60 caractères max): Mot-clé prioritaire début. Ex: 'Meilleur Script Pub 15s [2024] - Formule AIDA Prouvée'. DESCRIPTION (5000 caractères): Première phrase = résumé avec mot-clé. Ajouter timestamps (00:00 Intro | 02:15 Hook). Links dans les 2 premières lignes (YouTube boost). Tags: 3-5 mots-clés pertinents + variantes. SOUS-TITRES: Obligatoires pour 95% conversion. Format SRT ou automatique YouTube + vérification. Placer mots-clés dans sous-titres naturellement. Timing: synchro exacte dialogue/texte. VIGNETTE: Texte max 5 mots, contraste max, visage/émotion si pertinent. 1280x720px minimum. HOOK TITRE-VIGNETTE: 3 secondes décision clic. Testez A/B 2 vignettes/semaine. ANALYTICS: CTR YouTube (cible 4%+) | Retention (cible 50% moyenne) | Engagement (like/comment/partage)"
+  }
+]

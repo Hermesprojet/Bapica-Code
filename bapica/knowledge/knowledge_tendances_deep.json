@@ -1,0 +1,38 @@
+[
+  {
+    "agent_id": "tendances",
+    "source": "Méthodologie veille concurrentielle pour PME",
+    "category": "tendances",
+    "content": "VEILLE CONCURRENTIELLE STRUCTURÉE: 1) Identifier 5-7 concurrents directs et 3-4 indirects; 2) Créer des alertes Google Alerts sur noms + domaines d'activité; 3) Monitorer LinkedIn posts des décideurs concurrents (embauches, publications); 4) Analyser mensuellement: tarification, nouvelles offres, partenariats, recrutements; 5) Documenter dans un tableau partagé avec couleurs (vert=opportunité, rouge=menace); 6) Valider les données auprès de commerciaux en terrain. Fréquence: revue hebdo 2h, synthèse mensuelle 4h. Coût: gratuit à 200€/mois (outils payants). Responsable: 1 personne PME ou alternant."
+  },
+  {
+    "agent_id": "tendances",
+    "source": "Détection des signaux faibles en PME",
+    "category": "tendances",
+    "content": "SIGNAUX FAIBLES À TRAQUER: 1) Signaux technologiques: adoption d'IA par concurrents (GitHub, Product Hunt, démos), migrations cloud (Crunchbase), patents (espacenet.eu); 2) Signaux clients: augmentation avis négatifs spécifiques, évolution attentes sectorielles (forums spécialisés), départs clients importants; 3) Signaux réglementaires: changements normes métier, nouvelles lois sectorielles (Legifrance, trade associations); 4) Signaux marché: émergence startups disruptives (Crunchbase), prix cassés par nouveaux entrants, concentration M&A. MÉTHODE: créer un registre mensuel 'signaux faibles' avec colonne impact/probabilité; escalader signaux en rouge vers direction trimestriellement."
+  },
+  {
+    "agent_id": "tendances",
+    "source": "Analyse PESTEL opérationnelle PME",
+    "category": "tendances",
+    "content": "PESTEL ADAPTÉ PME - Cadence trimestrielle: P(olitique): suivi lois impactant secteur, subventions régionales, élections locales → alertes Légifrance + CCI. E(conomique): inflation secteurs fournisseurs, taux intérêt, devises si export, évolution masse salariale → suivi BCE + Banque France. S(ocial): pénuries métiers clés, mouvements RH concurrents, évolution qualifications → LinkedIn + ANPE. T(echnologique): normes numériques, cybersécurité obligatoire, outils collaboratifs → AWS Trends + GartnerHTR gratuit. E(nvironnemental): normes carbone métier, plastique interdit, écolabels → ADEME + législation UE. L(égal): RGPD, droit du travail, propriété intellectuelle → avocats spécialisés. Sortie: 1 page par trimestre avec 2-3 opportunités actionnables par thème."
+  },
+  {
+    "agent_id": "tendances",
+    "source": "Scénarios prospectifs PME horizon 3 ans",
+    "category": "tendances",
+    "content": "CONSTRUCTION SCÉNARIOS - 3 scénarios minimum: OPTIMISTE (croissance secteur +15%, IA adoptée, nouveaux marchés): investir en R&D, recruter talent tech, partenariats stratégiques. TENDANCIEL (statu quo, +5% croissance): optimiser opérations, automatiser, renforcer fidélité clients. PESSIMISTE (récession, nouveaux entrants, disruption): réduire coûts fixes, diversifier, réorienter vers niches. MÉTHODE: 1) identifier 3-4 variables clés (ex: adoption IA, réglementation, pouvoir achat); 2) croiser scénarios pour chaque; 3) définir par scénario: investissements, risques, opportunités, indicateurs d'alerte; 4) affecter responsables 'veille d'alerte' par variable clé (ex: tech = DSI, réglementation = compliance); 5) revoir annuellement. Outil: template Excel 'Scénarios 3 ans' partagé direction."
+  },
+  {
+    "agent_id": "tendances",
+    "source": "Sources fiables veille PME - Stack gratuit + payant",
+    "category": "tendances",
+    "content": "STACK RECOMMANDÉ: GRATUIT - Google Alerts (concurrents, technos), LinkedIn (décideurs, recrutement), Crunchbase (startups disruptives), Arxiv (recherche sciences appliquées), Trade press gratuit (secteur), Légifrance (réglementation), Reddit/Discourse (signaux clients humains). PAYANT ÉCONOMIQUE (<5k€/an): Gartner HTR (80€/mois, trends reports), SimilarWeb (benchmarking digital), SEMrush (stratégie concurrents), Facteus ou Helios (données financières fournisseurs). SOURCES EXPERTES GRATUITES: webinaires associations sectorielles, rapports Xerfi/Idate (1-2/an), podcasts MarketingProfs, rapports McKinsey free, blogs Medium experts. DISCIPLINE: affecter par PME 1-2 personnes sources réputées fiables, documenter 'source ranking' (fiabilité 1-5) pour chaque alerte."
+  },
+  {
+    "agent_id": "tendances",
+    "source": "Framework détection disruption pour PME",
+    "category": "tendances",
+    "content": "DÉTECTION DISRUPTION - 5 SIGNAUX À MONITORER: 1) TECHNOLOGIE RADICALE: IA générative appliquée au métier (GPT, Midjourney), blockchain, IoT, 5G déploiement → test gratuits, rapports Gartner Hype Cycle; 2) MODÈLE ÉCONOMIQUE NOUVEAU: entrants avec pricing -40%, ubérisation métier, plateforme vs produit → suivi startups (Crunchbase, Y Combinator); 3) CHANGEMENT CLIENT: génération Z rejection prix anciens, déplacement géographique demande, nouvelles use cases → enquêtes qualitatives, panels clients; 4) DISPARITION BARRIÈRES: accès données, talent accessible (freelance), outils low-code libres → alertes GitHub, Product Hunt; 5) RÉGULATION ACCÉLÉRÉE: droits numériques, environnement, accessibilité → lois subites. SCORECARD DISRUPTION: pour chaque signal mensuel: scoring impact PME (1-10), probabilité (%), délai (mois), contre-mesure (innovation produit/service, partenariats, pivot). Escalader score >15."
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "agent_id": "general",
+    "source": "Matrice Eisenhower pour la Priorisation Quotidienne",
+    "category": "general",
+    "content": "Classez vos tâches en 4 quadrants: (1) Urgent & Important: traiter immédiatement (2) Non-urgent & Important: planifier sur agenda bloqué (3) Urgent & Non-important: déléguer si possible (4) Non-urgent & Non-important: éliminer. Appliquez cette grille chaque lundi pour votre semaine. Exemple: Email urgent d'un client = Q1, améliorer process = Q2, demandes de réunion ad-hoc = Q3. Limitez Q1 à max 30% du temps."
+  },
+  {
+    "agent_id": "general",
+    "source": "Framework RACI pour Délégation Structurée",
+    "category": "general",
+    "content": "Pour chaque projet, définissez pour chaque acteur: R(Responsible=exécutant), A(Accountable=décideur final), C(Consulted=avis nécessaire), I(Informed=notification). Exemple: Lancement produit - R: Chef produit, A: VP Commercial, C: Tech Lead, I: Support client. Documentez dans un tableau et partagez en début de projet. Cela réduit les chevauchements et ambiguïtés de 40%."
+  },
+  {
+    "agent_id": "general",
+    "source": "OKR Trimestriel avec Cadence de Review",
+    "category": "general",
+    "content": "Fixez 3-5 Objectifs qualitatifs (ex: 'Établir leadership marché') avec 3 Key Results mesurables (ex: 'Augmenter NPS de 45 à 55'). Architecture: 1-2 OKR de croissance, 1 d'optimisation, 1 de culture. Review hebdomadaire (15 min): progression 0-100%, blocages. Review mensuelle (1h): ajustement. Review trimestrielle (2h): scoring final et OKR suivants. Lier compensations sur 70% des OKR entreprise."
+  },
+  {
+    "agent_id": "general",
+    "source": "Technique Pomodoro Adaptée + Blocs Calendrier Protégés",
+    "category": "general",
+    "content": "Utilisez cycles 90 min (au lieu de 25 min) + 15 min pause pour travail stratégique. Bloquez sur calendrier: lundis 9-11h (planification), jeudis 14-16h (focus), vendredis 15-17h (bilan). Interdisez notifications durant ces blocs (Slack/email en 'Do Not Disturb'). Mesurez: nombre de blocs complétés/semaine. Objectif: 6-8 blocs de 90 min/semaine pour travail à haut impact. Réduisez interruptions de 60% en 2 semaines."
+  },
+  {
+    "agent_id": "general",
+    "source": "Gestion du Stress par Micro-Habitudes",
+    "category": "general",
+    "content": "Intégrez 4 micro-actions quotidiennes: (1) 5 min respiration box breathing (4 sec inspiration, 4 sec apnée, 4 sec expiration) avant réunion stressante (2) 10 min marche dehors post-déjeuner (3) 2 min journal écrit des 3 wins du jour (4) 20 min activité physique 17h. Tracez sur app (Streaks/Habitica). Indicateurs: score stress 1-10 (objectif <5), sommeil >6h30, fréquence cardiaque repos. Cumulées: réduisent cortisol de 35% en 30j."
+  },
+  {
+    "agent_id": "general",
+    "source": "Format Réunion Efficace: Agenda Structuré + Décisions",
+    "category": "general",
+    "content": "Modèle 30 min: (5 min) Context & objectifs, (15 min) Discussion items avec temps alloué, (5 min) Décisions & owners (RACI), (5 min) Next steps. Envoyez agenda 24h avant. Bannissez phones. Prenez notes publiques assignant owner/deadline. Exemple: 'Réunion Budget Q2: Décision allouer 200k à marketing (Owner: CFO, délai: 48h). Action: Marketing présente détail jeudi.' Métrique: 80% décisions prises en réunion vs 40% avant (économise 6h/mois par participant)."
+  }
+]
