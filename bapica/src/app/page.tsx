@@ -114,9 +114,48 @@ function Capacites() {
 // ─── FONCTIONNEMENT ────────────────────────────────────────
 function Fonctionnement() {
   const steps = [
-    { num: "01", title: "Créez votre compte", desc: "30 secondes. Sans carte bancaire.", icon: "👤" },
-    { num: "02", title: "Bapica analyse", desc: "Détection automatique de votre activité, vos outils, vos besoins.", icon: "🔍" },
-    { num: "03", title: "Vos agents travaillent", desc: "Premières recommandations stratégiques en moins de 5 minutes.", icon: "🚀" },
+    {
+      num: "01",
+      title: "Créez votre compte",
+      desc: "30 secondes. Sans carte bancaire. Vos données sont hébergées en France et protégées.",
+      icon: "👤",
+      details: ["Inscription simplifiée", "Essai gratuit 15 jours", "Conforme RGPD"]
+    },
+    {
+      num: "02",
+      title: "Bapica analyse votre activité",
+      desc: "Notre moteur d'intelligence artificielle scanne votre secteur, votre taille et vos outils.",
+      icon: "🔍",
+      details: ["Détection automatique du secteur", "Analyse de votre site web", "Identification de vos outils existants"]
+    },
+    {
+      num: "03",
+      title: "Vos 12 agents s'activent",
+      desc: "Conseiller stratégique, expert-comptable, recruteur, juriste... Ils se configurent automatiquement.",
+      icon: "🤖",
+      details: ["12 agents spécialisés", "Auto-configuration en 2 min", "Prêts à travailler 24/7"]
+    },
+    {
+      num: "04",
+      title: "Connectez vos outils",
+      desc: "Bapica se branche à vos plateformes existantes. Gmail, Stripe, Shopify, HubSpot... 77 connecteurs natifs.",
+      icon: "🔌",
+      details: ["Connexion en 1 clic", "77 plateformes supportées", "Webhook universel pour toutes les autres"]
+    },
+    {
+      num: "05",
+      title: "Recevez votre premier diagnostic",
+      desc: "En moins de 5 minutes, Bapica vous livre une analyse complète de votre entreprise avec des recommandations.",
+      icon: "📊",
+      details: ["Forces et faiblesses", "Opportunités de croissance", "Risques à anticiper"]
+    },
+    {
+      num: "06",
+      title: "Vos agents passent à l'action",
+      desc: "Prospection, facturation, support client, recrutement... Ils exécutent. Vous supervisez.",
+      icon: "🚀",
+      details: ["Alertes proactives", "Rapport de performance", "Optimisation continue"]
+    },
   ]
 
   return (
@@ -124,18 +163,32 @@ function Fonctionnement() {
       <div className="container mx-auto max-w-7xl px-6">
         <div className="mb-16">
           <p className="text-sm font-medium text-[#2563EB] uppercase tracking-wider mb-4">Fonctionnement</p>
-          <h2 className="text-4xl md:text-5xl font-bold text-[#111827] mb-4">Prêt en 5 minutes.</h2>
-          <p className="text-xl text-[#6B7280]">De l&apos;inscription à la première recommandation stratégique.</p>
+          <h2 className="text-4xl md:text-5xl font-bold text-[#111827] mb-4">De l&apos;inscription au résultat en 5 minutes.</h2>
+          <p className="text-xl text-[#6B7280] max-w-2xl">Un parcours simple, guidé, sans jamais toucher à une ligne de code.</p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-16 max-w-5xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-y-16 gap-x-8 max-w-6xl mx-auto">
           {steps.map((s, i) => (
             <div key={i} className="relative">
-              {i < 2 && <div className="hidden md:block absolute top-8 left-[60%] w-full h-px bg-[#E5E7EB]" />}
-              <div className="text-4xl mb-4">{s.icon}</div>
-              <div className="text-sm font-bold text-[#2563EB] mb-2">{s.num}</div>
-              <h3 className="text-xl font-bold text-[#111827] mb-2">{s.title}</h3>
-              <p className="text-[#6B7280]">{s.desc}</p>
+              <div className="flex items-start gap-4">
+                <div className="text-3xl shrink-0 mt-1">{s.icon}</div>
+                <div>
+                  <div className="text-xs font-bold text-[#2563EB] mb-2">{s.num}</div>
+                  <h3 className="text-lg font-bold text-[#111827] mb-2">{s.title}</h3>
+                  <p className="text-[#6B7280] text-sm leading-relaxed mb-3">{s.desc}</p>
+                  <ul className="space-y-1">
+                    {s.details.map((d, j) => (
+                      <li key={j} className="flex items-center gap-1.5 text-xs text-[#9CA3AF]">
+                        <svg className="w-3 h-3 text-[#10B981] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        {d}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              {i < steps.length - 1 && (
+                <div className="hidden md:block absolute left-[26px] top-[52px] w-px h-[calc(100%+32px)] bg-[#E5E7EB]" />
+              )}
             </div>
           ))}
         </div>
