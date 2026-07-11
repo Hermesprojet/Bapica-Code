@@ -1,0 +1,50 @@
+[
+  {
+    "agent_id": "support",
+    "source": "Méthode LEAP pour clients mécontents",
+    "category": "support",
+    "content": "LEAP Framework: Listen (Écouter activement), Empathize (Faire preuve d'empathie), Apologize (S'excuser), Problem-solve (Résoudre). Script: 'Je comprends votre frustration [Listen]. À votre place, je ressentirais la même chose [Empathize]. Je suis sincèrement désolé pour ce désagrément [Apologize]. Voici comment nous allons résoudre cela immédiatement [Problem-solve].' Utilisez des pauses, validez les émotions, évitez les justifications défensives."
+  },
+  {
+    "agent_id": "support",
+    "source": "Technique de l'ancrage positif",
+    "category": "support",
+    "content": "Pour clients agressifs: Ancrez la conversation sur des points positifs. Script: 'Je vois que vous utilisez notre service depuis [X mois], nous apprécions vraiment votre fidélité. Concentrons-nous ensemble sur la solution.' Techniques: Reconnaissance immédiate du problème, reformulation positive, proposer 2-3 options concrètes. Évitez: 'Calmez-vous', 'Ce n'est pas notre faute', 'Normalement ça marche'. Privilégiez: 'Je comprends', 'Laissez-moi vous aider', 'Voici ce que je peux faire'."
+  },
+  {
+    "agent_id": "support",
+    "source": "Réponse retard de service/bug critique",
+    "category": "support",
+    "content": "Objet: [Ticket #XXX] - Résolution en cours de votre problème | Corps: Bonjour [Prénom], Je vous remercie pour votre patience concernant [problème spécifique]. Situation actuelle: [description claire]. Actions entreprises: 1) [action 1 avec timestamp] 2) [action 2]. Prochaines étapes: [plan avec délais]. Compensation proposée: [crédit/extension gratuite]. Vous recevrez une mise à jour dans [X heures]. Contact prioritaire: [lien direct]. Cordialement, [Nom] - Équipe Support [Entreprise]"
+  },
+  {
+    "agent_id": "support",
+    "source": "Refus de demande client avec alternative",
+    "category": "support",
+    "content": "Objet: Re: Votre demande concernant [sujet] | Corps: Bonjour [Prénom], Merci pour votre message. J'ai examiné attentivement votre demande de [demande spécifique]. Actuellement, [explication brève de la limitation]. Cependant, voici comment nous pouvons vous aider: • Alternative 1: [solution de contournement] • Alternative 2: [feature similaire disponible] • Perspective: Cette fonctionnalité est sur notre roadmap Q[X]. Je reste disponible pour explorer ensemble la meilleure solution. Quand seriez-vous disponible pour un appel de 15min? Bien cordialement, [Nom]"
+  },
+  {
+    "agent_id": "support",
+    "source": "Demande d'escalade vers management",
+    "category": "support",
+    "content": "Objet: Transfert de votre dossier - Support prioritaire | Corps: Bonjour [Prénom], Je comprends l'importance de cette situation pour vous. Votre dossier nécessite une attention particulière que je souhaite vous garantir. J'ai donc transmis votre cas à [Nom Manager], [Titre], qui dispose de l'autorité pour [raison spécifique]. Résumé transmis: [bullet points]. [Manager] vous contactera sous 24h via [canal]. En attendant, j'ai appliqué [mesure temporaire]. Votre référence prioritaire: #[CODE]. Merci pour votre confiance. [Nom]"
+  },
+  {
+    "agent_id": "support",
+    "source": "Framework CSAT pour SaaS - Mesure post-interaction",
+    "category": "support",
+    "content": "Customer Satisfaction Score optimisé SaaS: Question: 'Comment évaluez-vous votre expérience support aujourd'hui?' Échelle: 1-5 étoiles. Timing: Immédiat post-résolution (dans l'heure). Question complémentaire ouverte: 'Que pourrions-nous améliorer?'. Segmentation: Par canal (chat/email/téléphone), type de problème, agent. KPI cible SaaS: >4.5/5. Action triggers: <3★ = escalade manager immédiate + rappel client. Analyse mensuelle des verbatims pour patterns récurrents."
+  },
+  {
+    "agent_id": "support",
+    "source": "NPS SaaS - Net Promoter Score stratégie",
+    "category": "support",
+    "content": "NPS pour SaaS B2B: Question: 'Recommanderiez-vous [Produit] à un collègue?' (0-10). Segments: Promoteurs (9-10), Passifs (7-8), Détracteurs (0-6). Formule: %Promoteurs - %Détracteurs. Timing optimal: Tous les 90 jours OU après milestone (3 mois utilisation, renouvellement). Follow-up segmenté: Détracteurs = appel personnalisé sous 48h. Promoteurs = demande témoignage/case study. Benchmark SaaS: >50 excellent, 30-50 bon, <30 critique. Intégration CRM pour scoring customer health."
+  },
+  {
+    "agent_id": "support",
+    "source": "Customer Effort Score (CES) - Friction SaaS",
+    "category": "support",
+    "content": "CES pour réduire friction SaaS: Question: 'Résoudre votre problème a-t-il été facile?' Échelle: 1 (Très difficile) - 7 (Très facile). Moment clé: Post-onboarding, après ticket support, migration de plan. Objectif SaaS: >5.5/7 (faible effort). Indicateur prédictif de churn supérieur au CSAT. Analyse: CES bas + ticket récurrent = risque churn élevé. Actions correctives: CES <4 = revue UX du parcours, création documentation, amélioration self-service. Dashboard: Corrélation CES/Taux de résolution au 1er contact."
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "agent_id": "recrutement",
+    "source": "Guide d'entretien structuré - Développeur Full Stack",
+    "category": "recrutement",
+    "content": "Framework complet pour évaluer les compétences techniques et comportementales d'un développeur full stack"
+  },
+  {
+    "agent_id": "recrutement",
+    "source": "Guide d'entretien structuré - Commercial B2B",
+    "category": "recrutement",
+    "content": "Méthodologie complète pour identifier les talents commerciaux adaptés aux cycles de vente complexes"
+  }
+]

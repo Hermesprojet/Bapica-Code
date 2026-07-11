@@ -1,0 +1,50 @@
+[
+  {
+    "agent_id": "compta",
+    "source": "Pilotage de trésorerie - Tableau de bord quotidien",
+    "category": "compta",
+    "content": "Le pilotage quotidien de la trésorerie repose sur 4 indicateurs clés : 1) Solde bancaire disponible actualisé en temps réel, 2) Position nette de trésorerie = encaissements prévisionnels J+7 - décaissements prévisionnels J+7, 3) Ratio de liquidité immédiate (actifs liquides / passifs à court terme) avec seuil d'alerte à 0,8, 4) Délai moyen de recouvrement clients (en jours). Mettre en place un plan de trésorerie glissant sur 13 semaines avec actualisation hebdomadaire. Identifier les facteurs de tension : décalage fournisseurs/clients, charges sociales et fiscales trimestrielles, investissements planifiés."
+  },
+  {
+    "agent_id": "compta",
+    "source": "TVA intracommunautaire - Réforme ViDA 2026",
+    "category": "compta",
+    "content": "La réforme ViDA (VAT in the Digital Age) entre en vigueur progressivement dès 2026. Principaux changements : 1) Facturation électronique obligatoire pour toutes les transactions B2B intracommunautaires via plateforme certifiée, 2) Déclarations TVA en temps réel (real-time reporting) avec délai maximum de 2 jours ouvrés après émission facture, 3) Système de numérotation européen unifié pour factures transfrontalières, 4) Suppression progressive du régime OSS au profit d'un guichet unique élargi. Les PME doivent se préparer : audit des flux intracommunautaires, choix plateforme conforme, formation équipes à la e-facturation européenne."
+  },
+  {
+    "agent_id": "compta",
+    "source": "Facturation électronique obligatoire France",
+    "category": "compta",
+    "content": "Calendrier actualisé de l'obligation de facturation électronique en France : 1er septembre 2026 pour toutes les grandes entreprises (émission et réception), 1er septembre 2027 pour ETI et PME+250 salariés (émission et réception pour tous dès 2026). Deux solutions conformes : Plateforme de Dématérialisation Partenaire (PDP) agréée par l'État ou Portail Public de Facturation (PPF). La facture doit contenir données structurées au format XML ou mixte (PDF+XML). Prérequis techniques : signature électronique qualifiée, horodatage, archivage certifié 10 ans. Les PME doivent anticiper : choix PDP vs PPF, interconnexion ERP/logiciel de facturation, formation utilisateurs."
+  },
+  {
+    "agent_id": "compta",
+    "source": "Optimisation des charges sociales PME",
+    "category": "compta",
+    "content": "Leviers d'optimisation des charges sociales pour PME : 1) Réduction générale renforcée (ex-CICE) : jusqu'à 32 points de réduction sur salaires jusqu'à 1,6 SMIC, application automatique via DSN, 2) Déduction forfaitaire patronale heures supplémentaires : 1,50€/heure pour entreprises -20 salariés, 0,50€ pour 20-249 salariés, 3) Aide à l'embauche apprentis/alternants : 6000€ pour apprenti mineur, exonération charges première année, 4) Statut JEI (Jeune Entreprise Innovante) : exonération jusqu'à 100% charges patronales sur chercheurs/R&D. Vigilance : cumul des dispositifs sous conditions, déclarations spécifiques en DSN, respect seuils d'effectifs."
+  },
+  {
+    "agent_id": "compta",
+    "source": "Prévision et gestion BFR - Méthode normative",
+    "category": "compta",
+    "content": "Le Besoin en Fonds de Roulement (BFR) se calcule : BFR = Stocks moyens + Créances clients - Dettes fournisseurs. Méthode normative : 1) Calculer les coefficients de structure : délai moyen stocks en jours CA, délai clients en jours CA TTC, délai fournisseurs en jours achats TTC, 2) Projeter sur CA prévisionnel : BFR prévisionnel = (CA annuel × coefficient rotation stocks/360) + (CA TTC × DSO/360) - (Achats TTC × DPO/360), 3) Calculer la variation de BFR mensuelle pour intégrer au plan de trésorerie. Actions de réduction BFR : négocier délais fournisseurs, réduire délais clients (escompte, relance), optimiser stocks (méthode ABC, flux tendus)."
+  },
+  {
+    "agent_id": "compta",
+    "source": "TVA déductible - Règles et exclusions 2024",
+    "category": "compta",
+    "content": "Conditions de déductibilité TVA : 1) Assujetti redevable agissant en tant que tel, 2) Bien/service utilisé pour besoins activité taxable, 3) Justificatif conforme (facture mentions obligatoires), 4) Respect délai déduction (2 ans). Exclusions principales : véhicules de tourisme (sauf véhicules utilitaires >5 places arrière fixes), carburant essence (déductible 60% en 2024, 80% prévus 2025), dépenses luxe/agrément, cadeaux >73€ TTC/an/bénéficiaire. Cas particuliers sectoriels : coefficient de déduction pour activités mixtes, TVA immobilière sur acquisitions/travaux. Contrôles fréquents DGFIP : justification lien direct dépense/exploitation, traçabilité véhicules, distinction charge/immobilisation."
+  },
+  {
+    "agent_id": "compta",
+    "source": "Optimisation fiscale IS - Dispositifs PME 2024",
+    "category": "compta",
+    "content": "Dispositifs d'optimisation Impôt sur les Sociétés pour PME : 1) Taux réduit 15% sur premiers 42.500€ bénéfices (sous conditions : CA <10M€, capital libéré détenu ≥75% personnes physiques), 2) Crédit d'Impôt Recherche (CIR) : 30% dépenses R&D jusqu'à 100M€ puis 5%, forfait 2× coût chercheurs/doctorants, 3) Crédit Impôt Innovation (CII) : 20% dépenses innovation produits nouveaux (PME <2000 salariés, plafonné 400k€/an), 4) Amortissement dégressif ou exceptionnel équipements productifs, 5) Report déficits illimité dans temps (1 an en arrière, plafond 50%+1M€ bénéfice annuel). Documentation : justificatif technique CIR/CII, registre immobilisations, décision gestion déficits reportables."
+  },
+  {
+    "agent_id": "compta",
+    "source": "Conformité facturation - Mentions obligatoires 2024",
+    "category": "compta",
+    "content": "Mentions obligatoires sur factures (Art. 242 nonies A Annexe II CGI) : 1) Identité complète parties (dénomination, adresse, SIREN), 2) Numéro TVA intracommunautaire si applicable, 3) Numéro unique séquentiel basé série continue, 4) Date émission et date livraison/service si différente, 5) Désignation précise produits/services, quantité, prix unitaire HT, 6) Taux TVA applicables et montants correspondants, 7) Montant total HT, TVA et TTC, 8) Conditions de règlement, pénalités de retard (3× taux BCE +10 points), indemnité forfaitaire recouvrement 40€. Mentions complémentaires selon cas : autoliquidation TVA (prestations intra-UE), exonération (mention base légale), RCM si sous-traitance BTP. Sanctions : 15€/mention manquante (plafonné 25% montant facture)."
+  }
+]
