@@ -257,8 +257,20 @@ export function getAgentsForPlan(plan: PlanKey): AgentConfig[] {
   return AGENTS.filter((a) => planLevel[a.minPlan] <= userLevel && !a.hidden)
 }
 
+// Alias pour compatibilité avec différentes conventions de nommage
+const AGENT_ALIASES: Record<string, string> = {
+  juridique: 'legal',
+  compta: 'accounting',
+  comptabilite: 'accounting',
+  recrutement: 'recruiter',
+  tendances: 'trends',
+  telephone: 'telephone',
+  vocal: 'video', // fallback
+}
+
 export function getAgentById(id: string): AgentConfig | undefined {
-  return AGENTS.find((a) => a.id === id)
+  const resolvedId = AGENT_ALIASES[id] || id
+  return AGENTS.find((a) => a.id === resolvedId)
 }
 
 export default AGENTS
