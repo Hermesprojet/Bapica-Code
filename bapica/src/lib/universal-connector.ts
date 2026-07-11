@@ -101,14 +101,15 @@ function parseOpenAPI(spec: any, baseUrl: string): DiscoveredEndpoint[] {
   const paths = spec.paths || {}
 
   for (const [path, methods] of Object.entries(paths) as [string, any][]) {
-    for (const [method, details] of Object.entries(methods)) {
+    for (const [method, rawDetails] of Object.entries(methods)) {
       if (!['get', 'post', 'put', 'patch', 'delete'].includes(method)) continue
+      const d = rawDetails as any
       endpoints.push({
         path: `${baseUrl}${path}`,
         method: method.toUpperCase(),
-        description: details.summary || details.description || '',
-        params: details.parameters || {},
-        returns: details.responses?.['200']?.description || '',
+        description: d.summary || d.description || '',
+        params: d.parameters || {},
+        returns: d.responses?.['200']?.description || '',
         tested: false,
         working: false,
       })
