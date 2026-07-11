@@ -156,9 +156,7 @@ export async function POST(req: NextRequest) {
     const maxTokens = tier === 'mini' ? 250 : tier === 'haiku' ? 400 : 600
 
     const client = new Anthropic({ apiKey, timeout: 15000 })
-    let completion
-    try {
-      completion = await client.messages.create({
+    const completion = await client.messages.create({
       model,
       max_tokens: maxTokens,
       system: fablePrompt,
