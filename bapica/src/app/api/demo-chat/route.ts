@@ -20,7 +20,7 @@ export async function OPTIONS(req: NextRequest) {
   return NextResponse.json({}, { headers: corsHeaders(req.headers.get('origin')) })
 }
 
-const MAX_USER_MESSAGES = 3
+const MAX_USER_MESSAGES = 20 // Augmenté pour les tests
 const MAX_MESSAGE_LENGTH = 500
 
 // Rate limiting par IP (côté serveur, pas basé sur l'historique client)

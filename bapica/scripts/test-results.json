@@ -1,0 +1,68 @@
+{
+  "date": "2026-07-11T11:14:51.372Z",
+  "avg": 1.875,
+  "results": [
+    {
+      "scenario_id": "S057",
+      "agent": "juridique",
+      "question": "Quelle forme  juridique je choisis pour mon restaurant en  Belgique ?",
+      "response": "Démo momentanément indisponible.",
+      "note": 2
+    },
+    {
+      "scenario_id": "S058",
+      "agent": "juridique",
+      "question": "Quelles  règles pour vendre du vin en Allemagne  depuis l'Espagne ?",
+      "response": "Démo momentanément indisponible.",
+      "note": 2
+    },
+    {
+      "scenario_id": "S059",
+      "agent": "juridique",
+      "question": "Mon site  collecte des emails, je suis en règle avec  le RGPD ?",
+      "response": "Démo momentanément indisponible.",
+      "note": 2
+    },
+    {
+      "scenario_id": "S060",
+      "agent": "juridique",
+      "question": "Un client ne  me paie pas depuis 4 mois. Je fais quoi  légalement ?",
+      "response": "Démonstration terminée. Créez un compte gratuit pour continuer.",
+      "note": 1
+    },
+    {
+      "scenario_id": "S061",
+      "agent": "juridique",
+      "question": "Rédige-moi un  contrat de prestation valable en  Allemagne.",
+      "response": "Démonstration terminée. Créez un compte gratuit pour continuer.",
+      "note": 2
+    },
+    {
+      "scenario_id": "S062",
+      "agent": "juridique",
+      "question": "Puis-je  licencier un salarié qui ne performe pas  ?",
+      "response": "Démonstration terminée. Créez un compte gratuit pour continuer.",
+      "note": 2
+    },
+    {
+      "scenario_id": "S063",
+      "agent": "juridique",
+      "question": "C'est quoi  mes obligations avec KSeF en Pologne ?",
+      "response": "Démonstration terminée. Créez un compte gratuit pour continuer.",
+      "note": 2
+    },
+    {
+      "scenario_id": "S064",
+      "agent": "juridique",
+      "question": "Mon associé  veut partir, comment on fait ?",
+      "response": "Démonstration terminée. Créez un compte gratuit pour continuer.",
+      "note": 2
+    }
+  ],
+  "byAgent": {
+    "juridique": {
+      "total": 15,
+      "count": 8
+    }
+  }
+}

@@ -1,0 +1,402 @@
+[
+  {
+    "id": "P01",
+    "pays": "BE",
+    "langue": "fr",
+    "secteur": "restauration",
+    "taille": "8 salariés",
+    "profil": "Restaurant \nfamilial à Liège, CA stable, marge en \nbaisse, gérant peu à l'aise avec le \nnumérique."
+  },
+  {
+    "id": "P02",
+    "pays": "BE",
+    "langue": "nl",
+    "secteur": "commerce",
+    "taille": "3 \nsalariés",
+    "profil": "Boutique de vêtements \nà Anvers, forte concurrence en ligne, veut \ndévelopper le click and collect."
+  },
+  {
+    "id": "P03",
+    "pays": "BE",
+    "langue": "fr",
+    "secteur": "services-b2b",
+    "taille": "2 salariés",
+    "profil": "Agence de \ncommunication à Bruxelles, dépend de 2 gros \nclients, veut diversifier son \nportefeuille."
+  },
+  {
+    "id": "P04",
+    "pays": "BE",
+    "langue": "nl",
+    "secteur": "artisanat-btp",
+    "taille": "12 salariés",
+    "profil": "Entreprise de \nrénovation à Gand, carnet plein mais \ntrésorerie tendue à cause des délais de \npaiement."
+  },
+  {
+    "id": "P05",
+    "pays": "BE",
+    "langue": "fr",
+    "secteur": "liberal",
+    "taille": "indépendant",
+    "profil": "Kinésithérapeute \nà Namur, agenda saturé, veut augmenter ses \nrevenus sans travailler plus."
+  },
+  {
+    "id": "P06",
+    "pays": "ES",
+    "langue": "es",
+    "secteur": "restauration",
+    "taille": "15 salariés",
+    "profil": "Chaîne de 2 tapas \nbars à Valence, veut ouvrir un 3e \nétablissement, hésite sur le financement."
+  },
+  {
+    "id": "P07",
+    "pays": "ES",
+    "langue": "es",
+    "secteur": "ecommerce",
+    "taille": "5 \nsalariés",
+    "profil": "E-commerce de \ncosmétiques bio à Barcelone, trafic correct \nmais taux de conversion faible."
+  },
+  {
+    "id": "P08",
+    "pays": "ES",
+    "langue": "es",
+    "secteur": "services-b2b",
+    "taille": "7 salariés",
+    "profil": "Cabinet de conseil \nRH à Madrid, cycle de vente long, veut \nraccourcir le temps de closing."
+  },
+  {
+    "id": "P09",
+    "pays": "ES",
+    "langue": "es",
+    "secteur": "artisanat-btp",
+    "taille": "20 salariés",
+    "profil": "Entreprise de \nplomberie à Séville, forte demande, \ndifficulté à recruter des techniciens \nqualifiés."
+  },
+  {
+    "id": "P10",
+    "pays": "ES",
+    "langue": "es",
+    "secteur": "liberal",
+    "taille": "indépendant",
+    "profil": "Photographe \nfreelance à Bilbao, tarifs trop bas, ne \nsait pas comment se positionner premium."
+  },
+  {
+    "id": "P11",
+    "pays": "IT",
+    "langue": "it",
+    "secteur": "restauration",
+    "taille": "6 salariés",
+    "profil": "Trattoria \nfamiliale à Naples, clientèle fidèle mais \nvieillissante, veut attirer les jeunes."
+  },
+  {
+    "id": "P12",
+    "pays": "IT",
+    "langue": "it",
+    "secteur": "commerce",
+    "taille": "4 \nsalariés",
+    "profil": "Épicerie fine à \nBologne, produits de qualité, veut vendre \nen ligne dans toute l'Italie."
+  },
+  {
+    "id": "P13",
+    "pays": "IT",
+    "langue": "it",
+    "secteur": "services-b2b",
+    "taille": "10 salariés",
+    "profil": "Agence de design \nà Milan, bonne réputation locale, veut se \ndévelopper à l'international."
+  },
+  {
+    "id": "P14",
+    "pays": "IT",
+    "langue": "it",
+    "secteur": "artisanat-btp",
+    "taille": "9 salariés",
+    "profil": "Menuiserie \nartisanale en Toscane, savoir-faire rare, \nmais devis lents et clients qui partent."
+  },
+  {
+    "id": "P15",
+    "pays": "IT",
+    "langue": "it",
+    "secteur": "ecommerce",
+    "taille": "3 \nsalariés",
+    "profil": "Boutique en ligne de \nmaroquinerie à Florence, panier moyen \nélevé, mais beaucoup d'abandons de panier."
+  },
+  {
+    "id": "P16",
+    "pays": "DE",
+    "langue": "de",
+    "secteur": "services-b2b",
+    "taille": "25 salariés",
+    "profil": "Cabinet de \nconseil IT à Munich, clients Mittelstand, \nexigence forte sur la conformité RGPD."
+  },
+  {
+    "id": "P17",
+    "pays": "DE",
+    "langue": "de",
+    "secteur": "industrie",
+    "taille": "40 \nsalariés",
+    "profil": "PME industrielle près \nde Stuttgart, niche technique, veut \ndigitaliser sa prospection."
+  },
+  {
+    "id": "P18",
+    "pays": "DE",
+    "langue": "de",
+    "secteur": "ecommerce",
+    "taille": "8 \nsalariés",
+    "profil": "E-commerce d'articles \nde sport à Berlin, forte concurrence, \nmarges sous pression."
+  },
+  {
+    "id": "P19",
+    "pays": "DE",
+    "langue": "de",
+    "secteur": "restauration",
+    "taille": "12 salariés",
+    "profil": "Brasserie à \nHambourg, saisonnalité forte, cherche à \nremplir les périodes creuses."
+  },
+  {
+    "id": "P20",
+    "pays": "DE",
+    "langue": "de",
+    "secteur": "liberal",
+    "taille": "indépendant",
+    "profil": "Consultant \nindépendant à Cologne, excellente \nexpertise, mauvaise visibilité \ncommerciale."
+  },
+  {
+    "id": "P21",
+    "pays": "PL",
+    "langue": "pl",
+    "secteur": "services-b2b",
+    "taille": "15 salariés",
+    "profil": "Agence de \ndéveloppement logiciel à Varsovie, veut \nvendre à l'Ouest européen, barrière de \nlangue."
+  },
+  {
+    "id": "P22",
+    "pays": "PL",
+    "langue": "pl",
+    "secteur": "commerce",
+    "taille": "6 \nsalariés",
+    "profil": "Chaîne de 3 \nboulangeries à Cracovie, croissance rapide, \ngestion qui ne suit pas."
+  },
+  {
+    "id": "P23",
+    "pays": "PL",
+    "langue": "pl",
+    "secteur": "ecommerce",
+    "taille": "4 \nsalariés",
+    "profil": "E-commerce de \nmobilier à Gdansk, sensible au prix, veut \naméliorer sa marge."
+  },
+  {
+    "id": "P24",
+    "pays": "PL",
+    "langue": "pl",
+    "secteur": "artisanat-btp",
+    "taille": "18 salariés",
+    "profil": "Entreprise de \nconstruction à Wroclaw, croissance forte, \ndoit structurer sa facturation (KSeF)."
+  },
+  {
+    "id": "P25",
+    "pays": "PL",
+    "langue": "pl",
+    "secteur": "liberal",
+    "taille": "indépendant",
+    "profil": "Traductrice \nindépendante à Poznan, tarifs bas face à la \nconcurrence, veut monter en gamme."
+  },
+  {
+    "id": "P26",
+    "pays": "BE",
+    "langue": "fr",
+    "secteur": "ecommerce",
+    "taille": "2 \nsalariés",
+    "profil": "Boutique en ligne de \nproduits pour animaux, démarrage récent, \npeu de trafic."
+  },
+  {
+    "id": "P27",
+    "pays": "FR",
+    "langue": "fr",
+    "secteur": "services-b2b",
+    "taille": "5 salariés",
+    "profil": "Agence marketing à \nLille, prospection irrégulière, dépend du \nbouche-à-oreille."
+  },
+  {
+    "id": "P28",
+    "pays": "ES",
+    "langue": "es",
+    "secteur": "commerce",
+    "taille": "9 \nsalariés",
+    "profil": "Magasin de sport à \nMalaga, saisonnalité touristique très \nmarquée."
+  },
+  {
+    "id": "P29",
+    "pays": "IT",
+    "langue": "it",
+    "secteur": "liberal",
+    "taille": "indépendant",
+    "profil": "Architecte à \nRome, projets rares mais gros, trésorerie \nen dents de scie."
+  },
+  {
+    "id": "P30",
+    "pays": "DE",
+    "langue": "de",
+    "secteur": "commerce",
+    "taille": "7 \nsalariés",
+    "profil": "Librairie \nindépendante à Leipzig, concurrence en \nligne écrasante, cherche à se \ndifférencier."
+  },
+  {
+    "id": "P31",
+    "pays": "PL",
+    "langue": "en",
+    "secteur": "services-b2b",
+    "taille": "30 salariés",
+    "profil": "Société de \nlogistique à Varsovie, dirigeant \nanglophone, veut automatiser son support \nclient."
+  },
+  {
+    "id": "P32",
+    "pays": "BE",
+    "langue": "fr",
+    "secteur": "sante",
+    "taille": "4 \nsalariés",
+    "profil": "Cabinet dentaire à \nCharleroi, beaucoup de rendez-vous manqués, \nveut réduire les absences."
+  },
+  {
+    "id": "P33",
+    "pays": "ES",
+    "langue": "es",
+    "secteur": "tourisme",
+    "taille": "6 \nsalariés",
+    "profil": "Agence de locations \ntouristiques à Palma, dépend des \nplateformes, veut vendre en direct."
+  },
+  {
+    "id": "P34",
+    "pays": "IT",
+    "langue": "it",
+    "secteur": "services-b2b",
+    "taille": "3 salariés",
+    "profil": "Cabinet comptable \nà Turin, veut proposer des services de \nconseil en plus de la compta."
+  },
+  {
+    "id": "P35",
+    "pays": "DE",
+    "langue": "de",
+    "secteur": "artisanat-btp",
+    "taille": "14 salariés",
+    "profil": "Électricien \nindustriel en Bavière, carnet plein, veut \naugmenter ses tarifs sans perdre de \nclients."
+  },
+  {
+    "id": "P36",
+    "pays": "PL",
+    "langue": "pl",
+    "secteur": "restauration",
+    "taille": "10 salariés",
+    "profil": "Restaurant à \nVarsovie, bonne fréquentation le soir, vide \nle midi."
+  },
+  {
+    "id": "P37",
+    "pays": "BE",
+    "langue": "nl",
+    "secteur": "services-b2b",
+    "taille": "8 salariés",
+    "profil": "Bureau d'études à \nBruges, dépend d'appels d'offres publics, \nveut diversifier vers le privé."
+  },
+  {
+    "id": "P38",
+    "pays": "ES",
+    "langue": "es",
+    "secteur": "liberal",
+    "taille": "indépendant",
+    "profil": "Coach en \ndéveloppement personnel à Grenade, \nnotoriété locale, veut passer à des formats \ncollectifs."
+  },
+  {
+    "id": "P39",
+    "pays": "IT",
+    "langue": "it",
+    "secteur": "commerce",
+    "taille": "5 \nsalariés",
+    "profil": "Magasin de vélos à \nVérone, forte saisonnalité, veut développer \nl'entretien récurrent."
+  },
+  {
+    "id": "P40",
+    "pays": "DE",
+    "langue": "de",
+    "secteur": "services-b2b",
+    "taille": "50 salariés",
+    "profil": "Société de \nservices logistiques à Francfort, veut \nstructurer son équipe commerciale."
+  },
+  {
+    "id": "P41",
+    "pays": "PL",
+    "langue": "pl",
+    "secteur": "commerce",
+    "taille": "12 \nsalariés",
+    "profil": "Distributeur de \nmatériel médical à Lodz, marges faibles, \ndépend de quelques gros clients."
+  },
+  {
+    "id": "P42",
+    "pays": "BE",
+    "langue": "fr",
+    "secteur": "restauration",
+    "taille": "3 salariés",
+    "profil": "Food truck à \nBruxelles, veut passer à un local fixe, \nincertain sur la rentabilité."
+  },
+  {
+    "id": "P43",
+    "pays": "ES",
+    "langue": "es",
+    "secteur": "ecommerce",
+    "taille": "10 \nsalariés",
+    "profil": "E-commerce de vin à \nRioja, veut exporter vers l'Allemagne et la \nBelgique, questions de TVA."
+  },
+  {
+    "id": "P44",
+    "pays": "IT",
+    "langue": "it",
+    "secteur": "artisanat-btp",
+    "taille": "6 salariés",
+    "profil": "Peintre en \nbâtiment à Palerme, impayés fréquents, \ntrésorerie fragile."
+  },
+  {
+    "id": "P45",
+    "pays": "DE",
+    "langue": "de",
+    "secteur": "liberal",
+    "taille": "indépendant",
+    "profil": "Développeur \nfreelance à Dresde, trop dépendant d'un \nseul client, veut sécuriser son activité."
+  },
+  {
+    "id": "P46",
+    "pays": "PL",
+    "langue": "pl",
+    "secteur": "services-b2b",
+    "taille": "4 salariés",
+    "profil": "Agence de \nrecrutement à Katowice, veut se spécialiser \nsur une niche pour se différencier."
+  },
+  {
+    "id": "P47",
+    "pays": "BE",
+    "langue": "fr",
+    "secteur": "commerce",
+    "taille": "6 \nsalariés",
+    "profil": "Fleuriste avec 2 \nboutiques à Mons, pics saisonniers, veut \nlisser le CA sur l'année."
+  },
+  {
+    "id": "P48",
+    "pays": "ES",
+    "langue": "es",
+    "secteur": "services-b2b",
+    "taille": "20 salariés",
+    "profil": "Société de \nnettoyage industriel à Saragosse, forte \nrotation du personnel, coûts de recrutement \nélevés."
+  },
+  {
+    "id": "P49",
+    "pays": "IT",
+    "langue": "en",
+    "secteur": "ecommerce",
+    "taille": "7 \nsalariés",
+    "profil": "Marque de mode en \nligne à Milan, dirigeante anglophone, veut \ncréer des vidéos produit."
+  },
+  {
+    "id": "P50",
+    "pays": "DE",
+    "langue": "de",
+    "secteur": "sante",
+    "taille": "9 \nsalariés",
+    "profil": "Cabinet de \nphysiothérapie à Nuremberg, beaucoup \nd'appels non décrochés, perd des patients."
+  }
+]
