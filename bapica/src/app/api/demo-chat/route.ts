@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { AGENTS, getAgentById } from '@/lib/agents'
+import AGENTS, { getAgentById } from '@/lib/agents'
 
 function corsHeaders(origin: string | null) {
   const allowed = ['https://bapica.com', 'https://bapica-code.vercel.app', 'http://localhost:3000']
