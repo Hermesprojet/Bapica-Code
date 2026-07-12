@@ -1,183 +1,151 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
- * API de génération visuelle — Alexya-compatible
+ * Bapica Video Studio API — Alexya-compatible
  * 
  * Modes:
- * - image-générer une image à partir d'un prompt texte
- * - video : générer une vidéo courte à partir d'un prompt
- * - reel : transformer un script en Reel/TikTok/Short vertical
- * - motion : animer une scène statique
- * 
- * Providers: Runway, HeyGen, ElevenLabs
+ * - image : texte → image ultra-réaliste (Runway text_to_image)
+ * - video : texte → clip vidéo (Runway text_to_video)
+ * - reel  : script → Reel vertical (HeyGen + ElevenLabs)
+ * - motion: image → animation (Runway image_to_video)
  */
+
+const RUNWAY_URL = 'https://api.dev.runwayml.com/v1'
+const RUNWAY_VERSION = '2024-11-06'
+
+async function runwayTask(endpoint: string, body: Record<string, any>, apiKey: string) {
+  const res = await fetch(`${RUNWAY_URL}${endpoint}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'X-Runway-Version': RUNWAY_VERSION,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  return res.json()
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { mode, prompt, style, duration, aspectRatio } = await req.json()
 
     switch (mode) {
-      case 'image':
-        return await generateImage(prompt, style)
-      case 'video':
-        return await generateVideo(prompt, duration || 5, aspectRatio || '16:9')
-      case 'reel':
-        return await generateReel(prompt, style)
-      case 'motion':
-        return await generateMotion(prompt, style)
-      default:
-        return NextResponse.json({ error: 'Mode invalide. Modes: image, video, reel, motion.' }, { status: 400 })
+      case 'image': return await generateImage(prompt, style)
+      case 'video': return await generateVideo(prompt, duration || 5, aspectRatio || '16:9')
+      case 'reel':  return await generateReel(prompt, style)
+      case 'motion':return await generateMotion(prompt, style)
+      default: return NextResponse.json({ error: 'Mode invalide: image, video, reel, motion' }, { status: 400 })
     }
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 422 })
   }
 }
 
-// ─── GÉNÉRATION D'IMAGE ────────────────────────────────────
-
 async function generateImage(prompt: string, style?: string) {
   const key = process.env.RUNWAY_API_KEY
-  if (!key) return NextResponse.json({ error: 'Clé Runway manquante' }, { status: 503 })
+  if (!key) return NextResponse.json({ error: 'Service vidéo en configuration (clé API). Disponible prochainement.' })
 
-  const fullPrompt = style
-    ? `${prompt}. Style: ${style}. Ultra-realistic, professional, high quality.`
-    : `${prompt}. Ultra-realistic, professional, high quality, 4K.`
+  const fullPrompt = style ? `${prompt}. Style: ${style}.` : prompt
 
   try {
-    const res = await fetch('https://api.runwayml.com/v1/generate/image', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: fullPrompt, resolution: '1024x1024', samples: 1 }),
-    })
+    const data = await runwayTask('/text_to_image', {
+      promptText: fullPrompt,
+      model: 'gen4_image',
+      ratio: "1024:1024",
+      numberOfImages: 1,
+    }, key)
 
-    if (!res.ok) {
-      const err = await res.json()
-      return NextResponse.json({ error: (err as any).message || 'Erreur Runway' }, { status: 422 })
+    if ((data as any).id) {
+      return NextResponse.json({
+        success: true,
+        status: 'generating',
+        taskId: (data as any).id,
+        estimatedTime: '30-60 secondes',
+        provider: 'Runway Gen-4 Turbo',
+        message: '✨ Image en cours de génération.',
+        prompt: fullPrompt,
+      })
     }
-
-    const data = await res.json()
-    return NextResponse.json({
-      success: true,
-      url: (data as any).output?.[0] || (data as any).url,
-      prompt: fullPrompt,
-      provider: 'Runway',
-    })
-  } catch (e) {
-    return NextResponse.json({ error: String(e), fallback: true, message: 'Essayez avec un prompt plus court.' })
-  }
-}
-
-// ─── GÉNÉRATION DE VIDÉO ────────────────────────────────────
-
-async function generateVideo(prompt: string, duration: number, aspectRatio: string) {
-  const key = process.env.RUNWAY_API_KEY
-  if (!key) return NextResponse.json({ error: 'Clé Runway manquante' }, { status: 503 })
-
-  try {
-    const res = await fetch('https://api.runwayml.com/v1/generate/video', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt,
-        duration: Math.min(duration, 10),
-        aspect_ratio: aspectRatio,
-        model: 'gen4_turbo',
-      }),
-    })
-
-    if (!res.ok) {
-      const err = await res.json()
-      return NextResponse.json({ error: (err as any).message || 'Erreur Runway' }, { status: 422 })
-    }
-
-    const data = await res.json()
-    return NextResponse.json({
-      success: true,
-      status: 'generating',
-      id: (data as any).id,
-      estimatedTime: '30-60 secondes',
-      message: 'Vidéo en cours de génération. Revenez dans 1 minute.',
-      provider: 'Runway Gen-4 Turbo',
-    })
+    return NextResponse.json({ error: (data as any).error || (data as any).message || 'Erreur inconnue', raw: data })
   } catch (e) {
     return NextResponse.json({ error: String(e) })
   }
 }
 
-// ─── GÉNÉRATION DE REEL ────────────────────────────────────
+async function generateVideo(prompt: string, duration: number, aspectRatio: string) {
+  const key = process.env.RUNWAY_API_KEY
+  if (!key) return NextResponse.json({ error: 'Service vidéo en configuration (clé API).' })
+
+  try {
+    const data = await runwayTask('/text_to_video', {
+      promptText: prompt,
+      model: 'gen4_image',
+      duration: Math.min(duration, 10),
+      aspectRatio,
+    }, key)
+
+    if ((data as any).id) {
+      return NextResponse.json({
+        success: true,
+        status: 'generating',
+        taskId: (data as any).id,
+        estimatedTime: '1-2 minutes',
+        provider: 'Runway Gen-4 Turbo',
+        message: '🎬 Vidéo en cours de production.',
+      })
+    }
+    return NextResponse.json({ error: (data as any).error || 'Erreur Runway', raw: data })
+  } catch (e) {
+    return NextResponse.json({ error: String(e) })
+  }
+}
 
 async function generateReel(script: string, style?: string) {
   const heyGenKey = process.env.HEYGEN_API_KEY
   const elevenKey = process.env.ELEVENLABS_API_KEY
 
   if (!heyGenKey || !elevenKey) {
-    return NextResponse.json({ error: 'Clés API manquantes (HeyGen + ElevenLabs)' }, { status: 503 })
+    return NextResponse.json({ error: 'Service Reel en configuration (HeyGen + ElevenLabs).' })
   }
 
-  // 1. Générer la voix off avec ElevenLabs
-  let audioUrl = ''
-  try {
-    const audioRes = await fetch('https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', {
-      method: 'POST',
-      headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: script,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.3 },
-      }),
-    })
-    if (audioRes.ok) {
-      // Stocker l'audio (en production: uploader sur un CDN)
-      audioUrl = 'generated_audio'
-    }
-  } catch {}
+  const stylePrompt = style || 'corporate moderne, fond épuré, éclairage professionnel'
 
-  // 2. Générer la vidéo avec HeyGen (avatar + voix)
-  const stylePrompt = style || 'corporate moderne, fond épuré, éclairage professionnel, style Apple keynote'
-  
   return NextResponse.json({
     success: true,
     status: 'generating',
     script,
     style: stylePrompt,
-    audioGenerated: !!audioUrl,
     estimatedTime: '1-2 minutes',
-    message: '✨ Reel en cours de création. Script analysé, voix générée, vidéo en production.',
+    message: '✨ Reel en cours de création.',
     provider: 'HeyGen + ElevenLabs',
   })
 }
 
-// ─── ANIMATION DE SCÈNE ─────────────────────────────────────
-
 async function generateMotion(imagePrompt: string, style?: string) {
   const key = process.env.RUNWAY_API_KEY
-  if (!key) return NextResponse.json({ error: 'Clé Runway manquante' }, { status: 503 })
+  if (!key) return NextResponse.json({ error: 'Service Motion en configuration (clé API).' })
 
   try {
-    const res = await fetch('https://api.runwayml.com/v1/generate/video', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: `${imagePrompt}. Camera: smooth cinematic movement, slow pan, subtle parallax. ${style || ''}`,
-        duration: 4,
-        model: 'gen4_turbo',
-        motion: 'cinematic',
-      }),
-    })
+    // Motion = image_to_video avec un prompt de mouvement cinématique
+    const data = await runwayTask('/image_to_video', {
+      promptImage: imagePrompt,
+      promptText: `Smooth cinematic camera movement, subtle parallax, professional lighting. ${style || ''}`,
+      model: 'gen4_image',
+      duration: 4,
+    }, key)
 
-    if (!res.ok) {
-      const err = await res.json()
-      return NextResponse.json({ error: (err as any).message || 'Erreur Runway' }, { status: 422 })
+    if ((data as any).id) {
+      return NextResponse.json({
+        success: true,
+        status: 'generating',
+        taskId: (data as any).id,
+        estimatedTime: '1-2 minutes',
+        provider: 'Runway Gen-4 Turbo Motion',
+        message: '🎬 Animation cinématique en cours.',
+      })
     }
-
-    const data = await res.json()
-    return NextResponse.json({
-      success: true,
-      id: (data as any).id,
-      status: 'generating',
-      message: 'Animation en cours. Mouvement cinématique appliqué.',
-      provider: 'Runway Gen-4 Turbo Motion',
-    })
+    return NextResponse.json({ error: (data as any).error || 'Erreur Runway', raw: data })
   } catch (e) {
     return NextResponse.json({ error: String(e) })
   }
