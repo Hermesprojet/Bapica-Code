@@ -3,12 +3,21 @@
  * Chaque agent ne voit que ses propres connaissances.
  */
 
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Instanciation paresseuse : le client n'est créé qu'à la première utilisation
+// (au runtime), jamais à l'import du module — sinon le build échoue lorsque les
+// variables d'environnement Supabase sont absentes ("supabaseUrl is required").
+let _supabase: SupabaseClient | null = null
+function getSupabase(): SupabaseClient {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+    )
+  }
+  return _supabase
+}
 
 export const RAG_ENABLED_AGENTS = new Set([
   "prospection-strategie", "support", "recruiter", "recrutement",
@@ -47,7 +56,7 @@ export async function ingestKnowledge(params: {
   for (const chunk of chunks) {
     if (chunk.trim().length < 30) continue
     const embedding = await embed(chunk)
-    const { error } = await supabase.from("growth_knowledge").insert({
+    const { error } = await getSupabase().from("growth_knowledge").insert({
       content: chunk, source, category, agent_id: agentId, embedding,
     })
     if (!error) inserted++
@@ -58,7 +67,7 @@ export async function ingestKnowledge(params: {
 export async function retrieveContext(question: string, agentId: string): Promise<string> {
   if (!RAG_ENABLED_AGENTS.has(agentId)) return ""
   const queryEmbedding = await embed(question)
-  const { data, error } = await supabase.rpc("match_agent_knowledge", {
+  const { data, error } = await getSupabase().rpc("match_agent_knowledge", {
     query_embedding: queryEmbedding,
     filter_agent_id: agentId,
     match_threshold: 0.35,
