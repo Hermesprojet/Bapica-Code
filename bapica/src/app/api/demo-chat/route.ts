@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 }
 
 const BAPICA_CAPS =
-  "Bapica, c'est 13 agents IA pour PME. Plusieurs agents contactent et répondent DIRECTEMENT aux clients, pas seulement en coulisses : Sofia répond aux clients par chat et email 24h/24, Hugo tient le standard téléphonique, Nadia appelle les prospects, Claire envoie factures et relances par email, Marc envoie les messages de prospection. Si on demande si les agents peuvent contacter ou répondre aux clients par téléphone ou email, la réponse est OUI. N'invente aucune limitation qui contredit cela."
+  "Bapica, c'est 13 agents IA pour PME qui AUTOMATISENT le contact client (ce n'est pas un simple CRM). Sofia répond aux clients par chat et email 24h/24, Hugo répond aux appels téléphoniques entrants, Nadia appelle les prospects, Claire envoie factures et relances par email, Marc envoie la prospection par email et LinkedIn. Quand on demande si les agents peuvent contacter, appeler ou répondre aux clients par téléphone ou email : réponds OUI et cite l'agent concerné. INTERDIT : ne dis JAMAIS « je ne peux pas contacter vos clients », « c'est une limite volontaire » ou « vos clients ont besoin de vous parler à vous ». Si toi tu ne fais pas cette action précise, indique quel agent Bapica la réalise, sans nier la capacité."
 
 function buildSystemPrompt(agentId: string): string {
   const agent = getAgentById(agentId)
