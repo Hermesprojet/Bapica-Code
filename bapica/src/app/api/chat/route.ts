@@ -36,23 +36,28 @@ interface HistoryMessage {
 }
 
 async function verifyAuth(req: NextRequest) {
-  const authHeader = req.headers.get('authorization')
+  const authHeader = req.headers.get('authorization') || ''
+  // Le client envoie « Authorization: Bearer <access_token> » ; on valide ce jeton.
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim()
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-  
+
   if (!supabaseUrl || !supabaseAnonKey) {
-    return { error: 'Configuration Supabase manquante', status: 500 }
+    return { error: 'Configuration Supabase manquante', status: 500 as const }
+  }
+  if (!token) {
+    return { error: 'Non authentifié. Connectez-vous pour utiliser cette API.', status: 401 as const }
   }
 
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
+    auth: { persistSession: false, autoRefreshToken: false },
   })
 
-  // Essayer l'auth via le cookie de session (navigateur)
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
+  // Valide le jeton JWT transmis par le navigateur et récupère l'utilisateur.
+  const { data: { user }, error } = await supabase.auth.getUser(token)
+
   if (error || !user) {
-    return { error: 'Non authentifié. Connectez-vous pour utiliser cette API.', status: 401 }
+    return { error: 'Non authentifié. Connectez-vous pour utiliser cette API.', status: 401 as const }
   }
 
   return { user }
