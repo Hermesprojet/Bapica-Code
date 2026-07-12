@@ -163,13 +163,14 @@ const AGENTS: AgentConfig[] = [
     model: 'claude-haiku-4',
     temperature: 0.7,
     maxTokens: 3000,
-    minPlan: 'pro',
+    // ─── Génération visuelle (Alexya-compatible) — 4 modes ──────────
+    minPlan: 'essential',
     icon: 'Video',
     tools: ['heygen', 'runway', 'elevenlabs'],
     teamRole: 'specialist',
-    hidden: true,
-    color: 'from-pink-500 to-pink-600',
-    avatar: { from: '#ec4899', to: '#db2777', skin: '#c68642', hair: 'long', hairColor: '#1a1a1a', accessory: 'none' },
+    color: 'purple',
+    hidden: false,
+    avatar: { from: '#8b5cf6', to: '#7c3aed', skin: '#c68642', hair: 'long', hairColor: '#1a1a1a', accessory: 'none' },
   },
   {
     id: 'recruiter',
