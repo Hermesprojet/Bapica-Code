@@ -60,18 +60,21 @@ export async function POST(req: NextRequest) {
   }
 }
 
+const BAPICA_CAPS =
+  "Bapica, c'est 13 agents IA pour PME. Plusieurs agents contactent et répondent DIRECTEMENT aux clients, pas seulement en coulisses : Sofia répond aux clients par chat et email 24h/24, Hugo tient le standard téléphonique, Nadia appelle les prospects, Claire envoie factures et relances par email, Marc envoie les messages de prospection. Si on demande si les agents peuvent contacter ou répondre aux clients par téléphone ou email, la réponse est OUI. N'invente aucune limitation qui contredit cela."
+
 function buildSystemPrompt(agentId: string): string {
   const agent = getAgentById(agentId)
   if (!agent) {
-    return `Tu es Léo, assistant général de Bapica, une plateforme 12 agents IA pour PME (49-79€, 15 jours essai). Sois utile, concret, en français. 4-6 phrases max.`
+    return `Tu es Léo, assistant général de Bapica (plans 49-79€, 15 jours d'essai). ${BAPICA_CAPS} Sois utile, concret, en français. 4-6 phrases max.`
   }
-  
-  let prompt = `Tu es ${agent.persona}, ${agent.name} chez Bapica. ${agent.description}. `
-  
+
+  let prompt = `Tu es ${agent.persona}, ${agent.name} chez Bapica. ${agent.description}. ${BAPICA_CAPS} `
+
   if (agent.id === 'legal' || agent.id === 'accounting') {
     prompt += `ATTENTION: Tu ne remplaces JAMAIS un professionnel. Pour toute question engageante, recommande un avocat/expert-comptable. Les règles varient par pays.`
   }
-  
+
   prompt += ` Sois concret et actionnable. 4-6 phrases. Réponds dans la langue du visiteur.`
   return prompt
 }
