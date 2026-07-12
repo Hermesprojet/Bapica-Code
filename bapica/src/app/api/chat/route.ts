@@ -8,6 +8,7 @@ import { twentyTools } from '@/lib/tools/twenty-tools'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
 import { getOptimalModel, compressPrompt, getCachedRAG, setCachedRAG, ragCacheKey, memoizeRAG, extractDeliverables } from '@/lib/optimizations'
+import { getSystemPromptForAgent } from '@/lib/agent-prompts'
 
 // Helpers CORS
 function corsHeaders(origin: string | null) {
@@ -78,7 +79,9 @@ function resolveModel(agentModel: string, message?: string): string {
 
 function buildSystemPrompt(agent: AgentConfig): string {
   const lines = [
-    `Tu es ${agent.persona}, ${agent.name} chez Bapica. ${agent.description}`,
+    `Tu es ${agent.persona}, ${agent.name} chez Bapica.`,
+    // Rôle, méthode et règles propres à cet agent (lib/agent-prompts.ts)
+    getSystemPromptForAgent(agent.id),
     agent.tools.length
       ? `Tes outils : ${agent.tools.join(', ')}.`
       : '',

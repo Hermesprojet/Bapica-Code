@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import AGENTS, { getAgentById } from '@/lib/agents'
+import { getSystemPromptForAgent } from '@/lib/agent-prompts'
 
 function corsHeaders(origin: string | null) {
   const allowed = ['https://bapica.com', 'https://bapica-code.vercel.app', 'http://localhost:3000']
@@ -69,11 +70,8 @@ function buildSystemPrompt(agentId: string): string {
     return `Tu es Léo, assistant général de Bapica (plans 49-79€, 15 jours d'essai). ${BAPICA_CAPS} Sois utile, concret, en français. 4-6 phrases max.`
   }
 
-  let prompt = `Tu es ${agent.persona}, ${agent.name} chez Bapica. ${agent.description}. ${BAPICA_CAPS} `
-
-  if (agent.id === 'legal' || agent.id === 'accounting') {
-    prompt += `ATTENTION: Tu ne remplaces JAMAIS un professionnel. Pour toute question engageante, recommande un avocat/expert-comptable. Les règles varient par pays.`
-  }
+  // Rôle, méthode et règles propres à l'agent (lib/agent-prompts.ts)
+  let prompt = `Tu es ${agent.persona}, ${agent.name} chez Bapica.\n${getSystemPromptForAgent(agent.id)}\n${BAPICA_CAPS} `
 
   prompt += ` Sois concret et actionnable. 4-6 phrases. Réponds dans la langue du visiteur.`
   return prompt
