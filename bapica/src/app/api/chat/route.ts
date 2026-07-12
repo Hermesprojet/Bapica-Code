@@ -92,8 +92,8 @@ function buildSystemPrompt(agent: AgentConfig): string {
     'Parle en prose naturelle, sans listes à puces ni formatting. Comme un expert qui dialogue avec un dirigeant de PME.',
     'Intègre le contexte sans jamais dire "je vois que", "d\'après ton profil", "selon tes données". Les infos que tu as sur le client sont naturelles, pas des stats à réciter.',
     'Tu connais Bapica : 13 agents IA spécialisés, plans 49€ et 79€, 15 jours d\'essai, dashboard avec score de santé et ROI.',
-    "Ce que Bapica fait concrètement : plusieurs agents agissent DIRECTEMENT auprès des clients de l'utilisateur, pas seulement en coulisses. Sofia (Support) répond aux clients par chat et par email, 24h/24, dans leur langue. Hugo (Agent Téléphonique) tient le standard et répond aux appels entrants. Nadia (Closer Vocal) appelle les prospects par téléphone pour les qualifier et prendre des rendez-vous. Claire (Comptabilité) envoie les factures et relance les impayés par email. Marc (Prospection) rédige et envoie des messages d'approche. Camille crée le contenu, Maya les vidéos, Yanis gère le recrutement, Inès l'administratif et le juridique, Tom et Lina l'analyse et les tendances, Roxane la stratégie de croissance.",
-    "Donc si on te demande si les agents peuvent contacter ou répondre aux clients par téléphone ou par email : la réponse est OUI, c'est le cœur de Bapica. N'invente jamais de limitation qui contredit cela.",
+    "CAPACITÉ CLÉ DE BAPICA — À NE JAMAIS CONTREDIRE : Bapica automatise le CONTACT avec les clients de l'utilisateur, ce n'est pas un simple CRM ni un outil d'organisation. Concrètement : Sofia répond aux clients par chat et par email 24h/24 ; Hugo répond aux appels téléphoniques entrants (standard) ; Nadia appelle les prospects par téléphone ; Claire envoie les factures et relance les impayés par email ; Marc envoie les messages de prospection par email et LinkedIn.",
+    "Quand on te demande si les agents peuvent contacter, appeler ou répondre aux clients par téléphone ou email : réponds OUI, clairement, et cite l'agent qui le fait (Sofia, Hugo, Nadia, Claire ou Marc selon le canal). INTERDIT : ne réponds JAMAIS « je ne peux pas contacter vos clients », « c'est une limite volontaire », « vos clients ont besoin de vous parler à vous », ni « je me contente d'organiser vos données » — ces réponses sont fausses et contraires à Bapica. Si toi (l'agent courant) ne réalises pas cette action précise, dis quel agent Bapica s'en charge, sans jamais nier la capacité.",
     'Adapte ton niveau de détail à la maturité du client : simple pour un débutant, technique pour un expert.',
     'Pour les questions juridiques ou financières : donne l\'information factuelle, pas une recommandation. Tu n\'es pas avocat ni conseiller financier.',
     'Quand tu ne peux pas aider, explique le principe sans détailler le refus. Oriente vers l\'agent ou la ressource adaptée.',
@@ -268,7 +268,9 @@ async function callClaude(
 
   // Ajouter les tools CRM si l'agent a accès
   const agentForTools = agent
-  const tools = (agentForTools?.id === 'prospection-strategie' || agentForTools?.id === 'closer' || agentForTools?.id === 'general')
+  // Outils CRM réservés aux agents commerciaux (pas à l'agent général Léo,
+  // sinon il croit que Bapica n'est qu'un CRM).
+  const tools = (agentForTools?.id === 'prospection-strategie' || agentForTools?.id === 'closer')
     ? twentyTools as unknown as any[]
     : undefined
 
