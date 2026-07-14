@@ -747,7 +747,7 @@ export default function OnboardingPage() {
                 <p className="text-sm font-medium text-muted-foreground">Agents inclus :</p>
                 {recommendation.agents.map((agent) => (
                   <div key={agent} className="flex items-center gap-3 text-sm">
-                    <Check className="h-4 w-4 text-green-500 shrink-0" />
+                    <Check className="h-4 w-4 text-green-600 shrink-0" />
                     <span>{agent}</span>
                   </div>
                 ))}
@@ -792,44 +792,47 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Navigation buttons */}
-        <div className="mt-10 flex items-center justify-between">
-          <button
-            onClick={() => setStep(Math.max(0, step - 1))}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
-              step === 0 ? 'invisible' : 'hover:bg-muted'
-            }`}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Retour
-          </button>
+        {/* Navigation buttons — masquée à l'étape 5 (ProfileStep a ses propres
+            boutons Retour/Continuer et gère la sauvegarde de ses champs) */}
+        {step !== 5 && (
+          <div className="mt-10 flex items-center justify-between">
+            <button
+              onClick={() => setStep(Math.max(0, step - 1))}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                step === 0 ? 'invisible' : 'hover:bg-muted'
+              }`}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Retour
+            </button>
 
-          {step < 5 ? (
-            <button
-              onClick={() => setStep(step + 1)}
-              disabled={!canContinue()}
-              className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
-            >
-              Suivant
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-primary to-purple-500 px-6 py-2.5 text-sm font-medium text-primary-foreground shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  Accéder à mon espace
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
-          )}
-        </div>
+            {step < 6 ? (
+              <button
+                onClick={() => setStep(step + 1)}
+                disabled={!canContinue()}
+                className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
+              >
+                Suivant
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-primary to-purple-500 px-6 py-2.5 text-sm font-medium text-primary-foreground shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    Accéder à mon espace
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
