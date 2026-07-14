@@ -161,10 +161,17 @@ Cohérence produit à vérifier dans les réponses des agents :
   mouvement/émotion/dialogue/SFX/durée), **prompt visuel prêt par moteur**, voix/musique/sous-titres,
   formats, CTA, titre, description, hashtags. Route : `POST /api/video/orchestrate` (Bearer + Claude Sonnet).
 - Routeur multi-moteurs (dans le prompt) : avatar→HeyGen, cinématique→Runway, ultra-réaliste→Veo,
-  stylisé→Kling, motion→Luma. Maya ne REND pas de MP4 : le rendu réel s'active via les clés moteurs
-  (`RUNWAY_API_KEY`, `HEYGEN_API_KEY`, `ELEVENLABS_API_KEY`) dans `/api/video/generate` (à corriger/câbler).
+  stylisé→Kling, motion→Luma. Maya ne REND pas de MP4 depuis le cerveau ; le rendu est une couche à part.
+- **Rendu réel** (`src/lib/video/engines.ts`) : Runway (texte→image→vidéo, 2 étapes), HeyGen (avatar parlant),
+  ElevenLabs (voix off). Routes `POST /api/video/render` (action `scene`|`animate`|`voice`) et
+  `POST /api/video/status` (polling). ÉCRIT À L'AVEUGLE (non testable en sandbox : pas de clés + réseau
+  bloqué) → les erreurs moteurs sont remontées brutes pour le débogage en prod. Peut nécessiter un
+  ajustement des paramètres d'API au 1er test réel.
+- Clés requises en prod pour le rendu : `RUNWAY_API_KEY` ; `HEYGEN_API_KEY` + `HEYGEN_AVATAR_ID` +
+  `HEYGEN_VOICE_ID` ; `ELEVENLABS_API_KEY` (+ `ELEVENLABS_VOICE_ID` optionnel).
+- Le **montage final** (assembler clips + voix + sous-titres + musique en 1 MP4) n'est PAS fait (exige ffmpeg).
 - UI : `dashboard/video-studio` (thème clair) — brief → `ProductionPackageView`
-  (`src/components/agents/production-package.tsx`).
+  (`src/components/agents/production-package.tsx`), avec « Générer le clip » par scène + « Générer la voix off ».
 
 ## 10. Déploiement
 
