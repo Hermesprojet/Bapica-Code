@@ -1,5 +1,6 @@
 import { Navbar } from "@/components/landing/navbar"
 import { Footer } from "@/components/landing/footer"
+import { HeroConversation } from "@/components/landing/hero-conversation"
 
 export default function HomePage() {
   return (
@@ -23,10 +24,12 @@ export default function HomePage() {
 // ─── HERO ──────────────────────────────────────────────────
 function Hero() {
   return (
-    <section className="min-h-[85vh] flex items-center bg-white">
+    <section className="relative min-h-[85vh] flex items-center bg-white overflow-hidden">
       <div className="container mx-auto max-w-7xl px-6 py-24">
-        <div className="max-w-4xl">
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-[#111827] leading-[1.08] mb-8">
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* Colonne texte */}
+          <div>
+          <h1 className="text-5xl md:text-6xl xl:text-7xl font-bold tracking-tight text-[#111827] leading-[1.08] mb-8">
             Automatisez votre entreprise<br />
             <span className="text-[#2563EB]">avec 12 agents intelligents.</span>
           </h1>
@@ -51,6 +54,12 @@ function Hero() {
             <a href="#fonctionnement" className="inline-flex items-center gap-2 px-8 py-4 border border-[#E5E7EB] text-[#111827] rounded-lg font-semibold hover:border-[#D1D5DB] transition-colors text-lg">
               Découvrir
             </a>
+          </div>
+          </div>
+
+          {/* Colonne aperçu animé */}
+          <div className="mt-4 lg:mt-0">
+            <HeroConversation />
           </div>
         </div>
       </div>
