@@ -4,34 +4,34 @@
 
 @layer base {
   :root {
-    /* Mistral-inspired dark palette */
-    --background: 240 20% 5%;
-    --foreground: 240 10% 96%;
-    --foreground-primary: 240 10% 96%;
-    --card: 240 20% 8%;
-    --card-foreground: 240 10% 96%;
-    --primary: 211 100% 50%;
+    /* Palette claire — lumineuse, épurée (inspiration Substi.ai) */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --foreground-primary: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 15% 12%;
-    --secondary-foreground: 240 10% 96%;
-    --muted: 240 15% 15%;
-    --muted-foreground: 240 5% 65%;
-    --accent: 170 70% 50%;
-    --accent-foreground: 240 20% 8%;
-    --destructive: 0 84% 60%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 42%;
+    --accent: 174 78% 34%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 10% 15%;
-    --input: 240 10% 15%;
-    --ring: 211 100% 50%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
     --radius: 0.625rem;
 
-    /* Accent tokens */
-    --accent-blue: #0082e6;
-    --accent-teal: #2dd4bf;
-    --accent-glow: rgba(0, 130, 230, 0.12);
-    --accent-glow-strong: rgba(0, 130, 230, 0.2);
-    --bg-tinted: 240 15% 10%;
-    --bg-dark: 240 20% 3%;
+    /* Accent tokens (alignés sur le bleu de la home #2563EB) */
+    --accent-blue: #2563eb;
+    --accent-teal: #0d9488;
+    --accent-glow: rgba(37, 99, 235, 0.08);
+    --accent-glow-strong: rgba(37, 99, 235, 0.14);
+    --bg-tinted: 210 40% 98%;
+    --bg-dark: 222 47% 11%;
   }
 }
 
@@ -67,16 +67,29 @@
   to { opacity: 1; }
 }
 
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 /* Utility animations */
 .animate-pulse-glow { animation: pulse-glow 3s ease-in-out infinite; }
 .animate-float { animation: float 4s ease-in-out infinite; }
 .animate-slide-up { animation: slide-up 0.6s ease-out forwards; }
+.animate-fade-in { animation: fade-in 0.6s ease-out forwards; }
+.animate-scale-in { animation: scale-in 0.5s ease-out forwards; }
+.animate-slide-in { animation: slide-in 0.5s ease-out forwards; }
 .animate-delay-1 { animation-delay: 0.1s; }
 .animate-delay-2 { animation-delay: 0.2s; }
 .animate-delay-3 { animation-delay: 0.3s; }
 .animate-delay-4 { animation-delay: 0.4s; }
 
-/* Glow effects */
+/* Glow effects (halos colorés doux, ambiance sur fond clair) */
 .glow-circle-primary {
   border-radius: 50%;
   background: radial-gradient(circle, var(--accent-glow-strong), transparent 70%);
@@ -87,39 +100,44 @@
   background: radial-gradient(circle, var(--accent-glow), transparent 70%);
 }
 
-/* Section backgrounds */
+/* Section backgrounds — alternance blanc / gris très clair */
 .section-light {
-  background: linear-gradient(180deg, hsl(240, 15%, 10%) 0%, hsl(240, 20%, 5%) 100%);
-  border-top: 1px solid hsl(240, 10%, 12%);
-  border-bottom: 1px solid hsl(240, 10%, 12%);
+  background: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(210, 40%, 98%) 100%);
+  border-top: 1px solid hsl(214, 32%, 93%);
+  border-bottom: 1px solid hsl(214, 32%, 93%);
 }
 
 .section-tinted {
-  background: hsl(240, 15%, 10%);
+  background: hsl(210, 40%, 98%);
 }
 
-/* Cards */
+.section-tinted-full {
+  background: hsl(210, 40%, 98%);
+}
+
+/* Cards — blanches, bord clair, ombre douce (le premium vient des ombres) */
 .card-professional {
-  background: hsl(240, 20%, 8%);
-  border: 1px solid hsl(240, 10%, 15%);
+  background: hsl(0, 0%, 100%);
+  border: 1px solid hsl(214, 32%, 91%);
   border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .card-elevated {
-  background: hsl(240, 20%, 8%);
-  border: 1px solid hsl(240, 10%, 15%);
+  background: hsl(0, 0%, 100%);
+  border: 1px solid hsl(214, 32%, 91%);
   border-radius: var(--radius);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
 }
 
-/* Gradient hero */
+/* Gradient hero — bandeau coloré vif, texte blanc (accent sur page claire) */
 .gradient-hero {
-  background: linear-gradient(135deg, hsl(211, 100%, 15%), hsl(240, 30%, 8%), hsl(170, 70%, 10%));
+  background: linear-gradient(135deg, hsl(211, 100%, 47%) 0%, hsl(245, 75%, 58%) 50%, hsl(174, 78%, 36%) 100%);
 }
 
-/* Gradient text */
+/* Gradient text — teal → bleu, assombri pour rester lisible sur blanc */
 .gradient-text {
-  background: linear-gradient(135deg, var(--accent-teal), var(--accent-blue));
+  background: linear-gradient(120deg, var(--accent-teal), var(--accent-blue));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -129,63 +147,79 @@
 .section-label {
   @apply inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold tracking-[0.15em] uppercase;
   color: var(--accent-teal);
-  background: rgba(45, 212, 191, 0.08);
-  border: 1px solid rgba(45, 212, 191, 0.15);
+  background: rgba(13, 148, 136, 0.08);
+  border: 1px solid rgba(13, 148, 136, 0.18);
 }
 
-/* Grid background pattern */
+/* Boutons primaires (sombre sur clair = style premium type Linear/Vercel) */
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-sm font-semibold transition-colors;
+  background: hsl(222, 47%, 11%);
+  color: hsl(0, 0%, 100%);
+}
+.btn-primary:hover {
+  background: hsl(222, 47%, 20%);
+}
+
+/* Grid background pattern (points clairs) */
 .bg-grid {
-  background-image: radial-gradient(hsl(240, 10%, 15%) 1px, transparent 1px);
+  background-image: radial-gradient(hsl(214, 32%, 88%) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 
 /* Subtle surface treatments */
 .bg-card-hover:hover {
-  border-color: hsl(240, 10%, 22%);
-  background: hsl(240, 20%, 10%);
+  border-color: hsl(214, 32%, 84%);
+  background: hsl(210, 40%, 98%);
 }
 
 /* Agent card hover */
 .agent-card {
-  background: hsl(240, 20%, 8%);
-  border: 1px solid hsl(240, 10%, 15%);
+  background: hsl(0, 0%, 100%);
+  border: 1px solid hsl(214, 32%, 91%);
   border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .agent-card:hover {
-  border-color: hsl(240, 10%, 25%);
+  border-color: hsl(211, 100%, 70%);
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.10);
 }
 
-/* CTA section */
+/* CTA section — carte tintée claire, bord primaire */
 .cta-section {
-  background: linear-gradient(135deg, hsl(211, 100%, 10%), hsl(240, 30%, 10%));
-  border: 1px solid hsl(240, 10%, 18%);
+  background: linear-gradient(135deg, hsla(211, 100%, 47%, 0.06), hsla(174, 78%, 36%, 0.06));
+  border: 1px solid hsla(211, 100%, 47%, 0.18);
 }
 
 /* Pricing card */
 .pricing-card {
-  background: hsl(240, 20%, 8%);
-  border: 1px solid hsl(240, 10%, 15%);
+  background: hsl(0, 0%, 100%);
+  border: 1px solid hsl(214, 32%, 91%);
   border-radius: calc(var(--radius) * 1.5);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
 }
 
 .pricing-card-featured {
-  background: linear-gradient(180deg, hsla(211, 100%, 50%, 0.06), hsl(240, 20%, 8%));
-  border-color: hsla(211, 100%, 50%, 0.2);
+  background: linear-gradient(180deg, hsla(211, 100%, 47%, 0.05), hsl(0, 0%, 100%));
+  border: 1px solid hsla(211, 100%, 47%, 0.35);
+  border-radius: calc(var(--radius) * 1.5);
+  box-shadow: 0 12px 40px rgba(0, 130, 230, 0.12);
 }
 
 /* Feature cards */
 .feature-card {
-  background: hsl(240, 20%, 8%);
-  border: 1px solid hsl(240, 10%, 15%);
+  background: hsl(0, 0%, 100%);
+  border: 1px solid hsl(214, 32%, 91%);
   border-radius: var(--radius);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
 }
 
 .feature-card:hover {
-  border-color: hsl(240, 10%, 22%);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  border-color: hsl(211, 100%, 72%);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.10);
+  transform: translateY(-2px);
 }

@@ -140,6 +140,19 @@ Cohérence produit à vérifier dans les réponses des agents :
 - Chaque agent respecte son rôle (Marc demande le contexte avant de prospecter, Inès renvoie
   vers un avocat, Tom réclame les chiffres, etc.).
 
+## 10bis. Design / thème (IMPORTANT)
+
+- **Thème = CLAIR** (fond blanc, style épuré inspiré de Substi.ai). Ne pas réintroduire de fond sombre.
+- Le système de couleurs vit dans `src/app/globals.css` : tokens HSL dans `:root` + classes custom
+  (`card-professional`, `feature-card`, `pricing-card`, `agent-card`, `section-tinted`, `gradient-hero`,
+  `gradient-text`, `btn-primary`…). Changer le thème = éditer CE fichier, pas chaque composant.
+- Couleur primaire = bleu **#2563EB** (`--primary: 221 83% 53%`), texte **#111827**, accent teal **#0d9488**.
+- La home (`src/app/page.tsx`) code ses couleurs en dur (blanc/#111827/#2563EB) et n'utilise PAS les
+  composants `src/components/landing/*` (thème sombre, en grande partie orphelins) — seuls Navbar/Footer
+  en sont importés.
+- Exceptions volontairement sombres (bandeaux d'accent sur page claire) : sections `Chiffres`/`CTAFinal`
+  de la home, `dashboard/video-studio`, le slideshow `video-presentation.tsx`.
+
 ## 10. Déploiement
 
 - Branche de dev : `claude/hopeful-gates-nucb4p` → PR → merge dans `master` → Vercel déploie.
