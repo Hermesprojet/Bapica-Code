@@ -61,8 +61,23 @@ CREATE TABLE IF NOT EXISTS usage_logs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 6. Connexions réseaux sociaux (jetons OAuth par plateforme)
+CREATE TABLE IF NOT EXISTS social_connections (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) NOT NULL,
+  platform TEXT NOT NULL,          -- 'linkedin', 'facebook', 'instagram', ...
+  access_token TEXT NOT NULL,
+  refresh_token TEXT,
+  expires_at TIMESTAMPTZ,
+  external_id TEXT,                -- id du compte sur la plateforme (ex: sub LinkedIn)
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, platform)
+);
+
 -- Index
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
+CREATE INDEX IF NOT EXISTS idx_social_connections_user ON social_connections(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_user ON usage_logs(user_id);
@@ -74,6 +89,8 @@ ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
+-- Jetons sociaux : RLS activée sans policy (accès uniquement via service_role serveur).
+ALTER TABLE social_connections ENABLE ROW LEVEL SECURITY;
 
 -- Policies
 CREATE POLICY "Users can view own profile" ON profiles

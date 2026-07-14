@@ -180,6 +180,25 @@ Cohérence produit à vérifier dans les réponses des agents :
 - UI : `dashboard/video-studio` (thème clair) — brief → `ProductionPackageView`
   (`src/components/agents/production-package.tsx`), avec « Générer le clip » par scène + « Générer la voix off ».
 
+## 10quater. Connexions réseaux sociaux (publication)
+
+- Objectif : Camille publie sur les réseaux du client. Approche **native, plateforme par
+  plateforme** (choix utilisateur) — **LinkedIn branché en premier**, les autres à suivre.
+- LinkedIn (OAuth 2.0 + publication) : `src/lib/social/linkedin.ts` (authorize / token / userinfo /
+  ugcPosts). Écrit « à l'aveugle » (non testé) → nécessite en prod une app LinkedIn avec les produits
+  « Sign In with LinkedIn using OpenID Connect » + « Share on LinkedIn », l'URL de redirection déclarée,
+  et `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET`.
+- Stockage des jetons : table **`social_connections`** (voir `supabase-schema.sql`) via
+  `getSupabaseAdmin()` (service_role) — `src/lib/social/store.ts`. RLS activée sans policy.
+- Routes : `GET /api/social/linkedin/connect?t=<token>` (redirige vers LinkedIn),
+  `GET /api/social/linkedin/callback` (échange + enregistre), `POST /api/social/publish`
+  `{text, platforms}`, `GET|DELETE /api/social/accounts`.
+- UI : `dashboard/connections` (lien sidebar « Connexions ») — connecter/déconnecter + composer
+  « Publier sur LinkedIn ».
+- Auth des routes : Bearer Supabase (helper `src/lib/api-auth.ts`). L'OAuth (navigation plein écran)
+  passe le jeton en query `?t=` puis n'encode que l'`uid` dans le `state` (le jeton ne va pas à LinkedIn).
+- Ajouter une plateforme : nouveau module `src/lib/social/<x>.ts` + branche dans `/api/social/publish`.
+
 ## 10. Déploiement
 
 - Branche de dev : `claude/hopeful-gates-nucb4p` → PR → merge dans `master` → Vercel déploie.

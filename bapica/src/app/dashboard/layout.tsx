@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Bot,
   Clapperboard,
+  Share2,
   CreditCard,
   Settings,
   LogOut,
@@ -21,6 +22,7 @@ const sidebarLinks = [
   { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
   { href: '/dashboard/agents', label: 'Mes agents', icon: Bot },
   { href: '/dashboard/video-studio', label: 'Studio Vidéo', icon: Clapperboard },
+  { href: '/dashboard/connections', label: 'Connexions', icon: Share2 },
   { href: '/dashboard/billing', label: 'Abonnement', icon: CreditCard },
   { href: '/dashboard/settings', label: 'Paramètres', icon: Settings },
 ]
