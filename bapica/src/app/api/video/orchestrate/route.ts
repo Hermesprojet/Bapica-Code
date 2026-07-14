@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
       language: body?.language,
       voice: body?.voice,
       avatar: typeof body?.avatar === 'boolean' ? body.avatar : undefined,
+      clarifications: body?.clarifications ? String(body.clarifications).slice(0, 2000) : undefined,
     }
 
     const client = new Anthropic({ apiKey, timeout: 60000 })

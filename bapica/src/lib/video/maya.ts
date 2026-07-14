@@ -55,6 +55,7 @@ export interface MayaBrief {
   language?: string         // fr | en | …
   voice?: string            // femme | homme | énergique…
   avatar?: boolean          // présentateur qui parle face caméra ?
+  clarifications?: string   // réponses de l'utilisateur aux questions de Maya
 }
 
 // Règles de routage : quel moteur pour quel type de plan (le « cerveau »).
@@ -134,8 +135,33 @@ export function buildMayaUserPrompt(brief: MayaBrief): string {
     brief.language ? `Langue : ${brief.language}` : 'Langue : français',
     brief.voice ? `Voix off : ${brief.voice}` : '',
     typeof brief.avatar === 'boolean' ? `Avatar parlant : ${brief.avatar ? 'oui' : 'non'}` : '',
+    brief.clarifications ? `\nPrécisions du client (à respecter) :\n${brief.clarifications}` : '',
   ].filter(Boolean)
   return lines.join('\n')
+}
+
+// ── Questions de cadrage : Maya interroge avant de générer ──
+export function buildQuestionsSystemPrompt(): string {
+  return `Tu es Maya, directrice créative IA vidéo. Avant de produire un storyboard, tu poses des questions ciblées pour bien cerner le besoin (comme un vrai brief d'agence).
+
+À partir de l'idée et du contexte fournis, génère 3 à 5 questions COURTES, concrètes et NON redondantes avec ce qui est déjà donné (ne redemande pas la plateforme, la durée ou l'objectif s'ils sont déjà là). Vise ce qui change vraiment la vidéo : bénéfice n°1 à mettre en avant, ton/émotion, produit ou visuel à montrer, offre/promo, éléments de marque, preuve/argument clé, public précis.
+
+CONTRAINTE DE SORTIE : réponds UNIQUEMENT par un tableau JSON de chaînes (aucun texte autour, pas de Markdown). Exemple : ["Quel est le bénéfice n°1 à mettre en avant ?","Un ton précis (fun, premium, rassurant) ?"]. Rédige les questions dans la langue du brief (français par défaut).`
+}
+
+export function buildQuestionsUserPrompt(brief: MayaBrief): string {
+  return buildMayaUserPrompt(brief)
+}
+
+// Extrait un tableau de questions (chaînes) depuis la réponse LLM.
+export function parseQuestions(raw: string): string[] {
+  let text = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+  const start = text.indexOf('[')
+  const end = text.lastIndexOf(']')
+  if (start === -1 || end === -1 || end <= start) throw new Error('Pas de questions exploitables')
+  const arr = JSON.parse(text.slice(start, end + 1))
+  if (!Array.isArray(arr)) throw new Error('Format de questions invalide')
+  return arr.map((q) => String(q)).filter((q) => q.trim()).slice(0, 6)
 }
 
 // Extrait un objet JSON depuis une réponse LLM (tolère le texte parasite / fences).
