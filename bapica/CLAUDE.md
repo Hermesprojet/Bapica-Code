@@ -73,7 +73,9 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 | `webhooks/stripe` | Met à jour le plan dans `profiles` (client service_role) | Signature Stripe |
 | `vapi/create-call` | Lance un appel vocal sortant (Vapi) | Bearer token |
 | `vapi/webhook` | Reçoit le résultat d'appel Vapi | — |
-| `video/orchestrate` | Maya — idée → package de production complet (script, storyboard, prompts moteurs) | Bearer token |
+| `video/questions` | Maya — 3-5 questions de cadrage avant génération (Haiku) | Bearer token |
+| `video/orchestrate` | Maya — idée (+ réponses) → package de production complet | Bearer token |
+| `video/render` / `video/status` | Rendu réel des clips (Runway/HeyGen) + polling | Bearer token |
 | `video/generate` | Rendu direct via moteur (Runway/HeyGen) — nécessite les clés | Bearer token |
 
 (Autres routes : cortex, genesis, reason, business-analysis, market-intelligence, etc.)

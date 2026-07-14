@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   Sparkles, Film, Mic, Music, Captions, Target, Hash,
-  Copy, Check, Clapperboard, Loader2, Download, AlertCircle,
+  Copy, Check, Clapperboard, Loader2, Download, AlertCircle, Pencil,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { ProductionPackage, ProductionScene } from '@/lib/video/maya'
@@ -58,6 +58,8 @@ function SceneCard({ scene, ratio }: { scene: ProductionScene; ratio: string }) 
   const [state, setState] = useState<'idle' | 'rendering' | 'done' | 'error'>('idle')
   const [msg, setMsg] = useState('')
   const [url, setUrl] = useState('')
+  const [prompt, setPrompt] = useState(scene.visualPrompt) // prompt visuel éditable
+  const [editing, setEditing] = useState(false)
 
   const generateClip = async () => {
     if (state === 'rendering') return
@@ -68,7 +70,7 @@ function SceneCard({ scene, ratio }: { scene: ProductionScene; ratio: string }) 
       // Étape 1 : démarrage (keyframe Runway, ou vidéo avatar HeyGen).
       let res = await fetch('/api/video/render', {
         method: 'POST', headers,
-        body: JSON.stringify({ action: 'scene', engine: scene.recommendedEngine, visualPrompt: scene.visualPrompt, dialogue: scene.dialogue, ratio, avatar: isAvatar }),
+        body: JSON.stringify({ action: 'scene', engine: scene.recommendedEngine, visualPrompt: prompt, dialogue: scene.dialogue, ratio, avatar: isAvatar }),
       })
       let data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Erreur de démarrage')
@@ -80,7 +82,7 @@ function SceneCard({ scene, ratio }: { scene: ProductionScene; ratio: string }) 
         setMsg('Animation du plan…')
         res = await fetch('/api/video/render', {
           method: 'POST', headers,
-          body: JSON.stringify({ action: 'animate', imageUrl: mediaUrl, visualPrompt: scene.visualPrompt, ratio }),
+          body: JSON.stringify({ action: 'animate', imageUrl: mediaUrl, visualPrompt: prompt, ratio }),
         })
         data = await res.json()
         if (!res.ok) throw new Error(data.error || 'Erreur d\'animation')
@@ -128,11 +130,33 @@ function SceneCard({ scene, ratio }: { scene: ProductionScene; ratio: string }) 
       )}
 
       <div className="rounded-lg border border-border bg-muted/40 p-3">
-        <div className="mb-1.5 flex items-center justify-between">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Prompt visuel (moteur)</span>
-          <CopyButton text={scene.visualPrompt} />
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setEditing((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
+            >
+              {editing ? <><Check className="h-3.5 w-3.5 text-green-600" /> Terminé</> : <><Pencil className="h-3.5 w-3.5" /> Éditer</>}
+            </button>
+            <CopyButton text={prompt} />
+          </div>
         </div>
-        <p className="font-mono text-xs leading-relaxed text-foreground/80">{scene.visualPrompt}</p>
+        {editing ? (
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            rows={4}
+            className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-relaxed focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        ) : (
+          <p className="font-mono text-xs leading-relaxed text-foreground/80">{prompt}</p>
+        )}
+        {prompt !== scene.visualPrompt && !editing && (
+          <button onClick={() => setPrompt(scene.visualPrompt)} className="mt-1.5 text-[11px] text-muted-foreground hover:text-foreground underline">
+            Rétablir le prompt d&apos;origine
+          </button>
+        )}
       </div>
 
       {/* Rendu réel du plan (nécessite les clés moteurs en prod) */}
