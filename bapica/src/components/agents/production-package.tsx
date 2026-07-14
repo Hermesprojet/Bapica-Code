@@ -3,9 +3,32 @@
 import { useState } from 'react'
 import {
   Sparkles, Film, Mic, Music, Captions, Target, Hash,
+  Copy, Check, Clapperboard, Loader2, Download, AlertCircle,
 } from 'lucide-react'
-import { Copy, Check } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import type { ProductionPackage, ProductionScene } from '@/lib/video/maya'
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession()
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` }
+}
+
+// Interroge /api/video/status jusqu'à obtenir l'URL (ou échec / expiration ~5 min).
+async function pollUntilDone(provider: string, taskId: string, onTick?: (n: number) => void): Promise<string> {
+  const headers = await authHeaders()
+  for (let i = 0; i < 60; i++) {
+    await sleep(5000)
+    onTick?.(i)
+    const res = await fetch('/api/video/status', { method: 'POST', headers, body: JSON.stringify({ provider, taskId }) })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Erreur de statut')
+    if (data.status === 'succeeded' && data.url) return data.url
+    if (data.status === 'failed') throw new Error('Le moteur a échoué à générer ce plan.')
+  }
+  throw new Error('Délai dépassé. Réessayez.')
+}
 
 const engineColor: Record<string, string> = {
   Runway: 'bg-purple-100 text-purple-700',
@@ -31,7 +54,44 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function SceneCard({ scene }: { scene: ProductionScene }) {
+function SceneCard({ scene, ratio }: { scene: ProductionScene; ratio: string }) {
+  const [state, setState] = useState<'idle' | 'rendering' | 'done' | 'error'>('idle')
+  const [msg, setMsg] = useState('')
+  const [url, setUrl] = useState('')
+
+  const generateClip = async () => {
+    if (state === 'rendering') return
+    setState('rendering'); setMsg('Initialisation…'); setUrl('')
+    try {
+      const headers = await authHeaders()
+      const isAvatar = scene.recommendedEngine === 'HeyGen'
+      // Étape 1 : démarrage (keyframe Runway, ou vidéo avatar HeyGen).
+      let res = await fetch('/api/video/render', {
+        method: 'POST', headers,
+        body: JSON.stringify({ action: 'scene', engine: scene.recommendedEngine, visualPrompt: scene.visualPrompt, dialogue: scene.dialogue, ratio, avatar: isAvatar }),
+      })
+      let data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erreur de démarrage')
+      setMsg(isAvatar ? 'Génération de la vidéo…' : 'Génération du plan…')
+      let mediaUrl = await pollUntilDone(data.provider, data.taskId)
+
+      // Étape 2 (Runway) : animer le keyframe en vidéo.
+      if (data.provider === 'Runway' && data.kind === 'image') {
+        setMsg('Animation du plan…')
+        res = await fetch('/api/video/render', {
+          method: 'POST', headers,
+          body: JSON.stringify({ action: 'animate', imageUrl: mediaUrl, visualPrompt: scene.visualPrompt, ratio }),
+        })
+        data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Erreur d\'animation')
+        mediaUrl = await pollUntilDone(data.provider, data.taskId)
+      }
+      setUrl(mediaUrl); setState('done')
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e)); setState('error')
+    }
+  }
+
   const specs: [string, string][] = [
     ['Décor', scene.decor],
     ['Éclairage', scene.lighting],
@@ -74,6 +134,33 @@ function SceneCard({ scene }: { scene: ProductionScene }) {
         </div>
         <p className="font-mono text-xs leading-relaxed text-foreground/80">{scene.visualPrompt}</p>
       </div>
+
+      {/* Rendu réel du plan (nécessite les clés moteurs en prod) */}
+      <div className="mt-3">
+        {state === 'done' && url ? (
+          <div className="space-y-2">
+            <video src={url} controls className="w-full rounded-lg border border-border bg-black" />
+            <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+              <Download className="h-3.5 w-3.5" /> Ouvrir / télécharger le clip
+            </a>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={generateClip}
+              disabled={state === 'rendering'}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-60 transition-colors"
+            >
+              {state === 'rendering'
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {msg || 'Génération…'}</>
+                : <><Clapperboard className="h-3.5 w-3.5" /> Générer le clip ({scene.recommendedEngine})</>}
+            </button>
+            {state === 'error' && (
+              <span className="inline-flex items-center gap-1 text-xs text-destructive"><AlertCircle className="h-3.5 w-3.5 shrink-0" /> {msg}</span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -83,6 +170,47 @@ function InfoCard({ icon, title, children }: { icon: React.ReactNode; title: str
     <div className="card-professional p-4">
       <div className="mb-2 flex items-center gap-2 text-sm font-semibold">{icon} {title}</div>
       <div className="space-y-0.5 text-sm text-foreground/90">{children}</div>
+    </div>
+  )
+}
+
+// Génère la voix off du script via ElevenLabs (renvoie un audio à écouter).
+function VoiceButton({ script }: { script: string }) {
+  const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [audioUrl, setAudioUrl] = useState('')
+  const [err, setErr] = useState('')
+
+  const generate = async () => {
+    if (!script.trim() || state === 'loading') return
+    setState('loading'); setErr('')
+    try {
+      const headers = await authHeaders()
+      const res = await fetch('/api/video/render', { method: 'POST', headers, body: JSON.stringify({ action: 'voice', text: script }) })
+      if (!res.ok) {
+        let m = 'Erreur'
+        try { m = (await res.json()).error } catch {}
+        throw new Error(m)
+      }
+      const blob = await res.blob()
+      setAudioUrl(URL.createObjectURL(blob)); setState('done')
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e)); setState('error')
+    }
+  }
+
+  if (state === 'done' && audioUrl) {
+    return <audio src={audioUrl} controls className="mt-2 w-full" />
+  }
+  return (
+    <div className="mt-2">
+      <button
+        onClick={generate}
+        disabled={state === 'loading'}
+        className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-60 transition-colors"
+      >
+        {state === 'loading' ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Génération…</> : <><Mic className="h-3.5 w-3.5" /> Générer la voix off</>}
+      </button>
+      {state === 'error' && <p className="mt-1 flex items-center gap-1 text-xs text-destructive"><AlertCircle className="h-3.5 w-3.5 shrink-0" /> {err}</p>}
     </div>
   )
 }
@@ -109,7 +237,7 @@ export function ProductionPackageView({ pkg }: { pkg: ProductionPackage }) {
       <div>
         <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Film className="h-4 w-4 text-primary" /> Storyboard ({pkg.scenes.length} scènes)</h3>
         <div className="space-y-4">
-          {pkg.scenes.map((s) => <SceneCard key={s.n} scene={s} />)}
+          {pkg.scenes.map((s) => <SceneCard key={s.n} scene={s} ratio={pkg.ratio} />)}
         </div>
       </div>
 
@@ -119,6 +247,7 @@ export function ProductionPackageView({ pkg }: { pkg: ProductionPackage }) {
           <p><span className="text-muted-foreground">Profil :</span> {pkg.voiceover?.profile}</p>
           <p><span className="text-muted-foreground">Ton :</span> {pkg.voiceover?.tone}</p>
           <p className="text-xs text-muted-foreground mt-1">via {pkg.voiceover?.provider}</p>
+          <VoiceButton script={pkg.scenes.map((s) => s.dialogue).filter(Boolean).join(' ')} />
         </InfoCard>
         <InfoCard icon={<Music className="h-4 w-4 text-primary" />} title="Musique & SFX">
           <p>{pkg.music}</p>
