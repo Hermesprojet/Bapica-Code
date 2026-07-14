@@ -154,7 +154,7 @@ export default function DashboardPage() {
             </div>
             <span className="text-xs text-muted-foreground">{doneSteps}/{steps.length}</span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
               className="h-full rounded-full bg-gradient-to-r from-primary to-blue-500 transition-all duration-700 ease-out"
               style={{ width: `${progressPct}%` }}
@@ -165,9 +165,9 @@ export default function DashboardPage() {
               <a
                 key={s.key}
                 href={s.href}
-                className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-white/5 transition-colors"
+                className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-muted transition-colors"
               >
-                <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 text-[10px] text-muted-foreground">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border text-[10px] text-muted-foreground">
                   {steps.indexOf(s) + 1}
                 </span>
                 <span className="flex-1">{s.label}</span>
@@ -193,7 +193,7 @@ export default function DashboardPage() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Icon className="h-4.5 w-4.5" />
                 </div>
-                <span className="text-[11px] font-medium text-green-400">
+                <span className="text-[11px] font-medium text-green-600">
                   {card.change}
                 </span>
               </div>
@@ -229,7 +229,7 @@ export default function DashboardPage() {
                     {w.description}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors">
+                <span className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors">
                   {w.cta}
                 </span>
               </a>
