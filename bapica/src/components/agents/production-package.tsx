@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   Sparkles, Film, Mic, Music, Captions, Target, Hash,
-  Copy, Check, Clapperboard, Loader2, Download, AlertCircle, Pencil,
+  Check, Clapperboard, Loader2, Download, AlertCircle, Pencil, ChevronDown,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { ProductionPackage, ProductionScene } from '@/lib/video/maya'
@@ -28,30 +28,6 @@ async function pollUntilDone(provider: string, taskId: string, onTick?: (n: numb
     if (data.status === 'failed') throw new Error('Le moteur a échoué à générer ce plan.')
   }
   throw new Error('Délai dépassé. Réessayez.')
-}
-
-const engineColor: Record<string, string> = {
-  Runway: 'bg-purple-100 text-purple-700',
-  Veo: 'bg-blue-100 text-blue-700',
-  HeyGen: 'bg-emerald-100 text-emerald-700',
-  Kling: 'bg-pink-100 text-pink-700',
-  Luma: 'bg-amber-100 text-amber-700',
-  'Best Available': 'bg-slate-100 text-slate-700',
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <button
-      onClick={async () => {
-        try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch {}
-      }}
-      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
-    >
-      {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
-      {copied ? 'Copié' : 'Copier le prompt'}
-    </button>
-  )
 }
 
 function SceneCard({ scene, ratio }: { scene: ProductionScene; ratio: string }) {
@@ -110,10 +86,7 @@ function SceneCard({ scene, ratio }: { scene: ProductionScene; ratio: string }) 
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">{scene.n}</span>
           <h4 className="font-semibold text-sm">{scene.title}</h4>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{scene.duration}</span>
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${engineColor[scene.recommendedEngine] || engineColor['Best Available']}`}>{scene.recommendedEngine}</span>
-        </div>
+        <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{scene.duration}</span>
       </div>
 
       <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2 mb-3">
@@ -129,62 +102,69 @@ function SceneCard({ scene, ratio }: { scene: ProductionScene; ratio: string }) 
         <p className="mb-3 rounded-lg bg-muted/60 px-3 py-2 text-sm italic text-foreground/90">« {scene.dialogue} »</p>
       )}
 
-      <div className="rounded-lg border border-border bg-muted/40 p-3">
-        <div className="mb-1.5 flex items-center justify-between gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Prompt visuel (moteur)</span>
-          <div className="flex items-center gap-1.5">
+      {/* Action principale : Maya génère la vidéo (le client ne fait que cliquer) */}
+      <div>
+        {state === 'done' && url ? (
+          <div className="space-y-2">
+            <video src={url} controls className="w-full rounded-lg border border-border bg-black" />
+            <div className="flex items-center gap-4">
+              <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+                <Download className="h-3.5 w-3.5" /> Télécharger
+              </a>
+              <button onClick={generateClip} className="text-xs font-medium text-muted-foreground hover:text-foreground">Regénérer</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <button
+              onClick={generateClip}
+              disabled={state === 'rendering'}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-all"
+            >
+              {state === 'rendering'
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> {msg || 'Génération…'}</>
+                : <><Clapperboard className="h-4 w-4" /> Générer la vidéo</>}
+            </button>
+            {state === 'error' && (
+              <p className="mt-2 inline-flex items-start gap-1.5 text-xs text-destructive"><AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" /> {msg}</p>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Détails techniques, repliés par défaut — le client n'a rien à faire ici */}
+      <details className="group mt-3">
+        <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+          Personnaliser (avancé)
+        </summary>
+        <div className="mt-2 rounded-lg border border-border bg-muted/40 p-3">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Description visuelle · moteur {scene.recommendedEngine}</span>
             <button
               onClick={() => setEditing((v) => !v)}
               className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
             >
               {editing ? <><Check className="h-3.5 w-3.5 text-green-600" /> Terminé</> : <><Pencil className="h-3.5 w-3.5" /> Éditer</>}
             </button>
-            <CopyButton text={prompt} />
           </div>
-        </div>
-        {editing ? (
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            rows={4}
-            className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-relaxed focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        ) : (
-          <p className="font-mono text-xs leading-relaxed text-foreground/80">{prompt}</p>
-        )}
-        {prompt !== scene.visualPrompt && !editing && (
-          <button onClick={() => setPrompt(scene.visualPrompt)} className="mt-1.5 text-[11px] text-muted-foreground hover:text-foreground underline">
-            Rétablir le prompt d&apos;origine
-          </button>
-        )}
-      </div>
-
-      {/* Rendu réel du plan (nécessite les clés moteurs en prod) */}
-      <div className="mt-3">
-        {state === 'done' && url ? (
-          <div className="space-y-2">
-            <video src={url} controls className="w-full rounded-lg border border-border bg-black" />
-            <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
-              <Download className="h-3.5 w-3.5" /> Ouvrir / télécharger le clip
-            </a>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={generateClip}
-              disabled={state === 'rendering'}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-60 transition-colors"
-            >
-              {state === 'rendering'
-                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {msg || 'Génération…'}</>
-                : <><Clapperboard className="h-3.5 w-3.5" /> Générer le clip ({scene.recommendedEngine})</>}
+          {editing ? (
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={4}
+              className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-relaxed focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          ) : (
+            <p className="font-mono text-xs leading-relaxed text-foreground/80">{prompt}</p>
+          )}
+          {prompt !== scene.visualPrompt && !editing && (
+            <button onClick={() => setPrompt(scene.visualPrompt)} className="mt-1.5 text-[11px] text-muted-foreground hover:text-foreground underline">
+              Rétablir la description d&apos;origine
             </button>
-            {state === 'error' && (
-              <span className="inline-flex items-center gap-1 text-xs text-destructive"><AlertCircle className="h-3.5 w-3.5 shrink-0" /> {msg}</span>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </details>
     </div>
   )
 }
@@ -248,7 +228,6 @@ export function ProductionPackageView({ pkg }: { pkg: ProductionPackage }) {
           {[pkg.platform, pkg.ratio, pkg.totalDuration, pkg.objective].filter(Boolean).map((m, i) => (
             <span key={i} className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{m}</span>
           ))}
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${engineColor[pkg.primaryEngine] || engineColor['Best Available']}`}>Moteur : {pkg.primaryEngine}</span>
         </div>
         <p className="text-sm text-muted-foreground leading-relaxed">{pkg.concept}</p>
         <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
