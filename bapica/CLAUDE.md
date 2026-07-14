@@ -73,7 +73,8 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 | `webhooks/stripe` | Met à jour le plan dans `profiles` (client service_role) | Signature Stripe |
 | `vapi/create-call` | Lance un appel vocal sortant (Vapi) | Bearer token |
 | `vapi/webhook` | Reçoit le résultat d'appel Vapi | — |
-| `video/generate` | Génère une vidéo (HeyGen) | Bearer token |
+| `video/orchestrate` | Maya — idée → package de production complet (script, storyboard, prompts moteurs) | Bearer token |
+| `video/generate` | Rendu direct via moteur (Runway/HeyGen) — nécessite les clés | Bearer token |
 
 (Autres routes : cortex, genesis, reason, business-analysis, market-intelligence, etc.)
 
@@ -151,7 +152,19 @@ Cohérence produit à vérifier dans les réponses des agents :
   composants `src/components/landing/*` (thème sombre, en grande partie orphelins) — seuls Navbar/Footer
   en sont importés.
 - Exceptions volontairement sombres (bandeaux d'accent sur page claire) : sections `Chiffres`/`CTAFinal`
-  de la home, `dashboard/video-studio`, le slideshow `video-presentation.tsx`.
+  de la home, le slideshow `video-presentation.tsx`.
+
+## 10ter. Maya — Studio Vidéo (cerveau d'orchestration)
+
+- Maya = directrice créative IA. Le « cerveau » (`src/lib/video/maya.ts`) transforme une idée en
+  **package de production** JSON : concept, hook, storyboard scène par scène (décor/lumière/caméra/
+  mouvement/émotion/dialogue/SFX/durée), **prompt visuel prêt par moteur**, voix/musique/sous-titres,
+  formats, CTA, titre, description, hashtags. Route : `POST /api/video/orchestrate` (Bearer + Claude Sonnet).
+- Routeur multi-moteurs (dans le prompt) : avatar→HeyGen, cinématique→Runway, ultra-réaliste→Veo,
+  stylisé→Kling, motion→Luma. Maya ne REND pas de MP4 : le rendu réel s'active via les clés moteurs
+  (`RUNWAY_API_KEY`, `HEYGEN_API_KEY`, `ELEVENLABS_API_KEY`) dans `/api/video/generate` (à corriger/câbler).
+- UI : `dashboard/video-studio` (thème clair) — brief → `ProductionPackageView`
+  (`src/components/agents/production-package.tsx`).
 
 ## 10. Déploiement
 
