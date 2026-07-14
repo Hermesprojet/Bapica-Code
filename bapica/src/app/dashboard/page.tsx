@@ -244,6 +244,7 @@ export default function DashboardPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
             { href: '/dashboard/agents', title: '🤖 Parler à un agent', desc: 'Discutez avec vos assistants IA spécialisés.' },
+            { href: '/dashboard/video-studio', title: '🎬 Créer une vidéo (Maya)', desc: 'Studio Vidéo : idée → storyboard + clips par scène.' },
             { href: '/dashboard/billing', title: '📊 Gérer mon abonnement', desc: 'Voir votre forfait, changer de formule.' },
             { href: '/dashboard/settings', title: '⚙️ Configuration', desc: 'API keys, préférences, connexions.' },
           ].map(item => (

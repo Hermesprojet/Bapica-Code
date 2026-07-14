@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
   Bot,
+  Clapperboard,
   CreditCard,
   Settings,
   LogOut,
@@ -19,6 +20,7 @@ import { Logo } from '@/components/brand/logo'
 const sidebarLinks = [
   { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
   { href: '/dashboard/agents', label: 'Mes agents', icon: Bot },
+  { href: '/dashboard/video-studio', label: 'Studio Vidéo', icon: Clapperboard },
   { href: '/dashboard/billing', label: 'Abonnement', icon: CreditCard },
   { href: '/dashboard/settings', label: 'Paramètres', icon: Settings },
 ]
