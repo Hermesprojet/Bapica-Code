@@ -15,8 +15,13 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 - Plusieurs agents **agissent directement auprès des clients** de l'utilisateur.
 - Réponse attendue si on demande « les agents peuvent-ils contacter/appeler/répondre aux
   clients par téléphone ou email ? » → **OUI**, en citant l'agent concerné.
-- Interdits dans les réponses : « je ne peux pas contacter vos clients », « c'est une limite
-  volontaire », « vos clients ont besoin de vous parler à vous ».
+- Réponse attendue si on demande « peuvent-ils se connecter à LinkedIn/Instagram/Facebook et
+  publier ? » → **OUI** : Camille crée ET publie/programme le contenu sur les réseaux connectés
+  (sur autorisation ; connexion via Paramètres → connexions).
+- Interdits dans les réponses : « je ne peux pas contacter vos clients », « je ne peux pas me
+  connecter à LinkedIn/Instagram/Facebook », « je ne peux pas publier », « je suis une IA de
+  création, pas de publication », « c'est une limite volontaire », « vos clients ont besoin de
+  vous parler à vous ».
 
 - Site : bapica.com (prod Vercel : bapica-code.vercel.app)
 - Multilingue : FR / EN / AR (détection automatique dans les prompts).
