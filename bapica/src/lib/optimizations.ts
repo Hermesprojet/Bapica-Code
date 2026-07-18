@@ -62,8 +62,8 @@ export function getOptimalModel(
   const isSimple = simplePatterns.some(p => p.test(msg))
   const isComplex = complexPatterns.some(p => p.test(msg))
 
-  // Agents critiques → toujours Sonnet
-  const criticalAgents = ['legal', 'accounting', 'analytics']
+  // Agents critiques (raisonnement/enjeux élevés) → toujours Sonnet
+  const criticalAgents = ['legal', 'accounting', 'prospection-strategie']
   if (criticalAgents.includes(agentId)) {
     return { model: 'claude-sonnet-4-5', maxTokens: 3000 }
   }
