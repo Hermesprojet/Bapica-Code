@@ -15,11 +15,19 @@ export function buildBusinessBrief(onboarding: any): string {
 
   const company = (o.companyName || '').trim()
   if (company) facts.push(`Entreprise : ${company}`)
-  const activity = o.activityOther?.trim() || o.activity
-  if (activity) facts.push(`Type : ${activity}`)
+  if (o.legalForm) facts.push(`Forme juridique : ${o.legalForm}`)
+  if (o.vatNumber) facts.push(`N° TVA / SIRET : ${o.vatNumber}`)
+  const sector = o.sector?.trim() || o.activityOther?.trim() || o.activity
+  if (sector) facts.push(`Secteur : ${sector}`)
+  if (o.foundedYear) facts.push(`Créée en : ${o.foundedYear}`)
   if (o.website) facts.push(`Site : ${o.website}`)
-  if (o.city || o.country) facts.push(`Localisation : ${[o.city, o.country].filter(Boolean).join(', ')}`)
+  const loc = [o.address, o.city, o.country].filter(Boolean).join(', ')
+  if (loc) facts.push(`Localisation : ${loc}`)
   if (o.revenue) facts.push(`Chiffre d'affaires : ${o.revenue}`)
+  if (o.employeeCount) facts.push(`Effectif : ${o.employeeCount}`)
+  const clientLabel: Record<string, string> = { b2b: 'Entreprises (B2B)', b2c: 'Particuliers (B2C)', both: 'B2B et B2C' }
+  if (o.clientType) facts.push(`Clientèle : ${clientLabel[o.clientType] || o.clientType}`)
+  if (o.competitors) facts.push(`Concurrents : ${o.competitors}`)
   if (o.businessDescription) facts.push(`Activité décrite par le client : ${String(o.businessDescription).slice(0, 400)}`)
   if (o.mainProblem) facts.push(`Défi principal : ${String(o.mainProblem).slice(0, 300)}`)
   if (o.growthGoal) facts.push(`Objectif prioritaire : ${o.growthGoal}`)
