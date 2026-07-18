@@ -66,10 +66,11 @@ async function verifyAuth(req: NextRequest) {
 
 // Le modèle déclaré dans lib/agents.ts ('claude-sonnet-4') est un alias interne ;
 // on le résout vers un identifiant de modèle valide de l'API Claude.
-function resolveModel(agentModel: string, message?: string): string {
-  // Router intelligent si message fourni
+function resolveModel(agentModel: string, agentId: string, message?: string): string {
+  // Router intelligent si message fourni — on passe le VRAI id d'agent pour que
+  // les agents critiques (legal, accounting, prospection) obtiennent Sonnet.
   if (message) {
-    const optimal = getOptimalModel(agentModel === 'claude-sonnet-4' ? 'analytics' : 'general', message)
+    const optimal = getOptimalModel(agentId, message)
     return optimal.model
   }
   if (agentModel.startsWith('claude-opus')) return 'claude-opus-4-1'
@@ -275,7 +276,7 @@ async function callClaude(
     : undefined
 
     const completion = await client.messages.create({
-      model: resolveModel(agent.model, message),
+      model: resolveModel(agent.model, agent.id, message),
       max_tokens: agent.maxTokens,
       temperature: agent.temperature,
       system: compressPrompt(buildSystemPrompt(agent), agent.id) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
@@ -309,7 +310,7 @@ async function callClaude(
       ]
 
       response = await client.messages.create({
-        model: resolveModel(agent.model, message),
+        model: resolveModel(agent.model, agent.id, message),
         max_tokens: agent.maxTokens,
         temperature: agent.temperature,
         system: buildSystemPrompt(agent) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
