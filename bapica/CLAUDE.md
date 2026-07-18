@@ -89,7 +89,10 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 - `src/lib/supabase.ts` / `supabase-admin.ts` — clients Supabase (lazy).
 - `src/lib/stripe.ts` — client Stripe (lazy) + plans + `planFromPriceId`.
 - `src/lib/rag.ts` — RAG (recherche de connaissances par agent, embeddings OpenAI).
-- `src/app/api/chat/route.ts` — cœur du chat connecté (auth, mémoire, RAG, live data, tools).
+- `src/lib/business-context.ts` — `buildBusinessBrief(onboarding)` : brief du business du client
+  injecté dans le prompt de CHAQUE agent (secteur, taille, CA, défi, objectifs, outils + analyse).
+  Source : `user_metadata.onboarding_data` (là où l'onboarding l'écrit).
+- `src/app/api/chat/route.ts` — cœur du chat connecté (auth, mémoire, brief business, RAG, live data, tools).
 - `src/app/api/demo-chat/route.ts` — démo publique.
 
 ## 7. Variables d'environnement

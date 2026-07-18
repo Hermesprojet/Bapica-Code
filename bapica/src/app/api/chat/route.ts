@@ -4,6 +4,7 @@ import { getAgentById, type AgentConfig } from '@/lib/agents'
 import { createClient } from '@supabase/supabase-js'
 import { sanitizeUserMessage, isValidAgentId } from '@/lib/security'
 import { buildClientMemory, buildMemoryContext, addToMemory, type ClientMemory, type ConversationSummary } from '@/lib/client-memory'
+import { buildBusinessBrief } from '@/lib/business-context'
 import { twentyTools } from '@/lib/tools/twenty-tools'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -141,6 +142,9 @@ export async function POST(req: NextRequest) {
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
     
+    // Le profil business est saisi à l'onboarding et stocké dans user_metadata ;
+    // on le lit là en priorité (la table profiles ne le contient pas toujours).
+    let onboarding: any = auth.user.user_metadata?.onboarding_data || {}
     let clientMemory: ClientMemory
     try {
       const { data: profile } = await supabase
@@ -148,16 +152,20 @@ export async function POST(req: NextRequest) {
         .select('*')
         .eq('id', auth.user.id)
         .single()
-      
-      const onboarding = profile?.onboarding_data || {}
+
+      if (!onboarding || Object.keys(onboarding).length === 0) {
+        onboarding = profile?.onboarding_data || {}
+      }
       const history = profile?.conversation_history || []
       clientMemory = buildClientMemory(onboarding, history)
     } catch {
-      clientMemory = buildClientMemory({}, [])
+      clientMemory = buildClientMemory(onboarding, [])
     }
 
-    // Injecter le contexte mémoire dans le system prompt
-    const memoryContext = buildMemoryContext(clientMemory)
+    // Injecter le contexte mémoire + le BRIEF business du client dans le prompt,
+    // pour que l'agent maîtrise l'entreprise du client et conseille concrètement.
+    const businessBrief = buildBusinessBrief(onboarding)
+    const memoryContext = [businessBrief, buildMemoryContext(clientMemory)].filter(Boolean).join('\n\n')
 
     // RAG + Live data — avec cache pour les questions fréquentes
     let ragContext = ''
