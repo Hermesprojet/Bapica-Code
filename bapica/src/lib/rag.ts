@@ -25,7 +25,7 @@ export const RAG_ENABLED_AGENTS = new Set([
   "analytics", "tendances", "general",
 ])
 
-async function embed(text: string): Promise<number[]> {
+export async function embed(text: string): Promise<number[]> {
   const res = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
     headers: {
@@ -38,7 +38,7 @@ async function embed(text: string): Promise<number[]> {
   return data.data[0].embedding
 }
 
-function chunkText(text: string, chunkSize = 500, overlap = 50): string[] {
+export function chunkText(text: string, chunkSize = 500, overlap = 50): string[] {
   const words = text.split(/\s+/)
   const chunks: string[] = []
   for (let i = 0; i < words.length; i += chunkSize - overlap) {

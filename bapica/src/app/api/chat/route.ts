@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { sanitizeUserMessage, isValidAgentId } from '@/lib/security'
 import { buildClientMemory, buildMemoryContext, addToMemory, type ClientMemory, type ConversationSummary } from '@/lib/client-memory'
 import { buildBusinessBrief } from '@/lib/business-context'
+import { retrieveClientContext } from '@/lib/client-knowledge'
 import { twentyTools } from '@/lib/tools/twenty-tools'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -206,7 +207,14 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* Live data silencieux */ }
 
-    const response = await callClaude(agent, safeMessage, history ?? [], memoryContext + ragContext + liveContext)
+    // RAG par client : documents de l'entreprise téléversés par l'utilisateur.
+    let clientKnowledge = ''
+    try {
+      const ctx = await retrieveClientContext(auth.user.id, safeMessage)
+      if (ctx) clientKnowledge = `\n\n--- Documents de l'entreprise du client (source de vérité) ---\n${ctx}\n---`
+    } catch { /* RAG client silencieux */ }
+
+    const response = await callClaude(agent, safeMessage, history ?? [], memoryContext + ragContext + liveContext + clientKnowledge)
 
     // Sauvegarder la conversation dans la mémoire
     const summary: ConversationSummary = {

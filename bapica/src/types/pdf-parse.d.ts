@@ -1,0 +1,8 @@
+declare module 'pdf-parse/lib/pdf-parse.js' {
+  function pdfParse(buffer: Buffer | Uint8Array): Promise<{ text: string; numpages: number; info: any }>
+  export default pdfParse
+}
+declare module 'pdf-parse' {
+  function pdfParse(buffer: Buffer | Uint8Array): Promise<{ text: string; numpages: number; info: any }>
+  export default pdfParse
+}

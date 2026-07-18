@@ -199,6 +199,21 @@ Cohérence produit à vérifier dans les réponses des agents :
   passe le jeton en query `?t=` puis n'encode que l'`uid` dans le `state` (le jeton ne va pas à LinkedIn).
 - Ajouter une plateforme : nouveau module `src/lib/social/<x>.ts` + branche dans `/api/social/publish`.
 
+## 10quinquies. RAG documentaire (connaissance du client)
+
+- Deux niveaux de RAG :
+  - **Global (les 140 fichiers)** : `src/lib/rag.ts`, table `growth_knowledge`, scopé par AGENT
+    (RPC `match_agent_knowledge`). Ingestion via `scripts/ingest-knowledge.ts`.
+  - **Par client** : `src/lib/client-knowledge.ts`, table `client_knowledge`, scopé par UTILISATEUR
+    (RPC `match_client_knowledge`). Les documents que le client téléverse deviennent sa base propre,
+    injectée dans le prompt de CHAQUE agent (bloc « Documents de l'entreprise du client »).
+- Extraction : PDF (`pdf-parse/lib/pdf-parse.js`), DOCX (`mammoth`), texte brut. Embeddings OpenAI
+  `text-embedding-3-small` (1536 dims). Écrit à l'aveugle (non testé) → prérequis prod :
+  `OPENAI_API_KEY` + exécuter le SQL (`supabase-schema.sql` : extension `vector`, table
+  `client_knowledge`, RPC `match_client_knowledge`).
+- Routes : `POST /api/knowledge/upload` (fichier multipart OU {title,text}), `GET|DELETE /api/knowledge`.
+- UI : `dashboard/knowledge` (lien sidebar « Connaissances ») — téléverser / coller / lister / supprimer.
+
 ## 10. Déploiement
 
 - Branche de dev : `claude/hopeful-gates-nucb4p` → PR → merge dans `master` → Vercel déploie.
