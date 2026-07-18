@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   },
 
   description:
-    "Plateforme multi-agents IA pour PME et indépendants. Prospection, support client, contenu, voix, recrutement, comptabilité et plus encore. 12 agents spécialisés, messagerie illimitée, essai gratuit 15 jours.",
+    "Plateforme multi-agents IA pour PME et indépendants. Prospection, support client, contenu, voix, recrutement, comptabilité et plus encore. 10 agents spécialisés, messagerie illimitée, essai gratuit 15 jours.",
 
   keywords: [
     "agents IA",
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Bapica — Des agents IA qui travaillent en équipe pour votre entreprise",
     description:
-      "12 agents IA qui collaborent entre eux, orchestrés par Léo. Prospection, support, contenu, voix, recrutement, comptabilité. Essai gratuit 15 jours.",
+      "10 agents IA qui collaborent entre eux, orchestrés par Léo. Prospection, support, contenu, voix, recrutement, comptabilité. Essai gratuit 15 jours.",
     url: baseUrl,
     siteName: "Bapica",
     locale: "fr_FR",
@@ -65,7 +65,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Bapica — Agents IA pour votre entreprise",
     description:
-      "12 agents IA qui collaborent entre eux, orchestrés par Léo. Prospection, support, contenu, voix, recrutement, comptabilité. Essai gratuit 15 jours.",
+      "10 agents IA qui collaborent entre eux, orchestrés par Léo. Prospection, support, contenu, voix, recrutement, comptabilité. Essai gratuit 15 jours.",
     images: [`${baseUrl}/opengraph-image`],
   },
 

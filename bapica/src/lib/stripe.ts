@@ -43,7 +43,7 @@ export const PLANS = {
     name: 'Pro',
     priceId: priceId('PRO'),
     price: 79,
-    agents: 12,
+    agents: 10,
     messagesPerMonth: -1, // illimité
     voiceMinutes: 0,
     voiceRate: 0.20, // €/min

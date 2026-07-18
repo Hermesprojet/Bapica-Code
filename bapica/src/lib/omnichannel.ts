@@ -46,7 +46,7 @@ export function routeMessage(msg: IncomingMessage): {
   if (t.match(/^(bonjour|salut|hello|bjr|hi|hey|yo|coucou)/)) {
     return {
       agentId: 'prospection-strategie',
-      greeting: `Bonjour ${msg.userName.split(' ')[0]} ! 👋\n\nJe suis Bapica, votre équipe d'agents IA. Comment puis-je vous aider aujourd'hui ?\n\n📈 Croissance & CA\n📊 Analyse business\n🔌 Connecter vos outils\n🤖 Découvrir les 12 agents\n\nDites-moi simplement ce dont vous avez besoin.`,
+      greeting: `Bonjour ${msg.userName.split(' ')[0]} ! 👋\n\nJe suis Bapica, votre équipe d'agents IA. Comment puis-je vous aider aujourd'hui ?\n\n📈 Croissance & CA\n📊 Analyse business\n🔌 Connecter vos outils\n🤖 Découvrir les 10 agents\n\nDites-moi simplement ce dont vous avez besoin.`,
       confidence: 0.95,
     }
   }

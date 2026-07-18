@@ -154,7 +154,7 @@ export function orchestrateGoal(goal: string, profile: any): AutopilotGoal {
   if (goal.match(/ca|chiffre|croissance|vente|client/i)) {
     agents.push(
       { agentId: 'prospection-strategie', task: 'Plan d\'acquisition clients et croissance CA', status: 'pending' },
-      { agentId: 'analytics', task: 'Mise en place des KPIs de suivi', status: 'pending' },
+      { agentId: 'accounting', task: 'Mise en place des KPIs de suivi', status: 'pending' },
       { agentId: 'support', task: 'Optimisation de la rétention client', status: 'pending' },
     )
   }
@@ -170,7 +170,7 @@ export function orchestrateGoal(goal: string, profile: any): AutopilotGoal {
   if (goal.match(/trésorerie|rentab|marge|coût/i)) {
     agents.push(
       { agentId: 'accounting', task: 'Audit des dépenses et optimisation fiscale', status: 'pending' },
-      { agentId: 'analytics', task: 'Analyse de rentabilité par produit/client', status: 'pending' },
+      { agentId: 'accounting', task: 'Analyse de rentabilité par produit/client', status: 'pending' },
       { agentId: 'prospection-strategie', task: 'Ajustement des prix et marges', status: 'pending' },
     )
   }
@@ -186,7 +186,7 @@ export function orchestrateGoal(goal: string, profile: any): AutopilotGoal {
   if (!agents.length) {
     agents.push(
       { agentId: 'general', task: 'Analyse de votre objectif', status: 'pending' },
-      { agentId: 'trends', task: 'Veille sur les opportunités liées', status: 'pending' },
+      { agentId: 'content', task: 'Veille sur les opportunités liées', status: 'pending' },
     )
   }
 

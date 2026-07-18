@@ -211,7 +211,7 @@ export function getRecommendedAgentIds(onboarding: OnboardingData | null): strin
   if (tasks.includes('juridique')) ids.push('legal')
   if (tasks.includes('paie')) ids.push('recruiter')
   if (appsInclude(apps, 'shopify') || appsInclude(apps, 'wordpress')) ids.push('content')
-  if (onboarding.activity === 'ecommerce') ids.push('trends')
+  if (onboarding.activity === 'ecommerce') ids.push('content')
 
   return [...new Set(ids)] // déduplication
 }
