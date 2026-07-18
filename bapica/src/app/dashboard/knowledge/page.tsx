@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { BookOpen, Upload, FileText, Trash2, Loader2, Plus, Sparkles, X } from 'lucide-react'
+import { BookOpen, Upload, FileText, Trash2, Loader2, Plus, Sparkles, X, Globe } from 'lucide-react'
 
 interface Doc { source: string; chunks: number }
 
@@ -70,6 +70,25 @@ export default function KnowledgePage() {
       afterUpload(res, await res.json(), title.trim() || 'Note')
     } catch { setNotice({ kind: 'err', msg: 'Erreur de connexion.' }) }
     setBusy(false)
+  }
+
+  const [researching, setResearching] = useState(false)
+  const [research, setResearch] = useState<string | null>(null)
+
+  const runResearch = async () => {
+    if (researching) return
+    setResearching(true); setResearch(null); setNotice(null)
+    try {
+      const res = await fetch('/api/company/research', { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setResearch(data.summary)
+        if (data.stored) { setNotice({ kind: 'ok', msg: 'Profil web ajouté à vos documents.' }); load() }
+      } else {
+        setNotice({ kind: 'err', msg: data.error || 'Échec de la recherche.' })
+      }
+    } catch { setNotice({ kind: 'err', msg: 'Erreur de connexion.' }) }
+    setResearching(false)
   }
 
   const remove = async (source: string) => {
@@ -151,6 +170,28 @@ export default function KnowledgePage() {
             <Plus className="h-4 w-4" /> Ajouter
           </button>
         </div>
+      </div>
+
+      {/* Recherche internet automatique sur l'entreprise */}
+      <div className="card-professional mt-6 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><Globe className="h-4.5 w-4.5" /></div>
+            <div>
+              <div className="font-semibold text-sm">Recherche internet sur votre entreprise</div>
+              <p className="text-xs text-muted-foreground">Bapica lit votre site et cherche en ligne pour rédiger un profil de votre société.</p>
+            </div>
+          </div>
+          <button onClick={runResearch} disabled={researching}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all">
+            {researching ? <><Loader2 className="h-4 w-4 animate-spin" /> Recherche…</> : <><Globe className="h-4 w-4" /> Lancer la recherche</>}
+          </button>
+        </div>
+        {research && (
+          <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4 text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
+            {research}
+          </div>
+        )}
       </div>
 
       {/* Liste des documents */}

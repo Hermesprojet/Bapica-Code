@@ -214,6 +214,16 @@ Cohérence produit à vérifier dans les réponses des agents :
 - Routes : `POST /api/knowledge/upload` (fichier multipart OU {title,text}), `GET|DELETE /api/knowledge`.
 - UI : `dashboard/knowledge` (lien sidebar « Connaissances ») — téléverser / coller / lister / supprimer.
 
+## 10sexies. Recherche internet sur l'entreprise
+
+- `src/lib/company-research.ts` : lit le site web du client (`fetchWebsiteText`) + recherche web
+  (`webSearch`, SerpAPI si `SERPAPI_KEY`), puis Claude (Sonnet) rédige un profil factuel.
+- Route `POST /api/company/research` : lit le profil onboarding (user_metadata), lance la recherche,
+  et stocke le résumé comme document `client_knowledge` (« Recherche web — <société> ») → utilisable
+  par les agents via le RAG. Écrit à l'aveugle. Clés : `ANTHROPIC_API_KEY` (requis), `SERPAPI_KEY`
+  (optionnel — sans, seul le site web est lu), `OPENAI_API_KEY` (pour stocker dans le RAG).
+- UI : bouton « Lancer la recherche » sur `dashboard/knowledge`.
+
 ## 10. Déploiement
 
 - Branche de dev : `claude/hopeful-gates-nucb4p` → PR → merge dans `master` → Vercel déploie.
