@@ -389,7 +389,9 @@ export default function OnboardingPage() {
     }
 
     setSaving(false)
-    router.push('/dashboard')
+    // Après l'inscription, on dirige vers la base de connaissances pour inviter
+    // le client à ajouter ses documents (les agents en seront d'autant meilleurs).
+    router.push('/dashboard/knowledge')
   }
 
   const canContinue = () => {

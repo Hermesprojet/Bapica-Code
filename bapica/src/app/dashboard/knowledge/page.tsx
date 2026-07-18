@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { BookOpen, Upload, FileText, Trash2, Loader2, Plus } from 'lucide-react'
+import { BookOpen, Upload, FileText, Trash2, Loader2, Plus, Sparkles, X } from 'lucide-react'
 
 interface Doc { source: string; chunks: number }
 
@@ -13,7 +13,16 @@ export default function KnowledgePage() {
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [title, setTitle] = useState('')
   const [text, setText] = useState('')
+  const [showBanner, setShowBanner] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    try { setShowBanner(localStorage.getItem('bapica_kb_banner') !== 'off') } catch { setShowBanner(true) }
+  }, [])
+  const dismissBanner = () => {
+    try { localStorage.setItem('bapica_kb_banner', 'off') } catch { /* ignore */ }
+    setShowBanner(false)
+  }
 
   const token = async () => (await supabase.auth.getSession()).data.session?.access_token || ''
 
@@ -74,6 +83,31 @@ export default function KnowledgePage() {
 
   return (
     <div>
+      {/* Bandeau pédagogique (pourquoi ajouter des documents) — refermable */}
+      {showBanner && (
+        <div className="relative mb-6 overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.07] to-primary/[0.02] p-5 pr-12">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-semibold">Rendez vos agents experts de VOTRE entreprise</h2>
+              <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                Ajoutez vos documents clés — catalogue, tarifs, fiches produits, procédures, présentation,
+                CGV… Vos agents s&apos;en serviront pour répondre <strong className="text-foreground">avec précision et à votre place</strong>,
+                au lieu de rester généralistes. Plus vous en ajoutez, plus Bapica est pertinent.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={dismissBanner}
+            className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <X className="h-3.5 w-3.5" /> Ne plus afficher
+          </button>
+        </div>
+      )}
+
       <div className="mb-8 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><BookOpen className="h-5 w-5" /></div>
         <div>
