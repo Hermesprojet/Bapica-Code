@@ -112,7 +112,7 @@ export default function OpenGraphImage() {
             lineHeight: 1.5,
           }}
         >
-          12 agents spécialisés qui comprennent votre métier et exécutent vos tâches 24h/24
+          10 agents spécialisés qui comprennent votre métier et exécutent vos tâches 24h/24
         </p>
 
         {/* Badge row */}

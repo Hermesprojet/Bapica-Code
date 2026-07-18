@@ -278,7 +278,7 @@ export function diagnoseNeeds(profile: EnrichedProfile, mainProblem: string, cur
   if (problem.match(/données|analyser|kpi|tableau/)) { analyticsScore += 25; analyticsReasons.push('Défi data déclaré') }
   if (profile.revenue.includes('2M') || profile.revenue.includes('10M')) { analyticsScore += 20; analyticsReasons.push('Volume justifiant l\'analytics') }
   if (!tools.includes('analytics') && !tools.includes('google')) { analyticsScore += 15; analyticsReasons.push('Pas d\'outil analytics') }
-  scores.push({ agentId: 'analytics', agentName: 'Analytics', score: Math.min(analyticsScore, 100), reasons: analyticsReasons })
+  scores.push({ agentId: 'accounting', agentName: 'Comptabilité & Finance', score: Math.min(analyticsScore, 100), reasons: analyticsReasons })
 
   return scores.sort((a, b) => b.score - a.score)
 }

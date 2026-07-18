@@ -47,7 +47,7 @@ export function autoConfigure(profile: {
     alerts.push('Avis clients à surveiller quotidiennement')
     reasons.push('Secteur restauration → support + téléphone prioritaires')
   } else if (profile.sector?.match(/tech|saas|web|digital|logiciel/i)) {
-    activated.push('trends', 'analytics')
+    activated.push('content', 'accounting')
     integrations.push('github', 'vercel', 'stripe')
     alerts.push('Veille concurrentielle hebdomadaire')
     reasons.push('Secteur tech → analytics + veille activés')
@@ -57,7 +57,7 @@ export function autoConfigure(profile: {
     alerts.push('Suivi de trésorerie recommandé (secteur à cycles longs)')
     reasons.push('BTP → compta + juridique prioritaires')
   } else if (profile.sector?.match(/commerce|retail|ecommerce/i)) {
-    activated.push('analytics', 'support')
+    activated.push('accounting', 'support')
     integrations.push('shopify', 'woocommerce', 'stripe')
     alerts.push('Taux de conversion et panier moyen à suivre')
     reasons.push('Commerce → analytics + support activés')
@@ -67,7 +67,7 @@ export function autoConfigure(profile: {
     alerts.push('⚠️ Conformité RGPD santé obligatoire')
     reasons.push('Santé → juridique + téléphone prioritaires')
   } else {
-    activated.push('support', 'analytics')
+    activated.push('support', 'accounting')
     reasons.push('Configuration standard')
   }
 
@@ -85,7 +85,7 @@ export function autoConfigure(profile: {
   // CA → niveau de service
   const rev = profile.revenue || ''
   if (rev.includes('500K') || rev.includes('2M') || rev.includes('10M')) {
-    activated.push('accounting', 'analytics')
+    activated.push('accounting', 'accounting')
     reasons.push('CA significatif → compta + analytics activés')
   }
 

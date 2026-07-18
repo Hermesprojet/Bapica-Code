@@ -6,7 +6,7 @@
 
 ## 1. Ce qu'est Bapica
 
-Bapica est une plateforme SaaS multi-agents IA pour PME et indépendants. Elle fournit **13 agents
+Bapica est une plateforme SaaS multi-agents IA pour PME et indépendants. Elle fournit **10 agents
 IA spécialisés** qui **automatisent le contact et les tâches métier** — y compris **contacter et
 répondre aux clients par téléphone et par email**, pas seulement organiser des données.
 
@@ -37,7 +37,7 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 - Intégrations optionnelles : Vapi (vocal), HeyGen/Runway (vidéo), Resend (email), Twenty (CRM), n8n.
 - Déploiement : **Vercel, Root Directory = `bapica`** (l'app n'est pas à la racine du repo).
 
-## 3. Les 13 agents (source : `src/lib/agents.ts`)
+## 3. Les 10 agents (source : `src/lib/agents.ts`)
 
 | id | Persona | Rôle | Formule min |
 |----|---------|------|-------------|
@@ -51,9 +51,6 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 | `video` | Maya | Créateur Vidéo IA | Essentiel |
 | `recruiter` | Yanis | Recruteur IA | Essentiel |
 | `legal` | Inès | Administratif & Juridique (info générale, pas de conseil perso) | Essentiel |
-| `analytics` | Tom | Analytics & Reporting | Pro |
-| `trends` | Lina | Tendances Google / veille marché | Essentiel |
-| `scaling` | Roxane | Croissance & Scaling (systématiser, déléguer, automatiser) | Pro |
 
 - **Prompts de rôle** (RÔLE / MÉTHODE / RÈGLES) : `src/lib/agent-prompts.ts`
   → injectés via `getSystemPromptForAgent(id)` dans `/api/chat` ET `/api/demo-chat`.
@@ -63,7 +60,7 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 ## 4. Plans & tarifs (source : `src/lib/stripe.ts`)
 
 - **Essentiel** — 49 €/mois — 8 agents.
-- **Pro** — 79 €/mois — 13 agents, messages illimités.
+- **Pro** — 79 €/mois — 10 agents, messages illimités.
 - Essai gratuit : 15 jours. Appels vocaux facturés ~0,20 €/min.
 - Variables prix : `STRIPE_PRICE_ESSENTIAL`, `STRIPE_PRICE_PRO`.
 
@@ -87,7 +84,7 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 
 ## 6. Fichiers clés
 
-- `src/lib/agents.ts` — définition des 13 agents (SOURCE DE VÉRITÉ des agents).
+- `src/lib/agents.ts` — définition des 10 agents (SOURCE DE VÉRITÉ des agents).
 - `src/lib/agent-prompts.ts` — rôle/méthode/règles par agent.
 - `src/lib/supabase.ts` / `supabase-admin.ts` — clients Supabase (lazy).
 - `src/lib/stripe.ts` — client Stripe (lazy) + plans + `planFromPriceId`.
@@ -146,7 +143,7 @@ Cohérence produit à vérifier dans les réponses des agents :
 - « Les agents peuvent-ils contacter mes clients par téléphone/email ? » → doit répondre **OUI**
   en citant Sofia (chat/email), Hugo (téléphone), Nadia (appels), Claire (relances email).
 - Chaque agent respecte son rôle (Marc demande le contexte avant de prospecter, Inès renvoie
-  vers un avocat, Tom réclame les chiffres, etc.).
+  vers un avocat, Claire réclame les chiffres avant une prévision, etc.).
 
 ## 10bis. Design / thème (IMPORTANT)
 

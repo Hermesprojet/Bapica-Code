@@ -139,30 +139,4 @@ export const AGENT_CONTENT: Record<string, AgentPageContent> = {
     ],
     keyResult: 'Des documents conformes sans honoraires à chaque question.',
   },
-  analytics: {
-    tagline: 'Tom transforme vos chiffres en décisions : tableaux de bord, tendances et recommandations concrètes.',
-    useCases: [
-      { title: 'Tableaux de bord', desc: 'Vos indicateurs clés (ventes, marges, acquisition) lisibles en un coup d’œil.' },
-      { title: 'Analyse de tendances', desc: 'Ce qui progresse, ce qui décroche, et pourquoi.' },
-      { title: 'Recommandations', desc: 'Des actions priorisées, pas seulement des graphiques.' },
-    ],
-    conversation: [
-      { role: 'user', text: 'Mon chiffre d’affaires stagne alors que j’ai plus de clients. Pourquoi ?' },
-      { role: 'assistant', text: 'Deux hypothèses à vérifier : un panier moyen en baisse ou une dérive de remises. Envoyez-moi vos ventes des 6 derniers mois : je calcule panier moyen, fréquence d’achat et taux de remise par segment, et je vous dis précisément où agir en premier.' },
-    ],
-    keyResult: 'Des décisions fondées sur vos données, pas sur l’intuition.',
-  },
-  trends: {
-    tagline: 'Lina surveille les tendances de recherche de votre marché et détecte les opportunités avant vos concurrents.',
-    useCases: [
-      { title: 'Veille de marché', desc: 'Les recherches qui montent dans votre secteur, semaine après semaine.' },
-      { title: 'Opportunités produits', desc: 'Détecter une demande émergente avant qu’elle soit saturée.' },
-      { title: 'Saisonnalité', desc: 'Anticiper les pics de demande pour ajuster stock et publicité.' },
-    ],
-    conversation: [
-      { role: 'user', text: 'Je vends des produits de jardinage en ligne. Quelles tendances surveiller ?' },
-      { role: 'assistant', text: 'Trois signaux intéressants en ce moment : les recherches sur les potagers surélevés progressent fortement, la récupération d’eau de pluie devient un sujet majeur au printemps, et les demandes « jardinage sans entretien » explosent chez les urbains. Je vous prépare une veille hebdomadaire sur ces trois segments ?' },
-    ],
-    keyResult: 'Un coup d’avance sur votre marché, chaque semaine.',
-  },
 }

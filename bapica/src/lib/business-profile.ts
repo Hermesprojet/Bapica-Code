@@ -230,18 +230,18 @@ const AGENT_EFFICIENCY: Record<string, { timeSaved: string; costEquivalent: stri
 }
 
 const AGENT_MAP: Record<string, string[]> = {
-  ecommerce: ['content', 'support', 'telephone', 'analytics'],
+  ecommerce: ['content', 'support', 'telephone', 'accounting'],
   restauration: ['telephone', 'content', 'general', 'support'],
   immobilier: ['prospection-strategie', 'closer', 'telephone', 'content', 'legal'],
   services: ['legal', 'accounting', 'prospection-strategie', 'content', 'general'],
   sante: ['telephone', 'support', 'legal', 'accounting'],
   formation: ['content', 'video', 'support', 'general'],
   btp: ['telephone', 'accounting', 'legal', 'prospection-strategie'],
-  saas: ['analytics', 'content', 'support', 'scaling', 'prospection-strategie'],
+  saas: ['accounting', 'content', 'support', 'prospection-strategie', 'prospection-strategie'],
   commerce: ['content', 'telephone', 'support', 'general'],
   freelance: ['accounting', 'content', 'prospection-strategie', 'general'],
-  logistique: ['telephone', 'analytics', 'accounting', 'support'],
-  finance: ['prospection-strategie', 'closer', 'legal', 'analytics', 'scaling'],
+  logistique: ['telephone', 'accounting', 'accounting', 'support'],
+  finance: ['prospection-strategie', 'closer', 'legal', 'accounting', 'prospection-strategie'],
 }
 
 // ============================================================
@@ -337,7 +337,7 @@ export function analyzeBusinessProfile(data: any): BusinessProfile {
   
   profile.recommendedAgents = AGENT_MAP[sector || ''] || ['general', 'content', 'support']
   if (profile.stage === 'scaleup' || profile.stage === 'growth') {
-    profile.recommendedAgents.push('scaling')
+    profile.recommendedAgents.push('prospection-strategie')
   }
   if (profile.customerAcquisition.includes('phone') || sector === 'btp' || sector === 'restauration') {
     if (!profile.recommendedAgents.includes('telephone')) profile.recommendedAgents.unshift('telephone')
@@ -376,14 +376,14 @@ export function analyzeBusinessProfile(data: any): BusinessProfile {
       impact: 'medium',
       effort: 'low',
       timeframe: '3-months',
-      agentRecommended: 'analytics',
+      agentRecommended: 'accounting',
     },
     {
       action: profile.stage !== 'mature' ? 'Déployer une stratégie de scaling automatisée' : 'Optimiser les processus existants',
       impact: 'transformational',
       effort: 'high',
       timeframe: '3-months',
-      agentRecommended: 'scaling',
+      agentRecommended: 'prospection-strategie',
     },
   ]
 

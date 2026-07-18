@@ -31,7 +31,7 @@ function Hero() {
           <div>
           <h1 className="text-5xl md:text-6xl xl:text-7xl font-bold tracking-tight text-[#111827] leading-[1.08] mb-8">
             Automatisez votre entreprise<br />
-            <span className="text-[#2563EB]">avec 12 agents intelligents.</span>
+            <span className="text-[#2563EB]">avec 10 agents intelligents.</span>
           </h1>
           <p className="text-xl md:text-2xl text-[#6B7280] max-w-2xl mb-12 leading-relaxed">
             Bapica se connecte à vos outils, analyse votre activité et met au travail 
@@ -139,10 +139,10 @@ function Fonctionnement() {
     },
     {
       num: "03",
-      title: "Vos 12 agents s'activent",
+      title: "Vos 10 agents s'activent",
       desc: "Conseiller stratégique, expert-comptable, recruteur, juriste... Ils se configurent automatiquement.",
       icon: "🤖",
-      details: ["12 agents spécialisés", "Auto-configuration en 2 min", "Prêts à travailler 24/7"]
+      details: ["10 agents spécialisés", "Auto-configuration en 2 min", "Prêts à travailler 24/7"]
     },
     {
       num: "04",
@@ -235,8 +235,8 @@ function Chiffres() {
 function Agents() {
   const agents = [
     "Conseiller croissance", "Expert‑comptable", "Support client",
-    "Recruteur", "Juridique", "Data analyst", "Veille stratégique",
-    "Téléphone", "Vidéo", "Vocal", "Rédaction", "Assistant général"
+    "Recruteur", "Juridique", "Téléphone", "Vidéo",
+    "Closer vocal", "Rédaction", "Assistant général"
   ]
 
   return (
@@ -244,7 +244,7 @@ function Agents() {
       <div className="container mx-auto max-w-7xl px-6">
         <div className="max-w-4xl">
           <p className="text-sm font-medium text-[#2563EB] uppercase tracking-wider mb-4">Agents</p>
-          <h2 className="text-4xl md:text-5xl font-bold text-[#111827] mb-4">12 spécialistes au service de votre PME.</h2>
+          <h2 className="text-4xl md:text-5xl font-bold text-[#111827] mb-4">10 spécialistes au service de votre PME.</h2>
           <p className="text-xl text-[#6B7280] mb-12">Ils collaborent entre eux. Ils apprennent de votre activité. Ils agissent 24/7.</p>
           <div className="flex flex-wrap gap-3">
             {agents.map((a, i) => (
@@ -314,8 +314,8 @@ function Omnichannel() {
 // ─── PRICING ───────────────────────────────────────────────
 function Pricing() {
   const plans = [
-    { name: "Essentiel", price: "49€", desc: "Pour démarrer l&apos;automatisation", features: ["12 agents IA", "5 connexions", "Auto‑configuration", "Conseiller stratégique", "Support email 48h"] },
-    { name: "Pro", price: "79€", desc: "Pour les PME en croissance", features: ["12 agents IA", "Connexions illimitées", "Auto‑configuration avancée", "Conseiller stratégique prioritaire", "Support dédié < 2h", "Analyses prédictives", "Orchestration workflows"], highlight: true },
+    { name: "Essentiel", price: "49€", desc: "Pour démarrer l&apos;automatisation", features: ["8 agents IA", "5 connexions", "Auto‑configuration", "Conseiller stratégique", "Support email 48h"] },
+    { name: "Pro", price: "79€", desc: "Pour les PME en croissance", features: ["10 agents IA", "Connexions illimitées", "Auto‑configuration avancée", "Conseiller stratégique prioritaire", "Support dédié < 2h", "Analyses prédictives", "Orchestration workflows"], highlight: true },
   ]
 
   return (

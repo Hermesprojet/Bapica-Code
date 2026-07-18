@@ -91,7 +91,7 @@ function buildSystemPrompt(agent: AgentConfig): string {
   lines.push(
     'Parle en prose naturelle, sans listes à puces ni formatting. Comme un expert qui dialogue avec un dirigeant de PME.',
     'Intègre le contexte sans jamais dire "je vois que", "d\'après ton profil", "selon tes données". Les infos que tu as sur le client sont naturelles, pas des stats à réciter.',
-    'Tu connais Bapica : 13 agents IA spécialisés, plans 49€ et 79€, 15 jours d\'essai, dashboard avec score de santé et ROI.',
+    'Tu connais Bapica : 10 agents IA spécialisés, plans 49€ et 79€, 15 jours d\'essai, dashboard avec score de santé et ROI.',
     "CAPACITÉ CLÉ DE BAPICA — À NE JAMAIS CONTREDIRE : Bapica automatise le CONTACT avec les clients de l'utilisateur et AGIT sur ses outils, ce n'est pas un simple CRM ni un outil d'organisation. Concrètement : Sofia répond aux clients par chat et par email 24h/24 ; Hugo répond aux appels téléphoniques entrants (standard) ; Nadia appelle les prospects par téléphone ; Claire envoie les factures et relance les impayés par email ; Marc envoie les messages de prospection par email et LinkedIn ; Camille crée le contenu ET le PUBLIE / le PROGRAMME sur les réseaux sociaux connectés (LinkedIn, Instagram, Facebook), sur autorisation du client.",
     "Quand on te demande si les agents peuvent contacter/appeler/répondre aux clients (téléphone, email) OU se connecter aux réseaux sociaux et y publier (LinkedIn, Instagram, Facebook) : réponds OUI, clairement, et cite l'agent qui le fait (Sofia, Hugo, Nadia, Claire, Marc, ou Camille pour les réseaux). INTERDIT : ne réponds JAMAIS « je ne peux pas contacter vos clients », « je ne peux pas me connecter à LinkedIn/Instagram/Facebook », « je ne peux pas publier », « je suis une IA de création, pas de publication », « c'est une limite volontaire », ni « je me contente d'organiser vos données » — ces réponses sont fausses et contraires à Bapica. Si la connexion à une plateforme n'est pas encore branchée, explique comment la brancher (Paramètres → connexions) ; ne nie jamais la capacité.",
     'Adapte ton niveau de détail à la maturité du client : simple pour un débutant, technique pour un expert.',
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
     if (cachedRAG) {
       ragContext = cachedRAG
     } else {
-      const ragAgents = ['prospection-strategie', 'support', 'recruiter', 'legal', 'accounting', 'analytics', 'trends']
+      const ragAgents = ['prospection-strategie', 'support', 'recruiter', 'legal', 'accounting']
       if (ragAgents.includes(agent.id)) {
         try {
           const matches = await searchKnowledge(safeMessage, auth.user.id, agent.id)

@@ -222,7 +222,7 @@ export function generateCompetitiveAnalysis(sector: string): CompetitiveAnalysis
   const comparison: ComparisonPoint[] = [
     {
       dimension: 'Nombre d\'agents IA',
-      bapica: '13 agents spécialisés',
+      bapica: '10 agents spécialisés',
       concurrentA: '8 agents',
       substi: '3 agents',
       advantage: 'bapica',
@@ -289,7 +289,7 @@ export function generateCompetitiveAnalysis(sector: string): CompetitiveAnalysis
     competitiveAdvantages: [
       'IA la plus avancée du marché (Claude vs GPT-4o-mini)',
       'Seule plateforme avec intelligence business adaptative',
-      '13 agents vs 8 (Limova) vs 3 (Substi)',
+      '10 agents vs 8 (Limova) vs 3 (Substi)',
       'Dashboard analytics que personne n\'a',
       'Onboarding intelligent automatisé (pas de RDV nécessaire)',
     ],
