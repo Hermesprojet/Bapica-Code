@@ -135,60 +135,125 @@ function suggestAgents(data: OnboardingData): AgentSuggestion[] {
 function ProfileStep({ data, setData, onNext, onBack }: { data: any; setData: any; onNext: () => void; onBack: () => void }) {
   const [companyName, setCompanyName] = useState(data.companyName || '')
   const [website, setWebsite] = useState(data.website || '')
+  const [vatNumber, setVatNumber] = useState(data.vatNumber || '')
+  const [legalForm, setLegalForm] = useState(data.legalForm || '')
+  const [sector, setSector] = useState(data.sector || '')
+  const [foundedYear, setFoundedYear] = useState(data.foundedYear || '')
   const [revenue, setRevenue] = useState(data.revenue || '')
+  const [employeeCount, setEmployeeCount] = useState(data.employeeCount || '')
+  const [clientType, setClientType] = useState(data.clientType || '')
   const [country, setCountry] = useState(data.country || 'France')
   const [city, setCity] = useState(data.city || '')
+  const [address, setAddress] = useState(data.address || '')
+  const [competitors, setCompetitors] = useState(data.competitors || '')
   const [mainProblem, setMainProblem] = useState(data.mainProblem || '')
   const [growthGoal, setGrowthGoal] = useState(data.growthGoal || '')
 
   const handleNext = () => {
-    setData({ ...data, companyName, website, revenue, country, city, mainProblem, growthGoal })
+    setData({
+      ...data,
+      companyName, website, vatNumber, legalForm, sector, foundedYear, revenue,
+      employeeCount, clientType, country, city, address, competitors, mainProblem, growthGoal,
+    })
     onNext()
   }
 
+  const inputCls = 'w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground'
+
   return (
     <div className="animate-slide-up">
-      <h2 className="text-2xl font-bold mb-2">Mieux vous connaître</h2>
-      <p className="text-muted-foreground mb-8">Ces informations permettent de personnaliser vos agents.</p>
-      <div className="space-y-6 max-w-lg mx-auto text-left">
+      <h2 className="text-2xl font-bold mb-2">Votre entreprise en détail</h2>
+      <p className="text-muted-foreground mb-8">Plus vous précisez, plus Bapica connaît votre société et conseille juste. Seul le nom est requis.</p>
+      <div className="space-y-5 max-w-lg mx-auto text-left">
         <div>
-          <label className="block text-sm font-medium mb-1.5">Nom de votre société</label>
-          <input value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Ex: SARL Dubois" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" />
+          <label className="block text-sm font-medium mb-1.5">Nom de votre société *</label>
+          <input value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Ex: SARL Dubois" className={inputCls} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Site web</label>
+            <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://monsite.com" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5">N° TVA / SIRET</label>
+            <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} placeholder="FR12345678901" className={inputCls} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Forme juridique</label>
+            <select value={legalForm} onChange={e => setLegalForm(e.target.value)} className={inputCls}>
+              <option value="">Sélectionnez...</option>
+              <option>Auto-entrepreneur</option><option>EI / EIRL</option><option>SARL / EURL</option>
+              <option>SAS / SASU</option><option>SA</option><option>Association</option><option>Autre</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Année de création</label>
+            <input value={foundedYear} onChange={e => setFoundedYear(e.target.value)} placeholder="Ex: 2015" inputMode="numeric" className={inputCls} />
+          </div>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1.5">Site web</label>
-          <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://www.monsite.com" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" />
+          <label className="block text-sm font-medium mb-1.5">Secteur d&apos;activité</label>
+          <input value={sector} onChange={e => setSector(e.target.value)} placeholder="Ex: Menuiserie, e-commerce mode, cabinet comptable…" className={inputCls} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Chiffre d&apos;affaires annuel</label>
+            <select value={revenue} onChange={e => setRevenue(e.target.value)} className={inputCls}>
+              <option value="">Sélectionnez...</option>
+              <option value="< 100K">Moins de 100K€</option>
+              <option value="100K-500K">100K€ - 500K€</option>
+              <option value="500K-2M">500K€ - 2M€</option>
+              <option value="2M-10M">2M€ - 10M€</option>
+              <option value="> 10M">Plus de 10M€</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5">Effectif</label>
+            <select value={employeeCount} onChange={e => setEmployeeCount(e.target.value)} className={inputCls}>
+              <option value="">Sélectionnez...</option>
+              <option value="1">1 (seul)</option><option value="2-5">2 à 5</option><option value="6-10">6 à 10</option>
+              <option value="11-50">11 à 50</option><option value="51-250">51 à 250</option><option value="250+">250+</option>
+            </select>
+          </div>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1.5">Chiffre d&apos;affaires annuel</label>
-          <select value={revenue} onChange={e => setRevenue(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground">
+          <label className="block text-sm font-medium mb-1.5">Type de clientèle</label>
+          <select value={clientType} onChange={e => setClientType(e.target.value)} className={inputCls}>
             <option value="">Sélectionnez...</option>
-            <option value="< 100K">Moins de 100K€</option>
-            <option value="100K-500K">100K€ - 500K€</option>
-            <option value="500K-2M">500K€ - 2M€</option>
-            <option value="2M-10M">2M€ - 10M€</option>
-            <option value="> 10M">Plus de 10M€</option>
+            <option value="b2b">Entreprises (B2B)</option>
+            <option value="b2c">Particuliers (B2C)</option>
+            <option value="both">Les deux</option>
           </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Adresse</label>
+          <input value={address} onChange={e => setAddress(e.target.value)} placeholder="N° et rue" className={inputCls} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1.5">Pays</label>
-            <select value={country} onChange={e => setCountry(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground">
-              <option>France</option><option>Belgique</option><option>Espagne</option><option>Italie</option><option>Allemagne</option><option>Pologne</option>
+            <select value={country} onChange={e => setCountry(e.target.value)} className={inputCls}>
+              <option>France</option><option>Belgique</option><option>Suisse</option><option>Espagne</option><option>Italie</option><option>Allemagne</option><option>Pologne</option><option>Maroc</option><option>Autre</option>
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1.5">Ville</label>
-            <input value={city} onChange={e => setCity(e.target.value)} placeholder="Ex: Lyon" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground" />
+            <input value={city} onChange={e => setCity(e.target.value)} placeholder="Ex: Lyon" className={inputCls} />
           </div>
         </div>
         <div>
+          <label className="block text-sm font-medium mb-1.5">Principaux concurrents</label>
+          <input value={competitors} onChange={e => setCompetitors(e.target.value)} placeholder="Ex: noms ou sites de vos concurrents" className={inputCls} />
+        </div>
+        <div>
           <label className="block text-sm font-medium mb-1.5">Plus grand défi actuel</label>
-          <textarea value={mainProblem} onChange={e => setMainProblem(e.target.value)} placeholder="Décrivez votre préoccupation principale..." className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground resize-none" rows={2} />
+          <textarea value={mainProblem} onChange={e => setMainProblem(e.target.value)} placeholder="Décrivez votre préoccupation principale..." className={`${inputCls} resize-none`} rows={2} />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1.5">Objectif principal</label>
-          <select value={growthGoal} onChange={e => setGrowthGoal(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground">
+          <select value={growthGoal} onChange={e => setGrowthGoal(e.target.value)} className={inputCls}>
             <option value="">Sélectionnez...</option>
             <option value="ca">Augmenter mon CA</option>
             <option value="temps">Gagner du temps</option>
@@ -201,7 +266,7 @@ function ProfileStep({ data, setData, onNext, onBack }: { data: any; setData: an
       </div>
       <div className="flex justify-between pt-8 max-w-lg mx-auto">
         <button onClick={onBack} className="px-6 py-3 rounded-xl border border-border text-muted-foreground">Retour</button>
-        <button onClick={handleNext} className="px-6 py-3 rounded-xl bg-primary text-white font-medium">Continuer</button>
+        <button onClick={handleNext} disabled={!companyName.trim()} className="px-6 py-3 rounded-xl bg-primary text-white font-medium disabled:opacity-50">Continuer</button>
       </div>
     </div>
   )
