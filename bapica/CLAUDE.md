@@ -224,6 +224,21 @@ Cohérence produit à vérifier dans les réponses des agents :
   (optionnel — sans, seul le site web est lu), `OPENAI_API_KEY` (pour stocker dans le RAG).
 - UI : bouton « Lancer la recherche » sur `dashboard/knowledge`.
 
+## 10septies. Canaux de messagerie (WhatsApp / Telegram / Messenger)
+
+- Objectif : rendre les agents joignables sur les messageries. Backend **entièrement codé** :
+  `src/lib/omnichannel.ts` (webhooks + routage vers le bon agent + envoi) et le webhook UNIQUE
+  `POST /api/webhooks/messaging` (auto-détection de la plateforme). `routeMessage` route par mots-clés
+  vers un agent existant (les intentions « analyse/rapport » → `accounting`).
+- Statut & guide : page `dashboard/channels` (lien sidebar « Canaux ») + route
+  `GET /api/channels/status` (Bearer) qui renvoie des booléens de présence des jetons — **jamais leur
+  valeur**. Affiche l'URL de webhook commune (`<APP_URL>/api/webhooks/messaging`).
+- **À activer en prod** (variables Vercel, puis redéploiement + enregistrement du webhook) :
+  WhatsApp (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_VERIFY_TOKEN`),
+  Telegram (`TELEGRAM_BOT_TOKEN` + `setWebhook`), Messenger (`MESSENGER_PAGE_TOKEN`,
+  `MESSENGER_VERIFY_TOKEN`), et `NEXT_PUBLIC_APP_URL` (le webhook rappelle `/api/demo-chat`).
+- Sans jetons : `sendWhatsApp/Telegram/Messenger` renvoient `false` proprement (pas de crash).
+
 ## 10. Déploiement
 
 - Branche de dev : `claude/hopeful-gates-nucb4p` → PR → merge dans `master` → Vercel déploie.

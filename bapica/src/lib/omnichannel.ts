@@ -76,9 +76,9 @@ export function routeMessage(msg: IncomingMessage): {
     return { agentId: 'legal', greeting: '', confidence: 0.85 }
   }
 
-  // Intention analytics
+  // Intention analyse / reporting (rapports financiers → Claire)
   if (t.match(/données|kpi|analyse|tableau|statistique|métrique|rapport/)) {
-    return { agentId: 'analytics', greeting: '', confidence: 0.8 }
+    return { agentId: 'accounting', greeting: '', confidence: 0.8 }
   }
 
   // Intention connexion
@@ -89,7 +89,7 @@ export function routeMessage(msg: IncomingMessage): {
   // Default
   return {
     agentId: 'general',
-    greeting: `Bonjour ${msg.userName.split(' ')[0]} ! Je peux vous aider sur :\n\n📈 Prospection & croissance\n📊 Comptabilité\n🎧 Support client\n👔 Recrutement\n⚖️ Juridique\n📉 Analytics\n🔌 Connecter vos outils\n\nDites-moi ce qui vous intéresse.`,
+    greeting: `Bonjour ${msg.userName.split(' ')[0]} ! Je peux vous aider sur :\n\n📈 Prospection & croissance\n📊 Comptabilité & trésorerie\n🎧 Support client\n👔 Recrutement\n⚖️ Juridique\n🎬 Contenu & vidéo\n🔌 Connecter vos outils\n\nDites-moi ce qui vous intéresse.`,
     confidence: 0.6,
   }
 }

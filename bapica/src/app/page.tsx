@@ -1,6 +1,7 @@
 import { Navbar } from "@/components/landing/navbar"
 import { Footer } from "@/components/landing/footer"
 import { HeroConversation } from "@/components/landing/hero-conversation"
+import { AgentsShowcase } from "@/components/landing/agents-showcase"
 
 export default function HomePage() {
   return (
@@ -11,7 +12,7 @@ export default function HomePage() {
       <Capacites />
       <Fonctionnement />
       <Chiffres />
-      <Agents />
+      <AgentsShowcase />
       <Connecteurs />
       <Omnichannel />
       <Pricing />
@@ -98,7 +99,7 @@ function Capacites() {
   ]
 
   return (
-    <section className="py-24 bg-[#F9FAFB]">
+    <section id="features" className="scroll-mt-20 py-24 bg-[#F9FAFB]">
       <div className="container mx-auto max-w-7xl px-6">
         <div className="mb-16">
           <p className="text-sm font-medium text-[#2563EB] uppercase tracking-wider mb-4">Capacités</p>
@@ -168,7 +169,7 @@ function Fonctionnement() {
   ]
 
   return (
-    <section id="fonctionnement" className="py-24 bg-white">
+    <section id="fonctionnement" className="scroll-mt-20 py-24 bg-white">
       <div className="container mx-auto max-w-7xl px-6">
         <div className="mb-16">
           <p className="text-sm font-medium text-[#2563EB] uppercase tracking-wider mb-4">Fonctionnement</p>
@@ -212,7 +213,7 @@ function Chiffres() {
     { value: "5 min", label: "De mise en route" },
     { value: "47h", label: "Économisées par mois" },
     { value: "77", label: "Plateformes connectables" },
-    { value: "12", label: "Agents 24/7" },
+    { value: "10", label: "Agents 24/7" },
   ]
 
   return (
@@ -225,32 +226,6 @@ function Chiffres() {
               <div className="text-[#9CA3AF] text-lg">{s.label}</div>
             </div>
           ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ─── AGENTS ────────────────────────────────────────────────
-function Agents() {
-  const agents = [
-    "Conseiller croissance", "Expert‑comptable", "Support client",
-    "Recruteur", "Juridique", "Téléphone", "Vidéo",
-    "Closer vocal", "Rédaction", "Assistant général"
-  ]
-
-  return (
-    <section className="py-24 bg-white">
-      <div className="container mx-auto max-w-7xl px-6">
-        <div className="max-w-4xl">
-          <p className="text-sm font-medium text-[#2563EB] uppercase tracking-wider mb-4">Agents</p>
-          <h2 className="text-4xl md:text-5xl font-bold text-[#111827] mb-4">10 spécialistes au service de votre PME.</h2>
-          <p className="text-xl text-[#6B7280] mb-12">Ils collaborent entre eux. Ils apprennent de votre activité. Ils agissent 24/7.</p>
-          <div className="flex flex-wrap gap-3">
-            {agents.map((a, i) => (
-              <span key={i} className="px-4 py-2 bg-[#F3F4F6] text-[#374151] rounded-lg text-sm font-medium hover:bg-[#E5E7EB] transition-colors">{a}</span>
-            ))}
-          </div>
         </div>
       </div>
     </section>
@@ -290,7 +265,7 @@ function Omnichannel() {
   ]
 
   return (
-    <section className="py-24 bg-white">
+    <section id="canaux" className="scroll-mt-20 py-24 bg-white">
       <div className="container mx-auto max-w-7xl px-6">
         <div className="mb-16">
           <p className="text-sm font-medium text-[#2563EB] uppercase tracking-wider mb-4">Canaux</p>
@@ -319,7 +294,7 @@ function Pricing() {
   ]
 
   return (
-    <section className="py-24 bg-white">
+    <section id="pricing" className="scroll-mt-20 py-24 bg-white">
       <div className="container mx-auto max-w-7xl px-6">
         <div className="text-center mb-16">
           <p className="text-sm font-medium text-[#2563EB] uppercase tracking-wider mb-4">Prix</p>

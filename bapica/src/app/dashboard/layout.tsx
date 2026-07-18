@@ -9,6 +9,7 @@ import {
   Clapperboard,
   BookOpen,
   Share2,
+  MessageCircle,
   CreditCard,
   Settings,
   LogOut,
@@ -25,6 +26,7 @@ const sidebarLinks = [
   { href: '/dashboard/video-studio', label: 'Studio Vidéo', icon: Clapperboard },
   { href: '/dashboard/knowledge', label: 'Connaissances', icon: BookOpen },
   { href: '/dashboard/connections', label: 'Connexions', icon: Share2 },
+  { href: '/dashboard/channels', label: 'Canaux', icon: MessageCircle },
   { href: '/dashboard/billing', label: 'Abonnement', icon: CreditCard },
   { href: '/dashboard/settings', label: 'Paramètres', icon: Settings },
 ]

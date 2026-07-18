@@ -8,10 +8,11 @@ export function Navbar() {
   const [open, setOpen] = useState(false)
 
   const navLinks = [
-    { href: '#features', label: 'Fonctionnalités' },
-    { href: '#use-cases', label: "Cas d'usage" },
-    { href: '#agents', label: 'Agents' },
-    { href: '#pricing', label: 'Tarifs' },
+    { href: '/#features', label: 'Fonctionnalités' },
+    { href: '/#fonctionnement', label: 'Fonctionnement' },
+    { href: '/#agents', label: 'Agents' },
+    { href: '/#canaux', label: 'Canaux' },
+    { href: '/#pricing', label: 'Tarifs' },
   ]
 
   return (
