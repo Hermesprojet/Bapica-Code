@@ -146,3 +146,41 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ─────────────────────────────────────────────────────────────
+-- RAG par client : documents téléversés → base de connaissances
+-- propre à l'entreprise du client (embeddings OpenAI 1536 dims).
+-- Nécessite l'extension pgvector.
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS client_knowledge (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) NOT NULL,
+  source TEXT NOT NULL,           -- nom du document
+  content TEXT NOT NULL,          -- extrait (chunk)
+  embedding VECTOR(1536),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_client_knowledge_user ON client_knowledge(user_id);
+CREATE INDEX IF NOT EXISTS idx_client_knowledge_embedding
+  ON client_knowledge USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- Jetons/documents sensibles : RLS activée sans policy (accès service_role only).
+ALTER TABLE client_knowledge ENABLE ROW LEVEL SECURITY;
+
+-- Recherche sémantique scopée par utilisateur.
+CREATE OR REPLACE FUNCTION match_client_knowledge(
+  query_embedding VECTOR(1536),
+  filter_user_id UUID,
+  match_threshold FLOAT,
+  match_count INT
+)
+RETURNS TABLE (id UUID, source TEXT, content TEXT, similarity FLOAT)
+LANGUAGE sql STABLE AS $$
+  SELECT id, source, content, 1 - (embedding <=> query_embedding) AS similarity
+  FROM client_knowledge
+  WHERE user_id = filter_user_id
+    AND 1 - (embedding <=> query_embedding) > match_threshold
+  ORDER BY embedding <=> query_embedding
+  LIMIT match_count;
+$$;
