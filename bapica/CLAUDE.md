@@ -245,3 +245,24 @@ Cohérence produit à vérifier dans les réponses des agents :
 - Vérifier après déploiement que le build Vercel est **Ready** (pas seulement le build local).
 - Si un agent « ne répond pas » : d'abord vérifier que le **build Vercel a réussi** (souvent la
   vraie cause), puis les variables d'env (`ANTHROPIC_API_KEY`, Supabase).
+
+## 11. ⚠️ À activer en prod (le code est prêt, il manque les clés/SQL)
+
+Plusieurs fonctions sont **entièrement codées** mais dormantes tant que leurs variables ne sont pas
+renseignées dans **Vercel (Environment Variables)** et, pour le RAG, tant que
+**`bapica/supabase-schema.sql`** n'a pas été exécuté (Supabase → SQL Editor). Tableau récapitulatif :
+
+| Fonction | À configurer |
+|---|---|
+| Chat des agents (base) | `ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_APP_URL` |
+| Paiement | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_PRICE_ESSENTIAL`, `STRIPE_PRICE_PRO` |
+| RAG documentaire + recherche web (stockage) | `OPENAI_API_KEY` + **exécuter `supabase-schema.sql`** (extension `vector`, tables `client_knowledge`/`social_connections`, RPC de recherche) |
+| Recherche internet sur l'entreprise | `SERPAPI_KEY` (optionnel — sans, seul le site web du client est lu) |
+| Vidéo (rendu réel) | `RUNWAY_API_KEY` ; `HEYGEN_API_KEY` + `HEYGEN_AVATAR_ID` + `HEYGEN_VOICE_ID` ; `ELEVENLABS_API_KEY` |
+| Publication LinkedIn | app LinkedIn (« Sign In with LinkedIn using OpenID Connect » + « Share on LinkedIn ») + `LINKEDIN_CLIENT_ID`/`LINKEDIN_CLIENT_SECRET` + URL de redirection `/api/social/linkedin/callback` |
+| Canaux messagerie | WhatsApp (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_VERIFY_TOKEN`) ; Telegram (`TELEGRAM_BOT_TOKEN` + `setWebhook`) ; Messenger (`MESSENGER_PAGE_TOKEN`, `MESSENGER_VERIFY_TOKEN`) — voir §10septies |
+
+**Comportement sans clé = propre** : les routes renvoient un message « en cours de configuration »
+(503 / erreur claire), jamais un crash. Au 1er test réel, si une fonction échoue, **récupérer le
+message d'erreur brut affiché** (il remonte l'erreur du service) et ajuster. Détail des variables :
+`bapica/.env.example`.
