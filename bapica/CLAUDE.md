@@ -257,7 +257,36 @@ Cohérence produit à vérifier dans les réponses des agents :
     réutilise `buildBusinessBrief` + `getSystemPromptForAgent`).
   - **Repli** : sans secret/connexion, comportement mono-bot conservé (`TELEGRAM_BOT_TOKEN` +
     `demo-chat`) → pas de régression. **Prérequis** : exécuter `supabase-schema.sql`.
-  - WhatsApp multi-client = Phase 2 (résolution par numéro `To` → client ; réutilisera ce socle).
+- **Hub multi-client WhatsApp** (socle FAIT, connexion client À FAIRE) :
+  - **Fait** : `sendWhatsApp(to, text, {token, phoneId})` utilise les identifiants DU CLIENT ;
+    le webhook résout le locataire via `msg.metadata.phoneId` (= `phone_number_id` de l'API Cloud,
+    déjà extrait par `handleWhatsAppWebhook`) → `getChannelByExternal('whatsapp', phoneId)` →
+    réponse avec le token du client + `replyForUser` (contexte de son entreprise).
+    Repli mono-locataire conservé (variables globales) si non résolu.
+  - **Reste à faire — Embedded Signup** (décision produit : le client garde SON numéro, sans jamais
+    voir Facebook Developers) :
+    1. Prérequis business (côté utilisateur, délai de plusieurs jours) : compte **Meta Business** +
+       **vérification d'entreprise** + App Meta (type Business) avec produit **WhatsApp** +
+       configuration **Embedded Signup**.
+    2. Variables à obtenir puis mettre dans Vercel : `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`,
+       `WHATSAPP_CONFIG_ID`.
+    3. À coder ensuite : bouton « Connecter WhatsApp » (SDK JS Meta, popup `configuration_id`) →
+       renvoie un `code` → route d'échange côté serveur (code → token client, WABA id,
+       `phone_number_id`) → `saveChannel(userId, 'whatsapp', { credentials: { accessToken },
+       externalId: phone_number_id })` → abonner le numéro au webhook de l'app.
+       Dès cet enregistrement, la plomberie ci-dessus fonctionne sans autre changement.
+  - Alternative écartée pour l'instant : Twilio ISV / 360dialog Partner (même principe, autre
+    fournisseur). Twilio reste branché en **mono-numéro** pour les tests (sandbox).
+  - Diagnostic : `POST /api/channels/whatsapp/test` (Bearer) + bouton « Tester l'envoi WhatsApp »
+    dans `dashboard/channels` → renvoie l'**erreur Twilio exacte** (ex. `20003 Authenticate` =
+    mauvais `TWILIO_AUTH_TOKEN`).
+
+## ⚠️ Piège de déploiement (rencontré 2 fois)
+Après avoir ajouté une variable d'environnement dans Vercel, **ne jamais cliquer « Redeploy » sur un
+ancien déploiement de la liste** : cela remet CE code-là en production et fait disparaître les
+fonctionnalités récentes (symptôme : une route récente répond 404, ou un champ de réponse a disparu).
+Toujours redéployer **le déploiement le plus récent**, ou pousser un commit (même vide) pour forcer
+un déploiement propre du dernier code.
 
 ## 10. Déploiement
 
