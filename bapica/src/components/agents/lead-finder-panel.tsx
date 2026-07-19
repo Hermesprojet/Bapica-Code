@@ -29,10 +29,12 @@ const SIZES = [
  */
 export function LeadFinderPanel({ persona }: { persona: string }) {
   const [open, setOpen] = useState(false)
+  const [source, setSource] = useState<'apollo' | 'hunter'>('apollo')
   const [titles, setTitles] = useState('')
   const [location, setLocation] = useState('')
   const [keywords, setKeywords] = useState('')
   const [size, setSize] = useState('')
+  const [domain, setDomain] = useState('')
   const [status, setStatus] = useState<'idle' | 'searching' | 'done' | 'err'>('idle')
   const [error, setError] = useState('')
   const [leads, setLeads] = useState<Lead[]>([])
@@ -40,22 +42,23 @@ export function LeadFinderPanel({ persona }: { persona: string }) {
 
   const search = async () => {
     if (status === 'searching') return
-    if (!titles.trim() && !keywords.trim() && !location.trim()) {
+    if (source === 'apollo' && !titles.trim() && !keywords.trim() && !location.trim()) {
       setStatus('err'); setError('Renseignez au moins un poste, un mot-clé ou un lieu.'); return
+    }
+    if (source === 'hunter' && !domain.trim()) {
+      setStatus('err'); setError("Renseignez le domaine de l'entreprise (ex : exemple.com)."); return
     }
     setStatus('searching'); setError(''); setLeads([])
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token || ''
+      const body = source === 'hunter'
+        ? { source, domain: domain.trim() }
+        : { source, titles: titles.trim(), locations: location.trim(), keywords: keywords.trim(), employeeRanges: size ? [size] : undefined }
       const res = await fetch('/api/leads/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          titles: titles.trim(),
-          locations: location.trim(),
-          keywords: keywords.trim(),
-          employeeRanges: size ? [size] : undefined,
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (res.ok && data.success) {
@@ -85,33 +88,60 @@ export function LeadFinderPanel({ persona }: { persona: string }) {
 
       {open && (
         <div className="border-t border-border p-4 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input
-              value={titles}
-              onChange={(e) => setTitles(e.target.value)}
-              placeholder="Poste(s) : Directeur commercial, DAF…"
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <input
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Lieu : France, Paris, Lyon…"
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <input
-              value={keywords}
-              onChange={(e) => setKeywords(e.target.value)}
-              placeholder="Secteur / mots-clés : restauration, SaaS…"
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <select
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          {/* Sélecteur de source */}
+          <div className="inline-flex rounded-lg border border-border p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setSource('apollo')}
+              className={`rounded-md px-3 py-1.5 font-medium transition-colors ${source === 'apollo' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
             >
-              {SIZES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
+              Apollo — par critères
+            </button>
+            <button
+              type="button"
+              onClick={() => setSource('hunter')}
+              className={`rounded-md px-3 py-1.5 font-medium transition-colors ${source === 'hunter' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Hunter — par domaine
+            </button>
           </div>
+
+          {source === 'apollo' ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                value={titles}
+                onChange={(e) => setTitles(e.target.value)}
+                placeholder="Poste(s) : Directeur commercial, DAF…"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Lieu : France, Paris, Lyon…"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <input
+                value={keywords}
+                onChange={(e) => setKeywords(e.target.value)}
+                placeholder="Secteur / mots-clés : restauration, SaaS…"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <select
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {SIZES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </div>
+          ) : (
+            <input
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="Domaine de l'entreprise : exemple.com"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          )}
 
           <div className="flex items-center justify-between gap-3">
             {status === 'err' ? (
@@ -167,8 +197,9 @@ export function LeadFinderPanel({ persona }: { persona: string }) {
           )}
 
           <p className="text-[11px] text-muted-foreground">
-            Résultats réels via Apollo.io (clé APOLLO_API_KEY requise). Les emails masqués nécessitent
-            un crédit d&apos;enrichissement Apollo pour être révélés.
+            {source === 'apollo'
+              ? "Apollo (clé APOLLO_API_KEY) : découverte par critères. L'API People Search nécessite un plan Apollo payant ; les emails masqués demandent un crédit d'enrichissement."
+              : "Hunter (clé HUNTER_API_KEY) : personnes et emails réels d'un domaine d'entreprise. API accessible dès le plan gratuit (~25 recherches/mois)."}
           </p>
         </div>
       )}
