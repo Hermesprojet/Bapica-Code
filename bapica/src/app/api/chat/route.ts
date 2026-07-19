@@ -8,6 +8,7 @@ import { buildBusinessBrief } from '@/lib/business-context'
 import { retrieveClientContext } from '@/lib/client-knowledge'
 import { twentyTools } from '@/lib/tools/twenty-tools'
 import { consultAgentTool, runAgentConsult } from '@/lib/tools/agent-consult'
+import { listPlatformsTool, readPlatformTool, listClientPlatforms, readFromPlatform } from '@/lib/tools/platform-call'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
 import { getOptimalModel, compressPrompt, getCachedRAG, setCachedRAG, ragCacheKey, memoizeRAG, extractDeliverables } from '@/lib/optimizations'
@@ -215,7 +216,7 @@ export async function POST(req: NextRequest) {
       if (ctx) clientKnowledge = `\n\n--- Documents de l'entreprise du client (source de vérité) ---\n${ctx}\n---`
     } catch { /* RAG client silencieux */ }
 
-    const response = await callClaude(agent, safeMessage, history ?? [], memoryContext + ragContext + liveContext + clientKnowledge)
+    const response = await callClaude(agent, safeMessage, history ?? [], memoryContext + ragContext + liveContext + clientKnowledge, auth.user.id)
 
     // Sauvegarder la conversation dans la mémoire
     const summary: ConversationSummary = {
@@ -261,7 +262,8 @@ async function callClaude(
   agent: AgentConfig,
   message: string,
   history: HistoryMessage[],
-  memoryContext: string = ''
+  memoryContext: string = '',
+  userId?: string
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
 
@@ -291,9 +293,13 @@ async function callClaude(
     ? (twentyTools as unknown as any[])
     : []
 
-  // Collaboration inter-agents : disponible pour TOUS les agents, afin qu'ils
-  // consultent un confrère plutôt que d'interroger le client.
-  const tools = [...crmTools, consultAgentTool as unknown as any]
+  // Collaboration inter-agents + lecture des plateformes connectées par le client.
+  // Disponibles pour TOUS les agents (les outils plateformes sont en LECTURE SEULE).
+  const tools = [
+    ...crmTools,
+    consultAgentTool as unknown as any,
+    ...(userId ? [listPlatformsTool as unknown as any, readPlatformTool as unknown as any] : []),
+  ]
 
     const completion = await client.messages.create({
       model: resolveModel(agent.model, agent.id, message),
@@ -315,7 +321,14 @@ async function callClaude(
       for (const tool of toolUses) {
         let result = ''
         try {
-          if (tool.name === 'consulter_agent') {
+          if (tool.name === 'lister_plateformes' && userId) {
+            const platforms = await listClientPlatforms(userId)
+            result = JSON.stringify({ plateformes: platforms })
+          } else if (tool.name === 'lire_plateforme' && userId) {
+            const input = tool.input as { provider?: string; path?: string }
+            const r = await readFromPlatform(userId, String(input?.provider || ''), String(input?.path || '/'))
+            result = JSON.stringify(r.ok ? { ok: true, donnees: r.data } : { ok: false, erreur: r.error })
+          } else if (tool.name === 'consulter_agent') {
             // Collaboration inter-agents réelle : le confrère répond avec le même contexte client.
             const input = tool.input as { agent_id?: string; question?: string }
             const answer = await runAgentConsult(
