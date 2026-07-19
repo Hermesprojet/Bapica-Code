@@ -64,7 +64,34 @@ export default function ChannelsPage() {
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
 
+  // Connexion Telegram « en 1 clic »
+  const [tgToken, setTgToken] = useState('')
+  const [tgStatus, setTgStatus] = useState<'idle' | 'connecting' | 'ok' | 'err'>('idle')
+  const [tgMsg, setTgMsg] = useState('')
+
   const token = async () => (await supabase.auth.getSession()).data.session?.access_token || ''
+
+  const connectTelegram = async () => {
+    if (!tgToken.trim() || tgStatus === 'connecting') return
+    setTgStatus('connecting'); setTgMsg('')
+    try {
+      const res = await fetch('/api/channels/telegram/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ token: tgToken.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setTgStatus('ok')
+        setTgMsg(`Bot @${data.botUsername} connecté — webhook enregistré automatiquement.`)
+        setTgToken('')
+      } else {
+        setTgStatus('err'); setTgMsg(data.error || 'Échec de la connexion.')
+      }
+    } catch {
+      setTgStatus('err'); setTgMsg('Erreur de connexion.')
+    }
+  }
 
   useEffect(() => {
     ;(async () => {
@@ -119,6 +146,43 @@ export default function ChannelsPage() {
             Ajoutez la variable NEXT_PUBLIC_APP_URL dans Vercel pour que le webhook fonctionne.
           </p>
         )}
+      </div>
+
+      {/* Connexion Telegram en 1 clic */}
+      <div className="card-elevated mb-6 p-5">
+        <div className="mb-1 flex items-center gap-2 text-sm font-semibold">
+          <Send className="h-4 w-4 text-[#0088CC]" />
+          Telegram — connexion en 1 clic
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Créez un bot avec <span className="font-medium">@BotFather</span> (/newbot), copiez le jeton,
+          collez-le ici : Bapica enregistre le webhook automatiquement (plus besoin de le faire à la main).
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            value={tgToken}
+            onChange={(e) => setTgToken(e.target.value)}
+            placeholder="Jeton BotFather (ex : 123456789:AA...)"
+            className="flex-1 min-w-[220px] rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          <button
+            onClick={connectTelegram}
+            disabled={!tgToken.trim() || tgStatus === 'connecting'}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {tgStatus === 'connecting' ? <><Loader2 className="h-4 w-4 animate-spin" /> Connexion…</> : <><Send className="h-4 w-4" /> Connecter</>}
+          </button>
+        </div>
+        {tgMsg && (
+          <p className={`mt-2 inline-flex items-center gap-1.5 text-xs ${tgStatus === 'ok' ? 'text-green-600' : 'text-destructive'}`}>
+            {tgStatus === 'ok' ? <Check className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+            {tgMsg}
+          </p>
+        )}
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Pour que le bot réponde, ajoutez aussi ce jeton comme <code className="rounded bg-muted px-1">TELEGRAM_BOT_TOKEN</code> dans Vercel (puis redéployez).
+        </p>
       </div>
 
       {/* Cartes par canal */}
