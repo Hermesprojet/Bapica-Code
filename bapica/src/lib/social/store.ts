@@ -33,6 +33,13 @@ export async function getConnection(userId: string, platform: string) {
   return data
 }
 
+/** Liste complète (plateforme + métadonnées) — utilisé pour les plateformes personnalisées. */
+export async function listConnections(userId: string): Promise<{ platform: string; external_id: string | null }[]> {
+  const db = getSupabaseAdmin()
+  const { data } = await db.from('social_connections').select('platform, external_id').eq('user_id', userId)
+  return (data as { platform: string; external_id: string | null }[]) || []
+}
+
 export async function listPlatforms(userId: string): Promise<string[]> {
   const db = getSupabaseAdmin()
   const { data } = await db.from('social_connections').select('platform').eq('user_id', userId)

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Check, Loader2, Send, AlertCircle, Search, Link2, X } from 'lucide-react'
+import { Check, Loader2, Send, AlertCircle, Search, Link2, X, Plus } from 'lucide-react'
 import { getAvailableIntegrations } from '@/lib/integrations'
 import { connectMethodFor, soonReasonFor, apiKeyHintFor } from '@/lib/integrations-connect'
 
@@ -29,6 +29,15 @@ function ConnectionsContent() {
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // Plateformes hors catalogue ajoutées par le client
+  const [custom, setCustom] = useState<{ platform: string; name: string; baseUrl: string; category: string }[]>([])
+  const [cOpen, setCOpen] = useState(false)
+  const [cName, setCName] = useState('')
+  const [cUrl, setCUrl] = useState('')
+  const [cKey, setCKey] = useState('')
+  const [cCat, setCCat] = useState('Autre')
+  const [cSaving, setCSaving] = useState(false)
+
   // Composer LinkedIn
   const [text, setText] = useState('')
   const [publishing, setPublishing] = useState(false)
@@ -40,9 +49,32 @@ function ConnectionsContent() {
     try {
       const res = await fetch('/api/integrations', { headers: { Authorization: `Bearer ${await token()}` } })
       const data = await res.json()
-      if (res.ok) setConnected(data.connected || [])
+      if (res.ok) { setConnected(data.connected || []); setCustom(data.custom || []) }
     } catch { /* ignore */ }
     setLoading(false)
+  }
+
+  const addCustom = async () => {
+    if (!cName.trim() || !cKey.trim() || cSaving) return
+    setCSaving(true); setNotice(null)
+    try {
+      const res = await fetch('/api/integrations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ custom: true, name: cName.trim(), baseUrl: cUrl.trim(), category: cCat, apiKey: cKey.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setNotice({ kind: 'ok', msg: `${data.name} ajouté à vos plateformes.` })
+        setCName(''); setCUrl(''); setCKey(''); setCCat('Autre'); setCOpen(false)
+        loadConnections()
+      } else {
+        setNotice({ kind: 'err', msg: data.error || 'Échec de l’ajout.' })
+      }
+    } catch {
+      setNotice({ kind: 'err', msg: 'Erreur de connexion.' })
+    }
+    setCSaving(false)
   }
 
   useEffect(() => {
@@ -236,6 +268,102 @@ function ConnectionsContent() {
             </div>
           </section>
         ))}
+      </div>
+
+      {/* Plateforme hors catalogue */}
+      <div className="card-elevated mt-8 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Plus className="h-4 w-4 text-primary" />
+              Votre plateforme n&apos;est pas dans la liste ?
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Ajoutez n&apos;importe quelle application, banque ou logiciel métier disposant d&apos;une API.
+            </p>
+          </div>
+          {!cOpen && (
+            <button
+              onClick={() => setCOpen(true)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Ajouter une plateforme
+            </button>
+          )}
+        </div>
+
+        {cOpen && (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                value={cName}
+                onChange={(e) => setCName(e.target.value)}
+                placeholder="Nom (ex : Ma Banque, Sellsy, Axonaut…)"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <select
+                value={cCat}
+                onChange={(e) => setCCat(e.target.value)}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {['Banque', 'Finance', 'CRM', 'Communication', 'E-commerce', 'Agenda', 'Projet', 'Autre'].map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <input
+                value={cUrl}
+                onChange={(e) => setCUrl(e.target.value)}
+                placeholder="URL de l'API (optionnel) — https://api.exemple.com"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <input
+                type="password"
+                value={cKey}
+                onChange={(e) => setCKey(e.target.value)}
+                placeholder="Clé API / jeton d'accès"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setCOpen(false)} className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground">
+                Annuler
+              </button>
+              <button
+                onClick={addCustom}
+                disabled={!cName.trim() || !cKey.trim() || cSaving}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {cSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Ajout…</> : 'Ajouter'}
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              L&apos;accès est enregistré de façon sécurisée pour votre compte. Indiquez ensuite à vos agents
+              ce que vous souhaitez automatiser sur cette plateforme.
+            </p>
+          </div>
+        )}
+
+        {/* Liste des plateformes personnalisées */}
+        {custom.length > 0 && (
+          <div className="mt-4 space-y-2 border-t border-border pt-4">
+            {custom.map((c) => (
+              <div key={c.platform} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Check className="h-3.5 w-3.5 text-green-600" />
+                    {c.name}
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{c.category}</span>
+                  </div>
+                  {c.baseUrl && <div className="truncate text-xs text-muted-foreground">{c.baseUrl}</div>}
+                </div>
+                <button onClick={() => disconnect(c.platform)} className="shrink-0 text-xs text-muted-foreground hover:text-destructive transition-colors">
+                  Retirer
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Composer LinkedIn (si connecté) */}
