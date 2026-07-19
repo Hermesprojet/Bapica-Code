@@ -203,11 +203,22 @@ export function handleTwilioWhatsApp(params: Record<string, string>): IncomingMe
   }
 }
 
-export async function sendTwilioWhatsApp(to: string, text: string): Promise<boolean> {
+/** Envoi Twilio avec détail de l'erreur (pour diagnostic). */
+export async function sendTwilioWhatsAppDetailed(
+  to: string,
+  text: string
+): Promise<{ ok: boolean; status?: number; error?: string }> {
   const sid = process.env.TWILIO_ACCOUNT_SID
   const auth = process.env.TWILIO_AUTH_TOKEN
   const from = process.env.TWILIO_WHATSAPP_NUMBER
-  if (!sid || !auth || !from) return false
+  if (!sid || !auth || !from) {
+    const missing = [
+      !sid && 'TWILIO_ACCOUNT_SID',
+      !auth && 'TWILIO_AUTH_TOKEN',
+      !from && 'TWILIO_WHATSAPP_NUMBER',
+    ].filter(Boolean).join(', ')
+    return { ok: false, error: `Variables manquantes côté serveur : ${missing}` }
+  }
 
   const toAddr = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`
   const fromAddr = from.startsWith('whatsapp:') ? from : `whatsapp:${from}`
@@ -220,10 +231,26 @@ export async function sendTwilioWhatsApp(to: string, text: string): Promise<bool
       },
       body: new URLSearchParams({ To: toAddr, From: fromAddr, Body: formatWhatsApp(text) }).toString(),
     })
-    return res.ok
-  } catch {
-    return false
+    if (res.ok) return { ok: true, status: res.status }
+
+    const raw = await res.text().catch(() => '')
+    let detail = raw.slice(0, 400)
+    try {
+      const j = JSON.parse(raw)
+      detail = `${j.code ?? ''} ${j.message ?? ''}`.trim() || detail
+    } catch {
+      /* garder le brut */
+    }
+    return { ok: false, status: res.status, error: detail }
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e) }
   }
+}
+
+export async function sendTwilioWhatsApp(to: string, text: string): Promise<boolean> {
+  const r = await sendTwilioWhatsAppDetailed(to, text)
+  if (!r.ok) console.error('Twilio WhatsApp send failed:', r.status, r.error)
+  return r.ok
 }
 
 /**

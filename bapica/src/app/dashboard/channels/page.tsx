@@ -68,6 +68,31 @@ export default function ChannelsPage() {
     } catch { /* ignore */ }
   }
 
+  // Test d'envoi WhatsApp (affiche l'erreur exacte de Twilio)
+  const [waTo, setWaTo] = useState('')
+  const [waStatus, setWaStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
+  const [waMsg, setWaMsg] = useState('')
+
+  const testWhatsApp = async () => {
+    if (!waTo.trim() || waStatus === 'sending') return
+    setWaStatus('sending'); setWaMsg('')
+    try {
+      const res = await fetch('/api/channels/whatsapp/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ to: waTo.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok && data.ok) {
+        setWaStatus('ok'); setWaMsg('Message envoyé — regardez votre WhatsApp.')
+      } else {
+        setWaStatus('err'); setWaMsg(data.error || `Échec (HTTP ${res.status}).`)
+      }
+    } catch {
+      setWaStatus('err'); setWaMsg('Erreur de connexion.')
+    }
+  }
+
   const disconnectTelegram = async () => {
     setTgStatus('idle'); setTgMsg('')
     try {
@@ -257,6 +282,40 @@ export default function ChannelsPage() {
             </div>
           )
         })}
+      </div>
+
+      {/* Diagnostic : test d'envoi WhatsApp */}
+      <div className="card-elevated mt-6 p-5">
+        <div className="mb-1 flex items-center gap-2 text-sm font-semibold">
+          <MessageCircle className="h-4 w-4 text-[#25D366]" />
+          Tester l&apos;envoi WhatsApp
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Envoie un message de test via Twilio et affiche <span className="font-medium">l&apos;erreur exacte</span> en
+          cas d&apos;échec. Le numéro doit avoir rejoint le sandbox Twilio (message « join … »).
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="tel"
+            value={waTo}
+            onChange={(e) => setWaTo(e.target.value)}
+            placeholder="Votre numéro WhatsApp (ex : +32465474183)"
+            className="flex-1 min-w-[220px] rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          <button
+            onClick={testWhatsApp}
+            disabled={!waTo.trim() || waStatus === 'sending'}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {waStatus === 'sending' ? <><Loader2 className="h-4 w-4 animate-spin" /> Envoi…</> : <><Send className="h-4 w-4" /> Envoyer un test</>}
+          </button>
+        </div>
+        {waMsg && (
+          <p className={`mt-2 flex items-start gap-1.5 text-xs ${waStatus === 'ok' ? 'text-green-600' : 'text-destructive'}`}>
+            {waStatus === 'ok' ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+            <span className="break-all">{waMsg}</span>
+          </p>
+        )}
       </div>
 
       <p className="mt-6 text-xs text-muted-foreground">
