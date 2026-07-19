@@ -250,8 +250,8 @@ export async function handleTelegramWebhook(body: any): Promise<IncomingMessage 
   }
 }
 
-export async function sendTelegram(chatId: string, text: string): Promise<boolean> {
-  const token = process.env.TELEGRAM_BOT_TOKEN
+export async function sendTelegram(chatId: string, text: string, botToken?: string): Promise<boolean> {
+  const token = botToken || process.env.TELEGRAM_BOT_TOKEN
   if (!token) return false
 
   try {
@@ -328,7 +328,7 @@ export async function dispatchResponse(msg: IncomingMessage, response: string): 
         ? sendTwilioWhatsApp(msg.userId, formatted)
         : sendWhatsApp(msg.userId, formatted)
     case 'telegram':
-      return sendTelegram(msg.metadata.chatId || msg.userId, formatted)
+      return sendTelegram(msg.metadata.chatId || msg.userId, formatted, msg.metadata.botToken)
     case 'messenger':
       return sendMessenger(msg.userId, formatted)
     default:

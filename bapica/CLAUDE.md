@@ -243,9 +243,21 @@ Cohérence produit à vérifier dans les réponses des agents :
   tester). Le webhook détecte le POST **form-urlencoded** de Twilio et répond via l'API Twilio
   (`handleTwilioWhatsApp` / `sendTwilioWhatsApp` dans `omnichannel.ts`, `metadata.via='twilio'`).
   URL de webhook à coller dans Twilio (« When a message comes in », POST) = `<APP_URL>/api/webhooks/messaging`.
-- **Telegram 1-clic** : `POST /api/channels/telegram/connect` (Bearer) valide le jeton (getMe) et
-  pose le webhook (setWebhook) automatiquement. UI dans `dashboard/channels`. (Le bot répond via
-  `TELEGRAM_BOT_TOKEN` — modèle mono-bot ; multi-client = projet hub, nécessite le SQL Supabase.)
+- **Hub multi-client Telegram** (chaque client = son propre bot, sans variable Vercel) :
+  - Table `channel_connections` (`supabase-schema.sql`) : `{user_id, platform, credentials(jsonb),
+    external_id, webhook_secret}`. Store service_role : `src/lib/channels/store.ts`
+    (`saveChannel`/`getChannelBySecret`/`getChannel`/`deleteChannel`).
+  - `POST /api/channels/telegram/connect` (Bearer) : valide le jeton (getMe), génère un `secret`,
+    **stocke** `{botToken}` + secret, puis `setWebhook?...&secret_token=<secret>`. `GET`/`DELETE` =
+    état / déconnexion. UI `dashboard/channels` (connecté @bot + Déconnecter ; « base non initialisée »
+    si le SQL n'a pas été exécuté).
+  - Réception : le webhook lit l'en-tête `X-Telegram-Bot-Api-Secret-Token` → `getChannelBySecret` →
+    `user_id` + `botToken`. Réponse via le bot du client (`sendTelegram(chatId, text, botToken)`) et
+    contexte de SON entreprise via `replyForUser(userId, agentId, text)` (`src/lib/channels/agent-reply.ts`,
+    réutilise `buildBusinessBrief` + `getSystemPromptForAgent`).
+  - **Repli** : sans secret/connexion, comportement mono-bot conservé (`TELEGRAM_BOT_TOKEN` +
+    `demo-chat`) → pas de régression. **Prérequis** : exécuter `supabase-schema.sql`.
+  - WhatsApp multi-client = Phase 2 (résolution par numéro `To` → client ; réutilisera ce socle).
 
 ## 10. Déploiement
 

@@ -75,8 +75,27 @@ CREATE TABLE IF NOT EXISTS social_connections (
   UNIQUE (user_id, platform)
 );
 
+-- 7. Connexions de messagerie par client (hub multi-client : Telegram, WhatsApp…)
+--    credentials JSONB : telegram { botToken } ; whatsapp { ... }.
+--    webhook_secret : secret unique renvoyé par la plateforme pour identifier le client.
+CREATE TABLE IF NOT EXISTS channel_connections (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) NOT NULL,
+  platform TEXT NOT NULL,                     -- 'telegram' | 'whatsapp'
+  credentials JSONB NOT NULL DEFAULT '{}',
+  external_id TEXT,                            -- telegram: bot username ; whatsapp: numéro E.164
+  webhook_secret TEXT,                        -- telegram secret_token / clé de routage
+  status TEXT DEFAULT 'connected',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, platform)
+);
+
 -- Index
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
+CREATE INDEX IF NOT EXISTS idx_channel_conn_user ON channel_connections(user_id);
+CREATE INDEX IF NOT EXISTS idx_channel_conn_secret ON channel_connections(webhook_secret);
+CREATE INDEX IF NOT EXISTS idx_channel_conn_external ON channel_connections(platform, external_id);
 CREATE INDEX IF NOT EXISTS idx_social_connections_user ON social_connections(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
@@ -91,6 +110,8 @@ ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
 -- Jetons sociaux : RLS activée sans policy (accès uniquement via service_role serveur).
 ALTER TABLE social_connections ENABLE ROW LEVEL SECURITY;
+-- Connexions de messagerie : RLS activée sans policy (accès service_role uniquement).
+ALTER TABLE channel_connections ENABLE ROW LEVEL SECURITY;
 
 -- Policies
 CREATE POLICY "Users can view own profile" ON profiles

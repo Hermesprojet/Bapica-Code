@@ -7,6 +7,8 @@ import {
   routeMessage, dispatchResponse,
   type IncomingMessage,
 } from '@/lib/omnichannel'
+import { getChannelBySecret } from '@/lib/channels/store'
+import { replyForUser } from '@/lib/channels/agent-reply'
 
 /**
  * POST /api/webhooks/messaging — Webhook UNIQUE pour tous les canaux
@@ -60,24 +62,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true, status: 'no_text_message' })
     }
 
+    // Multi-locataire : identifier le client via le secret Telegram (X-Telegram-Bot-Api-Secret-Token).
+    // Si résolu, on répondra avec SON bot et avec le contexte de SON entreprise.
+    let tenantUserId: string | undefined
+    if (msg.channel === 'telegram') {
+      const secret = req.headers.get('x-telegram-bot-api-secret-token') || ''
+      if (secret) {
+        const conn = await getChannelBySecret(secret)
+        if (conn) {
+          tenantUserId = conn.user_id
+          const botToken = (conn.credentials as { botToken?: string } | undefined)?.botToken
+          if (botToken) msg.metadata.botToken = botToken
+        }
+      }
+    }
+
     // Router vers le bon agent
     const { agentId, greeting, confidence } = routeMessage(msg)
 
     // Réponse immédiate (le traitement IA suit en arrière-plan)
     const quickReply = greeting || `✅ Message reçu. Je transfère à l'agent **${agentId}** (${Math.round(confidence * 100)}% de pertinence).`
-    
+
     // Envoyer la réponse rapide
     await dispatchResponse(msg, quickReply)
 
     // Lancer le traitement IA en arrière-plan (non bloquant pour le webhook)
     if (!greeting) {
-      processMessageWithAgent(msg, agentId).catch(console.error)
+      processMessageWithAgent(msg, agentId, tenantUserId).catch(console.error)
     }
 
     return NextResponse.json({
       received: true,
       routed: { agentId, confidence },
       platform,
+      tenant: tenantUserId ? 'resolved' : 'global',
       replied: true,
     })
   } catch (e) {
@@ -119,22 +137,24 @@ function detectPlatform(body: any): string {
  * Traite le message avec l'agent Bapica approprié
  * (appelé en arrière-plan, non-bloquant pour le webhook)
  */
-async function processMessageWithAgent(msg: IncomingMessage, agentId: string) {
+async function processMessageWithAgent(msg: IncomingMessage, agentId: string, userId?: string) {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/demo-chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agentId,
-        message: msg.text,
-        history: [],
-      }),
-    })
+    let reply: string
 
-    if (!response.ok) return
-
-    const data = await response.json()
-    const reply = data.response || data.message || 'Désolé, je n\'ai pas pu traiter votre demande.'
+    if (userId) {
+      // Locataire résolu : réponse contextualisée (contexte de l'entreprise du client).
+      reply = await replyForUser(userId, agentId, msg.text)
+    } else {
+      // Repli mono-locataire (ancien bot global) : démo publique.
+      const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/demo-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, message: msg.text, history: [] }),
+      })
+      if (!response.ok) return
+      const data = await response.json()
+      reply = data.response || data.message || "Désolé, je n'ai pas pu traiter votre demande."
+    }
 
     await dispatchResponse(msg, reply)
   } catch (e) {

@@ -35,18 +35,6 @@ const CHANNELS: {
     ],
   },
   {
-    id: 'telegram',
-    label: 'Telegram',
-    icon: Send,
-    color: 'text-[#0088CC]',
-    vars: ['TELEGRAM_BOT_TOKEN'],
-    steps: [
-      'Ouvrez @BotFather sur Telegram et créez un bot avec /newbot.',
-      'Copiez le jeton fourni et ajoutez-le dans Vercel sous TELEGRAM_BOT_TOKEN.',
-      'Enregistrez le webhook en ouvrant dans un navigateur : https://api.telegram.org/bot<VOTRE_TOKEN>/setWebhook?url=<URL_WEBHOOK_CI_DESSOUS>',
-    ],
-  },
-  {
     id: 'messenger',
     label: 'Messenger',
     icon: Facebook,
@@ -65,12 +53,28 @@ export default function ChannelsPage() {
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
 
-  // Connexion Telegram « en 1 clic »
+  // Connexion Telegram « en 1 clic » (multi-client)
   const [tgToken, setTgToken] = useState('')
   const [tgStatus, setTgStatus] = useState<'idle' | 'connecting' | 'ok' | 'err'>('idle')
   const [tgMsg, setTgMsg] = useState('')
+  const [tgConn, setTgConn] = useState<{ connected: boolean; botUsername: string; needsSetup?: boolean } | null>(null)
 
   const token = async () => (await supabase.auth.getSession()).data.session?.access_token || ''
+
+  const loadTelegram = async () => {
+    try {
+      const res = await fetch('/api/channels/telegram/connect', { headers: { Authorization: `Bearer ${await token()}` } })
+      if (res.ok) setTgConn(await res.json())
+    } catch { /* ignore */ }
+  }
+
+  const disconnectTelegram = async () => {
+    setTgStatus('idle'); setTgMsg('')
+    try {
+      await fetch('/api/channels/telegram/connect', { method: 'DELETE', headers: { Authorization: `Bearer ${await token()}` } })
+    } catch { /* ignore */ }
+    setTgConn({ connected: false, botUsername: '' })
+  }
 
   const connectTelegram = async () => {
     if (!tgToken.trim() || tgStatus === 'connecting') return
@@ -86,6 +90,7 @@ export default function ChannelsPage() {
         setTgStatus('ok')
         setTgMsg(`Bot @${data.botUsername} connecté — webhook enregistré automatiquement.`)
         setTgToken('')
+        setTgConn({ connected: true, botUsername: data.botUsername })
       } else {
         setTgStatus('err'); setTgMsg(data.error || 'Échec de la connexion.')
       }
@@ -102,8 +107,10 @@ export default function ChannelsPage() {
       } catch {
         /* ignore */
       }
+      await loadTelegram()
       setLoading(false)
     })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const webhookUrl = status?.webhookUrl || 'https://<votre-app>/api/webhooks/messaging'
@@ -149,41 +156,61 @@ export default function ChannelsPage() {
         )}
       </div>
 
-      {/* Connexion Telegram en 1 clic */}
+      {/* Connexion Telegram en 1 clic (multi-client) */}
       <div className="card-elevated mb-6 p-5">
         <div className="mb-1 flex items-center gap-2 text-sm font-semibold">
           <Send className="h-4 w-4 text-[#0088CC]" />
           Telegram — connexion en 1 clic
         </div>
-        <p className="mb-3 text-xs text-muted-foreground">
-          Créez un bot avec <span className="font-medium">@BotFather</span> (/newbot), copiez le jeton,
-          collez-le ici : Bapica enregistre le webhook automatiquement (plus besoin de le faire à la main).
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="text"
-            value={tgToken}
-            onChange={(e) => setTgToken(e.target.value)}
-            placeholder="Jeton BotFather (ex : 123456789:AA...)"
-            className="flex-1 min-w-[220px] rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-          <button
-            onClick={connectTelegram}
-            disabled={!tgToken.trim() || tgStatus === 'connecting'}
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {tgStatus === 'connecting' ? <><Loader2 className="h-4 w-4 animate-spin" /> Connexion…</> : <><Send className="h-4 w-4" /> Connecter</>}
-          </button>
-        </div>
-        {tgMsg && (
-          <p className={`mt-2 inline-flex items-center gap-1.5 text-xs ${tgStatus === 'ok' ? 'text-green-600' : 'text-destructive'}`}>
-            {tgStatus === 'ok' ? <Check className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
-            {tgMsg}
+
+        {tgConn?.needsSetup ? (
+          <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-amber-600">
+            <AlertCircle className="h-3.5 w-3.5" />
+            Base non initialisée : exécutez <code className="rounded bg-muted px-1">supabase-schema.sql</code> dans Supabase, puis rechargez.
           </p>
+        ) : tgConn?.connected ? (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-1.5 text-sm text-green-600">
+              <Check className="h-4 w-4" />
+              Bot {tgConn.botUsername ? `@${tgConn.botUsername}` : ''} connecté — le bot répond via le jeton enregistré.
+            </span>
+            <button
+              onClick={disconnectTelegram}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
+            >
+              Déconnecter
+            </button>
+          </div>
+        ) : (
+          <>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Créez un bot avec <span className="font-medium">@BotFather</span> (/newbot), copiez le jeton,
+              collez-le ici : Bapica valide le bot, enregistre le webhook et le rend actif. Rien à mettre dans Vercel.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                value={tgToken}
+                onChange={(e) => setTgToken(e.target.value)}
+                placeholder="Jeton BotFather (ex : 123456789:AA...)"
+                className="flex-1 min-w-[220px] rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <button
+                onClick={connectTelegram}
+                disabled={!tgToken.trim() || tgStatus === 'connecting'}
+                className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {tgStatus === 'connecting' ? <><Loader2 className="h-4 w-4 animate-spin" /> Connexion…</> : <><Send className="h-4 w-4" /> Connecter</>}
+              </button>
+            </div>
+            {tgMsg && (
+              <p className={`mt-2 inline-flex items-center gap-1.5 text-xs ${tgStatus === 'ok' ? 'text-green-600' : 'text-destructive'}`}>
+                {tgStatus === 'ok' ? <Check className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+                {tgMsg}
+              </p>
+            )}
+          </>
         )}
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          Pour que le bot réponde, ajoutez aussi ce jeton comme <code className="rounded bg-muted px-1">TELEGRAM_BOT_TOKEN</code> dans Vercel (puis redéployez).
-        </p>
       </div>
 
       {/* Cartes par canal */}
