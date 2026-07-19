@@ -91,8 +91,26 @@ CREATE TABLE IF NOT EXISTS channel_connections (
   UNIQUE (user_id, platform)
 );
 
+-- 8. Actions proposées par les agents, en attente de validation humaine.
+--    L'agent ne peut QUE proposer ; seul le serveur exécute après approbation.
+CREATE TABLE IF NOT EXISTS pending_actions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) NOT NULL,
+  agent_id TEXT,
+  provider TEXT NOT NULL,                      -- plateforme cible (stripe, pennylane, custom:...)
+  method TEXT NOT NULL,                        -- POST | PUT | PATCH | DELETE
+  path TEXT NOT NULL,                          -- chemin relatif de l'API
+  body JSONB,                                  -- corps de la requête
+  summary TEXT NOT NULL,                       -- résumé lisible présenté à l'utilisateur
+  status TEXT NOT NULL DEFAULT 'pending',      -- pending | executed | rejected | failed
+  result TEXT,                                 -- retour de la plateforme après exécution
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  decided_at TIMESTAMPTZ
+);
+
 -- Index
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
+CREATE INDEX IF NOT EXISTS idx_pending_actions_user ON pending_actions(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_channel_conn_user ON channel_connections(user_id);
 CREATE INDEX IF NOT EXISTS idx_channel_conn_secret ON channel_connections(webhook_secret);
 CREATE INDEX IF NOT EXISTS idx_channel_conn_external ON channel_connections(platform, external_id);
@@ -112,6 +130,8 @@ ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE social_connections ENABLE ROW LEVEL SECURITY;
 -- Connexions de messagerie : RLS activée sans policy (accès service_role uniquement).
 ALTER TABLE channel_connections ENABLE ROW LEVEL SECURITY;
+-- Actions en attente : RLS activée sans policy (accès service_role uniquement).
+ALTER TABLE pending_actions ENABLE ROW LEVEL SECURITY;
 
 -- Policies
 CREATE POLICY "Users can view own profile" ON profiles

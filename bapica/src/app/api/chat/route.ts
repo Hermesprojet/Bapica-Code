@@ -8,7 +8,8 @@ import { buildBusinessBrief } from '@/lib/business-context'
 import { retrieveClientContext } from '@/lib/client-knowledge'
 import { twentyTools } from '@/lib/tools/twenty-tools'
 import { consultAgentTool, runAgentConsult } from '@/lib/tools/agent-consult'
-import { listPlatformsTool, readPlatformTool, listClientPlatforms, readFromPlatform } from '@/lib/tools/platform-call'
+import { listPlatformsTool, readPlatformTool, proposeActionTool, listClientPlatforms, readFromPlatform } from '@/lib/tools/platform-call'
+import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
 import { getOptimalModel, compressPrompt, getCachedRAG, setCachedRAG, ragCacheKey, memoizeRAG, extractDeliverables } from '@/lib/optimizations'
@@ -298,7 +299,13 @@ async function callClaude(
   const tools = [
     ...crmTools,
     consultAgentTool as unknown as any,
-    ...(userId ? [listPlatformsTool as unknown as any, readPlatformTool as unknown as any] : []),
+    ...(userId
+      ? [
+          listPlatformsTool as unknown as any,
+          readPlatformTool as unknown as any,
+          proposeActionTool as unknown as any,
+        ]
+      : []),
   ]
 
     const completion = await client.messages.create({
@@ -328,6 +335,33 @@ async function callClaude(
             const input = tool.input as { provider?: string; path?: string }
             const r = await readFromPlatform(userId, String(input?.provider || ''), String(input?.path || '/'))
             result = JSON.stringify(r.ok ? { ok: true, donnees: r.data } : { ok: false, erreur: r.error })
+          } else if (tool.name === 'proposer_action' && userId) {
+            // L'agent PROPOSE : rien n'est exécuté ici, l'utilisateur validera.
+            const i = tool.input as { provider?: string; method?: string; path?: string; body?: unknown; summary?: string }
+            try {
+              const actionId = await createAction({
+                userId,
+                agentId: agent.id,
+                provider: String(i?.provider || ''),
+                method: String(i?.method || 'POST'),
+                path: String(i?.path || '/'),
+                body: i?.body,
+                summary: String(i?.summary || 'Action sans description'),
+              })
+              result = JSON.stringify({
+                ok: true,
+                action_id: actionId,
+                statut: "en attente de validation par l'utilisateur",
+              })
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({
+                ok: false,
+                erreur: m.includes('ACTIONS_TABLE_MISSING')
+                  ? 'Base non initialisée : exécutez supabase-schema.sql.'
+                  : m,
+              })
+            }
           } else if (tool.name === 'consulter_agent') {
             // Collaboration inter-agents réelle : le confrère répond avec le même contexte client.
             const input = tool.input as { agent_id?: string; question?: string }

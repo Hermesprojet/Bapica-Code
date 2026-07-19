@@ -153,6 +153,67 @@ export async function readFromPlatform(
   }
 }
 
+/**
+ * Écriture sur une plateforme connectée (POST/PUT/PATCH/DELETE).
+ * ⚠️ N'EST JAMAIS exposée au modèle : appelée uniquement par la route d'approbation,
+ * après validation explicite de l'utilisateur.
+ */
+export async function writeToPlatform(
+  userId: string,
+  provider: string,
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<{ ok: boolean; status?: number; data?: string; error?: string }> {
+  const verb = String(method || '').toUpperCase()
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(verb)) {
+    return { ok: false, error: `Méthode non autorisée : ${verb}` }
+  }
+
+  const resolved = await resolveSpec(userId, provider)
+  if ('error' in resolved) return { ok: false, error: resolved.error }
+  const { spec, secret } = resolved
+
+  const cleanPath = String(path || '/').trim()
+  if (/^https?:\/\//i.test(cleanPath)) {
+    return { ok: false, error: 'Chemin relatif attendu, pas une URL complète.' }
+  }
+
+  let url: URL
+  try {
+    url = new URL(spec.baseUrl + (cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`))
+  } catch {
+    return { ok: false, error: 'Chemin invalide.' }
+  }
+  if (url.protocol !== 'https:') return { ok: false, error: 'Seul HTTPS est autorisé.' }
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    ...(spec.extraHeaders || {}),
+  }
+  if (spec.auth === 'bearer') headers.Authorization = `Bearer ${secret}`
+  else if (spec.auth === 'raw-authorization') headers.Authorization = secret
+  else if (spec.auth === 'header' && spec.headerName) headers[spec.headerName] = secret
+  else if (spec.auth === 'query' && spec.queryName) url.searchParams.set(spec.queryName, secret)
+
+  try {
+    const res = await fetch(url.toString(), {
+      method: verb,
+      headers,
+      body: body === undefined || body === null ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
+    })
+    const raw = await res.text()
+    const data = raw.slice(0, 4000)
+    if (!res.ok) return { ok: false, status: res.status, error: `HTTP ${res.status} — ${data.slice(0, 500)}` }
+    return { ok: true, status: res.status, data }
+  } catch (e) {
+    const msg = String(e instanceof Error ? e.message : e)
+    return { ok: false, error: msg.includes('timeout') ? 'Délai dépassé.' : msg }
+  }
+}
+
 // ─── Définitions d'outils exposées aux agents ───────────────────────────────
 
 export const listPlatformsTool = {
@@ -161,6 +222,27 @@ export const listPlatformsTool = {
     "Liste les plateformes que CE client a connectées dans Bapica (compta, banque, CRM, e-commerce…). " +
     "Utilise-le avant lire_plateforme pour savoir de quelles données tu disposes réellement.",
   input_schema: { type: 'object' as const, properties: {}, required: [] as string[] },
+}
+
+export const proposeActionTool = {
+  name: 'proposer_action',
+  description:
+    "PROPOSE une action qui MODIFIE des données sur une plateforme connectée (créer une facture, " +
+    "envoyer un email, mettre à jour un contact…). Tu ne l'exécutes PAS : elle est mise en attente et " +
+    "l'utilisateur doit la valider d'un clic dans « Actions à valider ». Après appel, dis simplement au " +
+    "client que l'action est prête et attend sa validation. Rédige un résumé clair et précis (summary) : " +
+    "c'est ce que l'utilisateur lira pour décider.",
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      provider: { type: 'string', description: 'Plateforme connectée cible (ex : stripe, pennylane)' },
+      method: { type: 'string', enum: ['POST', 'PUT', 'PATCH', 'DELETE'], description: 'Méthode HTTP' },
+      path: { type: 'string', description: "Chemin relatif de l'API, ex : /invoices" },
+      body: { type: 'object', description: 'Corps de la requête (JSON)' },
+      summary: { type: 'string', description: "Résumé lisible de l'action, présenté à l'utilisateur pour validation" },
+    },
+    required: ['provider', 'method', 'path', 'summary'],
+  },
 }
 
 export const readPlatformTool = {
