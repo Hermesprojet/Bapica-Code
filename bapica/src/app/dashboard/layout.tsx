@@ -95,7 +95,7 @@ export default function DashboardLayout({
       <main className="flex-1 overflow-auto">
         {/* Barre mobile */}
         <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-card/90 px-4 py-3 backdrop-blur lg:hidden">
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/dashboard" className="flex items-center gap-2">
             <Logo />
           </Link>
           <button
