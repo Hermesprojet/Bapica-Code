@@ -7,7 +7,7 @@ import {
   routeMessage, dispatchResponse,
   type IncomingMessage,
 } from '@/lib/omnichannel'
-import { getChannelBySecret } from '@/lib/channels/store'
+import { getChannelBySecret, getChannelByExternal } from '@/lib/channels/store'
 import { replyForUser } from '@/lib/channels/agent-reply'
 
 /**
@@ -74,6 +74,14 @@ export async function POST(req: NextRequest) {
           const botToken = (conn.credentials as { botToken?: string } | undefined)?.botToken
           if (botToken) msg.metadata.botToken = botToken
         }
+      }
+    } else if (msg.channel === 'whatsapp' && msg.metadata.phoneId) {
+      // WhatsApp Cloud API : le numéro qui reçoit (phone_number_id) identifie le client.
+      const conn = await getChannelByExternal('whatsapp', msg.metadata.phoneId)
+      if (conn) {
+        tenantUserId = conn.user_id
+        const creds = conn.credentials as { accessToken?: string } | undefined
+        if (creds?.accessToken) msg.metadata.waToken = creds.accessToken
       }
     }
 

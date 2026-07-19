@@ -162,9 +162,18 @@ export async function handleWhatsAppWebhook(body: any): Promise<IncomingMessage 
   }
 }
 
-export async function sendWhatsApp(to: string, text: string): Promise<boolean> {
-  const token = process.env.WHATSAPP_TOKEN
-  const phoneId = process.env.WHATSAPP_PHONE_ID
+/**
+ * Envoi WhatsApp via l'API Cloud de Meta.
+ * `opts` permet d'utiliser les identifiants D'UN CLIENT (hub multi-client) ;
+ * sans opts, on retombe sur les variables globales (mono-locataire).
+ */
+export async function sendWhatsApp(
+  to: string,
+  text: string,
+  opts?: { token?: string; phoneId?: string }
+): Promise<boolean> {
+  const token = opts?.token || process.env.WHATSAPP_TOKEN
+  const phoneId = opts?.phoneId || process.env.WHATSAPP_PHONE_ID
   if (!token || !phoneId) return false
 
   try {
@@ -353,7 +362,11 @@ export async function dispatchResponse(msg: IncomingMessage, response: string): 
     case 'whatsapp':
       return msg.metadata.via === 'twilio'
         ? sendTwilioWhatsApp(msg.userId, formatted)
-        : sendWhatsApp(msg.userId, formatted)
+        : sendWhatsApp(msg.userId, formatted, {
+            // Identifiants du client si le locataire a été résolu (hub multi-client)
+            token: msg.metadata.waToken,
+            phoneId: msg.metadata.phoneId,
+          })
     case 'telegram':
       return sendTelegram(msg.metadata.chatId || msg.userId, formatted, msg.metadata.botToken)
     case 'messenger':
