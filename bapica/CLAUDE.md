@@ -238,6 +238,14 @@ Cohérence produit à vérifier dans les réponses des agents :
   Telegram (`TELEGRAM_BOT_TOKEN` + `setWebhook`), Messenger (`MESSENGER_PAGE_TOKEN`,
   `MESSENGER_VERIFY_TOKEN`), et `NEXT_PUBLIC_APP_URL` (le webhook rappelle `/api/demo-chat`).
 - Sans jetons : `sendWhatsApp/Telegram/Messenger` renvoient `false` proprement (pas de crash).
+- **WhatsApp via Twilio** (voie simplifiée, sans Meta Developers) : `TWILIO_ACCOUNT_SID`,
+  `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` (ex `whatsapp:+14155238886`, sandbox Twilio pour
+  tester). Le webhook détecte le POST **form-urlencoded** de Twilio et répond via l'API Twilio
+  (`handleTwilioWhatsApp` / `sendTwilioWhatsApp` dans `omnichannel.ts`, `metadata.via='twilio'`).
+  URL de webhook à coller dans Twilio (« When a message comes in », POST) = `<APP_URL>/api/webhooks/messaging`.
+- **Telegram 1-clic** : `POST /api/channels/telegram/connect` (Bearer) valide le jeton (getMe) et
+  pose le webhook (setWebhook) automatiquement. UI dans `dashboard/channels`. (Le bot répond via
+  `TELEGRAM_BOT_TOKEN` — modèle mono-bot ; multi-client = projet hub, nécessite le SQL Supabase.)
 
 ## 10. Déploiement
 

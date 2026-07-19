@@ -22,15 +22,16 @@ const CHANNELS: {
 }[] = [
   {
     id: 'whatsapp',
-    label: 'WhatsApp',
+    label: 'WhatsApp (via Twilio)',
     icon: MessageCircle,
     color: 'text-[#25D366]',
-    vars: ['WHATSAPP_TOKEN', 'WHATSAPP_PHONE_ID', 'WHATSAPP_VERIFY_TOKEN'],
+    vars: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_WHATSAPP_NUMBER'],
     steps: [
-      'Créez une app sur developers.facebook.com et ajoutez le produit « WhatsApp ».',
-      'Récupérez le jeton d\'accès permanent et l\'identifiant du numéro (Phone number ID).',
-      'Ajoutez WHATSAPP_TOKEN, WHATSAPP_PHONE_ID et WHATSAPP_VERIFY_TOKEN dans Vercel.',
-      'Dans la configuration WhatsApp, déclarez l\'URL de webhook ci-dessous et le même verify token, puis abonnez-vous à l\'événement « messages ».',
+      'Voie simple, sans passer par Facebook Developers : on utilise Twilio.',
+      'Créez un compte sur twilio.com → Messaging → « Try it out → Send a WhatsApp message » (sandbox gratuit pour tester).',
+      'Récupérez Account SID + Auth Token (console Twilio) et le numéro WhatsApp Twilio (ex : whatsapp:+14155238886).',
+      'Ajoutez TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN et TWILIO_WHATSAPP_NUMBER dans Vercel, puis redéployez.',
+      'Dans Twilio (Sandbox settings / numéro), collez l\'URL de webhook ci-dessus dans « When a message comes in » (POST).',
     ],
   },
   {

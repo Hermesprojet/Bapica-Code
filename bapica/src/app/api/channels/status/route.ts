@@ -15,9 +15,13 @@ export async function GET(req: NextRequest) {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
 
+  const twilioWhatsapp = Boolean(
+    process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_NUMBER
+  )
+
   return NextResponse.json({
     channels: {
-      whatsapp: Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID),
+      whatsapp: Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID) || twilioWhatsapp,
       telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN),
       messenger: Boolean(process.env.MESSENGER_PAGE_TOKEN),
     },

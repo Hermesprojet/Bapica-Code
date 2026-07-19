@@ -3,6 +3,7 @@ import {
   handleWhatsAppWebhook, sendWhatsApp,
   handleTelegramWebhook, sendTelegram,
   handleMessengerWebhook, sendMessenger,
+  handleTwilioWhatsApp,
   routeMessage, dispatchResponse,
   type IncomingMessage,
 } from '@/lib/omnichannel'
@@ -15,6 +16,24 @@ import {
  */
 export async function POST(req: NextRequest) {
   try {
+    const contentType = req.headers.get('content-type') || ''
+
+    // Twilio (WhatsApp) envoie du form-urlencoded, pas du JSON.
+    if (contentType.includes('x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+      const form = await req.formData()
+      const params: Record<string, string> = {}
+      form.forEach((v, k) => { params[k] = String(v) })
+      const twMsg = handleTwilioWhatsApp(params)
+      if (twMsg) {
+        const { agentId, greeting } = routeMessage(twMsg)
+        const quickReply = greeting || `Message reçu, je transfère à l'agent ${agentId}.`
+        await dispatchResponse(twMsg, quickReply)
+        if (!greeting) processMessageWithAgent(twMsg, agentId).catch(console.error)
+      }
+      // Twilio attend une réponse TwiML (200).
+      return new Response('<Response></Response>', { status: 200, headers: { 'Content-Type': 'text/xml' } })
+    }
+
     const body = await req.json()
     const platform = req.headers.get('x-messaging-platform') || detectPlatform(body)
 

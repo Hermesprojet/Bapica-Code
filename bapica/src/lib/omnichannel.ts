@@ -185,6 +185,48 @@ export async function sendWhatsApp(to: string, text: string): Promise<boolean> {
 }
 
 /**
+ * WhatsApp via Twilio — voie simplifiée (pas besoin de Meta Developers).
+ * Webhook Twilio : POST form-urlencoded vers /api/webhooks/messaging.
+ * Env : TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_NUMBER (ex : whatsapp:+14155238886).
+ */
+export function handleTwilioWhatsApp(params: Record<string, string>): IncomingMessage | null {
+  const from = params.From || ''
+  const text = params.Body || ''
+  if (!from || !text) return null
+  return {
+    channel: 'whatsapp',
+    userId: from.replace(/^whatsapp:/i, ''),
+    userName: params.ProfileName || 'Client',
+    text,
+    timestamp: new Date().toISOString(),
+    metadata: { via: 'twilio', to: params.To || '' },
+  }
+}
+
+export async function sendTwilioWhatsApp(to: string, text: string): Promise<boolean> {
+  const sid = process.env.TWILIO_ACCOUNT_SID
+  const auth = process.env.TWILIO_AUTH_TOKEN
+  const from = process.env.TWILIO_WHATSAPP_NUMBER
+  if (!sid || !auth || !from) return false
+
+  const toAddr = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`
+  const fromAddr = from.startsWith('whatsapp:') ? from : `whatsapp:${from}`
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Basic ' + Buffer.from(`${sid}:${auth}`).toString('base64'),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ To: toAddr, From: fromAddr, Body: formatWhatsApp(text) }).toString(),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/**
  * Telegram Bot API — Webhook Handler
  * Doc: https://core.telegram.org/bots/api
  * 
@@ -282,7 +324,9 @@ export async function dispatchResponse(msg: IncomingMessage, response: string): 
 
   switch (msg.channel) {
     case 'whatsapp':
-      return sendWhatsApp(msg.userId, formatted)
+      return msg.metadata.via === 'twilio'
+        ? sendTwilioWhatsApp(msg.userId, formatted)
+        : sendWhatsApp(msg.userId, formatted)
     case 'telegram':
       return sendTelegram(msg.metadata.chatId || msg.userId, formatted)
     case 'messenger':
