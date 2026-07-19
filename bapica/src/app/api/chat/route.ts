@@ -7,6 +7,7 @@ import { buildClientMemory, buildMemoryContext, addToMemory, type ClientMemory, 
 import { buildBusinessBrief } from '@/lib/business-context'
 import { retrieveClientContext } from '@/lib/client-knowledge'
 import { twentyTools } from '@/lib/tools/twenty-tools'
+import { consultAgentTool, runAgentConsult } from '@/lib/tools/agent-consult'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
 import { getOptimalModel, compressPrompt, getCachedRAG, setCachedRAG, ragCacheKey, memoizeRAG, extractDeliverables } from '@/lib/optimizations'
@@ -283,13 +284,16 @@ async function callClaude(
     { role: 'user' as const, content: message },
   ]
 
-  // Ajouter les tools CRM si l'agent a accès
-  const agentForTools = agent
   // Outils CRM réservés aux agents commerciaux (pas à l'agent général Léo,
   // sinon il croit que Bapica n'est qu'un CRM).
-  const tools = (agentForTools?.id === 'prospection-strategie' || agentForTools?.id === 'closer')
-    ? twentyTools as unknown as any[]
-    : undefined
+  const agentForTools = agent
+  const crmTools = (agentForTools?.id === 'prospection-strategie' || agentForTools?.id === 'closer')
+    ? (twentyTools as unknown as any[])
+    : []
+
+  // Collaboration inter-agents : disponible pour TOUS les agents, afin qu'ils
+  // consultent un confrère plutôt que d'interroger le client.
+  const tools = [...crmTools, consultAgentTool as unknown as any]
 
     const completion = await client.messages.create({
       model: resolveModel(agent.model, agent.id, message),
@@ -311,9 +315,20 @@ async function callClaude(
       for (const tool of toolUses) {
         let result = ''
         try {
-          // Les credentials CRM doivent être fournis par l'utilisateur connecté
-          // Pour l'instant, on retourne un message informatif
-          result = JSON.stringify({ message: `Outil ${tool.name} appelé avec ${JSON.stringify(tool.input)}. Configuration CRM requise.` })
+          if (tool.name === 'consulter_agent') {
+            // Collaboration inter-agents réelle : le confrère répond avec le même contexte client.
+            const input = tool.input as { agent_id?: string; question?: string }
+            const answer = await runAgentConsult(
+              client,
+              String(input?.agent_id || 'general'),
+              String(input?.question || ''),
+              memoryContext
+            )
+            result = JSON.stringify({ agent: input?.agent_id, reponse: answer })
+          } else {
+            // Les credentials CRM doivent être fournis par l'utilisateur connecté
+            result = JSON.stringify({ message: `Outil ${tool.name} appelé avec ${JSON.stringify(tool.input)}. Configuration CRM requise.` })
+          }
         } catch (e) {
           result = JSON.stringify({ error: 'Échec outil' })
         }

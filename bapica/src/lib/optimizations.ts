@@ -80,20 +80,19 @@ export function getOptimalModel(
 /**
  * Compression de prompt — réduit les tokens pour baisser le coût
  */
-export function compressPrompt(prompt: string, agentId: string): string {
-  // Enlever les doublons, réduire les espaces
-  let compressed = prompt
+export function compressPrompt(prompt: string, _agentId: string): string {
+  // Normalisation des espaces uniquement (sans perte d'information).
+  //
+  // ⚠️ NE PAS réintroduire de troncature par regex ici. Une ancienne version
+  // remplaçait /RÈGLES\s*:[\s\S]*?(?=\n\n|$)/ pour les agents support/general/content :
+  // le prompt étant assemblé avec des sauts de ligne SIMPLES (aucun "\n\n"), la regex
+  // matchait jusqu'à la FIN du prompt et supprimait toutes les règles suivantes
+  // (prose sans Markdown, pas d'émojis, longueur, et les garde-fous « capacités Bapica »).
+  // Symptôme observé : Camille (content) répondait en Markdown avec émojis et listes.
+  return prompt
     .replace(/\n{3,}/g, '\n\n')
     .replace(/ {2,}/g, ' ')
     .trim()
-
-  // Pour les agents simples, retirer les règles redondantes
-  const simpleAgents = ['support', 'general', 'content']
-  if (simpleAgents.includes(agentId) && compressed.length > 800) {
-    compressed = compressed.replace(/RÈGLES\s*:[\s\S]*?(?=\n\n|$)/g, 'RÈGLES: Concis, actionnable.')
-  }
-
-  return compressed
 }
 
 /**

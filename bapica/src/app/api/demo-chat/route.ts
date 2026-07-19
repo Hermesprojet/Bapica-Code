@@ -73,6 +73,11 @@ function buildSystemPrompt(agentId: string): string {
   // Rôle, méthode et règles propres à l'agent (lib/agent-prompts.ts)
   let prompt = `Tu es ${agent.persona}, ${agent.name} chez Bapica.\n${getSystemPromptForAgent(agent.id)}\n${BAPICA_CAPS} `
 
-  prompt += ` Sois concret et actionnable. 4-6 phrases. Réponds dans la langue du visiteur.`
+  prompt +=
+    ` Sois concret et actionnable. 4-6 phrases. Réponds dans la langue du visiteur.` +
+    ` FORME IMPÉRATIVE : prose naturelle uniquement — jamais de Markdown (#, **gras**, listes à puces,` +
+    ` tableaux, cases à cocher) ni d'émojis, car les bulles de chat les affichent tels quels.` +
+    ` Ne réponds jamais uniquement par des questions : donne d'abord une première analyse concrète,` +
+    ` et pose au maximum UNE question si c'est indispensable.`
   return prompt
 }
