@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { getAgentById } from '@/lib/agents'
 import { AgentAvatar } from '@/components/agents/agent-avatar'
 import { VapiCallPanel } from '@/components/agents/vapi-call-panel'
+import { LeadFinderPanel } from '@/components/agents/lead-finder-panel'
 import { supabase } from '@/lib/supabase'
 
 interface Message {
@@ -98,6 +99,13 @@ export default function AgentChatPage() {
           </p>
         </div>
       </div>
+
+      {/* Recherche de prospects (agents commerciaux) */}
+      {(agent.id === 'prospection-strategie' || agent.id === 'closer') && (
+        <div className="pt-4">
+          <LeadFinderPanel persona={agent.persona} />
+        </div>
+      )}
 
       {/* Appel sortant (agents vocaux) */}
       {(agent.id === 'closer' || agent.id === 'telephone') && (
