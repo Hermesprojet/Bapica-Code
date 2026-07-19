@@ -27,8 +27,8 @@ const SIZES = [
  * Panneau « Trouver des prospects » (Apollo) pour les agents commerciaux.
  * Alimente POST /api/leads/search. Sans APOLLO_API_KEY, un message le signale.
  */
-export function LeadFinderPanel({ persona }: { persona: string }) {
-  const [open, setOpen] = useState(false)
+export function LeadFinderPanel({ persona, defaultOpen = false }: { persona: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
   const [source, setSource] = useState<'apollo' | 'hunter'>('apollo')
   const [titles, setTitles] = useState('')
   const [location, setLocation] = useState('')
