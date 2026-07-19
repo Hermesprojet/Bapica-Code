@@ -6,6 +6,7 @@ import { Send, User, ArrowLeft, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { getAgentById } from '@/lib/agents'
 import { AgentAvatar } from '@/components/agents/agent-avatar'
+import { VapiCallPanel } from '@/components/agents/vapi-call-panel'
 import { supabase } from '@/lib/supabase'
 
 interface Message {
@@ -97,6 +98,13 @@ export default function AgentChatPage() {
           </p>
         </div>
       </div>
+
+      {/* Appel sortant (agents vocaux) */}
+      {(agent.id === 'closer' || agent.id === 'telephone') && (
+        <div className="pt-4">
+          <VapiCallPanel persona={agent.persona} />
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 space-y-4 overflow-y-auto py-4">

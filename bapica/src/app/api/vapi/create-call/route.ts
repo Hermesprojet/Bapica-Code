@@ -2,8 +2,8 @@
 // POST /api/vapi/create-call
 // Body: { phoneNumber, prospectName?, context? }
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { getCurrentUsage, isWithinQuota, logUsage, getQuotaMessage } from '@/lib/usage-limits'
+import { bearerToken, getUserFromToken } from '@/lib/api-auth'
+import { getCurrentUsage, logUsage, getQuotaMessage } from '@/lib/usage-limits'
 
 const corsHeaders = () => ({
   'Access-Control-Allow-Origin': 'https://bapica.com',
@@ -18,13 +18,8 @@ export async function OPTIONS() {
 const VAPI_API_URL = 'https://api.vapi.ai'
 
 export async function POST(req: NextRequest) {
-  // Vérifier l'authentification
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
+  // Vérifier l'authentification via le jeton Bearer Supabase (helper commun).
+  const user = await getUserFromToken(bearerToken(req))
   if (!user) {
     return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
   }
