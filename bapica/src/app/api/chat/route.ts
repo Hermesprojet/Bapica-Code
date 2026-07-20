@@ -10,6 +10,7 @@ import { twentyTools } from '@/lib/tools/twenty-tools'
 import { consultAgentTool, runAgentConsult } from '@/lib/tools/agent-consult'
 import { listPlatformsTool, readPlatformTool, proposeActionTool, listClientPlatforms, readFromPlatform } from '@/lib/tools/platform-call'
 import { readEmailsTool, proposeEmailTool, runReadEmails } from '@/lib/tools/email-tools'
+import { auditSiteTool, auditSite } from '@/lib/tools/seo-audit'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -307,6 +308,7 @@ async function callClaude(
           proposeActionTool as unknown as any,
           readEmailsTool as unknown as any,
           proposeEmailTool as unknown as any,
+          auditSiteTool as unknown as any,
         ]
       : []),
   ]
@@ -331,7 +333,11 @@ async function callClaude(
       for (const tool of toolUses) {
         let result = ''
         try {
-          if (tool.name === 'lire_emails' && userId) {
+          if (tool.name === 'auditer_site') {
+            const i = tool.input as { url?: string }
+            const r = await auditSite(String(i?.url || ''))
+            result = JSON.stringify(r.ok ? { ok: true, audit: r.audit } : { ok: false, erreur: r.error })
+          } else if (tool.name === 'lire_emails' && userId) {
             const i = tool.input as { limit?: number }
             const r = await runReadEmails(userId, Number(i?.limit) || 10)
             result = JSON.stringify(r.ok ? { ok: true, emails: r.emails } : { ok: false, erreur: r.error })

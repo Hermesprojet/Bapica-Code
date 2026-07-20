@@ -73,6 +73,14 @@ CE QUE LES AGENTS PEUVENT FAIRE AVEC VOS OUTILS
   « Actions à valider », et rien ne part tant que vous n'avez pas cliqué sur Valider. Vous pouvez
   voir le détail technique avant d'approuver, et refuser à tout moment.
 
+AUDIT ET MODIFICATION DU SITE (Camille)
+Camille lit réellement votre site pour l'audit SEO (il suffit de lui donner l'URL) : elle analyse
+titre, meta description, H1, Open Graph, données structurées et liste les problèmes. Pour qu'elle
+puisse aussi MODIFIER le site (titres, contenus), connectez WordPress dans Connexions → bloc « Site
+WordPress » (URL du site + nom d'utilisateur + mot de passe d'application créé dans WordPress :
+Utilisateurs → Profil → Mots de passe d'application). Toute modification passe ensuite par « Actions
+à valider » : Camille prépare, vous approuvez avant que ce soit appliqué en ligne.
+
 RECHERCHER DES PROSPECTS
 Menu Prospects (ou depuis Marc/Nadia). Deux sources :
 - Hunter — par domaine : saisir le domaine d'une entreprise (ex : exemple.com) pour obtenir les

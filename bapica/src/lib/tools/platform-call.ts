@@ -107,6 +107,18 @@ async function resolveSpec(
   const secret = (conn as { access_token?: string }).access_token || ''
   if (!secret) return { error: `Aucun identifiant enregistré pour "${provider}".` }
 
+  // WordPress : base = <site>/wp-json/wp/v2, auth Basic (utilisateur + mot de passe d'application).
+  if (provider === 'wordpress') {
+    let meta: { siteUrl?: string; user?: string } = {}
+    try { meta = JSON.parse((conn as { external_id?: string }).external_id || '{}') } catch { /* ignore */ }
+    if (!meta.siteUrl || !meta.user) {
+      return { error: 'Configuration WordPress incomplète. Reconnectez le site dans Connexions.' }
+    }
+    const base = meta.siteUrl.replace(/\/$/, '') + '/wp-json/wp/v2'
+    const basic = Buffer.from(`${meta.user}:${secret}`).toString('base64')
+    return { spec: { baseUrl: base, auth: 'raw-authorization' }, secret: `Basic ${basic}` }
+  }
+
   if (provider.startsWith(CUSTOM_PREFIX)) {
     let meta: { baseUrl?: string } = {}
     try { meta = JSON.parse((conn as { external_id?: string }).external_id || '{}') } catch { /* ignore */ }

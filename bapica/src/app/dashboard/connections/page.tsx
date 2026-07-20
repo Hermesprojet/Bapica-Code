@@ -92,6 +92,48 @@ function ConnectionsContent() {
     setEmailConn({ connected: false, email: '' })
   }
 
+  // Connexion WordPress (audit + modification du site)
+  const [wpConn, setWpConn] = useState<{ connected: boolean; siteUrl: string } | null>(null)
+  const [wOpen, setWOpen] = useState(false)
+  const [wSite, setWSite] = useState('')
+  const [wUser, setWUser] = useState('')
+  const [wPass, setWPass] = useState('')
+  const [wSaving, setWSaving] = useState(false)
+
+  const loadWordpress = async () => {
+    try {
+      const res = await fetch('/api/integrations/wordpress', { headers: { Authorization: `Bearer ${await token()}` } })
+      if (res.ok) setWpConn(await res.json())
+    } catch { /* ignore */ }
+  }
+
+  const saveWordpress = async () => {
+    if (!wSite.trim() || !wUser.trim() || !wPass.trim() || wSaving) return
+    setWSaving(true); setNotice(null)
+    try {
+      const res = await fetch('/api/integrations/wordpress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ siteUrl: wSite.trim(), user: wUser.trim(), appPassword: wPass }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setNotice({ kind: 'ok', msg: `Site ${data.siteUrl} connecté.` })
+        setWpConn({ connected: true, siteUrl: data.siteUrl }); setWOpen(false); setWPass('')
+      } else {
+        setNotice({ kind: 'err', msg: data.error || 'Échec de la connexion WordPress.' })
+      }
+    } catch {
+      setNotice({ kind: 'err', msg: 'Erreur de connexion.' })
+    }
+    setWSaving(false)
+  }
+
+  const disconnectWordpress = async () => {
+    await fetch('/api/integrations/wordpress', { method: 'DELETE', headers: { Authorization: `Bearer ${await token()}` } })
+    setWpConn({ connected: false, siteUrl: '' })
+  }
+
   // Composer LinkedIn
   const [text, setText] = useState('')
   const [publishing, setPublishing] = useState(false)
@@ -138,6 +180,7 @@ function ConnectionsContent() {
     if (e) setNotice({ kind: 'err', msg: e })
     loadConnections()
     loadEmail()
+    loadWordpress()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -294,6 +337,48 @@ function ConnectionsContent() {
               On teste la connexion avant d&apos;enregistrer. Le mot de passe est stocké côté serveur,
               jamais renvoyé au navigateur. Les envois passent toujours par « Actions à valider ».
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* Site WordPress (audit + modification par Camille) */}
+      <div className="card-elevated mb-8 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Link2 className="mt-0.5 h-5 w-5 text-primary" />
+            <div>
+              <div className="text-sm font-semibold">Site WordPress</div>
+              <div className="text-xs text-muted-foreground">
+                Permet à Camille d&apos;auditer ET de modifier votre site (titres, contenus SEO) — toute
+                modification passe par « Actions à valider ». {wpConn?.connected ? `Connecté : ${wpConn.siteUrl}` : ''}
+              </div>
+            </div>
+          </div>
+          {wpConn?.connected ? (
+            <button onClick={disconnectWordpress} className="text-xs text-muted-foreground hover:text-destructive transition-colors">Déconnecter</button>
+          ) : !wOpen ? (
+            <button onClick={() => setWOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+              <Link2 className="h-3.5 w-3.5" /> Connecter mon site
+            </button>
+          ) : null}
+        </div>
+
+        {wOpen && !wpConn?.connected && (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input value={wSite} onChange={(e) => setWSite(e.target.value)} placeholder="URL du site (https://monsite.com)" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary sm:col-span-2" />
+              <input value={wUser} onChange={(e) => setWUser(e.target.value)} placeholder="Nom d'utilisateur WordPress" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              <input type="password" value={wPass} onChange={(e) => setWPass(e.target.value)} placeholder="Mot de passe d'application" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+            </div>
+            <p className="text-[11px] text-amber-600">
+              Créez le mot de passe d&apos;application dans WordPress : Utilisateurs → Profil → « Mots de passe d&apos;application ». Ce n&apos;est pas votre mot de passe de connexion habituel.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setWOpen(false)} className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground">Annuler</button>
+              <button onClick={saveWordpress} disabled={!wSite.trim() || !wUser.trim() || !wPass.trim() || wSaving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {wSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Vérification…</> : 'Connecter'}
+              </button>
+            </div>
           </div>
         )}
       </div>
