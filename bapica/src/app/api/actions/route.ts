@@ -17,9 +17,14 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   try {
     const actions = await listActions(user.id)
-    return NextResponse.json({ actions })
-  } catch {
-    return NextResponse.json({ actions: [] })
+    return NextResponse.json({ actions, needsSetup: false })
+  } catch (e) {
+    const msg = String(e instanceof Error ? e.message : e)
+    // La table manque → on le dit explicitement au lieu d'afficher « aucune action ».
+    if (msg.includes('ACTIONS_TABLE_MISSING')) {
+      return NextResponse.json({ actions: [], needsSetup: true })
+    }
+    return NextResponse.json({ actions: [], needsSetup: false })
   }
 }
 

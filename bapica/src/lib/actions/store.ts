@@ -61,7 +61,11 @@ export async function listActions(userId: string, status?: ActionStatus): Promis
   let q = db.from('pending_actions').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50)
   if (status) q = q.eq('status', status)
   const { data, error } = await q
-  if (error) return []
+  if (error) {
+    // Distinguer « pas d'actions » de « table absente » (SQL non exécuté).
+    if (isMissingTable(error)) throw new Error('ACTIONS_TABLE_MISSING')
+    return []
+  }
   return (data as PendingAction[]) || []
 }
 

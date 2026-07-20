@@ -28,6 +28,7 @@ export default function ActionsPage() {
   const [actions, setActions] = useState<ActionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
+  const [needsSetup, setNeedsSetup] = useState(false)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
 
   const token = async () => (await supabase.auth.getSession()).data.session?.access_token || ''
@@ -36,7 +37,7 @@ export default function ActionsPage() {
     try {
       const res = await fetch('/api/actions', { headers: { Authorization: `Bearer ${await token()}` } })
       const data = await res.json()
-      if (res.ok) setActions(data.actions || [])
+      if (res.ok) { setActions(data.actions || []); setNeedsSetup(Boolean(data.needsSetup)) }
     } catch { /* ignore */ }
     setLoading(false)
   }
@@ -87,10 +88,23 @@ export default function ActionsPage() {
         <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : (
         <>
-          {pending.length === 0 ? (
+          {needsSetup ? (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-5 text-sm">
+              <div className="flex items-center gap-2 font-semibold text-amber-700">
+                <AlertCircle className="h-4 w-4" />
+                Base de données non initialisée
+              </div>
+              <p className="mt-2 text-muted-foreground">
+                La table <code className="rounded bg-muted px-1">pending_actions</code> est absente : le script
+                SQL n&apos;a pas été exécuté (ou pas jusqu&apos;au bout). Ouvrez Supabase → SQL Editor, collez
+                tout le contenu de <code className="rounded bg-muted px-1">bapica/supabase-schema.sql</code>,
+                puis cliquez sur Run et rechargez cette page.
+              </p>
+            </div>
+          ) : pending.length === 0 ? (
             <div className="card-professional flex items-center gap-3 p-6 text-sm text-muted-foreground">
               <ShieldCheck className="h-5 w-5 text-green-600" />
-              Aucune action en attente. Demandez par exemple à Claire de préparer une facture.
+              Aucune action en attente — la base est bien initialisée. Demandez par exemple à Claire de préparer une facture.
             </div>
           ) : (
             <div className="space-y-3">
