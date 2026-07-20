@@ -9,6 +9,7 @@ import { retrieveClientContext } from '@/lib/client-knowledge'
 import { twentyTools } from '@/lib/tools/twenty-tools'
 import { consultAgentTool, runAgentConsult } from '@/lib/tools/agent-consult'
 import { listPlatformsTool, readPlatformTool, proposeActionTool, listClientPlatforms, readFromPlatform } from '@/lib/tools/platform-call'
+import { readEmailsTool, proposeEmailTool, runReadEmails } from '@/lib/tools/email-tools'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -304,6 +305,8 @@ async function callClaude(
           listPlatformsTool as unknown as any,
           readPlatformTool as unknown as any,
           proposeActionTool as unknown as any,
+          readEmailsTool as unknown as any,
+          proposeEmailTool as unknown as any,
         ]
       : []),
   ]
@@ -328,7 +331,28 @@ async function callClaude(
       for (const tool of toolUses) {
         let result = ''
         try {
-          if (tool.name === 'lister_plateformes' && userId) {
+          if (tool.name === 'lire_emails' && userId) {
+            const i = tool.input as { limit?: number }
+            const r = await runReadEmails(userId, Number(i?.limit) || 10)
+            result = JSON.stringify(r.ok ? { ok: true, emails: r.emails } : { ok: false, erreur: r.error })
+          } else if (tool.name === 'proposer_email' && userId) {
+            const i = tool.input as { to?: string; subject?: string; text?: string }
+            try {
+              const actionId = await createAction({
+                userId,
+                agentId: agent.id,
+                provider: 'email',
+                method: 'SEND',
+                path: '',
+                body: { to: String(i?.to || ''), subject: String(i?.subject || ''), text: String(i?.text || '') },
+                summary: `Envoyer un email à ${i?.to || '?'} — objet : ${i?.subject || '(sans objet)'}`,
+              })
+              result = JSON.stringify({ ok: true, action_id: actionId, statut: "en attente de validation par l'utilisateur" })
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('ACTIONS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'lister_plateformes' && userId) {
             const platforms = await listClientPlatforms(userId)
             result = JSON.stringify({ plateformes: platforms })
           } else if (tool.name === 'lire_plateforme' && userId) {

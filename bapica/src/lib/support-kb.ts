@@ -52,8 +52,17 @@ Connexions → chercher la plateforme → Connecter → coller la clé API. Une 
 la clé pour chaque plateforme. Connectables immédiatement : Stripe, Pennylane, Qonto, HubSpot,
 Pipedrive, Brevo, Mailchimp, SendGrid, Shopify, Notion, Slack, Calendly, Trello, Asana, Monday,
 ClickUp, Mollie, Wise, Zoho.
-Certaines plateformes affichent « Bientôt » (Gmail, Outlook, banques hors Qonto…) : elles exigent
-une validation de l'éditeur ou un agrégateur bancaire agréé. Survoler le badge indique la raison.
+CONNECTER SA BOÎTE EMAIL (Gmail, Outlook, OVH, Gandi, IONOS, ou tout autre)
+Connexions → bloc « Boîte email (IMAP/SMTP) » en haut de la page → « Connecter ma boîte ».
+Choisir le fournisseur (les serveurs se remplissent automatiquement), saisir l'adresse et le mot
+de passe. Pour Gmail et Outlook avec double authentification, il faut un « mot de passe
+d'application » (généré dans les réglages de sécurité du compte), pas le mot de passe habituel.
+Une fois connectée, les agents lisent vos derniers emails et préparent des réponses ; l'envoi passe
+toujours par « Actions à valider ». Aucune validation Google/Microsoft n'est nécessaire (IMAP/SMTP).
+
+Certaines plateformes affichent « Bientôt » (banques hors Qonto, certains logiciels de compta…) :
+elles exigent une validation de l'éditeur ou un agrégateur bancaire agréé. Survoler le badge indique
+la raison.
 Si votre outil n'est pas dans la liste : bloc « Votre plateforme n'est pas dans la liste ? » en bas
 de la page — renseigner le nom, la catégorie, l'URL de l'API et la clé.
 

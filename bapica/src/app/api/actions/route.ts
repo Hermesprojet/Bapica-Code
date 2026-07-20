@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { bearerToken, getUserFromToken } from '@/lib/api-auth'
 import { listActions, getAction, markAction } from '@/lib/actions/store'
 import { writeToPlatform } from '@/lib/tools/platform-call'
+import { getUserEmailConfig } from '@/lib/tools/email-tools'
+import { sendEmail } from '@/lib/email'
 
 /**
  * Actions proposées par les agents, en attente de validation.
@@ -55,6 +57,23 @@ export async function POST(req: NextRequest) {
   }
 
   // Exécution réelle, uniquement ici.
+  // Cas email : envoi SMTP depuis la boîte du client.
+  if (action.provider === 'email') {
+    const cfg = await getUserEmailConfig(user.id)
+    if (!cfg) {
+      await markAction(id, 'failed', 'Aucune boîte email connectée.')
+      return NextResponse.json({ success: false, status: 'failed', error: 'Aucune boîte email connectée.' }, { status: 400 })
+    }
+    const b = (action.body || {}) as { to?: string; subject?: string; text?: string }
+    const sent = await sendEmail(cfg, { to: String(b.to || ''), subject: String(b.subject || ''), text: String(b.text || '') })
+    if (sent.ok) {
+      await markAction(id, 'executed', `Email envoyé (${sent.id || 'ok'}).`)
+      return NextResponse.json({ success: true, status: 'executed' })
+    }
+    await markAction(id, 'failed', sent.error?.slice(0, 2000) || 'Échec')
+    return NextResponse.json({ success: false, status: 'failed', error: sent.error }, { status: 502 })
+  }
+
   const res = await writeToPlatform(user.id, action.provider, action.method, action.path, action.body)
   if (res.ok) {
     await markAction(id, 'executed', res.data?.slice(0, 2000) || 'OK')

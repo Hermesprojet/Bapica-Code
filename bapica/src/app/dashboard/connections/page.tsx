@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { Check, Loader2, Send, AlertCircle, Search, Link2, X, Plus } from 'lucide-react'
 import { getAvailableIntegrations } from '@/lib/integrations'
 import { connectMethodFor, soonReasonFor, apiKeyHintFor } from '@/lib/integrations-connect'
+import { EMAIL_PRESETS } from '@/lib/email-presets'
+import { Mail } from 'lucide-react'
 
 const CATALOG = getAvailableIntegrations()
 
@@ -37,6 +39,58 @@ function ConnectionsContent() {
   const [cKey, setCKey] = useState('')
   const [cCat, setCCat] = useState('Autre')
   const [cSaving, setCSaving] = useState(false)
+
+  // Connexion email (IMAP/SMTP)
+  const [emailConn, setEmailConn] = useState<{ connected: boolean; email: string } | null>(null)
+  const [eOpen, setEOpen] = useState(false)
+  const [eProvider, setEProvider] = useState('gmail')
+  const [eEmail, setEEmail] = useState('')
+  const [ePass, setEPass] = useState('')
+  const [eImapHost, setEImapHost] = useState(EMAIL_PRESETS.gmail.imapHost)
+  const [eImapPort, setEImapPort] = useState(EMAIL_PRESETS.gmail.imapPort)
+  const [eSmtpHost, setESmtpHost] = useState(EMAIL_PRESETS.gmail.smtpHost)
+  const [eSmtpPort, setESmtpPort] = useState(EMAIL_PRESETS.gmail.smtpPort)
+  const [eSaving, setESaving] = useState(false)
+
+  const onProvider = (key: string) => {
+    setEProvider(key)
+    const p = EMAIL_PRESETS[key]
+    if (p) { setEImapHost(p.imapHost); setEImapPort(p.imapPort); setESmtpHost(p.smtpHost); setESmtpPort(p.smtpPort) }
+  }
+
+  const loadEmail = async () => {
+    try {
+      const res = await fetch('/api/integrations/email', { headers: { Authorization: `Bearer ${await token()}` } })
+      if (res.ok) setEmailConn(await res.json())
+    } catch { /* ignore */ }
+  }
+
+  const saveEmail = async () => {
+    if (!eEmail.trim() || !ePass.trim() || eSaving) return
+    setESaving(true); setNotice(null)
+    try {
+      const res = await fetch('/api/integrations/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ email: eEmail.trim(), password: ePass, imapHost: eImapHost.trim(), imapPort: eImapPort, smtpHost: eSmtpHost.trim(), smtpPort: eSmtpPort }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setNotice({ kind: 'ok', msg: `Boîte ${data.email} connectée.` })
+        setEmailConn({ connected: true, email: data.email }); setEOpen(false); setEPass('')
+      } else {
+        setNotice({ kind: 'err', msg: data.error || 'Échec de la connexion email.' })
+      }
+    } catch {
+      setNotice({ kind: 'err', msg: 'Erreur de connexion.' })
+    }
+    setESaving(false)
+  }
+
+  const disconnectEmail = async () => {
+    await fetch('/api/integrations/email', { method: 'DELETE', headers: { Authorization: `Bearer ${await token()}` } })
+    setEmailConn({ connected: false, email: '' })
+  }
 
   // Composer LinkedIn
   const [text, setText] = useState('')
@@ -83,6 +137,7 @@ function ConnectionsContent() {
     if (c) setNotice({ kind: 'ok', msg: `${c} connecté avec succès.` })
     if (e) setNotice({ kind: 'err', msg: e })
     loadConnections()
+    loadEmail()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -191,6 +246,56 @@ function ConnectionsContent() {
         <span className="shrink-0 text-xs text-muted-foreground">
           {loading ? '…' : `${connected.length} connectée${connected.length > 1 ? 's' : ''} / ${CATALOG.length}`}
         </span>
+      </div>
+
+      {/* Boîte email (IMAP/SMTP) — fonctionne avec tout fournisseur */}
+      <div className="card-elevated mb-8 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Mail className="mt-0.5 h-5 w-5 text-primary" />
+            <div>
+              <div className="text-sm font-semibold">Boîte email (IMAP/SMTP)</div>
+              <div className="text-xs text-muted-foreground">
+                Connectez n&apos;importe quelle boîte (Gmail, Outlook, OVH…) pour que vos agents lisent et
+                répondent à vos emails. {emailConn?.connected ? `Connectée : ${emailConn.email}` : ''}
+              </div>
+            </div>
+          </div>
+          {emailConn?.connected ? (
+            <button onClick={disconnectEmail} className="text-xs text-muted-foreground hover:text-destructive transition-colors">Déconnecter</button>
+          ) : !eOpen ? (
+            <button onClick={() => setEOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+              <Link2 className="h-3.5 w-3.5" /> Connecter ma boîte
+            </button>
+          ) : null}
+        </div>
+
+        {eOpen && !emailConn?.connected && (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <select value={eProvider} onChange={(e) => onProvider(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+                {Object.entries(EMAIL_PRESETS).map(([k, p]) => <option key={k} value={k}>{p.label}</option>)}
+              </select>
+              <input value={eEmail} onChange={(e) => setEEmail(e.target.value)} placeholder="Adresse email" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              <input type="password" value={ePass} onChange={(e) => setEPass(e.target.value)} placeholder="Mot de passe (ou mot de passe d'application)" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary sm:col-span-2" />
+              <input value={eImapHost} onChange={(e) => setEImapHost(e.target.value)} placeholder="Serveur IMAP" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              <input value={eSmtpHost} onChange={(e) => setESmtpHost(e.target.value)} placeholder="Serveur SMTP" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+            </div>
+            {EMAIL_PRESETS[eProvider]?.note && (
+              <p className="text-[11px] text-amber-600">{EMAIL_PRESETS[eProvider].note}</p>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setEOpen(false)} className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground">Annuler</button>
+              <button onClick={saveEmail} disabled={!eEmail.trim() || !ePass.trim() || eSaving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {eSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Vérification…</> : 'Connecter'}
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              On teste la connexion avant d&apos;enregistrer. Le mot de passe est stocké côté serveur,
+              jamais renvoyé au navigateur. Les envois passent toujours par « Actions à valider ».
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Catalogue par catégorie */}

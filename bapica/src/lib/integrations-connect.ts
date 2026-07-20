@@ -30,9 +30,9 @@ const OAUTH_PROVIDERS = new Set<string>(['linkedin'])
 
 // Raison affichée pour les plateformes pas encore ouvertes.
 const SOON_REASON: Record<string, string> = {
-  gmail: "Nécessite la validation Google (scopes Gmail restreints, audit de sécurité).",
-  outlook: 'Nécessite une app Microsoft validée.',
-  office365: 'Nécessite une app Microsoft validée.',
+  gmail: 'Connectez-la via le bloc « Boîte email (IMAP/SMTP) » en haut de la page.',
+  outlook: 'Connectez-la via le bloc « Boîte email (IMAP/SMTP) » en haut de la page.',
+  office365: 'Connectez-la via le bloc « Boîte email (IMAP/SMTP) » en haut de la page.',
   teams: 'Nécessite une app Microsoft validée.',
   google_calendar: 'Nécessite la validation Google.',
   outlook_calendar: 'Nécessite une app Microsoft validée.',
