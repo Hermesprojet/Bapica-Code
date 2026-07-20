@@ -4,6 +4,7 @@ import "./globals.css"
 import { ToastProvider } from "@/components/ui/toast"
 import { CookieBanner } from "@/components/ui/cookie-banner"
 import { MobileInstallBanner } from "@/components/ui/mobile-install-banner"
+import { SupportChat } from "@/components/support/support-chat"
 import {
   getOrganizationSchema,
   getWebSiteSchema,
@@ -143,6 +144,8 @@ export default function RootLayout({
         `}} />
         <ToastProvider>
           {children}
+          {/* Assistant d'aide : visiteurs du site public ET clients connectés */}
+          <SupportChat />
           <CookieBanner />
           <MobileInstallBanner />
         </ToastProvider>

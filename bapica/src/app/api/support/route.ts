@@ -10,9 +10,32 @@ import { SUPPORT_KB } from '@/lib/support-kb'
  */
 interface Msg { role: 'user' | 'assistant'; content: string }
 
+// Garde-fou simple contre les abus (endpoint public). En serverless la mémoire est
+// par instance : cela freine les boucles naïves, sans prétendre être un vrai quota.
+const RATE_WINDOW_MS = 10 * 60 * 1000
+const RATE_MAX = 20
+const hits = new Map<string, number[]>()
+
+function rateLimited(ip: string): boolean {
+  const now = Date.now()
+  const recent = (hits.get(ip) || []).filter((t) => now - t < RATE_WINDOW_MS)
+  recent.push(now)
+  hits.set(ip, recent)
+  if (hits.size > 5000) hits.clear() // borne mémoire
+  return recent.length > RATE_MAX
+}
+
 export async function POST(req: NextRequest) {
+  // Accessible aux visiteurs (avant inscription) ET aux clients connectés.
   const user = await getUserFromToken(bearerToken(req))
-  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  const isClient = Boolean(user)
+
+  if (!isClient) {
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+    if (rateLimited(ip)) {
+      return NextResponse.json({ error: 'Trop de questions d’affilée. Réessayez dans quelques minutes.' }, { status: 429 })
+    }
+  }
 
   let body: any = {}
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Requête invalide.' }, { status: 400 }) }
@@ -44,7 +67,15 @@ RÈGLES :
   s'affiche tel quel dans une bulle.
 - Trois à six phrases maximum, sauf si l'utilisateur demande une procédure détaillée.
 - Réponds dans la langue de l'utilisateur, avec un ton clair et rassurant.
-- Tu n'exécutes aucune action et tu ne demandes jamais de mot de passe ni de clé API.`
+- Tu n'exécutes aucune action et tu ne demandes jamais de mot de passe ni de clé API.
+${
+  isClient
+    ? `- Tu parles à un CLIENT déjà inscrit : va droit au but sur l'utilisation et le dépannage.`
+    : `- Tu parles à un VISITEUR non inscrit : tu peux aussi expliquer ce qu'est Bapica, ce que font
+  les agents et les formules (Essentiel 49 €/mois, Pro 79 €/mois, essai gratuit 15 jours), puis
+  inviter naturellement à démarrer l'essai gratuit. Ne décris jamais l'intérieur du tableau de bord
+  comme s'il y avait déjà accès.`
+}`
 
   try {
     const client = new Anthropic({ apiKey, timeout: 20000 })

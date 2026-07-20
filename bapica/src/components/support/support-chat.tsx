@@ -6,11 +6,18 @@ import { supabase } from '@/lib/supabase'
 
 interface Msg { role: 'user' | 'assistant'; content: string }
 
-const SUGGESTIONS = [
+const SUGGESTIONS_CLIENT = [
   'Comment connecter WhatsApp ?',
   'Comment trouver des prospects ?',
   'À quoi sert « Actions à valider » ?',
   'Pourquoi je ne vois pas Claire ?',
+]
+
+const SUGGESTIONS_VISITEUR = [
+  "Qu'est-ce que Bapica ?",
+  'Que font les 10 agents ?',
+  'Combien ça coûte ?',
+  'Comment démarrer l’essai gratuit ?',
 ]
 
 /**
@@ -22,11 +29,17 @@ export function SupportChat() {
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isClient, setIsClient] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, open])
+
+  // Adapte les suggestions selon visiteur / client connecté.
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setIsClient(Boolean(data.session)))
+  }, [])
 
   const send = async (question?: string) => {
     const text = (question ?? input).trim()
@@ -87,10 +100,12 @@ export function SupportChat() {
             {messages.length === 0 && (
               <div>
                 <p className="text-sm text-muted-foreground">
-                  Posez votre question sur Bapica : configuration, agents, connexions, problème rencontré…
+                  {isClient
+                    ? 'Posez votre question sur Bapica : configuration, agents, connexions, problème rencontré…'
+                    : 'Une question sur Bapica ? Ce que font les agents, les formules, comment démarrer…'}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {SUGGESTIONS.map((s) => (
+                  {(isClient ? SUGGESTIONS_CLIENT : SUGGESTIONS_VISITEUR).map((s) => (
                     <button
                       key={s}
                       onClick={() => send(s)}
