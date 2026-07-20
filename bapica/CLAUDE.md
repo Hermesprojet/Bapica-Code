@@ -315,3 +315,8 @@ renseignées dans **Vercel (Environment Variables)** et, pour le RAG, tant que
 (503 / erreur claire), jamais un crash. Au 1er test réel, si une fonction échoue, **récupérer le
 message d'erreur brut affiché** (il remonte l'erreur du service) et ajuster. Détail des variables :
 `bapica/.env.example`.
+
+**Diagnostic des variables** : registre central `src/lib/env.ts` (groupes par fonction + `checkEnv()`,
+présence uniquement — jamais les valeurs) ; `.env.example` est aligné dessus. Route admin
+`GET /api/health/env` (Bearer + email dans `NEXT_PUBLIC_ADMIN_EMAILS`) → renvoie ce qui est
+configuré/manquant en prod, à consulter après un déploiement.
