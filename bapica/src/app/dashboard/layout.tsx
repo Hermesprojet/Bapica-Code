@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/brand/logo'
+import { SupportChat } from '@/components/support/support-chat'
 
 const sidebarLinks = [
   { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
@@ -126,6 +127,9 @@ export default function DashboardLayout({
           {children}
         </div>
       </main>
+
+      {/* Assistant d'aide (toutes les pages du dashboard) */}
+      <SupportChat />
     </div>
   )
 }
