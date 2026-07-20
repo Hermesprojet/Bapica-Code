@@ -107,6 +107,17 @@ async function resolveSpec(
   const secret = (conn as { access_token?: string }).access_token || ''
   if (!secret) return { error: `Aucun identifiant enregistré pour "${provider}".` }
 
+  // Shopify : base = https://<shop>.myshopify.com/admin/api/<v>, header X-Shopify-Access-Token.
+  if (provider === 'shopify') {
+    let meta: { shop?: string } = {}
+    try { meta = JSON.parse((conn as { external_id?: string }).external_id || '{}') } catch { /* ignore */ }
+    if (!meta.shop) return { error: 'Configuration Shopify incomplète. Reconnectez la boutique.' }
+    return {
+      spec: { baseUrl: `https://${meta.shop}/admin/api/2024-10`, auth: 'header', headerName: 'X-Shopify-Access-Token' },
+      secret,
+    }
+  }
+
   // WordPress : base = <site>/wp-json/wp/v2, auth Basic (utilisateur + mot de passe d'application).
   if (provider === 'wordpress') {
     let meta: { siteUrl?: string; user?: string } = {}

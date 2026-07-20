@@ -134,6 +134,47 @@ function ConnectionsContent() {
     setWpConn({ connected: false, siteUrl: '' })
   }
 
+  // Connexion Shopify (audit + modification boutique)
+  const [shopConn, setShopConn] = useState<{ connected: boolean; shop: string } | null>(null)
+  const [sOpen, setSOpen] = useState(false)
+  const [sShop, setSShop] = useState('')
+  const [sTok, setSTok] = useState('')
+  const [sSaving, setSSaving] = useState(false)
+
+  const loadShopify = async () => {
+    try {
+      const res = await fetch('/api/integrations/shopify', { headers: { Authorization: `Bearer ${await token()}` } })
+      if (res.ok) setShopConn(await res.json())
+    } catch { /* ignore */ }
+  }
+
+  const saveShopify = async () => {
+    if (!sShop.trim() || !sTok.trim() || sSaving) return
+    setSSaving(true); setNotice(null)
+    try {
+      const res = await fetch('/api/integrations/shopify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ shop: sShop.trim(), accessToken: sTok.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setNotice({ kind: 'ok', msg: `Boutique ${data.shop} connectée.` })
+        setShopConn({ connected: true, shop: data.shop }); setSOpen(false); setSTok('')
+      } else {
+        setNotice({ kind: 'err', msg: data.error || 'Échec de la connexion Shopify.' })
+      }
+    } catch {
+      setNotice({ kind: 'err', msg: 'Erreur de connexion.' })
+    }
+    setSSaving(false)
+  }
+
+  const disconnectShopify = async () => {
+    await fetch('/api/integrations/shopify', { method: 'DELETE', headers: { Authorization: `Bearer ${await token()}` } })
+    setShopConn({ connected: false, shop: '' })
+  }
+
   // Composer LinkedIn
   const [text, setText] = useState('')
   const [publishing, setPublishing] = useState(false)
@@ -181,6 +222,7 @@ function ConnectionsContent() {
     loadConnections()
     loadEmail()
     loadWordpress()
+    loadShopify()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -377,6 +419,47 @@ function ConnectionsContent() {
               <button onClick={() => setWOpen(false)} className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground">Annuler</button>
               <button onClick={saveWordpress} disabled={!wSite.trim() || !wUser.trim() || !wPass.trim() || wSaving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                 {wSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Vérification…</> : 'Connecter'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Boutique Shopify (audit + modification par Camille) */}
+      <div className="card-elevated mb-8 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Link2 className="mt-0.5 h-5 w-5 text-primary" />
+            <div>
+              <div className="text-sm font-semibold">Boutique Shopify</div>
+              <div className="text-xs text-muted-foreground">
+                Permet à Camille de modifier fiches produits et pages (SEO) — toute modification passe
+                par « Actions à valider ». {shopConn?.connected ? `Connectée : ${shopConn.shop}` : ''}
+              </div>
+            </div>
+          </div>
+          {shopConn?.connected ? (
+            <button onClick={disconnectShopify} className="text-xs text-muted-foreground hover:text-destructive transition-colors">Déconnecter</button>
+          ) : !sOpen ? (
+            <button onClick={() => setSOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+              <Link2 className="h-3.5 w-3.5" /> Connecter ma boutique
+            </button>
+          ) : null}
+        </div>
+
+        {sOpen && !shopConn?.connected && (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input value={sShop} onChange={(e) => setSShop(e.target.value)} placeholder="ma-boutique.myshopify.com" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              <input type="password" value={sTok} onChange={(e) => setSTok(e.target.value)} placeholder="Jeton Admin API (shpat_...)" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+            </div>
+            <p className="text-[11px] text-amber-600">
+              Créez le jeton dans Shopify : Paramètres → Apps et canaux de vente → Développer des apps → Créer une app → jeton Admin API (droits products/pages).
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setSOpen(false)} className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground">Annuler</button>
+              <button onClick={saveShopify} disabled={!sShop.trim() || !sTok.trim() || sSaving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {sSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Vérification…</> : 'Connecter'}
               </button>
             </div>
           </div>
