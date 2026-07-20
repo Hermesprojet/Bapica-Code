@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
 import { useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { isAdminEmail } from '@/lib/admin'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, ServerCog } from 'lucide-react'
 import { Logo } from '@/components/brand/logo'
 
 const sidebarLinks = [
@@ -53,7 +53,11 @@ export default function DashboardLayout({
   }, [])
 
   const links = isAdmin
-    ? [...sidebarLinks, { href: '/dashboard/insights', label: 'Apprentissage', icon: Sparkles }]
+    ? [
+        ...sidebarLinks,
+        { href: '/dashboard/insights', label: 'Apprentissage', icon: Sparkles },
+        { href: '/dashboard/config', label: 'Configuration', icon: ServerCog },
+      ]
     : sidebarLinks
 
   const NavLinks = ({ onNavigate }: { onNavigate?: () => void }) => (
