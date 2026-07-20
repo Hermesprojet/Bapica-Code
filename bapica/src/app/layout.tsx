@@ -19,12 +19,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
 
   title: {
-    default: "Bapica — Agents IA pour votre entreprise",
+    default: "Bapica — 10 agents IA qui automatisent votre entreprise",
     template: "%s | Bapica",
   },
 
   description:
-    "Plateforme multi-agents IA pour PME et indépendants. Prospection, support client, contenu, voix, recrutement, comptabilité et plus encore. 10 agents spécialisés, messagerie illimitée, essai gratuit 15 jours.",
+    "10 agents IA qui automatisent votre PME : prospection, support client, contenu, appels et compta. Ils agissent vraiment. Essai gratuit 15 jours.",
 
   keywords: [
     "agents IA",
