@@ -22,11 +22,32 @@ interface PlatformSpec {
   headerName?: string // pour 'header'
   queryName?: string // pour 'query'
   extraHeaders?: Record<string, string>
+  /** Format du corps en écriture. Stripe n'accepte QUE du form-urlencoded. */
+  bodyFormat?: 'json' | 'form'
+}
+
+/** Encode un objet en form-urlencoded façon Stripe (clés imbriquées : a[b]=c). */
+function toFormBody(obj: unknown): URLSearchParams {
+  const params = new URLSearchParams()
+  const walk = (value: unknown, prefix: string) => {
+    if (value === null || value === undefined) return
+    if (Array.isArray(value)) {
+      value.forEach((item, i) => walk(item, `${prefix}[${i}]`))
+    } else if (typeof value === 'object') {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        walk(v, prefix ? `${prefix}[${k}]` : k)
+      }
+    } else {
+      params.append(prefix, String(value))
+    }
+  }
+  walk(obj, '')
+  return params
 }
 
 // Bases d'API des plateformes du catalogue connectables par clé.
 const PLATFORM_SPECS: Record<string, PlatformSpec> = {
-  stripe: { baseUrl: 'https://api.stripe.com/v1', auth: 'bearer' },
+  stripe: { baseUrl: 'https://api.stripe.com/v1', auth: 'bearer', bodyFormat: 'form' },
   hubspot: { baseUrl: 'https://api.hubapi.com', auth: 'bearer' },
   pennylane: { baseUrl: 'https://app.pennylane.com/api/external/v1', auth: 'bearer' },
   brevo: { baseUrl: 'https://api.brevo.com/v3', auth: 'header', headerName: 'api-key' },
@@ -187,9 +208,10 @@ export async function writeToPlatform(
   }
   if (url.protocol !== 'https:') return { ok: false, error: 'Seul HTTPS est autorisé.' }
 
+  const useForm = spec.bodyFormat === 'form'
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    'Content-Type': 'application/json',
+    'Content-Type': useForm ? 'application/x-www-form-urlencoded' : 'application/json',
     ...(spec.extraHeaders || {}),
   }
   if (spec.auth === 'bearer') headers.Authorization = `Bearer ${secret}`
@@ -197,11 +219,18 @@ export async function writeToPlatform(
   else if (spec.auth === 'header' && spec.headerName) headers[spec.headerName] = secret
   else if (spec.auth === 'query' && spec.queryName) url.searchParams.set(spec.queryName, secret)
 
+  const payload =
+    body === undefined || body === null
+      ? undefined
+      : useForm
+        ? toFormBody(body).toString()
+        : JSON.stringify(body)
+
   try {
     const res = await fetch(url.toString(), {
       method: verb,
       headers,
-      body: body === undefined || body === null ? undefined : JSON.stringify(body),
+      body: payload,
       signal: AbortSignal.timeout(15000),
     })
     const raw = await res.text()
