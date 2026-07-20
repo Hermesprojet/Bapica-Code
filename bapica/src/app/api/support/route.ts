@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { bearerToken, getUserFromToken } from '@/lib/api-auth'
 import { SUPPORT_KB } from '@/lib/support-kb'
+import { logSignal } from '@/lib/insights/store'
 
 /**
  * POST /api/support — assistant d'aide Bapica (comment utiliser la plateforme).
@@ -95,6 +96,13 @@ ${
       .map((b) => b.text)
       .join('\n')
       .trim()
+
+    // Signal d'apprentissage : ce que les utilisateurs demandent au support (best-effort).
+    const unsure = /je ne sais pas|contactez l['’]équipe|pas de réponse/i.test(text)
+    logSignal('question', message, {
+      userId: user?.id,
+      meta: { visitor: !isClient, unanswered: unsure },
+    }).catch(() => {})
 
     return NextResponse.json({ response: text || "Je n'ai pas de réponse à cette question pour le moment." })
   } catch (e) {

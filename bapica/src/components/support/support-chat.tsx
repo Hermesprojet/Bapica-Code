@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { LifeBuoy, X, Send, Loader2 } from 'lucide-react'
+import { LifeBuoy, X, Send, Loader2, ThumbsDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 interface Msg { role: 'user' | 'assistant'; content: string }
@@ -30,7 +30,22 @@ export function SupportChat() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [isClient, setIsClient] = useState(false)
+  const [feedbackDone, setFeedbackDone] = useState<Record<number, boolean>>({})
   const endRef = useRef<HTMLDivElement>(null)
+
+  const sendFeedback = async (i: number) => {
+    if (feedbackDone[i]) return
+    setFeedbackDone((prev) => ({ ...prev, [i]: true }))
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const question = messages[i - 1]?.content || ''
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ content: `Réponse jugée insuffisante. Question : "${question}"`, context: messages[i]?.content?.slice(0, 300) }),
+      })
+    } catch { /* ignore */ }
+  }
 
   useEffect(() => {
     if (open) endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -119,7 +134,7 @@ export function SupportChat() {
             )}
 
             {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                 <div
                   className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
                     m.role === 'user'
@@ -129,6 +144,16 @@ export function SupportChat() {
                 >
                   {m.content}
                 </div>
+                {m.role === 'assistant' && (
+                  <button
+                    onClick={() => sendFeedback(i)}
+                    disabled={feedbackDone[i]}
+                    className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:text-green-600 disabled:hover:text-green-600 transition-colors"
+                  >
+                    <ThumbsDown className="h-3 w-3" />
+                    {feedbackDone[i] ? 'Merci pour votre retour' : 'Pas utile'}
+                  </button>
+                )}
               </div>
             ))}
 

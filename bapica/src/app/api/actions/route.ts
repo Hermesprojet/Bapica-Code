@@ -4,6 +4,7 @@ import { listActions, getAction, markAction } from '@/lib/actions/store'
 import { writeToPlatform } from '@/lib/tools/platform-call'
 import { getUserEmailConfig } from '@/lib/tools/email-tools'
 import { sendEmail } from '@/lib/email'
+import { logSignal } from '@/lib/insights/store'
 
 /**
  * Actions proposées par les agents, en attente de validation.
@@ -80,5 +81,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, status: 'executed', result: res.data?.slice(0, 2000) })
   }
   await markAction(id, 'failed', res.error?.slice(0, 2000) || 'Échec')
+  logSignal('action_failed', `${action.provider} ${action.method} ${action.path} — ${action.summary}`, {
+    userId: user.id, meta: { error: res.error?.slice(0, 300) },
+  }).catch(() => {})
   return NextResponse.json({ success: false, status: 'failed', error: res.error }, { status: 502 })
 }

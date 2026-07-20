@@ -108,9 +108,21 @@ CREATE TABLE IF NOT EXISTS pending_actions (
   decided_at TIMESTAMPTZ
 );
 
+-- 9. Signaux d'expérience client (apprentissage produit) : questions au chatbot d'aide,
+--    feedback explicite, frictions/échecs. Agrégés en rapport pour l'administrateur.
+CREATE TABLE IF NOT EXISTS client_signals (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID,
+  type TEXT NOT NULL,             -- 'question' | 'feedback' | 'action_failed' | ...
+  content TEXT NOT NULL,
+  meta JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Index
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
 CREATE INDEX IF NOT EXISTS idx_pending_actions_user ON pending_actions(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_client_signals_created ON client_signals(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_channel_conn_user ON channel_connections(user_id);
 CREATE INDEX IF NOT EXISTS idx_channel_conn_secret ON channel_connections(webhook_secret);
 CREATE INDEX IF NOT EXISTS idx_channel_conn_external ON channel_connections(platform, external_id);
@@ -132,6 +144,8 @@ ALTER TABLE social_connections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_connections ENABLE ROW LEVEL SECURITY;
 -- Actions en attente : RLS activée sans policy (accès service_role uniquement).
 ALTER TABLE pending_actions ENABLE ROW LEVEL SECURITY;
+-- Signaux clients : RLS activée sans policy (accès service_role / admin uniquement).
+ALTER TABLE client_signals ENABLE ROW LEVEL SECURITY;
 
 -- Policies
 CREATE POLICY "Users can view own profile" ON profiles

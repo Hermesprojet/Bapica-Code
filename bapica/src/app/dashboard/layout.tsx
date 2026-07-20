@@ -20,6 +20,10 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import { isAdminEmail } from '@/lib/admin'
+import { Sparkles } from 'lucide-react'
 import { Logo } from '@/components/brand/logo'
 
 const sidebarLinks = [
@@ -42,10 +46,19 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setIsAdmin(isAdminEmail(data.user?.email)))
+  }, [])
+
+  const links = isAdmin
+    ? [...sidebarLinks, { href: '/dashboard/insights', label: 'Apprentissage', icon: Sparkles }]
+    : sidebarLinks
 
   const NavLinks = ({ onNavigate }: { onNavigate?: () => void }) => (
     <>
-      {sidebarLinks.map((link) => {
+      {links.map((link) => {
         const Icon = link.icon
         const isActive = pathname === link.href
         return (
