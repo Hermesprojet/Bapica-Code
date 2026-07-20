@@ -65,12 +65,15 @@ export async function POST(req: NextRequest) {
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     const baseUrl = typeof body.baseUrl === 'string' ? body.baseUrl.trim() : ''
     const category = typeof body.category === 'string' ? body.category.trim() : 'Autre'
+    const authType = ['bearer', 'basic', 'header', 'raw'].includes(body.authType) ? body.authType : 'bearer'
+    const headerName = typeof body.headerName === 'string' ? body.headerName.trim() : ''
+    const authUser = typeof body.authUser === 'string' ? body.authUser.trim() : ''
     const slug = slugify(name)
 
     if (!name || !slug) {
       return NextResponse.json({ error: 'Nom de la plateforme requis.' }, { status: 400 })
     }
-    if (!apiKey || apiKey.length < 8) {
+    if (!apiKey || apiKey.length < 4) {
       return NextResponse.json({ error: 'Clé ou identifiant d’accès invalide (trop court).' }, { status: 400 })
     }
     if (baseUrl && !/^https?:\/\//i.test(baseUrl)) {
@@ -80,7 +83,7 @@ export async function POST(req: NextRequest) {
     try {
       await saveConnection(user.id, `${CUSTOM_PREFIX}${slug}`, {
         accessToken: apiKey,
-        externalId: JSON.stringify({ name, baseUrl, category }),
+        externalId: JSON.stringify({ name, baseUrl, category, authType, headerName, user: authUser }),
       })
       return NextResponse.json({ success: true, provider: `${CUSTOM_PREFIX}${slug}`, name })
     } catch (e) {

@@ -107,6 +107,17 @@ async function resolveSpec(
   const secret = (conn as { access_token?: string }).access_token || ''
   if (!secret) return { error: `Aucun identifiant enregistré pour "${provider}".` }
 
+  // Wix : base = https://www.wixapis.com, en-têtes Authorization + wix-site-id.
+  if (provider === 'wix') {
+    let meta: { siteId?: string } = {}
+    try { meta = JSON.parse((conn as { external_id?: string }).external_id || '{}') } catch { /* ignore */ }
+    if (!meta.siteId) return { error: 'Configuration Wix incomplète. Reconnectez le site.' }
+    return {
+      spec: { baseUrl: 'https://www.wixapis.com', auth: 'raw-authorization', extraHeaders: { 'wix-site-id': meta.siteId } },
+      secret,
+    }
+  }
+
   // Shopify : base = https://<shop>.myshopify.com/admin/api/<v>, header X-Shopify-Access-Token.
   if (provider === 'shopify') {
     let meta: { shop?: string } = {}
@@ -131,12 +142,23 @@ async function resolveSpec(
   }
 
   if (provider.startsWith(CUSTOM_PREFIX)) {
-    let meta: { baseUrl?: string } = {}
+    let meta: { baseUrl?: string; authType?: string; headerName?: string; user?: string } = {}
     try { meta = JSON.parse((conn as { external_id?: string }).external_id || '{}') } catch { /* ignore */ }
     if (!meta.baseUrl) {
       return { error: `Aucune URL d'API enregistrée pour cette plateforme personnalisée. Demandez au client de la renseigner dans Connexions.` }
     }
-    return { spec: { baseUrl: meta.baseUrl.replace(/\/$/, ''), auth: 'bearer' }, secret }
+    const base = meta.baseUrl.replace(/\/$/, '')
+    switch (meta.authType) {
+      case 'basic':
+        return { spec: { baseUrl: base, auth: 'raw-authorization' }, secret: `Basic ${Buffer.from(`${meta.user || ''}:${secret}`).toString('base64')}` }
+      case 'header':
+        return { spec: { baseUrl: base, auth: 'header', headerName: meta.headerName || 'X-Api-Key' }, secret }
+      case 'raw':
+        return { spec: { baseUrl: base, auth: 'raw-authorization' }, secret }
+      case 'bearer':
+      default:
+        return { spec: { baseUrl: base, auth: 'bearer' }, secret }
+    }
   }
 
   const spec = PLATFORM_SPECS[provider]

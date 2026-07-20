@@ -175,6 +175,52 @@ function ConnectionsContent() {
     setShopConn({ connected: false, shop: '' })
   }
 
+  // Connexion Wix
+  const [wixConn, setWixConn] = useState<{ connected: boolean; siteId: string } | null>(null)
+  const [xOpen, setXOpen] = useState(false)
+  const [xKey, setXKey] = useState('')
+  const [xSite, setXSite] = useState('')
+  const [xSaving, setXSaving] = useState(false)
+
+  const loadWix = async () => {
+    try {
+      const res = await fetch('/api/integrations/wix', { headers: { Authorization: `Bearer ${await token()}` } })
+      if (res.ok) setWixConn(await res.json())
+    } catch { /* ignore */ }
+  }
+
+  const saveWix = async () => {
+    if (!xKey.trim() || !xSite.trim() || xSaving) return
+    setXSaving(true); setNotice(null)
+    try {
+      const res = await fetch('/api/integrations/wix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ apiKey: xKey.trim(), siteId: xSite.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setNotice({ kind: 'ok', msg: `Site Wix connecté.` })
+        setWixConn({ connected: true, siteId: data.siteId }); setXOpen(false); setXKey('')
+      } else {
+        setNotice({ kind: 'err', msg: data.error || 'Échec de la connexion Wix.' })
+      }
+    } catch {
+      setNotice({ kind: 'err', msg: 'Erreur de connexion.' })
+    }
+    setXSaving(false)
+  }
+
+  const disconnectWix = async () => {
+    await fetch('/api/integrations/wix', { method: 'DELETE', headers: { Authorization: `Bearer ${await token()}` } })
+    setWixConn({ connected: false, siteId: '' })
+  }
+
+  // Champs avancés d'auth pour une plateforme personnalisée
+  const [cAuthType, setCAuthType] = useState('bearer')
+  const [cHeaderName, setCHeaderName] = useState('')
+  const [cAuthUser, setCAuthUser] = useState('')
+
   // Composer LinkedIn
   const [text, setText] = useState('')
   const [publishing, setPublishing] = useState(false)
@@ -198,7 +244,7 @@ function ConnectionsContent() {
       const res = await fetch('/api/integrations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ custom: true, name: cName.trim(), baseUrl: cUrl.trim(), category: cCat, apiKey: cKey.trim() }),
+        body: JSON.stringify({ custom: true, name: cName.trim(), baseUrl: cUrl.trim(), category: cCat, apiKey: cKey.trim(), authType: cAuthType, headerName: cHeaderName.trim(), authUser: cAuthUser.trim() }),
       })
       const data = await res.json()
       if (res.ok && data.success) {
@@ -223,6 +269,7 @@ function ConnectionsContent() {
     loadEmail()
     loadWordpress()
     loadShopify()
+    loadWix()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -466,6 +513,46 @@ function ConnectionsContent() {
         )}
       </div>
 
+      {/* Site Wix */}
+      <div className="card-elevated mb-8 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Link2 className="mt-0.5 h-5 w-5 text-primary" />
+            <div>
+              <div className="text-sm font-semibold">Site Wix</div>
+              <div className="text-xs text-muted-foreground">
+                Accès à l&apos;API Wix pour que Camille agisse là où c&apos;est permis. L&apos;API Wix est plus
+                restrictive que WordPress/Shopify. {wixConn?.connected ? 'Connecté.' : ''}
+              </div>
+            </div>
+          </div>
+          {wixConn?.connected ? (
+            <button onClick={disconnectWix} className="text-xs text-muted-foreground hover:text-destructive transition-colors">Déconnecter</button>
+          ) : !xOpen ? (
+            <button onClick={() => setXOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+              <Link2 className="h-3.5 w-3.5" /> Connecter mon site
+            </button>
+          ) : null}
+        </div>
+        {xOpen && !wixConn?.connected && (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input type="password" value={xKey} onChange={(e) => setXKey(e.target.value)} placeholder="Clé API Wix" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              <input value={xSite} onChange={(e) => setXSite(e.target.value)} placeholder="Site ID" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+            </div>
+            <p className="text-[11px] text-amber-600">
+              Créez la clé API dans Wix : Compte → Paramètres → API Keys. Le Site ID se trouve dans les réglages du site (ou l&apos;URL de l&apos;éditeur).
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setXOpen(false)} className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground">Annuler</button>
+              <button onClick={saveWix} disabled={!xKey.trim() || !xSite.trim() || xSaving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {xSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Vérification…</> : 'Connecter'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Catalogue par catégorie */}
       <div className="space-y-8">
         {grouped.map(([category, items]) => (
@@ -590,12 +677,28 @@ function ConnectionsContent() {
                 placeholder="URL de l'API (optionnel) — https://api.exemple.com"
                 className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
+              <select
+                value={cAuthType}
+                onChange={(e) => setCAuthType(e.target.value)}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="bearer">Auth : Bearer (Authorization: Bearer clé)</option>
+                <option value="header">Auth : en-tête personnalisé</option>
+                <option value="basic">Auth : Basic (utilisateur + clé)</option>
+                <option value="raw">Auth : Authorization brut (clé telle quelle)</option>
+              </select>
+              {cAuthType === 'header' && (
+                <input value={cHeaderName} onChange={(e) => setCHeaderName(e.target.value)} placeholder="Nom de l'en-tête (ex : X-Api-Key)" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              )}
+              {cAuthType === 'basic' && (
+                <input value={cAuthUser} onChange={(e) => setCAuthUser(e.target.value)} placeholder="Nom d'utilisateur (Basic)" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              )}
               <input
                 type="password"
                 value={cKey}
                 onChange={(e) => setCKey(e.target.value)}
-                placeholder="Clé API / jeton d'accès"
-                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="Clé API / jeton / mot de passe"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary sm:col-span-2"
               />
             </div>
             <div className="flex items-center justify-end gap-2">
