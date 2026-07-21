@@ -5,6 +5,7 @@ import { writeToPlatform } from '@/lib/tools/platform-call'
 import { getUserEmailConfig } from '@/lib/tools/email-tools'
 import { sendEmail } from '@/lib/email'
 import { buildIcs, type RdvInput } from '@/lib/tools/calendar-tools'
+import { bookOnConnectedCalendar } from '@/lib/calendar/providers'
 import { logSignal } from '@/lib/insights/store'
 
 /**
@@ -76,16 +77,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, status: 'failed', error: sent.error }, { status: 502 })
   }
 
-  // Cas agenda : on génère l'événement .ics (importable Google/Outlook/Apple).
-  // Réel de bout en bout sans OAuth agenda ; le client importe le fichier.
+  // Cas agenda : si un agenda est connecté (Google Calendar / Outlook), on crée
+  // l'événement DIRECTEMENT dedans ; sinon (ou en cas d'échec API) on retombe sur un
+  // .ics importable — réel de bout en bout dans les deux cas.
   if (action.provider === 'calendar') {
-    const built = buildIcs((action.body || {}) as RdvInput)
+    const rdv = (action.body || {}) as RdvInput
+    const direct = await bookOnConnectedCalendar(user.id, rdv)
+    if (direct.booked) {
+      await markAction(id, 'executed', `RDV créé dans ${direct.provider}.${direct.link ? ' ' + direct.link : ''}`)
+      return NextResponse.json({ success: true, status: 'executed', kind: 'calendar', provider: direct.provider, link: direct.link })
+    }
+    const built = buildIcs(rdv)
     if (built.ok && built.ics) {
       await markAction(id, 'executed', built.ics.slice(0, 4000))
-      return NextResponse.json({ success: true, status: 'executed', kind: 'ics', filename: 'rendez-vous.ics', ics: built.ics })
+      return NextResponse.json({ success: true, status: 'executed', kind: 'ics', filename: 'rendez-vous.ics', ics: built.ics, note: direct.error })
     }
-    await markAction(id, 'failed', built.error || 'Événement invalide.')
-    return NextResponse.json({ success: false, status: 'failed', error: built.error || 'Événement invalide.' }, { status: 400 })
+    await markAction(id, 'failed', built.error || direct.error || 'Événement invalide.')
+    return NextResponse.json({ success: false, status: 'failed', error: built.error || direct.error || 'Événement invalide.' }, { status: 400 })
   }
 
   const res = await writeToPlatform(user.id, action.provider, action.method, action.path, action.body)

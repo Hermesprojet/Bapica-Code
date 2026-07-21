@@ -103,12 +103,17 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 - `src/lib/tools/*` — **vrais outils** exposés aux agents dans `/api/chat` : `consulter_agent`
   (collaboration inter-agents), `auditer_site` (audit SEO), `lire_emails`/`proposer_email`,
   `lire_plateforme`/`proposer_action` (lecture/écriture des plateformes connectées via
-  `platform-call.ts`), `proposer_rdv` (**prise de RDV** → génère un `.ics` importable
-  Google/Outlook/Apple), et `twenty-tools` (CRM, réservé aux agents commerciaux).
+  `platform-call.ts`), `proposer_rdv` (**prise de RDV**), et `twenty-tools` (CRM, réservé aux
+  agents commerciaux).
 - **Actions à valider** (`src/lib/actions/store.ts` + `GET|POST /api/actions` + page
   `dashboard/actions`) : les agents **proposent** (email, action plateforme, RDV) ; rien n'est
   exécuté sans validation explicite de l'utilisateur. Table `pending_actions` (exécuter
-  `supabase-schema.sql`). Le provider `calendar` produit un `.ics` téléchargé côté client à la validation.
+  `supabase-schema.sql`).
+- **Agenda / RDV** (`src/lib/calendar/providers.ts` + routes `/api/calendar/{google,outlook}/
+  {connect,callback}`) : à la validation d'une action `calendar`, si le client a connecté
+  **Google Calendar** ou **Outlook** (OAuth, page Connexions), l'événement est créé DIRECTEMENT
+  dans son agenda (refresh de jeton automatique) ; sinon repli sur un **`.ics`** téléchargé côté
+  client. Prérequis prod : `GOOGLE_CLIENT_ID`/`SECRET` et/ou `MICROSOFT_CLIENT_ID`/`SECRET`.
 
 ## 7. Variables d'environnement
 

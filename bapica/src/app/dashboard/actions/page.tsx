@@ -68,6 +68,8 @@ export default function ActionsPage() {
             URL.revokeObjectURL(url)
           } catch { /* téléchargement best-effort */ }
           setNotice({ kind: 'ok', msg: 'Rendez-vous prêt : le fichier .ics a été téléchargé, ouvrez-le pour l’ajouter à votre agenda.' })
+        } else if (decision === 'approve' && data.kind === 'calendar') {
+          setNotice({ kind: 'ok', msg: `Rendez-vous ajouté à votre ${data.provider || 'agenda'}.` })
         } else {
           setNotice({ kind: 'ok', msg: decision === 'approve' ? 'Action exécutée.' : 'Action refusée.' })
         }
