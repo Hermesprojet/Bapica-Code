@@ -48,7 +48,7 @@ export default function ConfigPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div className="reveal mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <ServerCog className="h-6 w-6 text-primary" /> Configuration

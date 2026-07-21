@@ -127,7 +127,7 @@ export default function KnowledgePage() {
         </div>
       )}
 
-      <div className="mb-8 flex items-center gap-3">
+      <div className="reveal mb-8 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><BookOpen className="h-5 w-5" /></div>
         <div>
           <h1 className="text-xl font-bold">Base de connaissances</h1>

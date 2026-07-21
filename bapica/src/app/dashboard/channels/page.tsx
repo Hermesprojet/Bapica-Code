@@ -152,7 +152,7 @@ export default function ChannelsPage() {
 
   return (
     <div>
-      <div className="mb-8">
+      <div className="reveal mb-8">
         <h1 className="text-2xl font-bold">Canaux de messagerie</h1>
         <p className="mt-1 text-muted-foreground">
           Rendez vos agents joignables sur WhatsApp, Telegram et Messenger. Un seul webhook route

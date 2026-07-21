@@ -350,7 +350,7 @@ function ConnectionsContent() {
 
   return (
     <div>
-      <div className="mb-6">
+      <div className="reveal mb-6">
         <h1 className="text-2xl font-bold">Connexions</h1>
         <p className="mt-1 text-muted-foreground">
           Reliez vos outils à Bapica : boîte mail, comptabilité, banque, CRM, e-commerce, agenda…
