@@ -317,14 +317,43 @@ async function callClaude(
       : []),
   ]
 
+    // ── Prompt caching ────────────────────────────────────────────────────────
+    // Le cache est un match de PRÉFIXE (ordre de rendu : tools → system → messages).
+    // On découpe donc le prompt système en deux blocs : le premier est STABLE pour un
+    // agent donné (persona, rôle, règles — aucune donnée client, aucun horodatage) et
+    // porte le cache_control ; le second contient le contexte client, volatil, et reste
+    // volontairement APRÈS le point de cache.
+    // Les deux appels réutilisent CE MÊME tableau : auparavant la boucle d'outils
+    // renvoyait un prompt différent (l'un compressé, l'autre non), donc chaque tour
+    // repayait le prompt entier au prix fort.
+    const systemBlocks: Anthropic.TextBlockParam[] = [
+      {
+        type: 'text',
+        text: compressPrompt(buildSystemPrompt(agent), agent.id),
+        cache_control: { type: 'ephemeral' },
+      },
+      ...(memoryContext
+        ? [{ type: 'text' as const, text: '\n\n--- Contexte client ---\n' + memoryContext }]
+        : []),
+    ]
+
     const completion = await client.messages.create({
       model: resolveModel(agent.model, agent.id, message),
       max_tokens: agent.maxTokens,
       temperature: agent.temperature,
-      system: compressPrompt(buildSystemPrompt(agent), agent.id) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
+      system: systemBlocks,
       tools,
       messages,
     })
+
+    // Vérification du cache (logs Vercel). Attendu : « write » élevé au 1er message
+    // d'une conversation, puis « read » élevé aux suivants. Si « read » reste à 0
+    // d'un message à l'autre, c'est qu'un élément du préfixe varie (voir plus haut).
+    console.log(
+      `[cache] ${agent.id} write=${completion.usage.cache_creation_input_tokens ?? 0}`
+      + ` read=${completion.usage.cache_read_input_tokens ?? 0}`
+      + ` uncached=${completion.usage.input_tokens}`
+    )
 
     // Boucle tool_use → tool_result (CRM integration)
     let response = completion
@@ -425,7 +454,7 @@ async function callClaude(
         model: resolveModel(agent.model, agent.id, message),
         max_tokens: agent.maxTokens,
         temperature: agent.temperature,
-        system: buildSystemPrompt(agent) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
+        system: systemBlocks,
         tools,
         messages: allMessages as any,
       })
