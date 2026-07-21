@@ -203,8 +203,10 @@ export async function POST(req: NextRequest) {
       if (agent.id === 'recruiter' && location) {
         liveContext += await searchJobTrends(sector || 'commercial', location)
       }
-      if (agent.id === 'trends' && sector) {
-        const mapped = sector.includes('tech') || sector.includes('saas') ? 'tech' 
+      // Veille marché / actualité sectorielle : rebranché sur Marc (prospection &
+      // croissance), l'agent réel le plus pertinent (il n'existe pas d'agent « trends »).
+      if (agent.id === 'prospection-strategie' && sector) {
+        const mapped = sector.includes('tech') || sector.includes('saas') ? 'tech'
           : sector.includes('retail') || sector.includes('commerce') ? 'retail'
           : sector.includes('finance') || sector.includes('banque') ? 'finance'
           : 'general'
