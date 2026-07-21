@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react'
 
 const comparison = [
-  { feature: 'Agents IA spécialisés', us: '13 experts métier', them: '8 agents génériques' },
+  { feature: 'Agents IA spécialisés', us: '10 experts métier', them: '8 agents génériques' },
   { feature: 'Messages', us: 'Illimités', them: 'Illimités' },
   { feature: 'Appels vocaux', us: '0,20€/min', them: '0,20€/min' },
   { feature: 'Onboarding personnalisé', us: 'Questionnaire intelligent ✓', them: 'Standard' },

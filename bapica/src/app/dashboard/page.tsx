@@ -181,7 +181,7 @@ export default function DashboardPage() {
       {/* Cartes stats */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { icon: Bot, title: 'Agents actifs', value: '13', desc: 'disponibles', change: '+2 ce mois' },
+          { icon: Bot, title: 'Agents actifs', value: '10', desc: 'disponibles', change: '10 experts' },
           { icon: MessageSquare, title: 'Conversations', value: '0', desc: 'ce mois-ci', change: 'À venir' },
           { icon: Users, title: 'Leads générés', value: '0', desc: "par vos agents", change: 'Bientôt' },
           { icon: TrendingUp, title: 'Crédits', value: '∞', desc: 'messages illimités', change: 'Illimité' },

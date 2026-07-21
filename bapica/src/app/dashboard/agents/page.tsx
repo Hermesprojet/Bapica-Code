@@ -8,8 +8,8 @@ import { getAgentsForPlan, type PlanKey } from '@/lib/agents'
 import { getRecommendedAgentIds, type OnboardingData } from '@/lib/personalization'
 
 // Nombre d'agents supplémentaires débloqués en passant à Pro
-// (aligné avec la page facturation : Essentiel 8 → Pro 13).
-const PRO_EXTRA_AGENTS = 4
+// (aligné avec la page facturation : Essentiel 8 → Pro 10 = Hugo + Claire).
+const PRO_EXTRA_AGENTS = 2
 import { CardSkeleton } from '@/components/ui/base'
 
 // Normalise n'importe quelle valeur de plan (ex: 'Pro', 'essential', 'PRO')
@@ -34,8 +34,6 @@ const agentGradients: Record<string, string> = {
   video: 'from-pink-500 to-rose-500',
   recruiter: 'from-indigo-500 to-blue-500',
   legal: 'from-slate-500 to-gray-500',
-  analytics: 'from-teal-500 to-emerald-500',
-  trends: 'from-lime-500 to-green-500',
 }
 
 export default function AgentsPage() {
@@ -195,7 +193,7 @@ export default function AgentsPage() {
                   Passez au plan Pro pour débloquer les {lockedCount} agents supplémentaires
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Prospection, closing vocal, comptabilité, juridique et plus encore.
+                  Standard téléphonique 24/7 (Hugo) et comptabilité (Claire).
                 </p>
               </div>
             </div>

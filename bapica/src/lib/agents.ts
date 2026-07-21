@@ -200,7 +200,7 @@ const AGENT_ALIASES: Record<string, string> = {
   comptabilite: 'accounting',
   recrutement: 'recruiter',
   telephone: 'telephone',
-  vocal: 'video', // fallback
+  vocal: 'closer', // « vocal » → Nadia, le closer vocal
 }
 
 export function getAgentById(id: string): AgentConfig | undefined {

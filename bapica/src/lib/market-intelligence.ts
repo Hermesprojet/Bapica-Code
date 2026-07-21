@@ -37,7 +37,7 @@ const COMPETITOR_DB: Record<string, CompetitorProfile> = {
       'Prix agressifs avec promos',
     ],
     weaknesses: [
-      'Seulement 8 agents (vs 13 Bapica)',
+      'Seulement 8 agents (vs 10 Bapica)',
       'Pas de dashboard analytics',
       'Dépendant de WhatsApp — pas d\'app native',
       'GPT-4o-mini pour la plupart des agents (qualité inférieure)',
