@@ -4,6 +4,7 @@ import { listActions, getAction, markAction } from '@/lib/actions/store'
 import { writeToPlatform } from '@/lib/tools/platform-call'
 import { getUserEmailConfig } from '@/lib/tools/email-tools'
 import { sendEmail } from '@/lib/email'
+import { buildIcs, type RdvInput } from '@/lib/tools/calendar-tools'
 import { logSignal } from '@/lib/insights/store'
 
 /**
@@ -73,6 +74,18 @@ export async function POST(req: NextRequest) {
     }
     await markAction(id, 'failed', sent.error?.slice(0, 2000) || 'Échec')
     return NextResponse.json({ success: false, status: 'failed', error: sent.error }, { status: 502 })
+  }
+
+  // Cas agenda : on génère l'événement .ics (importable Google/Outlook/Apple).
+  // Réel de bout en bout sans OAuth agenda ; le client importe le fichier.
+  if (action.provider === 'calendar') {
+    const built = buildIcs((action.body || {}) as RdvInput)
+    if (built.ok && built.ics) {
+      await markAction(id, 'executed', built.ics.slice(0, 4000))
+      return NextResponse.json({ success: true, status: 'executed', kind: 'ics', filename: 'rendez-vous.ics', ics: built.ics })
+    }
+    await markAction(id, 'failed', built.error || 'Événement invalide.')
+    return NextResponse.json({ success: false, status: 'failed', error: built.error || 'Événement invalide.' }, { status: 400 })
   }
 
   const res = await writeToPlatform(user.id, action.provider, action.method, action.path, action.body)

@@ -54,7 +54,23 @@ export default function ActionsPage() {
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        setNotice({ kind: 'ok', msg: decision === 'approve' ? 'Action exécutée.' : 'Action refusée.' })
+        // RDV validé : on télécharge l'événement d'agenda (.ics), importable Google/Outlook/Apple.
+        if (decision === 'approve' && data.kind === 'ics' && typeof data.ics === 'string') {
+          try {
+            const blob = new Blob([data.ics], { type: 'text/calendar;charset=utf-8' })
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = typeof data.filename === 'string' ? data.filename : 'rendez-vous.ics'
+            document.body.appendChild(link)
+            link.click()
+            link.remove()
+            URL.revokeObjectURL(url)
+          } catch { /* téléchargement best-effort */ }
+          setNotice({ kind: 'ok', msg: 'Rendez-vous prêt : le fichier .ics a été téléchargé, ouvrez-le pour l’ajouter à votre agenda.' })
+        } else {
+          setNotice({ kind: 'ok', msg: decision === 'approve' ? 'Action exécutée.' : 'Action refusée.' })
+        }
       } else {
         setNotice({ kind: 'err', msg: data.error || 'Échec de l’opération.' })
       }

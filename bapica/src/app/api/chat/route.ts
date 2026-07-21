@@ -11,6 +11,7 @@ import { consultAgentTool, runAgentConsult } from '@/lib/tools/agent-consult'
 import { listPlatformsTool, readPlatformTool, proposeActionTool, listClientPlatforms, readFromPlatform } from '@/lib/tools/platform-call'
 import { readEmailsTool, proposeEmailTool, runReadEmails } from '@/lib/tools/email-tools'
 import { auditSiteTool, auditSite } from '@/lib/tools/seo-audit'
+import { proposeRdvTool, rdvSummary, type RdvInput } from '@/lib/tools/calendar-tools'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -313,6 +314,7 @@ async function callClaude(
           readEmailsTool as unknown as any,
           proposeEmailTool as unknown as any,
           auditSiteTool as unknown as any,
+          proposeRdvTool as unknown as any,
         ]
       : []),
   ]
@@ -424,6 +426,31 @@ async function callClaude(
                   ? 'Base non initialisée : exécutez supabase-schema.sql.'
                   : m,
               })
+            }
+          } else if (tool.name === 'proposer_rdv' && userId) {
+            const i = tool.input as RdvInput
+            try {
+              const actionId = await createAction({
+                userId,
+                agentId: agent.id,
+                provider: 'calendar',
+                method: 'CREATE',
+                path: '',
+                body: {
+                  title: String(i?.title || 'Rendez-vous'),
+                  date: String(i?.date || ''),
+                  time: String(i?.time || ''),
+                  duration_minutes: Number(i?.duration_minutes) || 30,
+                  attendee: i?.attendee ? String(i.attendee) : '',
+                  location: i?.location ? String(i.location) : '',
+                  description: i?.description ? String(i.description) : '',
+                },
+                summary: rdvSummary(i),
+              })
+              result = JSON.stringify({ ok: true, action_id: actionId, statut: "en attente de validation par l'utilisateur" })
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('ACTIONS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
             }
           } else if (tool.name === 'consulter_agent') {
             // Collaboration inter-agents réelle : le confrère répond avec le même contexte client.

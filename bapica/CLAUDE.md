@@ -100,6 +100,15 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   Source : `user_metadata.onboarding_data` (là où l'onboarding l'écrit).
 - `src/app/api/chat/route.ts` — cœur du chat connecté (auth, mémoire, brief business, RAG, live data, tools).
 - `src/app/api/demo-chat/route.ts` — démo publique.
+- `src/lib/tools/*` — **vrais outils** exposés aux agents dans `/api/chat` : `consulter_agent`
+  (collaboration inter-agents), `auditer_site` (audit SEO), `lire_emails`/`proposer_email`,
+  `lire_plateforme`/`proposer_action` (lecture/écriture des plateformes connectées via
+  `platform-call.ts`), `proposer_rdv` (**prise de RDV** → génère un `.ics` importable
+  Google/Outlook/Apple), et `twenty-tools` (CRM, réservé aux agents commerciaux).
+- **Actions à valider** (`src/lib/actions/store.ts` + `GET|POST /api/actions` + page
+  `dashboard/actions`) : les agents **proposent** (email, action plateforme, RDV) ; rien n'est
+  exécuté sans validation explicite de l'utilisateur. Table `pending_actions` (exécuter
+  `supabase-schema.sql`). Le provider `calendar` produit un `.ics` téléchargé côté client à la validation.
 
 ## 7. Variables d'environnement
 
