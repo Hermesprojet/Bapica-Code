@@ -19,10 +19,15 @@ function getSupabase(): SupabaseClient {
   return _supabase
 }
 
+// Ids CANONIQUES uniquement — doivent correspondre à `agent.id` (voir agents.ts),
+// c'est ce que /api/chat passe à retrieveContext(). Auparavant cette liste
+// contenait des alias (vocal/juridique/compta) et des ids fantômes
+// (analytics/tendances) : le RAG était donc silencieusement DÉSACTIVÉ pour
+// closer, legal et accounting (bloqués par cette garde alors que la route les
+// demandait). Aligné sur les ids réels.
 export const RAG_ENABLED_AGENTS = new Set([
-  "prospection-strategie", "support", "recruiter", "recrutement",
-  "vocal", "video", "telephone", "juridique", "compta",
-  "analytics", "tendances", "general",
+  "general", "support", "prospection-strategie", "closer",
+  "telephone", "accounting", "video", "recruiter", "legal",
 ])
 
 export async function embed(text: string): Promise<number[]> {
