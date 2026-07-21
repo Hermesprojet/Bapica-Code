@@ -3,15 +3,74 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Bot, Users, MessageSquare, TrendingUp, Loader2, ArrowRight, Sparkles, Lightbulb, AlertTriangle, Target } from 'lucide-react'
-import { getSetupSteps, getRecommendedWidgets, getRecommendedAgentIds, type OnboardingData } from '@/lib/personalization'
+import {
+  Bot, Users, MessageSquare, TrendingUp, ArrowRight, Sparkles, Lightbulb,
+  AlertTriangle, Target, Sunrise, Sun, Moon, type LucideIcon,
+} from 'lucide-react'
+import { getSetupSteps, getRecommendedWidgets, type OnboardingData } from '@/lib/personalization'
 import { analyzeBusinessProfile, type BusinessProfile } from '@/lib/business-profile'
 import { DashboardSkeleton } from '@/components/ui/base'
+
+// Compteur animé 0 → valeur (façon ease-out). Laisse tel quel les valeurs non
+// numériques (ex : « ∞ ») et respecte prefers-reduced-motion.
+function useCountUp(value: string, durationMs = 900): string {
+  const [display, setDisplay] = useState('0')
+  useEffect(() => {
+    const match = /^(\d+)/.exec(value)
+    const reduce = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (!match || reduce) { setDisplay(value); return }
+    const target = parseInt(match[1], 10)
+    const suffix = value.slice(match[1].length)
+    if (target === 0) { setDisplay(value); return }
+    let raf = 0
+    const start = performance.now()
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / durationMs, 1)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setDisplay(String(Math.round(target * eased)) + suffix)
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value, durationMs])
+  return display
+}
+
+interface StatCardProps {
+  icon: LucideIcon
+  title: string
+  value: string
+  desc: string
+  change: string
+  accent: string
+  delay: number
+}
+
+function StatCard({ icon: Icon, title, value, desc, change, accent, delay }: StatCardProps) {
+  const shown = useCountUp(value)
+  return (
+    <div className="card-elevated reveal p-5" style={{ animationDelay: `${delay}ms` }}>
+      <div className="flex items-center justify-between">
+        <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${accent}`}>
+          <Icon className="h-[18px] w-[18px]" />
+        </div>
+        <span className="text-[11px] font-medium text-green-600">{change}</span>
+      </div>
+      <div className="mt-4">
+        <p className="text-2xl font-bold tabular-nums">{shown}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{title}</p>
+        <p className="text-[11px] text-muted-foreground">{desc}</p>
+      </div>
+    </div>
+  )
+}
 
 export default function DashboardPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [onboarding, setOnboarding] = useState<OnboardingData | null>(null)
+  const [firstName, setFirstName] = useState('')
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
@@ -20,12 +79,18 @@ export default function DashboardPage() {
         return
       }
 
-      // Vérifier onboarding + récupérer données
       const onboarded = user.user_metadata?.onboarding_completed
       if (!onboarded) {
         router.push('/onboarding')
         return
       }
+
+      // Prénom pour la salutation : métadonnées puis repli sur l'email.
+      const meta = user.user_metadata || {}
+      const raw: string = meta.full_name || meta.name || meta.first_name
+        || (user.email || '').split('@')[0] || ''
+      const first = raw.split(/[.\s_-]/)[0]
+      setFirstName(first ? first.charAt(0).toUpperCase() + first.slice(1) : '')
 
       setOnboarding(user.user_metadata?.onboarding_data || null)
       setLoading(false)
@@ -41,19 +106,31 @@ export default function DashboardPage() {
   const progressPct = Math.round((doneSteps / steps.length) * 100)
   const allDone = progressPct >= 100
 
+  // Salutation chaleureuse selon l'heure
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir'
+  const TimeIcon = hour < 12 ? Sunrise : hour < 18 ? Sun : Moon
+  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+
   return (
     <div>
-      {/* En-tête */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Tableau de bord</h1>
-        <p className="mt-1 text-muted-foreground">
-          Bienvenue sur votre espace Bapica.
+      {/* En-tête chaleureux */}
+      <div className="greeting-hero reveal mb-8 rounded-2xl p-6 sm:p-7">
+        <div className="flex items-center gap-2 text-sm font-medium text-amber-600">
+          <TimeIcon className="h-4 w-4" />
+          <span className="capitalize">{today}</span>
+        </div>
+        <h1 className="mt-2 text-2xl sm:text-3xl font-bold tracking-tight">
+          {greeting}{firstName ? `, ${firstName}` : ''} <span className="inline-block origin-[70%_70%] animate-[float_4s_ease-in-out_infinite]">👋</span>
+        </h1>
+        <p className="mt-1.5 text-muted-foreground">
+          Votre équipe d&apos;agents est prête. Voici ce qui compte aujourd&apos;hui.
         </p>
       </div>
 
       {/* Profil Business Intelligent */}
       {profile.profileSummary && (
-        <div className="card-professional mb-8 p-6">
+        <div className="card-professional reveal mb-8 p-6" style={{ animationDelay: '60ms' }}>
           <div className="flex items-center gap-2 mb-4">
             <Sparkles className="h-5 w-5 text-amber-500" />
             <h3 className="font-semibold">Votre profil business</h3>
@@ -62,7 +139,7 @@ export default function DashboardPage() {
             {profile.profileSummary}
           </p>
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-lg bg-muted/50 p-3">
+            <div className="rounded-lg bg-amber-500/[0.06] p-3 transition-colors hover:bg-amber-500/[0.10]">
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                 <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
                 Opportunités
@@ -73,7 +150,7 @@ export default function DashboardPage() {
                 ))}
               </ul>
             </div>
-            <div className="rounded-lg bg-muted/50 p-3">
+            <div className="rounded-lg bg-red-500/[0.05] p-3 transition-colors hover:bg-red-500/[0.09]">
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                 <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
                 Points de vigilance
@@ -84,7 +161,7 @@ export default function DashboardPage() {
                 ))}
               </ul>
             </div>
-            <div className="rounded-lg bg-muted/50 p-3">
+            <div className="rounded-lg bg-green-500/[0.05] p-3 transition-colors hover:bg-green-500/[0.09]">
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                 <Target className="h-3.5 w-3.5 text-green-500" />
                 Agents recommandés
@@ -104,8 +181,7 @@ export default function DashboardPage() {
       {/* ROI + Plan d'action */}
       {profile.roiEstimates.length > 0 && (
         <div className="grid gap-6 md:grid-cols-2 mb-8">
-          {/* ROI */}
-          <div className="card-professional p-5">
+          <div className="card-professional reveal p-5" style={{ animationDelay: '120ms' }}>
             <h3 className="font-semibold text-sm mb-4">💰 ROI estimé</h3>
             <div className="space-y-3">
               {profile.roiEstimates.slice(0, 3).map((r, i) => (
@@ -125,8 +201,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Priority Actions */}
-          <div className="card-professional p-5">
+          <div className="card-professional reveal p-5" style={{ animationDelay: '160ms' }}>
             <h3 className="font-semibold text-sm mb-4">🎯 Actions prioritaires</h3>
             <div className="space-y-2">
               {profile.priorityActions.slice(0, 4).map((a, i) => (
@@ -146,7 +221,7 @@ export default function DashboardPage() {
 
       {/* Barre de progression configuration */}
       {!allDone && steps.length > 1 && (
-        <div className="card-professional mb-8 p-5">
+        <div className="card-professional reveal mb-8 p-5" style={{ animationDelay: '200ms' }}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
@@ -156,7 +231,7 @@ export default function DashboardPage() {
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-primary to-blue-500 transition-all duration-700 ease-out"
+              className="h-full rounded-full bg-gradient-to-r from-primary to-blue-500 transition-all duration-1000 ease-out"
               style={{ width: `${progressPct}%` }}
             />
           </div>
@@ -171,40 +246,23 @@ export default function DashboardPage() {
                   {steps.indexOf(s) + 1}
                 </span>
                 <span className="flex-1">{s.label}</span>
-                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
               </a>
             ))}
           </div>
         </div>
       )}
 
-      {/* Cartes stats */}
+      {/* Cartes stats — compteurs animés + icônes colorées */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { icon: Bot, title: 'Agents actifs', value: '10', desc: 'disponibles', change: '10 experts' },
-          { icon: MessageSquare, title: 'Conversations', value: '0', desc: 'ce mois-ci', change: 'À venir' },
-          { icon: Users, title: 'Leads générés', value: '0', desc: "par vos agents", change: 'Bientôt' },
-          { icon: TrendingUp, title: 'Crédits', value: '∞', desc: 'messages illimités', change: 'Illimité' },
-        ].map((card) => {
-          const Icon = card.icon
-          return (
-            <div key={card.title} className="card-elevated p-5">
-              <div className="flex items-center justify-between">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Icon className="h-4.5 w-4.5" />
-                </div>
-                <span className="text-[11px] font-medium text-green-600">
-                  {card.change}
-                </span>
-              </div>
-              <div className="mt-4">
-                <p className="text-2xl font-bold">{card.value}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{card.title}</p>
-                <p className="text-[11px] text-muted-foreground">{card.desc}</p>
-              </div>
-            </div>
-          )
-        })}
+          { icon: Bot, title: 'Agents actifs', value: '10', desc: 'disponibles', change: '10 experts', accent: 'bg-blue-500/10 text-blue-600' },
+          { icon: MessageSquare, title: 'Conversations', value: '0', desc: 'ce mois-ci', change: 'À venir', accent: 'bg-violet-500/10 text-violet-600' },
+          { icon: Users, title: 'Leads générés', value: '0', desc: 'par vos agents', change: 'Bientôt', accent: 'bg-emerald-500/10 text-emerald-600' },
+          { icon: TrendingUp, title: 'Crédits', value: '∞', desc: 'messages illimités', change: 'Illimité', accent: 'bg-amber-500/10 text-amber-600' },
+        ].map((card, i) => (
+          <StatCard key={card.title} {...card} delay={240 + i * 70} />
+        ))}
       </div>
 
       {/* Widgets intelligents personnalisés */}
@@ -215,11 +273,12 @@ export default function DashboardPage() {
             Recommandé pour vous
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            {widgets.slice(0, 4).map(w => (
+            {widgets.slice(0, 4).map((w, i) => (
               <a
                 key={w.id}
                 href={w.href}
-                className="card-elevated p-5 flex items-start justify-between gap-4 group"
+                className="card-elevated reveal p-5 flex items-start justify-between gap-4 group"
+                style={{ animationDelay: `${540 + i * 70}ms` }}
               >
                 <div className="flex-1">
                   <h3 className="font-semibold text-sm group-hover:text-primary transition-colors">
@@ -229,7 +288,7 @@ export default function DashboardPage() {
                     {w.description}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors">
+                <span className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-primary transition-colors group-hover:bg-primary/10">
                   {w.cta}
                 </span>
               </a>
@@ -247,11 +306,12 @@ export default function DashboardPage() {
             { href: '/dashboard/video-studio', title: '🎬 Créer une vidéo (Maya)', desc: 'Studio Vidéo : idée → storyboard + clips par scène.' },
             { href: '/dashboard/billing', title: '📊 Gérer mon abonnement', desc: 'Voir votre forfait, changer de formule.' },
             { href: '/dashboard/settings', title: '⚙️ Configuration', desc: 'API keys, préférences, connexions.' },
-          ].map(item => (
+          ].map((item, i) => (
             <a
               key={item.href}
               href={item.href}
-              className="card-elevated p-5 group"
+              className="card-elevated reveal p-5 group"
+              style={{ animationDelay: `${820 + i * 60}ms` }}
             >
               <h3 className="font-semibold text-sm group-hover:text-primary transition-colors">{item.title}</h3>
               <p className="mt-2 text-xs text-muted-foreground leading-relaxed">{item.desc}</p>

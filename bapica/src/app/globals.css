@@ -223,3 +223,49 @@
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.10);
   transform: translateY(-2px);
 }
+
+/* ─── Motion raffiné (principes Emil Kowalski) ─────────────────────────────
+   ease-out à l'entrée, transform/opacity uniquement, durées courtes. */
+:root {
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Révélation d'entrée : léger slide-up en fondu (réutilise le keyframe slide-up).
+   Combiner avec un style inline animation-delay pour un effet en cascade. */
+.reveal {
+  opacity: 0;
+  animation: slide-up 0.55s var(--ease-out-soft) forwards;
+}
+
+/* Hover « vivant » sur les cartes cliquables du dashboard */
+.card-elevated {
+  transition: transform 0.25s var(--ease-out-soft), box-shadow 0.25s var(--ease-out-soft), border-color 0.2s;
+}
+.card-elevated:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.10);
+  border-color: hsl(211, 100%, 80%);
+}
+
+/* Bandeau d'accueil chaleureux (dégradé doux ambré → bleu, sur fond clair) */
+.greeting-hero {
+  background: linear-gradient(120deg, hsla(38, 95%, 55%, 0.10), hsla(221, 83%, 60%, 0.08) 60%, hsla(174, 78%, 40%, 0.06));
+  border: 1px solid hsla(221, 83%, 60%, 0.14);
+}
+
+/* Puce d'état qui « respire » doucement */
+.pulse-dot {
+  animation: pulse-glow 2.4s ease-in-out infinite;
+}
+
+/* Accessibilité : respecter le réglage « réduire les animations » du système */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1 !important; }
+  .card-elevated:hover { transform: none; }
+}
