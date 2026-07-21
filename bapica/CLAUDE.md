@@ -54,6 +54,12 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 
 - **Prompts de rôle** (RÔLE / MÉTHODE / RÈGLES) : `src/lib/agent-prompts.ts`
   → injectés via `getSystemPromptForAgent(id)` dans `/api/chat` ET `/api/demo-chat`.
+  Les prompts couvrent la **parité de capacités avec Limova** : les missions des 8 agents Limova
+  (Tom→Hugo, Charly→Léo, Elio→Marc/Nadia, Julia→Inès, John→Camille/Maya, Rony→Yanis, Lou→Camille,
+  Manue→Claire) sont dispatchées sur les 10 agents selon leur spécialité (bureautique email/agenda
+  + documents pour Léo ; étiquetage/base de connaissance pour Hugo ; diagnostic commercial pour Marc ;
+  contrats de travail + grille de salaire pour Yanis ; rentabilité + échéances + scénarios pour Claire ;
+  pactes/reformulations/veille pour Inès ; multi-réseaux + brouillon pour Camille…).
 - **Contenu marketing** des pages agents : `src/lib/agent-content.ts`.
 - Règle : légal (Inès) et comptabilité (Claire) ne remplacent JAMAIS un professionnel.
 
