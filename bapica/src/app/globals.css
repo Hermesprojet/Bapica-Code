@@ -269,3 +269,20 @@
   .reveal { opacity: 1 !important; }
   .card-elevated:hover { transform: none; }
 }
+
+/* Scroll-reveal (progressive enhancement) — masqué UNIQUEMENT si JS actif
+   (classe .js-reveal posée dans le <head>). Sans JS, le contenu reste visible
+   pour l'utilisateur ET les robots (aucun impact SEO). */
+.js-reveal .reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s var(--ease-out-soft), transform 0.6s var(--ease-out-soft);
+  will-change: opacity, transform;
+}
+.js-reveal .reveal-on-scroll.is-visible {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .js-reveal .reveal-on-scroll { opacity: 1 !important; transform: none !important; transition: none; }
+}

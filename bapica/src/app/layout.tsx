@@ -119,6 +119,10 @@ export default function RootLayout({
         {/* PWA */}
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#ffffff" />
+        {/* Active le masquage initial des éléments scroll-reveal uniquement si JS
+            est présent (progressive enhancement — sans JS, contenu visible/SEO). */}
+        <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js-reveal')" }} />
+
         {/* JSON-LD Structured Data */}
         <JsonLdScript data={getOrganizationSchema() as unknown as Record<string, unknown>} />
         <JsonLdScript data={getWebSiteSchema() as unknown as Record<string, unknown>} />
