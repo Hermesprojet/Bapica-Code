@@ -13,13 +13,11 @@ export interface AgentRouting {
 
 // Patterns de détection par mots-clés
 const AGENT_PATTERNS: Record<string, { keywords: string[]; weight: number }> = {
-  'prospection-strategie': { keywords: ['prospect', 'client', 'vente', 'commercial', 'ca', 'lead', 'pipeline', 'closing', 'chiffre'], weight: 1 },
+  'prospection-strategie': { keywords: ['prospect', 'client', 'vente', 'commercial', 'ca', 'lead', 'pipeline', 'closing', 'chiffre', 'marché', 'concurrence', 'veille', 'secteur', 'tendance'], weight: 1 },
   support: { keywords: ['bug', 'problème', 'erreur', 'marche pas', 'panne', 'aide', 'help'], weight: 1 },
   recruiter: { keywords: ['recruter', 'embauche', 'cv', 'candidat', 'entretien', 'poste', 'offre emploi'], weight: 1 },
   legal: { keywords: ['contrat', 'juridique', 'loi', 'avocat', 'rgpd', 'conformité', 'litige'], weight: 0.9 },
-  accounting: { keywords: ['compta', 'facture', 'tva', 'trésorerie', 'bilan', 'fiscal', 'déclaration'], weight: 0.9 },
-  analytics: { keywords: ['données', 'kpi', 'analyse', 'tableau bord', 'statistique', 'métrique'], weight: 0.8 },
-  trends: { keywords: ['tendance', 'marché', 'concurrence', 'veille', 'secteur', 'innovation'], weight: 0.7 },
+  accounting: { keywords: ['compta', 'facture', 'tva', 'trésorerie', 'bilan', 'fiscal', 'déclaration', 'kpi', 'tableau bord'], weight: 0.9 },
 }
 
 export function detectAgentIntent(message: string, currentAgentId: string): AgentRouting[] {

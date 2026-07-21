@@ -17,9 +17,6 @@ const agentGradients: Record<string, string> = {
   accounting: 'from-amber-500 to-yellow-500',
   recruiter: 'from-indigo-500 to-blue-500',
   legal: 'from-slate-500 to-gray-500',
-  analytics: 'from-teal-500 to-emerald-500',
-  trends: 'from-lime-500 to-green-500',
-  scaling: 'from-purple-500 to-violet-500',
 }
 
 const replacesData: Record<string, { tool: string; cost: string }> = {
@@ -32,9 +29,6 @@ const replacesData: Record<string, { tool: string; cost: string }> = {
   accounting: { tool: 'Un comptable à temps partiel', cost: '1500€/mois' },
   recruiter: { tool: 'Un chasseur de têtes junior', cost: '3000€/mois' },
   legal: { tool: 'Un juriste à temps partiel', cost: '2000€/mois' },
-  analytics: { tool: 'Un data analyst + BI tool', cost: '3500€/mois' },
-  trends: { tool: 'Une veille marché manuelle', cost: '1000€/mois' },
-  scaling: { tool: 'Un consultant en stratégie', cost: '5000€/mois' },
 }
 
 export function AgentsSection() {

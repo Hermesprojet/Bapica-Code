@@ -91,7 +91,6 @@ export const ONBOARDING_QUESTIONS: OnboardingStep[] = [
       recruiter: { 'recruter': 30, 'embaucher': 30, 'trouver': 20, 'candidat': 25 },
       'prospection-strategie': { 'client': 25, 'prospect': 30, 'vente': 25, 'ca': 20, 'chiffre': 20 },
       legal: { 'juridique': 30, 'contrat': 25, 'rgpd': 25, 'conformité': 25 },
-      analytics: { 'données': 25, 'analyser': 25, 'kpi': 25, 'tableau': 20 },
     },
   },
   {

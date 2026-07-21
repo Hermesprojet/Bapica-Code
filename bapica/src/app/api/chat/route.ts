@@ -181,7 +181,9 @@ export async function POST(req: NextRequest) {
     if (cachedRAG) {
       ragContext = cachedRAG
     } else {
-      const ragAgents = ['prospection-strategie', 'support', 'recruiter', 'legal', 'accounting']
+      // Léo (orchestrateur/stratégie) et Camille (SEO/contenu) profitent aussi de la
+      // base de connaissances métier — ils en étaient exclus sans raison.
+      const ragAgents = ['general', 'prospection-strategie', 'content', 'support', 'recruiter', 'legal', 'accounting']
       if (ragAgents.includes(agent.id)) {
         try {
           const matches = await searchKnowledge(safeMessage, auth.user.id, agent.id)
