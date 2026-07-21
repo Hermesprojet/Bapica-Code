@@ -70,7 +70,7 @@ export default function ActionsPage() {
 
   return (
     <div>
-      <div className="mb-6">
+      <div className="reveal mb-6">
         <h1 className="text-2xl font-bold">Actions à valider</h1>
         <p className="mt-1 text-muted-foreground">
           Vos agents ne modifient jamais rien sans votre accord. Ils préparent l&apos;action ici,

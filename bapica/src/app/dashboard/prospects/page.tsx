@@ -3,7 +3,7 @@ import { LeadFinderPanel } from '@/components/agents/lead-finder-panel'
 export default function ProspectsPage() {
   return (
     <div>
-      <div className="mb-6">
+      <div className="reveal mb-6">
         <h1 className="text-2xl font-bold">Trouver des prospects</h1>
         <p className="mt-1 text-muted-foreground">
           Recherchez des contacts B2B : Apollo (découverte par poste, lieu, secteur, taille) ou

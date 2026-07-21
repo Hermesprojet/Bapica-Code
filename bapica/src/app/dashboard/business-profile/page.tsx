@@ -72,7 +72,7 @@ export default function BusinessProfilePage() {
   return (
     <div>
       {/* En-tête */}
-      <div className="mb-8">
+      <div className="reveal mb-8">
         <div className="flex items-center gap-3 mb-2">
           <Brain className="h-8 w-8 text-primary" />
           <h1 className="text-2xl font-bold">Profil Business</h1>

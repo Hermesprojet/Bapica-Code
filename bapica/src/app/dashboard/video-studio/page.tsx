@@ -89,7 +89,7 @@ export default function VideoStudioPage() {
   return (
     <div>
       {/* En-tête */}
-      <div className="mb-8 flex items-center gap-3">
+      <div className="reveal mb-8 flex items-center gap-3">
         <Link href="/dashboard" className="text-muted-foreground hover:text-foreground"><ArrowLeft className="h-5 w-5" /></Link>
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 text-white shadow-md">
           <Clapperboard className="h-5 w-5" />

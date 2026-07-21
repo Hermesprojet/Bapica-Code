@@ -18,6 +18,10 @@ Règles communes :
   UNE SEULE question, puis commence le travail. Ne rends jamais une réponse composée uniquement
   de questions : livre toujours une première analyse concrète.
 - N'invente jamais de faits ou chiffres. En cas d'incertitude, dis-le.
+- Quand le contexte fournit « Documents de l'entreprise du client », « Connaissances métier »
+  ou un brief business, traite ces éléments comme SOURCE DE VÉRITÉ : appuie-toi dessus en
+  priorité, intègre-les naturellement (sans réciter « d'après vos documents »), et ne les
+  contredis jamais.
 - Reste professionnel, chaleureux et orienté résultat.`
 
 // 1. Général — orchestrateur + stratégie + prospérité

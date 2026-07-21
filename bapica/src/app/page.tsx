@@ -2,21 +2,22 @@ import { Navbar } from "@/components/landing/navbar"
 import { Footer } from "@/components/landing/footer"
 import { HeroConversation } from "@/components/landing/hero-conversation"
 import { AgentsShowcase } from "@/components/landing/agents-showcase"
+import { Reveal } from "@/components/ui/reveal"
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-white text-[#111827]">
       <Navbar />
       <Hero />
-      <Garanties />
-      <Capacites />
-      <Fonctionnement />
-      <Chiffres />
-      <AgentsShowcase />
-      <Connecteurs />
-      <Omnichannel />
-      <Pricing />
-      <CTAFinal />
+      <Reveal><Garanties /></Reveal>
+      <Reveal><Capacites /></Reveal>
+      <Reveal><Fonctionnement /></Reveal>
+      <Reveal><Chiffres /></Reveal>
+      <Reveal><AgentsShowcase /></Reveal>
+      <Reveal><Connecteurs /></Reveal>
+      <Reveal><Omnichannel /></Reveal>
+      <Reveal><Pricing /></Reveal>
+      <Reveal><CTAFinal /></Reveal>
       <Footer />
     </div>
   )

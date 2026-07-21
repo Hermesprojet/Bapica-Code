@@ -9,7 +9,7 @@ const planOrder: PlanKey[] = ['essential', 'pro']
 
 const planDetails = {
   essential: { name: 'Essentiel', price: 49, agents: 8, popular: false },
-  pro: { name: 'Pro', price: 79, agents: 13, popular: true },
+  pro: { name: 'Pro', price: 79, agents: 10, popular: true },
 }
 
 export default function BillingPage() {
@@ -94,7 +94,7 @@ export default function BillingPage() {
 
   return (
     <div>
-      <div className="mb-8">
+      <div className="reveal mb-8">
         <h1 className="text-2xl font-bold">Abonnement</h1>
         <p className="mt-1 text-muted-foreground">
           Gérez votre forfait et vos moyens de paiement.
@@ -108,7 +108,7 @@ export default function BillingPage() {
       )}
 
       {/* Current plan info */}
-      <div className="mb-8 rounded-xl border border-border bg-card p-6">
+      <div className="reveal mb-8 rounded-xl border border-border bg-card p-6" style={{ animationDelay: '60ms' }}>
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Forfait actuel</p>
@@ -150,16 +150,17 @@ export default function BillingPage() {
 
       {/* All plans */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {planOrder.map((key) => {
+        {planOrder.map((key, i) => {
           const plan = planDetails[key]
           return (
             <div
               key={key}
-              className={`relative rounded-xl border p-6 ${
+              className={`reveal relative rounded-xl border p-6 transition-shadow hover:shadow-lg ${
                 key === currentPlan
                   ? 'border-primary bg-primary/5'
                   : 'border-border bg-card'
               }`}
+              style={{ animationDelay: `${120 + i * 70}ms` }}
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-primary-foreground">

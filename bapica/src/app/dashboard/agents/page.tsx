@@ -8,8 +8,8 @@ import { getAgentsForPlan, type PlanKey } from '@/lib/agents'
 import { getRecommendedAgentIds, type OnboardingData } from '@/lib/personalization'
 
 // Nombre d'agents supplémentaires débloqués en passant à Pro
-// (aligné avec la page facturation : Essentiel 8 → Pro 13).
-const PRO_EXTRA_AGENTS = 4
+// (aligné avec la page facturation : Essentiel 8 → Pro 10 = Hugo + Claire).
+const PRO_EXTRA_AGENTS = 2
 import { CardSkeleton } from '@/components/ui/base'
 
 // Normalise n'importe quelle valeur de plan (ex: 'Pro', 'essential', 'PRO')
@@ -34,8 +34,6 @@ const agentGradients: Record<string, string> = {
   video: 'from-pink-500 to-rose-500',
   recruiter: 'from-indigo-500 to-blue-500',
   legal: 'from-slate-500 to-gray-500',
-  analytics: 'from-teal-500 to-emerald-500',
-  trends: 'from-lime-500 to-green-500',
 }
 
 export default function AgentsPage() {
@@ -78,7 +76,7 @@ export default function AgentsPage() {
 
   return (
     <div>
-      <div className="mb-8">
+      <div className="reveal mb-8">
         <h1 className="text-2xl font-bold">Mes agents</h1>
         <p className="mt-1 text-muted-foreground">
           {loading ? 'Chargement...' : `${recommendedIds.length} agents recommandés pour vous`}
@@ -93,11 +91,12 @@ export default function AgentsPage() {
             Recommandés pour vous
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {availableAgents.filter(a => recommendedIds.includes(a.id)).map((agent) => (
+            {availableAgents.filter(a => recommendedIds.includes(a.id)).map((agent, i) => (
               <a
                 key={agent.id}
                 href={`/dashboard/agents/${agent.id}`}
-                className="card-elevated p-5 group relative overflow-hidden"
+                className="card-elevated reveal p-5 group relative overflow-hidden"
+                style={{ animationDelay: `${i * 55}ms` }}
               >
                 <div className={`absolute inset-0 bg-gradient-to-br ${agentGradients[agent.id] || 'from-primary to-primary'} opacity-0 group-hover:opacity-[0.04] transition-opacity duration-500`} />
                 <div className="relative z-10">
@@ -109,7 +108,7 @@ export default function AgentsPage() {
                       <h3 className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{agent.name}</h3>
                       <p className="text-xs text-muted-foreground">{agent.persona}</p>
                     </div>
-                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/60 group-hover:text-primary transition-colors" />
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/60 transition-all group-hover:text-primary group-hover:translate-x-0.5" />
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
                     {agent.description}
@@ -132,15 +131,16 @@ export default function AgentsPage() {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {availableAgents.map((agent) => {
+            {availableAgents.map((agent, i) => {
               const isRecommended = recommendedIds.includes(agent.id)
               return (
                 <a
                   key={agent.id}
                   href={`/dashboard/agents/${agent.id}`}
-                  className={`card-elevated p-5 group relative overflow-hidden ${
+                  className={`card-elevated reveal p-5 group relative overflow-hidden ${
                     isRecommended ? 'ring-1 ring-primary/20' : ''
                   }`}
+                  style={{ animationDelay: `${i * 45}ms` }}
                 >
                   {isRecommended && (
                     <div className="absolute top-3 right-3 z-10">
@@ -195,7 +195,7 @@ export default function AgentsPage() {
                   Passez au plan Pro pour débloquer les {lockedCount} agents supplémentaires
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Prospection, closing vocal, comptabilité, juridique et plus encore.
+                  Standard téléphonique 24/7 (Hugo) et comptabilité (Claire).
                 </p>
               </div>
             </div>
