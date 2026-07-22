@@ -14,6 +14,7 @@ import {
   BookOpen,
   Share2,
   MessageCircle,
+  BellRing,
   CreditCard,
   Settings,
   LogOut,
@@ -39,6 +40,7 @@ const sidebarLinks = [
   { href: '/dashboard/knowledge', label: 'Connaissances', icon: BookOpen },
   { href: '/dashboard/connections', label: 'Connexions', icon: Share2 },
   { href: '/dashboard/channels', label: 'Canaux', icon: MessageCircle },
+  { href: '/dashboard/reminders', label: 'Relances', icon: BellRing },
   { href: '/dashboard/billing', label: 'Abonnement', icon: CreditCard },
   { href: '/dashboard/settings', label: 'Paramètres', icon: Settings },
 ]

@@ -17,6 +17,8 @@ import { buildDeliverable, type DeliverableKind } from '@/lib/deliverables'
 import { createDeliverable } from '@/lib/deliverables/store'
 import { tagInteractionTool } from '@/lib/tools/tag-tools'
 import { createTag } from '@/lib/tags/store'
+import { scheduleRemindersTool } from '@/lib/tools/reminder-tools'
+import { createReminders } from '@/lib/reminders/store'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -322,6 +324,7 @@ async function callClaude(
           proposeRdvTool as unknown as any,
           proposeDocumentTool as unknown as any,
           tagInteractionTool as unknown as any,
+          scheduleRemindersTool as unknown as any,
         ]
       : []),
   ]
@@ -493,6 +496,34 @@ async function callClaude(
             } catch (err) {
               const m = String(err instanceof Error ? err.message : err)
               result = JSON.stringify({ ok: false, erreur: m.includes('TAGS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'programmer_relances' && userId) {
+            const i = tool.input as { client?: string; contact_email?: string; invoice_ref?: string; amount?: number; currency?: string; relances?: unknown }
+            try {
+              const steps = Array.isArray(i?.relances)
+                ? (i!.relances as any[]).map((s) => ({
+                    offsetDays: Number(s?.offset_days) || 0,
+                    stage: s?.stage ? String(s.stage) : undefined,
+                    subject: s?.subject ? String(s.subject) : undefined,
+                    body: s?.body ? String(s.body) : undefined,
+                  }))
+                : []
+              if (steps.length === 0) {
+                result = JSON.stringify({ ok: false, erreur: 'Fournis au moins une étape de relance.' })
+              } else {
+                const n = await createReminders({
+                  userId, client: String(i?.client || 'Client'),
+                  contactEmail: i?.contact_email ? String(i.contact_email) : undefined,
+                  invoiceRef: i?.invoice_ref ? String(i.invoice_ref) : undefined,
+                  amount: typeof i?.amount === 'number' ? i.amount : undefined,
+                  currency: i?.currency ? String(i.currency) : undefined,
+                  steps,
+                })
+                result = JSON.stringify({ ok: true, relances_programmees: n, statut: 'visibles dans « Relances »' })
+              }
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('REMINDERS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
             }
           } else if (tool.name === 'consulter_agent') {
             // Collaboration inter-agents réelle : le confrère répond avec le même contexte client.
