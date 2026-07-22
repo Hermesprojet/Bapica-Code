@@ -15,6 +15,8 @@ import { proposeRdvTool, rdvSummary, type RdvInput } from '@/lib/tools/calendar-
 import { proposeDocumentTool } from '@/lib/tools/document-tools'
 import { buildDeliverable, type DeliverableKind } from '@/lib/deliverables'
 import { createDeliverable } from '@/lib/deliverables/store'
+import { tagInteractionTool } from '@/lib/tools/tag-tools'
+import { createTag } from '@/lib/tags/store'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -319,6 +321,7 @@ async function callClaude(
           auditSiteTool as unknown as any,
           proposeRdvTool as unknown as any,
           proposeDocumentTool as unknown as any,
+          tagInteractionTool as unknown as any,
         ]
       : []),
   ]
@@ -475,6 +478,21 @@ async function callClaude(
             } catch (err) {
               const m = String(err instanceof Error ? err.message : err)
               result = JSON.stringify({ ok: false, erreur: m.includes('DELIVERABLES_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'etiqueter_echange' && userId) {
+            const i = tool.input as { tag?: string; contact?: string; channel?: string; note?: string }
+            try {
+              const tagId = await createTag({
+                userId, agentId: agent.id,
+                tag: String(i?.tag || 'autre'),
+                contact: i?.contact ? String(i.contact) : undefined,
+                channel: i?.channel ? String(i.channel) : undefined,
+                note: i?.note ? String(i.note) : undefined,
+              })
+              result = JSON.stringify({ ok: true, tag_id: tagId, statut: 'étiquette enregistrée' })
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('TAGS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
             }
           } else if (tool.name === 'consulter_agent') {
             // Collaboration inter-agents réelle : le confrère répond avec le même contexte client.
