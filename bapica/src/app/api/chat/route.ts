@@ -12,6 +12,13 @@ import { listPlatformsTool, readPlatformTool, proposeActionTool, listClientPlatf
 import { readEmailsTool, proposeEmailTool, runReadEmails } from '@/lib/tools/email-tools'
 import { auditSiteTool, auditSite } from '@/lib/tools/seo-audit'
 import { proposeRdvTool, rdvSummary, type RdvInput } from '@/lib/tools/calendar-tools'
+import { proposeDocumentTool } from '@/lib/tools/document-tools'
+import { buildDeliverable, type DeliverableKind } from '@/lib/deliverables'
+import { createDeliverable } from '@/lib/deliverables/store'
+import { tagInteractionTool } from '@/lib/tools/tag-tools'
+import { createTag } from '@/lib/tags/store'
+import { scheduleRemindersTool } from '@/lib/tools/reminder-tools'
+import { createReminders } from '@/lib/reminders/store'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -315,6 +322,9 @@ async function callClaude(
           proposeEmailTool as unknown as any,
           auditSiteTool as unknown as any,
           proposeRdvTool as unknown as any,
+          proposeDocumentTool as unknown as any,
+          tagInteractionTool as unknown as any,
+          scheduleRemindersTool as unknown as any,
         ]
       : []),
   ]
@@ -451,6 +461,69 @@ async function callClaude(
             } catch (err) {
               const m = String(err instanceof Error ? err.message : err)
               result = JSON.stringify({ ok: false, erreur: m.includes('ACTIONS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'proposer_document' && userId) {
+            const i = tool.input as { kind?: string; title?: string; content?: string; columns?: unknown; rows?: unknown }
+            try {
+              const kind = (['pdf', 'excel', 'csv', 'markdown', 'text'].includes(String(i?.kind)) ? i!.kind : 'pdf') as DeliverableKind
+              const file = buildDeliverable({
+                kind,
+                title: String(i?.title || 'Document'),
+                content: i?.content != null ? String(i.content) : undefined,
+                columns: Array.isArray(i?.columns) ? (i!.columns as unknown[]).map(String) : undefined,
+                rows: Array.isArray(i?.rows) ? (i!.rows as unknown[]).map((r) => (Array.isArray(r) ? (r as unknown[]).map((c) => (typeof c === 'number' ? c : String(c))) : [String(r)])) : undefined,
+              })
+              const docId = await createDeliverable({
+                userId, agentId: agent.id, kind, title: String(i?.title || 'Document'),
+                filename: file.filename, mime: file.mime, content: file.content,
+              })
+              result = JSON.stringify({ ok: true, document_id: docId, filename: file.filename, statut: 'disponible dans « Documents »' })
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('DELIVERABLES_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'etiqueter_echange' && userId) {
+            const i = tool.input as { tag?: string; contact?: string; channel?: string; note?: string }
+            try {
+              const tagId = await createTag({
+                userId, agentId: agent.id,
+                tag: String(i?.tag || 'autre'),
+                contact: i?.contact ? String(i.contact) : undefined,
+                channel: i?.channel ? String(i.channel) : undefined,
+                note: i?.note ? String(i.note) : undefined,
+              })
+              result = JSON.stringify({ ok: true, tag_id: tagId, statut: 'étiquette enregistrée' })
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('TAGS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'programmer_relances' && userId) {
+            const i = tool.input as { client?: string; contact_email?: string; invoice_ref?: string; amount?: number; currency?: string; relances?: unknown }
+            try {
+              const steps = Array.isArray(i?.relances)
+                ? (i!.relances as any[]).map((s) => ({
+                    offsetDays: Number(s?.offset_days) || 0,
+                    stage: s?.stage ? String(s.stage) : undefined,
+                    subject: s?.subject ? String(s.subject) : undefined,
+                    body: s?.body ? String(s.body) : undefined,
+                  }))
+                : []
+              if (steps.length === 0) {
+                result = JSON.stringify({ ok: false, erreur: 'Fournis au moins une étape de relance.' })
+              } else {
+                const n = await createReminders({
+                  userId, client: String(i?.client || 'Client'),
+                  contactEmail: i?.contact_email ? String(i.contact_email) : undefined,
+                  invoiceRef: i?.invoice_ref ? String(i.invoice_ref) : undefined,
+                  amount: typeof i?.amount === 'number' ? i.amount : undefined,
+                  currency: i?.currency ? String(i.currency) : undefined,
+                  steps,
+                })
+                result = JSON.stringify({ ok: true, relances_programmees: n, statut: 'visibles dans « Relances »' })
+              }
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('REMINDERS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
             }
           } else if (tool.name === 'consulter_agent') {
             // Collaboration inter-agents réelle : le confrère répond avec le même contexte client.
