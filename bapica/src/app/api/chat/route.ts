@@ -11,6 +11,7 @@ import { consultAgentTool, runAgentConsult } from '@/lib/tools/agent-consult'
 import { listPlatformsTool, readPlatformTool, proposeActionTool, listClientPlatforms, readFromPlatform } from '@/lib/tools/platform-call'
 import { readEmailsTool, proposeEmailTool, runReadEmails } from '@/lib/tools/email-tools'
 import { auditSiteTool, auditSite } from '@/lib/tools/seo-audit'
+import { proposeRdvTool, rdvSummary, type RdvInput } from '@/lib/tools/calendar-tools'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -181,7 +182,9 @@ export async function POST(req: NextRequest) {
     if (cachedRAG) {
       ragContext = cachedRAG
     } else {
-      const ragAgents = ['prospection-strategie', 'support', 'recruiter', 'legal', 'accounting']
+      // Léo (orchestrateur/stratégie) et Camille (SEO/contenu) profitent aussi de la
+      // base de connaissances métier — ils en étaient exclus sans raison.
+      const ragAgents = ['general', 'prospection-strategie', 'content', 'support', 'recruiter', 'legal', 'accounting']
       if (ragAgents.includes(agent.id)) {
         try {
           const matches = await searchKnowledge(safeMessage, auth.user.id, agent.id)
@@ -311,18 +314,48 @@ async function callClaude(
           readEmailsTool as unknown as any,
           proposeEmailTool as unknown as any,
           auditSiteTool as unknown as any,
+          proposeRdvTool as unknown as any,
         ]
       : []),
   ]
+
+    // ── Prompt caching ────────────────────────────────────────────────────────
+    // Le cache est un match de PRÉFIXE (ordre de rendu : tools → system → messages).
+    // On découpe donc le prompt système en deux blocs : le premier est STABLE pour un
+    // agent donné (persona, rôle, règles — aucune donnée client, aucun horodatage) et
+    // porte le cache_control ; le second contient le contexte client, volatil, et reste
+    // volontairement APRÈS le point de cache.
+    // Les deux appels réutilisent CE MÊME tableau : auparavant la boucle d'outils
+    // renvoyait un prompt différent (l'un compressé, l'autre non), donc chaque tour
+    // repayait le prompt entier au prix fort.
+    const systemBlocks: Anthropic.TextBlockParam[] = [
+      {
+        type: 'text',
+        text: compressPrompt(buildSystemPrompt(agent), agent.id),
+        cache_control: { type: 'ephemeral' },
+      },
+      ...(memoryContext
+        ? [{ type: 'text' as const, text: '\n\n--- Contexte client ---\n' + memoryContext }]
+        : []),
+    ]
 
     const completion = await client.messages.create({
       model: resolveModel(agent.model, agent.id, message),
       max_tokens: agent.maxTokens,
       temperature: agent.temperature,
-      system: compressPrompt(buildSystemPrompt(agent), agent.id) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
+      system: systemBlocks,
       tools,
       messages,
     })
+
+    // Vérification du cache (logs Vercel). Attendu : « write » élevé au 1er message
+    // d'une conversation, puis « read » élevé aux suivants. Si « read » reste à 0
+    // d'un message à l'autre, c'est qu'un élément du préfixe varie (voir plus haut).
+    console.log(
+      `[cache] ${agent.id} write=${completion.usage.cache_creation_input_tokens ?? 0}`
+      + ` read=${completion.usage.cache_read_input_tokens ?? 0}`
+      + ` uncached=${completion.usage.input_tokens}`
+    )
 
     // Boucle tool_use → tool_result (CRM integration)
     let response = completion
@@ -394,6 +427,31 @@ async function callClaude(
                   : m,
               })
             }
+          } else if (tool.name === 'proposer_rdv' && userId) {
+            const i = tool.input as RdvInput
+            try {
+              const actionId = await createAction({
+                userId,
+                agentId: agent.id,
+                provider: 'calendar',
+                method: 'CREATE',
+                path: '',
+                body: {
+                  title: String(i?.title || 'Rendez-vous'),
+                  date: String(i?.date || ''),
+                  time: String(i?.time || ''),
+                  duration_minutes: Number(i?.duration_minutes) || 30,
+                  attendee: i?.attendee ? String(i.attendee) : '',
+                  location: i?.location ? String(i.location) : '',
+                  description: i?.description ? String(i.description) : '',
+                },
+                summary: rdvSummary(i),
+              })
+              result = JSON.stringify({ ok: true, action_id: actionId, statut: "en attente de validation par l'utilisateur" })
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('ACTIONS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
           } else if (tool.name === 'consulter_agent') {
             // Collaboration inter-agents réelle : le confrère répond avec le même contexte client.
             const input = tool.input as { agent_id?: string; question?: string }
@@ -423,7 +481,7 @@ async function callClaude(
         model: resolveModel(agent.model, agent.id, message),
         max_tokens: agent.maxTokens,
         temperature: agent.temperature,
-        system: buildSystemPrompt(agent) + (memoryContext ? '\n\n--- Contexte client ---\n' + memoryContext : ''),
+        system: systemBlocks,
         tools,
         messages: allMessages as any,
       })

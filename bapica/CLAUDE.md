@@ -54,6 +54,12 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 
 - **Prompts de rôle** (RÔLE / MÉTHODE / RÈGLES) : `src/lib/agent-prompts.ts`
   → injectés via `getSystemPromptForAgent(id)` dans `/api/chat` ET `/api/demo-chat`.
+  Les prompts couvrent la **parité de capacités avec Limova** : les missions des 8 agents Limova
+  (Tom→Hugo, Charly→Léo, Elio→Marc/Nadia, Julia→Inès, John→Camille/Maya, Rony→Yanis, Lou→Camille,
+  Manue→Claire) sont dispatchées sur les 10 agents selon leur spécialité (bureautique email/agenda
+  + documents pour Léo ; étiquetage/base de connaissance pour Hugo ; diagnostic commercial pour Marc ;
+  contrats de travail + grille de salaire pour Yanis ; rentabilité + échéances + scénarios pour Claire ;
+  pactes/reformulations/veille pour Inès ; multi-réseaux + brouillon pour Camille…).
 - **Contenu marketing** des pages agents : `src/lib/agent-content.ts`.
 - Règle : légal (Inès) et comptabilité (Claire) ne remplacent JAMAIS un professionnel.
 
@@ -94,6 +100,20 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   Source : `user_metadata.onboarding_data` (là où l'onboarding l'écrit).
 - `src/app/api/chat/route.ts` — cœur du chat connecté (auth, mémoire, brief business, RAG, live data, tools).
 - `src/app/api/demo-chat/route.ts` — démo publique.
+- `src/lib/tools/*` — **vrais outils** exposés aux agents dans `/api/chat` : `consulter_agent`
+  (collaboration inter-agents), `auditer_site` (audit SEO), `lire_emails`/`proposer_email`,
+  `lire_plateforme`/`proposer_action` (lecture/écriture des plateformes connectées via
+  `platform-call.ts`), `proposer_rdv` (**prise de RDV**), et `twenty-tools` (CRM, réservé aux
+  agents commerciaux).
+- **Actions à valider** (`src/lib/actions/store.ts` + `GET|POST /api/actions` + page
+  `dashboard/actions`) : les agents **proposent** (email, action plateforme, RDV) ; rien n'est
+  exécuté sans validation explicite de l'utilisateur. Table `pending_actions` (exécuter
+  `supabase-schema.sql`).
+- **Agenda / RDV** (`src/lib/calendar/providers.ts` + routes `/api/calendar/{google,outlook}/
+  {connect,callback}`) : à la validation d'une action `calendar`, si le client a connecté
+  **Google Calendar** ou **Outlook** (OAuth, page Connexions), l'événement est créé DIRECTEMENT
+  dans son agenda (refresh de jeton automatique) ; sinon repli sur un **`.ics`** téléchargé côté
+  client. Prérequis prod : `GOOGLE_CLIENT_ID`/`SECRET` et/ou `MICROSOFT_CLIENT_ID`/`SECRET`.
 
 ## 7. Variables d'environnement
 

@@ -37,44 +37,50 @@ export function getOptimalModel(
   agentId: string,
   message: string
 ): { model: string; maxTokens: number } {
-  const msg = message.toLowerCase()
+  const msg = message.toLowerCase().trim()
 
-  // Questions simples → Haiku (4x moins cher, 2x plus rapide)
-  const simplePatterns = [
-    /^(bonjour|salut|hello|hey)/,
-    /^(merci|thanks|ok|d'accord)/,
-    /^(oui|non|yes|no)$/,
-    /^(quoi|comment|what)/,
-    /combien (coûte|ça coûte)/,
-    /c'est quoi/,
-    /(prix|tarif|plan|formule)/,
+  // ── Bavardage strictement trivial → Haiku ──────────────────────────────────
+  // ANCIENNE VERSION BUGUÉE : les motifs « simples » incluaient /^(quoi|comment)/
+  // et /(prix|tarif|plan|formule)/ NON ancré. Résultat : « Comment structurer ma
+  // prospection ? » ou « Quelle stratégie de prix ? » partaient en Haiku — la
+  // majorité des vraies questions métier étaient donc traitées par le petit modèle.
+  // Désormais : uniquement salutations / accusés de réception, ET message court.
+  const trivialPatterns = [
+    /^(bonjour|bonsoir|salut|hello|hey|coucou)\b/,
+    /^(merci|thanks|super|parfait|nickel|ok|d'accord|entendu|compris)\b/,
+    /^(oui|non|yes|no)\b/,
   ]
+  if (msg.length <= 60 && trivialPatterns.some(p => p.test(msg))) {
+    return { model: 'claude-haiku-4-5', maxTokens: 500 }
+  }
 
-  const complexPatterns = [
-    /(stratégie|stratégique|business plan|levée de fonds)/,
-    /(analyse|analyser|deep dive|approfondi)/,
-    /(juridique|contrat|conformité|rgpd|avocat)/,
-    /(fiscal|impôt|tva|déclaration|comptable)/,
-    /(négocie|négociation|contrat|clause)/,
-    /(scale|scaling|croissance|expansion)/,
-  ]
-
-  const isSimple = simplePatterns.some(p => p.test(msg))
-  const isComplex = complexPatterns.some(p => p.test(msg))
-
-  // Agents critiques (raisonnement/enjeux élevés) → toujours Sonnet
-  const criticalAgents = ['legal', 'accounting', 'prospection-strategie']
+  // ── Agents à enjeu élevé → toujours Sonnet ────────────────────────────────
+  const criticalAgents = ['legal', 'accounting', 'prospection-strategie', 'general']
   if (criticalAgents.includes(agentId)) {
     return { model: 'claude-sonnet-4-5', maxTokens: 3000 }
   }
 
-  if (isComplex) return { model: 'claude-sonnet-4-5', maxTokens: 2000 }
-  if (isSimple) return { model: 'claude-haiku-4-5', maxTokens: 500 }
+  // ── Signaux de complexité explicites → Sonnet ─────────────────────────────
+  const complexPatterns = [
+    /(stratégie|stratégique|business plan|levée de fonds|roadmap)/,
+    /(analyse|analyser|diagnostic|audit|deep dive|approfondi|compare)/,
+    /(juridique|contrat|conformité|rgpd|avocat|clause|litige)/,
+    /(fiscal|impôt|tva|déclaration|comptable|trésorerie|prévision|budget)/,
+    /(négocie|négociation|objection|closing)/,
+    /(scale|scaling|croissance|expansion|recrut|embauche)/,
+    /(pourquoi|explique|conseil|recommand|optimis|améliorer|structurer)/,
+    /(marché|concurrent|positionnement|pricing|prix de vente)/,
+  ]
+  if (complexPatterns.some(p => p.test(msg))) {
+    return { model: 'claude-sonnet-4-5', maxTokens: 2500 }
+  }
 
-  // Default: message length based
-  return msg.length > 200
-    ? { model: 'claude-sonnet-4-5', maxTokens: 1500 }
-    : { model: 'claude-haiku-4-5', maxTokens: 800 }
+  // ── Par défaut : Sonnet ───────────────────────────────────────────────────
+  // L'ancien défaut basculait tout message < 200 caractères vers Haiku, alors
+  // qu'une question métier courte (« Comment augmenter mon CA ? ») mérite le
+  // meilleur raisonnement. Seul le bavardage trivial (traité plus haut) reste sur
+  // Haiku ; tout le reste passe sur Sonnet.
+  return { model: 'claude-sonnet-4-5', maxTokens: 2000 }
 }
 
 /**

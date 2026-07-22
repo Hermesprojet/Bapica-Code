@@ -217,16 +217,13 @@ const AGENT_EFFICIENCY: Record<string, { timeSaved: string; costEquivalent: stri
   general: { timeSaved: '3-5h/semaine', costEquivalent: '150-250€/mois', tasksAutomated: 'Coordination, recherche, synthèse' },
   support: { timeSaved: '10-20h/semaine', costEquivalent: '500-1000€/mois', tasksAutomated: 'Réponses clients, FAQ, tickets' },
   content: { timeSaved: '5-15h/semaine', costEquivalent: '400-800€/mois', tasksAutomated: 'Articles SEO, posts, scripts' },
-  prospector: { timeSaved: '8-15h/semaine', costEquivalent: '500-1000€/mois', tasksAutomated: 'Prospection LinkedIn, qualification' },
+  'prospection-strategie': { timeSaved: '8-15h/semaine', costEquivalent: '500-1000€/mois', tasksAutomated: 'Prospection LinkedIn, qualification' },
   closer: { timeSaved: '5-10h/semaine', costEquivalent: '300-600€/mois', tasksAutomated: 'Relances, closing, objections' },
   telephone: { timeSaved: '15-30h/semaine', costEquivalent: '800-1500€/mois', tasksAutomated: 'Appels entrants, filtrage, RDV' },
   accounting: { timeSaved: '5-10h/semaine', costEquivalent: '300-500€/mois', tasksAutomated: 'Factures, relances, TVA' },
   video: { timeSaved: '3-8h/vidéo', costEquivalent: '200-500€/vidéo', tasksAutomated: 'Création vidéo, montage, voix' },
   recruiter: { timeSaved: '5-10h/recrutement', costEquivalent: '500-1000€/recrutement', tasksAutomated: 'Tri CV, offres, présélection' },
   legal: { timeSaved: '3-8h/semaine', costEquivalent: '300-600€/mois', tasksAutomated: 'Contrats, CGV, conformité' },
-  analytics: { timeSaved: '3-6h/semaine', costEquivalent: '200-400€/mois', tasksAutomated: 'Dashboards, rapports, insights' },
-  trends: { timeSaved: '2-4h/semaine', costEquivalent: '100-200€/mois', tasksAutomated: 'Veille marché, tendances, alertes' },
-  scaling: { timeSaved: '5-10h/semaine', costEquivalent: '500-1000€/mois', tasksAutomated: 'Stratégie croissance, diagnostic' },
 }
 
 const AGENT_MAP: Record<string, string[]> = {
@@ -237,11 +234,11 @@ const AGENT_MAP: Record<string, string[]> = {
   sante: ['telephone', 'support', 'legal', 'accounting'],
   formation: ['content', 'video', 'support', 'general'],
   btp: ['telephone', 'accounting', 'legal', 'prospection-strategie'],
-  saas: ['accounting', 'content', 'support', 'prospection-strategie', 'prospection-strategie'],
+  saas: ['accounting', 'content', 'support', 'prospection-strategie'],
   commerce: ['content', 'telephone', 'support', 'general'],
   freelance: ['accounting', 'content', 'prospection-strategie', 'general'],
-  logistique: ['telephone', 'accounting', 'accounting', 'support'],
-  finance: ['prospection-strategie', 'closer', 'legal', 'accounting', 'prospection-strategie'],
+  logistique: ['telephone', 'accounting', 'support'],
+  finance: ['prospection-strategie', 'closer', 'legal', 'accounting'],
 }
 
 // ============================================================
@@ -335,8 +332,14 @@ export function analyzeBusinessProfile(data: any): BusinessProfile {
   // 3. RECOMMANDATIONS D'AGENTS
   // ============================================================
   
-  profile.recommendedAgents = AGENT_MAP[sector || ''] || ['general', 'content', 'support']
-  if (profile.stage === 'scaleup' || profile.stage === 'growth') {
+  // COPIE du tableau : sans le spread, on assignait la référence de AGENT_MAP et les
+  // push/unshift ci-dessous MUTAIENT la constante partagée — les listes grossissaient
+  // à chaque appel dans le process serveur (recommandations dupliquées, ROI gonflé).
+  profile.recommendedAgents = [...(AGENT_MAP[sector || ''] || ['general', 'content', 'support'])]
+  if (
+    (profile.stage === 'scaleup' || profile.stage === 'growth')
+    && !profile.recommendedAgents.includes('prospection-strategie')
+  ) {
     profile.recommendedAgents.push('prospection-strategie')
   }
   if (profile.customerAcquisition.includes('phone') || sector === 'btp' || sector === 'restauration') {

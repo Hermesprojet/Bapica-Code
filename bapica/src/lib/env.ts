@@ -129,6 +129,20 @@ export const ENV_GROUPS: EnvGroup[] = [
     optional: ['LINKEDIN_REDIRECT_URI'],
   },
   {
+    id: 'google_calendar',
+    label: 'Agenda Google (prise de RDV directe)',
+    required: false,
+    vars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+    optional: ['GOOGLE_REDIRECT_URI', 'DEFAULT_TIMEZONE'],
+  },
+  {
+    id: 'outlook_calendar',
+    label: 'Agenda Outlook (prise de RDV directe)',
+    required: false,
+    vars: ['MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET'],
+    optional: ['MICROSOFT_REDIRECT_URI'],
+  },
+  {
     id: 'admin',
     label: 'Administrateurs (page Apprentissage)',
     required: false,

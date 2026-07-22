@@ -1,11 +1,22 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Menu, X } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 export function Navbar() {
   const [open, setOpen] = useState(false)
+  // Reflète l'état de connexion : un utilisateur connecté qui arrive sur la vitrine
+  // doit voir « Tableau de bord » et non « Se connecter » (sinon il se croit déconnecté).
+  const [loggedIn, setLoggedIn] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    supabase.auth.getSession().then(({ data }) => { if (active) setLoggedIn(!!data.session) })
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setLoggedIn(!!session))
+    return () => { active = false; sub.subscription.unsubscribe() }
+  }, [])
 
   const navLinks = [
     { href: '/#features', label: 'Fonctionnalités' },
@@ -34,12 +45,20 @@ export function Navbar() {
 
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center gap-3 lg:gap-4">
-          <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            Se connecter
-          </Link>
-          <Link href="/signup" className="bg-foreground text-background rounded-lg px-3 lg:px-4 py-2 text-sm font-medium hover:bg-foreground/90 transition-all">
-            Essayer gratuitement
-          </Link>
+          {loggedIn ? (
+            <Link href="/dashboard" className="bg-foreground text-background rounded-lg px-3 lg:px-4 py-2 text-sm font-medium hover:bg-foreground/90 transition-all">
+              Tableau de bord
+            </Link>
+          ) : (
+            <>
+              <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Se connecter
+              </Link>
+              <Link href="/signup" className="bg-foreground text-background rounded-lg px-3 lg:px-4 py-2 text-sm font-medium hover:bg-foreground/90 transition-all">
+                Essayer gratuitement
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -67,20 +86,32 @@ export function Navbar() {
               </Link>
             ))}
             <hr className="my-2 border-border" />
-            <Link
-              href="/login"
-              onClick={() => setOpen(false)}
-              className="px-4 py-3 text-base text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-            >
-              Se connecter
-            </Link>
-            <Link
-              href="/signup"
-              onClick={() => setOpen(false)}
-              className="mt-2 bg-foreground text-background rounded-lg px-4 py-3 text-base font-medium text-center hover:bg-foreground/90 transition-all"
-            >
-              Essayer gratuitement
-            </Link>
+            {loggedIn ? (
+              <Link
+                href="/dashboard"
+                onClick={() => setOpen(false)}
+                className="mt-2 bg-foreground text-background rounded-lg px-4 py-3 text-base font-medium text-center hover:bg-foreground/90 transition-all"
+              >
+                Tableau de bord
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  onClick={() => setOpen(false)}
+                  className="px-4 py-3 text-base text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                >
+                  Se connecter
+                </Link>
+                <Link
+                  href="/signup"
+                  onClick={() => setOpen(false)}
+                  className="mt-2 bg-foreground text-background rounded-lg px-4 py-3 text-base font-medium text-center hover:bg-foreground/90 transition-all"
+                >
+                  Essayer gratuitement
+                </Link>
+              </>
+            )}
           </nav>
         </div>
       )}

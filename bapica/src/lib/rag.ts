@@ -26,7 +26,7 @@ function getSupabase(): SupabaseClient {
 // closer, legal et accounting (bloqués par cette garde alors que la route les
 // demandait). Aligné sur les ids réels.
 export const RAG_ENABLED_AGENTS = new Set([
-  "general", "support", "prospection-strategie", "closer",
+  "general", "support", "content", "prospection-strategie", "closer",
   "telephone", "accounting", "video", "recruiter", "legal",
 ])
 
