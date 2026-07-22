@@ -12,6 +12,9 @@ import { listPlatformsTool, readPlatformTool, proposeActionTool, listClientPlatf
 import { readEmailsTool, proposeEmailTool, runReadEmails } from '@/lib/tools/email-tools'
 import { auditSiteTool, auditSite } from '@/lib/tools/seo-audit'
 import { proposeRdvTool, rdvSummary, type RdvInput } from '@/lib/tools/calendar-tools'
+import { proposeDocumentTool } from '@/lib/tools/document-tools'
+import { buildDeliverable, type DeliverableKind } from '@/lib/deliverables'
+import { createDeliverable } from '@/lib/deliverables/store'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -315,6 +318,7 @@ async function callClaude(
           proposeEmailTool as unknown as any,
           auditSiteTool as unknown as any,
           proposeRdvTool as unknown as any,
+          proposeDocumentTool as unknown as any,
         ]
       : []),
   ]
@@ -451,6 +455,26 @@ async function callClaude(
             } catch (err) {
               const m = String(err instanceof Error ? err.message : err)
               result = JSON.stringify({ ok: false, erreur: m.includes('ACTIONS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'proposer_document' && userId) {
+            const i = tool.input as { kind?: string; title?: string; content?: string; columns?: unknown; rows?: unknown }
+            try {
+              const kind = (['pdf', 'excel', 'csv', 'markdown', 'text'].includes(String(i?.kind)) ? i!.kind : 'pdf') as DeliverableKind
+              const file = buildDeliverable({
+                kind,
+                title: String(i?.title || 'Document'),
+                content: i?.content != null ? String(i.content) : undefined,
+                columns: Array.isArray(i?.columns) ? (i!.columns as unknown[]).map(String) : undefined,
+                rows: Array.isArray(i?.rows) ? (i!.rows as unknown[]).map((r) => (Array.isArray(r) ? (r as unknown[]).map((c) => (typeof c === 'number' ? c : String(c))) : [String(r)])) : undefined,
+              })
+              const docId = await createDeliverable({
+                userId, agentId: agent.id, kind, title: String(i?.title || 'Document'),
+                filename: file.filename, mime: file.mime, content: file.content,
+              })
+              result = JSON.stringify({ ok: true, document_id: docId, filename: file.filename, statut: 'disponible dans « Documents »' })
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('DELIVERABLES_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
             }
           } else if (tool.name === 'consulter_agent') {
             // Collaboration inter-agents réelle : le confrère répond avec le même contexte client.

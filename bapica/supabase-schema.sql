@@ -239,3 +239,55 @@ LANGUAGE sql STABLE AS $$
   ORDER BY embedding <=> query_embedding
   LIMIT match_count;
 $$;
+
+-- ─────────────────────────────────────────────────────────────
+-- 10. Documents produits par les agents (devis, rapports, tableaux) — téléchargeables.
+--     Généré à la demande (pas d'action externe) : accès service_role uniquement.
+CREATE TABLE IF NOT EXISTS deliverables (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) NOT NULL,
+  agent_id TEXT,
+  kind TEXT NOT NULL,            -- pdf | excel | csv | markdown | text
+  title TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  content TEXT NOT NULL,         -- corps du fichier (HTML pour pdf, CSV, markdown…)
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_deliverables_user ON deliverables(user_id, created_at DESC);
+ALTER TABLE deliverables ENABLE ROW LEVEL SECURITY;
+
+-- 11. Étiquettes d'échanges (appels, messages) : prospect intéressé, SAV, impayé…
+CREATE TABLE IF NOT EXISTS interaction_tags (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) NOT NULL,
+  agent_id TEXT,
+  channel TEXT,                  -- chat | whatsapp | telephone | email…
+  contact TEXT,                  -- nom/numéro/email de l'interlocuteur (optionnel)
+  tag TEXT NOT NULL,             -- prospect_interesse | rappel_demande | sav | impaye | pas_interesse | autre
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_interaction_tags_user ON interaction_tags(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_interaction_tags_tag ON interaction_tags(user_id, tag);
+ALTER TABLE interaction_tags ENABLE ROW LEVEL SECURITY;
+
+-- 12. Relances d'impayés programmées (échéancier J+7/J+15/J+30) par Claire.
+CREATE TABLE IF NOT EXISTS payment_reminders (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) NOT NULL,
+  client TEXT NOT NULL,          -- client débiteur
+  contact_email TEXT,            -- destinataire des relances
+  invoice_ref TEXT,              -- référence facture
+  amount NUMERIC,                -- montant dû
+  currency TEXT DEFAULT 'EUR',
+  stage TEXT NOT NULL DEFAULT 'amiable',    -- amiable | ferme | mise_en_demeure
+  due_on DATE NOT NULL,          -- date d'envoi prévue
+  subject TEXT,
+  body TEXT,                     -- corps de la relance (rédigé par Claire)
+  status TEXT NOT NULL DEFAULT 'scheduled', -- scheduled | sent | cancelled | paid
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  sent_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_payment_reminders_user ON payment_reminders(user_id, due_on);
+ALTER TABLE payment_reminders ENABLE ROW LEVEL SECURITY;
