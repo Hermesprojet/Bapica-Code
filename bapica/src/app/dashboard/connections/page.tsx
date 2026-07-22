@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Check, Loader2, Send, AlertCircle, Search, Link2, X, Plus, CalendarClock } from 'lucide-react'
+import { Check, Loader2, Send, AlertCircle, Search, Link2, X, Plus, CalendarClock, ExternalLink } from 'lucide-react'
 import { getAvailableIntegrations } from '@/lib/integrations'
 import { connectMethodFor, soonReasonFor, apiKeyHintFor } from '@/lib/integrations-connect'
 import { EMAIL_PRESETS } from '@/lib/email-presets'
@@ -591,6 +591,35 @@ function ConnectionsContent() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors"
             >
               <Link2 className="h-3.5 w-3.5" /> Connecter Outlook
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Google Docs / Sheets — export des documents produits par les agents */}
+      <div className="card-elevated mb-8 p-5">
+        <div className="flex items-start gap-3">
+          <ExternalLink className="mt-0.5 h-5 w-5 text-primary" />
+          <div>
+            <div className="text-sm font-semibold">Google Docs / Sheets</div>
+            <div className="text-xs text-muted-foreground">
+              Permet d&apos;exporter les documents produits par vos agents directement dans votre Drive
+              (tableaux → Google Sheets, textes → Google Docs), depuis la page « Documents ».
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
+          {connected.includes('google_workspace') ? (
+            <span className="inline-flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-xs text-green-700">
+              <Check className="h-3.5 w-3.5" /> Google Docs/Sheets connecté
+              <button onClick={() => disconnect('google_workspace')} className="ml-1 text-muted-foreground hover:text-destructive transition-colors">Déconnecter</button>
+            </span>
+          ) : (
+            <button
+              onClick={async () => { window.location.href = `/api/google/workspace/connect?t=${encodeURIComponent(await token())}` }}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              <Link2 className="h-3.5 w-3.5" /> Connecter Google Docs/Sheets
             </button>
           )}
         </div>

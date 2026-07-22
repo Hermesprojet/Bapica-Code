@@ -150,6 +150,13 @@ export const ENV_GROUPS: EnvGroup[] = [
     optional: ['MICROSOFT_REDIRECT_URI'],
   },
   {
+    id: 'google_workspace',
+    label: 'Google Docs / Sheets (export des documents)',
+    required: false,
+    vars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+    optional: ['GOOGLE_WORKSPACE_REDIRECT_URI'],
+  },
+  {
     id: 'admin',
     label: 'Administrateurs (page Apprentissage)',
     required: false,
