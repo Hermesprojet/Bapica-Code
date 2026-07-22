@@ -20,6 +20,8 @@ import { createTag } from '@/lib/tags/store'
 import { scheduleRemindersTool } from '@/lib/tools/reminder-tools'
 import { createReminders } from '@/lib/reminders/store'
 import { proposeSmsTool } from '@/lib/tools/sms-tools'
+import { readBankTool } from '@/lib/tools/bank-tools'
+import { readBalances, readTransactions } from '@/lib/bank/gocardless'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -327,6 +329,7 @@ async function callClaude(
           tagInteractionTool as unknown as any,
           scheduleRemindersTool as unknown as any,
           proposeSmsTool as unknown as any,
+          readBankTool as unknown as any,
         ]
       : []),
   ]
@@ -526,6 +529,15 @@ async function callClaude(
             } catch (err) {
               const m = String(err instanceof Error ? err.message : err)
               result = JSON.stringify({ ok: false, erreur: m.includes('REMINDERS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'lire_banque' && userId) {
+            const i = tool.input as { action?: string }
+            const r = i?.action === 'transactions' ? await readTransactions(userId) : await readBalances(userId)
+            if (r.ok) {
+              result = JSON.stringify(i?.action === 'transactions' ? { ok: true, transactions: (r as any).transactions } : { ok: true, soldes: (r as any).balances })
+            } else {
+              const notConnected = r.error === 'not-connected' || r.error === 'no-credentials'
+              result = JSON.stringify({ ok: false, erreur: notConnected ? 'Aucune banque connectée (Connexions → Banque).' : r.error })
             }
           } else if (tool.name === 'proposer_sms' && userId) {
             const i = tool.input as { to?: string; text?: string }

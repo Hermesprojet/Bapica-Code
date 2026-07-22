@@ -182,6 +182,16 @@ function ConnectionsContent() {
   const [xSite, setXSite] = useState('')
   const [xSaving, setXSaving] = useState(false)
 
+  // Connexion bancaire (GoCardless Bank Account Data)
+  const [bank, setBank] = useState<{ connected: boolean; linked: boolean; accounts: number }>({ connected: false, linked: false, accounts: 0 })
+  const [bkOpen, setBkOpen] = useState(false)
+  const [bkSecretId, setBkSecretId] = useState('')
+  const [bkSecretKey, setBkSecretKey] = useState('')
+  const [bkCountry, setBkCountry] = useState('FR')
+  const [bkInstitutions, setBkInstitutions] = useState<{ id: string; name: string }[]>([])
+  const [bkInst, setBkInst] = useState('')
+  const [bkBusy, setBkBusy] = useState(false)
+
   const loadWix = async () => {
     try {
       const res = await fetch('/api/integrations/wix', { headers: { Authorization: `Bearer ${await token()}` } })
@@ -214,6 +224,52 @@ function ConnectionsContent() {
   const disconnectWix = async () => {
     await fetch('/api/integrations/wix', { method: 'DELETE', headers: { Authorization: `Bearer ${await token()}` } })
     setWixConn({ connected: false, siteId: '' })
+  }
+
+  // ─── Banque (GoCardless) ───────────────────────────────────────────────────
+  const loadBank = async () => {
+    try {
+      const res = await fetch('/api/bank', { headers: { Authorization: `Bearer ${await token()}` } })
+      if (res.ok) setBank(await res.json())
+    } catch { /* ignore */ }
+  }
+  const bankPost = async (payload: Record<string, unknown>) => {
+    const res = await fetch('/api/bank', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify(payload),
+    })
+    return { res, data: await res.json().catch(() => ({})) }
+  }
+  const bankConnect = async () => {
+    if (!bkSecretId.trim() || !bkSecretKey.trim() || bkBusy) return
+    setBkBusy(true); setNotice(null)
+    const { res, data } = await bankPost({ action: 'connect', secretId: bkSecretId.trim(), secretKey: bkSecretKey.trim() })
+    if (res.ok && data.success) { setBkSecretKey(''); setBkOpen(false); setNotice({ kind: 'ok', msg: 'Banque connectée. Choisissez votre établissement.' }); await loadBank(); loadInstitutions() }
+    else setNotice({ kind: 'err', msg: data.error || 'Connexion bancaire impossible.' })
+    setBkBusy(false)
+  }
+  const loadInstitutions = async () => {
+    const { res, data } = await bankPost({ action: 'institutions', country: bkCountry })
+    if (res.ok) setBkInstitutions(data.institutions || [])
+  }
+  const bankLink = async () => {
+    if (!bkInst || bkBusy) return
+    setBkBusy(true); setNotice(null)
+    const { res, data } = await bankPost({ action: 'link', institutionId: bkInst })
+    if (res.ok && data.link) window.location.href = data.link
+    else { setNotice({ kind: 'err', msg: data.error || 'Autorisation impossible.' }); setBkBusy(false) }
+  }
+  const bankAccounts = async () => {
+    setBkBusy(true); setNotice(null)
+    const { res, data } = await bankPost({ action: 'accounts' })
+    if (res.ok) { setNotice({ kind: 'ok', msg: `${(data.accounts || []).length} compte(s) lié(s).` }); await loadBank() }
+    else setNotice({ kind: 'err', msg: data.error || 'Récupération des comptes impossible.' })
+    setBkBusy(false)
+  }
+  const bankDisconnect = async () => {
+    await fetch('/api/bank', { method: 'DELETE', headers: { Authorization: `Bearer ${await token()}` } })
+    setBank({ connected: false, linked: false, accounts: 0 })
   }
 
   // Champs avancés d'auth pour une plateforme personnalisée
@@ -270,6 +326,7 @@ function ConnectionsContent() {
     loadWordpress()
     loadShopify()
     loadWix()
+    loadBank()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -594,6 +651,73 @@ function ConnectionsContent() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Banque (GoCardless) — Claire lit soldes et transactions réels */}
+      <div className="card-elevated mb-8 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Link2 className="mt-0.5 h-5 w-5 text-primary" />
+            <div>
+              <div className="text-sm font-semibold">Banque (2500+ banques européennes)</div>
+              <div className="text-xs text-muted-foreground">
+                Connectez votre banque (via GoCardless, lecture seule) : Claire surveille votre trésorerie
+                sur vos soldes et transactions réels.
+                {bank.connected ? (bank.linked ? ` ${bank.accounts} compte(s) lié(s).` : ' Établissement à choisir.') : ''}
+              </div>
+            </div>
+          </div>
+          {bank.connected ? (
+            <button onClick={bankDisconnect} className="text-xs text-muted-foreground hover:text-destructive transition-colors">Déconnecter</button>
+          ) : !bkOpen ? (
+            <button onClick={() => setBkOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+              <Link2 className="h-3.5 w-3.5" /> Connecter ma banque
+            </button>
+          ) : null}
+        </div>
+
+        {/* Étape 1 : identifiants GoCardless */}
+        {bkOpen && !bank.connected && (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input value={bkSecretId} onChange={(e) => setBkSecretId(e.target.value)} placeholder="GoCardless secret_id" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              <input type="password" value={bkSecretKey} onChange={(e) => setBkSecretKey(e.target.value)} placeholder="GoCardless secret_key" className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+            </div>
+            <p className="text-[11px] text-amber-600">
+              Créez un compte gratuit sur GoCardless « Bank Account Data » → Developers → User secrets, puis collez le secret_id et le secret_key.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setBkOpen(false)} className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground">Annuler</button>
+              <button onClick={bankConnect} disabled={!bkSecretId.trim() || !bkSecretKey.trim() || bkBusy} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {bkBusy ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connexion…</> : 'Connecter'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Étape 2 : choisir la banque et autoriser */}
+        {bank.connected && !bank.linked && (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <select value={bkCountry} onChange={(e) => { setBkCountry(e.target.value) }} className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+                {['FR', 'BE', 'DE', 'ES', 'IT', 'NL', 'PT', 'GB'].map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <button onClick={loadInstitutions} className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-muted">Charger les banques</button>
+              <select value={bkInst} onChange={(e) => setBkInst(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+                <option value="">Choisir un établissement…</option>
+                {bkInstitutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button onClick={bankAccounts} disabled={bkBusy} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs hover:bg-muted disabled:opacity-50">
+                J&apos;ai autorisé → récupérer mes comptes
+              </button>
+              <button onClick={bankLink} disabled={!bkInst || bkBusy} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {bkBusy ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> …</> : 'Autoriser à ma banque'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Google Docs / Sheets — export des documents produits par les agents */}
