@@ -103,8 +103,12 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 - `src/lib/tools/*` — **vrais outils** exposés aux agents dans `/api/chat` : `consulter_agent`
   (collaboration inter-agents), `auditer_site` (audit SEO), `lire_emails`/`proposer_email`,
   `lire_plateforme`/`proposer_action` (lecture/écriture des plateformes connectées via
-  `platform-call.ts`), `proposer_rdv` (**prise de RDV**), et `twenty-tools` (CRM, réservé aux
-  agents commerciaux).
+  `platform-call.ts`), `proposer_rdv` (**prise de RDV**), `proposer_document` (**produit un
+  fichier** : PDF imprimable/Excel-CSV/Markdown → page `dashboard/documents`), `etiqueter_echange`
+  (**tag persisté** prospect/SAV/impayé… → page `dashboard/tags`), `programmer_relances`
+  (**échéancier d'impayés** J+7/J+15/J+30 → page `dashboard/reminders`), et `twenty-tools`
+  (CRM, réservé aux agents commerciaux). Chaque outil du chat a un handler dans `route.ts`
+  (11 outils = 11 handlers, cohérence à préserver).
 - **Actions à valider** (`src/lib/actions/store.ts` + `GET|POST /api/actions` + page
   `dashboard/actions`) : les agents **proposent** (email, action plateforme, RDV) ; rien n'est
   exécuté sans validation explicite de l'utilisateur. Table `pending_actions` (exécuter
@@ -114,6 +118,12 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   **Google Calendar** ou **Outlook** (OAuth, page Connexions), l'événement est créé DIRECTEMENT
   dans son agenda (refresh de jeton automatique) ; sinon repli sur un **`.ics`** téléchargé côté
   client. Prérequis prod : `GOOGLE_CLIENT_ID`/`SECRET` et/ou `MICROSOFT_CLIENT_ID`/`SECRET`.
+- **Documents / Étiquettes / Relances** : trois fonctions persistées (tables `deliverables`,
+  `interaction_tags`, `payment_reminders` dans `supabase-schema.sql`) avec store service_role
+  (`src/lib/{deliverables,tags,reminders}/store.ts`), routes `/api/{deliverables,tags,reminders}`
+  et pages `dashboard/{documents,tags,reminders}`. Les relances envoient via une action email
+  « à valider ». `deliverables.ts` construit les fichiers (CSV avec BOM, HTML imprimable, Markdown)
+  sans dépendance binaire.
 
 ## 7. Variables d'environnement
 
