@@ -47,6 +47,16 @@ export default function DashboardLayout({
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+
+  const handleSignOut = async () => {
+    if (signingOut) return
+    setSigningOut(true)
+    try {
+      await supabase.auth.signOut()
+    } catch { /* on redirige quand même */ }
+    window.location.href = '/'
+  }
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setIsAdmin(isAdminEmail(data.user?.email)))
@@ -92,7 +102,7 @@ export default function DashboardLayout({
       <aside className="hidden w-64 border-r border-border bg-card lg:block">
         <div className="flex h-full flex-col">
           <div className="border-b border-border p-4">
-            <Link href="/" className="flex items-center gap-2">
+            <Link href="/dashboard" className="flex items-center gap-2">
               <Logo />
             </Link>
           </div>
@@ -102,9 +112,9 @@ export default function DashboardLayout({
           </nav>
 
           <div className="border-t border-border p-4">
-            <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+            <button onClick={handleSignOut} disabled={signingOut} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50">
               <LogOut className="h-4 w-4" />
-              Déconnexion
+              {signingOut ? 'Déconnexion…' : 'Déconnexion'}
             </button>
           </div>
         </div>
@@ -131,9 +141,9 @@ export default function DashboardLayout({
           <div className="border-b border-border bg-card p-4 lg:hidden animate-fade-in">
             <nav className="space-y-1">
               <NavLinks onNavigate={() => setMobileOpen(false)} />
-              <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+              <button onClick={handleSignOut} disabled={signingOut} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50">
                 <LogOut className="h-4 w-4" />
-                Déconnexion
+                {signingOut ? 'Déconnexion…' : 'Déconnexion'}
               </button>
             </nav>
           </div>
