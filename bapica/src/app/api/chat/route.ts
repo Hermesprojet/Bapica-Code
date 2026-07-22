@@ -19,6 +19,7 @@ import { tagInteractionTool } from '@/lib/tools/tag-tools'
 import { createTag } from '@/lib/tags/store'
 import { scheduleRemindersTool } from '@/lib/tools/reminder-tools'
 import { createReminders } from '@/lib/reminders/store'
+import { proposeSmsTool } from '@/lib/tools/sms-tools'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -325,6 +326,7 @@ async function callClaude(
           proposeDocumentTool as unknown as any,
           tagInteractionTool as unknown as any,
           scheduleRemindersTool as unknown as any,
+          proposeSmsTool as unknown as any,
         ]
       : []),
   ]
@@ -524,6 +526,19 @@ async function callClaude(
             } catch (err) {
               const m = String(err instanceof Error ? err.message : err)
               result = JSON.stringify({ ok: false, erreur: m.includes('REMINDERS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'proposer_sms' && userId) {
+            const i = tool.input as { to?: string; text?: string }
+            try {
+              const actionId = await createAction({
+                userId, agentId: agent.id, provider: 'sms', method: 'SEND', path: '',
+                body: { to: String(i?.to || ''), text: String(i?.text || '') },
+                summary: `Envoyer un SMS à ${i?.to || '?'}`,
+              })
+              result = JSON.stringify({ ok: true, action_id: actionId, statut: "en attente de validation par l'utilisateur" })
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('ACTIONS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
             }
           } else if (tool.name === 'consulter_agent') {
             // Collaboration inter-agents réelle : le confrère répond avec le même contexte client.

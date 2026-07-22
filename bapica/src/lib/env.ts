@@ -110,6 +110,13 @@ export const ENV_GROUPS: EnvGroup[] = [
     vars: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_WHATSAPP_NUMBER'],
   },
   {
+    id: 'sms',
+    label: 'SMS (Twilio) — comptes rendus d\'appel',
+    required: false,
+    vars: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'],
+    optional: ['TWILIO_SMS_NUMBER', 'TWILIO_MESSAGING_SERVICE_SID'],
+  },
+  {
     id: 'telegram',
     label: 'Telegram (bot mono-numéro de repli)',
     required: false,
