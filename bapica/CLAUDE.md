@@ -106,9 +106,10 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   `platform-call.ts`), `proposer_rdv` (**prise de RDV**), `proposer_document` (**produit un
   fichier** : PDF imprimable/Excel-CSV/Markdown → page `dashboard/documents`), `etiqueter_echange`
   (**tag persisté** prospect/SAV/impayé… → page `dashboard/tags`), `programmer_relances`
-  (**échéancier d'impayés** J+7/J+15/J+30 → page `dashboard/reminders`), et `twenty-tools`
-  (CRM, réservé aux agents commerciaux). Chaque outil du chat a un handler dans `route.ts`
-  (11 outils = 11 handlers, cohérence à préserver).
+  (**échéancier d'impayés** J+7/J+15/J+30 → page `dashboard/reminders`), `proposer_sms`
+  (**SMS Twilio**, compte rendu d'appel), `lire_banque` (**soldes/transactions réels** via
+  GoCardless), et `twenty-tools` (CRM, réservé aux agents commerciaux). Chaque outil du chat a
+  un handler dans `route.ts` (**13 outils = 13 handlers**, cohérence à préserver).
 - **Actions à valider** (`src/lib/actions/store.ts` + `GET|POST /api/actions` + page
   `dashboard/actions`) : les agents **proposent** (email, action plateforme, RDV) ; rien n'est
   exécuté sans validation explicite de l'utilisateur. Table `pending_actions` (exécuter
@@ -124,6 +125,15 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   et pages `dashboard/{documents,tags,reminders}`. Les relances envoient via une action email
   « à valider ». `deliverables.ts` construit les fichiers (CSV avec BOM, HTML imprimable, Markdown)
   sans dépendance binaire.
+- **SMS** (`src/lib/sms.ts` + provider `sms` dans `/api/actions`) : envoi Twilio après validation.
+  Prérequis prod : `TWILIO_ACCOUNT_SID`/`AUTH_TOKEN` + `TWILIO_SMS_NUMBER` (ou `TWILIO_MESSAGING_SERVICE_SID`).
+- **Google Docs/Sheets** (`src/lib/google/workspace.ts` + routes `/api/google/workspace/{connect,
+  callback}` + `POST /api/deliverables/[id]/google`) : export d'un document en Sheet (depuis le CSV)
+  ou Doc (texte). OAuth Google (mêmes `GOOGLE_CLIENT_ID/SECRET`, APIs Drive/Docs/Sheets + redirection
+  `/api/google/workspace/callback`).
+- **Banque** (`src/lib/bank/gocardless.ts` + `/api/bank`) : connecteur GoCardless Bank Account Data
+  (lecture seule, 2500+ banques EU). Flux : identifiants client (secret_id/key) → token → requisition
+  (auth banque) → comptes → soldes/transactions. Aucune variable Vercel (identifiants par client).
 
 ## 7. Variables d'environnement
 
