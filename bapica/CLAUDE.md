@@ -101,7 +101,9 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 - `src/app/api/chat/route.ts` — cœur du chat connecté (auth, mémoire, brief business, RAG, live data, tools).
 - `src/app/api/demo-chat/route.ts` — démo publique.
 - `src/lib/tools/*` — **vrais outils** exposés aux agents dans `/api/chat` : `consulter_agent`
-  (collaboration inter-agents), `auditer_site` (audit SEO), `lire_emails`/`proposer_email`,
+  (collaboration inter-agents), `auditer_site` (**audit SEO** : titres/meta/OG/JSON-LD, images sans
+  alt, liens internes/externes, hreflang, HTTPS, temps de réponse, robots.txt/sitemap, **score /100**),
+  `rechercher_motscles` (**mots-clés réels** via Google Suggest, gratuit), `lire_emails`/`proposer_email`,
   `lire_plateforme`/`proposer_action` (lecture/écriture des plateformes connectées via
   `platform-call.ts`), `proposer_rdv` (**prise de RDV**), `proposer_document` (**produit un
   fichier** : PDF imprimable/Excel-CSV/Markdown → page `dashboard/documents`), `etiqueter_echange`
@@ -109,7 +111,7 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   (**échéancier d'impayés** J+7/J+15/J+30 → page `dashboard/reminders`), `proposer_sms`
   (**SMS Twilio**, compte rendu d'appel), `lire_banque` (**soldes/transactions réels** via
   GoCardless), et `twenty-tools` (CRM, réservé aux agents commerciaux). Chaque outil du chat a
-  un handler dans `route.ts` (**13 outils = 13 handlers**, cohérence à préserver).
+  un handler dans `route.ts` (**14 outils = 14 handlers**, cohérence à préserver).
 - **Actions à valider** (`src/lib/actions/store.ts` + `GET|POST /api/actions` + page
   `dashboard/actions`) : les agents **proposent** (email, action plateforme, RDV) ; rien n'est
   exécuté sans validation explicite de l'utilisateur. Table `pending_actions` (exécuter

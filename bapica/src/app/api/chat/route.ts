@@ -22,6 +22,8 @@ import { createReminders } from '@/lib/reminders/store'
 import { proposeSmsTool } from '@/lib/tools/sms-tools'
 import { readBankTool } from '@/lib/tools/bank-tools'
 import { readBalances, readTransactions } from '@/lib/bank/gocardless'
+import { keywordResearchTool } from '@/lib/tools/keyword-tools'
+import { researchKeywords } from '@/lib/seo/keywords'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -330,6 +332,7 @@ async function callClaude(
           scheduleRemindersTool as unknown as any,
           proposeSmsTool as unknown as any,
           readBankTool as unknown as any,
+          keywordResearchTool as unknown as any,
         ]
       : []),
   ]
@@ -530,6 +533,10 @@ async function callClaude(
               const m = String(err instanceof Error ? err.message : err)
               result = JSON.stringify({ ok: false, erreur: m.includes('REMINDERS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
             }
+          } else if (tool.name === 'rechercher_motscles') {
+            const i = tool.input as { seed?: string; lang?: string }
+            const r = await researchKeywords(String(i?.seed || ''), String(i?.lang || 'fr'))
+            result = JSON.stringify(r.ok ? { ok: true, seed: r.seed, mots_cles: r.keywords, questions: r.questions } : { ok: false, erreur: r.error })
           } else if (tool.name === 'lire_banque' && userId) {
             const i = tool.input as { action?: string }
             const r = i?.action === 'transactions' ? await readTransactions(userId) : await readBalances(userId)
