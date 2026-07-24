@@ -216,7 +216,15 @@ Cohérence produit à vérifier dans les réponses des agents :
   ajustement des paramètres d'API au 1er test réel.
 - Clés requises en prod pour le rendu : `RUNWAY_API_KEY` ; `HEYGEN_API_KEY` + `HEYGEN_AVATAR_ID` +
   `HEYGEN_VOICE_ID` ; `ELEVENLABS_API_KEY` (+ `ELEVENLABS_VOICE_ID` optionnel).
-- Le **montage final** (assembler clips + voix + sous-titres + musique en 1 MP4) n'est PAS fait (exige ffmpeg).
+- **Capacités avancées (engines.ts)** — écrites à l'aveugle, mêmes clés HeyGen :
+  - **Avatar depuis une photo** : `heygenUploadTalkingPhoto` + `heygenTalkingPhotoVideo` →
+    route `POST /api/video/avatar` (`create` puis `generate`, suivi via `/api/video/status`).
+  - **Traduction/doublage lip-sync** : `heygenTranslateVideo`/`heygenTranslateStatus` →
+    route `POST /api/video/translate` (`start`/`status`).
+- **Montage/édition cloud** : `src/lib/video/editor.ts` (Shotstack : timeline → MP4, marche en
+  serverless contrairement à FFmpeg) → route `POST /api/video/edit` (`start`/`status`). Clé
+  `SHOTSTACK_API_KEY` (`SHOTSTACK_ENV`='v1' par défaut). La route FFmpeg `/api/video/assemble`
+  reste (nécessite un hôte avec FFmpeg — Railway/Fly.io) mais Shotstack est la voie serverless.
 - UI : `dashboard/video-studio` (thème clair) — brief → `ProductionPackageView`
   (`src/components/agents/production-package.tsx`), avec « Générer le clip » par scène + « Générer la voix off ».
 

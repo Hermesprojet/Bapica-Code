@@ -84,6 +84,13 @@ export const ENV_GROUPS: EnvGroup[] = [
     optional: ['ELEVENLABS_VOICE_ID'],
   },
   {
+    id: 'video_edit',
+    label: 'Montage vidéo (Shotstack) — assemblage/sous-titres',
+    required: false,
+    vars: [],
+    optional: ['SHOTSTACK_API_KEY', 'SHOTSTACK_ENV'],
+  },
+  {
     id: 'prospection',
     label: 'Recherche de leads (Apollo / Hunter)',
     required: false,

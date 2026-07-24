@@ -60,12 +60,14 @@ export interface MayaBrief {
 
 // Règles de routage : quel moteur pour quel type de plan (le « cerveau »).
 export const ENGINE_ROUTING = `Règles de routage vers le moteur de génération (choisis recommendedEngine par scène et primaryEngine global) :
-- Présentateur / avatar qui parle face caméra, lip-sync → "HeyGen"
-- Publicité cinématique, image→vidéo, transitions léchées → "Runway"
-- Plan ultra-réaliste (produit, humain photoréaliste, "commercial") → "Veo"
-- Style anime, stylisé, illustratif → "Kling"
+- Présentateur / avatar qui parle face caméra, lip-sync, avatar créé depuis une photo → "HeyGen"
+- Publicité cinématique, image→vidéo, transitions léchées, contrôle du mouvement → "Runway" (Gen-4)
+- Plan ultra-réaliste avec son natif, humain photoréaliste, "spot TV" haut de gamme → "Veo" (Veo 3)
+- Style anime, stylisé, illustratif, dynamique → "Kling" (2.x)
 - Motion design, logo animé, texte animé, parallax d'image fixe → "Luma"
-- En cas de doute → "Best Available"`
+- En cas de doute → "Best Available"
+
+EXIGENCE DE QUALITÉ (niveau studio) : chaque visualPrompt vise le rendu le plus réaliste et cinématographique possible — objectif et focale (ex : 35mm, 85mm), ouverture (bokeh), type de lumière (key/fill/rim, golden hour, softbox), palette et étalonnage (color grading), texture de peau/matériaux, résolution 4K, HDR, grain filmique léger, cohérence de personnage entre les scènes. Bannis les rendus « plastique », les mains déformées, le texte illisible. Précise la référence esthétique quand c'est utile (ex : « à la Apple », « documentaire Netflix », « pub L'Oréal »).`
 
 export function buildMayaSystemPrompt(): string {
   return `Tu es Maya, directrice créative IA de Bapica, spécialisée dans la production de vidéos virales prêtes à publier (niveau Alexya.ai).
