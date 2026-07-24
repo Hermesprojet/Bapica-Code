@@ -105,7 +105,9 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   alt, liens internes/externes, hreflang, HTTPS, temps de réponse, robots.txt/sitemap, **score /100**),
   `rechercher_motscles` (**mots-clés réels** via Google Suggest, gratuit), `rechercher_web`
   (**recherche internet live**, tous agents), `analyser_entreprise` (**profil société** site+web),
-  `trouver_prospects` (**contacts B2B réels** Apollo/Hunter, agents commerciaux), `lire_emails`/`proposer_email`,
+  `trouver_prospects` (**prospects réels**, agents commerciaux — 3 modes : établissements **locaux**
+  secteur+ville via **Apify Google Maps** avec téléphone `src/lib/apify.ts`, contacts B2B via Apollo,
+  emails par domaine via Hunter), `lire_emails`/`proposer_email`,
   `lire_plateforme`/`proposer_action` (lecture/écriture des plateformes connectées via
   `platform-call.ts`), `proposer_rdv` (**prise de RDV**), `proposer_document` (**produit un
   fichier** : PDF imprimable/Excel-CSV/Markdown → page `dashboard/documents`), `etiqueter_echange`

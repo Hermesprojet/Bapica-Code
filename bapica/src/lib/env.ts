@@ -92,10 +92,10 @@ export const ENV_GROUPS: EnvGroup[] = [
   },
   {
     id: 'prospection',
-    label: 'Recherche de leads (Apollo / Hunter)',
+    label: 'Recherche de leads (Apollo / Hunter / Apify Google Maps)',
     required: false,
     vars: [],
-    optional: ['APOLLO_API_KEY', 'HUNTER_API_KEY'],
+    optional: ['APOLLO_API_KEY', 'HUNTER_API_KEY', 'APIFY_TOKEN'],
   },
   {
     id: 'web_research',

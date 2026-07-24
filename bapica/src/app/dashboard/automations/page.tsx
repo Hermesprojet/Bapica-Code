@@ -61,8 +61,9 @@ export default function AutomationsPage() {
       <div className="reveal mb-6">
         <h1 className="text-2xl font-bold">Automatisations</h1>
         <p className="mt-1 text-muted-foreground">
-          Vos agents proposent d&apos;automatiser les tâches récurrentes (rapports, veille, résumés…).
-          Rien ne tourne sans votre accord : vous validez, N8N déclenche à la planification prévue.
+          Vos agents proposent d&apos;automatiser les tâches récurrentes. Rien ne tourne sans votre accord :
+          vous validez UNE fois, puis l&apos;automatisation agit seule à la planification prévue — y compris
+          les envois (relances, publications). Vous pouvez la mettre en pause à tout moment.
         </p>
       </div>
 

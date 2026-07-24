@@ -6,11 +6,12 @@
 export const proposeAutomationTool = {
   name: 'proposer_automation',
   description:
-    "PROPOSE d'automatiser une tâche RÉCURRENTE (rapport hebdo, veille concurrentielle, résumé de " +
-    "trésorerie mensuel, idées de contenu chaque semaine…). Tu ne l'actives PAS : le client la valide " +
-    "dans « Automatisations », puis N8N la déclenche selon la planification. Donne un titre, une " +
-    "description précise de ce qui doit être fait à chaque exécution, une planification cron (5 champs, " +
-    "UTC) et son libellé lisible. Précise l'agent le plus adapté si ce n'est pas toi.",
+    "PROPOSE d'automatiser une tâche RÉCURRENTE (relances d'impayés, publication de posts, rapport " +
+    "hebdo, veille concurrentielle, résumé de trésorerie mensuel…). Tu ne l'actives PAS : le client la " +
+    "valide dans « Automatisations », puis N8N la déclenche selon la planification et l'agent l'exécute " +
+    "de façon AUTONOME (envois inclus, puisque le client a donné son accord). Donne un titre, une " +
+    "description précise et autoportante de ce qui doit être fait à chaque exécution, une planification " +
+    "cron (5 champs, UTC) et son libellé lisible. Précise l'agent le plus adapté si ce n'est pas toi.",
   input_schema: {
     type: 'object' as const,
     properties: {
