@@ -291,3 +291,22 @@ CREATE TABLE IF NOT EXISTS payment_reminders (
 );
 CREATE INDEX IF NOT EXISTS idx_payment_reminders_user ON payment_reminders(user_id, due_on);
 ALTER TABLE payment_reminders ENABLE ROW LEVEL SECURITY;
+
+-- 13. Automatisations récurrentes (le RÉPÉTABLE délégué à N8N, validé par le client).
+--     L'agent PROPOSE l'automatisation ; elle ne tourne qu'après validation (status active).
+CREATE TABLE IF NOT EXISTS automations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) NOT NULL,
+  agent_id TEXT,                              -- agent responsable de l'exécution
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,                  -- consigne exécutée à chaque déclenchement
+  cron TEXT NOT NULL,                         -- planification (cron 5 champs, UTC)
+  schedule_label TEXT,                        -- planification lisible (ex : « chaque lundi 8h »)
+  status TEXT NOT NULL DEFAULT 'pending',     -- pending | active | paused
+  n8n_workflow_id TEXT,                       -- id du workflow N8N créé à la validation
+  run_secret TEXT NOT NULL,                   -- authentifie l'appel N8N → /api/automations/run
+  last_run_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_automations_user ON automations(user_id, created_at DESC);
+ALTER TABLE automations ENABLE ROW LEVEL SECURITY;

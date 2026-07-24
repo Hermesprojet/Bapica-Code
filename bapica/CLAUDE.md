@@ -113,7 +113,8 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   (**échéancier d'impayés** J+7/J+15/J+30 → page `dashboard/reminders`), `proposer_sms`
   (**SMS Twilio**, compte rendu d'appel), `lire_banque` (**soldes/transactions réels** via
   GoCardless), et `twenty-tools` (CRM, réservé aux agents commerciaux). Chaque outil du chat a
-  un handler dans `route.ts` (**17 outils = 17 handlers**, cohérence à préserver).
+  `proposer_automation` (**tâche récurrente → N8N**, validée par le client), et un handler par
+  outil dans `route.ts` (**18 outils = 18 handlers**, cohérence à préserver).
 - **Actions à valider** (`src/lib/actions/store.ts` + `GET|POST /api/actions` + page
   `dashboard/actions`) : les agents **proposent** (email, action plateforme, RDV) ; rien n'est
   exécuté sans validation explicite de l'utilisateur. Table `pending_actions` (exécuter
@@ -135,6 +136,14 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   callback}` + `POST /api/deliverables/[id]/google`) : export d'un document en Sheet (depuis le CSV)
   ou Doc (texte). OAuth Google (mêmes `GOOGLE_CLIENT_ID/SECRET`, APIs Drive/Docs/Sheets + redirection
   `/api/google/workspace/callback`).
+- **Automatisations** (`src/lib/automations/store.ts` + `src/lib/n8n.ts` + `/api/automations` +
+  `/api/automations/run` + page `dashboard/automations`) : le **répétable délégué à N8N**, avec
+  **accord du client**. L'agent `proposer_automation` crée une automatisation `pending` (table
+  `automations`) ; le client la valide → statut `active` + création d'un workflow N8N planifié
+  (Schedule → HTTP vers `/api/automations/run`, secret par automatisation). Chaque exécution fait
+  tourner l'agent responsable (`runAgentConsult`) et range le résultat dans « Documents » ; les
+  actions externes restent soumises à « Actions à valider ». N8N hébergé par Bapica (`N8N_URL`/
+  `N8N_API_KEY`) ; sans N8N, l'automatisation est enregistrée mais non déclenchée (dégradation propre).
 - **Banque** (`src/lib/bank/gocardless.ts` + `/api/bank`) : connecteur GoCardless Bank Account Data
   (lecture seule, 2500+ banques EU). Flux : identifiants client (secret_id/key) → token → requisition
   (auth banque) → comptes → soldes/transactions. Aucune variable Vercel (identifiants par client).

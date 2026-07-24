@@ -28,6 +28,8 @@ import { webSearchTool, analyzeCompanyTool, findProspectsTool } from '@/lib/tool
 import { webSearch, researchCompany } from '@/lib/company-research'
 import { searchLeads } from '@/lib/apollo'
 import { domainSearch, cleanDomain } from '@/lib/hunter'
+import { proposeAutomationTool } from '@/lib/tools/automation-tools'
+import { createAutomation } from '@/lib/automations/store'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -340,6 +342,7 @@ async function callClaude(
           keywordResearchTool as unknown as any,
           webSearchTool as unknown as any,
           analyzeCompanyTool as unknown as any,
+          proposeAutomationTool as unknown as any,
         ]
       : []),
   ]
@@ -539,6 +542,22 @@ async function callClaude(
             } catch (err) {
               const m = String(err instanceof Error ? err.message : err)
               result = JSON.stringify({ ok: false, erreur: m.includes('REMINDERS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'proposer_automation' && userId) {
+            const i = tool.input as { title?: string; description?: string; cron?: string; schedule_label?: string; agent_id?: string }
+            try {
+              const autoId = await createAutomation({
+                userId,
+                agentId: i?.agent_id ? String(i.agent_id) : agent.id,
+                title: String(i?.title || 'Automatisation'),
+                description: String(i?.description || ''),
+                cron: String(i?.cron || '0 8 * * 1'),
+                scheduleLabel: i?.schedule_label ? String(i.schedule_label) : undefined,
+              })
+              result = JSON.stringify({ ok: true, automation_id: autoId, statut: "en attente de validation du client (page « Automatisations »)" })
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              result = JSON.stringify({ ok: false, erreur: m.includes('AUTOMATIONS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
             }
           } else if (tool.name === 'rechercher_web') {
             const i = tool.input as { query?: string }
