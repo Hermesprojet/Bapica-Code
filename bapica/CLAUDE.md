@@ -101,14 +101,20 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 - `src/app/api/chat/route.ts` — cœur du chat connecté (auth, mémoire, brief business, RAG, live data, tools).
 - `src/app/api/demo-chat/route.ts` — démo publique.
 - `src/lib/tools/*` — **vrais outils** exposés aux agents dans `/api/chat` : `consulter_agent`
-  (collaboration inter-agents), `auditer_site` (audit SEO), `lire_emails`/`proposer_email`,
+  (collaboration inter-agents), `auditer_site` (**audit SEO** : titres/meta/OG/JSON-LD, images sans
+  alt, liens internes/externes, hreflang, HTTPS, temps de réponse, robots.txt/sitemap, **score /100**),
+  `rechercher_motscles` (**mots-clés réels** via Google Suggest, gratuit), `rechercher_web`
+  (**recherche internet live**, tous agents), `analyser_entreprise` (**profil société** site+web),
+  `trouver_prospects` (**contacts B2B réels** Apollo/Hunter, agents commerciaux), `lire_emails`/`proposer_email`,
   `lire_plateforme`/`proposer_action` (lecture/écriture des plateformes connectées via
   `platform-call.ts`), `proposer_rdv` (**prise de RDV**), `proposer_document` (**produit un
   fichier** : PDF imprimable/Excel-CSV/Markdown → page `dashboard/documents`), `etiqueter_echange`
   (**tag persisté** prospect/SAV/impayé… → page `dashboard/tags`), `programmer_relances`
-  (**échéancier d'impayés** J+7/J+15/J+30 → page `dashboard/reminders`), et `twenty-tools`
-  (CRM, réservé aux agents commerciaux). Chaque outil du chat a un handler dans `route.ts`
-  (11 outils = 11 handlers, cohérence à préserver).
+  (**échéancier d'impayés** J+7/J+15/J+30 → page `dashboard/reminders`), `proposer_sms`
+  (**SMS Twilio**, compte rendu d'appel), `lire_banque` (**soldes/transactions réels** via
+  GoCardless), et `twenty-tools` (CRM, réservé aux agents commerciaux). Chaque outil du chat a
+  `proposer_automation` (**tâche récurrente → N8N**, validée par le client), et un handler par
+  outil dans `route.ts` (**18 outils = 18 handlers**, cohérence à préserver).
 - **Actions à valider** (`src/lib/actions/store.ts` + `GET|POST /api/actions` + page
   `dashboard/actions`) : les agents **proposent** (email, action plateforme, RDV) ; rien n'est
   exécuté sans validation explicite de l'utilisateur. Table `pending_actions` (exécuter
@@ -124,6 +130,23 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   et pages `dashboard/{documents,tags,reminders}`. Les relances envoient via une action email
   « à valider ». `deliverables.ts` construit les fichiers (CSV avec BOM, HTML imprimable, Markdown)
   sans dépendance binaire.
+- **SMS** (`src/lib/sms.ts` + provider `sms` dans `/api/actions`) : envoi Twilio après validation.
+  Prérequis prod : `TWILIO_ACCOUNT_SID`/`AUTH_TOKEN` + `TWILIO_SMS_NUMBER` (ou `TWILIO_MESSAGING_SERVICE_SID`).
+- **Google Docs/Sheets** (`src/lib/google/workspace.ts` + routes `/api/google/workspace/{connect,
+  callback}` + `POST /api/deliverables/[id]/google`) : export d'un document en Sheet (depuis le CSV)
+  ou Doc (texte). OAuth Google (mêmes `GOOGLE_CLIENT_ID/SECRET`, APIs Drive/Docs/Sheets + redirection
+  `/api/google/workspace/callback`).
+- **Automatisations** (`src/lib/automations/store.ts` + `src/lib/n8n.ts` + `/api/automations` +
+  `/api/automations/run` + page `dashboard/automations`) : le **répétable délégué à N8N**, avec
+  **accord du client**. L'agent `proposer_automation` crée une automatisation `pending` (table
+  `automations`) ; le client la valide → statut `active` + création d'un workflow N8N planifié
+  (Schedule → HTTP vers `/api/automations/run`, secret par automatisation). Chaque exécution fait
+  tourner l'agent responsable (`runAgentConsult`) et range le résultat dans « Documents » ; les
+  actions externes restent soumises à « Actions à valider ». N8N hébergé par Bapica (`N8N_URL`/
+  `N8N_API_KEY`) ; sans N8N, l'automatisation est enregistrée mais non déclenchée (dégradation propre).
+- **Banque** (`src/lib/bank/gocardless.ts` + `/api/bank`) : connecteur GoCardless Bank Account Data
+  (lecture seule, 2500+ banques EU). Flux : identifiants client (secret_id/key) → token → requisition
+  (auth banque) → comptes → soldes/transactions. Aucune variable Vercel (identifiants par client).
 
 ## 7. Variables d'environnement
 
@@ -206,7 +229,15 @@ Cohérence produit à vérifier dans les réponses des agents :
   ajustement des paramètres d'API au 1er test réel.
 - Clés requises en prod pour le rendu : `RUNWAY_API_KEY` ; `HEYGEN_API_KEY` + `HEYGEN_AVATAR_ID` +
   `HEYGEN_VOICE_ID` ; `ELEVENLABS_API_KEY` (+ `ELEVENLABS_VOICE_ID` optionnel).
-- Le **montage final** (assembler clips + voix + sous-titres + musique en 1 MP4) n'est PAS fait (exige ffmpeg).
+- **Capacités avancées (engines.ts)** — écrites à l'aveugle, mêmes clés HeyGen :
+  - **Avatar depuis une photo** : `heygenUploadTalkingPhoto` + `heygenTalkingPhotoVideo` →
+    route `POST /api/video/avatar` (`create` puis `generate`, suivi via `/api/video/status`).
+  - **Traduction/doublage lip-sync** : `heygenTranslateVideo`/`heygenTranslateStatus` →
+    route `POST /api/video/translate` (`start`/`status`).
+- **Montage/édition cloud** : `src/lib/video/editor.ts` (Shotstack : timeline → MP4, marche en
+  serverless contrairement à FFmpeg) → route `POST /api/video/edit` (`start`/`status`). Clé
+  `SHOTSTACK_API_KEY` (`SHOTSTACK_ENV`='v1' par défaut). La route FFmpeg `/api/video/assemble`
+  reste (nécessite un hôte avec FFmpeg — Railway/Fly.io) mais Shotstack est la voie serverless.
 - UI : `dashboard/video-studio` (thème clair) — brief → `ProductionPackageView`
   (`src/components/agents/production-package.tsx`), avec « Générer le clip » par scène + « Générer la voix off ».
 

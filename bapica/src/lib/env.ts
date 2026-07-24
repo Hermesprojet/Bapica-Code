@@ -84,6 +84,13 @@ export const ENV_GROUPS: EnvGroup[] = [
     optional: ['ELEVENLABS_VOICE_ID'],
   },
   {
+    id: 'video_edit',
+    label: 'Montage vidéo (Shotstack) — assemblage/sous-titres',
+    required: false,
+    vars: [],
+    optional: ['SHOTSTACK_API_KEY', 'SHOTSTACK_ENV'],
+  },
+  {
     id: 'prospection',
     label: 'Recherche de leads (Apollo / Hunter)',
     required: false,
@@ -108,6 +115,13 @@ export const ENV_GROUPS: EnvGroup[] = [
     label: 'WhatsApp via Twilio',
     required: false,
     vars: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_WHATSAPP_NUMBER'],
+  },
+  {
+    id: 'sms',
+    label: 'SMS (Twilio) — comptes rendus d\'appel',
+    required: false,
+    vars: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'],
+    optional: ['TWILIO_SMS_NUMBER', 'TWILIO_MESSAGING_SERVICE_SID'],
   },
   {
     id: 'telegram',
@@ -141,6 +155,13 @@ export const ENV_GROUPS: EnvGroup[] = [
     required: false,
     vars: ['MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET'],
     optional: ['MICROSOFT_REDIRECT_URI'],
+  },
+  {
+    id: 'google_workspace',
+    label: 'Google Docs / Sheets (export des documents)',
+    required: false,
+    vars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+    optional: ['GOOGLE_WORKSPACE_REDIRECT_URI'],
   },
   {
     id: 'admin',

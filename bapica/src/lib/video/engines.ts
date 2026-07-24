@@ -133,6 +133,77 @@ export async function heygenStatus(videoId: string): Promise<RenderStatus> {
   return { status: 'processing', raw: data }
 }
 
+// Avatar à partir d'une PHOTO du client (« talking photo ») : on téléverse l'image chez
+// HeyGen puis on génère une vidéo où cette photo parle. Permet de « créer un avatar ».
+export async function heygenUploadTalkingPhoto(imageUrl: string): Promise<{ talkingPhotoId: string }> {
+  const key = process.env.HEYGEN_API_KEY
+  if (!key) throw new Error('HEYGEN_API_KEY manquante')
+  const img = await fetch(imageUrl, { signal: AbortSignal.timeout(20000) })
+  if (!img.ok) throw new Error(`Image inaccessible : HTTP ${img.status}`)
+  const bytes = await img.arrayBuffer()
+  const contentType = img.headers.get('content-type') || (/\.png($|\?)/i.test(imageUrl) ? 'image/png' : 'image/jpeg')
+  const res = await fetch('https://upload.heygen.com/v1/talking_photo', {
+    method: 'POST',
+    headers: { 'X-Api-Key': key, 'Content-Type': contentType },
+    body: bytes,
+  })
+  const data = await res.json()
+  const id = data?.data?.talking_photo_id
+  if (!res.ok || !id) throw new Error(`HeyGen (photo) : ${data?.error?.message || data?.message || JSON.stringify(data)}`)
+  return { talkingPhotoId: id }
+}
+
+// Génère une vidéo où l'avatar-photo parle le script fourni.
+export async function heygenTalkingPhotoVideo(talkingPhotoId: string, script: string, ratio: string, voiceId?: string): Promise<RenderStart> {
+  const key = process.env.HEYGEN_API_KEY
+  if (!key) throw new Error('HEYGEN_API_KEY manquante')
+  const voice = voiceId || process.env.HEYGEN_VOICE_ID
+  if (!voice) throw new Error('HEYGEN_VOICE_ID requis (choisis une voix dans ton compte HeyGen)')
+  const dim = ratioToDim(ratio)
+  const res = await fetch(`${HEYGEN_URL}/v2/video/generate`, {
+    method: 'POST',
+    headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      video_inputs: [{
+        character: { type: 'talking_photo', talking_photo_id: talkingPhotoId },
+        voice: { type: 'text', input_text: script.slice(0, 1500), voice_id: voice },
+      }],
+      dimension: { width: dim.width, height: dim.height },
+    }),
+  })
+  const data = await res.json()
+  const videoId = data?.data?.video_id
+  if (!res.ok || !videoId) throw new Error(`HeyGen (talking photo) : ${data?.error?.message || data?.message || JSON.stringify(data)}`)
+  return { provider: 'HeyGen', kind: 'video', taskId: videoId }
+}
+
+/* ─────────────────────────  HEYGEN — TRADUCTION / DOUBLAGE  ───────────────────────── */
+// Traduit une vidéo dans une autre langue avec synchronisation labiale (lip-sync).
+export async function heygenTranslateVideo(videoUrl: string, outputLanguage: string, title?: string): Promise<{ translateId: string }> {
+  const key = process.env.HEYGEN_API_KEY
+  if (!key) throw new Error('HEYGEN_API_KEY manquante')
+  const res = await fetch(`${HEYGEN_URL}/v2/video_translate`, {
+    method: 'POST',
+    headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ video_url: videoUrl, output_language: outputLanguage, title: title || 'Bapica translation' }),
+  })
+  const data = await res.json()
+  const id = data?.data?.video_translate_id
+  if (!res.ok || !id) throw new Error(`HeyGen (traduction) : ${data?.error?.message || data?.message || JSON.stringify(data)}`)
+  return { translateId: id }
+}
+
+export async function heygenTranslateStatus(translateId: string): Promise<RenderStatus> {
+  const key = process.env.HEYGEN_API_KEY
+  if (!key) throw new Error('HEYGEN_API_KEY manquante')
+  const res = await fetch(`${HEYGEN_URL}/v2/video_translate/${encodeURIComponent(translateId)}`, { headers: { 'X-Api-Key': key } })
+  const data = await res.json()
+  const s = String(data?.data?.status || '').toLowerCase()
+  if (s === 'success') return { status: 'succeeded', url: data.data.url, raw: data }
+  if (s === 'failed') return { status: 'failed', raw: data }
+  return { status: 'processing', raw: data }
+}
+
 /* ─────────────────────────  ELEVENLABS (voix off)  ───────────────────────── */
 const ELEVEN_URL = 'https://api.elevenlabs.io/v1'
 

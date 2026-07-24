@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FileText, FileSpreadsheet, Download, Trash2, Loader2, AlertCircle } from 'lucide-react'
+import { FileText, FileSpreadsheet, Download, Trash2, Loader2, AlertCircle, ExternalLink } from 'lucide-react'
 
 interface DocRow {
   id: string
@@ -52,6 +52,24 @@ export default function DocumentsPage() {
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
+    } catch { setNotice('Erreur de connexion.') }
+    setBusy(null)
+  }
+
+  const exportGoogle = async (d: DocRow) => {
+    setBusy(d.id); setNotice(null)
+    try {
+      const res = await fetch(`/api/deliverables/${d.id}/google`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${await token()}` },
+      })
+      const data = await res.json()
+      if (res.ok && data.success && data.url) {
+        window.open(data.url, '_blank', 'noopener')
+        setNotice(data.target === 'sheet' ? 'Exporté vers Google Sheets.' : 'Exporté vers Google Docs.')
+      } else {
+        setNotice(data.error || 'Export impossible.')
+      }
     } catch { setNotice('Erreur de connexion.') }
     setBusy(null)
   }
@@ -116,6 +134,14 @@ export default function DocumentsPage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() => exportGoogle(d)}
+                    disabled={busy === d.id}
+                    title={isTable ? 'Créer un Google Sheet' : 'Créer un Google Doc'}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Google
+                  </button>
                   <button
                     onClick={() => download(d)}
                     disabled={busy === d.id}

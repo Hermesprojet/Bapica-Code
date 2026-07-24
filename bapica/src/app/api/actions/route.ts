@@ -6,6 +6,7 @@ import { getUserEmailConfig } from '@/lib/tools/email-tools'
 import { sendEmail } from '@/lib/email'
 import { buildIcs, type RdvInput } from '@/lib/tools/calendar-tools'
 import { bookOnConnectedCalendar } from '@/lib/calendar/providers'
+import { sendSms } from '@/lib/sms'
 import { logSignal } from '@/lib/insights/store'
 
 /**
@@ -71,6 +72,18 @@ export async function POST(req: NextRequest) {
     const sent = await sendEmail(cfg, { to: String(b.to || ''), subject: String(b.subject || ''), text: String(b.text || '') })
     if (sent.ok) {
       await markAction(id, 'executed', `Email envoyé (${sent.id || 'ok'}).`)
+      return NextResponse.json({ success: true, status: 'executed' })
+    }
+    await markAction(id, 'failed', sent.error?.slice(0, 2000) || 'Échec')
+    return NextResponse.json({ success: false, status: 'failed', error: sent.error }, { status: 502 })
+  }
+
+  // Cas SMS : envoi via Twilio (numéro serveur). Réel de bout en bout avec les clés Twilio.
+  if (action.provider === 'sms') {
+    const b = (action.body || {}) as { to?: string; text?: string }
+    const sent = await sendSms(String(b.to || ''), String(b.text || ''))
+    if (sent.ok) {
+      await markAction(id, 'executed', `SMS envoyé (${sent.sid || 'ok'}).`)
       return NextResponse.json({ success: true, status: 'executed' })
     }
     await markAction(id, 'failed', sent.error?.slice(0, 2000) || 'Échec')
