@@ -24,6 +24,10 @@ import { readBankTool } from '@/lib/tools/bank-tools'
 import { readBalances, readTransactions } from '@/lib/bank/gocardless'
 import { keywordResearchTool } from '@/lib/tools/keyword-tools'
 import { researchKeywords } from '@/lib/seo/keywords'
+import { webSearchTool, analyzeCompanyTool, findProspectsTool } from '@/lib/tools/research-tools'
+import { webSearch, researchCompany } from '@/lib/company-research'
+import { searchLeads } from '@/lib/apollo'
+import { domainSearch, cleanDomain } from '@/lib/hunter'
 import { createAction } from '@/lib/actions/store'
 import { searchKnowledge, formatKnowledgeContext } from '@/lib/rag'
 import { searchLocalCompetitors, searchJobTrends, getSectorNews } from '@/lib/live-data'
@@ -309,8 +313,9 @@ async function callClaude(
   // Outils CRM réservés aux agents commerciaux (pas à l'agent général Léo,
   // sinon il croit que Bapica n'est qu'un CRM).
   const agentForTools = agent
-  const crmTools = (agentForTools?.id === 'prospection-strategie' || agentForTools?.id === 'closer')
-    ? (twentyTools as unknown as any[])
+  const isCommercial = agentForTools?.id === 'prospection-strategie' || agentForTools?.id === 'closer'
+  const crmTools = isCommercial
+    ? [...(twentyTools as unknown as any[]), findProspectsTool as unknown as any]
     : []
 
   // Collaboration inter-agents + lecture des plateformes connectées par le client.
@@ -333,6 +338,8 @@ async function callClaude(
           proposeSmsTool as unknown as any,
           readBankTool as unknown as any,
           keywordResearchTool as unknown as any,
+          webSearchTool as unknown as any,
+          analyzeCompanyTool as unknown as any,
         ]
       : []),
   ]
@@ -532,6 +539,48 @@ async function callClaude(
             } catch (err) {
               const m = String(err instanceof Error ? err.message : err)
               result = JSON.stringify({ ok: false, erreur: m.includes('REMINDERS_TABLE_MISSING') ? 'Base non initialisée : exécutez supabase-schema.sql.' : m })
+            }
+          } else if (tool.name === 'rechercher_web') {
+            const i = tool.input as { query?: string }
+            try {
+              const results = await webSearch(String(i?.query || ''))
+              result = JSON.stringify(results.length ? { ok: true, resultats: results.slice(0, 8) } : { ok: false, erreur: "Aucun résultat (SERPAPI_KEY absente ou pas de résultat)." })
+            } catch (err) {
+              result = JSON.stringify({ ok: false, erreur: String(err instanceof Error ? err.message : err) })
+            }
+          } else if (tool.name === 'analyser_entreprise') {
+            const i = tool.input as { companyName?: string; website?: string; sector?: string; city?: string }
+            try {
+              const r = await researchCompany({
+                companyName: String(i?.companyName || ''),
+                website: i?.website ? String(i.website) : undefined,
+                sector: i?.sector ? String(i.sector) : undefined,
+                city: i?.city ? String(i.city) : undefined,
+              })
+              result = JSON.stringify({ ok: true, profil: r.summary, sources: r.sources })
+            } catch (err) {
+              result = JSON.stringify({ ok: false, erreur: String(err instanceof Error ? err.message : err) })
+            }
+          } else if (tool.name === 'trouver_prospects') {
+            const i = tool.input as { titles?: string[]; locations?: string[]; keywords?: string; domain?: string }
+            try {
+              if (i?.domain) {
+                const r = await domainSearch(cleanDomain(String(i.domain)))
+                result = JSON.stringify({ ok: true, source: 'hunter', total: r.total, prospects: r.leads.slice(0, 15) })
+              } else {
+                const r = await searchLeads({
+                  titles: Array.isArray(i?.titles) ? i!.titles.map(String) : undefined,
+                  locations: Array.isArray(i?.locations) ? i!.locations.map(String) : undefined,
+                  keywords: i?.keywords ? String(i.keywords) : undefined,
+                })
+                result = JSON.stringify({ ok: true, source: 'apollo', total: r.total, prospects: r.leads.slice(0, 15) })
+              }
+            } catch (err) {
+              const m = String(err instanceof Error ? err.message : err)
+              const clean = /APOLLO_NOT_CONFIGURED|HUNTER_NOT_CONFIGURED/.test(m)
+                ? "Recherche de prospects non configurée (clé Apollo ou Hunter manquante) — voir Prospects / Connexions."
+                : m
+              result = JSON.stringify({ ok: false, erreur: clean })
             }
           } else if (tool.name === 'rechercher_motscles') {
             const i = tool.input as { seed?: string; lang?: string }
