@@ -28,6 +28,7 @@ import { webSearchTool, analyzeCompanyTool, findProspectsTool } from '@/lib/tool
 import { webSearch, researchCompany } from '@/lib/company-research'
 import { searchLeads } from '@/lib/apollo'
 import { domainSearch, cleanDomain } from '@/lib/hunter'
+import { searchLocalBusinesses } from '@/lib/apify'
 import { proposeAutomationTool } from '@/lib/tools/automation-tools'
 import { createAutomation } from '@/lib/automations/store'
 import { createAction } from '@/lib/actions/store'
@@ -581,9 +582,12 @@ async function callClaude(
               result = JSON.stringify({ ok: false, erreur: String(err instanceof Error ? err.message : err) })
             }
           } else if (tool.name === 'trouver_prospects') {
-            const i = tool.input as { titles?: string[]; locations?: string[]; keywords?: string; domain?: string }
+            const i = tool.input as { sector?: string; city?: string; titles?: string[]; locations?: string[]; keywords?: string; domain?: string }
             try {
-              if (i?.domain) {
+              if (i?.sector && i?.city) {
+                const r = await searchLocalBusinesses({ sector: String(i.sector), city: String(i.city) })
+                result = JSON.stringify({ ok: true, source: 'google-maps', total: r.total, prospects: r.leads.slice(0, 20) })
+              } else if (i?.domain) {
                 const r = await domainSearch(cleanDomain(String(i.domain)))
                 result = JSON.stringify({ ok: true, source: 'hunter', total: r.total, prospects: r.leads.slice(0, 15) })
               } else {
@@ -596,8 +600,8 @@ async function callClaude(
               }
             } catch (err) {
               const m = String(err instanceof Error ? err.message : err)
-              const clean = /APOLLO_NOT_CONFIGURED|HUNTER_NOT_CONFIGURED/.test(m)
-                ? "Recherche de prospects non configurée (clé Apollo ou Hunter manquante) — voir Prospects / Connexions."
+              const clean = /APOLLO_NOT_CONFIGURED|HUNTER_NOT_CONFIGURED|APIFY_NOT_CONFIGURED/.test(m)
+                ? "Recherche de prospects non configurée (clé Apollo, Hunter ou Apify manquante) — voir Prospects / Connexions."
                 : m
               result = JSON.stringify({ ok: false, erreur: clean })
             }

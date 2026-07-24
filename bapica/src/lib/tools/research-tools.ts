@@ -37,12 +37,17 @@ export const analyzeCompanyTool = {
 export const findProspectsTool = {
   name: 'trouver_prospects',
   description:
-    "Recherche des contacts B2B RÉELS. Deux modes : par critères (titles = postes visés, locations = " +
-    "lieux, keywords) via Apollo ; OU par domaine d'entreprise (domain, ex : « acme.com ») via Hunter. " +
+    "Recherche des prospects RÉELS. Trois modes : (1) LOCAL — établissements d'un secteur dans une " +
+    "ville (sector + city, ex : « plombier » + « Lyon ») via Google Maps/Apify : renvoie nom, " +
+    "TÉLÉPHONE, site, note — idéal pour les TPE/commerces/artisans ; (2) B2B par critères (titles = " +
+    "postes, locations, keywords) via Apollo ; (3) par domaine d'entreprise (domain, ex : « acme.com ») " +
+    "via Hunter. Choisis le mode LOCAL dès qu'il s'agit de prospects de proximité (secteur + ville). " +
     "Réservé à la prospection commerciale.",
   input_schema: {
     type: 'object' as const,
     properties: {
+      sector: { type: 'string', description: "Secteur/type d'établissement pour une recherche LOCALE Google Maps (ex : « restaurant », « garage »)" },
+      city: { type: 'string', description: 'Ville/zone pour la recherche LOCALE (ex : « Marseille »)' },
       titles: { type: 'array', items: { type: 'string' }, description: 'Postes ciblés (ex : « CEO », « Directeur marketing »)' },
       locations: { type: 'array', items: { type: 'string' }, description: 'Lieux (ex : « Paris, France »)' },
       keywords: { type: 'string', description: 'Mots-clés (secteur, techno…)' },
