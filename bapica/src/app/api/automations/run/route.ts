@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { getAutomationById, setLastRun } from '@/lib/automations/store'
-import { runAgentConsult } from '@/lib/tools/agent-consult'
+import { runAutomationAgent } from '@/lib/automations/runtime'
 import { buildBusinessBrief } from '@/lib/business-context'
 import { buildDeliverable } from '@/lib/deliverables'
 import { createDeliverable } from '@/lib/deliverables/store'
@@ -39,10 +38,11 @@ export async function POST(req: NextRequest) {
   } catch { /* contexte best-effort */ }
 
   try {
-    const client = new Anthropic({ apiKey })
-    const output = await runAgentConsult(client, a.agent_id || 'general', a.description, context)
+    // Exécution AUTONOME : l'agent réalise la tâche de bout en bout (envois, actions inclus,
+    // car le client a validé l'automatisation), puis renvoie un compte rendu.
+    const output = await runAutomationAgent({ agentId: a.agent_id || 'general', task: a.description, userId: a.user_id, context })
 
-    // Range le résultat comme document daté pour que le client le retrouve.
+    // Range le compte rendu comme document daté pour que le client retrouve ce qui a été fait.
     const dateStr = new Date().toLocaleDateString('fr')
     const file = buildDeliverable({ kind: 'markdown', title: `${a.title} — ${dateStr}`, content: `# ${a.title}\n\n${output}` })
     await createDeliverable({
