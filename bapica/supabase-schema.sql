@@ -148,36 +148,49 @@ ALTER TABLE pending_actions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE client_signals ENABLE ROW LEVEL SECURITY;
 
 -- Policies
+-- NB : CREATE POLICY n'a pas de « IF NOT EXISTS ». Chaque policy est donc précédée d'un
+-- DROP POLICY IF EXISTS pour que ce fichier reste REJOUABLE (aucune erreur si on le relance).
+DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
 CREATE POLICY "Users can view own profile" ON profiles
   FOR SELECT USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
 CREATE POLICY "Users can update own profile" ON profiles
   FOR UPDATE USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can view own conversations" ON conversations;
 CREATE POLICY "Users can view own conversations" ON conversations
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own conversations" ON conversations;
 CREATE POLICY "Users can insert own conversations" ON conversations
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own conversations" ON conversations;
 CREATE POLICY "Users can update own conversations" ON conversations
   FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own conversations" ON conversations;
 CREATE POLICY "Users can delete own conversations" ON conversations
   FOR DELETE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can view own subscriptions" ON subscriptions;
 CREATE POLICY "Users can view own subscriptions" ON subscriptions
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can view own API keys" ON api_keys;
 CREATE POLICY "Users can view own API keys" ON api_keys
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own API keys" ON api_keys;
 CREATE POLICY "Users can insert own API keys" ON api_keys
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own API keys" ON api_keys;
 CREATE POLICY "Users can delete own API keys" ON api_keys
   FOR DELETE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can view own usage logs" ON usage_logs;
 CREATE POLICY "Users can view own usage logs" ON usage_logs
   FOR SELECT USING (auth.uid() = user_id);
 
