@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { assertPublicUrl } from '@/lib/security/ssrf'
 
 // Recherche internet sur l'entreprise du client : lit le site web + recherche
 // web (SerpAPI si clé), puis résume avec Claude en un profil factuel.
@@ -9,8 +10,14 @@ import Anthropic from '@anthropic-ai/sdk'
 export async function fetchWebsiteText(url: string): Promise<string> {
   let target = url.trim()
   if (!/^https?:\/\//i.test(target)) target = `https://${target}`
+  let safe: URL
   try {
-    const res = await fetch(target, {
+    safe = await assertPublicUrl(target) // anti-SSRF : refuse les adresses internes
+  } catch {
+    return ''
+  }
+  try {
+    const res = await fetch(safe.toString(), {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BapicaBot/1.0)' },
       redirect: 'follow',
       signal: AbortSignal.timeout(12000),

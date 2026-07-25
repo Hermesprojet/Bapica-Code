@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { bearerToken, getUserFromToken } from '@/lib/api-auth'
 
 async function corsHeaders() {
   return {
@@ -18,17 +19,19 @@ export async function OPTIONS() {
 // Supprime toutes les données d'un utilisateur (droit à l'oubli RGPD)
 export async function POST(req: NextRequest) {
   try {
+    // Authentifie le VRAI client via son jeton Bearer (l'ancien getUser() sans jeton
+    // sur un client service_role ne pouvait identifier personne → droit à l'oubli inopérant).
+    const user = await getUserFromToken(bearerToken(req))
+    if (!user) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401, headers: await corsHeaders() })
+    }
+
+    // service_role : uniquement pour exécuter les suppressions (dont auth.admin.deleteUser).
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
       process.env.SUPABASE_SERVICE_ROLE_KEY || '',
       { auth: { persistSession: false, autoRefreshToken: false } }
     )
-
-    // Vérifier l'authentification
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Non authentifié' }, { status: 401, headers: await corsHeaders() })
-    }
 
     const { confirmation } = await req.json()
     if (confirmation !== 'SUPPRIMER') {
@@ -72,16 +75,16 @@ export async function POST(req: NextRequest) {
 // Exporte toutes les données personnelles (droit d'accès RGPD)
 export async function GET(req: NextRequest) {
   try {
+    const user = await getUserFromToken(bearerToken(req))
+    if (!user) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401, headers: await corsHeaders() })
+    }
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
       process.env.SUPABASE_SERVICE_ROLE_KEY || '',
       { auth: { persistSession: false, autoRefreshToken: false } }
     )
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Non authentifié' }, { status: 401, headers: await corsHeaders() })
-    }
 
     const userId = user.id
 

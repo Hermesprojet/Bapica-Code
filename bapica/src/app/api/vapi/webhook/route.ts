@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
+import { safeEqual } from "@/lib/security/secret"
 
 export async function POST(req: Request) {
   try {
-    // Signature check
+    // Vérification du secret — FAIL-CLOSED : sans VAPI_WEBHOOK_SECRET configuré, on refuse
+    // (sinon le webhook serait ouvert à tous). Comparaison à temps constant.
     const sig = req.headers.get('x-vapi-signature')
-    if (process.env.VAPI_WEBHOOK_SECRET && sig !== process.env.VAPI_WEBHOOK_SECRET) {
+    if (!safeEqual(sig, process.env.VAPI_WEBHOOK_SECRET)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

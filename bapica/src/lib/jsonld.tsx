@@ -182,10 +182,13 @@ export function getBreadcrumbSchema(
  * Place inside <head> via layout or page-level script injection.
  */
 export function JsonLdScript({ data }: { data: Record<string, unknown> }) {
+  // Durcissement XSS : on échappe « < » (et « & ») pour qu'une valeur contenant
+  // « </script> » ne puisse jamais fermer la balise et injecter du HTML.
+  const json = JSON.stringify(data).replace(/</g, '\\u003c').replace(/&/g, '\\u0026')
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+      dangerouslySetInnerHTML={{ __html: json }}
     />
   )
 }

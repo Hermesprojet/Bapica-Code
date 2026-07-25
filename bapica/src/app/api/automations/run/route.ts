@@ -5,6 +5,7 @@ import { buildBusinessBrief } from '@/lib/business-context'
 import { buildDeliverable } from '@/lib/deliverables'
 import { createDeliverable } from '@/lib/deliverables/store'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { safeEqual } from '@/lib/security/secret'
 
 /**
  * POST /api/automations/run — déclenché par N8N (workflow planifié).
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
   if (!id || !secret) return NextResponse.json({ error: 'automationId et secret requis.' }, { status: 400 })
 
   const a = await getAutomationById(id)
-  if (!a || a.run_secret !== secret) return NextResponse.json({ error: 'Non autorisé.' }, { status: 401 })
+  if (!a || !safeEqual(secret, a.run_secret)) return NextResponse.json({ error: 'Non autorisé.' }, { status: 401 })
   if (a.status !== 'active') return NextResponse.json({ skipped: true, reason: `statut ${a.status}` })
 
   const apiKey = process.env.ANTHROPIC_API_KEY

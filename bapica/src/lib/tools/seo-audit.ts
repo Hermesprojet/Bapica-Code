@@ -3,6 +3,7 @@
  * balises, Open Graph, données structurées…). Lecture seule, sans dépendance externe
  * (extraction par regex, pas de cheerio).
  */
+import { assertPublicUrl } from '@/lib/security/ssrf'
 
 function meta(html: string, attr: 'name' | 'property', key: string): string | null {
   const re = new RegExp(`<meta[^>]*${attr}=["']${key}["'][^>]*content=["']([^"']*)["']`, 'i')
@@ -56,9 +57,10 @@ export async function auditSite(inputUrl: string): Promise<{ ok: boolean; audit?
   let url = inputUrl.trim()
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`
   let parsed: URL
-  try { parsed = new URL(url) } catch { return { ok: false, error: 'URL invalide.' } }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    return { ok: false, error: 'Seuls http(s) sont autorisés.' }
+  try {
+    parsed = await assertPublicUrl(url) // anti-SSRF : http(s) uniquement + refuse le réseau interne
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'URL invalide.' }
   }
 
   try {
