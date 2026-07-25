@@ -43,12 +43,13 @@ export async function POST(req: NextRequest) {
     // car le client a validé l'automatisation), puis renvoie un compte rendu.
     const output = await runAutomationAgent({ agentId: a.agent_id || 'general', task: a.description, userId: a.user_id, context })
 
-    // Range le compte rendu comme document daté pour que le client retrouve ce qui a été fait.
+    // Range le compte rendu comme document daté (PDF/HTML lisible, pas du markdown brut)
+    // pour que le client retrouve — et OUVRE facilement — ce qui a été fait.
     const dateStr = new Date().toLocaleDateString('fr')
-    const file = buildDeliverable({ kind: 'markdown', title: `${a.title} — ${dateStr}`, content: `# ${a.title}\n\n${output}` })
+    const file = buildDeliverable({ kind: 'pdf', title: `${a.title} — ${dateStr}`, content: `# ${a.title}\n\n${output}` })
     await createDeliverable({
       userId: a.user_id, agentId: a.agent_id || 'general',
-      kind: 'markdown', title: `${a.title} — ${dateStr}`,
+      kind: 'pdf', title: `${a.title} — ${dateStr}`,
       filename: file.filename, mime: file.mime, content: file.content,
     }).catch(() => {})
 

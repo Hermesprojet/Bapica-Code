@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { FileText, FileSpreadsheet, Download, Trash2, Loader2, AlertCircle, ExternalLink } from 'lucide-react'
+import { FileText, FileSpreadsheet, Download, Trash2, Loader2, AlertCircle, ExternalLink, Eye } from 'lucide-react'
 
 interface DocRow {
   id: string
@@ -52,6 +52,19 @@ export default function DocumentsPage() {
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
+    } catch { setNotice('Erreur de connexion.') }
+    setBusy(null)
+  }
+
+  const openInline = async (d: DocRow) => {
+    setBusy(d.id); setNotice(null)
+    try {
+      const res = await fetch(`/api/deliverables/${d.id}`, { headers: { Authorization: `Bearer ${await token()}` } })
+      if (!res.ok) { setNotice('Ouverture impossible.'); setBusy(null); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch { setNotice('Erreur de connexion.') }
     setBusy(null)
   }
@@ -141,6 +154,14 @@ export default function DocumentsPage() {
                     className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50"
                   >
                     <ExternalLink className="h-3.5 w-3.5" /> Google
+                  </button>
+                  <button
+                    onClick={() => openInline(d)}
+                    disabled={busy === d.id}
+                    title="Ouvrir dans le navigateur"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                  >
+                    <Eye className="h-3.5 w-3.5" /> Ouvrir
                   </button>
                   <button
                     onClick={() => download(d)}

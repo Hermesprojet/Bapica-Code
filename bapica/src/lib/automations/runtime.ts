@@ -26,7 +26,9 @@ const AUTONOMY_NOTE =
   "Tu exécutes une automatisation que le client a DÉJÀ validée. Réalise la tâche de bout en bout : " +
   "tes outils d'envoi et d'action (proposer_email, proposer_sms, proposer_action) s'exécutent RÉELLEMENT " +
   "(pas de validation supplémentaire à demander). Sois précis et sobre. À la fin, résume en quelques " +
-  "phrases ce que tu as concrètement fait (envois, publications, documents créés)."
+  "phrases ce que tu as concrètement fait (envois, publications, documents créés). " +
+  "FORMAT DES DOCUMENTS : produis-les en PDF (rapports, notes, synthèses) ou en Excel/CSV (données " +
+  "chiffrées, tableaux) — JAMAIS en markdown ou texte brut, peu lisibles pour le client."
 
 /**
  * Exécute une automatisation : fait tourner l'agent responsable sur la consigne, avec ses
@@ -82,7 +84,7 @@ export async function runAutomationAgent(opts: {
           if (r.ok) done.push(`Action ${i?.provider} ${i?.method} ${i?.path}`)
           result = JSON.stringify(r.ok ? { ok: true, resultat: r.result } : { ok: false, erreur: r.error })
         } else if (tool.name === 'proposer_document') {
-          const kind = (['pdf', 'excel', 'csv', 'markdown', 'text'].includes(String(i?.kind)) ? i.kind : 'markdown') as DeliverableKind
+          const kind = (['pdf', 'excel', 'csv', 'markdown', 'text'].includes(String(i?.kind)) ? i.kind : 'pdf') as DeliverableKind
           const file = buildDeliverable({ kind, title: String(i?.title || 'Document'), content: i?.content != null ? String(i.content) : undefined, columns: Array.isArray(i?.columns) ? i.columns.map(String) : undefined, rows: Array.isArray(i?.rows) ? i.rows : undefined })
           await createDeliverable({ userId: opts.userId, agentId: agent.id, kind, title: String(i?.title || 'Document'), filename: file.filename, mime: file.mime, content: file.content }).catch(() => {})
           done.push(`Document « ${i?.title} »`)
