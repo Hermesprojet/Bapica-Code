@@ -105,6 +105,13 @@ export const ENV_GROUPS: EnvGroup[] = [
     optional: ['SERPAPI_KEY', 'GOOGLE_PLACES_API_KEY'],
   },
   {
+    id: 'rate_limit',
+    label: 'Rate-limiting distribué (Upstash Redis) — endpoints publics',
+    required: false,
+    vars: [],
+    optional: ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'],
+  },
+  {
     id: 'whatsapp_cloud',
     label: 'WhatsApp Cloud API (Meta)',
     required: false,
