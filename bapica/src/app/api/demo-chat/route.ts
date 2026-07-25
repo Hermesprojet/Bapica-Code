@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import AGENTS, { getAgentById } from '@/lib/agents'
 import { getSystemPromptForAgent } from '@/lib/agent-prompts'
+import { rateLimit, clientIp } from '@/lib/rate-limit'
 
 function corsHeaders(origin: string | null) {
   const allowed = ['https://bapica.com', 'https://bapica-code.vercel.app', 'http://localhost:3000']
@@ -21,6 +22,16 @@ interface ChatMessage { role: 'user' | 'assistant'; content: string }
 
 export async function POST(req: NextRequest) {
   try {
+    // Endpoint public (démo, non authentifié) qui appelle le LLM → rate-limit par IP
+    // pour éviter l'abus de coût (30 messages / heure / IP).
+    const rl = await rateLimit(`demo:${clientIp(req)}`, 30, 3600)
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: 'Trop de messages, réessayez dans un moment.' },
+        { status: 429, headers: { ...corsHeaders(req.headers.get('origin')), 'Retry-After': String(rl.retryAfter) } }
+      )
+    }
+
     const { agentId, message, history } = await req.json()
     if (!message?.trim()) {
       return NextResponse.json({ error: 'Message requis' }, { status: 400 })
