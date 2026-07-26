@@ -182,6 +182,21 @@ const AGENTS: AgentConfig[] = [
     color: 'from-slate-500 to-slate-600',
     avatar: { from: '#64748b', to: '#475569', skin: '#eab891', hair: 'long', hairColor: '#4a3526', accessory: 'glasses' },
   },
+  {
+    id: 'analytics',
+    name: 'Analyste de Données',
+    persona: 'Théo',
+    description: "Transforme vos données (fichiers Excel/CSV, banque et plateformes connectées) en décisions : KPI, tableaux et tendances, détection d'anomalies, rapports PDF/Excel clairs et recommandations concrètes.",
+    model: 'claude-haiku-4',
+    temperature: 0.2,
+    maxTokens: 3000,
+    minPlan: 'essential',
+    icon: 'BarChart3',
+    tools: ['claude_api', 'excel', 'analytics'],
+    teamRole: 'analyst',
+    color: 'from-cyan-500 to-cyan-600',
+    avatar: { from: '#06b6d4', to: '#0891b2', skin: '#e8b88f', hair: 'short', hairColor: '#2b2b2b', accessory: 'glasses' },
+  },
 ]
 
 export function getAgentsForPlan(plan: PlanKey): AgentConfig[] {
