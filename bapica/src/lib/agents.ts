@@ -79,7 +79,7 @@ const AGENTS: AgentConfig[] = [
     id: 'prospection-strategie',
     name: 'Conseiller Croissance & Prospection',
     persona: 'Marc',
-    description: "Campagnes LinkedIn et d'appels sortants, analyse de prospects, qualification et étiquetage des leads, prise de RDV, diagnostic commercial chiffré et préparation des RDV clés.",
+    description: "Campagnes LinkedIn et d'appels sortants, analyse de prospects, qualification et étiquetage des leads, prise de RDV, diagnostic commercial chiffré, préparation des RDV clés, et intelligence concurrentielle (concurrents locaux et en ligne, tableau comparatif, battlecard, veille de marché récurrente).",
     model: 'claude-sonnet-4',
     temperature: 0.5,
     maxTokens: 3000,

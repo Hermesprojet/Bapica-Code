@@ -6,7 +6,7 @@
 
 ## 1. Ce qu'est Bapica
 
-Bapica est une plateforme SaaS multi-agents IA pour PME et indépendants. Elle fournit **10 agents
+Bapica est une plateforme SaaS multi-agents IA pour PME et indépendants. Elle fournit **11 agents
 IA spécialisés** qui **automatisent le contact et les tâches métier** — y compris **contacter et
 répondre aux clients par téléphone et par email**, pas seulement organiser des données.
 
@@ -37,20 +37,21 @@ Positionnement à ne jamais contredire dans les réponses des agents :
 - Intégrations optionnelles : Vapi (vocal), HeyGen/Runway (vidéo), Resend (email), Twenty (CRM), n8n.
 - Déploiement : **Vercel, Root Directory = `bapica`** (l'app n'est pas à la racine du repo).
 
-## 3. Les 10 agents (source : `src/lib/agents.ts`)
+## 3. Les 11 agents (source : `src/lib/agents.ts`)
 
 | id | Persona | Rôle | Formule min |
 |----|---------|------|-------------|
 | `general` | Léo | Agent Général (point d'entrée, aiguillage) | Essentiel |
 | `support` | Sofia | Support Client — répond aux clients par chat/email 24/7 | Essentiel |
 | `content` | Camille | Créateur de Contenu (SEO, posts, newsletters) | Essentiel |
-| `prospection-strategie` | Marc | Conseiller Croissance & Prospection | Essentiel |
+| `prospection-strategie` | Marc | Conseiller Croissance & Prospection + **intelligence concurrentielle** (concurrents, tableau comparatif, battlecard, veille) | Essentiel |
 | `closer` | Nadia | Closer Vocal — appelle et qualifie les prospects | Essentiel |
 | `telephone` | Hugo | Agent Téléphonique — standard, appels entrants | Pro |
 | `accounting` | Claire | Comptabilité — factures, relances email, trésorerie | Pro |
 | `video` | Maya | Créateur Vidéo IA | Essentiel |
 | `recruiter` | Yanis | Recruteur IA | Essentiel |
 | `legal` | Inès | Administratif & Juridique (info générale, pas de conseil perso) | Essentiel |
+| `analytics` | Théo | Analyste de Données (BI) — fichiers/banque/plateformes → KPI, anomalies, rapports PDF/Excel | Essentiel |
 
 - **Prompts de rôle** (RÔLE / MÉTHODE / RÈGLES) : `src/lib/agent-prompts.ts`
   → injectés via `getSystemPromptForAgent(id)` dans `/api/chat` ET `/api/demo-chat`.
