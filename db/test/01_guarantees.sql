@@ -44,15 +44,12 @@ insert into organization_members (org_id, user_id, role, professional_id) values
 insert into engine_versions (id, version, released_at)
 values ('eeeeeeee-0000-0000-0000-000000000001', '0.1.0', now());
 
-insert into national_annex_sets (id, country, region, version, published_at, description)
-values ('dddddddd-0000-0000-0000-000000000001', 'BE', null, '0.1.0-draft', current_date, 'ANB — non verifie');
-
-insert into projects (id, org_id, name, country, ndp_set_id, created_by) values
+insert into projects (id, org_id, name, country, ndp_as_of, created_by) values
   ('cccccccc-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000001',
-   'Immeuble R+2 Liege', 'BE', 'dddddddd-0000-0000-0000-000000000001',
+   'Immeuble R+2 Liege', 'BE', date '2026-07-26',
    '11111111-1111-1111-1111-111111111111'),
   ('cccccccc-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000002',
-   'Hall Lyon', 'FR', 'dddddddd-0000-0000-0000-000000000001',
+   'Hall Lyon', 'FR', date '2026-07-26',
    '22222222-2222-2222-2222-222222222222');
 
 insert into structural_models (id, org_id, project_id, created_by)
@@ -60,10 +57,10 @@ values ('55555555-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-0000000
         'cccccccc-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111');
 
 insert into calculations (id, org_id, project_id, model_id, engine_version_id,
-                          ndp_set_id, status, inputs_hash, requested_by)
+                          ndp_as_of, status, inputs_hash, requested_by)
 values ('66666666-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000001',
         'cccccccc-0000-0000-0000-000000000001', '55555555-0000-0000-0000-000000000001',
-        'eeeeeeee-0000-0000-0000-000000000001', 'dddddddd-0000-0000-0000-000000000001',
+        'eeeeeeee-0000-0000-0000-000000000001', date '2026-07-26',
         'succeeded', 'sha256:abc', '11111111-1111-1111-1111-111111111111');
 
 
@@ -290,33 +287,6 @@ $$;
 
 
 -- ---------------------------------------------------------------------
--- 7. Un NDP declare conforme exige un verificateur nomme
--- ---------------------------------------------------------------------
-do $$
-declare ok boolean := false;
-begin
-  begin
-    insert into national_annex_parameters
-      (set_id, key, value, status, standard, clause, description, source)
-    values ('dddddddd-0000-0000-0000-000000000001', 'EC2.alpha_cc', 1.0,
-            'na_confirmed', 'EN 1992-1-1', '§3.1.6(1)P', 'alpha_cc', 'ANB');
-  exception when check_violation then ok := true;
-  end;
-  if not ok then
-    raise exception 'Un NDP a pu etre declare conforme a l''AN sans verificateur';
-  end if;
-end
-$$;
-
--- Avec verificateur et date, il passe.
-insert into national_annex_parameters
-  (set_id, key, value, status, standard, clause, description, source,
-   confirmed_by, confirmed_at)
-values ('dddddddd-0000-0000-0000-000000000001', 'EC2.alpha_cc', 1.0,
-        'na_confirmed', 'EN 1992-1-1', '§3.1.6(1)P', 'alpha_cc',
-        'NBN EN 1992-1-1 ANB', '33333333-3333-3333-3333-333333333333', now());
-
--- ---------------------------------------------------------------------
 -- 8. Une extraction confirmee doit etre signee et porter sa valeur retenue
 -- ---------------------------------------------------------------------
 insert into documents (id, org_id, project_id, kind, filename, storage_path,
@@ -343,28 +313,8 @@ begin
 end
 $$;
 
+
 \echo ''
 \echo '================================================='
-\echo ' Toutes les garanties du schema sont verifiees.'
+\echo ' Garanties de base (RLS, validation, immuabilite) verifiees.'
 \echo '================================================='
-
--- ---------------------------------------------------------------------
--- 9. Un jeu de NDP ne peut pas etre duplique, region NULL comprise
---
--- Regression: l'unicite par defaut de PostgreSQL traite deux NULL comme
--- distincts, ce qui laissait inserer plusieurs jeux ('BE', NULL, 'v') aux
--- valeurs potentiellement divergentes.
--- ---------------------------------------------------------------------
-do $$
-declare ok boolean := false;
-begin
-  begin
-    insert into national_annex_sets (country, region, version, published_at, description)
-    values ('BE', null, '0.1.0-draft', current_date, 'doublon');
-  exception when unique_violation then ok := true;
-  end;
-  if not ok then
-    raise exception 'Un jeu de NDP a pu etre duplique (region NULL)';
-  end if;
-end
-$$;

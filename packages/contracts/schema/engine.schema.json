@@ -150,6 +150,72 @@
       "title": "BeamSectionDrawingRequest",
       "type": "object"
     },
+    "BlockingParameterDTO": {
+      "additionalProperties": false,
+      "description": "One reason a calculation cannot proceed — TICKET 1.3.",
+      "properties": {
+        "clause": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clause"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "national_annex_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "National Annex Reference"
+        },
+        "parameter_name": {
+          "title": "Parameter Name",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Machine-readable cause, for CI.",
+          "enum": [
+            "annex_missing",
+            "missing",
+            "pending_verification",
+            "deprecated"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "standard": {
+          "title": "Standard",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "reason",
+        "detail",
+        "standard",
+        "parameter_name"
+      ],
+      "title": "BlockingParameterDTO",
+      "type": "object"
+    },
     "CalcStepDTO": {
       "additionalProperties": false,
       "description": "One traceable line of the calculation — see section 8.1.",
@@ -387,6 +453,19 @@
           "$ref": "#/$defs/QuantityDTO",
           "description": "Design moment from the governing EN 1990 combination. The engine does not build combinations."
         },
+        "as_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Project reference date (ISO 8601) used to select the edition of the National Annex in force. Pin it on a real project so the calculation stays reproducible after a newer edition is published. Defaults to today.",
+          "title": "As Of"
+        },
         "country": {
           "enum": [
             "BE",
@@ -589,12 +668,25 @@
           "description": "Machine-readable class of refusal.",
           "enum": [
             "out_of_validation_domain",
+            "national_annex_incomplete",
             "unverified_national_parameter",
+            "deprecated_national_parameter",
             "inconsistent_input",
             "unit_error"
           ],
           "title": "Error",
           "type": "string"
+        },
+        "preflight": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreflightReportDTO"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "what": {
           "title": "What",
@@ -666,12 +758,105 @@
       "title": "MaterialsDTO",
       "type": "object"
     },
+    "NationalAnnexDTO": {
+      "additionalProperties": false,
+      "description": "One published National Annex document, at one edition.",
+      "properties": {
+        "country_code": {
+          "title": "Country Code",
+          "type": "string"
+        },
+        "edition": {
+          "title": "Edition",
+          "type": "string"
+        },
+        "effective_from": {
+          "title": "Effective From",
+          "type": "string"
+        },
+        "effective_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective To"
+        },
+        "reference": {
+          "title": "Reference",
+          "type": "string"
+        },
+        "source_official": {
+          "title": "Source Official",
+          "type": "string"
+        },
+        "source_url_or_doc_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Url Or Doc Id"
+        },
+        "standard": {
+          "title": "Standard",
+          "type": "string"
+        }
+      },
+      "required": [
+        "country_code",
+        "standard",
+        "reference",
+        "edition",
+        "effective_from",
+        "source_official"
+      ],
+      "title": "NationalAnnexDTO",
+      "type": "object"
+    },
     "NdpEntryDTO": {
       "additionalProperties": false,
+      "description": "One national parameter, at one version.\n\nCarries its own provenance so the note de calcul can print the annex\nreference, the edition and who checked it, next to the value.",
       "properties": {
         "clause": {
           "title": "Clause",
           "type": "string"
+        },
+        "country_code": {
+          "title": "Country Code",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "edition": {
+          "title": "Edition",
+          "type": "string"
+        },
+        "effective_from": {
+          "title": "Effective From",
+          "type": "string"
+        },
+        "effective_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective To"
         },
         "en_recommended": {
           "anyOf": [
@@ -685,51 +870,140 @@
           "default": null,
           "title": "En Recommended"
         },
-        "source": {
-          "title": "Source",
+        "key": {
+          "title": "Key",
           "type": "string"
         },
-        "status": {
-          "$ref": "#/$defs/NdpStatusDTO"
+        "national_annex_reference": {
+          "title": "National Annex Reference",
+          "type": "string"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "parameter_name": {
+          "title": "Parameter Name",
+          "type": "string"
+        },
+        "parameter_value": {
+          "title": "Parameter Value",
+          "type": "number"
+        },
+        "part": {
+          "title": "Part",
+          "type": "string"
+        },
+        "source_official": {
+          "title": "Source Official",
+          "type": "string"
+        },
+        "source_type": {
+          "$ref": "#/$defs/SourceTypeDTO"
+        },
+        "source_url_or_doc_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Url Or Doc Id"
+        },
+        "standard": {
+          "title": "Standard",
+          "type": "string"
+        },
+        "standard_family": {
+          "title": "Standard Family",
+          "type": "string"
         },
         "unit": {
           "title": "Unit",
           "type": "string"
         },
-        "value": {
-          "title": "Value",
-          "type": "number"
+        "validation_status": {
+          "$ref": "#/$defs/ValidationStatusDTO"
+        },
+        "verified_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified At"
+        },
+        "verified_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified By"
         }
       },
       "required": [
-        "value",
+        "country_code",
+        "standard_family",
+        "part",
+        "standard",
+        "key",
+        "national_annex_reference",
+        "edition",
+        "effective_from",
+        "parameter_name",
+        "parameter_value",
         "unit",
-        "status",
+        "source_official",
+        "source_type",
+        "validation_status",
         "clause",
-        "source"
+        "description"
       ],
       "title": "NdpEntryDTO",
       "type": "object"
-    },
-    "NdpStatusDTO": {
-      "enum": [
-        "en_recommended",
-        "na_confirmed",
-        "na_pending_verification"
-      ],
-      "title": "NdpStatusDTO",
-      "type": "string"
     },
     "NdpSummaryDTO": {
       "additionalProperties": false,
       "description": "Printed verbatim in the 'referentiel applique' section of the note.",
       "properties": {
+        "annexes": {
+          "items": {
+            "$ref": "#/$defs/NationalAnnexDTO"
+          },
+          "title": "Annexes",
+          "type": "array"
+        },
+        "as_of": {
+          "description": "Project reference date used to select the edition in force.",
+          "title": "As Of",
+          "type": "string"
+        },
         "country": {
           "title": "Country",
           "type": "string"
         },
-        "description": {
-          "title": "Description",
+        "country_name": {
+          "title": "Country Name",
           "type": "string"
         },
         "parameters": {
@@ -738,10 +1012,6 @@
           },
           "title": "Parameters",
           "type": "object"
-        },
-        "published_at": {
-          "title": "Published At",
-          "type": "string"
         },
         "region": {
           "anyOf": [
@@ -752,7 +1022,11 @@
               "type": "null"
             }
           ],
+          "default": null,
           "title": "Region"
+        },
+        "regulatory_framework": {
+          "$ref": "#/$defs/RegulatoryFrameworkDTO"
         },
         "strict": {
           "title": "Strict",
@@ -765,23 +1039,65 @@
           },
           "title": "Unverified",
           "type": "array"
-        },
-        "version": {
-          "title": "Version",
-          "type": "string"
         }
       },
       "required": [
         "country",
-        "region",
-        "version",
-        "published_at",
-        "description",
+        "country_name",
+        "as_of",
         "strict",
+        "regulatory_framework",
+        "annexes",
         "unverified",
         "parameters"
       ],
       "title": "NdpSummaryDTO",
+      "type": "object"
+    },
+    "PreflightReportDTO": {
+      "additionalProperties": false,
+      "description": "Result of checking every required national parameter before running.\n\nReturned in full on refusal, so the user fixes the whole list in one pass.",
+      "properties": {
+        "as_of": {
+          "title": "As Of",
+          "type": "string"
+        },
+        "blocking": {
+          "items": {
+            "$ref": "#/$defs/BlockingParameterDTO"
+          },
+          "title": "Blocking",
+          "type": "array"
+        },
+        "country_code": {
+          "title": "Country Code",
+          "type": "string"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "required": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required",
+          "type": "array"
+        },
+        "strict": {
+          "title": "Strict",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "country_code",
+        "as_of",
+        "strict",
+        "ok",
+        "required",
+        "blocking"
+      ],
+      "title": "PreflightReportDTO",
       "type": "object"
     },
     "ProvenanceDTO": {
@@ -1024,6 +1340,57 @@
       ],
       "title": "RectangularSectionDTO",
       "type": "object"
+    },
+    "RegulatoryFrameworkDTO": {
+      "additionalProperties": false,
+      "description": "What is legally binding in the country — not always the Eurocode.\n\nInterdiction 4: a Spanish project must state that the Código Estructural,\nthe CTE and NCSE-02 are the enforceable reference.",
+      "properties": {
+        "binding_reference": {
+          "title": "Binding Reference",
+          "type": "string"
+        },
+        "eurocode_status": {
+          "title": "Eurocode Status",
+          "type": "string"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "verification_regime": {
+          "title": "Verification Regime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_reference",
+        "eurocode_status",
+        "verification_regime"
+      ],
+      "title": "RegulatoryFrameworkDTO",
+      "type": "object"
+    },
+    "SourceTypeDTO": {
+      "enum": [
+        "national_annex",
+        "en_recommended",
+        "national_regulation"
+      ],
+      "title": "SourceTypeDTO",
+      "type": "string"
+    },
+    "ValidationStatusDTO": {
+      "description": "How far a national value has been verified — see TICKET 1.1.",
+      "enum": [
+        "confirmed",
+        "pending_verification",
+        "deprecated"
+      ],
+      "title": "ValidationStatusDTO",
+      "type": "string"
     },
     "VerificationReportDTO": {
       "additionalProperties": false,

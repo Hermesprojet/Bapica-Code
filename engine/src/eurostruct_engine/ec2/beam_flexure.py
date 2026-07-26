@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Final, Mapping
 
 from ..basis import DesignSituation
 from ..exceptions import InconsistentInput, OutOfValidationDomain
@@ -61,10 +61,36 @@ __all__ = [
     "FlexureResistance",
     "design_flexure",
     "moment_resistance",
+    "required_parameters",
+    "EC2_11",
 ]
+
+#: The standard this module draws its national parameters from. Keys are
+#: ``"EN 1992-1-1:alpha_cc"`` and so on, so a parameter of another part can
+#: never be picked up by accident.
+EC2_11: Final = "EN 1992-1-1"
 
 #: Highest concrete grade this module has been validated for.
 _FCK_MAX_MPA = 50.0
+
+
+def required_parameters(situation: DesignSituation) -> tuple[str, ...]:
+    """National parameters this module needs, for preflight (TICKET 1.3).
+
+    Declared rather than discovered: the preflight can then report every
+    blocker in one pass, before any calculation starts.
+    """
+    suffix = situation.partial_factor_suffix
+    return (
+        f"{EC2_11}:gamma_C_{suffix}",
+        f"{EC2_11}:gamma_S_{suffix}",
+        f"{EC2_11}:alpha_cc",
+        f"{EC2_11}:k1_redistribution",
+        f"{EC2_11}:k2_redistribution",
+        f"{EC2_11}:As_min_coeff",
+        f"{EC2_11}:As_min_floor",
+        f"{EC2_11}:As_max_ratio",
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -321,6 +347,10 @@ def design_flexure(
             clause="EN 1992-1-1 §3.1.7(3)",
         )
 
+    # Preflight before anything else (TICKET 1.3): report every blocking
+    # national parameter in one pass rather than failing on the first lookup.
+    params.require(required_parameters(situation))
+
     prov = dict(provenance or {})
     j = Journal(title=f"{element} — flexion simple a l'ELU (EN 1992-1-1)")
 
@@ -355,14 +385,14 @@ def design_flexure(
 
     # --- nationally determined parameters ----------------------------------
     suffix = situation.partial_factor_suffix
-    gamma_C = float(params.get(f"EC2.gamma_C.{suffix}", j).magnitude)
-    gamma_S = float(params.get(f"EC2.gamma_S.{suffix}", j).magnitude)
-    alpha_cc = float(params.get("EC2.alpha_cc", j).magnitude)
-    k1 = float(params.get("EC2.k1_redistribution", j).magnitude)
-    k2 = float(params.get("EC2.k2_redistribution", j).magnitude)
-    as_min_coeff = float(params.get("EC2.As_min_coeff", j).magnitude)
-    as_min_floor = float(params.get("EC2.As_min_floor", j).magnitude)
-    as_max_ratio = float(params.get("EC2.As_max_ratio", j).magnitude)
+    gamma_C = float(params.get(f"{EC2_11}:gamma_C_{suffix}", j).magnitude)
+    gamma_S = float(params.get(f"{EC2_11}:gamma_S_{suffix}", j).magnitude)
+    alpha_cc = float(params.get(f"{EC2_11}:alpha_cc", j).magnitude)
+    k1 = float(params.get(f"{EC2_11}:k1_redistribution", j).magnitude)
+    k2 = float(params.get(f"{EC2_11}:k2_redistribution", j).magnitude)
+    as_min_coeff = float(params.get(f"{EC2_11}:As_min_coeff", j).magnitude)
+    as_min_floor = float(params.get(f"{EC2_11}:As_min_floor", j).magnitude)
+    as_max_ratio = float(params.get(f"{EC2_11}:As_max_ratio", j).magnitude)
 
     # --- design strengths --------------------------------------------------
     fcd = concrete.fcd(alpha_cc, gamma_C).to("MPa")
@@ -371,7 +401,7 @@ def design_flexure(
         EC2("§3.1.6(1)P", "(3.15)"),
         latex=r"f_{cd} = \alpha_{cc}\, f_{ck} / \gamma_C",
         numeric=f"{fmt(alpha_cc)} · {fmt(concrete.fck, 'MPa', 0)} / {fmt(gamma_C)}",
-        depends_on=("f_ck", "EC2.alpha_cc", f"EC2.gamma_C.{suffix}"),
+        depends_on=("f_ck", f"{EC2_11}:alpha_cc", f"{EC2_11}:gamma_C_{suffix}"),
         display_unit="MPa",
     )
 
@@ -381,7 +411,7 @@ def design_flexure(
         EC2("§3.2.7(2)", "(3.14)"),
         latex=r"f_{yd} = f_{yk} / \gamma_S",
         numeric=f"{fmt(steel.fyk, 'MPa', 0)} / {fmt(gamma_S)}",
-        depends_on=("f_yk", f"EC2.gamma_S.{suffix}"),
+        depends_on=("f_yk", f"{EC2_11}:gamma_S_{suffix}"),
         display_unit="MPa",
     )
 
@@ -428,7 +458,7 @@ def design_flexure(
         Q_(xi_lim, "dimensionless"), EC2("§5.5(4)", "(5.10a)"),
         latex=r"\left(\frac{x_u}{d}\right)_{lim} = \frac{\delta - k_1}{k_2},\ \delta = 1{,}0",
         numeric=f"(1 − {fmt(k1)}) / {fmt(k2)}",
-        depends_on=("EC2.k1_redistribution", "EC2.k2_redistribution"),
+        depends_on=(f"{EC2_11}:k1_redistribution", f"{EC2_11}:k2_redistribution"),
     )
     mu_lim = lam * xi_lim * (1.0 - lam * xi_lim / 2.0)
     j.step(
@@ -519,7 +549,7 @@ def design_flexure(
             f"{fmt(section.b, 'mm', 0)} · {fmt(section.d, 'mm', 0)} = "
             f"{fmt(As_min_b, 'mm**2', 1)})"
         ),
-        depends_on=("f_ctm", "f_yk", "b", "d", "EC2.As_min_coeff", "EC2.As_min_floor"),
+        depends_on=("f_ctm", "f_yk", "b", "d", f"{EC2_11}:As_min_coeff", f"{EC2_11}:As_min_floor"),
         display_unit="mm²",
     )
 
@@ -529,7 +559,7 @@ def design_flexure(
         EC2("§9.2.1.1(3)"),
         latex=r"A_{s,max} = 0{,}04\, A_c",
         numeric=f"{fmt(as_max_ratio)} · {fmt(section.b, 'mm', 0)} · {fmt(section.h, 'mm', 0)}",
-        depends_on=("b", "h", "EC2.As_max_ratio"), display_unit="mm²",
+        depends_on=("b", "h", f"{EC2_11}:As_max_ratio"), display_unit="mm²",
     )
 
     As_required = max(As_strength, As_min)

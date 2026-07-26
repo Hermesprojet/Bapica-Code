@@ -1,31 +1,30 @@
 {
-  "country_code": "BE",
-  "country_name": "Belgique",
+  "country_code": "DE",
+  "country_name": "Allemagne",
   "regions": [
-    "Wallonie",
-    "Vlaanderen",
-    "Bruxelles-Capitale"
+    "Bundeslander"
   ],
   "regulatory_framework": {
-    "binding_reference": "Eurocodes EN 199x avec Annexes Nationales belges (ANB), publiees par le NBN.",
-    "eurocode_status": "Referentiel principal. Les ANB fixent les parametres determines nationalement.",
-    "verification_regime": "Architecte (loi du 20/02/1939) et ingenieur en stabilite; assurance obligatoire de la responsabilite civile decennale (loi Peeters).",
+    "binding_reference": "DIN EN 199x avec Annexes Nationales (/NA) et leurs amendements (/NA/A1), rendues obligatoires par la Muster-Verwaltungsvorschrift Technische Baubestimmungen (MVV TB), declinee par Land.",
+    "eurocode_status": "Referentiel principal. La MVV TB du Land determine quelles editions sont en vigueur; elle peut imposer des restrictions supplementaires.",
+    "verification_regime": "Prufstatiker / Prufingenieur fur Standsicherheit: verification independante obligatoire de la note de calcul selon le Land. Bauvorlageberechtigung requise pour deposer les documents.",
     "notes": [
-      "Permis d'urbanisme et reglementation energetique (PEB/EPB) regionalises: Wallonie, Flandre, Bruxelles.",
-      "Approche de calcul geotechnique EN 1997: A RELEVER dans l'ANB, ne pas supposer.",
-      "Sismicite faible mais non nulle: Hainaut, Liege, Roermond. Zonage de l'ANB EN 1998-1."
+      "Approche de calcul geotechnique DA2* en Allemagne, avec DIN 1054 en complement de l'EN 1997.",
+      "Zones de neige (Schneelastzonen 1-3) et de vent (Windzonen 1-4) specifiques.",
+      "Sismique: DIN EN 1998-1/NA, heritier de DIN 4149, zones 0 a 3.",
+      "La note de calcul doit pouvoir etre presentee en allemand avec la terminologie DIN attendue."
     ]
   },
   "annexes": [
     {
       "standard_family": "EN 1992",
       "part": "1-1",
-      "reference": "NBN EN 1992-1-1 ANB",
+      "reference": "DIN EN 1992-1-1/NA",
       "edition": "NON RELEVE — edition reelle a renseigner",
       "effective_from": "2026-07-26",
       "effective_to": null,
-      "source_official": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
-      "source_url_or_doc_id": "https://www.nbn.be",
+      "source_official": "DIN — Deutsches Institut fur Normung",
+      "source_url_or_doc_id": "https://www.din.de",
       "parameters": {
         "alpha_cc": {
           "parameter_value": 1.0,

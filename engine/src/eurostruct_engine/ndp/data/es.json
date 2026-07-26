@@ -1,31 +1,29 @@
 {
-  "country_code": "BE",
-  "country_name": "Belgique",
+  "country_code": "ES",
+  "country_name": "Espagne",
   "regions": [
-    "Wallonie",
-    "Vlaanderen",
-    "Bruxelles-Capitale"
+    "Comunidades autonomas"
   ],
   "regulatory_framework": {
-    "binding_reference": "Eurocodes EN 199x avec Annexes Nationales belges (ANB), publiees par le NBN.",
-    "eurocode_status": "Referentiel principal. Les ANB fixent les parametres determines nationalement.",
-    "verification_regime": "Architecte (loi du 20/02/1939) et ingenieur en stabilite; assurance obligatoire de la responsabilite civile decennale (loi Peeters).",
+    "binding_reference": "Codigo Estructural (RD 470/2021), qui a remplace l'EHE-08, et Codigo Tecnico de la Edificacion (CTE): DB-SE, DB-SE-AE, DB-SE-C, DB-SE-A, DB-SE-M, DB-SE-F, DB-SI. Sismique: NCSE-02.",
+    "eurocode_status": "ATTENTION — l'Espagne n'est PAS un pays « Eurocode pur ». Les UNE-EN sont utilisables, mais le referentiel reglementairement opposable est le Codigo Estructural et le CTE. Un calcul mene selon l'EN 1992-1-1 doit etre explicitement signale comme tel, et sa recevabilite verifiee au cas par cas.",
+    "verification_regime": "Visado colegial par le Colegio professionnel; Direccion Facultativa obligatoire.",
     "notes": [
-      "Permis d'urbanisme et reglementation energetique (PEB/EPB) regionalises: Wallonie, Flandre, Bruxelles.",
-      "Approche de calcul geotechnique EN 1997: A RELEVER dans l'ANB, ne pas supposer.",
-      "Sismicite faible mais non nulle: Hainaut, Liege, Roermond. Zonage de l'ANB EN 1998-1."
+      "Sismique: NCSE-02, distincte de l'EN 1998 dans son application reglementaire.",
+      "L'application doit permettre les DEUX referentiels et indiquer lequel est opposable (cahier des charges §4.2, interdiction 4).",
+      "Les parametres ci-dessous relevent de l'Annexe Nationale des UNE-EN; ils ne dispensent pas de la verification selon le Codigo Estructural."
     ]
   },
   "annexes": [
     {
       "standard_family": "EN 1992",
       "part": "1-1",
-      "reference": "NBN EN 1992-1-1 ANB",
+      "reference": "UNE-EN 1992-1-1 AN",
       "edition": "NON RELEVE — edition reelle a renseigner",
       "effective_from": "2026-07-26",
       "effective_to": null,
-      "source_official": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
-      "source_url_or_doc_id": "https://www.nbn.be",
+      "source_official": "AENOR / UNE — Asociacion Espanola de Normalizacion",
+      "source_url_or_doc_id": "https://www.une.org",
       "parameters": {
         "alpha_cc": {
           "parameter_value": 1.0,

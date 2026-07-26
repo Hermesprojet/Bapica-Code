@@ -47,6 +47,18 @@ export interface BeamSectionDrawingRequest {
   top?: BarRowDTO[];
 }
 
+/** One reason a calculation cannot proceed — TICKET 1.3. */
+export interface BlockingParameterDTO {
+  clause?: string | null;
+  detail: string;
+  key: string;
+  national_annex_reference?: string | null;
+  parameter_name: string;
+  /** Machine-readable cause, for CI. */
+  reason: "annex_missing" | "missing" | "pending_verification" | "deprecated";
+  standard: string;
+}
+
 /** One traceable line of the calculation — see section 8.1. */
 export interface CalcStepDTO {
   clause?: ClauseDTO | null;
@@ -98,6 +110,8 @@ export interface Ec2BeamFlexureRequest {
   A_s_provided?: QuantityDTO | null;
   /** Design moment from the governing EN 1990 combination. The engine does not build combinations. */
   M_Ed: QuantityDTO;
+  /** Project reference date (ISO 8601) used to select the edition of the National Annex in force. Pin it on a real project so the calculation stays reproducible after a newer edition is published. Defaults to today. */
+  as_of?: string | null;
   country: "BE" | "FR" | "ES" | "DE";
   /** Element mark shown in the note. */
   element?: string;
@@ -152,7 +166,8 @@ export interface EngineErrorDTO {
   clause?: string | null;
   detail: string;
   /** Machine-readable class of refusal. */
-  error: "out_of_validation_domain" | "unverified_national_parameter" | "inconsistent_input" | "unit_error";
+  error: "out_of_validation_domain" | "national_annex_incomplete" | "unverified_national_parameter" | "deprecated_national_parameter" | "inconsistent_input" | "unit_error";
+  preflight?: PreflightReportDTO | null;
   what: string;
 }
 
@@ -169,31 +184,67 @@ export interface MaterialsDTO {
   steel_grade: string;
 }
 
-export interface NdpEntryDTO {
-  clause: string;
-  en_recommended?: number | null;
-  source: string;
-  status: NdpStatusDTO;
-  unit: string;
-  value: number;
+/** One published National Annex document, at one edition. */
+export interface NationalAnnexDTO {
+  country_code: string;
+  edition: string;
+  effective_from: string;
+  effective_to?: string | null;
+  reference: string;
+  source_official: string;
+  source_url_or_doc_id?: string | null;
+  standard: string;
 }
 
-export type NdpStatusDTO =
-  | "en_recommended"
-  | "na_confirmed"
-  | "na_pending_verification";
+/** One national parameter, at one version. Carries its own provenance so the note de calcul can print the annex reference, the edition and who checked it, next to the value. */
+export interface NdpEntryDTO {
+  clause: string;
+  country_code: string;
+  description: string;
+  edition: string;
+  effective_from: string;
+  effective_to?: string | null;
+  en_recommended?: number | null;
+  key: string;
+  national_annex_reference: string;
+  notes?: string | null;
+  parameter_name: string;
+  parameter_value: number;
+  part: string;
+  source_official: string;
+  source_type: SourceTypeDTO;
+  source_url_or_doc_id?: string | null;
+  standard: string;
+  standard_family: string;
+  unit: string;
+  validation_status: ValidationStatusDTO;
+  verified_at?: string | null;
+  verified_by?: string | null;
+}
 
 /** Printed verbatim in the 'referentiel applique' section of the note. */
 export interface NdpSummaryDTO {
+  annexes: NationalAnnexDTO[];
+  /** Project reference date used to select the edition in force. */
+  as_of: string;
   country: string;
-  description: string;
+  country_name: string;
   parameters: Record<string, NdpEntryDTO>;
-  published_at: string;
-  region: string | null;
+  region?: string | null;
+  regulatory_framework: RegulatoryFrameworkDTO;
   strict: boolean;
   /** Parameters not yet confirmed against the published National Annex. */
   unverified: string[];
-  version: string;
+}
+
+/** Result of checking every required national parameter before running. Returned in full on refusal, so the user fixes the whole list in one pass. */
+export interface PreflightReportDTO {
+  as_of: string;
+  blocking: BlockingParameterDTO[];
+  country_code: string;
+  ok: boolean;
+  required: string[];
+  strict: boolean;
 }
 
 /** Where a value came from. ``document_extraction`` values must already have been confirmed by a human before the orchestrator submits them: ``confirmed_by`` and ``confirmed_at`` are how the engine's output can state that the gate was passed. */
@@ -244,6 +295,25 @@ export interface RectangularSectionDTO {
   /** Overall depth */
   h: QuantityDTO;
 }
+
+/** What is legally binding in the country — not always the Eurocode. Interdiction 4: a Spanish project must state that the Código Estructural, the CTE and NCSE-02 are the enforceable reference. */
+export interface RegulatoryFrameworkDTO {
+  binding_reference: string;
+  eurocode_status: string;
+  notes?: string[];
+  verification_regime: string;
+}
+
+export type SourceTypeDTO =
+  | "national_annex"
+  | "en_recommended"
+  | "national_regulation";
+
+/** How far a national value has been verified — see TICKET 1.1. */
+export type ValidationStatusDTO =
+  | "confirmed"
+  | "pending_verification"
+  | "deprecated";
 
 export interface VerificationReportDTO {
   checks: CheckDTO[];

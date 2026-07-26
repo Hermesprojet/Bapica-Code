@@ -11,6 +11,8 @@ itself works.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from eurostruct_engine.ec2 import RectangularSection
@@ -19,14 +21,18 @@ from eurostruct_engine.ndp import load_parameter_set
 from eurostruct_engine.units import Q_
 
 
+#: Pinned so a calculation stays reproducible regardless of when the suite runs.
+AS_OF = date(2026, 7, 26)
+
+
 @pytest.fixture
 def params_be():
-    return load_parameter_set("BE", strict=False)
+    return load_parameter_set("BE", strict=False, as_of=AS_OF)
 
 
 @pytest.fixture
 def params_fr():
-    return load_parameter_set("FR", strict=False)
+    return load_parameter_set("FR", strict=False, as_of=AS_OF)
 
 
 @pytest.fixture

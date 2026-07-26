@@ -26,9 +26,14 @@ __all__ = [
     "CheckStatusDTO",
     "CheckDTO",
     "VerificationReportDTO",
-    "NdpStatusDTO",
+    "ValidationStatusDTO",
+    "SourceTypeDTO",
     "NdpEntryDTO",
+    "NationalAnnexDTO",
+    "RegulatoryFrameworkDTO",
     "NdpSummaryDTO",
+    "BlockingParameterDTO",
+    "PreflightReportDTO",
     "EngineErrorDTO",
 ]
 
@@ -145,34 +150,122 @@ class VerificationReportDTO(Strict):
     checks: list[CheckDTO]
 
 
-class NdpStatusDTO(str, Enum):
+class ValidationStatusDTO(str, Enum):
+    """How far a national value has been verified — see TICKET 1.1."""
+
+    CONFIRMED = "confirmed"
+    PENDING_VERIFICATION = "pending_verification"
+    DEPRECATED = "deprecated"
+
+
+class SourceTypeDTO(str, Enum):
+    NATIONAL_ANNEX = "national_annex"
     EN_RECOMMENDED = "en_recommended"
-    NA_CONFIRMED = "na_confirmed"
-    NA_PENDING_VERIFICATION = "na_pending_verification"
+    NATIONAL_REGULATION = "national_regulation"
 
 
 class NdpEntryDTO(Strict):
-    value: float
+    """One national parameter, at one version.
+
+    Carries its own provenance so the note de calcul can print the annex
+    reference, the edition and who checked it, next to the value.
+    """
+
+    country_code: str
+    standard_family: str
+    part: str
+    standard: str
+    key: str
+    national_annex_reference: str
+    edition: str
+    effective_from: str
+    effective_to: str | None = None
+    parameter_name: str
+    parameter_value: float
     unit: str
-    status: NdpStatusDTO
+    source_official: str
+    source_url_or_doc_id: str | None = None
+    source_type: SourceTypeDTO
+    validation_status: ValidationStatusDTO
+    verified_at: str | None = None
+    verified_by: str | None = None
+    notes: str | None = None
     clause: str
-    source: str
+    description: str
     en_recommended: float | None = None
+
+
+class NationalAnnexDTO(Strict):
+    """One published National Annex document, at one edition."""
+
+    country_code: str
+    standard: str
+    reference: str
+    edition: str
+    effective_from: str
+    effective_to: str | None = None
+    source_official: str
+    source_url_or_doc_id: str | None = None
+
+
+class RegulatoryFrameworkDTO(Strict):
+    """What is legally binding in the country — not always the Eurocode.
+
+    Interdiction 4: a Spanish project must state that the Código Estructural,
+    the CTE and NCSE-02 are the enforceable reference.
+    """
+
+    binding_reference: str
+    eurocode_status: str
+    verification_regime: str
+    notes: list[str] = Field(default_factory=list)
 
 
 class NdpSummaryDTO(Strict):
     """Printed verbatim in the 'referentiel applique' section of the note."""
 
     country: str
-    region: str | None
-    version: str
-    published_at: str
-    description: str
+    country_name: str
+    region: str | None = None
+    as_of: str = Field(
+        description="Project reference date used to select the edition in force."
+    )
     strict: bool
+    regulatory_framework: RegulatoryFrameworkDTO
+    annexes: list[NationalAnnexDTO]
     unverified: list[str] = Field(
         description="Parameters not yet confirmed against the published National Annex."
     )
     parameters: dict[str, NdpEntryDTO]
+
+
+class BlockingParameterDTO(Strict):
+    """One reason a calculation cannot proceed — TICKET 1.3."""
+
+    key: str
+    reason: Annotated[
+        Literal["annex_missing", "missing", "pending_verification", "deprecated"],
+        Field(description="Machine-readable cause, for CI."),
+    ]
+    detail: str
+    standard: str
+    parameter_name: str
+    national_annex_reference: str | None = None
+    clause: str | None = None
+
+
+class PreflightReportDTO(Strict):
+    """Result of checking every required national parameter before running.
+
+    Returned in full on refusal, so the user fixes the whole list in one pass.
+    """
+
+    country_code: str
+    as_of: str
+    strict: bool
+    ok: bool
+    required: list[str]
+    blocking: list[BlockingParameterDTO]
 
 
 class EngineErrorDTO(Strict):
@@ -181,7 +274,9 @@ class EngineErrorDTO(Strict):
     error: Annotated[
         Literal[
             "out_of_validation_domain",
+            "national_annex_incomplete",
             "unverified_national_parameter",
+            "deprecated_national_parameter",
             "inconsistent_input",
             "unit_error",
         ],
@@ -190,3 +285,5 @@ class EngineErrorDTO(Strict):
     what: str
     detail: str
     clause: str | None = None
+    #: Set when ``error == "national_annex_incomplete"``: the full blocker list.
+    preflight: PreflightReportDTO | None = None

@@ -22,6 +22,8 @@ import textwrap
 
 import pytest
 
+from datetime import date
+
 from eurostruct_engine.ec2 import RectangularSection, design_flexure
 from eurostruct_engine.materials import concrete, reinforcement
 from eurostruct_engine.materials.reinforcement import bars_area
@@ -100,16 +102,19 @@ def test_determinism_across_processes() -> None:
     script = textwrap.dedent(
         """
         import json
-        from eurostruct_engine.ndp import load_parameter_set
+        from datetime import date
+
+        from eurostruct_engine.ec2 import RectangularSection, design_flexure
         from eurostruct_engine.materials import concrete, reinforcement
         from eurostruct_engine.materials.reinforcement import bars_area
-        from eurostruct_engine.ec2 import RectangularSection, design_flexure
+        from eurostruct_engine.ndp import load_parameter_set
         from eurostruct_engine.units import Q_
 
+        params = load_parameter_set("BE", strict=False, as_of=date(2026, 7, 26))
         r = design_flexure(
             section=RectangularSection(b=Q_(300, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm")),
             concrete=concrete("C30/37"), steel=reinforcement("B500B"),
-            M_Ed=Q_(250, "kN*m"), params=load_parameter_set("BE", strict=False),
+            M_Ed=Q_(250, "kN*m"), params=params,
             element="P1", A_s_provided=bars_area(4, 20),
         )
         print(json.dumps(r.to_dict(), sort_keys=True))
@@ -133,9 +138,11 @@ def test_journal_structure_is_stable(params_be) -> None:
     symbols = _reference_case(params_be).journal.symbols()
     assert symbols == [
         "b", "h", "d", "f_ck", "f_yk", "M_Ed",
-        "EC2.gamma_C.persistent", "EC2.gamma_S.persistent", "EC2.alpha_cc",
-        "EC2.k1_redistribution", "EC2.k2_redistribution",
-        "EC2.As_min_coeff", "EC2.As_min_floor", "EC2.As_max_ratio",
+        "EN 1992-1-1:gamma_C_persistent", "EN 1992-1-1:gamma_S_persistent",
+        "EN 1992-1-1:alpha_cc",
+        "EN 1992-1-1:k1_redistribution", "EN 1992-1-1:k2_redistribution",
+        "EN 1992-1-1:As_min_coeff", "EN 1992-1-1:As_min_floor",
+        "EN 1992-1-1:As_max_ratio",
         "f_cd", "f_yd", "eps_yd", "lambda", "eta",
         "mu", "xi_lim", "mu_lim", "xi", "x", "z",
         "A_s_calc", "eps_s", "f_ctm", "A_s_min", "A_s_max", "A_s_req",
@@ -162,4 +169,4 @@ def test_clause_citations_are_frozen(params_be) -> None:
     assert j.get("A_s_min").clause.cite() == "EN 1992-1-1 §9.2.1.1(1), eq. (9.1N)"
     assert j.get("xi_lim").clause.cite() == "EN 1992-1-1 §5.5(4), eq. (5.10a)"
     # The National Annex qualification travels with the parameter.
-    assert "ANB" in j.get("EC2.alpha_cc").clause.cite()
+    assert "ANB" in j.get("EN 1992-1-1:alpha_cc").clause.cite()

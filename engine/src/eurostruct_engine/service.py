@@ -11,14 +11,17 @@ never downgraded into a partial result.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from .basis import DesignSituation
 from .drawing.beam_section import BarRow, BeamSectionSpec, build_beam_section
 from .ec2.beam_flexure import RectangularSection, design_flexure
 from .exceptions import (
+    DeprecatedNationalParameter,
     EurostructEngineError,
     InconsistentInput,
+    NationalAnnexIncomplete,
     OutOfValidationDomain,
     UnitError,
     UnverifiedNationalParameter,
@@ -26,7 +29,12 @@ from .exceptions import (
 from .materials import concrete as concrete_grade
 from .materials import reinforcement as steel_grade
 from .ndp import load_parameter_set
-from .schemas.common import EngineErrorDTO, ProvenanceDTO, QuantityDTO
+from .schemas.common import (
+    EngineErrorDTO,
+    PreflightReportDTO,
+    ProvenanceDTO,
+    QuantityDTO,
+)
 from .schemas.ec2_beam import (
     Ec2BeamFlexureRequest,
     Ec2BeamFlexureResponse,
@@ -69,7 +77,12 @@ def run_ec2_beam_flexure(req: Ec2BeamFlexureRequest) -> Ec2BeamFlexureResponse:
     :raises EurostructEngineError: on any refusal; the caller converts it with
         :func:`error_of`.
     """
-    params = load_parameter_set(req.country, req.region, strict=req.strict_ndp)
+    params = load_parameter_set(
+        req.country,
+        req.region,
+        strict=req.strict_ndp,
+        as_of=date.fromisoformat(req.as_of) if req.as_of else None,
+    )
 
     design = design_flexure(
         section=RectangularSection(
@@ -154,12 +167,25 @@ def error_of(exc: EurostructEngineError) -> EngineErrorDTO:
             detail=exc.detail,
             clause=exc.clause,
         )
+    if isinstance(exc, NationalAnnexIncomplete):
+        # The whole blocker list travels with the error, so the caller can show
+        # every parameter to fix in one pass (TICKET 1.3).
+        return EngineErrorDTO(
+            error="national_annex_incomplete",
+            what=f"{len(exc.blocking)} parametre(s) national(aux) bloquant(s)",
+            detail=str(exc),
+            preflight=PreflightReportDTO.model_validate(exc.to_dict()),
+        )
     if isinstance(exc, UnverifiedNationalParameter):
         return EngineErrorDTO(
             error="unverified_national_parameter",
             what=exc.key,
             detail=str(exc),
             clause=None,
+        )
+    if isinstance(exc, DeprecatedNationalParameter):
+        return EngineErrorDTO(
+            error="deprecated_national_parameter", what=exc.key, detail=str(exc)
         )
     if isinstance(exc, UnitError):
         return EngineErrorDTO(error="unit_error", what="unit", detail=str(exc))
