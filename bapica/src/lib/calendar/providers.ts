@@ -183,9 +183,13 @@ async function createGoogleEvent(token: string, rdv: RdvInput, t: { start: strin
   }
   if (rdv.location) body.location = rdv.location
   if (rdv.description) body.description = rdv.description
-  if (rdv.attendee && EMAIL_RE.test(rdv.attendee)) body.attendees = [{ email: rdv.attendee }]
+  const hasGuest = !!(rdv.attendee && EMAIL_RE.test(rdv.attendee))
+  if (hasGuest) body.attendees = [{ email: rdv.attendee }]
 
-  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+  // sendUpdates=all → Google ENVOIE l'invitation par email à l'invité (sinon, par défaut,
+  // le participant est ajouté mais ne reçoit rien). C'est ce qui fait que le client « voit » le RDV.
+  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events${hasGuest ? '?sendUpdates=all' : ''}`
+  const res = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { Send, User, ArrowLeft, Sparkles } from 'lucide-react'
+import { Send, User, ArrowLeft, Sparkles, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { getAgentById } from '@/lib/agents'
 import { AgentAvatar } from '@/components/agents/agent-avatar'
@@ -21,7 +21,41 @@ export default function AgentChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  
+
+  // Historique conservé 24h par agent (localStorage). Au-delà, il est purgé.
+  const storageKey = `bapica_chat_${params.id}`
+  const DAY_MS = 24 * 60 * 60 * 1000
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (!raw) return
+      const saved = JSON.parse(raw) as { savedAt: number; messages: Message[] }
+      if (saved && Array.isArray(saved.messages) && Date.now() - saved.savedAt < DAY_MS) {
+        setMessages(saved.messages)
+      } else {
+        localStorage.removeItem(storageKey) // trop ancien (> 24h) → on purge
+      }
+    } catch {
+      /* stockage indisponible : on ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey])
+
+  useEffect(() => {
+    try {
+      if (messages.length === 0) return
+      // On borne aux 50 derniers messages ; savedAt se rafraîchit à chaque activité.
+      localStorage.setItem(storageKey, JSON.stringify({ savedAt: Date.now(), messages: messages.slice(-50) }))
+    } catch {
+      /* ignore */
+    }
+  }, [messages, storageKey])
+
+  const clearHistory = () => {
+    setMessages([])
+    try { localStorage.removeItem(storageKey) } catch { /* ignore */ }
+  }
 
   if (!agent) {
     return (
@@ -98,6 +132,15 @@ export default function AgentChatPage() {
             {agent.name} • Modèle : {agent.model}
           </p>
         </div>
+        {messages.length > 0 && (
+          <button
+            onClick={clearHistory}
+            title="Effacer la conversation"
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-colors"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Effacer
+          </button>
+        )}
       </div>
 
       {/* Recherche de prospects (agents commerciaux) */}

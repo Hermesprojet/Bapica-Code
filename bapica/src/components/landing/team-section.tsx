@@ -43,11 +43,13 @@ const agentGradients: Record<string, string> = {
   accounting: "from-amber-500 to-yellow-500",
   recruiter: "from-indigo-500 to-blue-500",
   legal: "from-slate-500 to-gray-500",
+  analytics: "from-cyan-500 to-sky-500",
 }
 
 // Spécialité courte affichée sous chaque agent
 const specialties: Record<string, string> = {
   support: "Support 24/7",
+  analytics: "Analyse & BI",
   content: "Contenu & SEO",
   'prospection-strategie': "Croissance & Prospection",
   closer: "Closing vocal",
