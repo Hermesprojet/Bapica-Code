@@ -10,10 +10,17 @@ Never catch :class:`OutOfValidationDomain` to substitute a fallback value.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .ndp.registry import PreflightReport
+
 __all__ = [
     "EurostructEngineError",
     "OutOfValidationDomain",
     "UnverifiedNationalParameter",
+    "DeprecatedNationalParameter",
+    "NationalAnnexIncomplete",
     "InconsistentInput",
     "UnitError",
 ]
@@ -58,6 +65,41 @@ class UnverifiedNationalParameter(EurostructEngineError):
             "'na_confirmed' (valeur relevee dans l'Annexe Nationale publiee). "
             "Faire verifier et confirmer ce parametre par un ingenieur habilite."
         )
+
+
+class DeprecatedNationalParameter(EurostructEngineError):
+    """A national value marked superseded was requested.
+
+    Refused in every mode, strict or not: unlike an unverified value, a
+    deprecated one is known to be wrong.
+    """
+
+    def __init__(self, key: str, notes: str | None = None) -> None:
+        self.key = key
+        self.notes = notes
+        detail = f" {notes}" if notes else ""
+        super().__init__(
+            f"le parametre national '{key}' est marque obsolete et ne peut pas "
+            f"etre utilise.{detail} Charger l'edition en vigueur de l'Annexe "
+            "Nationale."
+        )
+
+
+class NationalAnnexIncomplete(EurostructEngineError):
+    """Preflight found national parameters that block the calculation.
+
+    TICKET 1.3: carries **every** blocker, not just the first, so one pass
+    tells the user the whole list. ``report`` is the machine-readable form used
+    by the API and by CI; ``str(exc)`` is the human one.
+    """
+
+    def __init__(self, report: "PreflightReport") -> None:
+        self.report = report
+        self.blocking = report.blocking
+        super().__init__(report.render())
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.report.to_dict()
 
 
 class InconsistentInput(EurostructEngineError):

@@ -131,8 +131,9 @@ def test_national_annex_values_are_recorded_as_such(params_be) -> None:
     ]
     keys = {s.symbol for s in ndp_steps}
     assert {
-        "EC2.gamma_C.persistent", "EC2.gamma_S.persistent", "EC2.alpha_cc",
-        "EC2.k1_redistribution", "EC2.k2_redistribution",
+        "EN 1992-1-1:gamma_C_persistent", "EN 1992-1-1:gamma_S_persistent",
+        "EN 1992-1-1:alpha_cc", "EN 1992-1-1:k1_redistribution",
+        "EN 1992-1-1:k2_redistribution",
     } <= keys
     for s in ndp_steps:
         assert s.provenance.ndp_key == s.symbol

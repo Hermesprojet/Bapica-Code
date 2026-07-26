@@ -33,6 +33,7 @@ sys.path.insert(0, str(ENGINE / "src"))
 from eurostruct_engine.schemas.common import (  # noqa: E402
     EngineErrorDTO,
     NdpSummaryDTO,
+    PreflightReportDTO,
 )
 from eurostruct_engine.schemas.ec2_beam import (  # noqa: E402
     BeamSectionDrawingRequest,
@@ -48,6 +49,7 @@ ROOTS = [
     BeamSectionDrawingRequest,
     RebarScheduleRowDTO,
     NdpSummaryDTO,
+    PreflightReportDTO,
     EngineErrorDTO,
 ]
 

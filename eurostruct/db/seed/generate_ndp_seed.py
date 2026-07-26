@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit the SQL seed of the National Annex parameter sets.
+"""Emit the SQL seed of the National Annexes and their parameters.
 
 Single source of truth: the JSON files under
 ``engine/src/eurostruct_engine/ndp/data/``. The engine reads them directly and
@@ -10,9 +10,9 @@ Run from the repository root::
 
     python db/seed/generate_ndp_seed.py > db/seed/0001_ndp.sql
 
-Every emitted row keeps its ``status``. Nothing is promoted to ``na_confirmed``
-here: that transition requires a named engineer and a date, and the schema
-enforces it (``confirmed_ndp_needs_a_verifier``).
+Every row keeps its ``validation_status`` verbatim. Nothing is promoted to
+``confirmed`` here: that transition requires a named engineer and a date, and
+the schema enforces it (``confirmed_ndp_is_signed``).
 """
 
 from __future__ import annotations
@@ -20,16 +20,21 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "engine" / "src" / "eurostruct_engine" / "ndp" / "data"
 
 
-def q(s: str | None) -> str:
+def q(s: Any) -> str:
     """Quote a SQL string literal, or NULL."""
     if s is None:
         return "null"
-    return "'" + s.replace("'", "''") + "'"
+    return "'" + str(s).replace("'", "''") + "'"
+
+
+def num(x: Any) -> str:
+    return "null" if x is None else repr(float(x))
 
 
 def main() -> int:
@@ -42,9 +47,9 @@ def main() -> int:
         "--     python db/seed/generate_ndp_seed.py > db/seed/0001_ndp.sql",
         "--",
         "-- Statuses are carried across verbatim. A parameter reaches",
-        "-- 'na_confirmed' only when an engineer has read the published National",
+        "-- 'confirmed' only when an engineer has read the published National",
         "-- Annex and signed for it; the schema refuses that status without a",
-        "-- named verifier and a date.",
+        "-- named verifier, a date, and source_type = 'national_annex'.",
         "",
         "begin;",
         "",
@@ -52,37 +57,63 @@ def main() -> int:
 
     for path in sorted(DATA.glob("*.json")):
         raw = json.loads(path.read_text(encoding="utf-8"))
-        country = raw["country"]
-        version = raw["version"]
-
-        out.append(f"-- ----- {country} — {version} " + "-" * 30)
-        out.append(
-            "insert into national_annex_sets "
-            "(country, region, version, published_at, description)\n"
-            f"values ({q(country)}::country_code, null, {q(version)}, "
-            f"{q(raw['published_at'])}::date, {q(raw['description'])})\n"
-            "on conflict (country, region, version) do nothing;"
-        )
+        country = raw["country_code"]
+        out.append(f"-- ===== {country} — {raw['country_name']} " + "=" * 30)
         out.append("")
 
-        for key, item in sorted(raw["parameters"].items()):
+        for annex in raw["annexes"]:
+            std = f"{annex['standard_family']}-{annex['part']}"
+            out.append(f"-- {annex['reference']} ({std})")
             out.append(
-                "insert into national_annex_parameters "
-                "(set_id, key, value, unit, status, standard, clause, "
-                "description, source, en_recommended)\n"
-                "select s.id, "
-                f"{q(key)}, {float(item['value'])!r}, "
-                f"{q(item.get('unit', 'dimensionless'))}, "
-                f"{q(item['status'])}::ndp_status, {q(item['standard'])}, "
-                f"{q(item['clause'])}, {q(item['description'])}, "
-                f"{q(item['source'])}, "
-                f"{item['en_recommended'] if item.get('en_recommended') is not None else 'null'}\n"
-                "from national_annex_sets s\n"
-                f"where s.country = {q(country)}::country_code and s.region is null "
-                f"and s.version = {q(version)}\n"
-                "on conflict (set_id, key) do nothing;"
+                "insert into national_annexes (country_code, standard_family, part, "
+                "reference, edition, effective_from, effective_to, source_official, "
+                "source_url_or_doc_id)\nvalues ("
+                f"{q(country)}::country_code, {q(annex['standard_family'])}, "
+                f"{q(annex['part'])}, {q(annex['reference'])}, {q(annex['edition'])}, "
+                f"{q(annex['effective_from'])}::date, "
+                f"{q(annex.get('effective_to'))}"
+                + ("::date" if annex.get("effective_to") else "")
+                + f", {q(annex['source_official'])}, "
+                f"{q(annex.get('source_url_or_doc_id'))})\n"
+                "on conflict (country_code, standard_family, part, edition) "
+                "do nothing;"
             )
-        out.append("")
+            out.append("")
+
+            for name, item in sorted(annex["parameters"].items()):
+                out.append(
+                    "insert into national_annex_parameters (annex_id, country_code, "
+                    "standard_family, part, national_annex_reference, edition, "
+                    "effective_from, effective_to, parameter_name, parameter_value, "
+                    "unit, source_official, source_url_or_doc_id, source_type, "
+                    "validation_status, verified_at, verified_by, notes, clause, "
+                    "description, en_recommended)\n"
+                    f"select a.id, {q(country)}::country_code, "
+                    f"{q(annex['standard_family'])}, {q(annex['part'])}, "
+                    f"{q(annex['reference'])}, {q(annex['edition'])}, "
+                    f"{q(annex['effective_from'])}::date, "
+                    f"{q(annex.get('effective_to'))}"
+                    + ("::date" if annex.get("effective_to") else "")
+                    + f", {q(name)}, {num(item['parameter_value'])}, "
+                    f"{q(item.get('unit', 'dimensionless'))}, "
+                    f"{q(item.get('source_official', annex['source_official']))}, "
+                    f"{q(item.get('source_url_or_doc_id', annex.get('source_url_or_doc_id')))}, "
+                    f"{q(item.get('source_type', 'national_annex'))}::ndp_source_type, "
+                    f"{q(item['validation_status'])}::ndp_validation_status, "
+                    f"{q(item.get('verified_at'))}"
+                    + ("::timestamptz" if item.get("verified_at") else "")
+                    + ", null, "
+                    f"{q(item.get('notes'))}, {q(item['clause'])}, "
+                    f"{q(item['description'])}, {num(item.get('en_recommended'))}\n"
+                    "from national_annexes a\n"
+                    f"where a.country_code = {q(country)}::country_code\n"
+                    f"  and a.standard_family = {q(annex['standard_family'])}\n"
+                    f"  and a.part = {q(annex['part'])}\n"
+                    f"  and a.edition = {q(annex['edition'])}\n"
+                    "on conflict (country_code, standard_family, part, "
+                    "parameter_name, effective_from) do nothing;"
+                )
+            out.append("")
 
     out.append("commit;")
     sys.stdout.write("\n".join(out) + "\n")

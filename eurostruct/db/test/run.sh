@@ -39,5 +39,11 @@ do
   "${PSQL_BASE[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
 done
 
+echo "==> seeding national annexes"
+"${PSQL_BASE[@]}" -v ON_ERROR_STOP=1 -q -f "$DB_DIR/seed/0001_ndp.sql"
+
 echo "==> running guarantee tests"
-"${PSQL_BASE[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/01_guarantees.sql"
+for t in "$HERE"/0[1-9]_*.sql; do
+  echo "    $(basename "$t")"
+  "${PSQL_BASE[@]}" -v ON_ERROR_STOP=1 -q -f "$t"
+done

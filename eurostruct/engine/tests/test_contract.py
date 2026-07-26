@@ -16,8 +16,8 @@ import pytest
 from pydantic import ValidationError
 
 from eurostruct_engine.exceptions import (
+    NationalAnnexIncomplete,
     OutOfValidationDomain,
-    UnverifiedNationalParameter,
 )
 from eurostruct_engine.schemas import (
     BeamSectionDrawingRequest,
@@ -32,6 +32,7 @@ BASE_PAYLOAD = {
     "element": "P1",
     "country": "BE",
     "strict_ndp": False,
+    "as_of": "2026-07-26",
     "section": {
         "b": {"value": 300, "unit": "mm"},
         "h": {"value": 600, "unit": "mm"},
@@ -113,13 +114,18 @@ def test_confirmed_extraction_is_accepted_and_recorded() -> None:
     assert d_step.provenance.confirmed_by == "ing. A. Dupont"
 
 
-def test_strict_mode_refusal_maps_to_a_typed_error() -> None:
+def test_strict_mode_refusal_carries_the_whole_blocker_list() -> None:
+    """TICKET 1.3: one refusal, every parameter to fix, ready for the UI."""
     payload = {**BASE_PAYLOAD, "strict_ndp": True}
-    with pytest.raises(UnverifiedNationalParameter) as e:
+    with pytest.raises(NationalAnnexIncomplete) as e:
         run_ec2_beam_flexure(Ec2BeamFlexureRequest.model_validate(payload))
     dto = error_of(e.value)
-    assert dto.error == "unverified_national_parameter"
-    assert "EC2." in dto.what
+    assert dto.error == "national_annex_incomplete"
+    assert dto.preflight is not None
+    assert dto.preflight.ok is False
+    assert len(dto.preflight.blocking) == 8
+    assert {b.reason for b in dto.preflight.blocking} == {"pending_verification"}
+    assert all(b.key.startswith("EN 1992-1-1:") for b in dto.preflight.blocking)
 
 
 def test_out_of_domain_refusal_maps_to_a_typed_error() -> None:
@@ -139,7 +145,9 @@ def test_journal_crosses_the_boundary_intact() -> None:
     assert fcd.clause is not None
     assert fcd.clause.cite == "EN 1992-1-1 §3.1.6(1)P, eq. (3.15)"
     assert fcd.latex and fcd.numeric
-    assert set(fcd.depends_on) == {"f_ck", "EC2.alpha_cc", "EC2.gamma_C.persistent"}
+    assert set(fcd.depends_on) == {
+        "f_ck", "EN 1992-1-1:alpha_cc", "EN 1992-1-1:gamma_C_persistent",
+    }
 
 
 def test_drawing_contract() -> None:

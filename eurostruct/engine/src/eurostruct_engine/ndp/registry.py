@@ -1,246 +1,482 @@
-"""Nationally Determined Parameters (NDP) registry.
+"""Loading and resolution of national parameters.
 
-Cahier des charges section 4.2, and interdictions 2 and 3:
+TICKET 1.2 — the engine loads the parameter set for the project's country and
+reference date, and **refuses to guess** a missing National Annex.
 
-    "Les Eurocodes sont un tronc commun ; les parametres determines
-     nationalement changent les resultats. Ils doivent etre stockes en base de
-     donnees parametrable, jamais codes en dur."
+TICKET 1.3 — before any calculation runs, :meth:`ParameterSet.preflight` checks
+every parameter the module declares it needs and reports **all** blockers at
+once, not just the first one encountered. A user should not have to fix one
+parameter, re-run, and discover the next.
 
-    "Ne jamais inventer une valeur non tracee a une source."
-    "Ne jamais appliquer un Eurocode sans son Annexe Nationale, ou supposer une
-     AN par defaut."
-
-Honesty model
--------------
-Each parameter carries a :class:`NdpStatus` that says how much the value can be
-trusted:
-
-``EN_RECOMMENDED``
-    The value printed in the Note of the Eurocode clause itself. Verifiable by
-    anyone holding EN 1992-1-1. Safe to use for study work, but it is *not*
-    necessarily what the country adopted.
-
-``NA_CONFIRMED``
-    The value has been read in the published National Annex by a named engineer
-    and recorded with the document reference and the date. Only this status is
-    acceptable for a signed deliverable.
-
-``NA_PENDING_VERIFICATION``
-    A value believed to apply in the country but not yet checked against the
-    published National Annex.
-
-The engine refuses to run in ``strict`` mode on anything other than
-``NA_CONFIRMED``. That refusal is the mechanism which prevents the product from
-shipping a note de calcul built on an assumed National Annex.
-
-The JSON files in ``data/`` are the source of truth for the seed of the
-``national_annex_parameters`` table; the database is authoritative at runtime,
-and these files are what is loaded into it.
+The JSON files under ``data/`` are the source of truth for the seed of the
+``national_annex_parameters`` table. The database is authoritative at runtime;
+these files are what gets loaded into it (``db/seed/generate_ndp_seed.py``).
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from enum import Enum
+from dataclasses import dataclass, field
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Iterable, Sequence
 
-from ..exceptions import UnverifiedNationalParameter
+from ..exceptions import (
+    DeprecatedNationalParameter,
+    NationalAnnexIncomplete,
+    UnverifiedNationalParameter,
+)
 from ..traceability import Clause, Journal, Provenance
 from ..units import Q_, Quantity
+from .model import (
+    CountryRegistry,
+    NationalAnnex,
+    NationalParameter,
+    RegulatoryFramework,
+    SourceType,
+    ValidationStatus,
+)
 
-__all__ = ["NdpStatus", "NdpValue", "ParameterSet", "load_parameter_set", "available_countries"]
+__all__ = [
+    "ParameterSet",
+    "BlockingParameter",
+    "PreflightReport",
+    "load_country_registry",
+    "load_parameter_set",
+    "available_countries",
+]
 
 _DATA_DIR: Final[Path] = Path(__file__).parent / "data"
 
 
-class NdpStatus(str, Enum):
-    EN_RECOMMENDED = "en_recommended"
-    NA_CONFIRMED = "na_confirmed"
-    NA_PENDING_VERIFICATION = "na_pending_verification"
-
-
+# ---------------------------------------------------------------------------
+# Preflight
+# ---------------------------------------------------------------------------
 @dataclass(frozen=True, slots=True)
-class NdpValue:
-    """One nationally determined parameter."""
+class BlockingParameter:
+    """One reason a calculation cannot proceed."""
 
     key: str
-    value: float
-    unit: str
-    status: NdpStatus
+    reason: str          # annex_missing | missing | pending_verification | deprecated
+    detail: str
     standard: str
-    clause: str
-    description: str
-    source: str
-    #: EN recommended value, kept alongside so the note de calcul can show the
-    #: national value *and* what it departs from.
-    en_recommended: float | None = None
-    confirmed_by: str | None = None
-    confirmed_at: str | None = None
+    parameter_name: str
+    national_annex_reference: str | None = None
+    clause: str | None = None
 
-    def as_quantity(self) -> Quantity:
-        return Q_(self.value, self.unit)
-
-    def to_clause(self) -> Clause:
-        note = f"{self.source} [{self.status.value}]"
-        if self.en_recommended is not None and self.en_recommended != self.value:
-            note += f" (valeur recommandee EN: {self.en_recommended})"
-        return Clause(
-            standard=self.standard,
-            clause=self.clause,
-            equation=None,
-            national_note=note,
-        )
-
-
-@dataclass(frozen=True)
-class ParameterSet:
-    """The set of NDPs applicable to one country/region, at one version.
-
-    Frozen into the calculation and printed in the note de calcul together with
-    its version and date, per cahier des charges section 4.2.
-    """
-
-    country: str
-    region: str | None
-    version: str
-    published_at: str
-    description: str
-    values: dict[str, NdpValue]
-    strict: bool = True
-
-    def with_strict(self, strict: bool) -> "ParameterSet":
-        """Return the same set with a different strictness.
-
-        ``strict=False`` is for exploratory / pre-design work and must never be
-        used to produce a signed deliverable.
-        """
-        return ParameterSet(
-            country=self.country,
-            region=self.region,
-            version=self.version,
-            published_at=self.published_at,
-            description=self.description,
-            values=self.values,
-            strict=strict,
-        )
-
-    def get(self, key: str, journal: Journal | None = None) -> Quantity:
-        """Fetch a parameter, recording its provenance in *journal*.
-
-        :raises KeyError: if the parameter is not defined for this country. The
-            engine never falls back to the EN recommended value silently: a
-            missing NDP is a data gap that must be filled, not guessed.
-        :raises UnverifiedNationalParameter: in strict mode, if the value has
-            not been confirmed against the published National Annex.
-        """
-        try:
-            ndp = self.values[key]
-        except KeyError:
-            raise KeyError(
-                f"NDP '{key}' non defini pour le pays '{self.country}'"
-                f"{f'/{self.region}' if self.region else ''}. "
-                "Aucune valeur par defaut n'est substituee: renseigner ce "
-                "parametre dans le jeu de NDP avant de calculer."
-            ) from None
-
-        if self.strict and ndp.status is not NdpStatus.NA_CONFIRMED:
-            raise UnverifiedNationalParameter(key, self.country, ndp.status.value)
-
-        q = ndp.as_quantity()
-        if journal is not None and key not in journal._index:  # noqa: SLF001
-            journal.input(
-                symbol=key,
-                description=ndp.description,
-                value=q,
-                provenance=Provenance.national_annex(key, ndp.source),
-                clause=ndp.to_clause(),
-            )
-        return q
-
-    def unverified_keys(self) -> list[str]:
-        """Keys not yet confirmed against the published National Annex."""
-        return sorted(
-            k for k, v in self.values.items() if v.status is not NdpStatus.NA_CONFIRMED
-        )
-
-    def summary(self) -> dict[str, Any]:
-        """What the note de calcul prints in its 'referentiel applique' section."""
+    def to_dict(self) -> dict[str, Any]:
         return {
-            "country": self.country,
-            "region": self.region,
-            "version": self.version,
-            "published_at": self.published_at,
-            "description": self.description,
-            "strict": self.strict,
-            "unverified": self.unverified_keys(),
-            "parameters": {
-                k: {
-                    "value": v.value,
-                    "unit": v.unit,
-                    "status": v.status.value,
-                    "clause": f"{v.standard} {v.clause}",
-                    "source": v.source,
-                    "en_recommended": v.en_recommended,
-                }
-                for k, v in sorted(self.values.items())
-            },
+            "key": self.key,
+            "reason": self.reason,
+            "detail": self.detail,
+            "standard": self.standard,
+            "parameter_name": self.parameter_name,
+            "national_annex_reference": self.national_annex_reference,
+            "clause": self.clause,
         }
 
 
+@dataclass(frozen=True, slots=True)
+class PreflightReport:
+    """Result of checking every parameter a calculation needs, before running.
+
+    Designed to be read by a person *and* parsed by CI: :meth:`to_dict` gives
+    the machine form, :meth:`render` the human one.
+    """
+
+    country_code: str
+    as_of: date
+    strict: bool
+    required: tuple[str, ...]
+    blocking: tuple[BlockingParameter, ...]
+
+    @property
+    def ok(self) -> bool:
+        return not self.blocking
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "country_code": self.country_code,
+            "as_of": self.as_of.isoformat(),
+            "strict": self.strict,
+            "ok": self.ok,
+            "required": list(self.required),
+            "blocking": [b.to_dict() for b in self.blocking],
+        }
+
+    def render(self) -> str:
+        """Human-readable summary, one line per blocking parameter."""
+        if self.ok:
+            return (
+                f"Prevol OK — {len(self.required)} parametre(s) national(aux) "
+                f"disponible(s) pour {self.country_code} au {self.as_of.isoformat()}."
+            )
+        lines = [
+            f"Calcul impossible pour {self.country_code} au {self.as_of.isoformat()}: "
+            f"{len(self.blocking)} parametre(s) national(aux) bloquant(s) "
+            f"sur {len(self.required)} requis.",
+            "",
+        ]
+        by_reason: dict[str, list[BlockingParameter]] = {}
+        for b in self.blocking:
+            by_reason.setdefault(b.reason, []).append(b)
+
+        labels = {
+            "annex_missing": "Annexe Nationale absente du referentiel",
+            "missing": "Parametre absent de l'Annexe Nationale chargee",
+            "pending_verification": "Valeur non relevee dans l'annexe publiee",
+            "deprecated": "Valeur obsolete, remplacee",
+        }
+        for reason in sorted(by_reason):
+            lines.append(f"  [{reason}] {labels.get(reason, reason)}")
+            for b in sorted(by_reason[reason], key=lambda x: x.key):
+                ref = f" — {b.national_annex_reference}" if b.national_annex_reference else ""
+                clause = f" ({b.clause})" if b.clause else ""
+                lines.append(f"    - {b.key}{clause}{ref}")
+            lines.append("")
+        lines.append(
+            "Action: faire relever chaque valeur dans l'Annexe Nationale publiee "
+            "par un ingenieur habilite, puis passer le parametre au statut "
+            "'confirmed' avec verified_by et verified_at."
+        )
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Parameter set
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class ParameterSet:
+    """The national parameters applicable to one project.
+
+    Bound to a country, a region, and the project's reference date, so that a
+    calculation is reproducible years later even after a newer edition of the
+    annex has been published.
+    """
+
+    registry: CountryRegistry
+    region: str | None
+    as_of: date
+    strict: bool = True
+
+    # --- resolution -------------------------------------------------------
+    def _split(self, key: str) -> tuple[str, str]:
+        if ":" not in key:
+            raise KeyError(
+                f"cle de parametre invalide: '{key}'. "
+                "Format attendu: 'EN 1992-1-1:alpha_cc'."
+            )
+        standard, name = key.split(":", 1)
+        return standard, name
+
+    def find(self, key: str) -> NationalParameter | None:
+        """The parameter record in force for *key*, or ``None``."""
+        standard, name = self._split(key)
+        annex = self.registry.annex_for(standard, self.as_of)
+        if annex is None:
+            return None
+        for p in annex.parameters:
+            if p.parameter_name == name and p.is_in_force(self.as_of):
+                return p
+        return None
+
+    def annex_for_key(self, key: str) -> NationalAnnex | None:
+        standard, _ = self._split(key)
+        return self.registry.annex_for(standard, self.as_of)
+
+    # --- preflight (TICKET 1.3) ------------------------------------------
+    def preflight(self, required: Sequence[str]) -> PreflightReport:
+        """Check every parameter a calculation needs, reporting all blockers.
+
+        Called before the calculation starts, so the user gets the complete
+        list in one pass.
+        """
+        blocking: list[BlockingParameter] = []
+        for key in required:
+            standard, name = self._split(key)
+            annex = self.registry.annex_for(standard, self.as_of)
+
+            if annex is None:
+                blocking.append(
+                    BlockingParameter(
+                        key=key,
+                        reason="annex_missing",
+                        detail=(
+                            f"aucune Annexe Nationale {standard} en vigueur pour "
+                            f"{self.registry.country_code} au {self.as_of.isoformat()}. "
+                            "Le moteur ne substitue pas l'annexe d'un autre pays ni "
+                            "d'une autre edition."
+                        ),
+                        standard=standard,
+                        parameter_name=name,
+                    )
+                )
+                continue
+
+            p = self.find(key)
+            if p is None:
+                blocking.append(
+                    BlockingParameter(
+                        key=key,
+                        reason="missing",
+                        detail=(
+                            f"le parametre '{name}' n'est pas renseigne dans "
+                            f"{annex.reference} ({annex.edition}). Aucune valeur par "
+                            "defaut n'est substituee."
+                        ),
+                        standard=standard,
+                        parameter_name=name,
+                        national_annex_reference=annex.reference,
+                    )
+                )
+                continue
+
+            if p.validation_status is ValidationStatus.DEPRECATED:
+                blocking.append(
+                    BlockingParameter(
+                        key=key, reason="deprecated",
+                        detail=p.notes or "valeur marquee obsolete",
+                        standard=standard, parameter_name=name,
+                        national_annex_reference=annex.reference, clause=p.clause,
+                    )
+                )
+                continue
+
+            if self.strict and not p.usable_in_strict_mode:
+                blocking.append(
+                    BlockingParameter(
+                        key=key, reason="pending_verification",
+                        detail=(
+                            f"valeur {p.parameter_value} {p.unit} non relevee dans "
+                            f"{p.national_annex_reference}. Statut: "
+                            f"{p.validation_status.value}."
+                        ),
+                        standard=standard, parameter_name=name,
+                        national_annex_reference=annex.reference, clause=p.clause,
+                    )
+                )
+
+        return PreflightReport(
+            country_code=self.registry.country_code,
+            as_of=self.as_of,
+            strict=self.strict,
+            required=tuple(required),
+            blocking=tuple(blocking),
+        )
+
+    def require(self, required: Sequence[str]) -> None:
+        """Preflight, raising :class:`NationalAnnexIncomplete` if anything blocks."""
+        report = self.preflight(required)
+        if not report.ok:
+            raise NationalAnnexIncomplete(report)
+
+    # --- access -----------------------------------------------------------
+    def get(self, key: str, journal: Journal | None = None) -> Quantity:
+        """Fetch a parameter, recording its provenance in *journal*.
+
+        Prefer calling :meth:`require` once up front: this method raises on the
+        first problem it meets, which is the right behaviour for a single
+        lookup but a poor experience as a discovery mechanism.
+        """
+        p = self.find(key)
+        if p is None:
+            annex = self.annex_for_key(key)
+            standard, name = self._split(key)
+            if annex is None:
+                raise KeyError(
+                    f"aucune Annexe Nationale {standard} en vigueur pour "
+                    f"'{self.registry.country_code}' au {self.as_of.isoformat()}. "
+                    "Le moteur ne devine pas une annexe absente."
+                )
+            raise KeyError(
+                f"parametre '{name}' absent de {annex.reference} ({annex.edition}). "
+                "Aucune valeur par defaut n'est substituee: renseigner ce parametre "
+                "avant de calculer."
+            )
+
+        if p.validation_status is ValidationStatus.DEPRECATED:
+            raise DeprecatedNationalParameter(key, p.notes)
+
+        if self.strict and not p.usable_in_strict_mode:
+            raise UnverifiedNationalParameter(
+                key, self.registry.country_code, p.validation_status.value
+            )
+
+        q = Q_(p.parameter_value, p.unit)
+        if journal is not None and key not in journal._index:  # noqa: SLF001
+            journal.input(
+                symbol=key,
+                description=p.description,
+                value=q,
+                provenance=Provenance.national_annex(key, _provenance_detail(p)),
+                clause=_clause_of(p),
+            )
+        return q
+
+    # --- reporting --------------------------------------------------------
+    def keys(self) -> tuple[str, ...]:
+        out: list[str] = []
+        for a in self.registry.annexes:
+            if a.is_in_force(self.as_of):
+                out.extend(p.key for p in a.parameters if p.is_in_force(self.as_of))
+        return tuple(sorted(out))
+
+    def unverified_keys(self) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                k for k in self.keys()
+                if (p := self.find(k)) is not None and not p.usable_in_strict_mode
+            )
+        )
+
+    def with_strict(self, strict: bool) -> "ParameterSet":
+        return ParameterSet(self.registry, self.region, self.as_of, strict)
+
+    def summary(self) -> dict[str, Any]:
+        """What the note de calcul prints in 'referentiel applique'."""
+        annexes = [a.to_dict() for a in self.registry.annexes if a.is_in_force(self.as_of)]
+        params: dict[str, Any] = {}
+        for k in self.keys():
+            p = self.find(k)
+            if p is not None:
+                params[k] = p.to_dict()
+        return {
+            "country": self.registry.country_code,
+            "country_name": self.registry.country_name,
+            "region": self.region,
+            "as_of": self.as_of.isoformat(),
+            "strict": self.strict,
+            "regulatory_framework": self.registry.regulatory_framework.to_dict(),
+            "annexes": annexes,
+            "unverified": list(self.unverified_keys()),
+            "parameters": params,
+        }
+
+
+def _clause_of(p: NationalParameter) -> Clause:
+    note = (
+        f"{p.national_annex_reference} ed. {p.edition} "
+        f"[{p.validation_status.value}]"
+    )
+    if p.en_recommended is not None and p.en_recommended != p.parameter_value:
+        note += f" (valeur recommandee EN: {p.en_recommended})"
+    return Clause(
+        standard=p.standard, clause=p.clause, equation=None, national_note=note
+    )
+
+
+def _provenance_detail(p: NationalParameter) -> str:
+    parts = [p.national_annex_reference, f"ed. {p.edition}", p.source_official]
+    if p.source_url_or_doc_id:
+        parts.append(p.source_url_or_doc_id)
+    if p.verified_by:
+        parts.append(f"releve par {p.verified_by} le {p.verified_at}")
+    return " · ".join(x for x in parts if x)
+
+
+# ---------------------------------------------------------------------------
+# Loading
+# ---------------------------------------------------------------------------
 def available_countries() -> list[str]:
     return sorted(p.stem.upper() for p in _DATA_DIR.glob("*.json"))
 
 
+def _as_date(value: str | None) -> date | None:
+    return date.fromisoformat(value) if value else None
+
+
 @lru_cache(maxsize=None)
-def _load_raw(country: str) -> dict[str, Any]:
+def load_country_registry(country: str) -> CountryRegistry:
+    """Load every National Annex known for *country*."""
     path = _DATA_DIR / f"{country.lower()}.json"
     if not path.exists():
         raise KeyError(
-            f"aucun jeu de NDP pour le pays '{country}'. "
+            f"aucun referentiel national pour le pays '{country}'. "
             f"Pays disponibles: {', '.join(available_countries()) or 'aucun'}."
         )
-    return json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8"))
+
+    annexes: list[NationalAnnex] = []
+    for a in raw["annexes"]:
+        eff_from = date.fromisoformat(a["effective_from"])
+        eff_to = _as_date(a.get("effective_to"))
+        params = tuple(
+            NationalParameter(
+                country_code=raw["country_code"],
+                standard_family=a["standard_family"],
+                part=a["part"],
+                national_annex_reference=a["reference"],
+                edition=a["edition"],
+                effective_from=_as_date(item.get("effective_from")) or eff_from,
+                effective_to=_as_date(item.get("effective_to")) or eff_to,
+                parameter_name=name,
+                parameter_value=float(item["parameter_value"]),
+                unit=item.get("unit", "dimensionless"),
+                source_official=item.get("source_official", a["source_official"]),
+                source_url_or_doc_id=item.get(
+                    "source_url_or_doc_id", a.get("source_url_or_doc_id")
+                ),
+                source_type=SourceType(item.get("source_type", "national_annex")),
+                validation_status=ValidationStatus(item["validation_status"]),
+                verified_at=item.get("verified_at"),
+                verified_by=item.get("verified_by"),
+                notes=item.get("notes"),
+                clause=item["clause"],
+                description=item["description"],
+                en_recommended=item.get("en_recommended"),
+            )
+            for name, item in sorted(a["parameters"].items())
+        )
+        annexes.append(
+            NationalAnnex(
+                country_code=raw["country_code"],
+                standard_family=a["standard_family"],
+                part=a["part"],
+                reference=a["reference"],
+                edition=a["edition"],
+                effective_from=eff_from,
+                effective_to=eff_to,
+                source_official=a["source_official"],
+                source_url_or_doc_id=a.get("source_url_or_doc_id"),
+                parameters=params,
+            )
+        )
+
+    rf = raw["regulatory_framework"]
+    return CountryRegistry(
+        country_code=raw["country_code"],
+        country_name=raw["country_name"],
+        regulatory_framework=RegulatoryFramework(
+            binding_reference=rf["binding_reference"],
+            eurocode_status=rf["eurocode_status"],
+            verification_regime=rf["verification_regime"],
+            notes=tuple(rf.get("notes", [])),
+        ),
+        annexes=tuple(annexes),
+        regions=tuple(raw.get("regions", [])),
+    )
 
 
 def load_parameter_set(
     country: str,
     region: str | None = None,
     strict: bool = True,
+    as_of: date | None = None,
 ) -> ParameterSet:
-    """Load the NDP set for *country*.
+    """Load the parameters applicable to a project.
 
-    :param country: ISO 3166-1 alpha-2, e.g. ``"BE"``, ``"FR"``.
-    :param region: sub-national region where it changes the parameters
-        (Wallonie / Vlaanderen / Bruxelles, Land, Comunidad autonoma).
-    :param strict: when True (the default), reading a parameter that has not
-        been confirmed against the published National Annex raises.
+    :param country: ISO 3166-1 alpha-2 — ``BE``, ``FR``, ``ES``, ``DE``.
+    :param region: sub-national region where it changes the parameters.
+    :param strict: when True (the default), an unconfirmed value blocks.
+    :param as_of: the project's reference date, used to select the edition of
+        the annex in force. Defaults to today. Pin it explicitly on a real
+        project so the calculation stays reproducible after a new edition is
+        published.
     """
-    raw = _load_raw(country.upper())
-    values = {
-        key: NdpValue(
-            key=key,
-            value=float(item["value"]),
-            unit=item.get("unit", "dimensionless"),
-            status=NdpStatus(item["status"]),
-            standard=item["standard"],
-            clause=item["clause"],
-            description=item["description"],
-            source=item["source"],
-            en_recommended=item.get("en_recommended"),
-            confirmed_by=item.get("confirmed_by"),
-            confirmed_at=item.get("confirmed_at"),
-        )
-        for key, item in raw["parameters"].items()
-    }
     return ParameterSet(
-        country=raw["country"],
+        registry=load_country_registry(country.upper()),
         region=region,
-        version=raw["version"],
-        published_at=raw["published_at"],
-        description=raw["description"],
-        values=values,
+        as_of=as_of or date.today(),
         strict=strict,
     )

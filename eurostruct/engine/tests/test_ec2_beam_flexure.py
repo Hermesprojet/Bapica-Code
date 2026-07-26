@@ -234,5 +234,5 @@ def test_accidental_situation_uses_its_own_partial_factors(params_be) -> None:
     persistent = _design(params_be, situation=DesignSituation.PERSISTENT)
     accidental = _design(params_be, situation=DesignSituation.ACCIDENTAL)
     assert accidental.As_strength < persistent.As_strength
-    assert "EC2.gamma_C.accidental" in accidental.journal.symbols()
-    assert "EC2.gamma_C.persistent" in persistent.journal.symbols()
+    assert "EN 1992-1-1:gamma_C_accidental" in accidental.journal.symbols()
+    assert "EN 1992-1-1:gamma_C_persistent" in persistent.journal.symbols()

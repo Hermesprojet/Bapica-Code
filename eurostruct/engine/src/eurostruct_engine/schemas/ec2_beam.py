@@ -60,6 +60,13 @@ class Ec2BeamFlexureRequest(Strict):
         description="Sub-national region where it changes the parameters "
         "(Wallonie / Vlaanderen / Bruxelles, Land, Comunidad autonoma).",
     )
+    as_of: str | None = Field(
+        default=None,
+        description="Project reference date (ISO 8601) used to select the edition "
+        "of the National Annex in force. Pin it on a real project so the "
+        "calculation stays reproducible after a newer edition is published. "
+        "Defaults to today.",
+    )
     strict_ndp: bool = Field(
         default=True,
         description="When true, an unverified National Annex parameter causes a "
