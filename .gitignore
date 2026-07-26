@@ -5,3 +5,9 @@ node_modules/
 *.log
 .vercel
 .env*
+
+# EUROSTRUCT
+.venv-eurostruct/
+__pycache__/
+*.egg-info/
+.pytest_cache/

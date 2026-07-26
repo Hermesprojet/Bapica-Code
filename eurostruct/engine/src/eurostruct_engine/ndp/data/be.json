@@ -1,0 +1,127 @@
+{
+  "country": "BE",
+  "version": "0.1.0-draft",
+  "published_at": "2026-07-26",
+  "description": "Belgique — Annexes Nationales NBN EN 199x-x-x ANB. JEU DE DONNEES NON VERIFIE: les valeurs ci-dessous sont les valeurs RECOMMANDEES par l'Eurocode, reportees ici comme point de depart. Chacune doit etre relevee dans l'ANB publiee par le NBN, puis passee au statut 'na_confirmed' par un ingenieur habilite, avant tout usage en production.",
+  "legal_context": {
+    "regions": ["Wallonie", "Vlaanderen", "Bruxelles-Capitale"],
+    "notes": [
+      "Permis d'urbanisme et reglementation energetique (PEB/EPB) regionalises.",
+      "Loi du 20/02/1939 sur la protection du titre et de la profession d'architecte.",
+      "Loi Peeters: assurance obligatoire de la responsabilite civile decennale.",
+      "Approche de calcul geotechnique EN 1997: A RELEVER dans l'ANB, ne pas supposer."
+    ]
+  },
+  "parameters": {
+    "EC2.gamma_C.persistent": {
+      "value": 1.5,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§2.4.2.4(1), Tab. 2.1N",
+      "description": "Coefficient partiel du beton — situations durables et transitoires",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 1.5
+    },
+    "EC2.gamma_S.persistent": {
+      "value": 1.15,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§2.4.2.4(1), Tab. 2.1N",
+      "description": "Coefficient partiel de l'acier de beton arme — situations durables et transitoires",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 1.15
+    },
+    "EC2.gamma_C.accidental": {
+      "value": 1.2,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§2.4.2.4(1), Tab. 2.1N",
+      "description": "Coefficient partiel du beton — situations accidentelles",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 1.2
+    },
+    "EC2.gamma_S.accidental": {
+      "value": 1.0,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§2.4.2.4(1), Tab. 2.1N",
+      "description": "Coefficient partiel de l'acier — situations accidentelles",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 1.0
+    },
+    "EC2.alpha_cc": {
+      "value": 1.0,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§3.1.6(1)P",
+      "description": "Coefficient tenant compte des effets de longue duree sur la resistance en compression (domaine EN: 0,8 a 1,0)",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 1.0
+    },
+    "EC2.alpha_ct": {
+      "value": 1.0,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§3.1.6(2)P",
+      "description": "Coefficient tenant compte des effets de longue duree sur la resistance en traction",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 1.0
+    },
+    "EC2.k1_redistribution": {
+      "value": 0.44,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§5.5(4)",
+      "description": "Coefficient k1 bornant xu/d pour la ductilite (fck <= 50 MPa)",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 0.44
+    },
+    "EC2.k2_redistribution": {
+      "value": 1.25,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§5.5(4)",
+      "description": "Coefficient k2 bornant xu/d pour la ductilite. Valeur recommandee EN: 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa). Au-dela de C50/60 ce parametre doit etre re-exprime.",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 1.25
+    },
+    "EC2.As_min_coeff": {
+      "value": 0.26,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§9.2.1.1(1), eq. (9.1N)",
+      "description": "Coefficient de la section minimale d'armature tendue: 0,26 fctm/fyk bt d",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 0.26
+    },
+    "EC2.As_min_floor": {
+      "value": 0.0013,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§9.2.1.1(1), eq. (9.1N)",
+      "description": "Plancher de la section minimale d'armature tendue: 0,0013 bt d",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 0.0013
+    },
+    "EC2.As_max_ratio": {
+      "value": 0.04,
+      "unit": "dimensionless",
+      "status": "na_pending_verification",
+      "standard": "EN 1992-1-1",
+      "clause": "§9.2.1.1(3)",
+      "description": "Section maximale d'armature tendue ou comprimee, hors zones de recouvrement: 0,04 Ac",
+      "source": "A relever dans NBN EN 1992-1-1 ANB",
+      "en_recommended": 0.04
+    }
+  }
+}

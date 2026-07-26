@@ -1,0 +1,100 @@
+name: EUROSTRUCT
+
+# Cahier des charges section 5.2:
+#   "le pipeline echoue si un seul test de validation normative regresse"
+#
+# Nothing here is allowed to be advisory. A golden test that drifts, a National
+# Annex parameter promoted without a named verifier, or a TypeScript contract
+# out of sync with the Pydantic models all fail the build.
+
+on:
+  push:
+    paths:
+      - 'eurostruct/**'
+      - '.github/workflows/eurostruct.yml'
+  pull_request:
+    paths:
+      - 'eurostruct/**'
+      - '.github/workflows/eurostruct.yml'
+
+defaults:
+  run:
+    working-directory: eurostruct
+
+jobs:
+  engine:
+    name: Moteur de calcul
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: pip install -e "engine[dev]"
+
+      - name: Tests
+        # -W error: a warning in a calculation engine is a defect, not noise.
+        run: cd engine && python -m pytest tests/ -q -W error
+
+      - name: Cas de reference normatifs
+        run: cd engine && python -m pytest tests/ -q -m reference
+
+      - name: Non-regression (golden)
+        run: cd engine && python -m pytest tests/ -q -m golden
+
+      - name: Proprietes (monotonie, limites, homogeneite)
+        run: cd engine && python -m pytest tests/ -q -m property
+
+      - name: Le contrat TypeScript est a jour
+        run: |
+          cd engine && python scripts/export_contracts.py
+          cd .. && git diff --exit-code -- packages/contracts \
+            || { echo "::error::Le contrat TypeScript est desynchronise des modeles Pydantic. Executer: cd engine && python scripts/export_contracts.py"; exit 1; }
+
+      - name: Le seed NDP est a jour
+        run: |
+          python db/seed/generate_ndp_seed.py > db/seed/0001_ndp.sql
+          git diff --exit-code -- db/seed/0001_ndp.sql \
+            || { echo "::error::Le seed NDP est desynchronise des JSON du moteur."; exit 1; }
+
+      - name: Aucune dependance IA ou reseau dans le moteur
+        # Interdiction 1: no path exists by which a language model could produce
+        # a number that lands in a note de calcul.
+        run: |
+          cd engine
+          if grep -riE '\b(openai|anthropic|langchain|requests|httpx|urllib3|aiohttp)\b' \
+               pyproject.toml src/ --include='*.py' --include='*.toml'; then
+            echo "::error::Le moteur deterministe ne doit avoir aucune dependance IA ni reseau."
+            exit 1
+          fi
+
+  schema:
+    name: Schema de donnees
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # NULLS NOT DISTINCT requires PostgreSQL >= 15.
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Migrations et garanties structurelles
+        # RLS tenant isolation, the human validation gate, immutability of
+        # signed records, the ten-year retention guard.
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGUSER: postgres
+        run: ./db/test/run.sh
