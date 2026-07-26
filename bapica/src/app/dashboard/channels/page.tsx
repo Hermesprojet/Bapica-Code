@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Check, Loader2, MessageCircle, Send, Facebook, AlertCircle, Copy } from 'lucide-react'
+import { WhatsAppEmbeddedButton } from '@/components/channels/whatsapp-embedded-button'
 
 type ChannelId = 'whatsapp' | 'telegram' | 'messenger'
 
@@ -20,20 +21,6 @@ const CHANNELS: {
   vars: string[]
   steps: string[]
 }[] = [
-  {
-    id: 'whatsapp',
-    label: 'WhatsApp (via Twilio)',
-    icon: MessageCircle,
-    color: 'text-[#25D366]',
-    vars: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_WHATSAPP_NUMBER'],
-    steps: [
-      'Voie simple, sans passer par Facebook Developers : on utilise Twilio.',
-      'Créez un compte sur twilio.com → Messaging → « Try it out → Send a WhatsApp message » (sandbox gratuit pour tester).',
-      'Récupérez Account SID + Auth Token (console Twilio) et le numéro WhatsApp Twilio (ex : whatsapp:+14155238886).',
-      'Ajoutez TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN et TWILIO_WHATSAPP_NUMBER dans Vercel, puis redéployez.',
-      'Dans Twilio (Sandbox settings / numéro), collez l\'URL de webhook ci-dessus dans « When a message comes in » (POST).',
-    ],
-  },
   {
     id: 'messenger',
     label: 'Messenger',
@@ -59,7 +46,52 @@ export default function ChannelsPage() {
   const [tgMsg, setTgMsg] = useState('')
   const [tgConn, setTgConn] = useState<{ connected: boolean; botUsername: string; needsSetup?: boolean } | null>(null)
 
+  // Connexion WhatsApp (via Twilio) — in-app, sans Vercel
+  const [waSid, setWaSid] = useState('')
+  const [waAuth, setWaAuth] = useState('')
+  const [waFrom, setWaFrom] = useState('')
+  const [waConnStatus, setWaConnStatus] = useState<'idle' | 'connecting' | 'ok' | 'err'>('idle')
+  const [waConnMsg, setWaConnMsg] = useState('')
+  const [waConn, setWaConn] = useState<{ connected: boolean; fromNumber: string; needsSetup?: boolean } | null>(null)
+
   const token = async () => (await supabase.auth.getSession()).data.session?.access_token || ''
+
+  const loadWhatsApp = async () => {
+    try {
+      const res = await fetch('/api/channels/whatsapp/connect', { headers: { Authorization: `Bearer ${await token()}` } })
+      if (res.ok) setWaConn(await res.json())
+    } catch { /* ignore */ }
+  }
+
+  const connectWhatsApp = async () => {
+    if (!waSid.trim() || !waAuth.trim() || !waFrom.trim() || waConnStatus === 'connecting') return
+    setWaConnStatus('connecting'); setWaConnMsg('')
+    try {
+      const res = await fetch('/api/channels/whatsapp/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ accountSid: waSid.trim(), authToken: waAuth.trim(), fromNumber: waFrom.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setWaConnStatus('ok'); setWaConnMsg('WhatsApp connecté. Collez l’URL de webhook ci-dessus dans Twilio, et c’est prêt.')
+        setWaSid(''); setWaAuth(''); setWaFrom('')
+        setWaConn({ connected: true, fromNumber: data.fromNumber })
+      } else {
+        setWaConnStatus('err'); setWaConnMsg(data.error || 'Échec de la connexion.')
+      }
+    } catch {
+      setWaConnStatus('err'); setWaConnMsg('Erreur de connexion.')
+    }
+  }
+
+  const disconnectWhatsApp = async () => {
+    setWaConnStatus('idle'); setWaConnMsg('')
+    try {
+      await fetch('/api/channels/whatsapp/connect', { method: 'DELETE', headers: { Authorization: `Bearer ${await token()}` } })
+    } catch { /* ignore */ }
+    setWaConn({ connected: false, fromNumber: '' })
+  }
 
   const loadTelegram = async () => {
     try {
@@ -133,6 +165,7 @@ export default function ChannelsPage() {
         /* ignore */
       }
       await loadTelegram()
+      await loadWhatsApp()
       setLoading(false)
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -178,6 +211,85 @@ export default function ChannelsPage() {
             <AlertCircle className="h-3.5 w-3.5" />
             Ajoutez la variable NEXT_PUBLIC_APP_URL dans Vercel pour que le webhook fonctionne.
           </p>
+        )}
+      </div>
+
+      {/* Connexion WhatsApp (via Twilio) — in-app, sans Vercel */}
+      <div className="card-elevated mb-6 p-5">
+        <div className="mb-1 flex items-center gap-2 text-sm font-semibold">
+          <MessageCircle className="h-4 w-4 text-[#25D366]" />
+          WhatsApp — connexion en 1 clic (via Twilio)
+        </div>
+
+        {waConn?.needsSetup ? (
+          <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-amber-600">
+            <AlertCircle className="h-3.5 w-3.5" />
+            Base non initialisée : exécutez <code className="rounded bg-muted px-1">supabase-schema.sql</code> dans Supabase, puis rechargez.
+          </p>
+        ) : waConn?.connected ? (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-1.5 text-sm text-green-600">
+              <Check className="h-4 w-4" />
+              WhatsApp connecté{waConn.fromNumber ? ` (${waConn.fromNumber})` : ''} — vos agents répondent via votre compte Twilio.
+            </span>
+            <button
+              onClick={disconnectWhatsApp}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
+            >
+              Déconnecter
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Option recommandée : Meta Embedded Signup — le client garde son numéro, sans Twilio */}
+            <div className="mb-4 rounded-xl border border-[#25D366]/30 bg-[#25D366]/5 p-4">
+              <div className="mb-1 text-sm font-medium">Recommandé — gardez votre propre numéro</div>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Connexion en 1 clic via Meta : une fenêtre s’ouvre, vous vous connectez à votre compte
+                WhatsApp Business, et c’est terminé. <span className="font-medium">Sans Twilio, sans installation.</span>
+              </p>
+              <WhatsAppEmbeddedButton onConnected={() => loadWhatsApp()} />
+            </div>
+
+            <div className="mb-3 text-xs font-medium text-muted-foreground">Ou, pour tester rapidement — via Twilio :</div>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Créez un compte gratuit sur <span className="font-medium">twilio.com</span> et activez WhatsApp
+              (Messaging → « Try it out »). Copiez votre <span className="font-medium">Account SID</span>,
+              votre <span className="font-medium">Auth Token</span> et votre <span className="font-medium">numéro WhatsApp</span>,
+              collez-les ici : Bapica valide et active la connexion. <span className="font-medium">Rien à installer, rien dans Vercel.</span>
+              &nbsp;Dernière étape : dans Twilio, collez l’URL de webhook ci-dessus dans « When a message comes in ».
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <input
+                type="text" value={waSid} onChange={(e) => setWaSid(e.target.value)}
+                placeholder="Account SID (AC…)"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <input
+                type="password" value={waAuth} onChange={(e) => setWaAuth(e.target.value)}
+                placeholder="Auth Token"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <input
+                type="tel" value={waFrom} onChange={(e) => setWaFrom(e.target.value)}
+                placeholder="Numéro WhatsApp (+14155238886)"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <button
+              onClick={connectWhatsApp}
+              disabled={!waSid.trim() || !waAuth.trim() || !waFrom.trim() || waConnStatus === 'connecting'}
+              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {waConnStatus === 'connecting' ? <><Loader2 className="h-4 w-4 animate-spin" /> Connexion…</> : <><MessageCircle className="h-4 w-4" /> Connecter WhatsApp</>}
+            </button>
+            {waConnMsg && (
+              <p className={`mt-2 inline-flex items-start gap-1.5 text-xs ${waConnStatus === 'ok' ? 'text-green-600' : 'text-destructive'}`}>
+                {waConnStatus === 'ok' ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+                <span className="break-words">{waConnMsg}</span>
+              </p>
+            )}
+          </>
         )}
       </div>
 
@@ -319,8 +431,9 @@ export default function ChannelsPage() {
       </div>
 
       <p className="mt-6 text-xs text-muted-foreground">
-        Les variables se configurent dans Vercel (Project Settings → Environment Variables), puis un
-        redéploiement active le canal. Cette page ne lit jamais la valeur des jetons, seulement leur présence.
+        WhatsApp et Telegram se connectent directement ici, sans rien installer ni toucher à Vercel.
+        Seul Messenger nécessite encore une configuration côté serveur. Vos identifiants sont stockés de
+        façon sécurisée et ne sont jamais réaffichés.
       </p>
     </div>
   )

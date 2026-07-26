@@ -20,10 +20,11 @@ function aspectRatio(ratio: string): '9:16' | '16:9' | '1:1' {
 }
 
 export interface EditSpec {
-  clips: { src: string; length?: number }[]  // clips vidéo à enchaîner (URLs)
+  clips: { src: string; length?: number; trim?: number }[]  // clips à enchaîner (URLs). trim = secondes à couper AU DÉBUT de la source (point d'entrée)
   soundtrack?: string                          // musique de fond (URL)
   voiceover?: string                           // voix off (URL) — mixée par-dessus
-  captions?: string[]                          // sous-titre par clip (optionnel)
+  captions?: string[]                          // sous-titre saisi, par clip (optionnel)
+  autoCaptions?: boolean                        // sous-titres AUTOMATIQUES (transcription de l'audio par Shotstack)
   ratio?: string                               // 9:16 | 16:9 | 1:1
 }
 
@@ -35,10 +36,14 @@ export async function startEdit(spec: EditSpec): Promise<{ renderId: string }> {
   if (clips.length === 0) throw new Error('Aucun clip à monter')
 
   // Piste vidéo : clips enchaînés (durée par défaut 5 s si non fournie).
+  // trim = point d'entrée (secondes coupées au début de la source) → permet de DÉCOUPER un segment.
   let cursor = 0
   const videoClips = clips.map((c) => {
     const length = Math.max(1, Number(c.length) || 5)
-    const clip = { asset: { type: 'video', src: c.src }, start: cursor, length, fit: 'cover' as const }
+    const trim = Number(c.trim) > 0 ? Number(c.trim) : undefined
+    const asset: Record<string, unknown> = { type: 'video', src: c.src }
+    if (trim) asset.trim = trim
+    const clip = { asset, start: cursor, length, fit: 'cover' as const }
     cursor += length
     return clip
   })
@@ -62,6 +67,16 @@ export async function startEdit(spec: EditSpec): Promise<{ renderId: string }> {
   }
 
   const tracks: any[] = []
+  // Sous-titres AUTOMATIQUES : Shotstack transcrit l'audio et incruste les sous-titres.
+  // Piste placée au-dessus de la vidéo. (Écrit à l'aveugle — schéma « caption » Shotstack.)
+  if (spec.autoCaptions && clips[0]?.src) {
+    tracks.push({
+      clips: [{
+        asset: { type: 'caption', src: clips[0].src, background: { color: '#000000', opacity: 0.5, padding: 12 } },
+        start: 0, length: total,
+      }],
+    })
+  }
   if (captionClips.length) tracks.push({ clips: captionClips })
   tracks.push({ clips: videoClips })
   if (spec.voiceover) tracks.push({ clips: [{ asset: { type: 'audio', src: spec.voiceover, volume: 1 }, start: 0, length: total }] })

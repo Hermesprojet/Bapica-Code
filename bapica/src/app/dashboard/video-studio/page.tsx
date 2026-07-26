@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Sparkles, Clapperboard, ArrowLeft, Wand2, MessagesSquare, ArrowRight } from 'lucide-react'
 import type { ProductionPackage } from '@/lib/video/maya'
 import { ProductionPackageView } from '@/components/agents/production-package'
+import { VideoEditPanel } from '@/components/agents/video-edit-panel'
 
 const PLATFORMS = ['TikTok', 'Reels', 'Shorts', 'YouTube', 'Pub Meta', 'VSL']
 const OBJECTIVES = ['Vente', 'Publicité', 'Storytelling', 'UGC', 'Formation']
@@ -188,6 +189,9 @@ export default function VideoStudioPage() {
 
       {/* Résultat : package de production */}
       {pkg && <div className="mt-8"><ProductionPackageView pkg={pkg} /></div>}
+
+      {/* Édition d'une vidéo existante : découper, sous-titrer, traduire */}
+      {phase === 'brief' && <div className="mt-8"><VideoEditPanel /></div>}
     </div>
   )
 }

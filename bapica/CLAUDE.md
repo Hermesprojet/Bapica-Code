@@ -243,10 +243,18 @@ Cohérence produit à vérifier dans les réponses des agents :
     route `POST /api/video/translate` (`start`/`status`).
 - **Montage/édition cloud** : `src/lib/video/editor.ts` (Shotstack : timeline → MP4, marche en
   serverless contrairement à FFmpeg) → route `POST /api/video/edit` (`start`/`status`). Clé
-  `SHOTSTACK_API_KEY` (`SHOTSTACK_ENV`='v1' par défaut). La route FFmpeg `/api/video/assemble`
-  reste (nécessite un hôte avec FFmpeg — Railway/Fly.io) mais Shotstack est la voie serverless.
+  `SHOTSTACK_API_KEY` (`SHOTSTACK_ENV`='v1' par défaut). `EditSpec` gère : enchaînement de clips,
+  **DÉCOUPE** (`clips[].trim` = point d'entrée en s + `length` = durée → garder un segment précis),
+  musique, voix off, sous-titres saisis (`captions`) et **SOUS-TITRES AUTOMATIQUES**
+  (`autoCaptions:true` → asset Shotstack `caption`, transcription incrustée — écrit à l'aveugle).
+  La route FFmpeg `/api/video/assemble` reste (nécessite un hôte avec FFmpeg) mais Shotstack est la voie serverless.
+- **Édition d'une vidéo existante (UI)** : encart « Éditer une vidéo existante » du Studio
+  (`src/components/agents/video-edit-panel.tsx`) — le client colle une URL de vidéo puis
+  **Découper** / **Sous-titrer auto** (`/api/video/edit`) ou **Traduire/doubler** (`/api/video/translate`),
+  avec suivi de statut et lien final. (Entrée par URL ; l'upload d'un fichier local reste à ajouter.)
 - UI : `dashboard/video-studio` (thème clair) — brief → `ProductionPackageView`
-  (`src/components/agents/production-package.tsx`), avec « Générer le clip » par scène + « Générer la voix off ».
+  (`src/components/agents/production-package.tsx`), avec « Générer le clip » par scène + « Générer la voix off »,
+  puis l'encart d'édition ci-dessus.
 
 ## 10quater. Connexions réseaux sociaux (publication)
 
@@ -306,11 +314,18 @@ Cohérence produit à vérifier dans les réponses des agents :
   Telegram (`TELEGRAM_BOT_TOKEN` + `setWebhook`), Messenger (`MESSENGER_PAGE_TOKEN`,
   `MESSENGER_VERIFY_TOKEN`), et `NEXT_PUBLIC_APP_URL` (le webhook rappelle `/api/demo-chat`).
 - Sans jetons : `sendWhatsApp/Telegram/Messenger` renvoient `false` proprement (pas de crash).
-- **WhatsApp via Twilio** (voie simplifiée, sans Meta Developers) : `TWILIO_ACCOUNT_SID`,
-  `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` (ex `whatsapp:+14155238886`, sandbox Twilio pour
-  tester). Le webhook détecte le POST **form-urlencoded** de Twilio et répond via l'API Twilio
-  (`handleTwilioWhatsApp` / `sendTwilioWhatsApp` dans `omnichannel.ts`, `metadata.via='twilio'`).
-  URL de webhook à coller dans Twilio (« When a message comes in », POST) = `<APP_URL>/api/webhooks/messaging`.
+- **WhatsApp via Twilio** (voie simplifiée, sans Meta Developers) : le webhook détecte le POST
+  **form-urlencoded** de Twilio et répond via l'API Twilio (`handleTwilioWhatsApp` /
+  `sendTwilioWhatsApp` dans `omnichannel.ts`, `metadata.via='twilio'`). URL de webhook à coller
+  dans Twilio (« When a message comes in », POST) = `<APP_URL>/api/webhooks/messaging`.
+  - **Connexion PAR CLIENT, dans l'app, SANS Vercel** (comme Telegram) : route
+    `POST/GET/DELETE /api/channels/whatsapp/connect` — le client colle **Account SID + Auth Token +
+    numéro** ; Bapica valide (appel API Twilio), stocke dans `channel_connections`
+    (`externalId = accountSid`). À la réception, le webhook résout le locataire via l'**`AccountSid`**
+    présent dans le POST Twilio → répond avec SES identifiants (`metadata.twSid/twAuth/twFrom`) et le
+    contexte de SON entreprise (`processMessageWithAgent(..., tenantUserId)`). UI : carte « WhatsApp —
+    connexion en 1 clic » dans `dashboard/channels`. Les variables globales `TWILIO_*` ne servent plus
+    que de repli mono-locataire (tests/sandbox) ; **le client n'a plus rien à mettre dans Vercel**.
 - **Hub multi-client Telegram** (chaque client = son propre bot, sans variable Vercel) :
   - Table `channel_connections` (`supabase-schema.sql`) : `{user_id, platform, credentials(jsonb),
     external_id, webhook_secret}`. Store service_role : `src/lib/channels/store.ts`
@@ -331,18 +346,22 @@ Cohérence produit à vérifier dans les réponses des agents :
     déjà extrait par `handleWhatsAppWebhook`) → `getChannelByExternal('whatsapp', phoneId)` →
     réponse avec le token du client + `replyForUser` (contexte de son entreprise).
     Repli mono-locataire conservé (variables globales) si non résolu.
-  - **Reste à faire — Embedded Signup** (décision produit : le client garde SON numéro, sans jamais
-    voir Facebook Developers) :
-    1. Prérequis business (côté utilisateur, délai de plusieurs jours) : compte **Meta Business** +
-       **vérification d'entreprise** + App Meta (type Business) avec produit **WhatsApp** +
-       configuration **Embedded Signup**.
-    2. Variables à obtenir puis mettre dans Vercel : `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`,
-       `WHATSAPP_CONFIG_ID`.
-    3. À coder ensuite : bouton « Connecter WhatsApp » (SDK JS Meta, popup `configuration_id`) →
-       renvoie un `code` → route d'échange côté serveur (code → token client, WABA id,
-       `phone_number_id`) → `saveChannel(userId, 'whatsapp', { credentials: { accessToken },
-       externalId: phone_number_id })` → abonner le numéro au webhook de l'app.
-       Dès cet enregistrement, la plomberie ci-dessus fonctionne sans autre changement.
+  - **Embedded Signup — CODE FAIT (dormant jusqu'aux démarches Meta)** : le client garde SON numéro,
+    sans Twilio ni Facebook Developers.
+    - **Front** : `src/components/channels/whatsapp-embedded-button.tsx` (bouton « Connecter avec
+      WhatsApp » dans la carte WhatsApp de `dashboard/channels`, option recommandée) charge le SDK
+      Meta, lance `FB.login` avec `config_id` + `response_type:'code'`, capte l'événement
+      `WA_EMBEDDED_SIGNUP` (phone_number_id, waba_id) et POST vers la route d'échange. Se dégrade
+      proprement (message « bientôt disponible ») si `NEXT_PUBLIC_FACEBOOK_APP_ID` /
+      `NEXT_PUBLIC_WHATSAPP_CONFIG_ID` absents.
+    - **Serveur** : `POST /api/channels/whatsapp/embedded` — échange `code` → token, abonne le WABA,
+      enregistre le numéro (Cloud API), `saveChannel(userId,'whatsapp',{credentials:{accessToken,
+      wabaId,phoneNumberId,via:'cloud'}, externalId: phone_number_id})`. Écrit à l'aveugle.
+      La plomberie de réception/envoi (résolution par `phone_number_id`) fonctionne alors sans autre changement.
+    - **Reste à faire côté Bapica (hors code, plusieurs jours)** : compte **Meta Business** +
+      **vérification d'entreprise** + App Meta avec **WhatsApp** + **Embedded Signup** + revue des
+      permissions `whatsapp_business_management`/`whatsapp_business_messaging`, puis renseigner
+      `NEXT_PUBLIC_FACEBOOK_APP_ID`, `NEXT_PUBLIC_WHATSAPP_CONFIG_ID`, `FACEBOOK_APP_SECRET` dans Vercel.
   - Alternative écartée pour l'instant : Twilio ISV / 360dialog Partner (même principe, autre
     fournisseur). Twilio reste branché en **mono-numéro** pour les tests (sandbox).
   - Diagnostic : `POST /api/channels/whatsapp/test` (Bearer) + bouton « Tester l'envoi WhatsApp »

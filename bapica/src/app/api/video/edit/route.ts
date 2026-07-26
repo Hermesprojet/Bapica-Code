@@ -19,10 +19,11 @@ export async function POST(req: NextRequest) {
   try {
     if (body.action === 'start') {
       const spec: EditSpec = {
-        clips: Array.isArray(body.clips) ? body.clips.map((c: any) => ({ src: String(c?.src || ''), length: c?.length ? Number(c.length) : undefined })) : [],
+        clips: Array.isArray(body.clips) ? body.clips.map((c: any) => ({ src: String(c?.src || ''), length: c?.length ? Number(c.length) : undefined, trim: c?.trim ? Number(c.trim) : undefined })) : [],
         soundtrack: body.soundtrack ? String(body.soundtrack) : undefined,
         voiceover: body.voiceover ? String(body.voiceover) : undefined,
         captions: Array.isArray(body.captions) ? body.captions.map(String) : undefined,
+        autoCaptions: body.autoCaptions === true,
         ratio: body.ratio ? String(body.ratio) : '9:16',
       }
       const r = await startEdit(spec)
