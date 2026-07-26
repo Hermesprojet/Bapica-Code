@@ -323,3 +323,28 @@ CREATE TABLE IF NOT EXISTS automations (
 );
 CREATE INDEX IF NOT EXISTS idx_automations_user ON automations(user_id, created_at DESC);
 ALTER TABLE automations ENABLE ROW LEVEL SECURITY;
+
+-- 14. Stockage des vidéos importées par le client (bucket public « media »).
+--     Upload DIRECT navigateur → Supabase Storage (contourne la limite ~4,5 Mo des routes
+--     Vercel). L'URL publique alimente ensuite Maya (découper / sous-titrer / traduire),
+--     car Shotstack/HeyGen doivent pouvoir télécharger la vidéo. Chemin : uploads/<user_id>/<fichier>.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('media', 'media', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- Lecture publique (nécessaire pour que Shotstack/HeyGen récupèrent le fichier).
+DROP POLICY IF EXISTS "media public read" ON storage.objects;
+CREATE POLICY "media public read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'media');
+
+-- Dépôt réservé à l'utilisateur connecté, dans SON dossier (uploads/<uid>/...).
+DROP POLICY IF EXISTS "media user upload" ON storage.objects;
+CREATE POLICY "media user upload" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'media' AND (storage.foldername(name))[1] = 'uploads' AND (storage.foldername(name))[2] = auth.uid()::text);
+
+-- Suppression de ses propres fichiers.
+DROP POLICY IF EXISTS "media user delete" ON storage.objects;
+CREATE POLICY "media user delete" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (bucket_id = 'media' AND (storage.foldername(name))[1] = 'uploads' AND (storage.foldername(name))[2] = auth.uid()::text);
