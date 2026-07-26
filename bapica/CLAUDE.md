@@ -243,10 +243,18 @@ Cohérence produit à vérifier dans les réponses des agents :
     route `POST /api/video/translate` (`start`/`status`).
 - **Montage/édition cloud** : `src/lib/video/editor.ts` (Shotstack : timeline → MP4, marche en
   serverless contrairement à FFmpeg) → route `POST /api/video/edit` (`start`/`status`). Clé
-  `SHOTSTACK_API_KEY` (`SHOTSTACK_ENV`='v1' par défaut). La route FFmpeg `/api/video/assemble`
-  reste (nécessite un hôte avec FFmpeg — Railway/Fly.io) mais Shotstack est la voie serverless.
+  `SHOTSTACK_API_KEY` (`SHOTSTACK_ENV`='v1' par défaut). `EditSpec` gère : enchaînement de clips,
+  **DÉCOUPE** (`clips[].trim` = point d'entrée en s + `length` = durée → garder un segment précis),
+  musique, voix off, sous-titres saisis (`captions`) et **SOUS-TITRES AUTOMATIQUES**
+  (`autoCaptions:true` → asset Shotstack `caption`, transcription incrustée — écrit à l'aveugle).
+  La route FFmpeg `/api/video/assemble` reste (nécessite un hôte avec FFmpeg) mais Shotstack est la voie serverless.
+- **Édition d'une vidéo existante (UI)** : encart « Éditer une vidéo existante » du Studio
+  (`src/components/agents/video-edit-panel.tsx`) — le client colle une URL de vidéo puis
+  **Découper** / **Sous-titrer auto** (`/api/video/edit`) ou **Traduire/doubler** (`/api/video/translate`),
+  avec suivi de statut et lien final. (Entrée par URL ; l'upload d'un fichier local reste à ajouter.)
 - UI : `dashboard/video-studio` (thème clair) — brief → `ProductionPackageView`
-  (`src/components/agents/production-package.tsx`), avec « Générer le clip » par scène + « Générer la voix off ».
+  (`src/components/agents/production-package.tsx`), avec « Générer le clip » par scène + « Générer la voix off »,
+  puis l'encart d'édition ci-dessus.
 
 ## 10quater. Connexions réseaux sociaux (publication)
 
