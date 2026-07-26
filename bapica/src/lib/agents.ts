@@ -64,7 +64,7 @@ const AGENTS: AgentConfig[] = [
     id: 'content',
     name: 'Créateur de Contenu',
     persona: 'Camille',
-    description: 'Plan de contenu mensuel, audit SEO (votre site et vos concurrents), articles optimisés, posts adaptés à chaque réseau, publication sur CMS (WordPress, Wix, Shopify) et réseaux sociaux.',
+    description: 'Plan de contenu mensuel, audit SEO et AEO/GEO (être cité par les IA : ChatGPT, Perplexity, Google AI Overviews), articles optimisés, posts adaptés à chaque réseau, publication sur CMS (WordPress, Wix, Shopify) et réseaux sociaux.',
     model: 'claude-haiku-4',
     temperature: 0.7,
     maxTokens: 2000,
