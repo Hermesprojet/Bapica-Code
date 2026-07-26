@@ -16,6 +16,11 @@
 | Homogénéité dimensionnelle (Pint) | ✅ | `test_units_and_traceability.py` |
 | Refus explicite hors domaine | ✅ | `test_ec2_beam_flexure.py`, section « Refusals » |
 | Taux de travail toujours affiché | ✅ | `Check` ne peut pas être construit sans `utilisation` |
+| Le moteur tourne hors ligne, réseau coupé | ✅ | `test_engine_isolation.py` — socket désactivé, calcul + DXF complets |
+| Arbre de dépendances sans IA ni HTTP | ✅ | `scripts/audit_engine_dependencies.py` — allowlist transitive + denylist + scan des imports différés |
+| Écart sur un cas de référence rejouable ⇒ CI rouge | ✅ | `scripts/run_reference_suite.py` |
+| Paramètre national non écrasable sans nouvelle version | ✅ | `db/test/02_ndp_versioning.sql` |
+| Préflight listant **tous** les bloquants d'un coup | ✅ | `test_ndp.py::test_preflight_report_is_readable_and_machine_parsable` |
 | Cloisonnement multi-tenant (RLS) | ✅ | `db/test/01_guarantees.sql`, test 1 |
 | Aucun livrable final sans validation nominative | ✅ | `db/test/01_guarantees.sql`, tests 2–4 |
 | Immuabilité des documents signés | ✅ | `db/test/01_guarantees.sql`, test 5 |
@@ -26,54 +31,92 @@
 
 **C'est le point bloquant principal.**
 
-Les jeux de NDP livrés (`engine/src/eurostruct_engine/ndp/data/*.json`) contiennent
-les **valeurs recommandées par l'Eurocode**, pas les valeurs des Annexes
-Nationales belge et française. Chaque paramètre porte le statut
-`na_pending_verification`.
+Les jeux de NDP livrés (`engine/src/eurostruct_engine/ndp/data/*.json`)
+contiennent les **valeurs recommandées par l'Eurocode**, pas celles des Annexes
+Nationales. Les 4 pays × 22 paramètres portent tous le statut
+`pending_verification`, et l'édition de chaque annexe est `NON RELEVE`.
 
-Conséquence voulue : **le moteur refuse de calculer en mode strict**, qui est le
-mode par défaut. Un calcul destiné à un livrable signé échoue avec
-`UnverifiedNationalParameter` tant qu'un ingénieur n'a pas relevé la valeur dans
-l'annexe publiée.
+Conséquence voulue : **le moteur refuse de calculer en mode strict**, le mode
+par défaut. Le préflight rend la liste complète des bloquants en un passage :
+
+```
+Calcul impossible pour BE au 2026-07-26: 8 parametre(s) bloquant(s) sur 8 requis.
+  [pending_verification] Valeur non relevee dans l'annexe publiee
+    - EN 1992-1-1:alpha_cc (§3.1.6(1)P) — NBN EN 1992-1-1 ANB
+    - EN 1992-1-1:gamma_C_persistent (§2.4.2.4(1), Tab. 2.1N) — NBN EN 1992-1-1 ANB
+    ...
+```
 
 Pour lever le blocage, paramètre par paramètre :
 
-1. Ouvrir l'Annexe Nationale publiée (NBN EN 1992-1-1 ANB, NF EN 1992-1-1/NA).
-2. Relever la valeur à la clause indiquée.
-3. Mettre à jour le JSON : valeur, `status: "na_confirmed"`, `confirmed_by`,
-   `confirmed_at`.
+1. Ouvrir l'Annexe Nationale publiée (NBN EN 1992-1-1 ANB, NF EN 1992-1-1/NA,
+   UNE-EN 1992-1-1 AN, DIN EN 1992-1-1/NA).
+2. Relever l'**édition** et la date d'entrée en vigueur, puis la valeur à la
+   clause indiquée.
+3. Mettre à jour le JSON : `parameter_value`, `source_type: "national_annex"`,
+   `validation_status: "confirmed"`, `verified_by`, `verified_at`.
 4. Régénérer le seed : `python db/seed/generate_ndp_seed.py > db/seed/0001_ndp.sql`.
 
-Le schéma refuse un `na_confirmed` sans vérificateur nommé ni date
-(contrainte `confirmed_ndp_needs_a_verifier`), et un test le vérifie.
+Trois garde-fous, tous vérifiés contre PostgreSQL :
 
-> ⚠️ Ne jamais promouvoir un paramètre en `na_confirmed` sans avoir eu l'annexe
-> sous les yeux. C'est exactement l'interdiction n°3 du cahier des charges.
+- un `confirmed` sans vérificateur nommé, sans date, ou dont la source reste
+  `en_recommended` est **refusé** (`confirmed_ndp_is_signed`) ;
+- une valeur publiée ne peut pas être **écrasée** : la corriger exige de clore
+  la version courante (`effective_to`) et d'en insérer une nouvelle ;
+- une valeur déjà confirmée ne peut pas être **déclassée** en place.
 
-### 2.2 Aucun cas de référence publié n'est encore intégré ⛔
+> ⚠️ Ne jamais passer un paramètre en `confirmed` sans avoir eu l'annexe sous
+> les yeux. C'est exactement l'interdiction n°3 du cahier des charges.
+
+**Attention Espagne** (interdiction 4) : même une fois l'annexe UNE-EN relevée,
+le référentiel réglementairement opposable reste le **Código Estructural
+(RD 470/2021)**, le **CTE** et **NCSE-02**. Le registre le déclare
+explicitement et la note de calcul l'imprime.
+
+### 2.2 Aucun cas de référence *publié* n'est intégré ⛔
 
 Le cahier des charges (§8.2) exige la validation contre des exemples publiés :
 guides des Eurocodes, *Designers' Guides* ICE, *Bautabellen* Schneider,
 *Prontuario* espagnol, publications CSTB/Cerema, notes du CSTC/WTCB.
 
-**Aucun de ces exemples n'est présent dans la suite de tests**, parce que les
-reproduire exige de disposer des ouvrages et d'en recopier les données
-d'entrée et les résultats attendus. Inventer une référence aurait été pire que
-son absence.
+**Aucun de ces exemples n'est présent**, parce que les reproduire exige de
+disposer des ouvrages. Inventer une référence aurait été pire que son absence :
+le cas serait vert sans rien prouver.
 
-Ce qui existe à la place, et qui est réel :
+La bibliothèque de cas (EPIC 2) rend cette lacune **visible et suivie** plutôt
+que silencieuse :
 
-- un **calcul manuel** entièrement détaillé et reproductible
-  (`test_hand_calculation_case`) ;
-- une **vérification indépendante par intégration numérique** de l'équilibre de
-  la section (`test_independent_equilibrium`) — elle ne réutilise pas
-  l'inversion en forme fermée du module, et échouerait si l'algèbre était
-  fausse ;
-- la comparaison au **Tableau 3.1 publié** de l'EN 1992-1-1 pour les matériaux,
-  à la précision d'impression du tableau.
+```
+18 cas: passed=5, refused=2, awaiting_source=1, awaiting_module=10
+```
 
-Le harnais est prêt : ajouter un cas publié consiste à écrire un test marqué
-`@pytest.mark.reference` avec la source citée en docstring.
+- `EC2-BF-PUB-001` est déclaré `awaiting_source` : identifiant, périmètre
+  normatif et tolérance de 1 % fixés, source à choisir, **aucune valeur
+  attendue renseignée**.
+- Dix cas sont `awaiting_module` : acier, mixte, bois, géotechnique, sismique,
+  plus l'effort tranchant, les ancrages et la flexion composée en béton armé.
+
+Un statut `awaiting_*` ne fait **pas** échouer la CI. C'est délibéré : si une
+source manquante cassait le build, la pression serait d'en inventer une. Seul
+un cas qui *peut* tourner et qui dérive est une régression.
+
+Ce qui valide réellement le module de flexion aujourd'hui :
+
+- cinq **cas `manual_reference`** dont les valeurs attendues sont produites par
+  **dichotomie sur l'équilibre de section** — méthode différente de l'inversion
+  en forme fermée qu'utilise le moteur. Les deux concordent à 1e-13. Cela
+  atteste l'algèbre ; ce n'est pas l'accord avec la profession ;
+- deux **cas de refus** vérifiant que le moteur refuse hors domaine au lieu
+  d'approximer ;
+- une **vérification par intégration numérique** de l'équilibre
+  (`test_independent_equilibrium`) ;
+- la comparaison au **Tableau 3.1 publié** de l'EN 1992-1-1, à la précision
+  d'impression du tableau.
+
+Pour intégrer un exemple publié : renseigner `expected_outputs`,
+`source_document` et `source_type: "official_worked_example"` dans
+`engine/src/eurostruct_engine/reference/library/`. Le runner fait le reste, et
+la CI garde le cas sous surveillance.
 
 ### 2.3 Comparaison croisée logiciel non faite ⛔
 
@@ -117,10 +160,14 @@ Le moteur **refuse** (il ne renvoie pas un résultat approché) hors de :
 ```bash
 # Moteur
 cd engine
-python -m pytest tests/ -q                    # 107 tests
+python -m pytest tests/ -q                    # 166 tests
 python -m pytest tests/ -m reference -q       # cas de référence
 python -m pytest tests/ -m golden -q          # non-régression
 python -m pytest tests/ -m property -q        # invariants
+
+# Validation normative et isolement du moteur
+python scripts/run_reference_suite.py         # cas de reference
+python scripts/audit_engine_dependencies.py   # arbre de dependances
 
 # Schéma de données (exige PostgreSQL >= 15)
 PGHOST=/tmp PGUSER=postgres ./db/test/run.sh
