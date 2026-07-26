@@ -185,6 +185,13 @@ class NdpEntryDTO(Strict):
     unit: str
     source_official: str
     source_url_or_doc_id: str | None = None
+    source_doc_id: str | None = Field(
+        default=None,
+        description="sha256 of the deposited document the value was read from.",
+    )
+    source_page: int | None = Field(
+        default=None, description="Page of that document, as printed."
+    )
     source_type: SourceTypeDTO
     validation_status: ValidationStatusDTO
     verified_at: str | None = None

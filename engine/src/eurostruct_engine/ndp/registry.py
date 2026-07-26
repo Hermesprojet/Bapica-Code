@@ -417,6 +417,8 @@ def load_country_registry(country: str) -> CountryRegistry:
                 source_url_or_doc_id=item.get(
                     "source_url_or_doc_id", a.get("source_url_or_doc_id")
                 ),
+                source_doc_id=item.get("source_doc_id"),
+                source_page=item.get("source_page"),
                 source_type=SourceType(item.get("source_type", "national_annex")),
                 validation_status=ValidationStatus(item["validation_status"]),
                 verified_at=item.get("verified_at"),

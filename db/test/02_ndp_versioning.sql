@@ -150,15 +150,30 @@ begin
 end
 $$;
 
--- Avec verificateur, date et source correcte, l'insertion passe.
+-- Avec verificateur, date, source correcte ET provenance documentaire
+-- (depuis 0006: une valeur opposable est rattachable a une page d'un fichier
+-- dont on connait l'empreinte), l'insertion passe.
+insert into ndp_source_documents
+  (doc_id, filename, storage_path, country_code, standard_family, part,
+   reference, publisher, edition, effective_from, language, page_count,
+   deposited_by)
+select 'sha256:epic1-test', 'annexe.pdf', 's3://annexe.pdf', 'BE', 'EN 1992',
+       '1-1', 'NBN EN 1992-1-1 ANB', 'NBN', a.edition, date '2026-01-01',
+       'fr', 40, '33333333-3333-3333-3333-333333333333'
+from national_annexes a
+where a.country_code = 'BE' and a.standard_family = 'EN 1992' and a.part = '1-1'
+on conflict (doc_id) do nothing;
+
 insert into national_annex_parameters
   (annex_id, country_code, standard_family, part, national_annex_reference,
    edition, effective_from, parameter_name, parameter_value, source_official,
-   source_type, validation_status, verified_by, verified_at, clause, description)
+   source_type, validation_status, verified_by, verified_at, clause, description,
+   source_doc_id, source_page)
 select a.id, 'BE', 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', a.edition,
        date '2027-01-01', 'test_confirme', 1.0, 'NBN',
        'national_annex', 'confirmed', '33333333-3333-3333-3333-333333333333',
-       now(), '§3.1.6(1)P', 'parametre de test releve dans l''annexe'
+       now(), '§3.1.6(1)P', 'parametre de test releve dans l''annexe',
+       'sha256:epic1-test', 12
 from national_annexes a
 where a.country_code = 'BE' and a.standard_family = 'EN 1992' and a.part = '1-1';
 
@@ -230,11 +245,12 @@ begin
   insert into national_annex_parameters
     (annex_id, country_code, standard_family, part, national_annex_reference,
      edition, effective_from, parameter_name, parameter_value, source_official,
-     source_type, validation_status, verified_by, verified_at, clause, description)
+     source_type, validation_status, verified_by, verified_at, clause, description,
+     source_doc_id, source_page)
   select a.id, 'BE', 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', a.edition,
          date '2028-01-01', 'test_confirme', 0.85, 'NBN',
          'national_annex', 'confirmed', '33333333-3333-3333-3333-333333333333',
-         now(), '§3.1.6(1)P', 'valeur revisee'
+         now(), '§3.1.6(1)P', 'valeur revisee', 'sha256:epic1-test', 12
   from national_annexes a
   where a.country_code = 'BE' and a.standard_family = 'EN 1992' and a.part = '1-1';
 

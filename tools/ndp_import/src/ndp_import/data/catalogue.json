@@ -1,0 +1,188 @@
+{
+  "_comment": [
+    "Catalogue des documents officiels a obtenir pour renseigner les",
+    "parametres nationaux. C'est la liste de ce qui MANQUE, pas de ce qui est",
+    "acquis.",
+    "",
+    "Aucun de ces documents n'est redistribuable: les Annexes Nationales sont",
+    "des publications payantes et protegees (NBN, AFNOR/BNTEC, UNE, DIN/Beuth).",
+    "Elles doivent etre acquises par l'organisation, puis deposees dans",
+    "l'importeur. Le depot n'est pas automatisable et ne doit pas l'etre.",
+    "",
+    "'parameters_expected' liste les NDP que le moteur attend de CE document.",
+    "Tant qu'il n'est pas depouille, ces parametres restent",
+    "pending_verification et le mode strict bloque le calcul."
+  ],
+  "documents": [
+    {
+      "doc_key": "BE-EN1992-1-1-ANB",
+      "country_code": "BE",
+      "standard_family": "EN 1992",
+      "part": "1-1",
+      "reference": "NBN EN 1992-1-1 ANB",
+      "title": "Eurocode 2 — Calcul des structures en beton — Partie 1-1 — Annexe Nationale belge",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur le portail NBN (https://www.nbn.be), ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable. Une licence par poste ou par organisation.",
+        "languages": ["fr", "nl"],
+        "notes": "Verifier l'edition en vigueur ET les amendements (A1, AC) eventuels."
+      },
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": [
+        "alpha_cc", "alpha_ct",
+        "gamma_C_persistent", "gamma_S_persistent",
+        "gamma_C_accidental", "gamma_S_accidental",
+        "k1_redistribution", "k2_redistribution",
+        "As_min_coeff", "As_min_floor", "As_max_ratio",
+        "C_Rd_c_coeff", "v_min_coeff", "k1_shear",
+        "nu1_coeff", "nu1_fck_divisor", "alpha_cw",
+        "cot_theta_min", "cot_theta_max",
+        "rho_w_min_coeff", "s_l_max_coeff", "s_t_max_coeff"
+      ]
+    },
+    {
+      "doc_key": "FR-EN1992-1-1-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1992",
+      "part": "1-1",
+      "reference": "NF EN 1992-1-1/NA",
+      "title": "Eurocode 2 — Calcul des structures en beton — Partie 1-1 — Annexe Nationale a la NF EN 1992-1-1",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": ["fr"],
+        "notes": "Verifier les amendements. La NA francaise assortit alpha_cc de conditions selon la nature de la sollicitation: relever le texte integral de la clause, pas seulement la valeur."
+      },
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": [
+        "alpha_cc", "alpha_ct",
+        "gamma_C_persistent", "gamma_S_persistent",
+        "gamma_C_accidental", "gamma_S_accidental",
+        "k1_redistribution", "k2_redistribution",
+        "As_min_coeff", "As_min_floor", "As_max_ratio",
+        "C_Rd_c_coeff", "v_min_coeff", "k1_shear",
+        "nu1_coeff", "nu1_fck_divisor", "alpha_cw",
+        "cot_theta_min", "cot_theta_max",
+        "rho_w_min_coeff", "s_l_max_coeff", "s_t_max_coeff"
+      ]
+    },
+    {
+      "doc_key": "ES-EN1992-1-1-AN",
+      "country_code": "ES",
+      "standard_family": "EN 1992",
+      "part": "1-1",
+      "reference": "UNE-EN 1992-1-1 Anexo Nacional",
+      "title": "Eurocodigo 2 — Proyecto de estructuras de hormigon — Parte 1-1 — Anexo Nacional",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": ["es"],
+        "notes": "ATTENTION: meme depouille, l'Anexo Nacional des UNE-EN ne rend pas l'Eurocode opposable en Espagne. Le referentiel reglementaire est le Codigo Estructural (RD 470/2021) et le CTE. Le Codigo Estructural, lui, est publie gratuitement au BOE."
+      },
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": [
+        "alpha_cc", "alpha_ct",
+        "gamma_C_persistent", "gamma_S_persistent",
+        "gamma_C_accidental", "gamma_S_accidental",
+        "k1_redistribution", "k2_redistribution",
+        "As_min_coeff", "As_min_floor", "As_max_ratio",
+        "C_Rd_c_coeff", "v_min_coeff", "k1_shear",
+        "nu1_coeff", "nu1_fck_divisor", "alpha_cw",
+        "cot_theta_min", "cot_theta_max",
+        "rho_w_min_coeff", "s_l_max_coeff", "s_t_max_coeff"
+      ]
+    },
+    {
+      "doc_key": "ES-CODIGO-ESTRUCTURAL",
+      "country_code": "ES",
+      "standard_family": "Codigo Estructural",
+      "part": "RD 470/2021",
+      "reference": "Real Decreto 470/2021 — Codigo Estructural",
+      "title": "Codigo Estructural, qui a remplace l'EHE-08",
+      "publisher": "Boletin Oficial del Estado (BOE)",
+      "acquisition": {
+        "how": "Telechargement gratuit sur https://www.boe.es (BOE-A-2021-13681).",
+        "licence": "Publication officielle, librement consultable.",
+        "languages": ["es"],
+        "notes": "SEUL document de cette liste librement accessible. C'est le referentiel opposable en Espagne: son depouillement est prioritaire sur celui de l'Anexo Nacional UNE-EN."
+      },
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN1992-1-1-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1992",
+      "part": "1-1",
+      "reference": "DIN EN 1992-1-1/NA",
+      "title": "Eurocode 2 — Bemessung und Konstruktion von Stahlbeton- und Spannbetontragwerken — Teil 1-1 — Nationaler Anhang",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": ["de"],
+        "notes": "Depouiller aussi DIN EN 1992-1-1/NA/A1 (amendement) et verifier quelle edition la MVV TB du Land rend obligatoire: elle peut differer d'un Land a l'autre."
+      },
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": [
+        "alpha_cc", "alpha_ct",
+        "gamma_C_persistent", "gamma_S_persistent",
+        "gamma_C_accidental", "gamma_S_accidental",
+        "k1_redistribution", "k2_redistribution",
+        "As_min_coeff", "As_min_floor", "As_max_ratio",
+        "C_Rd_c_coeff", "v_min_coeff", "k1_shear",
+        "nu1_coeff", "nu1_fck_divisor", "alpha_cw",
+        "cot_theta_min", "cot_theta_max",
+        "rho_w_min_coeff", "s_l_max_coeff", "s_t_max_coeff"
+      ]
+    },
+    {
+      "doc_key": "DE-MVV-TB",
+      "country_code": "DE",
+      "standard_family": "MVV TB",
+      "part": "-",
+      "reference": "Muster-Verwaltungsvorschrift Technische Baubestimmungen",
+      "title": "MVV TB — liste des regles techniques de construction rendues obligatoires",
+      "publisher": "DIBt — Deutsches Institut fur Bautechnik",
+      "acquisition": {
+        "how": "Telechargement gratuit sur https://www.dibt.de. Declinaison par Land a verifier separement.",
+        "licence": "Publication officielle, librement consultable.",
+        "languages": ["de"],
+        "notes": "Determine QUELLES editions des DIN EN .../NA sont en vigueur. A depouiller avant les annexes elles-memes."
+      },
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    }
+  ],
+  "planned": {
+    "_comment": [
+      "Ordre de travail demande: beton arme, acier, bois, mixte, geotechnique,",
+      "sismique. Les documents ci-dessous seront ajoutes au catalogue quand le",
+      "module moteur correspondant existera, pour ne pas declarer un besoin",
+      "dont on ne sait pas encore quels parametres il recouvre."
+    ],
+    "order": [
+      {"family": "beton arme", "standards": ["EN 1992-1-1", "EN 1992-1-2"], "status": "en cours"},
+      {"family": "acier", "standards": ["EN 1993-1-1", "EN 1993-1-8"], "status": "a venir"},
+      {"family": "bois", "standards": ["EN 1995-1-1"], "status": "a venir"},
+      {"family": "mixte", "standards": ["EN 1994-1-1"], "status": "a venir"},
+      {"family": "geotechnique", "standards": ["EN 1997-1"], "status": "a venir"},
+      {"family": "sismique", "standards": ["EN 1998-1", "EN 1998-5"], "status": "a venir"}
+    ]
+  }
+}
