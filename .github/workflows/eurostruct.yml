@@ -75,6 +75,30 @@ jobs:
       - name: Le moteur tourne hors ligne
         run: cd engine && python -m pytest tests/test_engine_isolation.py -q
 
+      - name: Pipeline d'import documentaire
+        # Paquet SEPARE du moteur: il depend d'un parseur PDF, que l'audit de
+        # dependances du moteur refuse. Les deux echangent du JSON.
+        run: |
+          pip install -e "tools/ndp_import[dev]"
+          cd tools/ndp_import && python -m pytest tests/ -q
+
+      - name: L'importeur n'a pas contamine le moteur
+        run: |
+          python - <<'EOF'
+          import importlib.metadata as md, re, sys
+          deps = [re.split(r'[<>=!~;\[ ]', r)[0]
+                  for r in (md.requires('eurostruct-engine') or [])
+                  if 'extra ==' not in r]
+          if 'pdfplumber' in deps:
+              print("::error::pdfplumber a fui dans les dependances du moteur")
+              sys.exit(1)
+          print("moteur:", deps)
+          EOF
+
+      - name: Documents officiels manquants
+        # Informatif: rend visible, a chaque build, ce qui bloque le mode strict.
+        run: cd tools/ndp_import && python -m ndp_import.cli catalogue
+
       - name: Rapport de validation normative
         if: always()
         uses: actions/upload-artifact@v4

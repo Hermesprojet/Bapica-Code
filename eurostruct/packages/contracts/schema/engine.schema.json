@@ -902,9 +902,35 @@
           "title": "Part",
           "type": "string"
         },
+        "source_doc_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "sha256 of the deposited document the value was read from.",
+          "title": "Source Doc Id"
+        },
         "source_official": {
           "title": "Source Official",
           "type": "string"
+        },
+        "source_page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Page of that document, as printed.",
+          "title": "Source Page"
         },
         "source_type": {
           "$ref": "#/$defs/SourceTypeDTO"

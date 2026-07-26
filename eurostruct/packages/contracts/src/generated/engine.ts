@@ -211,7 +211,11 @@ export interface NdpEntryDTO {
   parameter_name: string;
   parameter_value: number;
   part: string;
+  /** sha256 of the deposited document the value was read from. */
+  source_doc_id?: string | null;
   source_official: string;
+  /** Page of that document, as printed. */
+  source_page?: number | null;
   source_type: SourceTypeDTO;
   source_url_or_doc_id?: string | null;
   standard: string;

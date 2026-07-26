@@ -93,6 +93,13 @@ class NationalParameter:
     unit: str
     source_official: str            # issuing body
     source_url_or_doc_id: str | None
+    #: sha256 of the deposited document the value was read from, set by the
+    #: import pipeline. A confirmed value without it cannot be traced back to
+    #: the file that was actually on the reviewer's screen.
+    source_doc_id: str | None
+    #: Page of that document, as printed. Supplied by the reviewer, not by the
+    #: extractor's guess.
+    source_page: int | None
     source_type: SourceType
     validation_status: ValidationStatus
     verified_at: str | None
@@ -148,6 +155,8 @@ class NationalParameter:
             "unit": self.unit,
             "source_official": self.source_official,
             "source_url_or_doc_id": self.source_url_or_doc_id,
+            "source_doc_id": self.source_doc_id,
+            "source_page": self.source_page,
             "source_type": self.source_type.value,
             "validation_status": self.validation_status.value,
             "verified_at": self.verified_at,

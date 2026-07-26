@@ -1,0 +1,149 @@
+{
+  "_comment": [
+    "Cas de reference issus des documents JRC (Joint Research Centre de la",
+    "Commission europeenne), demandes en priorite.",
+    "",
+    "Ces rapports sont publies gratuitement par la Commission — contrairement",
+    "aux Annexes Nationales. Ils constituent donc la source de validation la",
+    "plus accessible, et c'est pourquoi ils sont en tete de file.",
+    "",
+    "Aucune valeur attendue n'est renseignee ici: les rapports n'ont pas ete",
+    "depouilles. Chaque cas reste 'awaiting_source', declare et suivi, jamais",
+    "vert. Renseigner expected_outputs a partir de l'exemple resolu, en citant",
+    "le numero d'exemple et la page.",
+    "",
+    "Ordre de travail: beton arme, acier, bois, mixte, geotechnique, sismique."
+  ],
+  "cases": [
+    {
+      "reference_id": "JRC-EC2-BF-001",
+      "title": "Flexion simple ELU — exemple resolu JRC, section rectangulaire",
+      "normative_scope": ["EN 1992-1-1 §3.1.7(3)", "EN 1992-1-1 §6.1"],
+      "country_scope": ["*"],
+      "source_type": "official_worked_example",
+      "source_document": {
+        "title": "Eurocode 2 — Worked examples (atelier « Eurocodes: Background and Applications »)",
+        "publisher": "Joint Research Centre, Commission europeenne",
+        "edition": null,
+        "locator": null,
+        "isbn_or_url": "https://eurocodes.jrc.ec.europa.eu",
+        "notes": "EMPLACEMENT RESERVE, cas declare. Rapport librement telechargeable mais non encore depouille: aucune valeur attendue n'est renseignee et l'exemple precis n'est pas cite tant qu'il n'a pas ete lu."
+      },
+      "harness": "ec2.beam_flexure",
+      "input_dataset": {},
+      "expected_outputs": {},
+      "tolerance_rules": [
+        {"output": "*", "rel": 0.01, "reason": "Plafond du cahier des charges §8.2 pour un cas publie."}
+      ],
+      "notes": "Priorite 1 (beton arme). Le module moteur existe: seul le depouillement manque."
+    },
+    {
+      "reference_id": "JRC-EC2-SH-001",
+      "title": "Effort tranchant — exemple resolu JRC, treillis a inclinaison variable",
+      "normative_scope": ["EN 1992-1-1 §6.2.2", "EN 1992-1-1 §6.2.3"],
+      "country_scope": ["*"],
+      "source_type": "official_worked_example",
+      "source_document": {
+        "title": "Eurocode 2 — Worked examples (atelier JRC)",
+        "publisher": "Joint Research Centre, Commission europeenne",
+        "isbn_or_url": "https://eurocodes.jrc.ec.europa.eu",
+        "notes": "EMPLACEMENT RESERVE, cas declare. Ni le module moteur ni le depouillement ne sont disponibles."
+      },
+      "harness": "ec2.beam_shear",
+      "input_dataset": {},
+      "expected_outputs": {},
+      "tolerance_rules": [{"output": "*", "rel": 0.01}],
+      "notes": "Priorite 1 (beton arme)."
+    },
+    {
+      "reference_id": "JRC-EC3-BM-001",
+      "title": "Poutre metallique — exemple resolu JRC, deversement",
+      "normative_scope": ["EN 1993-1-1 §6.3.2"],
+      "country_scope": ["*"],
+      "source_type": "official_worked_example",
+      "source_document": {
+        "title": "Eurocode 3 — Worked examples (atelier JRC)",
+        "publisher": "Joint Research Centre, Commission europeenne",
+        "isbn_or_url": "https://eurocodes.jrc.ec.europa.eu",
+        "notes": "EMPLACEMENT RESERVE, cas declare."
+      },
+      "harness": "ec3.beam_ltb",
+      "input_dataset": {},
+      "expected_outputs": {},
+      "tolerance_rules": [{"output": "*", "rel": 0.01}],
+      "notes": "Priorite 2 (acier)."
+    },
+    {
+      "reference_id": "JRC-EC5-TB-001",
+      "title": "Poutre bois — exemple resolu JRC",
+      "normative_scope": ["EN 1995-1-1 §6.1", "EN 1995-1-1 §6.3.3"],
+      "country_scope": ["*"],
+      "source_type": "official_worked_example",
+      "source_document": {
+        "title": "Eurocode 5 — Worked examples (atelier JRC)",
+        "publisher": "Joint Research Centre, Commission europeenne",
+        "isbn_or_url": "https://eurocodes.jrc.ec.europa.eu",
+        "notes": "EMPLACEMENT RESERVE, cas declare."
+      },
+      "harness": "ec5.beam",
+      "input_dataset": {},
+      "expected_outputs": {},
+      "tolerance_rules": [{"output": "*", "rel": 0.01}],
+      "notes": "Priorite 3 (bois)."
+    },
+    {
+      "reference_id": "JRC-EC4-CB-001",
+      "title": "Poutre mixte acier-beton — exemple resolu JRC",
+      "normative_scope": ["EN 1994-1-1 §6.2", "EN 1994-1-1 §6.6"],
+      "country_scope": ["*"],
+      "source_type": "official_worked_example",
+      "source_document": {
+        "title": "Eurocode 4 — Worked examples (atelier JRC)",
+        "publisher": "Joint Research Centre, Commission europeenne",
+        "isbn_or_url": "https://eurocodes.jrc.ec.europa.eu",
+        "notes": "EMPLACEMENT RESERVE, cas declare."
+      },
+      "harness": "ec4.composite_beam",
+      "input_dataset": {},
+      "expected_outputs": {},
+      "tolerance_rules": [{"output": "*", "rel": 0.01}],
+      "notes": "Priorite 4 (mixte)."
+    },
+    {
+      "reference_id": "JRC-EC7-FD-001",
+      "title": "Semelle superficielle — exemple resolu JRC, portance",
+      "normative_scope": ["EN 1997-1 §6.5", "EN 1997-1 Annexe D"],
+      "country_scope": ["*"],
+      "source_type": "official_worked_example",
+      "source_document": {
+        "title": "Eurocode 7 — Worked examples (atelier JRC)",
+        "publisher": "Joint Research Centre, Commission europeenne",
+        "isbn_or_url": "https://eurocodes.jrc.ec.europa.eu",
+        "notes": "EMPLACEMENT RESERVE, cas declare. Verifier quelle approche de calcul (DA1/DA2/DA2*/DA3) l'exemple applique: elle depend du pays."
+      },
+      "harness": "ec7.shallow_foundation",
+      "input_dataset": {},
+      "expected_outputs": {},
+      "tolerance_rules": [{"output": "*", "rel": 0.01}],
+      "notes": "Priorite 5 (geotechnique)."
+    },
+    {
+      "reference_id": "JRC-EC8-SP-001",
+      "title": "Analyse sismique par forces laterales — exemple resolu JRC",
+      "normative_scope": ["EN 1998-1 §3.2.2", "EN 1998-1 §4.3.3.2"],
+      "country_scope": ["*"],
+      "source_type": "official_worked_example",
+      "source_document": {
+        "title": "Eurocode 8 — Worked examples (atelier JRC)",
+        "publisher": "Joint Research Centre, Commission europeenne",
+        "isbn_or_url": "https://eurocodes.jrc.ec.europa.eu",
+        "notes": "EMPLACEMENT RESERVE, cas declare. Pour l'Espagne, verifier NCSE-02 en parallele: l'EN 1998 n'y est pas le referentiel opposable."
+      },
+      "harness": "ec8.lateral_force",
+      "input_dataset": {},
+      "expected_outputs": {},
+      "tolerance_rules": [{"output": "*", "rel": 0.01}],
+      "notes": "Priorite 6 (sismique)."
+    }
+  ]
+}

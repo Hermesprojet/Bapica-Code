@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eurostruct-ndp-import"
+version = "0.1.0"
+description = "National Annex documentary import pipeline (EUROSTRUCT)"
+requires-python = ">=3.11"
+# Deliberately NOT a dependency of eurostruct-engine: the engine's dependency
+# audit allows fourteen packages and refuses a PDF parser. This tool writes
+# JSON; the engine reads JSON.
+dependencies = ["pdfplumber>=0.11"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+ndp-import = "ndp_import.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ndp_import = ["data/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
