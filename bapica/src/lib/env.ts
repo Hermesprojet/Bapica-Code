@@ -118,6 +118,15 @@ export const ENV_GROUPS: EnvGroup[] = [
     vars: ['WHATSAPP_TOKEN', 'WHATSAPP_PHONE_ID', 'WHATSAPP_VERIFY_TOKEN'],
   },
   {
+    id: 'whatsapp_embedded',
+    label: 'WhatsApp Embedded Signup (Meta — connexion client en 1 clic)',
+    required: false,
+    // Publics (SDK front) : NEXT_PUBLIC_FACEBOOK_APP_ID + NEXT_PUBLIC_WHATSAPP_CONFIG_ID.
+    // Secret (échange serveur) : FACEBOOK_APP_SECRET.
+    vars: ['NEXT_PUBLIC_FACEBOOK_APP_ID', 'NEXT_PUBLIC_WHATSAPP_CONFIG_ID', 'FACEBOOK_APP_SECRET'],
+    optional: ['WHATSAPP_VERIFY_TOKEN'],
+  },
+  {
     id: 'whatsapp_twilio',
     label: 'WhatsApp via Twilio',
     required: false,

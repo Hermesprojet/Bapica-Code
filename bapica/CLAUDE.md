@@ -346,18 +346,22 @@ Cohérence produit à vérifier dans les réponses des agents :
     déjà extrait par `handleWhatsAppWebhook`) → `getChannelByExternal('whatsapp', phoneId)` →
     réponse avec le token du client + `replyForUser` (contexte de son entreprise).
     Repli mono-locataire conservé (variables globales) si non résolu.
-  - **Reste à faire — Embedded Signup** (décision produit : le client garde SON numéro, sans jamais
-    voir Facebook Developers) :
-    1. Prérequis business (côté utilisateur, délai de plusieurs jours) : compte **Meta Business** +
-       **vérification d'entreprise** + App Meta (type Business) avec produit **WhatsApp** +
-       configuration **Embedded Signup**.
-    2. Variables à obtenir puis mettre dans Vercel : `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`,
-       `WHATSAPP_CONFIG_ID`.
-    3. À coder ensuite : bouton « Connecter WhatsApp » (SDK JS Meta, popup `configuration_id`) →
-       renvoie un `code` → route d'échange côté serveur (code → token client, WABA id,
-       `phone_number_id`) → `saveChannel(userId, 'whatsapp', { credentials: { accessToken },
-       externalId: phone_number_id })` → abonner le numéro au webhook de l'app.
-       Dès cet enregistrement, la plomberie ci-dessus fonctionne sans autre changement.
+  - **Embedded Signup — CODE FAIT (dormant jusqu'aux démarches Meta)** : le client garde SON numéro,
+    sans Twilio ni Facebook Developers.
+    - **Front** : `src/components/channels/whatsapp-embedded-button.tsx` (bouton « Connecter avec
+      WhatsApp » dans la carte WhatsApp de `dashboard/channels`, option recommandée) charge le SDK
+      Meta, lance `FB.login` avec `config_id` + `response_type:'code'`, capte l'événement
+      `WA_EMBEDDED_SIGNUP` (phone_number_id, waba_id) et POST vers la route d'échange. Se dégrade
+      proprement (message « bientôt disponible ») si `NEXT_PUBLIC_FACEBOOK_APP_ID` /
+      `NEXT_PUBLIC_WHATSAPP_CONFIG_ID` absents.
+    - **Serveur** : `POST /api/channels/whatsapp/embedded` — échange `code` → token, abonne le WABA,
+      enregistre le numéro (Cloud API), `saveChannel(userId,'whatsapp',{credentials:{accessToken,
+      wabaId,phoneNumberId,via:'cloud'}, externalId: phone_number_id})`. Écrit à l'aveugle.
+      La plomberie de réception/envoi (résolution par `phone_number_id`) fonctionne alors sans autre changement.
+    - **Reste à faire côté Bapica (hors code, plusieurs jours)** : compte **Meta Business** +
+      **vérification d'entreprise** + App Meta avec **WhatsApp** + **Embedded Signup** + revue des
+      permissions `whatsapp_business_management`/`whatsapp_business_messaging`, puis renseigner
+      `NEXT_PUBLIC_FACEBOOK_APP_ID`, `NEXT_PUBLIC_WHATSAPP_CONFIG_ID`, `FACEBOOK_APP_SECRET` dans Vercel.
   - Alternative écartée pour l'instant : Twilio ISV / 360dialog Partner (même principe, autre
     fournisseur). Twilio reste branché en **mono-numéro** pour les tests (sandbox).
   - Diagnostic : `POST /api/channels/whatsapp/test` (Bearer) + bouton « Tester l'envoi WhatsApp »

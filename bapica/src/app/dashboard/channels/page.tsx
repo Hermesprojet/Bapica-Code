@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Check, Loader2, MessageCircle, Send, Facebook, AlertCircle, Copy } from 'lucide-react'
+import { WhatsAppEmbeddedButton } from '@/components/channels/whatsapp-embedded-button'
 
 type ChannelId = 'whatsapp' | 'telegram' | 'messenger'
 
@@ -240,6 +241,17 @@ export default function ChannelsPage() {
           </div>
         ) : (
           <>
+            {/* Option recommandée : Meta Embedded Signup — le client garde son numéro, sans Twilio */}
+            <div className="mb-4 rounded-xl border border-[#25D366]/30 bg-[#25D366]/5 p-4">
+              <div className="mb-1 text-sm font-medium">Recommandé — gardez votre propre numéro</div>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Connexion en 1 clic via Meta : une fenêtre s’ouvre, vous vous connectez à votre compte
+                WhatsApp Business, et c’est terminé. <span className="font-medium">Sans Twilio, sans installation.</span>
+              </p>
+              <WhatsAppEmbeddedButton onConnected={() => loadWhatsApp()} />
+            </div>
+
+            <div className="mb-3 text-xs font-medium text-muted-foreground">Ou, pour tester rapidement — via Twilio :</div>
             <p className="mb-3 text-xs text-muted-foreground">
               Créez un compte gratuit sur <span className="font-medium">twilio.com</span> et activez WhatsApp
               (Messaging → « Try it out »). Copiez votre <span className="font-medium">Account SID</span>,

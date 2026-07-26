@@ -69,8 +69,12 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   try {
     const conn = await getChannel(user.id, 'whatsapp')
-    const creds = (conn?.credentials as { fromNumber?: string; via?: string } | undefined) || undefined
-    return NextResponse.json({ connected: !!conn, fromNumber: creds?.fromNumber || '' })
+    const creds = (conn?.credentials as { fromNumber?: string; displayNumber?: string; via?: string } | undefined) || undefined
+    return NextResponse.json({
+      connected: !!conn,
+      fromNumber: creds?.fromNumber || creds?.displayNumber || '',
+      via: creds?.via || '',
+    })
   } catch (e) {
     const msg = String(e instanceof Error ? e.message : e)
     if (msg.includes('CHANNELS_TABLE_MISSING')) return NextResponse.json({ connected: false, needsSetup: true })
