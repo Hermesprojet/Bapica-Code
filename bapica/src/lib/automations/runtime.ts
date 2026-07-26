@@ -11,7 +11,7 @@ import { proposeEmailTool } from '@/lib/tools/email-tools'
 import { proposeSmsTool } from '@/lib/tools/sms-tools'
 import { proposeActionTool, listPlatformsTool, readPlatformTool, listClientPlatforms, readFromPlatform } from '@/lib/tools/platform-call'
 import { proposeDocumentTool } from '@/lib/tools/document-tools'
-import { buildDeliverable, type DeliverableKind } from '@/lib/deliverables'
+import { buildDeliverableFile, type DeliverableKind } from '@/lib/deliverables'
 import { createDeliverable } from '@/lib/deliverables/store'
 import { tagInteractionTool } from '@/lib/tools/tag-tools'
 import { createTag } from '@/lib/tags/store'
@@ -84,8 +84,8 @@ export async function runAutomationAgent(opts: {
           if (r.ok) done.push(`Action ${i?.provider} ${i?.method} ${i?.path}`)
           result = JSON.stringify(r.ok ? { ok: true, resultat: r.result } : { ok: false, erreur: r.error })
         } else if (tool.name === 'proposer_document') {
-          const kind = (['pdf', 'excel', 'csv', 'markdown', 'text'].includes(String(i?.kind)) ? i.kind : 'pdf') as DeliverableKind
-          const file = buildDeliverable({ kind, title: String(i?.title || 'Document'), content: i?.content != null ? String(i.content) : undefined, columns: Array.isArray(i?.columns) ? i.columns.map(String) : undefined, rows: Array.isArray(i?.rows) ? i.rows : undefined })
+          const kind = (['pdf', 'excel', 'csv', 'word', 'powerpoint', 'markdown', 'text'].includes(String(i?.kind)) ? i.kind : 'pdf') as DeliverableKind
+          const file = await buildDeliverableFile({ kind, title: String(i?.title || 'Document'), content: i?.content != null ? String(i.content) : undefined, columns: Array.isArray(i?.columns) ? i.columns.map(String) : undefined, rows: Array.isArray(i?.rows) ? i.rows : undefined })
           await createDeliverable({ userId: opts.userId, agentId: agent.id, kind, title: String(i?.title || 'Document'), filename: file.filename, mime: file.mime, content: file.content }).catch(() => {})
           done.push(`Document « ${i?.title} »`)
           result = JSON.stringify({ ok: true, statut: 'créé' })

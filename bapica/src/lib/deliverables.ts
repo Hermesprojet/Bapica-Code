@@ -29,7 +29,14 @@ export function formatRapport(title: string, sections: { heading: string; conten
 // Produit des documents exploitables SANS dépendance binaire : CSV (ouvrable Excel),
 // HTML imprimable clair (Enregistrer en PDF), Markdown, texte.
 
-export type DeliverableKind = 'pdf' | 'excel' | 'csv' | 'markdown' | 'text'
+export type DeliverableKind = 'pdf' | 'excel' | 'csv' | 'markdown' | 'text' | 'word' | 'powerpoint'
+
+// MIME des formats binaires (stockés en base64, décodés au téléchargement).
+const WORD_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+export function isBinaryDeliverableMime(mime: string): boolean {
+  return mime === WORD_MIME || mime === PPTX_MIME
+}
 
 export interface DeliverableSpec {
   kind: DeliverableKind
@@ -134,4 +141,163 @@ export function buildDeliverable(spec: DeliverableSpec): { mime: string; filenam
     default:
       return { mime: 'text/plain;charset=utf-8', filename: `${base}.txt`, content: spec.content || '' }
   }
+}
+
+// ─── Vrais fichiers Office (.docx / .pptx) — libs pur-JS, import paresseux ────
+
+type MdBlock =
+  | { type: 'heading'; level: number; text: string }
+  | { type: 'bullets'; items: string[] }
+  | { type: 'table'; head: string[]; rows: string[][] }
+  | { type: 'paragraph'; text: string }
+
+/** Parse un Markdown léger en blocs structurés (titres, listes, tableaux, paragraphes). */
+function parseMarkdownBlocks(md: string): MdBlock[] {
+  const lines = (md || '').replace(/\r\n/g, '\n').split('\n')
+  const out: MdBlock[] = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    const h = /^(#{1,4})\s+(.*)$/.exec(line)
+    if (h) { out.push({ type: 'heading', level: h[1].length, text: h[2].trim() }); i++; continue }
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      const cells = (row: string) => row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+      const head = cells(line)
+      i += 2
+      const rows: string[][] = []
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(cells(lines[i])); i++ }
+      out.push({ type: 'table', head, rows })
+      continue
+    }
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items: string[] = []
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*[-*]\s+/, '').trim()); i++ }
+      out.push({ type: 'bullets', items })
+      continue
+    }
+    if (line.trim() === '') { i++; continue }
+    out.push({ type: 'paragraph', text: line.trim() })
+    i++
+  }
+  return out
+}
+
+/** Découpe une chaîne en segments gras/normal à partir des **…**. */
+function splitBold(text: string): { text: string; bold: boolean }[] {
+  const parts: { text: string; bold: boolean }[] = []
+  const re = /\*\*(.+?)\*\*/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push({ text: text.slice(last, m.index), bold: false })
+    parts.push({ text: m[1], bold: true })
+    last = m.index + m[0].length
+  }
+  if (last < text.length) parts.push({ text: text.slice(last), bold: false })
+  return parts.length ? parts : [{ text, bold: false }]
+}
+
+/** Retire le balisage Markdown inline (gras) pour un rendu texte simple. */
+function stripInline(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/^#{1,4}\s+/, '')
+}
+
+/** Génère un vrai document Word (.docx) à partir d'un Markdown, en base64. */
+async function buildWordBase64(title: string, markdown: string): Promise<string> {
+  const docx = await import('docx')
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType } = docx
+  const headingFor = (level: number) =>
+    level <= 1 ? HeadingLevel.HEADING_1 : level === 2 ? HeadingLevel.HEADING_2 : level === 3 ? HeadingLevel.HEADING_3 : HeadingLevel.HEADING_4
+  const runs = (text: string) => splitBold(text).map((s) => new TextRun({ text: s.text, bold: s.bold }))
+
+  const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [
+    new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: title })] }),
+  ]
+  for (const b of parseMarkdownBlocks(markdown)) {
+    if (b.type === 'heading') {
+      children.push(new Paragraph({ heading: headingFor(b.level), children: runs(b.text) }))
+    } else if (b.type === 'bullets') {
+      for (const it of b.items) children.push(new Paragraph({ bullet: { level: 0 }, children: runs(it) }))
+    } else if (b.type === 'paragraph') {
+      children.push(new Paragraph({ children: runs(b.text) }))
+    } else if (b.type === 'table') {
+      const headerRow = new TableRow({
+        children: b.head.map((c) => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: c, bold: true })] })] })),
+      })
+      const bodyRows = b.rows.map(
+        (r) => new TableRow({ children: r.map((c) => new TableCell({ children: [new Paragraph({ children: runs(c) })] })) }),
+      )
+      children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [headerRow, ...bodyRows] }))
+    }
+  }
+
+  const doc = new Document({ sections: [{ children }] })
+  const buf = await Packer.toBuffer(doc)
+  return Buffer.from(buf).toString('base64')
+}
+
+/** Génère une vraie présentation PowerPoint (.pptx) à partir d'un Markdown, en base64.
+ *  Chaque titre Markdown (# / ##) démarre une nouvelle diapositive ; les lignes suivantes
+ *  deviennent des puces. Sans titre, une seule diapositive reprend le titre du document. */
+async function buildPptxBase64(title: string, markdown: string): Promise<string> {
+  const mod = await import('pptxgenjs')
+  const Pptx = (mod as unknown as { default: new () => PptxInstance }).default
+  const pptx = new Pptx()
+
+  type SlideSpec = { title: string; bullets: string[] }
+  const slides: SlideSpec[] = []
+  let current: SlideSpec | null = null
+  for (const b of parseMarkdownBlocks(markdown)) {
+    if (b.type === 'heading' && b.level <= 2) {
+      current = { title: b.text, bullets: [] }
+      slides.push(current)
+    } else if (b.type === 'bullets') {
+      if (!current) { current = { title, bullets: [] }; slides.push(current) }
+      current.bullets.push(...b.items.map(stripInline))
+    } else if (b.type === 'paragraph') {
+      if (!current) { current = { title, bullets: [] }; slides.push(current) }
+      current.bullets.push(stripInline(b.text))
+    } else if (b.type === 'heading') {
+      if (!current) { current = { title, bullets: [] }; slides.push(current) }
+      current.bullets.push(stripInline(b.text))
+    } else if (b.type === 'table') {
+      if (!current) { current = { title, bullets: [] }; slides.push(current) }
+      current.bullets.push([b.head.join(' | '), ...b.rows.map((r) => r.join(' | '))].join('\n'))
+    }
+  }
+  if (!slides.length) slides.push({ title, bullets: [] })
+
+  for (const s of slides) {
+    const slide = pptx.addSlide()
+    slide.addText(s.title || title, { x: 0.5, y: 0.3, w: 9, h: 0.8, fontSize: 26, bold: true, color: '2563EB' })
+    if (s.bullets.length) {
+      slide.addText(
+        s.bullets.map((t) => ({ text: t, options: { bullet: true, fontSize: 16, color: '111827' } })),
+        { x: 0.6, y: 1.3, w: 8.8, h: 5 },
+      )
+    }
+  }
+
+  return (await pptx.write({ outputType: 'base64' })) as string
+}
+
+// Type minimal de l'instance pptxgenjs utilisée (évite un any global).
+interface PptxInstance {
+  addSlide(): { addText(text: unknown, opts: Record<string, unknown>): void }
+  write(opts: { outputType: string }): Promise<string | ArrayBuffer | Uint8Array>
+}
+
+/** Construit le fichier livrable, y compris les formats binaires Office (base64). */
+export async function buildDeliverableFile(
+  spec: DeliverableSpec,
+): Promise<{ mime: string; filename: string; content: string; base64: boolean }> {
+  const base = slugify(spec.title)
+  if (spec.kind === 'word') {
+    return { mime: WORD_MIME, filename: `${base}.docx`, content: await buildWordBase64(spec.title, spec.content || ''), base64: true }
+  }
+  if (spec.kind === 'powerpoint') {
+    return { mime: PPTX_MIME, filename: `${base}.pptx`, content: await buildPptxBase64(spec.title, spec.content || ''), base64: true }
+  }
+  const f = buildDeliverable(spec)
+  return { ...f, base64: false }
 }

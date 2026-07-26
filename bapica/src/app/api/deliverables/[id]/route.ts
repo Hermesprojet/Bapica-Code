@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { bearerToken, getUserFromToken } from '@/lib/api-auth'
 import { getDeliverable } from '@/lib/deliverables/store'
+import { isBinaryDeliverableMime } from '@/lib/deliverables'
 
 /**
  * GET /api/deliverables/[id] → renvoie le fichier (téléchargement), scopé à l'utilisateur.
@@ -15,7 +16,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   // Nom de fichier ASCII sûr pour l'en-tête + variante UTF-8 (RFC 5987).
   const asciiName = doc.filename.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, '')
-  return new NextResponse(doc.content, {
+  // Les formats Office (.docx/.pptx) sont stockés en base64 → décodés en binaire ici.
+  const body: BodyInit = isBinaryDeliverableMime(doc.mime) ? new Blob([new Uint8Array(Buffer.from(doc.content, 'base64'))]) : doc.content
+  return new NextResponse(body, {
     status: 200,
     headers: {
       'Content-Type': doc.mime,

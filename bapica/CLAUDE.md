@@ -131,8 +131,12 @@ Positionnement à ne jamais contredire dans les réponses des agents :
   `interaction_tags`, `payment_reminders` dans `supabase-schema.sql`) avec store service_role
   (`src/lib/{deliverables,tags,reminders}/store.ts`), routes `/api/{deliverables,tags,reminders}`
   et pages `dashboard/{documents,tags,reminders}`. Les relances envoient via une action email
-  « à valider ». `deliverables.ts` construit les fichiers (CSV avec BOM, HTML imprimable, Markdown)
-  sans dépendance binaire.
+  « à valider ». `deliverables.ts` construit les fichiers : CSV avec BOM, HTML imprimable, Markdown
+  (sans dépendance binaire) ET **vrais .docx / .pptx** via les libs pur-JS `docx` / `pptxgenjs`
+  (import paresseux). Les formats Office sont stockés en **base64** (mime détecté par
+  `isBinaryDeliverableMime`) puis décodés en binaire dans `GET /api/deliverables/[id]` — aucune
+  migration SQL. Entrée unique **async** `buildDeliverableFile(spec)` (kinds :
+  `pdf|excel|csv|word|powerpoint|markdown|text`), utilisée par `/api/chat` et le runtime N8N.
 - **SMS** (`src/lib/sms.ts` + provider `sms` dans `/api/actions`) : envoi Twilio après validation.
   Prérequis prod : `TWILIO_ACCOUNT_SID`/`AUTH_TOKEN` + `TWILIO_SMS_NUMBER` (ou `TWILIO_MESSAGING_SERVICE_SID`).
 - **Google Docs/Sheets** (`src/lib/google/workspace.ts` + routes `/api/google/workspace/{connect,

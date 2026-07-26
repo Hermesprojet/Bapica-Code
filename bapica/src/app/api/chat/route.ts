@@ -13,7 +13,7 @@ import { readEmailsTool, proposeEmailTool, runReadEmails } from '@/lib/tools/ema
 import { auditSiteTool, auditSite } from '@/lib/tools/seo-audit'
 import { proposeRdvTool, rdvSummary, type RdvInput } from '@/lib/tools/calendar-tools'
 import { proposeDocumentTool } from '@/lib/tools/document-tools'
-import { buildDeliverable, type DeliverableKind } from '@/lib/deliverables'
+import { buildDeliverableFile, type DeliverableKind } from '@/lib/deliverables'
 import { createDeliverable } from '@/lib/deliverables/store'
 import { tagInteractionTool } from '@/lib/tools/tag-tools'
 import { createTag } from '@/lib/tags/store'
@@ -484,8 +484,8 @@ async function callClaude(
           } else if (tool.name === 'proposer_document' && userId) {
             const i = tool.input as { kind?: string; title?: string; content?: string; columns?: unknown; rows?: unknown }
             try {
-              const kind = (['pdf', 'excel', 'csv', 'markdown', 'text'].includes(String(i?.kind)) ? i!.kind : 'pdf') as DeliverableKind
-              const file = buildDeliverable({
+              const kind = (['pdf', 'excel', 'csv', 'markdown', 'text', 'word', 'powerpoint'].includes(String(i?.kind)) ? i!.kind : 'pdf') as DeliverableKind
+              const file = await buildDeliverableFile({
                 kind,
                 title: String(i?.title || 'Document'),
                 content: i?.content != null ? String(i.content) : undefined,

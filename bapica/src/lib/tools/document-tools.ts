@@ -7,15 +7,17 @@ export const proposeDocumentTool = {
   description:
     "Génère un document téléchargeable pour le client et le range dans « Documents ». " +
     "Types : 'pdf' (devis, rapport, note — HTML imprimable en PDF), 'excel' ou 'csv' (tableau), " +
-    "'markdown', 'text'. Pour pdf/markdown/text, fournis 'content' en Markdown (titres #, gras **, " +
-    "listes, tableaux à pipes). Pour excel/csv, fournis 'columns' (en-têtes) et 'rows' (lignes). " +
+    "'word' (vrai fichier .docx), 'powerpoint' (vraie présentation .pptx — chaque titre Markdown # ou ## " +
+    "démarre une nouvelle diapositive, les lignes suivantes deviennent des puces), 'markdown', 'text'. " +
+    "Pour pdf/word/powerpoint/markdown/text, fournis 'content' en Markdown (titres #, gras **, listes, " +
+    "tableaux à pipes). Pour excel/csv, fournis 'columns' (en-têtes) et 'rows' (lignes). " +
     "Après appel, dis au client que le document est prêt dans « Documents » (menu latéral).",
   input_schema: {
     type: 'object' as const,
     properties: {
-      kind: { type: 'string', enum: ['pdf', 'excel', 'csv', 'markdown', 'text'], description: 'Type de document' },
+      kind: { type: 'string', enum: ['pdf', 'excel', 'csv', 'word', 'powerpoint', 'markdown', 'text'], description: 'Type de document' },
       title: { type: 'string', description: 'Titre du document (sert aussi de nom de fichier)' },
-      content: { type: 'string', description: 'Corps en Markdown (pour pdf, markdown, text)' },
+      content: { type: 'string', description: 'Corps en Markdown (pour pdf, word, powerpoint, markdown, text)' },
       columns: { type: 'array', items: { type: 'string' }, description: 'En-têtes de colonnes (pour excel/csv)' },
       rows: {
         type: 'array',
