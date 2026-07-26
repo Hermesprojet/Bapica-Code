@@ -7,9 +7,9 @@
 //  - Traduire / doubler avec lip-sync                → /api/video/translate (HeyGen)
 // Chaque opération démarre un rendu puis suit son statut jusqu'au lien final.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Scissors, Captions, Languages, Loader2, Download, ExternalLink } from 'lucide-react'
+import { Scissors, Captions, Languages, Loader2, Download, ExternalLink, Upload } from 'lucide-react'
 
 const LANGUAGES = ['Anglais', 'Espagnol', 'Allemand', 'Italien', 'Portugais', 'Néerlandais', 'Arabe', 'Français']
 // HeyGen attend le nom de langue en anglais.
@@ -28,8 +28,44 @@ export function VideoEditPanel() {
   const [trimLength, setTrimLength] = useState('15')
   const [language, setLanguage] = useState('Anglais')
   const [job, setJob] = useState<JobState>({ status: 'idle', label: '' })
+  const [uploading, setUploading] = useState(false)
+  const [uploadMsg, setUploadMsg] = useState('')
+  const fileInput = useRef<HTMLInputElement>(null)
 
   const token = async () => (await supabase.auth.getSession()).data.session?.access_token || ''
+
+  // Upload DIRECT navigateur → Supabase Storage (bucket public « media »), pour éviter la
+  // limite ~4,5 Mo des routes Vercel. Renvoie une URL publique exploitable par Shotstack/HeyGen.
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('video/')) { setUploadMsg('Choisissez un fichier vidéo (mp4, mov…).'); return }
+    if (file.size > 200 * 1024 * 1024) { setUploadMsg('Fichier trop volumineux (max 200 Mo).'); return }
+    setUploading(true); setUploadMsg('')
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      const uid = userData.user?.id
+      if (!uid) { setUploadMsg('Session expirée — reconnectez-vous.'); setUploading(false); return }
+      const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '')
+      const path = `uploads/${uid}/${crypto.randomUUID()}.${ext}`
+      const { error } = await supabase.storage.from('media').upload(path, file, {
+        contentType: file.type || 'video/mp4', upsert: false,
+      })
+      if (error) {
+        const m = /bucket|not found|row-level|policy/i.test(error.message)
+          ? 'Stockage non initialisé : exécutez supabase-schema.sql (bucket « media ») dans Supabase.'
+          : error.message
+        setUploadMsg(m); setUploading(false); return
+      }
+      const { data } = supabase.storage.from('media').getPublicUrl(path)
+      setUrl(data.publicUrl)
+      setUploadMsg('Vidéo importée — choisissez une opération ci-dessous.')
+    } catch (err) {
+      setUploadMsg(`Échec de l'import : ${String(err instanceof Error ? err.message : err)}`)
+    }
+    setUploading(false)
+    if (fileInput.current) fileInput.current.value = ''
+  }
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -82,17 +118,29 @@ export function VideoEditPanel() {
         <h2 className="font-semibold">Éditer une vidéo existante</h2>
       </div>
       <p className="mb-4 text-sm text-muted-foreground">
-        Collez l&apos;URL d&apos;une vidéo (un clip généré ici, ou une vidéo hébergée) puis choisissez une opération :
+        Importez un fichier vidéo depuis votre ordinateur (ou collez une URL) puis choisissez une opération :
         découper un passage, ajouter des sous-titres automatiques, ou la traduire avec synchronisation labiale.
       </p>
 
-      <label className="mb-1.5 block text-sm font-medium">URL de la vidéo</label>
-      <input
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        placeholder="https://…/ma-video.mp4"
-        className="mb-5 w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary"
-      />
+      <label className="mb-1.5 block text-sm font-medium">Votre vidéo</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="Importez un fichier, ou collez une URL (https://…/ma-video.mp4)"
+          className="min-w-[200px] flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        <input ref={fileInput} type="file" accept="video/*" onChange={onFile} className="hidden" />
+        <button
+          onClick={() => fileInput.current?.click()}
+          disabled={uploading}
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:bg-muted disabled:opacity-50 transition-colors"
+        >
+          {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Import…</> : <><Upload className="h-4 w-4" /> Importer un fichier</>}
+        </button>
+      </div>
+      {uploadMsg && <p className="mb-1 mt-2 text-xs text-muted-foreground break-words">{uploadMsg}</p>}
+      <div className="mb-5" />
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Découper */}

@@ -251,10 +251,21 @@ Cohérence produit à vérifier dans les réponses des agents :
 - **Édition d'une vidéo existante (UI)** : encart « Éditer une vidéo existante » du Studio
   (`src/components/agents/video-edit-panel.tsx`) — le client colle une URL de vidéo puis
   **Découper** / **Sous-titrer auto** (`/api/video/edit`) ou **Traduire/doubler** (`/api/video/translate`),
-  avec suivi de statut et lien final. (Entrée par URL ; l'upload d'un fichier local reste à ajouter.)
+  avec suivi de statut et lien final. **Import de fichier** : upload DIRECT navigateur → Supabase
+  Storage (bucket public **`media`**, chemin `uploads/<uid>/<uuid>.<ext>`) via `supabase.storage`,
+  ce qui contourne la limite ~4,5 Mo des routes Vercel ; l'URL publique obtenue alimente l'éditeur
+  (Shotstack/HeyGen la téléchargent). Prérequis : exécuter `supabase-schema.sql` (§14 : bucket `media`
+  + policies RLS — lecture publique, dépôt/suppression par l'utilisateur dans son dossier). La limite
+  de taille par fichier du projet Supabase Storage peut devoir être relevée pour les vidéos lourdes.
+- **Images (génération & retouche)** : `src/lib/image/openai.ts` (OpenAI **gpt-image-1**) →
+  `POST /api/image/generate` (`{prompt,size}` → data URL PNG) et `POST /api/image/edit` (multipart
+  image + `prompt` → data URL PNG). UI : encart « Images » du Studio
+  (`src/components/agents/image-studio-panel.tsx`, onglets Générer / Modifier, aperçu + téléchargement).
+  Clé `OPENAI_API_KEY` (déjà dans la stack). L'édition passe par une route serveur (image < 4,5 Mo, OK).
+  Écrit à l'aveugle (non testable sans clé).
 - UI : `dashboard/video-studio` (thème clair) — brief → `ProductionPackageView`
   (`src/components/agents/production-package.tsx`), avec « Générer le clip » par scène + « Générer la voix off »,
-  puis l'encart d'édition ci-dessus.
+  puis l'encart d'édition vidéo et l'encart « Images ».
 
 ## 10quater. Connexions réseaux sociaux (publication)
 

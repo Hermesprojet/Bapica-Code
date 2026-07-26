@@ -64,6 +64,12 @@ export const ENV_GROUPS: EnvGroup[] = [
     vars: ['OPENAI_API_KEY'],
   },
   {
+    id: 'images',
+    label: 'Images — génération & retouche (OpenAI gpt-image-1)',
+    required: false,
+    vars: ['OPENAI_API_KEY'],
+  },
+  {
     id: 'voice',
     label: 'Appels vocaux (Vapi)',
     required: false,

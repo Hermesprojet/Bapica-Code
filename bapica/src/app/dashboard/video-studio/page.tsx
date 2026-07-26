@@ -7,6 +7,7 @@ import { Sparkles, Clapperboard, ArrowLeft, Wand2, MessagesSquare, ArrowRight } 
 import type { ProductionPackage } from '@/lib/video/maya'
 import { ProductionPackageView } from '@/components/agents/production-package'
 import { VideoEditPanel } from '@/components/agents/video-edit-panel'
+import { ImageStudioPanel } from '@/components/agents/image-studio-panel'
 
 const PLATFORMS = ['TikTok', 'Reels', 'Shorts', 'YouTube', 'Pub Meta', 'VSL']
 const OBJECTIVES = ['Vente', 'Publicité', 'Storytelling', 'UGC', 'Formation']
@@ -192,6 +193,9 @@ export default function VideoStudioPage() {
 
       {/* Édition d'une vidéo existante : découper, sous-titrer, traduire */}
       {phase === 'brief' && <div className="mt-8"><VideoEditPanel /></div>}
+
+      {/* Images : générer & retoucher */}
+      {phase === 'brief' && <div className="mt-8"><ImageStudioPanel /></div>}
     </div>
   )
 }
