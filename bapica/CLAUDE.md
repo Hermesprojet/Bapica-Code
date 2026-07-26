@@ -314,11 +314,18 @@ Cohérence produit à vérifier dans les réponses des agents :
   Telegram (`TELEGRAM_BOT_TOKEN` + `setWebhook`), Messenger (`MESSENGER_PAGE_TOKEN`,
   `MESSENGER_VERIFY_TOKEN`), et `NEXT_PUBLIC_APP_URL` (le webhook rappelle `/api/demo-chat`).
 - Sans jetons : `sendWhatsApp/Telegram/Messenger` renvoient `false` proprement (pas de crash).
-- **WhatsApp via Twilio** (voie simplifiée, sans Meta Developers) : `TWILIO_ACCOUNT_SID`,
-  `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` (ex `whatsapp:+14155238886`, sandbox Twilio pour
-  tester). Le webhook détecte le POST **form-urlencoded** de Twilio et répond via l'API Twilio
-  (`handleTwilioWhatsApp` / `sendTwilioWhatsApp` dans `omnichannel.ts`, `metadata.via='twilio'`).
-  URL de webhook à coller dans Twilio (« When a message comes in », POST) = `<APP_URL>/api/webhooks/messaging`.
+- **WhatsApp via Twilio** (voie simplifiée, sans Meta Developers) : le webhook détecte le POST
+  **form-urlencoded** de Twilio et répond via l'API Twilio (`handleTwilioWhatsApp` /
+  `sendTwilioWhatsApp` dans `omnichannel.ts`, `metadata.via='twilio'`). URL de webhook à coller
+  dans Twilio (« When a message comes in », POST) = `<APP_URL>/api/webhooks/messaging`.
+  - **Connexion PAR CLIENT, dans l'app, SANS Vercel** (comme Telegram) : route
+    `POST/GET/DELETE /api/channels/whatsapp/connect` — le client colle **Account SID + Auth Token +
+    numéro** ; Bapica valide (appel API Twilio), stocke dans `channel_connections`
+    (`externalId = accountSid`). À la réception, le webhook résout le locataire via l'**`AccountSid`**
+    présent dans le POST Twilio → répond avec SES identifiants (`metadata.twSid/twAuth/twFrom`) et le
+    contexte de SON entreprise (`processMessageWithAgent(..., tenantUserId)`). UI : carte « WhatsApp —
+    connexion en 1 clic » dans `dashboard/channels`. Les variables globales `TWILIO_*` ne servent plus
+    que de repli mono-locataire (tests/sandbox) ; **le client n'a plus rien à mettre dans Vercel**.
 - **Hub multi-client Telegram** (chaque client = son propre bot, sans variable Vercel) :
   - Table `channel_connections` (`supabase-schema.sql`) : `{user_id, platform, credentials(jsonb),
     external_id, webhook_secret}`. Store service_role : `src/lib/channels/store.ts`

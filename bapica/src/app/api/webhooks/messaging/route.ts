@@ -27,10 +27,24 @@ export async function POST(req: NextRequest) {
       form.forEach((v, k) => { params[k] = String(v) })
       const twMsg = handleTwilioWhatsApp(params)
       if (twMsg) {
+        // Multi-client : l'AccountSid présent dans le webhook identifie le locataire.
+        // On répond alors avec SES identifiants Twilio et le contexte de SON entreprise.
+        let twTenant: string | undefined
+        const accountSid = twMsg.metadata.accountSid
+        if (accountSid) {
+          const conn = await getChannelByExternal('whatsapp', accountSid)
+          if (conn) {
+            twTenant = conn.user_id
+            const creds = conn.credentials as { accountSid?: string; authToken?: string; fromNumber?: string } | undefined
+            if (creds?.accountSid) twMsg.metadata.twSid = creds.accountSid
+            if (creds?.authToken) twMsg.metadata.twAuth = creds.authToken
+            if (creds?.fromNumber) twMsg.metadata.twFrom = creds.fromNumber
+          }
+        }
         const { agentId, greeting } = routeMessage(twMsg)
         const quickReply = greeting || `Message reçu, je transfère à l'agent ${agentId}.`
         await dispatchResponse(twMsg, quickReply)
-        if (!greeting) processMessageWithAgent(twMsg, agentId).catch(console.error)
+        if (!greeting) processMessageWithAgent(twMsg, agentId, twTenant).catch(console.error)
       }
       // Twilio attend une réponse TwiML (200).
       return new Response('<Response></Response>', { status: 200, headers: { 'Content-Type': 'text/xml' } })

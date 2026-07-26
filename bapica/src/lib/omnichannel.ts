@@ -208,25 +208,24 @@ export function handleTwilioWhatsApp(params: Record<string, string>): IncomingMe
     userName: params.ProfileName || 'Client',
     text,
     timestamp: new Date().toISOString(),
-    metadata: { via: 'twilio', to: params.To || '' },
+    metadata: { via: 'twilio', to: params.To || '', accountSid: params.AccountSid || '' },
   }
 }
 
 /** Envoi Twilio avec détail de l'erreur (pour diagnostic). */
+export interface TwilioCreds { sid?: string; auth?: string; from?: string }
+
 export async function sendTwilioWhatsAppDetailed(
   to: string,
-  text: string
+  text: string,
+  creds?: TwilioCreds
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
-  const sid = process.env.TWILIO_ACCOUNT_SID
-  const auth = process.env.TWILIO_AUTH_TOKEN
-  const from = process.env.TWILIO_WHATSAPP_NUMBER
+  // Identifiants DU CLIENT (connexion in-app) en priorité ; repli sur les variables globales.
+  const sid = creds?.sid || process.env.TWILIO_ACCOUNT_SID
+  const auth = creds?.auth || process.env.TWILIO_AUTH_TOKEN
+  const from = creds?.from || process.env.TWILIO_WHATSAPP_NUMBER
   if (!sid || !auth || !from) {
-    const missing = [
-      !sid && 'TWILIO_ACCOUNT_SID',
-      !auth && 'TWILIO_AUTH_TOKEN',
-      !from && 'TWILIO_WHATSAPP_NUMBER',
-    ].filter(Boolean).join(', ')
-    return { ok: false, error: `Variables manquantes côté serveur : ${missing}` }
+    return { ok: false, error: 'WhatsApp non connecté : renseignez vos identifiants Twilio dans Bapica (Canaux → WhatsApp).' }
   }
 
   const toAddr = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`
@@ -256,8 +255,8 @@ export async function sendTwilioWhatsAppDetailed(
   }
 }
 
-export async function sendTwilioWhatsApp(to: string, text: string): Promise<boolean> {
-  const r = await sendTwilioWhatsAppDetailed(to, text)
+export async function sendTwilioWhatsApp(to: string, text: string, creds?: TwilioCreds): Promise<boolean> {
+  const r = await sendTwilioWhatsAppDetailed(to, text, creds)
   if (!r.ok) console.error('Twilio WhatsApp send failed:', r.status, r.error)
   return r.ok
 }
@@ -361,7 +360,11 @@ export async function dispatchResponse(msg: IncomingMessage, response: string): 
   switch (msg.channel) {
     case 'whatsapp':
       return msg.metadata.via === 'twilio'
-        ? sendTwilioWhatsApp(msg.userId, formatted)
+        ? sendTwilioWhatsApp(msg.userId, formatted, {
+            sid: msg.metadata.twSid,
+            auth: msg.metadata.twAuth,
+            from: msg.metadata.twFrom,
+          })
         : sendWhatsApp(msg.userId, formatted, {
             // Identifiants du client si le locataire a été résolu (hub multi-client)
             token: msg.metadata.waToken,
