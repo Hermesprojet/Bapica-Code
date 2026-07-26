@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eurostruct-engine"
+version = "0.1.0"
+description = "Deterministic Eurocode structural calculation engine (EUROSTRUCT)"
+requires-python = ">=3.11"
+dependencies = [
+    "pint>=0.23",
+    "pydantic>=2.6",
+    "ezdxf>=1.1",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "mypy>=1.9", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+eurostruct_engine = ["ndp/data/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "reference: validation against a published worked example",
+    "golden: non-regression test on a frozen numeric result",
+    "property: property-based invariant (monotonicity, limits, homogeneity)",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+# Pint is dynamically typed; its Quantity cannot be checked strictly.
+[[tool.mypy.overrides]]
+module = ["pint.*", "ezdxf.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
