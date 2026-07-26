@@ -15,6 +15,22 @@ interface Message {
   content: string
 }
 
+// Historique conservé 24h par agent (localStorage). Lecture PURE (SSR-safe) :
+// renvoie [] si absent ou périmé (> 24h) — sans effet de bord pendant le rendu.
+const DAY_MS = 24 * 60 * 60 * 1000
+function readHistory(key: string): Message[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return []
+    const saved = JSON.parse(raw) as { savedAt: number; messages: Message[] }
+    if (saved && Array.isArray(saved.messages) && Date.now() - saved.savedAt < DAY_MS) return saved.messages
+  } catch {
+    /* stockage indisponible : on ignore */
+  }
+  return []
+}
+
 export default function AgentChatPage() {
   const params = useParams()
   const agent = getAgentById(params.id as string)
@@ -22,27 +38,23 @@ export default function AgentChatPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // Historique conservé 24h par agent (localStorage). Au-delà, il est purgé.
   const storageKey = `bapica_chat_${params.id}`
-  const DAY_MS = 24 * 60 * 60 * 1000
 
+  // La page [id] est PARTAGÉE entre tous les agents : changer d'agent ne remonte pas le
+  // composant. On (ré)initialise donc l'historique à CHAQUE changement d'agent (effet
+  // client, sans risque d'hydratation), pour éviter que les messages d'un agent fuient
+  // ou écrasent le stockage d'un autre. `loadedKey` ne devient égal à `storageKey` qu'APRÈS
+  // ce chargement, ce qui garde l'écriture ci-dessous inerte pendant la transition.
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(storageKey)
-      if (!raw) return
-      const saved = JSON.parse(raw) as { savedAt: number; messages: Message[] }
-      if (saved && Array.isArray(saved.messages) && Date.now() - saved.savedAt < DAY_MS) {
-        setMessages(saved.messages)
-      } else {
-        localStorage.removeItem(storageKey) // trop ancien (> 24h) → on purge
-      }
-    } catch {
-      /* stockage indisponible : on ignore */
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setMessages(readHistory(storageKey))
+    setLoadedKey(storageKey)
   }, [storageKey])
 
   useEffect(() => {
+    // Ne sauvegarde que lorsque `messages` correspond bien à l'agent courant (déjà hydraté),
+    // jamais pendant la transition d'un agent à l'autre.
+    if (loadedKey !== storageKey) return
     try {
       if (messages.length === 0) return
       // On borne aux 50 derniers messages ; savedAt se rafraîchit à chaque activité.
@@ -50,7 +62,7 @@ export default function AgentChatPage() {
     } catch {
       /* ignore */
     }
-  }, [messages, storageKey])
+  }, [messages, storageKey, loadedKey])
 
   const clearHistory = () => {
     setMessages([])
