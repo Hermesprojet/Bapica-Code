@@ -60,16 +60,28 @@ jobs:
           git diff --exit-code -- db/seed/0001_ndp.sql \
             || { echo "::error::Le seed NDP est desynchronise des JSON du moteur."; exit 1; }
 
-      - name: Aucune dependance IA ou reseau dans le moteur
-        # Interdiction 1: no path exists by which a language model could produce
-        # a number that lands in a note de calcul.
-        run: |
-          cd engine
-          if grep -riE '\b(openai|anthropic|langchain|requests|httpx|urllib3|aiohttp)\b' \
-               pyproject.toml src/ --include='*.py' --include='*.toml'; then
-            echo "::error::Le moteur deterministe ne doit avoir aucune dependance IA ni reseau."
-            exit 1
-          fi
+      - name: Suite de validation normative (cas de reference)
+        # TICKET 2.2: un ecart hors tolerance sur un cas rejouable fait echouer
+        # la CI. Les lacunes de couverture sont rapportees, pas bloquantes.
+        run: cd engine && python scripts/run_reference_suite.py --json ../reference-report.json
+
+      - name: Audit de l'arbre de dependances du moteur
+        # TICKET 3.1 et 6.2: allowlist sur tout l'arbre transitif, denylist des
+        # clients IA et piles HTTP, scan des imports y compris differes.
+        # Un grep ne suffirait pas: un client de modele peut arriver trois
+        # niveaux plus bas sans qu'aucun import n'apparaisse dans notre code.
+        run: cd engine && python scripts/audit_engine_dependencies.py
+
+      - name: Le moteur tourne hors ligne
+        run: cd engine && python -m pytest tests/test_engine_isolation.py -q
+
+      - name: Rapport de validation normative
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-report
+          path: reference-report.json
+          if-no-files-found: ignore
 
   schema:
     name: Schema de donnees
