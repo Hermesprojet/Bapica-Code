@@ -190,6 +190,9 @@ $$;
 
 -- ---------------------------------------------------------------------
 -- 4. Aucun livrable final sans validation
+--
+-- Depuis 0005, is_final est derive de `state`: l'ecrire directement est
+-- refuse. Le chemin complet du workflow est teste dans 03_validation_workflow.
 -- ---------------------------------------------------------------------
 do $$
 declare ok boolean := false;
@@ -200,9 +203,9 @@ begin
                               engine_version, generated_by)
     values ('aaaaaaaa-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000001',
             '66666666-0000-0000-0000-000000000001', 'calculation_note_pdf', 'note.pdf',
-            's3://x', 'sha256:def', 1024, true, '0.1.0',
+            's3://x', 'sha256:def', 1024, true, '0.2.0',
             '11111111-1111-1111-1111-111111111111');
-  exception when check_violation then
+  exception when restrict_violation or check_violation then
     ok := true;
   end;
   if not ok then
@@ -211,15 +214,15 @@ begin
 end
 $$;
 
--- Avec la validation, il passe.
+-- Cree en 'final' avec sa validation attachee: le seul chemin direct admis.
 insert into deliverables (id, org_id, project_id, calculation_id, kind, filename,
-                          storage_path, sha256, size_bytes, is_final, validation_id,
-                          engine_version, generated_by)
+                          storage_path, sha256, size_bytes, state, is_final,
+                          validation_id, engine_version, generated_by)
 values ('88888888-0000-0000-0000-000000000001',
         'aaaaaaaa-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000001',
         '66666666-0000-0000-0000-000000000001', 'calculation_note_pdf', 'note-A.pdf',
-        's3://note-A.pdf', 'sha256:def', 1024, true,
-        '77777777-0000-0000-0000-000000000001', '0.1.0',
+        's3://note-A.pdf', 'sha256:def', 1024, 'final', true,
+        '77777777-0000-0000-0000-000000000001', '0.2.0',
         '11111111-1111-1111-1111-111111111111');
 
 

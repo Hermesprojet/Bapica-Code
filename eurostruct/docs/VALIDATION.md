@@ -23,6 +23,11 @@
 | Préflight listant **tous** les bloquants d'un coup | ✅ | `test_ndp.py::test_preflight_report_is_readable_and_machine_parsable` |
 | Cloisonnement multi-tenant (RLS) | ✅ | `db/test/01_guarantees.sql`, test 1 |
 | Aucun livrable final sans validation nominative | ✅ | `db/test/01_guarantees.sql`, tests 2–4 |
+| Workflow `draft → review → validated → final`, sans raccourci ni retour | ✅ | `db/test/03_validation_workflow.sql` |
+| `is_final` non écrivable directement (dérivé de `state`) | ✅ | `db/test/03_validation_workflow.sql`, test 2 |
+| Livrable non validé porte le filigrane « PROJET » | ✅ | `test_legal.py::test_unvalidated_drawing_is_watermarked` |
+| Aucun document ne présente le logiciel comme signataire | ✅ | `test_legal.py::test_no_document_presents_the_software_as_signatory` |
+| Mentions légales en FR/NL/EN/ES/DE | ✅ | `test_legal.py`, paramétré sur les 5 langues |
 | Immuabilité des documents signés | ✅ | `db/test/01_guarantees.sql`, test 5 |
 
 ## 2. Ce qui n'est PAS garanti — points bloquants avant commercialisation
@@ -160,7 +165,7 @@ Le moteur **refuse** (il ne renvoie pas un résultat approché) hors de :
 ```bash
 # Moteur
 cd engine
-python -m pytest tests/ -q                    # 166 tests
+python -m pytest tests/ -q                    # 199 tests
 python -m pytest tests/ -m reference -q       # cas de référence
 python -m pytest tests/ -m golden -q          # non-régression
 python -m pytest tests/ -m property -q        # invariants

@@ -24,6 +24,7 @@ from ezdxf.document import Drawing
 from ezdxf.enums import TextEntityAlignment
 
 from ..exceptions import InconsistentInput
+from ..legal import DRAFT_WATERMARK, MANDATORY_NOTICE, Language
 from ..version import ENGINE_VERSION
 from .layers import (
     L_CARTOUCHE,
@@ -46,12 +47,10 @@ __all__ = [
 
 DIMSTYLE: Final = "EUROSTRUCT"
 
-#: Mandatory notice — cahier des charges section 9, on every page of every
-#: deliverable. The drawing carries it in the cartouche.
-LEGAL_NOTICE: Final = (
-    "Document genere par assistance logicielle. Doit etre verifie, complete "
-    "et signe par un ingenieur habilite avant tout usage en construction."
-)
+#: Mandatory notice — cahier des charges §9, on every page of every deliverable.
+#: Sourced from :mod:`eurostruct_engine.legal` so the five language versions
+#: cannot drift apart between document types.
+LEGAL_NOTICE: Final = MANDATORY_NOTICE[Language.FR]
 
 #: Bulge value of a 90-degree arc segment in an LWPOLYLINE: tan(90/4).
 _BULGE_90: Final = math.tan(math.radians(90.0) / 4.0)
@@ -114,6 +113,12 @@ class BeamSectionSpec:
     exposure_class: str = ""
     index: str = "A"
     date: str = ""
+    #: Language of the notices printed on the sheet (§11: FR/NL/EN/ES/DE).
+    language: Language = Language.FR
+    #: False until an authorised engineer has validated the calculation. An
+    #: unvalidated sheet carries the draft watermark — §9: a deliverable that
+    #: nobody has signed must not look like one that someone has.
+    validated: bool = False
 
     def __post_init__(self) -> None:
         if self.b <= 0 or self.h <= 0:
@@ -363,7 +368,21 @@ def build_beam_section(spec: BeamSectionSpec) -> tuple[Drawing, list[RebarSchedu
               label_x, spec.h * 0.5, txt_h)
 
     _draw_cartouche(msp, spec, txt_h)
+    if not spec.validated:
+        _draw_draft_watermark(msp, spec, txt_h)
     return doc, schedule
+
+
+def _draw_draft_watermark(msp: Any, spec: BeamSectionSpec, txt_h: float) -> None:
+    """Stamp an unvalidated sheet, across the section itself."""
+    msp.add_text(
+        DRAFT_WATERMARK[spec.language],
+        height=txt_h * 2.2,
+        rotation=45.0,
+        dxfattribs={"layer": L_TEXTE, "color": 8},
+    ).set_placement(
+        (spec.b / 2.0, spec.h / 2.0), align=TextEntityAlignment.MIDDLE_CENTER
+    )
 
 
 def _schedule_row(row: BarRow, shape_code: str, comment: str) -> RebarScheduleRow:
@@ -412,12 +431,25 @@ def _draw_cartouche(msp: Any, spec: BeamSectionSpec, txt_h: float) -> None:
         _text(msp, text, x0 + pad, y, txt_h * (1.3 if i == 0 else 1.0), layer=L_CARTOUCHE)
         y -= txt_h * 2.0
 
-    # The notice is wrapped by hand so the DXF has no dependency on a text
-    # engine capable of reflowing.
+    # Wrapped here rather than by a text engine: a DXF has no reflow, and the
+    # notice must be legible whatever opens the file.
     y -= txt_h * 0.4
-    for chunk in (
-        "Document genere par assistance logicielle. Doit etre verifie,",
-        "complete et signe par un ingenieur habilite avant tout usage en construction.",
-    ):
+    for chunk in _wrap(MANDATORY_NOTICE[spec.language], 78):
         _text(msp, chunk, x0 + pad, y, txt_h * 0.85, layer=L_CARTOUCHE)
         y -= txt_h * 1.2
+
+
+def _wrap(text: str, width: int) -> list[str]:
+    """Greedy wrap, deterministic for a given input."""
+    lines: list[str] = []
+    current = ""
+    for word in text.split():
+        candidate = f"{current} {word}".strip()
+        if len(candidate) > width and current:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return lines
