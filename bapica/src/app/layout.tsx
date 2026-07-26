@@ -19,12 +19,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
 
   title: {
-    default: "Bapica — 10 agents IA qui automatisent votre entreprise",
+    default: "Bapica — 11 agents IA qui automatisent votre entreprise",
     template: "%s | Bapica",
   },
 
   description:
-    "10 agents IA qui automatisent votre PME : prospection, support client, contenu, appels et compta. Ils agissent vraiment. Essai gratuit 15 jours.",
+    "11 agents IA qui automatisent votre PME : prospection, support client, contenu, appels et compta. Ils agissent vraiment. Essai gratuit 15 jours.",
 
   keywords: [
     "agents IA",
@@ -47,7 +47,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Bapica — Des agents IA qui travaillent en équipe pour votre entreprise",
     description:
-      "10 agents IA qui collaborent entre eux, orchestrés par Léo. Prospection, support, contenu, voix, recrutement, comptabilité. Essai gratuit 15 jours.",
+      "11 agents IA qui collaborent entre eux, orchestrés par Léo. Prospection, support, contenu, voix, recrutement, comptabilité. Essai gratuit 15 jours.",
     url: baseUrl,
     siteName: "Bapica",
     locale: "fr_FR",
@@ -66,7 +66,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Bapica — Agents IA pour votre entreprise",
     description:
-      "10 agents IA qui collaborent entre eux, orchestrés par Léo. Prospection, support, contenu, voix, recrutement, comptabilité. Essai gratuit 15 jours.",
+      "11 agents IA qui collaborent entre eux, orchestrés par Léo. Prospection, support, contenu, voix, recrutement, comptabilité. Essai gratuit 15 jours.",
     images: [`${baseUrl}/opengraph-image`],
   },
 

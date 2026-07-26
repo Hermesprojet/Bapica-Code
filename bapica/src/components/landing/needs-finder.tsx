@@ -838,7 +838,7 @@ export function NeedsFinder() {
                   {recommendation.agents.length > 1 ? 's' : ''} recommandé
                   {recommendation.agents.length > 1 ? 's' : ''} pour votre projet
                   {recommendation.plan === 'pro' && recommendation.agents.length > 8 && (
-                    <> · accès aux 10 agents</>
+                    <> · accès aux 11 agents</>
                   )}
                 </p>
 

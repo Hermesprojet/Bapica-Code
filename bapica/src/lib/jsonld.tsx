@@ -120,7 +120,7 @@ export function getFAQSchema(): FAQSchema {
         name: "Quels sont les tarifs de Bapica ?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Bapica propose deux formules : Essentiel à 49€/mois avec 8 agents (Général, Support, Contenu, Téléphonique) et Pro à 79€/mois avec 10 agents + appels téléphoniques (0,20€/min) + onboarding personnalisé.",
+          text: "Bapica propose deux formules : Essentiel à 49€/mois avec 9 agents (Général, Support, Contenu, Prospection, Recrutement…) et Pro à 79€/mois avec 11 agents + appels téléphoniques (0,20€/min) + onboarding personnalisé.",
         },
       },
       {

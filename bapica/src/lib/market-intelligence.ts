@@ -37,7 +37,7 @@ const COMPETITOR_DB: Record<string, CompetitorProfile> = {
       'Prix agressifs avec promos',
     ],
     weaknesses: [
-      'Seulement 8 agents (vs 10 Bapica)',
+      'Seulement 8 agents (vs 11 Bapica)',
       'Pas de dashboard analytics',
       'Dépendant de WhatsApp — pas d\'app native',
       'GPT-4o-mini pour la plupart des agents (qualité inférieure)',
@@ -222,7 +222,7 @@ export function generateCompetitiveAnalysis(sector: string): CompetitiveAnalysis
   const comparison: ComparisonPoint[] = [
     {
       dimension: 'Nombre d\'agents IA',
-      bapica: '10 agents spécialisés',
+      bapica: '11 agents spécialisés',
       concurrentA: '8 agents',
       substi: '3 agents',
       advantage: 'bapica',
@@ -289,7 +289,7 @@ export function generateCompetitiveAnalysis(sector: string): CompetitiveAnalysis
     competitiveAdvantages: [
       'IA la plus avancée du marché (Claude vs GPT-4o-mini)',
       'Seule plateforme avec intelligence business adaptative',
-      '10 agents vs 8 (Limova) vs 3 (Substi)',
+      '11 agents vs 8 (Limova) vs 3 (Substi)',
       'Dashboard analytics que personne n\'a',
       'Onboarding intelligent automatisé (pas de RDV nécessaire)',
     ],
