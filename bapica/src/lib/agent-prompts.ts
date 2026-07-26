@@ -1,7 +1,7 @@
-// System prompts renforcés pour les 10 agents Bapica.
+// System prompts renforcés pour les 11 agents Bapica.
 // Chaque agent a un RÔLE, une MÉTHODE, des RÈGLES.
 // Parité de capacités visée : tout ce que font les agents Limova (Tom, Charly, Elio,
-// Julia, John, Rony, Lou, Manue) est dispatché sur les 10 agents Bapica selon leur spécialité.
+// Julia, John, Rony, Lou, Manue) est dispatché sur les 11 agents Bapica selon leur spécialité.
 
 export const BASE_RULES = `Tu es un agent IA de Bapica, au service des PME.
 Règles communes :

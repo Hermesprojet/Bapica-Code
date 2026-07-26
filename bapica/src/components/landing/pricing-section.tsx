@@ -9,7 +9,7 @@ const plans = [
     desc: "Pour indépendants et TPE qui veulent automatiser leur quotidien",
     popular: false,
     features: [
-      "8 agents IA spécialisés",
+      "9 agents IA spécialisés",
       "Marketing Automation (posts, visuels)",
       "SEO automatisé (articles + audit)",
       "Prospection LinkedIn",
@@ -28,7 +28,7 @@ const plans = [
     desc: "Pour PME qui veulent accélérer leur croissance",
     popular: true,
     features: [
-      "10 agents IA (tous inclus)",
+      "11 agents IA (tous inclus)",
       "Agent Téléphonique IA",
       "Créateur Vidéo IA (HeyGen)",
       "Agent Juridique & Comptable",

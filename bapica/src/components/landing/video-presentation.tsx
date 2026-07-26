@@ -9,7 +9,7 @@ const sceneData = [
   {
     label: 'Présentation',
     title: <>Des agents IA qui <span className="bg-gradient-to-r from-[#2dd4bf] to-[#0082e6] bg-clip-text text-transparent">comprennent votre business</span></>,
-    subtitle: '10 agents spécialisés. Une plateforme. Zéro configuration.',
+    subtitle: '11 agents spécialisés. Une plateforme. Zéro configuration.',
   },
   {
     label: 'Le constat',
@@ -52,7 +52,7 @@ const sceneData = [
   },
   {
     label: 'Pourquoi Bapica',
-    title: <><span className="bg-gradient-to-r from-[#2dd4bf] to-[#0082e6] bg-clip-text text-transparent">10 agents</span> coordonnés. Une seule plateforme.</>,
+    title: <><span className="bg-gradient-to-r from-[#2dd4bf] to-[#0082e6] bg-clip-text text-transparent">11 agents</span> coordonnés. Une seule plateforme.</>,
     cards: [
       { icon: '🧠', title: 'IA Supérieure', desc: 'Claude Sonnet vs GPT-4o-mini — la qualité fait la différence.' },
       { icon: '📊', title: 'Business Intelligence', desc: 'Seule plateforme avec analyse stratégique et ROI.' },
@@ -183,13 +183,13 @@ export function VideoPresentation() {
             <div className="animate-scale-in rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8 text-center w-56" style={{ animationDelay: '300ms' }}>
               <div className="text-sm text-white/40 mb-3">Essentiel</div>
               <div className="text-3xl font-bold">49€<span className="text-sm font-normal text-white/40">/mois</span></div>
-              <div className="mt-4 text-sm text-white/40">8 agents IA<br />Messages illimités</div>
+              <div className="mt-4 text-sm text-white/40">9 agents IA<br />Messages illimités</div>
             </div>
             <div className="animate-scale-in relative rounded-2xl border border-[#0082e6]/30 bg-gradient-to-b from-[#0082e6]/10 to-white/[0.02] p-8 text-center w-56" style={{ animationDelay: '500ms' }}>
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#0082e6] px-3 py-1 text-[11px] font-semibold text-white">Recommandé</span>
               <div className="text-sm text-white/40 mb-3">Pro</div>
               <div className="text-3xl font-bold">79€<span className="text-sm font-normal text-white/40">/mois</span></div>
-              <div className="mt-4 text-sm text-white/40">10 agents IA<br />Appels 0,20€/min</div>
+              <div className="mt-4 text-sm text-white/40">11 agents IA<br />Appels 0,20€/min</div>
             </div>
           </div>
         )}

@@ -51,7 +51,7 @@ export function AgentsShowcase() {
             Ce que vos agents font pour vous.
           </h2>
           <p className="text-xl text-[#6B7280]">
-            10 spécialistes qui agissent 24/7 : ils contactent, publient, facturent, recrutent.
+            11 spécialistes qui agissent 24/7 : ils contactent, publient, facturent, recrutent.
             Faites défiler pour voir chacun à l&apos;œuvre.
           </p>
         </div>

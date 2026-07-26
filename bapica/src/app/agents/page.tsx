@@ -9,7 +9,7 @@ import { Footer } from '@/components/landing/footer'
 export const metadata: Metadata = {
   title: 'Nos agents IA',
   description:
-    "Découvrez les 10 agents IA de Bapica : prospection, closing vocal, contenu/SEO, vidéo, comptabilité, support, téléphone, recrutement, juridique et orchestration. Chacun agit 24/7 pour votre PME.",
+    "Découvrez les 11 agents IA de Bapica : prospection, closing vocal, contenu/SEO, vidéo, comptabilité, support, téléphone, recrutement, juridique, analyse de données et orchestration. Chacun agit 24/7 pour votre PME.",
 }
 
 export default function AgentsIndexPage() {
@@ -22,7 +22,7 @@ export default function AgentsIndexPage() {
         <section className="container mx-auto max-w-6xl px-6 pt-8 pb-14">
           <p className="text-sm font-medium text-[#2563EB] uppercase tracking-wider mb-4">Agents</p>
           <h1 className="text-4xl md:text-6xl font-bold text-[#111827] mb-6 leading-tight">
-            10 agents spécialisés,<br />
+            11 agents spécialisés,<br />
             <span className="text-[#2563EB]">une seule équipe.</span>
           </h1>
           <p className="max-w-2xl text-xl text-[#6B7280]">

@@ -256,7 +256,7 @@ export default function DashboardPage() {
       {/* Cartes stats — compteurs animés + icônes colorées */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { icon: Bot, title: 'Agents actifs', value: '10', desc: 'disponibles', change: '10 experts', accent: 'bg-blue-500/10 text-blue-600' },
+          { icon: Bot, title: 'Agents actifs', value: '11', desc: 'disponibles', change: '11 experts', accent: 'bg-blue-500/10 text-blue-600' },
           { icon: MessageSquare, title: 'Conversations', value: '0', desc: 'ce mois-ci', change: 'À venir', accent: 'bg-violet-500/10 text-violet-600' },
           { icon: Users, title: 'Leads générés', value: '0', desc: 'par vos agents', change: 'Bientôt', accent: 'bg-emerald-500/10 text-emerald-600' },
           { icon: TrendingUp, title: 'Crédits', value: '∞', desc: 'messages illimités', change: 'Illimité', accent: 'bg-amber-500/10 text-amber-600' },

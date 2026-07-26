@@ -27,7 +27,7 @@ export default function CGVPage() {
             <p><strong>« Client »</strong> : toute personne physique ou morale souscrivant à un abonnement.</p>
 
             <h2 className="text-lg font-semibold text-foreground mt-10">Article 2 — Services</h2>
-            <p>Bapica propose une plateforme multi-agents IA pour PME et indépendants. Les agents disponibles varient selon la formule (Essentiel 8 agents ou Pro 10 agents). Bapica s&apos;engage à mettre en œuvre les moyens nécessaires pour assurer la continuité du service.</p>
+            <p>Bapica propose une plateforme multi-agents IA pour PME et indépendants. Les agents disponibles varient selon la formule (Essentiel 9 agents ou Pro 11 agents). Bapica s&apos;engage à mettre en œuvre les moyens nécessaires pour assurer la continuité du service.</p>
 
             <h2 className="text-lg font-semibold text-foreground mt-10">Article 3 — Prix</h2>
             <p>Formule Essentiel : <strong>49 € TTC / mois</strong> — Formule Pro : <strong>79 € TTC / mois</strong>. TVA au taux de 20 % incluse. Bapica peut modifier ses tarifs sous réserve d&apos;un préavis de 30 jours.</p>

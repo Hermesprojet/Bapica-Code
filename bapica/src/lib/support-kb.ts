@@ -7,10 +7,10 @@ export const SUPPORT_KB = `
 BAPICA — GUIDE D'UTILISATION
 
 QU'EST-CE QUE BAPICA
-Une plateforme de 10 agents IA spécialisés pour PME et indépendants. Les agents ne se contentent
+Une plateforme de 11 agents IA spécialisés pour PME et indépendants. Les agents ne se contentent
 pas de conseiller : ils agissent (appeler des prospects, répondre aux clients, lire vos données
-comptables, préparer des factures). Formules : Essentiel 49 €/mois (8 agents) et Pro 79 €/mois
-(10 agents). Essai gratuit 15 jours.
+comptables, préparer des factures). Formules : Essentiel 49 €/mois (9 agents) et Pro 79 €/mois
+(11 agents). Essai gratuit 15 jours.
 
 LES 10 AGENTS
 - Léo (Agent Général) : point d'entrée, coordonne les autres, gère la to-do.

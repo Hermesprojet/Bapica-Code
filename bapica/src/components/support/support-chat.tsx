@@ -15,7 +15,7 @@ const SUGGESTIONS_CLIENT = [
 
 const SUGGESTIONS_VISITEUR = [
   "Qu'est-ce que Bapica ?",
-  'Que font les 10 agents ?',
+  'Que font les 11 agents ?',
   'Combien ça coûte ?',
   'Comment démarrer l’essai gratuit ?',
 ]

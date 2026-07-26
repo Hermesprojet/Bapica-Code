@@ -4,7 +4,7 @@ const features = [
   {
     number: "01",
     icon: Bot,
-    title: "10 agents spécialisés",
+    title: "11 agents spécialisés",
     desc: "De la prospection à la comptabilité, chaque métier a son agent IA dédié qui comprend votre contexte.",
   },
   {
