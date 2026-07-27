@@ -28,7 +28,7 @@ import pdfplumber
 from .model import EXTRACTOR_VERSION, ExtractionCandidate, ExtractionRun, SourceDocument
 from .patterns import NUMBER_RE, ParameterPattern, parse_number, patterns_for
 
-__all__ = ["extract_document", "PageText", "read_pages"]
+__all__ = ["extract_document", "extract_from_pages", "PageText", "read_pages"]
 
 #: Characters of context kept around a match, for the reviewer to judge on.
 _WINDOW = 320
@@ -60,6 +60,10 @@ def _mask_references(text: str) -> str:
 class PageText:
     number: int          # 1-based
     text: str
+    #: "native" for a real text layer, "ocr" for machine-recognised characters.
+    #: Carried through to every candidate, because a reviewer must know whether
+    #: a digit was typeset or guessed.
+    source: str = "native"
 
 
 def read_pages(pdf_path: Path) -> list[PageText]:
@@ -91,12 +95,16 @@ def _score(
     clause_hit: bool,
     symbol_hit: bool,
     numbers_in_window: int,
+    text_source: str = "native",
 ) -> float:
     """Order the review queue. Informational only — never a gate.
 
     Deliberately conservative: the ceiling is 0,9. Nothing this extractor
     produces is ever "certain enough" to skip a human.
     """
+    #: Recognised characters are a guess. Cap them well below native text so an
+    #: OCR reading never rises to the top of the queue as if it were certain.
+    ceiling = 0.9 if text_source == "native" else 0.6
     score = 0.0
     if clause_hit:
         score += 0.45
@@ -108,7 +116,7 @@ def _score(
             score += 0.10          # unambiguous reading
         if pattern.plausible and pattern.plausible[0] <= value <= pattern.plausible[1]:
             score += 0.10
-    return round(min(score, 0.9), 3)
+    return round(min(score, ceiling), 3)
 
 
 def _windows(text: str, regex: re.Pattern[str]) -> Iterable[tuple[int, str]]:
@@ -147,6 +155,21 @@ def extract_document(
             "L'extracteur ne devine pas le contenu d'une image."
         )
 
+    return extract_from_pages(doc, pages, parameters)
+
+
+def extract_from_pages(
+    doc: SourceDocument,
+    pages: Sequence[PageText],
+    parameters: Sequence[str] | None = None,
+) -> ExtractionRun:
+    """Propose candidates from already-extracted page text.
+
+    Separate entry point so a scanned annex can be run through OCR first and
+    fed in here. Candidates from recognised text keep ``source="ocr"`` and a
+    lower confidence ceiling: the characters were guessed by a machine, and the
+    reviewer has to see that before accepting a digit.
+    """
     wanted = patterns_for(tuple(parameters) if parameters else None)
     candidates: list[ExtractionCandidate] = []
     found: set[str] = set()
@@ -160,7 +183,6 @@ def extract_document(
             if not text:
                 continue
 
-            # Anchor on the clause; fall back to the symbol alone.
             anchors = list(_windows(text, clause_re))
             clause_hit = bool(anchors)
             if not anchors and symbol_re is not None:
@@ -168,26 +190,24 @@ def extract_document(
 
             for offset, window in anchors:
                 symbol_hit = bool(symbol_re and symbol_re.search(window))
-                # Read numbers from the window with clause and table references
-                # masked out; the snippet kept for the reviewer stays intact.
                 tokens = NUMBER_RE.findall(_mask_references(window))
+                pid = f"{pattern.parameter_name}@clause/{page.source}"
 
                 if not tokens:
                     candidates.append(
                         ExtractionCandidate(
                             candidate_id=_candidate_id(
-                                doc.doc_id, pattern.parameter_name, page.number, offset, ""
+                                doc.doc_id, pattern.parameter_name, page.number,
+                                offset, "",
                             ),
                             doc_id=doc.doc_id,
                             parameter_name=pattern.parameter_name,
-                            page=page.number,
-                            snippet=window.strip(),
-                            raw_value=None,
-                            parsed_value=None,
-                            unit=pattern.unit,
-                            clause=pattern.clause_refs[0],
-                            pattern_id=f"{pattern.parameter_name}@clause",
-                            confidence=_score(pattern, None, clause_hit, symbol_hit, 0),
+                            page=page.number, snippet=window.strip(),
+                            raw_value=None, parsed_value=None, unit=pattern.unit,
+                            clause=pattern.clause_refs[0], pattern_id=pid,
+                            confidence=_score(
+                                pattern, None, clause_hit, symbol_hit, 0, page.source
+                            ),
                         )
                     )
                     found.add(pattern.parameter_name)
@@ -203,15 +223,12 @@ def extract_document(
                             ),
                             doc_id=doc.doc_id,
                             parameter_name=pattern.parameter_name,
-                            page=page.number,
-                            snippet=window.strip(),
-                            raw_value=token,
-                            parsed_value=value,
-                            unit=pattern.unit,
-                            clause=pattern.clause_refs[0],
-                            pattern_id=f"{pattern.parameter_name}@clause",
+                            page=page.number, snippet=window.strip(),
+                            raw_value=token, parsed_value=value, unit=pattern.unit,
+                            clause=pattern.clause_refs[0], pattern_id=pid,
                             confidence=_score(
-                                pattern, value, clause_hit, symbol_hit, len(tokens)
+                                pattern, value, clause_hit, symbol_hit,
+                                len(tokens), page.source,
                             ),
                         )
                     )
@@ -220,7 +237,6 @@ def extract_document(
     not_found = tuple(
         sorted(p.parameter_name for p in wanted if p.parameter_name not in found)
     )
-    # Deterministic ordering: the same PDF always yields the same run.
     candidates.sort(key=lambda c: (c.parameter_name, c.page, -c.confidence, c.candidate_id))
 
     return ExtractionRun(
