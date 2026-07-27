@@ -985,3 +985,117 @@ def test_watermark_artefacts_are_stripped_before_reading_numbers() -> None:
     clean = _normalise(raw)
     assert "cid" not in clean
     assert "5.2(2)" in clean and "1,60" in clean
+
+
+# ---------------------------------------------------------------------------
+# Three traps found on a real deposit of 50 base-Eurocode documents
+# ---------------------------------------------------------------------------
+def test_a_reversed_watermark_still_discloses_an_uncontrolled_copy(tmp_path) -> None:
+    """The trap that disables every other guard.
+
+    A deposited EN 1990 came out as ``desneciL :ypoC`` and ``dellortnocnU`` —
+    BSI's licence stamp, rendered right-to-left by the PDF's font. The body of
+    that document read forwards perfectly well, so a whole-document reversal
+    test says "readable" and is right to. But the disqualifying sentence lives
+    in the reversed watermark, where no forward keyword can reach it.
+
+    Three files of the deposit carried it, including the only one that was not
+    a draft.
+    """
+    from ndp_import import triage_document
+
+    front = (
+        "ISB )c( ,ypoC dellortnocnU ,3002 yluJ 81 ,dleiffehS fo ytisrevinU "
+        ",ytisrevinU dleiffehS :ypoC desneciL "
+        "EUROPEAN STANDARD EN 1990 Eurocode - Basis of structural design ICS 91.010.30"
+    )
+    r = triage_document(make_pdf(tmp_path / "en1990.pdf", [[front]]))
+    assert r.is_uncontrolled_copy
+    assert not r.usable_for_ndp
+    assert any("NON MAINTENUE" in b for b in r.blockers)
+
+
+def test_a_wholly_reversed_document_is_refused_before_anything_else(tmp_path) -> None:
+    """A prEN cover rendered backwards reads NErp and matches no draft marker.
+
+    Which is why the reversal blocker is reported first: without it the file
+    comes back merely "unidentified", a far milder verdict than a draft
+    deserves.
+    """
+    from ndp_import import triage_document
+
+    forward = (
+        "EUROPEAN STANDARD prEN 1992-1-1 Eurocode 2 Design of concrete "
+        "structures Licensed copy uncontrolled December 2004 national annex "
+        "ICS 91.010.30 " * 3
+    )
+    r = triage_document(make_pdf(tmp_path / "envers.pdf", [[forward[::-1]]]))
+    assert r.is_reversed
+    assert not r.usable_for_ndp
+    assert any("A L'ENVERS" in b for b in r.blockers)
+    assert r.blockers[0].startswith("TEXTE RENDU A L'ENVERS")
+
+
+def test_normal_text_is_not_taken_for_reversed(tmp_path) -> None:
+    """The documents we actually hold must survive the guard."""
+    from ndp_import import triage_document
+
+    front = (
+        "EUROPEAN STANDARD NORME EUROPEENNE NBN EN 1992-1-1 ANB Annexe "
+        "nationale Norme belge 1e ed., aout 2010 ICS 91.010.30 national "
+        "december copyright standard eurocode " * 3
+    )
+    r = triage_document(make_pdf(tmp_path / "ok.pdf", [[front]]))
+    assert not r.is_reversed
+
+
+def test_a_lecture_deck_is_not_a_standard(tmp_path) -> None:
+    """Recognised on what a standard never contains, never on its title.
+
+    "Basis of structural design" IS the subtitle of EN 1990: a title-keyed rule
+    would reject the very document it exists to protect. An author's email at a
+    university and "slides available on the web" are the real tell.
+    """
+    from ndp_import import triage_document
+
+    front = (
+        "Eurocode 3 for Dummies The Opportunities and Traps a brief guide on "
+        "element design to EC3 Tim McCarthy Email tim.mccarthy@umist.ac.uk "
+        "Slides available on the web"
+    )
+    r = triage_document(make_pdf(tmp_path / "cours.pdf", [[front]]))
+    assert r.is_teaching_material
+    assert not r.usable_for_ndp
+    assert any("PEDAGOGIQUE" in b for b in r.blockers)
+
+
+def test_the_en_1990_subtitle_alone_does_not_make_it_teaching_material(
+    tmp_path,
+) -> None:
+    """The false positive the guard was written to avoid."""
+    from ndp_import import triage_document
+
+    front = (
+        "EUROPEAN STANDARD EN 1990 Eurocode - Basis of structural design "
+        "NBN EN 1990 ANB Annexe nationale Norme belge ICS 91.010.30"
+    )
+    r = triage_document(make_pdf(tmp_path / "en1990.pdf", [[front]]))
+    assert not r.is_teaching_material
+
+
+def test_a_solid_DDENV_designation_is_a_pre_standard(tmp_path) -> None:
+    """``\\bENV\\b`` has no boundary inside "DDENV", so it missed one.
+
+    DD ENV 1991-2-6 arrived through an IHS reseller whose banner replaced the
+    publisher's cover: the front matter carried no ENV at all, and the only
+    remaining signal was the filename, where the form is written solid.
+    """
+    from ndp_import import triage_document
+
+    pdf = make_pdf(
+        tmp_path / "Eurocode_1_Part_26__DDENV_1991261997.pdf",
+        [["IHS Intra/Spex technology and images copyright (c) IHS 2003"]],
+    )
+    r = triage_document(pdf)
+    assert r.is_draft
+    assert not r.usable_for_ndp

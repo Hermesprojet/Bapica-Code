@@ -1,0 +1,184 @@
+=== Triage des documents deposes ===
+52 document(s): 0 exploitable(s) pour un parametre national, 3 numerise(s).
+
+[REJET ] 05cc427d-Eurocode_2_Design_of_concrete_struc    73p  base_eurocode          norme non identifiee
+           - COPIE SOUS LICENCE NON MAINTENUE: le document porte la mention de l'editeur lui-meme (« Uncontrolled Copy », « Licensed Copy »). Ce n'est ni un projet ni un faux — c'est un exemplaire dont l'editeur declare qu'il ne le tient pas a jour. Confirmer une valeur nationale a partir de la reviendrait a citer une edition dont personne ne garantit qu'elle est celle en vigueur.
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 0781fccf-Eurocode_8_Part_3__prEN_19983_07200    72p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 07dce78e-Eurocode_6_Part_12__prEN_1996121995    29p  base_eurocode          norme non identifiee
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 0d8f888e-Eurocode_2_Part_2__DDENV_199221996.    72p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 11bdf102-Eurocode_3.3__Pren_19933_2002_Mai.p    28p  base_eurocode          norme non identifiee
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 12e6efe4-EbookENGEurocode_3__Part_1_11feb200    35p  base_eurocode          norme non identifiee
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 167ad8b5-Eurocode_1_Part_13__prEN_1991132003    56p  base_eurocode          EN 1991-1-3
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+           - porte sur EN 1991-1-3, hors des normes dont le moteur a besoin (EN 1992-1-1)
+[REJET ] 19f17d00-Eurocode_0__prEN_1990prAnnexA22003.    29p  base_eurocode          EN 1990
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+           - porte sur EN 1990, hors des normes dont le moteur a besoin (EN 1992-1-1)
+[REJET ] 1b2da4a0-Eurocode_Basis_Of_Structural_Design    91p  base_eurocode          norme non identifiee
+           - COPIE SOUS LICENCE NON MAINTENUE: le document porte la mention de l'editeur lui-meme (« Uncontrolled Copy », « Licensed Copy »). Ce n'est ni un projet ni un faux — c'est un exemplaire dont l'editeur declare qu'il ne le tient pas a jour. Confirmer une valeur nationale a partir de la reviendrait a citer une edition dont personne ne garantit qu'elle est celle en vigueur.
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 2041639b-Eurocode_0__prEN_1990_ENG.pdf          89p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 2cbd3eaf-Eurocode_3_design_of_steel_structur    80p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 32f546dd-Eurocode_3_Part_19__PrEN_1993192003    30p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 337bb383-Eurocode_9_Part_12__DDENV_199912199    62p  base_eurocode          norme non identifiee
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 3434ee91-Eurocode_8_Part_5__prEn_19985_12200    44p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 365a0b42-Eurocode_1_Part_12__prEN_1991122002    59p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 3bfc8395-Eurocode_2_Part_14__DDENV_199214199    26p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 3d0d5e7d-Eurocode_6_Design_Of_Masonry_Struct    48p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 42b101cf-Eurocode_1_Part_3__prEN_199132002.p    42p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 43a0174b-EbookENGEurocode_4__Part_2set2004.p    89p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 4808c563-Eurocode_3_Part1.6__Pren_199316_Eng    87p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 4bf429ee-Eurocode_2_Part_16__DDENV_199216199    24p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 51561d6a-Eurocode_6_Part_13__DDENV_199613199    34p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 58aa2287-DIN_188004_1990_Steel_structures_st    23p  base_eurocode          norme non identifiee
+           - aucune couche de texte: document numerise, une ROC est necessaire avant tout depouillement automatique
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 59b18b90-Eurocode_8__prEN_19984__2003_Silos_    83p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 6236f52d-Eurocode_2_Part_3__prEN_199232004.p    37p  base_eurocode          norme non identifiee
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 6c7181dc-Eurocode_9_Design_of_aluminium_stru    62p  base_eurocode          norme non identifiee
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 750ae24c-Eurocode_8.6_Part6__prEN_19986_ENG.    45p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 75f0f33b-Eurocode_5_Part_12__prEN_1995122001    72p  base_eurocode          norme non identifiee
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 794590b8-Eurocode_0__EN_19902002.pdf            90p  base_eurocode          EN 1990
+           - COPIE SOUS LICENCE NON MAINTENUE: le document porte la mention de l'editeur lui-meme (« Uncontrolled Copy », « Licensed Copy »). Ce n'est ni un projet ni un faux — c'est un exemplaire dont l'editeur declare qu'il ne le tient pas a jour. Confirmer une valeur nationale a partir de la reviendrait a citer une edition dont personne ne garantit qu'elle est celle en vigueur.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+           - porte sur EN 1990, hors des normes dont le moteur a besoin (EN 1992-1-1)
+[REJET ] 7ba84dd4-Eurocode_3_Part_11__PrEN_1993112001    61p  base_eurocode          norme non identifiee
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 7fa17ed8-Eurocode_2_Part_12__prEN_1992122004    97p  base_eurocode          EN 1992-1-2
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+           - porte sur EN 1992-1-2, hors des normes dont le moteur a besoin (EN 1992-1-1)
+[REJET ] 89fb0250-Eurocode_3__Pren_199315_2004_Jun_34    53p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 8d89d696-Eurocode_6_Part_3__DDENV_199631999.    48p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 92e3d507-Eurocode_3_Part_110__prEN_199311020    13p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] 97effa1f-Eurocode_1_Part_16__prEN_1991162004    29p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] a50b1070-DIN_188003_1990_Stability__buckling    16p  base_eurocode          norme non identifiee
+           - aucune couche de texte: document numerise, une ROC est necessaire avant tout depouillement automatique
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] a5a83ac7-Eurocode_23_Design_of_Precast_concr    66p  base_eurocode          norme non identifiee
+           - aucune couche de texte: document numerise, une ROC est necessaire avant tout depouillement automatique
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] ab85d65c-Eurocode_1_Part_26__DDENV_199126199    35p  base_eurocode          norme non identifiee
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] ae0e5107-Eurocode_1_Part_17__prEN_1991172003    69p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] b219a646-Eurocode_8_Part_6__prEN_19986_01200    45p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] b42569c0-Eurocode_6_Part_13__DDENV_199613199    34p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] b6b20776-Eurocode_6_Part_12__prEN_1996122000    66p  base_eurocode          EN 1996-1-2
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+           - porte sur EN 1996-1-2, hors des normes dont le moteur a besoin (EN 1992-1-1)
+[REJET ] c3bb0474-Eurocode_3_Part_12__PrEN_1993122002    75p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] ce246c30-Eurocode_1_Part_15__prEN_1991152003    47p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] d6aa0510-Eurocode_1_Part_11__prEN_1991112001    43p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] dad98091-Eurocode_1_Part_4__DDENV_199141995.    38p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] db7a6f75-Eurocode_3_Part_15__prEN_1993152004    53p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] e34ec408-Eurocode_8_Part_4__prEN_199842003_1    83p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] eae0f7c5-Eurocode_3_For_Dummies.pdf             22p  base_eurocode          norme non identifiee
+           - SUPPORT PEDAGOGIQUE OU COMMENTAIRE: diaporama de cours, guide ou recueil d'exemples, pas le texte normatif. Reconnu sur ce qu'une norme ne contient jamais — une adresse de courriel d'auteur, « slides available on the web ». Le titre seul ne suffirait pas: « Basis of structural design » EST le sous-titre de l'EN 1990.
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] efb5e2a5-Eurocode_6_Part_2__DDENV_199621998.    70p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] fd284e32-Eurocode_3_Part_3__prEN_199332001.p    32p  base_eurocode          norme non identifiee
+           - aucune identite de publication (ni code ICS, ni banniere d'organisme de normalisation, ni journal officiel): impossible d'etablir qui publie ce document ni sous quelle autorite
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+[REJET ] fd5feed3-Eurocode_3_Part1.5_ENG__prEN_199315    52p  base_eurocode          norme non identifiee
+           - PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce document n'a aucune force reglementaire et ses valeurs peuvent encore changer. Il ne peut fixer aucun parametre national, meme s'il porte « annexe nationale » sur sa couverture.
+           - Eurocode de base (meme homologue NF ou enregistre NBN): il porte les valeurs RECOMMANDEES, pas les valeurs nationales. Il ne peut pas fixer un NDP
+
+3 document(s) numerise(s) — a passer par une ROC avant depouillement:
+    - 58aa2287-DIN_188004_1990_Steel_structures_stability_buckling_of_shells.pdf (23 pages)
+    - a50b1070-DIN_188003_1990_Stability__buckling_of_plates.pdf (16 pages)
+    - a5a83ac7-Eurocode_23_Design_of_Precast_concrete_structures_6.pdf (66 pages)
+
+AUCUN de ces documents ne peut fixer un parametre national en l'etat. Le mode strict reste bloque.
+
+Le role propose ci-dessus est une LECTURE de la page de garde. L'ingenieur qui depose declare le role reel: un nom de fichier portant « NBN » ne fait pas d'un document une ANB.

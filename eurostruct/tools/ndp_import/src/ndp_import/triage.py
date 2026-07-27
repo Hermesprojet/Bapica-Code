@@ -30,7 +30,7 @@ import pdfplumber
 from .model import DocumentRole
 
 __all__ = ["TriageResult", "triage_document", "triage_batch", "render_triage",
-           "text_is_mis_decoded"]
+           "text_is_mis_decoded", "text_is_reversed"]
 
 #: A National Annex names itself. These markers appear in the title block.
 _ANNEX_MARKERS = re.compile(
@@ -65,11 +65,42 @@ _SECONDARY_MARKERS = re.compile(
 #: this it came back usable_for_ndp with no blocker at all — the single worst
 #: outcome this triage exists to prevent, since a draft carries values that
 #: have no legal force and may still change.
+#: ``DDENV`` has no word boundary before ENV, so ``\bENV\b`` missed it. A
+#: DD ENV 1991-2-6 came through an IHS reseller whose banner replaced the
+#: publisher's cover: the front matter carried no ENV at all, and the only
+#: remaining signal was the filename — where the form is written solid.
 _DRAFT_MARKERS = re.compile(
     r"\bpr[-\s]?EN\b|\bpr[-\s]?NBN\b|\bpr[-\s]?NF\b|\boSIST\b|\bENV\b|"
+    r"\bDD[-\s]?ENV\b|"
     r"standard\s+preview|projet\s+de\s+norme|ontwerp[-\s]?norm|"
     r"norm[-\s]?entwurf|proyecto\s+de\s+norma|draft\s+standard|"
     r"final\s+draft|enquiry\s+draft",
+    re.IGNORECASE,
+)
+
+#: A copy licensed to a named subscriber, which the publisher does not keep up
+#: to date. BSI stamps its own words on it — "Licensed Copy: ... Uncontrolled
+#: Copy, (c) BSI". Deposited as EN 1990, the file was one of these, licensed to
+#: a university in 2003 and never revised since.
+#:
+#: It is not a draft and not a forgery; it is a copy whose publisher explicitly
+#: disclaims currency. Confirming a national value from it would cite an
+#: edition nobody can vouch is the one in force.
+_UNCONTROLLED_COPY = re.compile(
+    r"uncontrolled\s+cop(?:y|ies)|licensed\s+cop(?:y|ies)|"
+    r"copie\s+non\s+control(?:e|é)e|single\s+user\s+licen[cs]e",
+    re.IGNORECASE,
+)
+
+#: Teaching and commentary material. Never matched on the title alone: "Basis
+#: of structural design" IS the subtitle of EN 1990, and a rule keyed to it
+#: would reject the very standard it is meant to protect. These markers name
+#: what a standard never contains — an author's email, a lecture handout, a
+#: slide deck.
+_TEACHING_MATERIAL = re.compile(
+    r"for\s+dummies|slides?\s+available|lecture\s+notes?|"
+    r"a\s+brief\s+guide|course\s+notes?|@[\w.]+\.ac\.[a-z]{2}|"
+    r"designers'?\s+guide|worked\s+examples?\s+for\s+students",
     re.IGNORECASE,
 )
 
@@ -160,6 +191,41 @@ def text_is_mis_decoded(text: str) -> bool:
     return high / len(printable) > _MOJIBAKE_HIGH_RATIO
 
 
+#: Words long enough that reading them backwards is not a coincidence, and
+#: common enough to appear on any cover page. Kept short deliberately: the test
+#: is "does reversing help", not "is this English".
+_REVERSAL_PROBES = (
+    "licensed", "uncontrolled", "copyright", "standard", "european",
+    "eurocode", "national", "annex", "december", "january",
+)
+
+
+def text_is_reversed(text: str) -> bool:
+    """Whether *text* reads backwards.
+
+    Found on a deposited EN 1990 whose cover came out as ``desneciL :ypoC``
+    and ``dellortnocnU`` — BSI's licence stamp, rendered right-to-left by the
+    PDF's font.
+
+    This is the trap that matters most, because it disables every other guard
+    at once: a ``prEN`` cover rendered this way reads ``NErp`` and matches no
+    draft marker, no publisher banner, no supersession verb. The document then
+    looks merely *unidentified* rather than *a draft*, which is a far milder
+    verdict than it deserves.
+
+    Decided by comparing how many probe words appear forwards against how many
+    appear only when the text is reversed. A document that genuinely mentions
+    "desnecil" does not exist; one that scores on the reversal does.
+    """
+    low = text.lower()
+    if len(low) < 200:
+        return False
+    backwards = low[::-1]
+    forwards_hits = sum(1 for w in _REVERSAL_PROBES if w in low)
+    reversed_hits = sum(1 for w in _REVERSAL_PROBES if w in backwards)
+    return reversed_hits > forwards_hits
+
+
 def _is_draft(front: str, filename: str) -> bool:
     """Whether the document *is* a draft, not merely whether it mentions one.
 
@@ -218,6 +284,13 @@ class TriageResult:
     has_publication_identity: bool
     front_matter: str
     blockers: tuple[str, ...]
+    #: Text layer reads right-to-left. Disables every keyword guard at
+    #: once, so it is reported before all of them.
+    is_reversed: bool = False
+    #: Publisher's own "Uncontrolled Copy" stamp: not maintained.
+    is_uncontrolled_copy: bool = False
+    #: Lecture deck, guide or commentary rather than the normative text.
+    is_teaching_material: bool = False
 
     @property
     def machine_readable(self) -> bool:
@@ -236,6 +309,9 @@ class TriageResult:
             and not self.is_draft
             and not self.is_impersonation
             and not self.is_mis_decoded
+            and not self.is_reversed
+            and not self.is_uncontrolled_copy
+            and not self.is_teaching_material
             and not self.is_machine_translated
             and self.has_publication_identity
             and self.proposed_role.can_fix_national_parameters
@@ -304,6 +380,16 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
     standard = _standard_of(front, path.name)
     is_draft = _is_draft(front, path.name)
     is_mis_decoded = text_is_mis_decoded(text)
+    is_reversed = text_is_reversed(text)
+    # Cherche AUSSI a l'envers. Le cas qui a impose ce garde n'avait pas son
+    # corps inverse — seul le FILIGRANE l'etait, et c'est lui qui porte la
+    # mention disqualifiante. Un document dont le texte se lit normalement peut
+    # donc cacher « Uncontrolled Copy » ecrit a rebours sur chaque page.
+    _hay = _searchable(front, text[:4000])
+    is_uncontrolled = bool(
+        _UNCONTROLLED_COPY.search(_hay) or _UNCONTROLLED_COPY.search(_hay[::-1])
+    )
+    is_teaching = bool(_TEACHING_MATERIAL.search(_searchable(front, path.name)))
     is_machine_translated = bool(_MACHINE_TRANSLATION_MARKERS.search(text[:4000]))
     #: Only judged when there IS a text layer: a scan legitimately shows none.
     looks_official = not text.strip() or bool(_PUBLICATION_HALLMARK.search(front))
@@ -313,6 +399,33 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
     )
 
     blockers: list[str] = []
+    if is_reversed:
+        blockers.append(
+            "TEXTE RENDU A L'ENVERS: la couche de texte se lit de droite a "
+            "gauche (« desneciL :ypoC » pour « Licensed Copy »). C'est le pire "
+            "cas, parce qu'il DESACTIVE TOUS LES AUTRES CONTROLES a la fois: "
+            "une couverture « prEN » ressort « NErp » et ne declenche aucun "
+            "marqueur de projet, aucune banniere d'editeur. Le document parait "
+            "alors seulement non identifie, verdict bien plus doux qu'il ne le "
+            "merite. Ne rien extraire de ce rendu."
+        )
+    if is_uncontrolled:
+        blockers.append(
+            "COPIE SOUS LICENCE NON MAINTENUE: le document porte la mention "
+            "de l'editeur lui-meme (« Uncontrolled Copy », « Licensed Copy »). "
+            "Ce n'est ni un projet ni un faux — c'est un exemplaire dont "
+            "l'editeur declare qu'il ne le tient pas a jour. Confirmer une "
+            "valeur nationale a partir de la reviendrait a citer une edition "
+            "dont personne ne garantit qu'elle est celle en vigueur."
+        )
+    if is_teaching:
+        blockers.append(
+            "SUPPORT PEDAGOGIQUE OU COMMENTAIRE: diaporama de cours, guide ou "
+            "recueil d'exemples, pas le texte normatif. Reconnu sur ce qu'une "
+            "norme ne contient jamais — une adresse de courriel d'auteur, "
+            "« slides available on the web ». Le titre seul ne suffirait pas: "
+            "« Basis of structural design » EST le sous-titre de l'EN 1990."
+        )
     if is_machine_translated:
         blockers.append(
             "TRADUCTION AUTOMATIQUE: ce document porte la marque d'un moteur "
@@ -383,6 +496,9 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
         is_draft=is_draft,
         is_impersonation=is_impersonation,
         is_mis_decoded=is_mis_decoded,
+        is_reversed=is_reversed,
+        is_uncontrolled_copy=is_uncontrolled,
+        is_teaching_material=is_teaching,
         is_machine_translated=is_machine_translated,
         has_publication_identity=looks_official,
         front_matter=front,
