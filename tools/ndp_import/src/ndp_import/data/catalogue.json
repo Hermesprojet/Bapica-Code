@@ -35,14 +35,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P1. Bases de calcul: combinaisons ELU/ELS, coefficients gamma et psi, classes de consequences"
+        "notes": "ACQUIS en version texte (15 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Base de calcul des structures: coefficients partiels et combinaisons d'actions. Aucun motif d'extraction ecrit a ce jour."
       },
       "document_role": "national_annex",
       "phase": "P1",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "40a8eeac9471d7203e81ff8a03921e064775734a1ad2e7c468f8dff63f943b16",
+      "edition_read_from_cover": "1e ed., septembre 2007"
     },
     {
       "doc_key": "BE-EN199111-NA",
@@ -59,14 +61,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P1. Poids volumiques, poids propres, charges d'exploitation (categories A a K)"
+        "notes": "ACQUIS en version texte (11 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Poids volumiques, charges d'exploitation. Aucun motif d'extraction ecrit a ce jour."
       },
       "document_role": "national_annex",
       "phase": "P1",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "16acbb56fcc160a3867ac000f91505a79724bed28f3ca58500cfcf06b7c9a58e",
+      "edition_read_from_cover": "1e ed., septembre 2007"
     },
     {
       "doc_key": "BE-EN199113-NA",
@@ -83,14 +87,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P1. Neige: zones, s_k, coefficients de forme, accumulations"
+        "notes": "ACQUIS en version texte (9 pages, langue nl). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Charges de neige. Version NEERLANDAISE: la version francaise n'a pas ete deposee. Aucun motif d'extraction ecrit a ce jour."
       },
       "document_role": "national_annex",
       "phase": "P1",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "9a2880b2f489a9803e1fc73b2268a0306ce2c298b568f0c52eeb10872980c29d",
+      "edition_read_from_cover": "1e uitg., oktober 2007 (version neerlandaise)"
     },
     {
       "doc_key": "BE-EN199114-NA",
@@ -107,14 +113,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P1. Vent: zones, v_b0, categories de terrain, coefficients de pression"
+        "notes": "ACQUIS en version texte (63 pages, langue nl). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Actions du vent. Version NEERLANDAISE: la version francaise n'a pas ete deposee. Aucun motif d'extraction ecrit a ce jour."
       },
       "document_role": "national_annex",
       "phase": "P1",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "a406441e0b5b53b79e4d0940fef1df72a6617ac260dc5dcf7749070c4999ffaf",
+      "edition_read_from_cover": "1e uitg., december 2010 (version neerlandaise)"
     },
     {
       "doc_key": "BE-EN199211-NA",
@@ -374,14 +382,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase FEU. Actions sur les structures exposees au feu"
+        "notes": "ACQUIS en version texte (27 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Actions sur les structures exposees au feu. Aucun motif d'extraction ecrit a ce jour."
       },
       "document_role": "national_annex",
       "phase": "FEU",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "bb39ccad867e4cb183534719143f07dffd7ab71a17512137482dc841514c7808",
+      "edition_read_from_cover": "1e ed., mai 2008"
     },
     {
       "doc_key": "BE-EN199212-NA",
@@ -510,14 +520,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P6. Ponts: modeles de charge LM1-LM4, fatigue"
+        "notes": "ACQUIS en version texte (43 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Actions sur les ponts dues au trafic. Hors perimetre P1 (batiment). Aucun motif d'extraction ecrit a ce jour."
       },
       "document_role": "national_annex",
       "phase": "P6",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "25735718283606f39fec41fae861b95cbfefd9e795b3d2c86b0763221191c11e",
+      "edition_read_from_cover": "1e ed., octobre 2011"
     },
     {
       "doc_key": "BE-EN19922-NA",
