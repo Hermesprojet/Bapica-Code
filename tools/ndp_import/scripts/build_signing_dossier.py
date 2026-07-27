@@ -30,7 +30,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 HERE = Path(__file__).resolve().parents[1]
 REPO = HERE.parents[1]
@@ -48,7 +48,7 @@ def _hand_readings(country: str, standard: str) -> dict[str, dict[str, Any]]:
     return {}
 
 
-def _verdict(machine: float | None, hand: Any, hand_page: int | None) -> str:
+def _verdict(machine: float | None, entry: Mapping[str, Any]) -> str:
     """Compare, but only where a comparison means something.
 
     A parameter still carrying the EN recommendation has no ``source_page``:
@@ -56,7 +56,21 @@ def _verdict(machine: float | None, hand: Any, hand_page: int | None) -> str:
     placeholder would count a disagreement with a value we never read as an
     extractor error — inflating the denominator with cases that cannot be
     judged either way. Those come back NON JUGEABLE and stay out of the rate.
+
+    A **conditional** parameter also carries no scalar — by construction, since
+    the model forbids holding a single value beside its variants. Reading that
+    as "sans valeur exploitable" is what this dossier did until now, and it hid
+    three parameters from the engineer who has to confirm them: alpha_cc,
+    k1_stress_limit and w_max all have values, one per case. They are out of the
+    concordance rate, because the extractor proposes one number and the annex
+    gives a branch table, but they are emphatically IN the work to be done.
     """
+    hand_page = entry.get("source_page")
+    hand = entry.get("parameter_value")
+    if entry.get("validation_status") == "not_representable":
+        return "NON REPRESENTABLE"
+    if entry.get("variants"):
+        return "CONDITIONNEL"
     if hand_page is None:
         return "NON JUGEABLE"
     if hand is None:
@@ -64,6 +78,15 @@ def _verdict(machine: float | None, hand: Any, hand_page: int | None) -> str:
     if machine is None:
         return "RIEN LU"
     return "concorde" if abs(machine - float(hand)) < 1e-9 else "DIVERGE"
+
+
+def _hand_cell(entry: Mapping[str, Any]) -> str:
+    """What the human read, rendered for the table — branches included."""
+    variants = entry.get("variants")
+    if variants:
+        return " ; ".join(f"{v['condition']} = {v['value']:g}" for v in variants)
+    value = entry.get("parameter_value")
+    return "—" if value is None else f"{value:g}"
 
 
 def main(argv: list[str]) -> int:
@@ -86,25 +109,26 @@ def main(argv: list[str]) -> int:
 
     names = sorted(set(hand) | set(best))
     rows, decisions = [], []
-    agree = diverge = nothing = novalue = unjudgeable = 0
+    agree = diverge = nothing = novalue = unjudgeable = conditional = 0
 
     for name in names:
         h = hand.get(name, {})
         b = best.get(name)
         hv = h.get("parameter_value")
         mv = b["parsed_value"] if b else None
-        v = _verdict(mv, hv, h.get("source_page"))
+        v = _verdict(mv, h)
         agree += v == "concorde"
         diverge += v == "DIVERGE"
         nothing += v == "RIEN LU"
-        novalue += v == "SANS VALEUR"
+        novalue += v in ("SANS VALEUR", "NON REPRESENTABLE")
+        conditional += v == "CONDITIONNEL"
         unjudgeable += v == "NON JUGEABLE"
 
         rows.append({
             "name": name,
             "machine": mv, "machine_page": b["page"] if b else None,
             "confidence": b["confidence"] if b else None,
-            "hand": hv, "hand_page": h.get("source_page"),
+            "hand": _hand_cell(h), "hand_page": h.get("source_page"),
             "clause": h.get("clause") or (b.get("clause") if b else None),
             "verdict": v,
             "status": h.get("validation_status", "absent du jeu de donnees"),
@@ -165,6 +189,7 @@ def main(argv: list[str]) -> int:
         f"| **Diverge** | {diverge} | {diverge/judged:.0%} |",
         f"| Rien lu | {nothing} | {nothing/judged:.0%} |",
         f"| **Total jugeable** | **{judged}** | |",
+        f"| Conditionnel — valeurs par cas, à confirmer (hors taux) | {conditional} | — |",
         f"| Sans valeur exploitable (hors taux) | {novalue} | — |",
         f"| Non jugeable, valeur EN par défaut (hors taux) | {unjudgeable} | — |",
         f"| **Total paramètres** | **{total}** | |",
