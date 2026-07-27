@@ -129,9 +129,27 @@ class ToleranceRule:
             )
 
     def accepts(self, expected: float, computed: float) -> tuple[bool, float, float]:
-        """:returns: ``(within, abs_diff, rel_diff)``."""
+        """:returns: ``(within, abs_diff, rel_diff)``.
+
+        A relative tolerance means nothing against an expected value of zero:
+        the ratio is either ``inf`` or undefined, whatever the agreement. A
+        case with a legitimately null output — the additional tensile force of
+        §6.2.3(7) when no truss carries the shear — was therefore reported as
+        out of tolerance while matching exactly, and would have stayed red for
+        ever.
+
+        So an expected zero is judged on the ABSOLUTE difference, and only an
+        exact zero passes. That keeps the guard: 5 against an expected 0 is
+        still a failure, which a lenient relative rule could never have caught
+        either.
+        """
         abs_diff = abs(computed - expected)
-        rel_diff = abs_diff / abs(expected) if expected != 0 else math.inf
+        if expected == 0.0:
+            rel_diff = 0.0 if abs_diff == 0.0 else math.inf
+            ok = abs_diff == 0.0 or (self.abs is not None and abs_diff <= self.abs)
+            return ok, abs_diff, rel_diff
+
+        rel_diff = abs_diff / abs(expected)
         ok = False
         if self.abs is not None and abs_diff <= self.abs:
             ok = True

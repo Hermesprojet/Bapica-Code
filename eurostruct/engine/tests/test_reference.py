@@ -19,6 +19,7 @@ from eurostruct_engine.reference import (
     ReferenceStatus,
     ToleranceRule,
     available_harnesses,
+    get_harness,
     load_library,
     run_case,
     run_library,
@@ -63,6 +64,35 @@ def test_tolerance_ceiling_is_enforced() -> None:
         ToleranceRule(output="As", rel=0.05)
     with pytest.raises(ValueError, match="doit fixer rel ou abs"):
         ToleranceRule(output="As")
+
+
+def test_a_null_expectation_is_judged_on_the_absolute_difference() -> None:
+    """A relative tolerance says nothing against an expected zero.
+
+    §6.2.3(7) gives no additional tensile force when no truss carries the
+    shear: the expectation is a legitimate 0,0. Dividing by it produced ``inf``
+    whatever the agreement, so a case matching exactly was reported out of
+    tolerance — and would have stayed red for ever. The suite caught a defect
+    in its own comparison, not in the engine.
+    """
+    rule = ToleranceRule(output="delta_F_td_kN", rel=1e-9)
+    within, abs_diff, rel_diff = rule.accepts(0.0, 0.0)
+    assert within
+    assert abs_diff == 0.0
+    assert rel_diff == 0.0
+
+
+def test_a_null_expectation_still_refuses_a_non_zero_answer() -> None:
+    """The relaxation must not become a hole: 5 against 0 is still wrong."""
+    rule = ToleranceRule(output="delta_F_td_kN", rel=1e-9)
+    within, abs_diff, _ = rule.accepts(0.0, 5.0)
+    assert not within
+    assert abs_diff == 5.0
+
+    # Une tolerance absolue declaree reste la seule facon d'admettre un ecart.
+    tolerant = ToleranceRule(output="delta_F_td_kN", abs=1e-6)
+    assert tolerant.accepts(0.0, 5e-7)[0]
+    assert not tolerant.accepts(0.0, 5.0)[0]
 
 
 def test_expected_and_computed_are_stored_separately() -> None:
@@ -114,23 +144,32 @@ def test_refusal_cases_are_verified_as_refusals() -> None:
 
 
 def test_a_drifting_case_fails() -> None:
-    """The runner must actually catch a wrong answer."""
+    """The runner must actually catch a wrong answer.
+
+    The output to falsify is read off the case rather than named here. Naming
+    one made the test change meaning the day a new module put a different case
+    at the head of the library: it stayed red, but on a missing output instead
+    of on drift — a green-looking red that proves nothing about the comparison.
+    """
     good = next(c for c in RUNNABLE if c.expect_refusal is None)
+    output, truth = next(
+        (k, v) for k, v in good.expected_outputs.items() if v != 0.0
+    )
     tampered = dataclasses.replace(
         good,
         reference_id=good.reference_id + "-TAMPERED",
-        expected_outputs={**good.expected_outputs, "As_strength_mm2": 1.0},
+        expected_outputs={**good.expected_outputs, output: truth * 2.0},
     )
     result = run_case(tampered)
     assert result.status is ReferenceStatus.FAILED
     assert result.blocking
     assert result.failures()
-    assert "As_strength_mm2" in result.message
+    assert output in result.message
     # The difference is journalised, not just the verdict.
-    delta = next(d for d in result.delta_report if d.output == "As_strength_mm2")
-    assert delta.expected == 1.0
-    assert delta.computed > 100.0
-    assert delta.rel_diff > 100.0
+    delta = next(d for d in result.delta_report if d.output == output)
+    assert delta.expected == truth * 2.0
+    assert delta.computed == pytest.approx(truth, rel=1e-6)
+    assert delta.rel_diff == pytest.approx(0.5, rel=1e-6)   # loin du plafond de 1 %
 
 
 def test_a_case_expecting_a_refusal_that_computes_fails() -> None:
@@ -232,9 +271,27 @@ def test_concrete_scope_covers_the_priority_verifications() -> None:
 
 
 def test_registered_harness_matches_the_implemented_modules() -> None:
-    assert "ec2.beam_flexure" in available_harnesses()
-    # Modules not yet written must not be registered, or the gap would hide.
-    assert "ec2.beam_shear" not in available_harnesses()
+    """Registration follows the module, never precedes it.
+
+    An unregistered harness is what makes a planned verification report
+    ``awaiting_module``. Registering a name before the module computes would
+    turn a visible gap into a case that quietly claims to run.
+    """
+    registered = set(available_harnesses())
+    assert {"ec2.beam_flexure", "ec2.beam_shear", "ec2.anchorage"} <= registered
+
+    # Un nom enregistre repond toujours: pas de banc declare a l'avance.
+    for name in registered:
+        assert get_harness(name) is not None
+
+    # Les familles non ecrites restent absentes, sinon leurs cas cesseraient
+    # d'etre comptes comme des lacunes.
+    planned = {c.harness for c in LIBRARY}
+    assert planned - registered, "plus aucune lacune — la couverture planifiee a disparu"
+    for family in ("ec3", "ec4", "ec5", "ec7", "ec8"):
+        assert not any(n.startswith(family + ".") for n in registered), (
+            f"{family} enregistre alors qu'aucun module ne le calcule"
+        )
 
 
 def test_report_serialises_for_ci() -> None:
