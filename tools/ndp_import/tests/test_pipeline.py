@@ -647,6 +647,56 @@ def test_skipped_pages_are_reported_not_silently_dropped(tmp_path) -> None:
     assert "ne veut pas dire" in text
 
 
+@pytest.mark.parametrize(
+    "front",
+    [
+        "projet de norme prNBN EN 1997-1 ANB Annexe nationale",
+        "oSIST prEN 1997-1:2022 iTeh STANDARD PREVIEW Eurocode 7",
+        "NBN ENV 1993-1-1 Annexe nationale — pre-norme",
+        "Ontwerpnorm prNBN EN 1992-1-1 ANB Nationale bijlage",
+    ],
+)
+def test_a_draft_annex_can_never_fix_a_national_parameter(tmp_path, front) -> None:
+    """Regression: a DRAFT National Annex passed triage with zero blockers.
+
+    Every other marker sees "annexe nationale" and stops there — a prEN cover
+    is worded like a published one. The values in a draft have no legal force
+    and can still change, so holding one must never unblock anything.
+    """
+    from ndp_import import triage_document
+
+    r = triage_document(make_pdf(tmp_path / "depot.pdf", [[front]]))
+    assert r.is_draft
+    assert not r.usable_for_ndp
+    assert any("PROJET" in b for b in r.blockers)
+
+
+@pytest.mark.parametrize(
+    "front",
+    [
+        "NBN EN 1992-1-1 ANB Norme belge 1e ed., aout 2010 Annexe nationale",
+        # Une norme PUBLIEE cite en couverture la pre-norme qu'elle remplace.
+        # C'est le faux positif qui avait signale 13 Eurocodes publies comme
+        # des projets.
+        "EUROPEAN STANDARD Avril 2005 Remplace ENV 1993-1-2:1995 "
+        "Annexe nationale NBN EN 1993-1-2 ANB",
+        "EUROPEAN STANDARD Vervangt ENV 1991-2-2:1995 Nationale bijlage ANB",
+        "NBN EN 1990 ANB — annule et remplace ENV 1991-1:1994 — Annexe nationale",
+    ],
+)
+def test_a_published_annex_is_not_flagged_as_a_draft(tmp_path, front) -> None:
+    """The guard must not swallow the documents we actually hold.
+
+    A marker counts only when it designates *this* document. "Remplace ENV
+    ..." names a superseded edition, not the one in hand.
+    """
+    from ndp_import import triage_document
+
+    r = triage_document(make_pdf(tmp_path / "NBN_EN_ANB.pdf", [[front]]))
+    assert not r.is_draft
+    assert r.usable_for_ndp
+
+
 def test_base_eurocode_is_not_mistaken_for_an_annex(tmp_path) -> None:
     from ndp_import import triage_document
 
