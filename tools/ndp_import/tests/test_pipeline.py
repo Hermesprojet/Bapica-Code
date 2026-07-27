@@ -108,12 +108,55 @@ def test_no_annex_is_claimed_to_be_acquired() -> None:
 
 
 def test_catalogue_names_the_freely_available_documents() -> None:
-    """Two of the six are public; the pipeline should not obscure that."""
+    """Some documents are public; the catalogue must not bury that."""
     entries = {e.doc_key: e for e in load_catalogue()}
-    assert "gratuit" in entries["ES-CODIGO-ESTRUCTURAL"].how_to_acquire.lower()
-    assert "gratuit" in entries["DE-MVV-TB"].how_to_acquire.lower()
-    # And the paid ones say so.
-    assert "payant" in entries["BE-EN1992-1-1-ANB"].licence.lower()
+    for key in ("ES-CODIGO-ESTRUCTURAL", "ES-CTE", "ES-NCSE-02", "DE-MVV-TB"):
+        assert "gratuit" in entries[key].how_to_acquire.lower(), key
+    # And the National Annexes say they are not.
+    assert "payant" in entries["BE-EN199211-NA"].licence.lower()
+
+
+def test_catalogue_covers_every_country_and_phase() -> None:
+    entries = load_catalogue()
+    assert {e.country_code for e in entries} == {"BE", "FR", "ES", "DE"}
+    # Every market needs the same Eurocode parts.
+    per_country = {}
+    for e in entries:
+        if e.document_role == "national_annex":
+            per_country.setdefault(e.country_code, set()).add(e.standard)
+    assert len({frozenset(v) for v in per_country.values()}) == 1, (
+        "les pays n'ont pas le meme perimetre d'Annexes Nationales"
+    )
+    # The blocking one is flagged P0.
+    p0 = [e for e in entries if e.phase == "P0" and e.document_role == "national_annex"]
+    assert {e.standard for e in p0} == {"EN 1992-1-1"}
+    assert len(p0) == 4          # one per country
+
+
+def test_national_regulations_are_listed_beside_the_annexes() -> None:
+    """A Eurocode annex alone does not make a project compliant."""
+    entries = {e.doc_key: e for e in load_catalogue()}
+    # Belgium: fire requirements come from the Arrete Royal, not from EN 1992-1-2.
+    assert "BE-AR-FEU" in entries
+    # Spain: the enforceable reference is not the Eurocode.
+    assert "ES-CODIGO-ESTRUCTURAL" in entries and "ES-CTE" in entries
+    # Germany: the MVV TB decides which editions are in force.
+    assert "DE-MVV-TB" in entries
+    # France: the seismic zoning is a decree, not an annex.
+    assert "FR-SEISME-ZONAGE" in entries
+    for key in ("BE-AR-FEU", "ES-CTE", "DE-MVV-TB", "FR-SEISME-ZONAGE"):
+        assert entries[key].document_role == "national_regulation"
+
+
+def test_national_regulation_is_not_classified_as_a_base_eurocode(tmp_path) -> None:
+    """Regression: an Arrete Royal was landing in the base-Eurocode bucket."""
+    from ndp_import import triage_document
+
+    pdf = make_pdf(
+        tmp_path / "AR_annexe6.pdf",
+        [["Arrete royal — Normes de base en matiere de prevention contre l'incendie"]],
+    )
+    assert triage_document(pdf).proposed_role is DocumentRole.NATIONAL_REGULATION
 
 
 def test_every_expected_parameter_has_a_search_pattern() -> None:
