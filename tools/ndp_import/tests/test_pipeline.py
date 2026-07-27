@@ -808,6 +808,64 @@ def test_competing_editions_of_one_standard_are_flagged(tmp_path) -> None:
     assert "PLUSIEURS FICHIERS DISTINCTS" not in render_triage([new])
 
 
+def test_mis_decoded_text_is_refused(tmp_path) -> None:
+    """A deposited NF EN 1991-1-4/NA extracted as « ÒÚ ÛÒ ïççïóïóìñÒß ».
+
+    Its font carries no usable Unicode map, so the text layer exists and is
+    wrong — more dangerous than a scan, because it looks like text. Measured:
+    96 % Latin-1 supplement against 0,5–3,4 % on every sound document.
+
+    Tested on the extracted text rather than through a fixture PDF: the
+    fixture's font cannot encode these glyphs at all and emits ``(cid:NNN)``
+    instead — a different corruption, already covered by the "no text layer"
+    path. Reproducing a broken ToUnicode map would mean shipping a
+    deliberately malformed font, a heavier fixture than this guard deserves.
+    """
+    from ndp_import import text_is_mis_decoded
+
+    broken = "ÒÚ ÛÒ ïççïóïóìñÒß ³¿® îððè Ý» ¼±½«³»²¬ » ¬ @ « ¿¹» " * 12
+    assert text_is_mis_decoded(broken)
+
+    # Meme dilue par du texte sain, le signal reste franc: 96 % contre 3 %.
+    assert text_is_mis_decoded(broken + "Annexe nationale ICS 91.010.30" * 3)
+
+
+def test_sound_french_text_is_not_flagged_as_mis_decoded() -> None:
+    """Accented French is normal; the guard must not fire on it."""
+    from ndp_import import text_is_mis_decoded
+
+    sound = (
+        "La valeur de gamma a utiliser est celle recommandee. Resistance "
+        "caracteristique du beton, deformation a la rupture, elancement. "
+        "Coefficient de securite pour les elements precontraints. "
+    ) * 4
+    assert not text_is_mis_decoded(sound)
+    # Et un texte court ne se juge pas: trois mots accentues suffiraient a
+    # depasser le seuil sans rien signifier.
+    assert not text_is_mis_decoded("éàçù")
+
+
+def test_a_french_classification_index_counts_as_a_publication_identity(
+    tmp_path,
+) -> None:
+    """« P 18-711-1/NA » identifies an AFNOR standard.
+
+    The French NA arrived as a publisher's consolidation whose cover carries no
+    AFNOR banner, so the identity guard rejected the real thing. The indice de
+    classement is the official identifier and survives that repackaging.
+    """
+    from ndp_import import triage_document
+
+    r = triage_document(
+        make_pdf(
+            tmp_path / "NA_FR.pdf",
+            [["NF EN 1992-1-1/NA ( P 18-711-1/NA ) Annexe Nationale"]],
+        )
+    )
+    assert r.has_publication_identity
+    assert r.usable_for_ndp
+
+
 def test_base_eurocode_is_not_mistaken_for_an_annex(tmp_path) -> None:
     from ndp_import import triage_document
 

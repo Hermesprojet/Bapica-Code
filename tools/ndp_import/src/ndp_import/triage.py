@@ -29,7 +29,8 @@ import pdfplumber
 
 from .model import DocumentRole
 
-__all__ = ["TriageResult", "triage_document", "triage_batch", "render_triage"]
+__all__ = ["TriageResult", "triage_document", "triage_batch", "render_triage",
+           "text_is_mis_decoded"]
 
 #: A National Annex names itself. These markers appear in the title block.
 _ANNEX_MARKERS = re.compile(
@@ -105,9 +106,40 @@ _PUBLICATION_HALLMARK = re.compile(
     r"\bICS[:\s]|\bcou\s*:|EUROPEAN\s+STANDARD|NORME\s+EUROP|EUROPÄISCHE\s+NORM|"
     r"Norme\s+belge|Belgische\s+norm|MONITEUR\s+BELGE|BELGISCH\s+STAATSBLAD|"
     r"\bNBN\b|\bAFNOR\b|\bDIN\b|\bUNE-?EN\b|\bAENOR\b|\bBOE\b|"
-    r"journal\s+officiel|bundesanzeiger",
+    r"journal\s+officiel|bundesanzeiger|"
+    # Indice de classement francais: « P 18-711-1/NA ». C'est l'identifiant
+    # officiel AFNOR, et il apparait meme sur les rendus d'editeurs tiers dont
+    # la couverture ne porte pas la banniere AFNOR.
+    r"indice\s+de\s+classement|\b[A-Z]\s?\d{2}-\d{3}",
     re.IGNORECASE,
 )
+
+#: Text that extracts but is systematically mis-decoded. A PDF whose font
+#: carries a broken ToUnicode map yields characters from the Latin-1 supplement
+#: instead of the real ones: « NF EN 1991-1-4/NA » comes out « ÒÚ ÛÒ ïççïóïóìñÒß ».
+#:
+#: More dangerous than a scan, because it looks like text. Measured over the
+#: deposit: a mis-decoded annex reaches 96 % Latin-1 supplement and 0,2 % ASCII
+#: letters, where every sound document sits between 0,5 % and 3,4 % / 14 % and
+#: 81 %. The margin is wide enough that a single threshold separates them.
+_MOJIBAKE_HIGH_RATIO = 0.5
+
+#: Below this many characters the ratio means nothing — a cover page of three
+#: accented words would trip it.
+_MOJIBAKE_MIN_CHARS = 200
+
+
+def text_is_mis_decoded(text: str) -> bool:
+    """Whether *text* is dominated by Latin-1 supplement characters.
+
+    Detects the *shape* of the corruption rather than any particular encoding,
+    so it holds whatever the publisher's font did wrong.
+    """
+    printable = [c for c in text if not c.isspace()]
+    if len(printable) < _MOJIBAKE_MIN_CHARS:
+        return False
+    high = sum(1 for c in printable if 0x80 <= ord(c) <= 0xFF)
+    return high / len(printable) > _MOJIBAKE_HIGH_RATIO
 
 
 def _is_draft(front: str, filename: str) -> bool:
@@ -158,6 +190,8 @@ class TriageResult:
     is_draft: bool
     #: Download-bait page dressed as a standard. Never usable.
     is_impersonation: bool
+    #: Text extracts but is systematically mis-decoded. Never usable.
+    is_mis_decoded: bool
     #: Carries an ICS code, a standards-body banner or an official gazette.
     #: A document without one cannot say under whose authority it speaks.
     #: True for scans, whose text layer is empty for an unrelated reason.
@@ -181,6 +215,7 @@ class TriageResult:
             self.machine_readable
             and not self.is_draft
             and not self.is_impersonation
+            and not self.is_mis_decoded
             and self.has_publication_identity
             and self.proposed_role.can_fix_national_parameters
         )
@@ -196,6 +231,7 @@ class TriageResult:
             "proposed_standard": self.proposed_standard,
             "is_draft": self.is_draft,
             "is_impersonation": self.is_impersonation,
+            "is_mis_decoded": self.is_mis_decoded,
             "has_publication_identity": self.has_publication_identity,
             "usable_for_ndp": self.usable_for_ndp,
             "blockers": list(self.blockers),
@@ -245,6 +281,7 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
     role = _classify(front, path.name)
     standard = _standard_of(front, path.name)
     is_draft = _is_draft(front, path.name)
+    is_mis_decoded = text_is_mis_decoded(text)
     #: Only judged when there IS a text layer: a scan legitimately shows none.
     looks_official = not text.strip() or bool(_PUBLICATION_HALLMARK.search(front))
 
@@ -253,6 +290,15 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
     )
 
     blockers: list[str] = []
+    if is_mis_decoded:
+        blockers.append(
+            "TEXTE MAL DECODE: la police du PDF ne porte pas de table de "
+            "correspondance Unicode valide, et l'extraction rend des "
+            "caracteres faux (« NF EN 1991-1-4/NA » ressort « ÒÚ ÛÒ "
+            "ïççïóïóìñÒß »). Plus dangereux qu'un scan, parce que ca ressemble "
+            "a du texte. Obtenir une autre version du fichier; une ROC sur un "
+            "rendu image donnerait un meilleur resultat que cette couche."
+        )
     if is_impersonation:
         blockers.append(
             "CE N'EST PAS UNE NORME: la page porte des marqueurs de "
@@ -303,6 +349,7 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
         proposed_standard=standard,
         is_draft=is_draft,
         is_impersonation=is_impersonation,
+        is_mis_decoded=is_mis_decoded,
         has_publication_identity=looks_official,
         front_matter=front,
         blockers=tuple(blockers),
