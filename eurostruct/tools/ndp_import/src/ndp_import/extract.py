@@ -79,8 +79,20 @@ def read_pages(pdf_path: Path) -> list[PageText]:
     return pages
 
 
+#: Glyphs a PDF font maps to no Unicode point; pdfminer emits them as
+#: "(cid:22)". The Belgian ANBs carry a diagonal watermark whose font has no
+#: ToUnicode table, so 774 of these land *interleaved* with the real text of
+#: a 9-page annex — and the digits inside them would be offered as values.
+_CID_ARTEFACT = re.compile(r"\(cid:\d+\)")
+
+
 def _normalise(text: str) -> str:
-    """Collapse whitespace so a clause split across lines still matches."""
+    """Collapse whitespace and drop unmappable-glyph artefacts.
+
+    A clause split across lines must still match, and a watermark must not
+    contribute numbers to the reading.
+    """
+    text = _CID_ARTEFACT.sub(" ", text)
     return re.sub(r"[ \t ]+", " ", text.replace("\n", " "))
 
 

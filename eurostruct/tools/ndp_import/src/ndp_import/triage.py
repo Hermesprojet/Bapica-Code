@@ -141,7 +141,9 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
 
     with pdfplumber.open(str(path)) as pdf:
         pages = [(p.extract_text() or "") for p in pdf.pages]
-    text = "".join(pages)
+    # Unmappable watermark glyphs are not readable text; counting them would
+    # make a scanned page look machine-readable.
+    text = re.sub(r"\(cid:\d+\)", "", "".join(pages))
     front = " ".join((pages[0] if pages else "").split())[:400]
 
     role = _classify(front, path.name)

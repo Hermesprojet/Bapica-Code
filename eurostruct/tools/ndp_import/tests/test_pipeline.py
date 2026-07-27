@@ -552,3 +552,18 @@ def test_base_eurocode_can_never_be_confirmed(run) -> None:
     )
     with pytest.raises(MissingEvidence, match="valeur RECOMMANDEE"):
         to_engine_records([item])
+
+
+def test_watermark_artefacts_are_stripped_before_reading_numbers() -> None:
+    """Regression: Belgian ANBs carry a watermark with no ToUnicode table.
+
+    pdfminer emits those glyphs as "(cid:22)". In the 9-page snow annex there
+    are 774 of them, interleaved with the real text — their digits would be
+    offered as candidate values.
+    """
+    from ndp_import.extract import _normalise
+
+    raw = "Clause 5.2(2) (cid:22) la valeur (cid:8) est 1,60 (cid:16) kN/m2"
+    clean = _normalise(raw)
+    assert "cid" not in clean
+    assert "5.2(2)" in clean and "1,60" in clean
