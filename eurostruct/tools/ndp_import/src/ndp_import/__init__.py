@@ -35,6 +35,7 @@ from .model import (
 )
 from .patterns import PATTERNS, ParameterPattern, parse_number, patterns_for
 from .triage import (
+    text_is_mis_decoded,
     TriageResult,
     render_triage,
     triage_batch,
@@ -59,4 +60,5 @@ __all__ = [
     "ReviewQueue", "load_decisions", "apply_decisions", "to_engine_records",
     "merge_into_dataset", "MissingEvidence",
     "TriageResult", "triage_document", "triage_batch", "render_triage",
+    "text_is_mis_decoded",
 ]
