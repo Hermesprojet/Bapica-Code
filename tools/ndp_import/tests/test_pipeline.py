@@ -743,6 +743,31 @@ def test_scans_are_not_penalised_for_a_missing_hallmark(tmp_path) -> None:
     assert not any("identite de publication" in b for b in r.blockers)
 
 
+def test_a_redeposited_file_is_announced_as_already_held(tmp_path) -> None:
+    """The same three annexes arrived three times, byte for byte.
+
+    Nothing in the triage said "you already have this", so re-sending looked
+    like it might help. It never does — and when the held copy is blocked on
+    OCR, the report has to say that a *text* version is what is needed.
+    """
+    from ndp_import import load_catalogue, render_triage, triage_document
+
+    held = next(e for e in load_catalogue() if e.acquired and e.doc_id_sha256)
+    pdf = make_pdf(tmp_path / "redepot.pdf", [["NBN EN 1992-1-1 ANB ICS 91.010.30"]])
+    r = triage_document(pdf)
+
+    # Le fichier de test n'est pas celui du catalogue: pas de fausse alerte.
+    assert "DEJA EN MAIN" not in render_triage([r])
+
+    # Avec l'empreinte d'un document detenu, l'alerte tombe.
+    import dataclasses
+
+    text = render_triage([dataclasses.replace(r, doc_id=held.doc_id_sha256)])
+    assert "[DEJA EN MAIN]" in text
+    assert held.reference in text
+    assert "Les redeposer ne change rien" in text
+
+
 def test_base_eurocode_is_not_mistaken_for_an_annex(tmp_path) -> None:
     from ndp_import import triage_document
 

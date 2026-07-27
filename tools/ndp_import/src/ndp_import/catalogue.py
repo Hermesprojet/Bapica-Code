@@ -38,6 +38,9 @@ class CatalogueEntry:
     phase: str = "?"
     #: national_annex | national_regulation
     document_role: str = "national_annex"
+    #: sha256 of the file actually held. Ties "acquired" to a specific file,
+    #: and lets a re-deposit of the same bytes be recognised as such.
+    doc_id_sha256: str | None = None
 
     @property
     def standard(self) -> str:
@@ -85,6 +88,7 @@ def load_catalogue(path: Path | None = None) -> tuple[CatalogueEntry, ...]:
             edition=d.get("edition"),
             phase=d.get("phase", "?"),
             document_role=d.get("document_role", "national_annex"),
+            doc_id_sha256=d.get("doc_id_sha256"),
         )
         for d in raw["documents"]
     )
