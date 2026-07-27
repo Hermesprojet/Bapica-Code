@@ -695,14 +695,16 @@
         "languages": [
           "fr"
         ],
-        "notes": "Phase P1. Bases de calcul: combinaisons ELU/ELS, coefficients gamma et psi, classes de consequences"
+        "notes": "DETENU POUR LECTURE SEULE (10 pages). Ne FAIT PAS FOI: sert a batir l'application — reperer les clauses, connaitre les parametres, dimensionner le dossier de relecture. Aucune valeur confirmee ne peut s'y appuyer (to_engine_records refuse). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. TRADUCTION AUTOMATIQUE Google d'un document AFNOR francais, estampillee comme telle. A n'utiliser QUE pour reperer la structure, et encore avec mefiance: la machine injecte des espaces dans les identifiants (« P 0 6-100-2 », « N F EN 1 990 »), donc les nombres sont suspects par construction. AUCUNE valeur n'en sera tiree, meme en developpement."
       },
       "document_role": "national_annex",
       "phase": "P1",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "7f94f0767d1d947ac6b3dc5238db805228f2578df386caad93d10ff135526cda",
+      "edition_read_from_cover": "juin 2004 (NF P 06-100-2), rendu anglais"
     },
     {
       "doc_key": "FR-EN199111-NA",
@@ -766,14 +768,16 @@
         "languages": [
           "fr"
         ],
-        "notes": "Phase P1. Vent: zones, v_b0, categories de terrain, coefficients de pression"
+        "notes": "DETENU POUR LECTURE SEULE (43 pages). Ne FAIT PAS FOI: sert a batir l'application — reperer les clauses, connaitre les parametres, dimensionner le dossier de relecture. Aucune valeur confirmee ne peut s'y appuyer (to_engine_records refuse). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. NF EN 1991-1-4/NA. Couche de texte SYSTEMATIQUEMENT MAL DECODEE: la police ne porte pas de table Unicode valide et « NF EN 1991-1-4/NA » ressort « ÒÚ ÛÒ ïççïóïóìñÒß ». Inexploitable meme pour la structure. Enregistre pour que le fichier ne soit pas redepose: c'est une AUTRE version qu'il faut."
       },
       "document_role": "national_annex",
       "phase": "P1",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "7e66eef6dcc43d4d1f374b05021580184d8049b300a69243ec60d504d908002c",
+      "edition_read_from_cover": "mars 2008"
     },
     {
       "doc_key": "FR-EN199211-NA",
@@ -789,11 +793,11 @@
         "languages": [
           "fr"
         ],
-        "notes": "Phase P0. BETON ARME: alpha_cc, gamma_C, gamma_S, k1/k2, A_s,min/max, effort tranchant"
+        "notes": "DETENU POUR LECTURE SEULE (40 pages). Ne FAIT PAS FOI: sert a batir l'application — reperer les clauses, connaitre les parametres, dimensionner le dossier de relecture. Aucune valeur confirmee ne peut s'y appuyer (to_engine_records refuse). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. NF EN 1992-1-1/NA, indice P 18-711-1/NA. Consolidation Batipedia (CSTB Editions), licenciee a UNIVERSITE DE BORDEAUX, filigranee par page avec l'adresse IP d'un utilisateur. Sa couverture declare: « seules les Normes individuellement homologuees et composant cette compilation font foi ». C'est LE bloquant P0 francais: le contenu est complet et lisible, il sert a batir l'application, et une licence AFNOR au nom du bureau d'etudes reste requise avant toute etude."
       },
       "document_role": "national_annex",
       "phase": "P0",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
       "effective_from": null,
       "parameters_expected": [
@@ -819,7 +823,9 @@
         "rho_w_min_coeff",
         "s_l_max_coeff",
         "s_t_max_coeff"
-      ]
+      ],
+      "doc_id_sha256": "debec24823773719ea42af45b90fb88ca68860433c169ffe94b72f366a82727f",
+      "edition_read_from_cover": "mars 2016 + amendement A1 (novembre 2022)"
     },
     {
       "doc_key": "FR-EN19971-NA",
