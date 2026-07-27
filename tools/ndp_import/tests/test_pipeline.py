@@ -137,13 +137,25 @@ def test_no_acquired_document_promotes_a_parameter() -> None:
     import json
 
     be = json.loads(engine_data.read_text(encoding="utf-8"))
-    statuses = {
-        p["validation_status"]
-        for a in be["annexes"] for p in a["parameters"].values()
-    }
-    assert statuses == {"pending_verification"}, (
-        "un parametre a change de statut sans decision de relecture signee"
+    params = [p for a in be["annexes"] for p in a["parameters"].values()]
+
+    # Le sens du test est la NON-promotion. 'not_representable' est admis: il
+    # rend un parametre inutilisable, il n'en autorise aucun.
+    promoted = [p for p in params if p["validation_status"] == "confirmed"]
+    assert not promoted, (
+        "un parametre est passe en 'confirmed' sans decision de relecture "
+        "signee — detenir le PDF ne vaut pas relecture"
     )
+    assert {p["validation_status"] for p in params} <= {
+        "pending_verification",
+        "not_representable",
+    }
+
+    # Et un parametre sans valeur doit dire pourquoi il n'en a pas.
+    for p in params:
+        assert (p["parameter_value"] is None) == (
+            p["validation_status"] == "not_representable"
+        )
 
 
 def test_catalogue_names_the_freely_available_documents() -> None:

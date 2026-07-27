@@ -42,29 +42,34 @@ def _design(params, M_kNm=250.0, **kw):
 def test_hand_calculation_case(params_be) -> None:
     """b=300, h=600, d=550, C30/37, B500B, M_Ed = 250 kN.m.
 
-    Worked by hand with alpha_cc = 1,0 / gamma_C = 1,5 / gamma_S = 1,15:
+    Worked by hand with the BELGIAN alpha_cc = 0,85 (NBN EN 1992-1-1 ANB
+    §3.1.6(1)P, bending), gamma_C = 1,5, gamma_S = 1,15:
 
-        fcd  = 30 / 1,5                       = 20,000 MPa
+        fcd  = 0,85 x 30 / 1,5                = 17,000 MPa
         fyd  = 500 / 1,15                     = 434,783 MPa
-        mu   = 250e6 / (300 x 550^2 x 20)     = 0,137741
-        xi   = (1 - sqrt(1 - 2 mu)) / 0,8     = 0,186017
-        x    = 0,186017 x 550                 = 102,310 mm
-        z    = 550 (1 - 0,8 x 0,186017 / 2)   = 509,076 mm
-        As   = 250e6 / (434,783 x 509,076)    = 1129,50 mm2
+        mu   = 250e6 / (300 x 550^2 x 17)     = 0,162048
+        xi   = (1 - sqrt(1 - 2 mu)) / 0,8     = 0,222333
+        x    = 0,222333 x 550                 = 122,283 mm
+        z    = 550 (1 - 0,8 x 0,222333 / 2)   = 501,087 mm
+        As   = 250e6 / (434,783 x 501,087)    = 1147,51 mm2
+
+    With the EN recommendation (1,0) the same beam needed 1129,50 mm2. The
+    Belgian annex costs 1,6 % more steel here, and 15 % of the section's
+    moment capacity before the engine refuses.
     """
     r = _design(params_be)
-    assert r.mu == pytest.approx(0.137741, abs=5e-7)
-    assert r.xi == pytest.approx(0.186017, abs=5e-7)
-    assert r.x.to("mm").magnitude == pytest.approx(102.310, abs=5e-4)
-    assert r.z.to("mm").magnitude == pytest.approx(509.076, abs=5e-4)
-    assert r.As_strength.to("mm**2").magnitude == pytest.approx(1129.50, abs=5e-3)
+    assert r.mu == pytest.approx(0.162048, abs=5e-7)
+    assert r.xi == pytest.approx(0.222333, abs=5e-7)
+    assert r.x.to("mm").magnitude == pytest.approx(122.283, abs=5e-4)
+    assert r.z.to("mm").magnitude == pytest.approx(501.087, abs=5e-4)
+    assert r.As_strength.to("mm**2").magnitude == pytest.approx(1147.51, abs=5e-3)
 
 
 # ---------------------------------------------------------------------------
 # Independent verification
 # ---------------------------------------------------------------------------
 @pytest.mark.reference
-@pytest.mark.parametrize("M_kNm", [60.0, 120.0, 250.0, 400.0, 500.0])
+@pytest.mark.parametrize("M_kNm", [60.0, 120.0, 250.0, 400.0])
 def test_independent_equilibrium(params_be, M_kNm: float) -> None:
     """Numerically integrate the stress block and check section equilibrium.
 
@@ -76,7 +81,7 @@ def test_independent_equilibrium(params_be, M_kNm: float) -> None:
 
     b = 300.0                       # mm
     d = 550.0                       # mm
-    fcd = 20.0                      # MPa = N/mm2
+    fcd = 0.85 * 30.0 / 1.5         # MPa — alpha_cc belge (ANB §3.1.6(1)P)
     fyd = 500.0 / 1.15              # MPa
     lam, eta = 0.8, 1.0
 
@@ -191,7 +196,8 @@ def test_over_reinforced_section_is_refused(params_be) -> None:
 
 def test_moment_just_below_and_above_the_ductility_limit(params_be) -> None:
     """The refusal boundary is mu_lim, and it is where it should be."""
-    b, d, fcd, eta, lam = 300.0, 550.0, 20.0, 1.0, 0.8
+    b, d, eta, lam = 300.0, 550.0, 1.0, 0.8
+    fcd = 0.85 * 30.0 / 1.5         # alpha_cc belge
     xi_lim = (1.0 - 0.44) / 1.25
     mu_lim = lam * xi_lim * (1.0 - lam * xi_lim / 2.0)
     M_lim_kNm = mu_lim * b * d**2 * eta * fcd / 1e6

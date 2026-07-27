@@ -21,23 +21,25 @@
       "standard_family": "EN 1992",
       "part": "1-1",
       "reference": "NBN EN 1992-1-1 ANB",
-      "edition": "NON RELEVE — edition reelle a renseigner",
-      "effective_from": "2026-07-26",
+      "edition": "1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)",
+      "effective_from": "2010-08-01",
       "effective_to": null,
       "source_official": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
       "source_url_or_doc_id": "https://www.nbn.be",
       "parameters": {
         "alpha_cc": {
-          "parameter_value": 1.0,
+          "parameter_value": 0.85,
           "unit": "dimensionless",
           "clause": "§3.1.6(1)P",
           "description": "Coefficient tenant compte des effets de longue duree sur la resistance en compression du beton (domaine EN: 0,8 a 1,0)",
           "en_recommended": 1.0,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 10. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §3.1.6(1)P: « Pour les verifications a l'ELU de la resistance a l'effort normal, la flexion simple ou composee, la valeur de alpha_cc vaut 0,85. Pour les autres cas, alpha_cc vaut 1,0. » ECART par rapport a la valeur recommandee EN (1,0). ATTENTION: valeur CONDITIONNELLE — 0,85 en flexion, 1,0 dans les autres cas. Le moteur ne stocke qu'un scalaire et retient 0,85, ce qui est le cas couvert par le module de flexion. Toute extension a d'autres sollicitations devra modeliser la condition.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 10
         },
         "alpha_ct": {
           "parameter_value": 1.0,
@@ -45,11 +47,13 @@
           "clause": "§3.1.6(2)P",
           "description": "Coefficient tenant compte des effets de longue duree sur la resistance en traction du beton",
           "en_recommended": 1.0,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 10. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §3.1.6(2)P: « La valeur de alpha_ct recommandee (1,0) est normative. »",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 10
         },
         "gamma_C_persistent": {
           "parameter_value": 1.5,
@@ -57,11 +61,13 @@
           "clause": "§2.4.2.4(1), Tab. 2.1N",
           "description": "Coefficient partiel du beton — situations durables et transitoires",
           "en_recommended": 1.5,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 8. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1), Tableau 2.1N repris: durable ou transitoire, beton 1,5. Declare « normatives ».",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 8
         },
         "gamma_S_persistent": {
           "parameter_value": 1.15,
@@ -69,11 +75,13 @@
           "clause": "§2.4.2.4(1), Tab. 2.1N",
           "description": "Coefficient partiel de l'acier de beton arme — situations durables et transitoires",
           "en_recommended": 1.15,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 8. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1), Tableau 2.1N repris: durable ou transitoire, acier de beton arme 1,15.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 8
         },
         "gamma_C_accidental": {
           "parameter_value": 1.2,
@@ -81,11 +89,13 @@
           "clause": "§2.4.2.4(1), Tab. 2.1N",
           "description": "Coefficient partiel du beton — situations accidentelles",
           "en_recommended": 1.2,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 8. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1), Tableau 2.1N repris: accidentelle, beton 1,2.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 8
         },
         "gamma_S_accidental": {
           "parameter_value": 1.0,
@@ -93,11 +103,13 @@
           "clause": "§2.4.2.4(1), Tab. 2.1N",
           "description": "Coefficient partiel de l'acier — situations accidentelles",
           "en_recommended": 1.0,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 8. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1), Tableau 2.1N repris: accidentelle, acier de beton arme 1,0.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 8
         },
         "k1_redistribution": {
           "parameter_value": 0.44,
@@ -105,11 +117,13 @@
           "clause": "§5.5(4)",
           "description": "Coefficient k1 bornant xu/d pour la ductilite (fck <= 50 MPa)",
           "en_recommended": 0.44,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 15. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §5.5(4): « Les valeurs recommandees (k1 = 0,44 ; k2 = 1,25(0,6+0,0014/eps_cu2) ; k3 = 0,54 ; k4 = idem ; k5 = 0,7 et k6 = 0,8) sont normatives. »",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 15
         },
         "k2_redistribution": {
           "parameter_value": 1.25,
@@ -117,11 +131,13 @@
           "clause": "§5.5(4)",
           "description": "Coefficient k2 bornant xu/d pour la ductilite. Recommandation EN: 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa). Au-dela de C50/60 ce parametre doit etre re-exprime.",
           "en_recommended": 1.25,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 15. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §5.5(4): k2 = 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa).",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 15
         },
         "As_min_coeff": {
           "parameter_value": 0.26,
@@ -129,11 +145,13 @@
           "clause": "§9.2.1.1(1), eq. (9.1N)",
           "description": "Coefficient de la section minimale d'armature tendue: 0,26 fctm/fyk bt d",
           "en_recommended": 0.26,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 22. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §9.2.1.1(1): « La valeur de As,min recommandee (Formule 9.1N) est normative. » Formule 9.1N: 0,26 fctm/fyk bt d.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 22
         },
         "As_min_floor": {
           "parameter_value": 0.0013,
@@ -141,11 +159,13 @@
           "clause": "§9.2.1.1(1), eq. (9.1N)",
           "description": "Plancher de la section minimale d'armature tendue: 0,0013 bt d",
           "en_recommended": 0.0013,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 22. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §9.2.1.1(1), Formule 9.1N: plancher 0,0013 bt d.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 22
         },
         "As_max_ratio": {
           "parameter_value": 0.04,
@@ -153,11 +173,13 @@
           "clause": "§9.2.1.1(3)",
           "description": "Section maximale d'armature tendue ou comprimee, hors recouvrements: 0,04 Ac",
           "en_recommended": 0.04,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 22. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §9.2.1.1(3): « La valeur de As,max recommandee (0,04 Ac) est normative. »",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 22
         },
         "C_Rd_c_coeff": {
           "parameter_value": 0.18,
@@ -165,11 +187,13 @@
           "clause": "§6.2.2(1)",
           "description": "Coefficient de C_Rd,c = 0,18/gamma_C, resistance a l'effort tranchant sans armatures d'effort tranchant",
           "en_recommended": 0.18,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): « Les valeurs recommandees de C_Rd,c (0,18/gamma_C), v_min (0,035 k^3/2 fck^1/2) et k1 (0,15) sont normatives. » ATTENTION: « Pour les dalles appuyees sur les bords, il faut multiplier ces valeurs par 1,25 » — condition non modelisee.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 17
         },
         "v_min_coeff": {
           "parameter_value": 0.035,
@@ -177,11 +201,13 @@
           "clause": "§6.2.2(1), eq. (6.3N)",
           "description": "Coefficient de v_min = 0,035 k^(3/2) fck^(1/2)",
           "en_recommended": 0.035,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): v_min = 0,035 k^3/2 fck^1/2.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 17
         },
         "k1_shear": {
           "parameter_value": 0.15,
@@ -189,11 +215,13 @@
           "clause": "§6.2.2(1)",
           "description": "Coefficient k1 de la contribution de l'effort normal a V_Rd,c",
           "en_recommended": 0.15,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): k1 = 0,15.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 17
         },
         "nu1_coeff": {
           "parameter_value": 0.6,
@@ -237,23 +265,27 @@
           "clause": "§6.2.3(2), eq. (6.7N)",
           "description": "Borne inferieure de cot(theta), inclinaison des bielles",
           "en_recommended": 1.0,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.3(2): « 1,0 <= cot(theta) <= cot(theta)_max ».",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 17
         },
         "cot_theta_max": {
-          "parameter_value": 2.5,
+          "parameter_value": null,
           "unit": "dimensionless",
           "clause": "§6.2.3(2), eq. (6.7N)",
           "description": "Borne superieure de cot(theta), inclinaison des bielles",
           "en_recommended": 2.5,
-          "source_type": "en_recommended",
-          "validation_status": "pending_verification",
+          "source_type": "national_annex",
+          "validation_status": "not_representable",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "SANS VALEUR EXPLOITABLE. §6.2.3(2) p.17: la Belgique NE retient PAS la borne 2,5. Elle fixe cot(theta)_max = (2 + k1 sigma_cp bw d s / (Asw z fywd)) <= 3, avec sigma_cp <= 0,2 fcd. C'est une FORMULE dependant de l'effort normal et du ferraillage, pas une constante. Le modele de parametre ne stocke qu'un scalaire: le representer par 2,5 ou par 3 serait faux dans les deux cas. Ce parametre reste sans valeur tant que le modele n'admet pas une expression.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "source_page": 17
         },
         "rho_w_min_coeff": {
           "parameter_value": 0.08,

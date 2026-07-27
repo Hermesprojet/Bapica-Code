@@ -25,7 +25,7 @@ __all__ = ["ENGINE_NAME", "ENGINE_VERSION", "engine_stamp"]
 ENGINE_NAME: Final[str] = "eurostruct-engine"
 
 #: Semantic version of the deterministic engine.
-ENGINE_VERSION: Final[str] = "0.2.0"
+ENGINE_VERSION: Final[str] = "0.3.0"
 
 
 def engine_stamp() -> str:

@@ -56,11 +56,25 @@ class ValidationStatus(str, Enum):
     ``DEPRECATED``
         Superseded or known wrong. Refused in *every* mode: a deprecated value
         must never reach a calculation, strict or not.
+
+    ``NOT_REPRESENTABLE``
+        The National Annex fixes this parameter, but not as a number this model
+        can hold — typically because it prescribes a formula depending on other
+        quantities. Refused in *every* mode, like ``DEPRECATED``, and for the
+        same reason: any scalar stored here would be a value the annex does not
+        state. See ``EN 1992-1-1:cot_theta_max`` for Belgium, where the annex
+        replaces the 2,5 bound with an expression in sigma_cp and the shear
+        reinforcement.
+
+        This is not a lesser form of ``PENDING_VERIFICATION``: no amount of
+        human verification unblocks it. The calculation module has to learn to
+        evaluate the expression first.
     """
 
     CONFIRMED = "confirmed"
     PENDING_VERIFICATION = "pending_verification"
     DEPRECATED = "deprecated"
+    NOT_REPRESENTABLE = "not_representable"
 
 
 class SourceType(str, Enum):
@@ -89,7 +103,11 @@ class NationalParameter:
     effective_from: date
     effective_to: date | None
     parameter_name: str             # "alpha_cc"
-    parameter_value: float
+    #: ``None`` when the annex prescribes something this model cannot hold as a
+    #: scalar (``validation_status`` is then ``NOT_REPRESENTABLE``). Storing a
+    #: placeholder number instead would be inventing a value the annex does not
+    #: state, which is precisely what this registry exists to prevent.
+    parameter_value: float | None
     unit: str
     source_official: str            # issuing body
     source_url_or_doc_id: str | None
@@ -115,6 +133,24 @@ class NationalParameter:
     #: state both the national value and what it departs from.
     en_recommended: float | None = None
 
+    def __post_init__(self) -> None:
+        """A missing value and a non-scalar parameter must be the same thing.
+
+        Without this, a typo or a dropped key in the JSON would quietly produce
+        a parameter with no value, and the refusal path would fire for a reason
+        nobody stated. The absence of a number is only ever legitimate when the
+        record says why.
+        """
+        if (self.parameter_value is None) != (
+            self.validation_status is ValidationStatus.NOT_REPRESENTABLE
+        ):
+            raise ValueError(
+                f"{self.country_code}/{self.standard}:{self.parameter_name}: "
+                "parameter_value est absent sans le statut 'not_representable', "
+                "ou porte le statut sans etre absent. Les deux vont ensemble: "
+                "un parametre sans valeur doit dire pourquoi il n'en a pas."
+            )
+
     @property
     def standard(self) -> str:
         """Full standard designation, e.g. ``"EN 1992-1-1"``."""
@@ -138,6 +174,14 @@ class NationalParameter:
     @property
     def usable_in_strict_mode(self) -> bool:
         return self.validation_status is ValidationStatus.CONFIRMED
+
+    @property
+    def is_refused_in_every_mode(self) -> bool:
+        """Statuses no mode, however permissive, may read a number through."""
+        return self.validation_status in (
+            ValidationStatus.DEPRECATED,
+            ValidationStatus.NOT_REPRESENTABLE,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {

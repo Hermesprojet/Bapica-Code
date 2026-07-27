@@ -156,6 +156,10 @@ class ValidationStatusDTO(str, Enum):
     CONFIRMED = "confirmed"
     PENDING_VERIFICATION = "pending_verification"
     DEPRECATED = "deprecated"
+    #: The annex fixes the parameter as something other than a scalar (a
+    #: formula, typically). ``parameter_value`` is then ``null``. Refused in
+    #: every mode; no signature unblocks it.
+    NOT_REPRESENTABLE = "not_representable"
 
 
 class SourceTypeDTO(str, Enum):
@@ -181,7 +185,10 @@ class NdpEntryDTO(Strict):
     effective_from: str
     effective_to: str | None = None
     parameter_name: str
-    parameter_value: float
+    #: ``null`` when ``validation_status`` is ``not_representable``: the annex
+    #: prescribes something no single number can stand for, and the contract
+    #: says so rather than shipping a placeholder.
+    parameter_value: float | None
     unit: str
     source_official: str
     source_url_or_doc_id: str | None = None

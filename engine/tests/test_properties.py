@@ -53,7 +53,8 @@ def test_lever_arm_shortens_as_moment_grows(params_be) -> None:
 def test_deeper_section_needs_less_steel(params_be) -> None:
     areas = [
         _run(params_be, h=h, d=h - 50.0).As_strength.to("mm**2").magnitude
-        for h in (450.0, 500.0, 550.0, 600.0, 700.0, 800.0)
+        # 450 mm sort du domaine avec alpha_cc = 0,85: mu depasse mu_lim.
+        for h in (500.0, 550.0, 600.0, 700.0, 800.0)
     ]
     assert all(a > b for a, b in pairwise(areas))
 

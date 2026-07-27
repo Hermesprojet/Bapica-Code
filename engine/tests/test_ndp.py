@@ -17,6 +17,7 @@ from eurostruct_engine.ec2.beam_flexure import EC2_11, required_parameters
 from eurostruct_engine.exceptions import (
     DeprecatedNationalParameter,
     NationalAnnexIncomplete,
+    UnrepresentableNationalParameter,
     UnverifiedNationalParameter,
 )
 from eurostruct_engine.materials import concrete, reinforcement
@@ -157,7 +158,8 @@ def test_single_lookup_still_raises_in_strict_mode() -> None:
 def test_non_strict_mode_allows_exploratory_work() -> None:
     p = load_parameter_set("BE", strict=False, as_of=AS_OF)
     assert p.preflight(required_parameters(DesignSituation.PERSISTENT)).ok
-    assert p.get(f"{EC2_11}:alpha_cc").magnitude == 1.0
+    # Valeur belge relevee dans l'ANB, non encore confirmee par un ingenieur.
+    assert p.get(f"{EC2_11}:alpha_cc").magnitude == 0.85
 
 
 def test_missing_parameter_is_never_defaulted() -> None:
@@ -202,6 +204,60 @@ def test_deprecated_value_is_refused_even_outside_strict_mode() -> None:
     assert report.blocking[0].reason == "deprecated"
     with pytest.raises(DeprecatedNationalParameter, match="obsolete"):
         ps.get(f"{EC2_11}:alpha_cc")
+
+
+# ---------------------------------------------------------------------------
+# A parameter the annex fixes as a formula has no value, in any mode
+# ---------------------------------------------------------------------------
+def test_belgian_cot_theta_max_carries_no_value() -> None:
+    """NBN EN 1992-1-1 ANB §6.2.3(2) replaces the 2,5 bound with an expression.
+
+    The EN recommendation is 2,5 and the annex explicitly does not adopt it.
+    Storing 2,5 anyway would be interdiction 2: a value with no source.
+    """
+    reg = load_country_registry("BE")
+    annex = reg.annex_for(EC2_11, AS_OF)
+    assert annex is not None
+    p = next(x for x in annex.parameters if x.parameter_name == "cot_theta_max")
+
+    assert p.parameter_value is None
+    assert p.validation_status is ValidationStatus.NOT_REPRESENTABLE
+    assert p.en_recommended == 2.5          # what we did NOT store
+    assert "FORMULE" in (p.notes or "")
+
+
+def test_unrepresentable_parameter_is_refused_even_outside_strict_mode() -> None:
+    """Unlike an unverified value, no signature can unblock this one."""
+    key = f"{EC2_11}:cot_theta_max"
+    for strict in (False, True):
+        ps = load_parameter_set("BE", strict=strict, as_of=AS_OF)
+        with pytest.raises(UnrepresentableNationalParameter, match="pas de valeur"):
+            ps.get(key)
+        assert ps.preflight([key]).blocking[0].reason == "not_representable"
+
+
+def test_unrepresentable_parameter_counts_as_unusable() -> None:
+    ps = load_parameter_set("BE", strict=False, as_of=AS_OF)
+    assert f"{EC2_11}:cot_theta_max" in ps.unverified_keys()
+
+
+def test_a_value_may_not_go_missing_without_saying_why() -> None:
+    """The absent value and the status that explains it are one invariant.
+
+    A dropped key during an import would otherwise look exactly like a
+    deliberate 'the annex gives a formula here'.
+    """
+    import dataclasses
+
+    ps = load_parameter_set("BE", strict=False, as_of=AS_OF)
+    annex = ps.registry.annexes[0]
+    alpha = next(p for p in annex.parameters if p.parameter_name == "alpha_cc")
+    cot = next(p for p in annex.parameters if p.parameter_name == "cot_theta_max")
+
+    with pytest.raises(ValueError, match="not_representable"):
+        dataclasses.replace(alpha, parameter_value=None)      # value lost
+    with pytest.raises(ValueError, match="not_representable"):
+        dataclasses.replace(cot, parameter_value=2.5)         # value invented
 
 
 # ---------------------------------------------------------------------------

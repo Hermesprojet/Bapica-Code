@@ -209,7 +209,7 @@ export interface NdpEntryDTO {
   national_annex_reference: string;
   notes?: string | null;
   parameter_name: string;
-  parameter_value: number;
+  parameter_value: number | null;
   part: string;
   /** sha256 of the deposited document the value was read from. */
   source_doc_id?: string | null;
@@ -317,7 +317,8 @@ export type SourceTypeDTO =
 export type ValidationStatusDTO =
   | "confirmed"
   | "pending_verification"
-  | "deprecated";
+  | "deprecated"
+  | "not_representable";
 
 export interface VerificationReportDTO {
   checks: CheckDTO[];

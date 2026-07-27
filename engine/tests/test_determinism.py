@@ -6,7 +6,7 @@
      jamais silencieusement ; tout changement de valeur exige un changement de
      version majeure et une note de release."
 
-The frozen values below were produced by eurostruct-engine 0.1.0 and
+The frozen values below were produced by eurostruct-engine 0.3.0 and
 hand-verified in ``test_ec2_beam_flexure.py::test_hand_calculation_case``.
 Comparison is exact: ``==`` on floats, not ``approx``. If one of these changes,
 that is not a test to relax — it is a MAJOR version bump plus a release note
@@ -30,23 +30,26 @@ from eurostruct_engine.materials.reinforcement import bars_area
 from eurostruct_engine.units import Q_
 from eurostruct_engine.version import ENGINE_VERSION
 
-#: Frozen result of the reference case, eurostruct-engine 0.1.0.
+#: Frozen result of the reference case, eurostruct-engine 0.3.0.
+#: Changed at 0.3.0: alpha_cc went from the EN recommendation (1,0) to
+#: the Belgian value read in NBN EN 1992-1-1 ANB §3.1.6(1)P (0,85).
+#: See docs/RELEASE-0.3.0.md for every value that moved.
 #: b=300, h=600, d=550 mm, C30/37, B500B, M_Ed=250 kN.m, BE parameter set,
 #: reinforcement provided 4 HA20.
-GOLDEN_0_1_0 = {
-    "mu": 0.1377410468319559,
-    "xi": 0.18601727990998934,
+GOLDEN_0_3_0 = {
+    "mu": 0.16204829039053636,
+    "xi": 0.22233318019429377,
     "xi_lim": 0.44800000000000006,
-    "eps_s": 0.015315456293595906,
-    "As_strength_mm2": 1129.4969236134557,
+    "eps_s": 0.012242139778423537,
+    "As_strength_mm2": 1147.506009618789,
     "As_min_mm2": 248.51696759748907,
     "As_max_mm2": 7200.0,
-    "As_required_mm2": 1129.4969236134557,
+    "As_required_mm2": 1147.506009618789,
     "As_provided_mm2": 1256.6370614359173,
-    "x_mm": 102.30950395049413,
-    "z_mm": 509.0761984198023,
-    "M_Rd_kNm": 275.62403730974995,
-    "utilisation": 0.9070326464997198,
+    "x_mm": 122.28324910686158,
+    "z_mm": 501.0867003572554,
+    "M_Rd_kNm": 271.2341320940981,
+    "utilisation": 0.9217129056355953,
 }
 
 
@@ -68,7 +71,7 @@ def test_reference_case_values_are_frozen(params_be) -> None:
     got = _reference_case(params_be).to_dict()
     drift = {
         k: (expected, got[k])
-        for k, expected in GOLDEN_0_1_0.items()
+        for k, expected in GOLDEN_0_3_0.items()
         if got[k] != expected
     }
     assert not drift, (
@@ -154,9 +157,9 @@ def test_journal_structure_is_stable(params_be) -> None:
 def test_numeric_application_strings_are_frozen(params_be) -> None:
     """These strings are printed verbatim in the PDF; they must not drift."""
     j = _reference_case(params_be).journal
-    assert j.get("f_cd").numeric == "1 · 30 MPa / 1.5"
+    assert j.get("f_cd").numeric == "0.85 · 30 MPa / 1.5"
     assert j.get("f_yd").numeric == "500 MPa / 1.15"
-    assert j.get("mu").numeric == "250 kN·m / (300 mm · 550 mm² · 1 · 20 MPa)"
+    assert j.get("mu").numeric == "250 kN·m / (300 mm · 550 mm² · 1 · 17 MPa)"
     assert j.get("xi_lim").numeric == "(1 − 0.44) / 1.25"
 
 

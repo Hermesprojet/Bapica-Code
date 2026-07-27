@@ -20,6 +20,7 @@ __all__ = [
     "OutOfValidationDomain",
     "UnverifiedNationalParameter",
     "DeprecatedNationalParameter",
+    "UnrepresentableNationalParameter",
     "NationalAnnexIncomplete",
     "InconsistentInput",
     "UnitError",
@@ -82,6 +83,26 @@ class DeprecatedNationalParameter(EurostructEngineError):
             f"le parametre national '{key}' est marque obsolete et ne peut pas "
             f"etre utilise.{detail} Charger l'edition en vigueur de l'Annexe "
             "Nationale."
+        )
+
+
+class UnrepresentableNationalParameter(EurostructEngineError):
+    """The National Annex fixes this parameter as something other than a number.
+
+    Refused in every mode. Unlike :class:`UnverifiedNationalParameter`, no
+    engineer's signature can unblock it: there is no scalar to confirm. The
+    calculation module must be extended to evaluate the annex's expression.
+    """
+
+    def __init__(self, key: str, notes: str | None = None) -> None:
+        self.key = key
+        self.notes = notes
+        detail = f" {notes}" if notes else ""
+        super().__init__(
+            f"le parametre national '{key}' n'a pas de valeur scalaire: "
+            f"l'Annexe Nationale le fixe sous une forme que le moteur ne sait "
+            f"pas encore evaluer.{detail} Aucune valeur de substitution n'est "
+            "utilisee: etendre le module de calcul avant de traiter ce cas."
         )
 
 

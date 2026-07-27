@@ -38,8 +38,11 @@ begin
   end if;
 
   -- Aucun parametre ne pretend etre releve dans une annexe publiee.
+  -- 'not_representable' est admis: ce n'est pas une pretention de conformite,
+  -- c'est la declaration qu'aucun scalaire ne convient (cot_theta_max belge).
   select count(*) into unverified
-    from national_annex_parameters where validation_status <> 'pending_verification';
+    from national_annex_parameters
+   where validation_status not in ('pending_verification', 'not_representable');
   if unverified <> 0 then
     raise exception
       '% parametre(s) ne sont pas en pending_verification alors qu''aucune '
@@ -50,16 +53,66 @@ $$;
 
 
 -- ---------------------------------------------------------------------
--- 1. Ecrasement d'une valeur interdit
+-- 0. Un parametre sans valeur doit dire pourquoi, et reciproquement
 -- ---------------------------------------------------------------------
 do $$
 declare ok boolean := false; target uuid;
 begin
   select id into target from national_annex_parameters
+   where country_code = 'BE' and parameter_name = 'cot_theta_max';
+  if target is null then
+    raise exception 'cot_theta_max belge absent du seed';
+  end if;
+
+  -- L'annexe belge le fixe par une formule: aucune valeur n'est stockee.
+  perform 1 from national_annex_parameters
+   where id = target and parameter_value is null
+     and validation_status = 'not_representable';
+  if not found then
+    raise exception
+      'cot_theta_max belge porte une valeur scalaire alors que l''ANB '
+      '§6.2.3(2) le fixe par une expression';
+  end if;
+
+  -- Et on ne peut pas creer un trou silencieux ailleurs.
+  begin
+    insert into national_annex_parameters (
+      annex_id, country_code, standard_family, part, national_annex_reference,
+      edition, effective_from, parameter_name, parameter_value, unit,
+      source_official, source_type, validation_status, clause, description)
+    select annex_id, country_code, standard_family, part,
+           national_annex_reference, edition, effective_from,
+           'parametre_sans_valeur', null, unit, source_official, source_type,
+           'pending_verification', clause, description
+      from national_annex_parameters where id = target;
+  exception when check_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'un parametre sans valeur a pu etre insere sans le statut '
+      '''not_representable''';
+  end if;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 1. Ecrasement d'une valeur interdit
+-- ---------------------------------------------------------------------
+do $$
+declare ok boolean := false; target uuid; current_value numeric;
+begin
+  -- La valeur d'essai est derivee de la valeur en base, jamais ecrite en dur:
+  -- le declencheur ne se plaint qu'en cas de changement reel (is distinct
+  -- from), donc un litteral egal au seed passerait sans rien prouver. C'est
+  -- exactement ce qui est arrive quand alpha_cc belge est passe de 1,0 a 0,85.
+  select id, parameter_value into target, current_value
+    from national_annex_parameters
    where country_code = 'BE' and parameter_name = 'alpha_cc';
 
   begin
-    update national_annex_parameters set parameter_value = 0.85 where id = target;
+    update national_annex_parameters
+       set parameter_value = current_value + 1 where id = target;
   exception when restrict_violation then ok := true;
   end;
   if not ok then
