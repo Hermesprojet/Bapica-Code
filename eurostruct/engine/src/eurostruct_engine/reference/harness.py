@@ -19,6 +19,7 @@ from ..basis import DesignSituation
 from ..ec2.anchorage import AnchorageCoefficients, design_anchorage
 from ..ec2.beam_flexure import RectangularSection, design_flexure
 from ..ec2.beam_shear import ShearLinks, ShearSection, design_shear
+from ..ec2.deflection import StructuralSystem, check_span_depth
 from ..ec2.serviceability import (
     CrackControlDetail,
     ExposureClass,
@@ -241,4 +242,50 @@ def _ec2_serviceability(inputs: Mapping[str, Any]) -> dict[str, float]:
         "sigma_c_limit_MPa": float(design.sigma_c_limit.to("MPa").magnitude),
         "is_cracked": 1.0 if design.is_cracked else 0.0,
         "utilisation": design.utilisation,
+    }
+
+
+@register("ec2.span_depth")
+def _ec2_span_depth(inputs: Mapping[str, Any]) -> dict[str, float]:
+    """Replay a §7.4.2 span/depth exemption test.
+
+    ``exempt`` is published as 1,0 or 0,0. It is the whole point of the clause,
+    and a case that silently flipped it would be comparing a "no calculation
+    needed" against a "go compute the deflection".
+    """
+    check = check_span_depth(
+        section=RectangularSection(
+            b=_quantity(inputs["b"]),
+            h=_quantity(inputs["h"]),
+            d=_quantity(inputs["d"]),
+        ),
+        concrete=concrete(inputs["concrete_grade"]),
+        steel=reinforcement(inputs["steel_grade"]),
+        l_eff=_quantity(inputs["l_eff"]),
+        system=StructuralSystem(inputs["system"]),
+        A_s_required=_quantity(inputs["A_s_required"]),
+        A_s_provided=_quantity(inputs["A_s_provided"]),
+        params=_params(inputs),
+        A_s_comp=(
+            _quantity(inputs["A_s_comp"]) if inputs.get("A_s_comp") else None
+        ),
+        b_eff_over_b_w=inputs.get("b_eff_over_b_w"),
+        supports_brittle_partitions=bool(
+            inputs.get("supports_brittle_partitions", False)
+        ),
+        element=inputs.get("element", "reference"),
+    )
+    return {
+        "K": check.K,
+        "rho_0": check.rho_0,
+        "rho": check.rho,
+        "rho_comp": check.rho_comp,
+        "basic_ratio": check.basic_ratio,
+        "stress_factor": check.stress_factor,
+        "flange_factor": check.flange_factor,
+        "long_span_factor": check.long_span_factor,
+        "limit_ratio": check.limit_ratio,
+        "actual_ratio": check.actual_ratio,
+        "exempt": 1.0 if check.exempt else 0.0,
+        "utilisation": check.utilisation,
     }

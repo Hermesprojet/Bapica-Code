@@ -1,0 +1,223 @@
+{
+  "_comment": "Cas de reference a valeurs attendues DERIVEES INDEPENDAMMENT. Regenerer avec scripts/generate_span_depth_references.py. Ne jamais recopier une valeur depuis une sortie du moteur.",
+  "cases": [
+    {
+      "reference_id": "EC2-LD-101",
+      "title": "Dispense du calcul de fleche — poutre isostatique 300x550, 4 HA20, portee 6 m",
+      "normative_scope": [
+        "EN 1992-1-1 §7.4.2"
+      ],
+      "country_scope": [
+        "FR"
+      ],
+      "source_type": "manual_reference",
+      "source_document": {
+        "title": "Resolution independante — (7.16b) evaluee terme a terme",
+        "publisher": "EUROSTRUCT — scripts/generate_span_depth_references.py",
+        "edition": "1",
+        "locator": "",
+        "notes": "Valeurs attendues obtenues sans appeler le moteur, et continuite des formules (7.16a)/(7.16b) verifiee a la frontiere rho = rho_0. L'accord atteste l'algebre; il ne remplace pas un exemple resolu publie, et les cas 'official_worked_example' de planned_coverage.json restent des lacunes ouvertes."
+      },
+      "harness": "ec2.span_depth",
+      "input_dataset": {
+        "country": "FR",
+        "as_of": "2026-07-26",
+        "strict_ndp": false,
+        "b": {
+          "value": 300.0,
+          "unit": "mm"
+        },
+        "h": {
+          "value": 600.0,
+          "unit": "mm"
+        },
+        "d": {
+          "value": 550.0,
+          "unit": "mm"
+        },
+        "concrete_grade": "C30/37",
+        "steel_grade": "B500B",
+        "l_eff": {
+          "value": 6000.0,
+          "unit": "mm"
+        },
+        "system": "simply_supported",
+        "A_s_required": {
+          "value": 1256.6370614359173,
+          "unit": "mm**2"
+        },
+        "A_s_provided": {
+          "value": 1256.6370614359173,
+          "unit": "mm**2"
+        }
+      },
+      "expected_outputs": {
+        "K": 1.0,
+        "rho_0": 0.005477225575051661,
+        "rho": 0.007615982190520711,
+        "rho_comp": 0.0,
+        "basic_ratio": 16.908627262286615,
+        "stress_factor": 0.9999999999999999,
+        "flange_factor": 1.0,
+        "long_span_factor": 1.0,
+        "limit_ratio": 16.90862726228661,
+        "actual_ratio": 10.909090909090908,
+        "exempt": 1.0,
+        "utilisation": 0.6451789811123694
+      },
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 1e-09
+        }
+      ],
+      "notes": "rho > rho_0: c'est (7.16b) qui s'applique, sans acier comprime. Dispense acquise."
+    },
+    {
+      "reference_id": "EC2-LD-102",
+      "title": "Dispense refusee — meme section en console, K = 0,4 au lieu de 1,0",
+      "normative_scope": [
+        "EN 1992-1-1 §7.4.2(2)",
+        "Tab. 7.4N"
+      ],
+      "country_scope": [
+        "FR"
+      ],
+      "source_type": "manual_reference",
+      "source_document": {
+        "title": "Resolution independante — meme (7.16b), K de la ligne console",
+        "publisher": "EUROSTRUCT — scripts/generate_span_depth_references.py",
+        "edition": "1",
+        "locator": "",
+        "notes": "Valeurs attendues obtenues sans appeler le moteur, et continuite des formules (7.16a)/(7.16b) verifiee a la frontiere rho = rho_0. L'accord atteste l'algebre; il ne remplace pas un exemple resolu publie, et les cas 'official_worked_example' de planned_coverage.json restent des lacunes ouvertes."
+      },
+      "harness": "ec2.span_depth",
+      "input_dataset": {
+        "country": "FR",
+        "as_of": "2026-07-26",
+        "strict_ndp": false,
+        "b": {
+          "value": 300.0,
+          "unit": "mm"
+        },
+        "h": {
+          "value": 600.0,
+          "unit": "mm"
+        },
+        "d": {
+          "value": 550.0,
+          "unit": "mm"
+        },
+        "concrete_grade": "C30/37",
+        "steel_grade": "B500B",
+        "l_eff": {
+          "value": 6000.0,
+          "unit": "mm"
+        },
+        "system": "cantilever",
+        "A_s_required": {
+          "value": 1256.6370614359173,
+          "unit": "mm**2"
+        },
+        "A_s_provided": {
+          "value": 1256.6370614359173,
+          "unit": "mm**2"
+        }
+      },
+      "expected_outputs": {
+        "K": 0.4,
+        "rho_0": 0.005477225575051661,
+        "rho": 0.007615982190520711,
+        "rho_comp": 0.0,
+        "basic_ratio": 6.763450904914646,
+        "stress_factor": 0.9999999999999999,
+        "flange_factor": 1.0,
+        "long_span_factor": 1.0,
+        "limit_ratio": 6.763450904914645,
+        "actual_ratio": 10.909090909090908,
+        "exempt": 0.0,
+        "utilisation": 1.6129474527809233
+      },
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 1e-09
+        }
+      ],
+      "notes": "Meme poutre, meme ferraillage, meme portee que EC2-LD-101; seul le systeme structural change et 'exempt' bascule de 1 a 0. Le cas verrouille le fait que le parametre national decide du verdict — s'il etait lu comme un scalaire, les deux cas donneraient la meme reponse et l'un des deux serait faux."
+    },
+    {
+      "reference_id": "EC2-LD-103",
+      "title": "Travee de rive 4 HA16, portee 10 m avec cloisons fragiles — (7.16a), facteur 7/l et acier surabondant",
+      "normative_scope": [
+        "EN 1992-1-1 §7.4.2(2)"
+      ],
+      "country_scope": [
+        "FR"
+      ],
+      "source_type": "manual_reference",
+      "source_document": {
+        "title": "Resolution independante — (7.16a) sur la branche faiblement armee, facteurs du §7.4.2(2) appliques separement",
+        "publisher": "EUROSTRUCT — scripts/generate_span_depth_references.py",
+        "edition": "1",
+        "locator": "",
+        "notes": "Valeurs attendues obtenues sans appeler le moteur, et continuite des formules (7.16a)/(7.16b) verifiee a la frontiere rho = rho_0. L'accord atteste l'algebre; il ne remplace pas un exemple resolu publie, et les cas 'official_worked_example' de planned_coverage.json restent des lacunes ouvertes."
+      },
+      "harness": "ec2.span_depth",
+      "input_dataset": {
+        "country": "FR",
+        "as_of": "2026-07-26",
+        "strict_ndp": false,
+        "b": {
+          "value": 300.0,
+          "unit": "mm"
+        },
+        "h": {
+          "value": 600.0,
+          "unit": "mm"
+        },
+        "d": {
+          "value": 550.0,
+          "unit": "mm"
+        },
+        "concrete_grade": "C30/37",
+        "steel_grade": "B500B",
+        "l_eff": {
+          "value": 10000.0,
+          "unit": "mm"
+        },
+        "system": "end_span_continuous",
+        "A_s_required": {
+          "value": 603.1857894892403,
+          "unit": "mm**2"
+        },
+        "A_s_provided": {
+          "value": 804.247719318987,
+          "unit": "mm**2"
+        },
+        "supports_brittle_partitions": true
+      },
+      "expected_outputs": {
+        "K": 1.3,
+        "rho_0": 0.005477225575051661,
+        "rho": 0.0048742286019332545,
+        "rho_comp": 0.0,
+        "basic_ratio": 27.293342274078665,
+        "stress_factor": 1.3333333333333333,
+        "flange_factor": 1.0,
+        "long_span_factor": 0.7,
+        "limit_ratio": 25.47378612247342,
+        "actual_ratio": 18.181818181818183,
+        "exempt": 1.0,
+        "utilisation": 0.7137462053894637
+      },
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 1e-09
+        }
+      ],
+      "notes": "Trois branches en meme temps: rho < rho_0 donc (7.16a); A_prov/A_req = 4/3 donne un facteur de contrainte de 1,333 sous le plafond de 1,5; et 10 m > 7 m avec cloisons fragiles applique 0,7."
+    }
+  ]
+}

@@ -313,6 +313,32 @@
         }
       ],
       "notes": "Idem: la section fissuree homogeneisee est verifiee contre une dichotomie, pas contre un exemple publie."
+    },
+    {
+      "reference_id": "EC2-LD-001",
+      "title": "Rapport portee/hauteur — exemple resolu publie §7.4.2",
+      "normative_scope": [
+        "EN 1992-1-1 §7.4.2"
+      ],
+      "country_scope": [
+        "*"
+      ],
+      "source_type": "official_worked_example",
+      "source_document": {
+        "title": "Exemple publie a identifier — beton arme, limitation des fleches",
+        "publisher": "A determiner",
+        "notes": "Cas declare pour la couverture; la source n'est pas encore depouillee. Rapporte comme lacune, jamais comme succes. Le module existe: ce sont les valeurs publiees qui manquent."
+      },
+      "harness": "ec2.span_depth",
+      "input_dataset": {},
+      "expected_outputs": {},
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 0.01
+        }
+      ],
+      "notes": "EC2-LD-101 a 103 attestent l'algebre de (7.16a)/(7.16b) et la continuite a la frontiere. Reste a confronter a un exemple publie."
     }
   ]
 }

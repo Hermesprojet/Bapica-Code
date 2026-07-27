@@ -21,6 +21,11 @@ from .beam_flexure import (
     design_flexure,
     moment_resistance,
 )
+from .deflection import (
+    SpanDepthCheck,
+    StructuralSystem,
+    check_span_depth,
+)
 from .serviceability import (
     CrackControlDetail,
     CrackedSection,
@@ -48,4 +53,7 @@ __all__ = [
     "CrackedSection",
     "ServiceabilityDesign",
     "design_serviceability",
+    "StructuralSystem",
+    "SpanDepthCheck",
+    "check_span_depth",
 ]
