@@ -105,10 +105,12 @@ def render_catalogue(entries: tuple[CatalogueEntry, ...] | None = None) -> str:
     order = ["P0", "P1", "FEU", "P2", "P3", "P4", "P6"]
 
     free = [e for e in entries if "gratuit" in e.how_to_acquire.lower()]
+    held = [e for e in entries if e.acquired]
     lines = [
         "=== Documents officiels a obtenir, par pays ===",
         f"{len(entries)} documents, dont {len(free)} librement telechargeables "
         f"et {len(entries) - len(free)} payants.",
+        f"{len(held)} deja en main, {len(entries) - len(held)} a obtenir.",
         "",
     ]
     for cc in ("BE", "FR", "ES", "DE"):
@@ -127,11 +129,22 @@ def render_catalogue(entries: tuple[CatalogueEntry, ...] | None = None) -> str:
                     f"  [{len(e.parameters_expected)} parametres]"
                     if e.parameters_expected else ""
                 )
-                lines.append(f"    - {e.reference:<44} {cost:<8}{params}")
+                # Marque ce qui est en main. Sans elle, ce rapport annoncait
+                # comme « a obtenir » des documents deja lus.
+                mark = "[EN MAIN] " if e.acquired else "          "
+                lines.append(f"    {mark}{e.reference:<44} {cost:<8}{params}")
             lines.append("")
-    lines.append(
-        "Aucun de ces documents n'est acquis. Tant qu'ils ne sont pas "
-        "depouilles, les parametres restent pending_verification et le mode "
-        "strict refuse de calculer."
-    )
+
+    if held:
+        lines.append(
+            f"{len(held)} document(s) EN MAIN. Les detenir ne confirme AUCUNE "
+            "valeur: seule la decision nominative d'un ingenieur habilite fait "
+            "passer un parametre en 'confirmed'. Le mode strict reste bloque."
+        )
+    else:
+        lines.append(
+            "Aucun de ces documents n'est acquis. Tant qu'ils ne sont pas "
+            "depouilles, les parametres restent pending_verification et le mode "
+            "strict refuse de calculer."
+        )
     return "\n".join(lines)

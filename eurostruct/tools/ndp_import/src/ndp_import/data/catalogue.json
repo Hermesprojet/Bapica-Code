@@ -206,14 +206,38 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P2. ACIER: gamma_M0/M1/M2, courbes de flambement, methode de deversement"
+        "notes": "ACQUIS en version texte (53 pages, 74881 caracteres), langue francaise. Metadonnees ci-dessus LUES sur la page de garde, a DECLARER par le deposant. La page de garde precise: « La norme NBN EN 1993-1-1 ne peut etre utilisee en Belgique qu'en combinaison avec son annexe nationale. » LIMITE MAJEURE: pour §6.1 l'ANB indique « Les valeurs recommandees sont normatives » SANS les imprimer. gamma_M0/M1/M2 ne peuvent donc PAS etre renseignes a partir de ce seul document: il faut la base NBN EN 1993-1-1:2005 §6.1, non detenue. Aucune annexe EN 1993-1-1 n'est creee dans le jeu de donnees du moteur tant que ce manque subsiste. Voir docs/CONSTAT_ANB_BE_EC3.md."
       },
       "document_role": "national_annex",
       "phase": "P2",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [
+        "alpha_LT",
+        "alpha_cr_min_plastique",
+        "beta_deversement",
+        "gamma_M0",
+        "gamma_M1",
+        "gamma_M2",
+        "k_fl",
+        "k_imperfection_element",
+        "lambda_LT_0",
+        "lambda_c_0",
+        "temperature_service_min"
+      ],
+      "doc_id_sha256": "414d8489b193742296882c8c27d815529c41a9ef9695bc7553e1ee98b0bcff8d",
+      "edition_read_from_cover": "1e ed., decembre 2010",
+      "publication_authorised": "2010-05-19",
+      "annexes_base_standard": "NBN EN 1993-1-1, 2e ed., octobre 2005",
+      "non_scalar_findings": {
+        "annexes_belges_propres": "p.21 — Les annexes C a G ANB definissent des methodes BELGES pour M_cr, N_cr/N_cr,T/N_cr,TF, L_cr et lambda_LT. Elles n'existent pas dans l'EN: un moteur conforme en Belgique doit les implementer, pas seulement parametrer l'EN.",
+        "ductilite": "p.17 — §3.2.2(1): « Les valeurs recommandees sont normatives. » Trois criteres de ductilite, pas un nombre.",
+        "interaction_flexion_compression": "p.20 — §6.3.3(5): « La methode 1 est normative. » L'annexe A de la NBN EN 1993-1-1:2005 est normative en Belgique; l'annexe B « n'est PAS d'application en Belgique » (p.21). Un moteur qui implementerait la methode 2 serait hors reglementation belge.",
+        "proprietes_materiaux": "p.7 — §3.2.1(1): « L'option “a” est normative. »",
+        "table_3_2_epaisseur": "p.18 — §3.2.4(1): « La classification recommandee au tableau 3.2 est normative pour les batiments. » C'est un tableau entier.",
+        "table_5_1_imperfections": "p.18 — §5.3.2(3): « Les valeurs recommandees au tableau 5.1 sont normatives. » Tableau entier, avec une reinterpretation belge des termes « analyse elastique/plastique »."
+      }
     },
     {
       "doc_key": "BE-EN199318-NA",
@@ -398,14 +422,30 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase FEU. Acier au feu"
+        "notes": "ACQUIS en version texte (17 pages, 18870 caracteres), langue francaise. Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Page 5: « Tous les NDP sont fixes par la presente ANB » — contrairement a l'ANB 1-1, aucun choix n'est laisse au projet individuel. LIMITE MAJEURE: filigrane vertical « NATIONAL MIRROR COMMITTEE » dont les lettres s'intercalent DANS les nombres des tableaux 4.1a a 4.1e ANB et 4.5 ANB (« 5E61 » pour 561, « 4M57 » pour 457, « R722 » pour 722). L'extracteur ecarte ces pages et ne propose rien depuis elles. Les temperatures critiques par elancement ne sont donc PAS transcriptibles automatiquement: relecture humaine sur le document original obligatoire. Voir docs/CONSTAT_ANB_BE_EC3.md."
       },
       "document_role": "national_annex",
       "phase": "FEU",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [
+        "gamma_M_fi",
+        "theta_crit_classe_4",
+        "theta_crit_comprime",
+        "theta_crit_poutre_hyperstatique",
+        "theta_crit_poutre_isostatique"
+      ],
+      "doc_id_sha256": "25250fb818ee3bc1c81ab37d95ed286aae3d282a9757b0ea97ecf254224ea344",
+      "edition_read_from_cover": "1e ed., decembre 2010",
+      "publication_authorised": "2010-05-19",
+      "annexes_base_standard": "NBN EN 1993-1-2, 2e ed., octobre 2005",
+      "non_scalar_findings": {
+        "k_c_facteur_correction": "p.7 — Tableau 4.4 ANB: k_c = 0,6+0,3psi+0,15psi^2, avec k_c <= 1 pour -1 <= psi <= 1; k_c = 1 pour d'autres diagrammes de moment. FORMULE dependant du diagramme de moment, pas un scalaire.",
+        "tableau_4_1a_a_4_1e_ANB": "p.11 — Temperatures critiques des colonnes comprimees (S235/S275/S355/S420/S460) selon l'elancement relatif et le taux d'utilisation. Pages 11 a 15, filigrane traversant les nombres.",
+        "tableau_4_5_ANB_deversement": "p.8 — Limites inferieures de lambda_LT,theta,com requerant la verification au deversement. Page 8: le tableau est une IMAGE, aucun texte extractible, filigrane en plus.",
+        "tableau_4_5_ANB_temperature": "p.16 — Temperature de l'acier apres 30 min d'exposition au feu normalise, selon k_sh A_m/V. Page 16, meme filigrane."
+      }
     },
     {
       "doc_key": "BE-EN199512-NA",

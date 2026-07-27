@@ -214,6 +214,11 @@ class ExtractionRun:
     #: Parameters the catalogue expects from this document and for which the
     #: extractor found nothing. Reported, never filled in.
     not_found: tuple[str, ...] = ()
+    #: Pages excluded because a vertical watermark is interleaved with their
+    #: glyphs. Carried explicitly so ``not_found`` cannot be read as "the annex
+    #: is silent on this" when the truth is "we refused to read that page".
+    #: A reviewer opens these by hand.
+    pages_skipped_overlay: tuple[int, ...] = ()
 
     def by_parameter(self) -> dict[str, list[ExtractionCandidate]]:
         out: dict[str, list[ExtractionCandidate]] = {}
@@ -230,6 +235,7 @@ class ExtractionRun:
             "extractor_version": self.extractor_version,
             "candidates": [c.to_dict() for c in self.candidates],
             "not_found": list(self.not_found),
+            "pages_skipped_overlay": list(self.pages_skipped_overlay),
         }
 
 

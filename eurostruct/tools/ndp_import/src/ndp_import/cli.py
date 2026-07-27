@@ -77,6 +77,7 @@ def _load_run(path: Path) -> ExtractionRun:
         doc=doc, candidates=cands, run_at=raw["run_at"],
         extractor_version=raw["extractor_version"],
         not_found=tuple(raw.get("not_found", [])),
+        pages_skipped_overlay=tuple(raw.get("pages_skipped_overlay", [])),
     )
 
 

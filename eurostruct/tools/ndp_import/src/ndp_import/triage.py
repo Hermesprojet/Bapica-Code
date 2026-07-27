@@ -55,8 +55,14 @@ _SECONDARY_MARKERS = re.compile(
     re.IGNORECASE,
 )
 
+# Chaque composante de la partie accepte DEUX chiffres. Avec un seul, la
+# regex ne pouvait pas atteindre la fin de « EN 1993-1-10 »: faute de
+# frontiere de mot apres le premier « 1 » de « 10 », elle refluait sur
+# « EN 1993-1 » — une partie qui n'existe pas. Un depot d'EN 1993-1-10 (celui
+# auquel l'ANB acier renvoie en §3.2.3(3)) etait donc annonce sous un nom
+# faux, puis ecarte comme hors perimetre.
 _STANDARD_RE = re.compile(
-    r"\bEN\s*(\d{4})(?:\s*[-–]\s*(\d(?:\s*[-–]\s*\d)?))?\b", re.IGNORECASE
+    r"\bEN\s*(\d{4})(?:\s*[-–]\s*(\d{1,2}(?:\s*[-–]\s*\d{1,2})?))?\b", re.IGNORECASE
 )
 
 

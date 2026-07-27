@@ -191,6 +191,103 @@ PATTERNS: Final[tuple[ParameterPattern, ...]] = (
         plausible=(0.5, 1.0),
         description="Coefficient de s_t,max",
     ),
+
+    # -----------------------------------------------------------------------
+    # EN 1993-1-1 — acier, regles generales
+    #
+    # NBN EN 1993-1-1 ANB renvoie a la valeur recommandee pour la plupart de
+    # ces parametres sans l'imprimer. Les motifs existent quand meme: sans
+    # eux, un depouillement ne les chercherait pas, et l'absence passerait
+    # pour un silence de l'annexe.
+    # -----------------------------------------------------------------------
+    ParameterPattern(
+        "gamma_M0", ("6.1(1)", "6.1(1)B"), ("γM0", "gamma M0", "gammaM0", "γ M0"),
+        plausible=(1.0, 1.2),
+        description="Coefficient partiel de resistance des sections",
+    ),
+    ParameterPattern(
+        "gamma_M1", ("6.1(1)", "6.1(1)B"), ("γM1", "gamma M1", "gammaM1", "γ M1"),
+        plausible=(1.0, 1.2),
+        description="Coefficient partiel de resistance aux instabilites",
+    ),
+    ParameterPattern(
+        "gamma_M2", ("6.1(1)", "6.1(1)B"), ("γM2", "gamma M2", "gammaM2", "γ M2"),
+        plausible=(1.1, 1.5),
+        description="Coefficient partiel de resistance a la rupture des sections tendues",
+    ),
+    ParameterPattern(
+        "alpha_cr_min_plastique", ("5.2.1(3)",), ("αcr", "alpha cr", "α cr"),
+        plausible=(3.0, 20.0),
+        description="Borne inferieure de alpha_cr pour l'analyse plastique",
+    ),
+    ParameterPattern(
+        "k_imperfection_element", ("5.3.4(3)",), ("k =", "facteur k"),
+        plausible=(0.1, 1.0),
+        description="Facteur k des imperfections d'elements",
+    ),
+    ParameterPattern(
+        "lambda_LT_0", ("6.3.2.3(1)",), ("λLT,0", "lambda LT,0", "λ LT,0"),
+        plausible=(0.1, 0.6),
+        description="Elancement de palier du deversement (profils lamines)",
+    ),
+    ParameterPattern(
+        "beta_deversement", ("6.3.2.3(1)",), ("β", "beta"),
+        plausible=(0.5, 1.0),
+        description="Facteur beta des courbes de deversement",
+    ),
+    ParameterPattern(
+        "alpha_LT", ("6.3.2.2(2)",), ("αLT", "alpha LT", "α LT"),
+        plausible=(0.1, 1.0),
+        description="Facteur d'imperfection pour le deversement",
+    ),
+    ParameterPattern(
+        "lambda_c_0", ("6.3.2.4(1)", "6.3.2.4(1)B"), ("λc,0", "lambda c,0", "λ c,0"),
+        plausible=(0.1, 1.0),
+        description="Elancement limite, methode simplifiee des poutres maintenues",
+    ),
+    ParameterPattern(
+        "k_fl", ("6.3.2.4(2)", "6.3.2.4(2)B"), ("kfl", "k fl"),
+        plausible=(1.0, 1.5),
+        description="Facteur k_fl, methode simplifiee des poutres maintenues",
+    ),
+    ParameterPattern(
+        "temperature_service_min", ("3.2.3(1)",),
+        ("température de service", "temperature de service"),
+        plausible=(-60.0, 20.0), unit="degC",
+        description="Temperature minimale de service pour la tenacite a la rupture",
+    ),
+
+    # -----------------------------------------------------------------------
+    # EN 1993-1-2 — acier, calcul au feu
+    # -----------------------------------------------------------------------
+    ParameterPattern(
+        "gamma_M_fi", ("2.3(1)", "2.3(2)"),
+        ("γM,fi", "gamma M,fi", "γ M,fi", "gammaM,fi"),
+        plausible=(0.9, 1.3),
+        description="Coefficient partiel des materiaux en situation d'incendie",
+    ),
+    ParameterPattern(
+        "theta_crit_classe_4", ("4.2.3.6(1)",), ("θcrit", "theta crit", "θ crit"),
+        plausible=(300.0, 700.0), unit="degC",
+        description="Temperature critique des sections de Classe 4",
+    ),
+    ParameterPattern(
+        "theta_crit_poutre_isostatique", ("4.2.4(2)",),
+        ("θcrit", "theta crit", "θ crit"),
+        plausible=(400.0, 700.0), unit="degC",
+        description="Temperature critique des poutres isostatiques et tirants",
+    ),
+    ParameterPattern(
+        "theta_crit_poutre_hyperstatique", ("4.2.4(2)",),
+        ("θcrit", "theta crit", "θ crit"),
+        plausible=(400.0, 700.0), unit="degC",
+        description="Temperature critique des poutres hyperstatiques",
+    ),
+    ParameterPattern(
+        "theta_crit_comprime", ("4.2.4(2)",), ("θcrit", "theta crit", "θ crit"),
+        plausible=(400.0, 700.0), unit="degC",
+        description="Temperature critique des elements comprimes et flechis-comprimes",
+    ),
 )
 
 
