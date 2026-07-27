@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from .anchorage import (
+    AnchorageCoefficients,
+    AnchorageDesign,
+    BondCondition,
+    design_anchorage,
+)
 from .beam_shear import (
     ShearDesign,
     ShearLinks,
@@ -26,4 +32,8 @@ __all__ = [
     "ShearLinks",
     "ShearDesign",
     "design_shear",
+    "BondCondition",
+    "AnchorageCoefficients",
+    "AnchorageDesign",
+    "design_anchorage",
 ]
