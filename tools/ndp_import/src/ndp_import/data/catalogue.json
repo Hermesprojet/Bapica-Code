@@ -35,7 +35,7 @@
           "fr",
           "nl"
         ],
-        "notes": "ACQUIS en version texte (15 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Base de calcul des structures: coefficients partiels et combinaisons d'actions. Aucun motif d'extraction ecrit a ce jour."
+        "notes": "ACQUIS en version texte (33 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Base de calcul des structures: coefficients partiels et combinaisons d'actions. EDITION EN VIGUEUR. Sa page de garde porte « Remplace: NBN EN 1990 ANB (2007) »; autorisation de publication du 28 septembre 2012. Annexe a la NBN EN 1990, 1e ed. juillet 2002, y compris l'amendement NBN EN 1990/A1:2006. La 1e edition (2007, 15 pages) est aussi detenue et enregistree comme edition anterieure — le moteur resout l'annexe par la date de reference du projet. Aucun motif d'extraction ecrit a ce jour."
       },
       "document_role": "national_annex",
       "phase": "P1",
@@ -43,8 +43,16 @@
       "edition": null,
       "effective_from": null,
       "parameters_expected": [],
-      "doc_id_sha256": "40a8eeac9471d7203e81ff8a03921e064775734a1ad2e7c468f8dff63f943b16",
-      "edition_read_from_cover": "1e ed., septembre 2007"
+      "doc_id_sha256": "cc74a2b5d0acd99cdbeeaaccba1af80d660861a57c253c97b568893ec2116a66",
+      "edition_read_from_cover": "2e ed., janvier 2013",
+      "alternate_copies": [
+        {
+          "doc_id_sha256": "40a8eeac9471d7203e81ff8a03921e064775734a1ad2e7c468f8dff63f943b16",
+          "page_count": 15,
+          "machine_readable": true,
+          "notes": "EDITION ANTERIEURE, 1e ed. septembre 2007, version texte francaise. Explicitement remplacee par la 2e ed. janvier 2013 (« Remplace: NBN EN 1990 ANB (2007) » en couverture). Conservee, non jetee: le moteur resout l'annexe applicable par la date de reference du projet, et une etude anterieure a 2013 releve de cette edition. NE DOIT PAS servir pour un projet courant."
+        }
+      ]
     },
     {
       "doc_key": "BE-EN199111-NA",

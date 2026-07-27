@@ -768,6 +768,38 @@ def test_a_redeposited_file_is_announced_as_already_held(tmp_path) -> None:
     assert "Les redeposer ne change rien" in text
 
 
+def test_competing_editions_of_one_standard_are_flagged(tmp_path) -> None:
+    """Two distinct files for the same annex must not be picked at random.
+
+    NBN EN 1990 ANB sat in the deposit in both its 1st edition (2007) and its
+    2nd (2013), whose cover says "Remplace: NBN EN 1990 ANB (2007)". The 2007
+    one got registered as the document in hand — a superseded edition, chosen
+    only because it was seen first.
+    """
+    from ndp_import import render_triage, triage_document
+
+    old = triage_document(
+        make_pdf(
+            tmp_path / "ANB_1990_2007.pdf",
+            [["ICS 91.010.30 NBN EN 1990 ANB Norme belge 1e ed., septembre 2007"]],
+        )
+    )
+    new = triage_document(
+        make_pdf(
+            tmp_path / "ANB_1990_2013.pdf",
+            [["ICS 91.010.30 NBN EN 1990 ANB Norme belge 2e ed., janvier 2013"]],
+        )
+    )
+    text = render_triage([old, new])
+
+    assert "PLUSIEURS FICHIERS DISTINCTS" in text
+    assert "ANB_1990_2007.pdf" in text and "ANB_1990_2013.pdf" in text
+    assert "Une edition remplacee ne doit pas servir" in text
+
+    # Un seul fichier: pas d'alerte.
+    assert "PLUSIEURS FICHIERS DISTINCTS" not in render_triage([new])
+
+
 def test_base_eurocode_is_not_mistaken_for_an_annex(tmp_path) -> None:
     from ndp_import import triage_document
 
