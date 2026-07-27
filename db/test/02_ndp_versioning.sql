@@ -25,16 +25,45 @@ grant select, insert, update, delete on national_annexes, national_annex_paramet
 -- Le seed est charge et honnetement etiquete
 -- ---------------------------------------------------------------------
 do $$
-declare n integer; unverified integer;
+declare n integer; unverified integer; distinct_names integer;
 begin
   select count(*) into n from national_annexes;
   if n <> 4 then
     raise exception 'attendu 4 annexes (BE/FR/ES/DE), trouve %', n;
   end if;
 
+  -- Ce que ce compte protege n'est pas un nombre, c'est une symetrie: les
+  -- quatre pays doivent porter EXACTEMENT le meme jeu de parametres. Un pays
+  -- auquel il en manque un ne refuse pas de calculer — il tombe sur
+  -- 'annexe incomplete' au moment du preflight, bien plus tard et pour une
+  -- raison qui ne designe pas le seed. Un compte en dur, lui, se contente
+  -- d'etre reecrit a chaque ajout et ne verifie plus rien.
   select count(*) into n from national_annex_parameters;
-  if n <> 88 then
-    raise exception 'attendu 88 parametres (4 x 22), trouve %', n;
+  if n < 4 then
+    raise exception 'seed de parametres vide ou tronque: % lignes', n;
+  end if;
+
+  select count(distinct parameter_name) into distinct_names
+    from national_annex_parameters;
+  if n <> 4 * distinct_names then
+    raise exception
+      'asymetrie entre pays: % parametres pour % noms distincts sur 4 pays '
+      '(attendu %)', n, distinct_names, 4 * distinct_names;
+  end if;
+
+  select count(*) into n
+    from (
+      select country_code, array_agg(parameter_name order by parameter_name) as names
+        from national_annex_parameters
+       group by country_code
+    ) per_country
+   where names <> (
+     select array_agg(parameter_name order by parameter_name)
+       from national_annex_parameters where country_code = 'BE'
+   );
+  if n <> 0 then
+    raise exception
+      '% pays ne portent pas le meme jeu de parametres que la Belgique', n;
   end if;
 
   -- Aucun parametre ne pretend etre releve dans une annexe publiee.

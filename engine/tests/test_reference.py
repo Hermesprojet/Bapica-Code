@@ -266,7 +266,8 @@ def test_planned_coverage_spans_the_priority_modules() -> None:
 
 def test_concrete_scope_covers_the_priority_verifications() -> None:
     scopes = " ".join(s for c in LIBRARY for s in c.normative_scope)
-    for clause in ("§6.1", "§6.2.2", "§6.2.3", "§8.4", "§9.2.1.1(1)"):
+    for clause in ("§6.1", "§6.2.2", "§6.2.3", "§7.2", "§7.3.4", "§8.4",
+                   "§9.2.1.1(1)"):
         assert clause in scopes, f"{clause} absent de la couverture beton arme"
 
 
@@ -278,7 +279,10 @@ def test_registered_harness_matches_the_implemented_modules() -> None:
     turn a visible gap into a case that quietly claims to run.
     """
     registered = set(available_harnesses())
-    assert {"ec2.beam_flexure", "ec2.beam_shear", "ec2.anchorage"} <= registered
+    assert {
+        "ec2.beam_flexure", "ec2.beam_shear", "ec2.anchorage",
+        "ec2.serviceability",
+    } <= registered
 
     # Un nom enregistre repond toujours: pas de banc declare a l'avance.
     for name in registered:

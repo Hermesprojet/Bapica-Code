@@ -1,0 +1,284 @@
+{
+  "_comment": "Cas de reference a valeurs attendues DERIVEES INDEPENDAMMENT. Regenerer avec scripts/generate_serviceability_references.py. Ne jamais recopier une valeur depuis une sortie du moteur: le cas attesterait alors que le moteur est d'accord avec lui-meme.",
+  "cases": [
+    {
+      "reference_id": "EC2-SLS-101",
+      "title": "ELS fissuration et contraintes — 300x600 mm, d=550, 4 HA20, C30/37, XC3, M_qp=120 kN·m, M_car=180 kN·m, phi=2,0",
+      "normative_scope": [
+        "EN 1992-1-1 §7.2",
+        "EN 1992-1-1 §7.3.2",
+        "EN 1992-1-1 §7.3.4"
+      ],
+      "country_scope": [
+        "FR"
+      ],
+      "source_type": "manual_reference",
+      "source_document": {
+        "title": "Resolution independante — axe neutre fissure par dichotomie, (7.9) et (7.11) assemblees terme a terme",
+        "publisher": "EUROSTRUCT — scripts/generate_serviceability_references.py",
+        "edition": "1",
+        "locator": "",
+        "notes": "Valeurs attendues obtenues par une voie DISTINCTE de celle du moteur: axe neutre par dichotomie sur le residu d'equilibre, E_cm et f_ctm recalcules depuis le Tableau 3.1. L'accord des deux atteste l'algebre; il ne remplace pas un exemple resolu publie, et les cas 'official_worked_example' de planned_coverage.json restent des lacunes ouvertes."
+      },
+      "harness": "ec2.serviceability",
+      "input_dataset": {
+        "country": "FR",
+        "as_of": "2026-07-26",
+        "strict_ndp": false,
+        "b": {
+          "value": 300.0,
+          "unit": "mm"
+        },
+        "h": {
+          "value": 600.0,
+          "unit": "mm"
+        },
+        "d": {
+          "value": 550.0,
+          "unit": "mm"
+        },
+        "A_s": {
+          "value": 1256.6370614359173,
+          "unit": "mm**2"
+        },
+        "concrete_grade": "C30/37",
+        "steel_grade": "B500B",
+        "phi_creep": 2.0,
+        "M_qp": {
+          "value": 120.0,
+          "unit": "kN*m"
+        },
+        "M_char": {
+          "value": 180.0,
+          "unit": "kN*m"
+        },
+        "detail": {
+          "phi": {
+            "value": 20.0,
+            "unit": "mm"
+          },
+          "cover": {
+            "value": 40.0,
+            "unit": "mm"
+          },
+          "bar_spacing": {
+            "value": 60.0,
+            "unit": "mm"
+          }
+        },
+        "exposure_class": "XC3"
+      },
+      "expected_outputs": {
+        "alpha_e_short": 6.090770503457345,
+        "alpha_e_long": 18.272311510372038,
+        "x_qp_mm": 223.54605432337968,
+        "I_qp_mm4": 3564197625.8703017,
+        "sigma_s_qp_MPa": 200.83291047263637,
+        "x_char_mm": 143.94254149057554,
+        "sigma_c_char_MPa": 16.606258463988752,
+        "sigma_s_char_MPa": 285.3266612904785,
+        "h_c_ef_mm": 125.0,
+        "rho_p_eff": 0.03351032163829113,
+        "eps_diff": 0.0007960108977016586,
+        "s_r_max_mm": 237.46127622108327,
+        "w_k_mm": 0.18902176365412598,
+        "w_max_mm": 0.3,
+        "sigma_c_limit_MPa": 18.0,
+        "is_cracked": 1.0,
+        "utilisation": 0.9225699146660418
+      },
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 1e-09
+        }
+      ],
+      "notes": "Cas nominal: section fissuree, le crochet de (7.9) gouverne devant le plancher 0,6 sigma_s/E_s, et l'espacement des barres autorise la formule (7.11). C'est la contrainte du beton sous combinaison caracteristique qui gouverne le taux de travail, pas l'ouverture de fissure."
+    },
+    {
+      "reference_id": "EC2-SLS-102",
+      "title": "ELS — section peu chargee: plancher de (7.9) et section non fissuree, M_qp=30 kN·m",
+      "normative_scope": [
+        "EN 1992-1-1 §7.1(2)",
+        "EN 1992-1-1 §7.3.4(2)"
+      ],
+      "country_scope": [
+        "FR"
+      ],
+      "source_type": "manual_reference",
+      "source_document": {
+        "title": "Resolution independante — meme dichotomie; le plancher 0,6 sigma_s/E_s est evalue a part et compare, et la contrainte de traction non fissuree est assemblee sur la section homogeneisee complete",
+        "publisher": "EUROSTRUCT — scripts/generate_serviceability_references.py",
+        "edition": "1",
+        "locator": "",
+        "notes": "Valeurs attendues obtenues par une voie DISTINCTE de celle du moteur: axe neutre par dichotomie sur le residu d'equilibre, E_cm et f_ctm recalcules depuis le Tableau 3.1. L'accord des deux atteste l'algebre; il ne remplace pas un exemple resolu publie, et les cas 'official_worked_example' de planned_coverage.json restent des lacunes ouvertes."
+      },
+      "harness": "ec2.serviceability",
+      "input_dataset": {
+        "country": "FR",
+        "as_of": "2026-07-26",
+        "strict_ndp": false,
+        "b": {
+          "value": 300.0,
+          "unit": "mm"
+        },
+        "h": {
+          "value": 600.0,
+          "unit": "mm"
+        },
+        "d": {
+          "value": 550.0,
+          "unit": "mm"
+        },
+        "A_s": {
+          "value": 1256.6370614359173,
+          "unit": "mm**2"
+        },
+        "concrete_grade": "C30/37",
+        "steel_grade": "B500B",
+        "phi_creep": 2.0,
+        "M_qp": {
+          "value": 30.0,
+          "unit": "kN*m"
+        },
+        "M_char": {
+          "value": 45.0,
+          "unit": "kN*m"
+        },
+        "detail": {
+          "phi": {
+            "value": 20.0,
+            "unit": "mm"
+          },
+          "cover": {
+            "value": 40.0,
+            "unit": "mm"
+          },
+          "bar_spacing": {
+            "value": 60.0,
+            "unit": "mm"
+          }
+        },
+        "exposure_class": "XC3"
+      },
+      "expected_outputs": {
+        "alpha_e_short": 6.090770503457345,
+        "alpha_e_long": 18.272311510372038,
+        "x_qp_mm": 223.54605432337968,
+        "I_qp_mm4": 3564197625.8703017,
+        "sigma_s_qp_MPa": 50.20822761815909,
+        "x_char_mm": 143.94254149057554,
+        "sigma_c_char_MPa": 4.151564615997188,
+        "sigma_s_char_MPa": 71.33166532261963,
+        "h_c_ef_mm": 125.0,
+        "rho_p_eff": 0.03351032163829113,
+        "eps_diff": 0.00015062468285447725,
+        "s_r_max_mm": 237.46127622108327,
+        "w_k_mm": 0.035767529421020086,
+        "w_max_mm": 0.3,
+        "sigma_c_limit_MPa": 18.0,
+        "is_cracked": 0.0,
+        "utilisation": 0.23064247866651044
+      },
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 1e-09
+        }
+      ],
+      "notes": "Deux branches a la fois: le crochet de (7.9) devient negatif et le plancher 0,6 sigma_s/E_s gouverne — sans lui w_k sortirait negatif; et sigma_ct n'atteint pas f_ctm, donc is_cracked doit revenir a 0. L'ouverture de fissure reste calculee, ce qui est securitaire, mais elle ne decrit aucune fissure reelle."
+    },
+    {
+      "reference_id": "EC2-SLS-103",
+      "title": "ELS — barres largement espacees: formule (7.14) au lieu de (7.11), espacement 400 mm",
+      "normative_scope": [
+        "EN 1992-1-1 §7.3.4(3)"
+      ],
+      "country_scope": [
+        "FR"
+      ],
+      "source_type": "manual_reference",
+      "source_document": {
+        "title": "Resolution independante — s_r,max = 1,3 (h - x) evalue separement",
+        "publisher": "EUROSTRUCT — scripts/generate_serviceability_references.py",
+        "edition": "1",
+        "locator": "",
+        "notes": "Valeurs attendues obtenues par une voie DISTINCTE de celle du moteur: axe neutre par dichotomie sur le residu d'equilibre, E_cm et f_ctm recalcules depuis le Tableau 3.1. L'accord des deux atteste l'algebre; il ne remplace pas un exemple resolu publie, et les cas 'official_worked_example' de planned_coverage.json restent des lacunes ouvertes."
+      },
+      "harness": "ec2.serviceability",
+      "input_dataset": {
+        "country": "FR",
+        "as_of": "2026-07-26",
+        "strict_ndp": false,
+        "b": {
+          "value": 300.0,
+          "unit": "mm"
+        },
+        "h": {
+          "value": 600.0,
+          "unit": "mm"
+        },
+        "d": {
+          "value": 550.0,
+          "unit": "mm"
+        },
+        "A_s": {
+          "value": 1256.6370614359173,
+          "unit": "mm**2"
+        },
+        "concrete_grade": "C30/37",
+        "steel_grade": "B500B",
+        "phi_creep": 2.0,
+        "M_qp": {
+          "value": 120.0,
+          "unit": "kN*m"
+        },
+        "M_char": {
+          "value": 180.0,
+          "unit": "kN*m"
+        },
+        "detail": {
+          "phi": {
+            "value": 20.0,
+            "unit": "mm"
+          },
+          "cover": {
+            "value": 40.0,
+            "unit": "mm"
+          },
+          "bar_spacing": {
+            "value": 400.0,
+            "unit": "mm"
+          }
+        },
+        "exposure_class": "XC3"
+      },
+      "expected_outputs": {
+        "alpha_e_short": 6.090770503457345,
+        "alpha_e_long": 18.272311510372038,
+        "x_qp_mm": 223.54605432337968,
+        "I_qp_mm4": 3564197625.8703017,
+        "sigma_s_qp_MPa": 200.83291047263637,
+        "x_char_mm": 143.94254149057554,
+        "sigma_c_char_MPa": 16.606258463988752,
+        "sigma_s_char_MPa": 285.3266612904785,
+        "h_c_ef_mm": 125.0,
+        "rho_p_eff": 0.03351032163829113,
+        "eps_diff": 0.0007960108977016586,
+        "s_r_max_mm": 489.39012937960644,
+        "w_k_mm": 0.38955987621379135,
+        "w_max_mm": 0.3,
+        "sigma_c_limit_MPa": 18.0,
+        "is_cracked": 1.0,
+        "utilisation": 1.298532920712638
+      },
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 1e-09
+        }
+      ],
+      "notes": "400 mm > 5(40 + 20/2) = 250 mm: la formule (7.11) ne decrit plus le faisceau de fissures et (7.14) prend le relais. Toutes les autres sorties sont identiques a EC2-SLS-101, ce qui isole l'effet de la bascule."
+    }
+  ]
+}

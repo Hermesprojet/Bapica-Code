@@ -156,7 +156,63 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'k1_stress_limit', null, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.2(2): « k1 = 0,6 pour toutes les classes d''exposition sauf XD, XF et XS pour lesquelles k1 = 0,5. » ECART: l''EN ne prescrit la limitation que pour XD, XF et XS, avec k1 = 0,6. L''ANB l''etend a toutes les classes ET la resserre a 0,5 pour XD, XF, XS.', '§7.2(2)', 'Coefficient limitant la contrainte de compression du beton sous combinaison caracteristique, pour eviter la fissuration longitudinale: sigma_c <= k1 f_ck', 0.6, true
+from national_annexes a
+where a.country_code = 'BE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'XD_XF_XS', 0.5, '§7.2(2) ANB: classes XD, XF et XS — k1 = 0,5.'
+from national_annex_parameters p
+where p.country_code = 'BE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'k1_stress_limit'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'other', 0.6, '§7.2(2) ANB: « k1 = 0,6 pour toutes les classes d''exposition sauf XD, XF et XS ».'
+from national_annex_parameters p
+where p.country_code = 'BE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'k1_stress_limit'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
 select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'k2_redistribution', 1.25, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 15. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §5.5(4): k2 = 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa).', '§5.5(4)', 'Coefficient k2 bornant xu/d pour la ductilite. Recommandation EN: 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa). Au-dela de C50/60 ce parametre doit etre re-exprime.', 1.25, false
+from national_annexes a
+where a.country_code = 'BE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'k3_crack_spacing', 3.4, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.4(3): « Les valeurs recommandees de k3 (3,4) et k4 (0,425) sont normatives. »', '§7.3.4(3), eq. (7.11)', 'Coefficient k3 de l''espacement maximal des fissures s_r,max', 3.4, false
+from national_annexes a
+where a.country_code = 'BE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'k3_steel_stress', 0.8, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.2(5): « Les valeurs recommandees de k3 (0,8), k4 (1,0) et k5 (0,75) sont normatives. »', '§7.2(5)', 'Coefficient limitant la contrainte de traction de l''acier sous combinaison caracteristique: sigma_s <= k3 f_yk', 0.8, false
+from national_annexes a
+where a.country_code = 'BE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'k4_crack_spacing', 0.425, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.4(3): « Les valeurs recommandees de k3 (3,4) et k4 (0,425) sont normatives. »', '§7.3.4(3), eq. (7.11)', 'Coefficient k4 de l''espacement maximal des fissures s_r,max', 0.425, false
+from national_annexes a
+where a.country_code = 'BE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'k4_steel_stress_imposed', 1.0, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.2(5): « Les valeurs recommandees de k3 (0,8), k4 (1,0) et k5 (0,75) sont normatives. »', '§7.2(5)', 'Coefficient applicable a la contrainte de l''acier lorsqu''elle resulte d''une deformation imposee: sigma_s <= k4 f_yk', 1.0, false
 from national_annexes a
 where a.country_code = 'BE'::country_code
   and a.standard_family = 'EN 1992'
@@ -211,6 +267,30 @@ where a.country_code = 'BE'::country_code
   and a.part = '1-1'
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'w_max', null, 'mm', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.1(5): « Le tableau 7.1N devient (ajout de la mention des classes d''environnement associees aux classes d''exposition) » Tableau 7.1N-ANB. ATTENTION — LES VALEURS PORTEES ICI SONT CELLES DU TABLEAU 7.1N DE L''EN, PAS CELLES DU TABLEAU 7.1N-ANB. Les cellules numeriques du tableau belge ne sont pas lisibles sur l''exemplaire depouille (seule la valeur 0,3 de la ligne XD est partiellement lisible). CE QUI MANQUE: une lecture des cellules du Tableau 7.1N-ANB, p. 17, et la correspondance classe d''exposition / classe d''environnement NBN B 15-001 que l''ANB y ajoute.', '§7.3.1(5), Tab. 7.1N', 'Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges', 0.3, true
+from national_annexes a
+where a.country_code = 'BE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'X0_XC1', 0.4, 'Tab. 7.1N de l''EN, ligne X0/XC1 — 0,4 mm. NON RELEVE dans le Tableau 7.1N-ANB.'
+from national_annex_parameters p
+where p.country_code = 'BE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'w_max'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'XC2_XC4_XD_XS', 0.3, 'Tab. 7.1N de l''EN, lignes XC2-XC4 et XD1-XD3/XS1-XS3 — 0,3 mm. La valeur 0,3 est partiellement lisible sur la ligne XD du Tableau 7.1N-ANB.'
+from national_annex_parameters p
+where p.country_code = 'BE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'w_max'
+on conflict (parameter_id, condition) do nothing;
 
 -- ===== DE — Allemagne ==============================
 
@@ -340,7 +420,63 @@ where a.country_code = 'DE'::country_code
   and a.edition = 'NON RELEVE — edition reelle a renseigner'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'DE'::country_code, 'EN 1992', '1-1', 'DIN EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k1_stress_limit', null, 'dimensionless', 'DIN — Deutsches Institut fur Normung', 'https://www.din.de', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(2). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(2)', 'Coefficient limitant la contrainte de compression du beton sous combinaison caracteristique: sigma_c <= k1 f_ck', 0.6, true
+from national_annexes a
+where a.country_code = 'DE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'XD_XF_XS', 0.6, '§7.2(2): l''EN impose la limitation pour les classes XD, XF et XS, avec k1 = 0,6 recommande.'
+from national_annex_parameters p
+where p.country_code = 'DE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'k1_stress_limit'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'other', 0.6, '§7.2(2): hors XD/XF/XS l''EN n''impose pas la limitation. La valeur 0,6 est reconduite faute d''Annexe Nationale relevee — A VERIFIER: l''AN de ce pays peut, comme l''ANB belge, etendre ou lever la limitation dans ces classes.'
+from national_annex_parameters p
+where p.country_code = 'DE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'k1_stress_limit'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
 select a.id, 'DE'::country_code, 'EN 1992', '1-1', 'DIN EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k2_redistribution', 1.25, 'dimensionless', 'DIN — Deutsches Institut fur Normung', 'https://www.din.de', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§5.5(4)', 'Coefficient k2 bornant xu/d pour la ductilite. Recommandation EN: 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa). Au-dela de C50/60 ce parametre doit etre re-exprime.', 1.25, false
+from national_annexes a
+where a.country_code = 'DE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'DE'::country_code, 'EN 1992', '1-1', 'DIN EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k3_crack_spacing', 3.4, 'dimensionless', 'DIN — Deutsches Institut fur Normung', 'https://www.din.de', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.4(3), eq. (7.11)', 'Coefficient k3 de l''espacement maximal des fissures s_r,max', 3.4, false
+from national_annexes a
+where a.country_code = 'DE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'DE'::country_code, 'EN 1992', '1-1', 'DIN EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k3_steel_stress', 0.8, 'dimensionless', 'DIN — Deutsches Institut fur Normung', 'https://www.din.de', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(5)', 'Coefficient limitant la contrainte de traction de l''acier sous combinaison caracteristique: sigma_s <= k3 f_yk', 0.8, false
+from national_annexes a
+where a.country_code = 'DE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'DE'::country_code, 'EN 1992', '1-1', 'DIN EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k4_crack_spacing', 0.425, 'dimensionless', 'DIN — Deutsches Institut fur Normung', 'https://www.din.de', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.4(3), eq. (7.11)', 'Coefficient k4 de l''espacement maximal des fissures s_r,max', 0.425, false
+from national_annexes a
+where a.country_code = 'DE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'DE'::country_code, 'EN 1992', '1-1', 'DIN EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k4_steel_stress_imposed', 1.0, 'dimensionless', 'DIN — Deutsches Institut fur Normung', 'https://www.din.de', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(5)', 'Coefficient applicable a la contrainte de l''acier resultant d''une deformation imposee: sigma_s <= k4 f_yk', 1.0, false
 from national_annexes a
 where a.country_code = 'DE'::country_code
   and a.standard_family = 'EN 1992'
@@ -395,6 +531,30 @@ where a.country_code = 'DE'::country_code
   and a.part = '1-1'
   and a.edition = 'NON RELEVE — edition reelle a renseigner'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'DE'::country_code, 'EN 1992', '1-1', 'DIN EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'w_max', null, 'mm', 'DIN — Deutsches Institut fur Normung', 'https://www.din.de', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.1(5), Tab. 7.1N. Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.1(5), Tab. 7.1N', 'Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges', 0.3, true
+from national_annexes a
+where a.country_code = 'DE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'X0_XC1', 0.4, 'Tab. 7.1N de l''EN, ligne X0/XC1 — 0,4 mm.'
+from national_annex_parameters p
+where p.country_code = 'DE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'w_max'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'XC2_XC4_XD_XS', 0.3, 'Tab. 7.1N de l''EN, lignes XC2-XC4 et XD1-XD3/XS1-XS3 — 0,3 mm.'
+from national_annex_parameters p
+where p.country_code = 'DE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'w_max'
+on conflict (parameter_id, condition) do nothing;
 
 -- ===== ES — Espagne ==============================
 
@@ -524,7 +684,63 @@ where a.country_code = 'ES'::country_code
   and a.edition = 'NON RELEVE — edition reelle a renseigner'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'ES'::country_code, 'EN 1992', '1-1', 'UNE-EN 1992-1-1 AN', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k1_stress_limit', null, 'dimensionless', 'AENOR / UNE — Asociacion Espanola de Normalizacion', 'https://www.une.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(2). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(2)', 'Coefficient limitant la contrainte de compression du beton sous combinaison caracteristique: sigma_c <= k1 f_ck', 0.6, true
+from national_annexes a
+where a.country_code = 'ES'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'XD_XF_XS', 0.6, '§7.2(2): l''EN impose la limitation pour les classes XD, XF et XS, avec k1 = 0,6 recommande.'
+from national_annex_parameters p
+where p.country_code = 'ES'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'k1_stress_limit'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'other', 0.6, '§7.2(2): hors XD/XF/XS l''EN n''impose pas la limitation. La valeur 0,6 est reconduite faute d''Annexe Nationale relevee — A VERIFIER: l''AN de ce pays peut, comme l''ANB belge, etendre ou lever la limitation dans ces classes.'
+from national_annex_parameters p
+where p.country_code = 'ES'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'k1_stress_limit'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
 select a.id, 'ES'::country_code, 'EN 1992', '1-1', 'UNE-EN 1992-1-1 AN', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k2_redistribution', 1.25, 'dimensionless', 'AENOR / UNE — Asociacion Espanola de Normalizacion', 'https://www.une.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§5.5(4)', 'Coefficient k2 bornant xu/d pour la ductilite. Recommandation EN: 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa). Au-dela de C50/60 ce parametre doit etre re-exprime.', 1.25, false
+from national_annexes a
+where a.country_code = 'ES'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'ES'::country_code, 'EN 1992', '1-1', 'UNE-EN 1992-1-1 AN', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k3_crack_spacing', 3.4, 'dimensionless', 'AENOR / UNE — Asociacion Espanola de Normalizacion', 'https://www.une.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.4(3), eq. (7.11)', 'Coefficient k3 de l''espacement maximal des fissures s_r,max', 3.4, false
+from national_annexes a
+where a.country_code = 'ES'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'ES'::country_code, 'EN 1992', '1-1', 'UNE-EN 1992-1-1 AN', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k3_steel_stress', 0.8, 'dimensionless', 'AENOR / UNE — Asociacion Espanola de Normalizacion', 'https://www.une.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(5)', 'Coefficient limitant la contrainte de traction de l''acier sous combinaison caracteristique: sigma_s <= k3 f_yk', 0.8, false
+from national_annexes a
+where a.country_code = 'ES'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'ES'::country_code, 'EN 1992', '1-1', 'UNE-EN 1992-1-1 AN', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k4_crack_spacing', 0.425, 'dimensionless', 'AENOR / UNE — Asociacion Espanola de Normalizacion', 'https://www.une.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.4(3), eq. (7.11)', 'Coefficient k4 de l''espacement maximal des fissures s_r,max', 0.425, false
+from national_annexes a
+where a.country_code = 'ES'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'ES'::country_code, 'EN 1992', '1-1', 'UNE-EN 1992-1-1 AN', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k4_steel_stress_imposed', 1.0, 'dimensionless', 'AENOR / UNE — Asociacion Espanola de Normalizacion', 'https://www.une.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(5)', 'Coefficient applicable a la contrainte de l''acier resultant d''une deformation imposee: sigma_s <= k4 f_yk', 1.0, false
 from national_annexes a
 where a.country_code = 'ES'::country_code
   and a.standard_family = 'EN 1992'
@@ -579,6 +795,30 @@ where a.country_code = 'ES'::country_code
   and a.part = '1-1'
   and a.edition = 'NON RELEVE — edition reelle a renseigner'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'ES'::country_code, 'EN 1992', '1-1', 'UNE-EN 1992-1-1 AN', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'w_max', null, 'mm', 'AENOR / UNE — Asociacion Espanola de Normalizacion', 'https://www.une.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.1(5), Tab. 7.1N. Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.1(5), Tab. 7.1N', 'Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges', 0.3, true
+from national_annexes a
+where a.country_code = 'ES'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'X0_XC1', 0.4, 'Tab. 7.1N de l''EN, ligne X0/XC1 — 0,4 mm.'
+from national_annex_parameters p
+where p.country_code = 'ES'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'w_max'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'XC2_XC4_XD_XS', 0.3, 'Tab. 7.1N de l''EN, lignes XC2-XC4 et XD1-XD3/XS1-XS3 — 0,3 mm.'
+from national_annex_parameters p
+where p.country_code = 'ES'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'w_max'
+on conflict (parameter_id, condition) do nothing;
 
 -- ===== FR — France ==============================
 
@@ -708,7 +948,63 @@ where a.country_code = 'FR'::country_code
   and a.edition = 'NON RELEVE — edition reelle a renseigner'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k1_stress_limit', null, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(2). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(2)', 'Coefficient limitant la contrainte de compression du beton sous combinaison caracteristique: sigma_c <= k1 f_ck', 0.6, true
+from national_annexes a
+where a.country_code = 'FR'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'XD_XF_XS', 0.6, '§7.2(2): l''EN impose la limitation pour les classes XD, XF et XS, avec k1 = 0,6 recommande.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'k1_stress_limit'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'other', 0.6, '§7.2(2): hors XD/XF/XS l''EN n''impose pas la limitation. La valeur 0,6 est reconduite faute d''Annexe Nationale relevee — A VERIFIER: l''AN de ce pays peut, comme l''ANB belge, etendre ou lever la limitation dans ces classes.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'k1_stress_limit'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
 select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k2_redistribution', 1.25, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§5.5(4)', 'Coefficient k2 bornant xu/d pour la ductilite. Recommandation EN: 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa). Au-dela de C50/60 ce parametre doit etre re-exprime.', 1.25, false
+from national_annexes a
+where a.country_code = 'FR'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k3_crack_spacing', 3.4, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.4(3), eq. (7.11)', 'Coefficient k3 de l''espacement maximal des fissures s_r,max', 3.4, false
+from national_annexes a
+where a.country_code = 'FR'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k3_steel_stress', 0.8, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(5)', 'Coefficient limitant la contrainte de traction de l''acier sous combinaison caracteristique: sigma_s <= k3 f_yk', 0.8, false
+from national_annexes a
+where a.country_code = 'FR'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k4_crack_spacing', 0.425, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.4(3), eq. (7.11)', 'Coefficient k4 de l''espacement maximal des fissures s_r,max', 0.425, false
+from national_annexes a
+where a.country_code = 'FR'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k4_steel_stress_imposed', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(5)', 'Coefficient applicable a la contrainte de l''acier resultant d''une deformation imposee: sigma_s <= k4 f_yk', 1.0, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
@@ -763,5 +1059,29 @@ where a.country_code = 'FR'::country_code
   and a.part = '1-1'
   and a.edition = 'NON RELEVE — edition reelle a renseigner'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'w_max', null, 'mm', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.1(5), Tab. 7.1N. Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.1(5), Tab. 7.1N', 'Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges', 0.3, true
+from national_annexes a
+where a.country_code = 'FR'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'X0_XC1', 0.4, 'Tab. 7.1N de l''EN, ligne X0/XC1 — 0,4 mm.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'w_max'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'XC2_XC4_XD_XS', 0.3, 'Tab. 7.1N de l''EN, lignes XC2-XC4 et XD1-XD3/XS1-XS3 — 0,3 mm.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'w_max'
+on conflict (parameter_id, condition) do nothing;
 
 commit;

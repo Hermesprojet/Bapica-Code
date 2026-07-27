@@ -261,6 +261,58 @@
         }
       ],
       "notes": null
+    },
+    {
+      "reference_id": "EC2-SLS-001",
+      "title": "Ouverture de fissure — exemple resolu publie, calcul direct §7.3.4",
+      "normative_scope": [
+        "EN 1992-1-1 §7.3.4"
+      ],
+      "country_scope": [
+        "*"
+      ],
+      "source_type": "official_worked_example",
+      "source_document": {
+        "title": "Exemple publie a identifier — beton arme, etats limites de service",
+        "publisher": "A determiner",
+        "notes": "Cas declare pour la couverture; la source n'est pas encore depouillee. Rapporte comme lacune, jamais comme succes. Le module existe: ce sont les valeurs publiees qui manquent."
+      },
+      "harness": "ec2.serviceability",
+      "input_dataset": {},
+      "expected_outputs": {},
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 0.01
+        }
+      ],
+      "notes": "Les cas EC2-SLS-101 a 103 attestent l'algebre par une voie independante. Ils n'attestent pas l'accord avec la profession: c'est ce que cette entree reste a combler."
+    },
+    {
+      "reference_id": "EC2-SLS-002",
+      "title": "Limitation des contraintes en service — exemple resolu publie §7.2",
+      "normative_scope": [
+        "EN 1992-1-1 §7.2"
+      ],
+      "country_scope": [
+        "*"
+      ],
+      "source_type": "official_worked_example",
+      "source_document": {
+        "title": "Exemple publie a identifier — beton arme, etats limites de service",
+        "publisher": "A determiner",
+        "notes": "Cas declare pour la couverture; la source n'est pas encore depouillee. Rapporte comme lacune, jamais comme succes. Le module existe: ce sont les valeurs publiees qui manquent."
+      },
+      "harness": "ec2.serviceability",
+      "input_dataset": {},
+      "expected_outputs": {},
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 0.01
+        }
+      ],
+      "notes": "Idem: la section fissuree homogeneisee est verifiee contre une dichotomie, pas contre un exemple publie."
     }
   ]
 }
