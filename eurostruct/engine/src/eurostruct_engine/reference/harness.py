@@ -19,6 +19,11 @@ from ..basis import DesignSituation
 from ..ec2.anchorage import AnchorageCoefficients, design_anchorage
 from ..ec2.beam_flexure import RectangularSection, design_flexure
 from ..ec2.beam_shear import ShearLinks, ShearSection, design_shear
+from ..ec2.serviceability import (
+    CrackControlDetail,
+    ExposureClass,
+    design_serviceability,
+)
 from ..materials import concrete, reinforcement
 from ..ndp import load_parameter_set
 from ..units import Q_
@@ -184,4 +189,56 @@ def _ec2_anchorage(inputs: Mapping[str, Any]) -> dict[str, float]:
         "l_0_mm": float(design.l_0.to("mm").magnitude),
         "l_0_min_mm": float(design.l_0_min.to("mm").magnitude),
         "sigma_sd_MPa": float(design.sigma_sd.to("MPa").magnitude),
+    }
+
+
+@register("ec2.serviceability")
+def _ec2_serviceability(inputs: Mapping[str, Any]) -> dict[str, float]:
+    """Replay an SLS case: §7.2 stress limitation and §7.3.4 crack width.
+
+    ``is_cracked`` is published as 1,0 or 0,0 rather than left out. It decides
+    whether ``w_k`` describes a crack or a conservative fiction, so a case that
+    silently flipped it would be comparing two different things.
+    """
+    detail = inputs["detail"]
+    design = design_serviceability(
+        section=RectangularSection(
+            b=_quantity(inputs["b"]),
+            h=_quantity(inputs["h"]),
+            d=_quantity(inputs["d"]),
+        ),
+        concrete=concrete(inputs["concrete_grade"]),
+        steel=reinforcement(inputs["steel_grade"]),
+        A_s=_quantity(inputs["A_s"]),
+        M_qp=_quantity(inputs["M_qp"]),
+        M_char=_quantity(inputs["M_char"]),
+        phi_creep=float(inputs["phi_creep"]),
+        detail=CrackControlDetail(
+            phi=_quantity(detail["phi"]),
+            cover=_quantity(detail["cover"]),
+            bar_spacing=_quantity(detail["bar_spacing"]),
+            high_bond=bool(detail.get("high_bond", True)),
+        ),
+        exposure_class=ExposureClass(inputs["exposure_class"]),
+        params=_params(inputs),
+        element=inputs.get("element", "reference"),
+    )
+    return {
+        "alpha_e_short": design.alpha_e_short,
+        "alpha_e_long": design.quasi_permanent.alpha_e,
+        "x_qp_mm": float(design.quasi_permanent.x.to("mm").magnitude),
+        "I_qp_mm4": float(design.quasi_permanent.I.to("mm**4").magnitude),
+        "sigma_s_qp_MPa": float(design.quasi_permanent.sigma_s.to("MPa").magnitude),
+        "x_char_mm": float(design.characteristic.x.to("mm").magnitude),
+        "sigma_c_char_MPa": float(design.characteristic.sigma_c.to("MPa").magnitude),
+        "sigma_s_char_MPa": float(design.characteristic.sigma_s.to("MPa").magnitude),
+        "h_c_ef_mm": float(design.h_c_ef.to("mm").magnitude),
+        "rho_p_eff": design.rho_p_eff,
+        "eps_diff": design.eps_diff,
+        "s_r_max_mm": float(design.s_r_max.to("mm").magnitude),
+        "w_k_mm": float(design.w_k.to("mm").magnitude),
+        "w_max_mm": float(design.w_max.to("mm").magnitude),
+        "sigma_c_limit_MPa": float(design.sigma_c_limit.to("MPa").magnitude),
+        "is_cracked": 1.0 if design.is_cracked else 0.0,
+        "utilisation": design.utilisation,
     }

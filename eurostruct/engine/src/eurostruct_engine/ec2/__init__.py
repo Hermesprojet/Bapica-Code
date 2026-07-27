@@ -21,6 +21,13 @@ from .beam_flexure import (
     design_flexure,
     moment_resistance,
 )
+from .serviceability import (
+    CrackControlDetail,
+    CrackedSection,
+    ExposureClass,
+    ServiceabilityDesign,
+    design_serviceability,
+)
 
 __all__ = [
     "RectangularSection",
@@ -36,4 +43,9 @@ __all__ = [
     "AnchorageCoefficients",
     "AnchorageDesign",
     "design_anchorage",
+    "ExposureClass",
+    "CrackControlDetail",
+    "CrackedSection",
+    "ServiceabilityDesign",
+    "design_serviceability",
 ]

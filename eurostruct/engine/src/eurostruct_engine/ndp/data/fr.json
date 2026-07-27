@@ -289,6 +289,102 @@
           "verified_at": null,
           "verified_by": null,
           "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+        },
+        "k1_stress_limit": {
+          "parameter_value": null,
+          "unit": "dimensionless",
+          "clause": "§7.2(2)",
+          "description": "Coefficient limitant la contrainte de compression du beton sous combinaison caracteristique: sigma_c <= k1 f_ck",
+          "en_recommended": 0.6,
+          "source_type": "en_recommended",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.2(2). Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur.",
+          "variants": [
+            {
+              "condition": "XD_XF_XS",
+              "value": 0.6,
+              "description": "§7.2(2): l'EN impose la limitation pour les classes XD, XF et XS, avec k1 = 0,6 recommande."
+            },
+            {
+              "condition": "other",
+              "value": 0.6,
+              "description": "§7.2(2): hors XD/XF/XS l'EN n'impose pas la limitation. La valeur 0,6 est reconduite faute d'Annexe Nationale relevee — A VERIFIER: l'AN de ce pays peut, comme l'ANB belge, etendre ou lever la limitation dans ces classes."
+            }
+          ]
+        },
+        "k3_steel_stress": {
+          "parameter_value": 0.8,
+          "unit": "dimensionless",
+          "clause": "§7.2(5)",
+          "description": "Coefficient limitant la contrainte de traction de l'acier sous combinaison caracteristique: sigma_s <= k3 f_yk",
+          "en_recommended": 0.8,
+          "source_type": "en_recommended",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur."
+        },
+        "k4_steel_stress_imposed": {
+          "parameter_value": 1.0,
+          "unit": "dimensionless",
+          "clause": "§7.2(5)",
+          "description": "Coefficient applicable a la contrainte de l'acier resultant d'une deformation imposee: sigma_s <= k4 f_yk",
+          "en_recommended": 1.0,
+          "source_type": "en_recommended",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur."
+        },
+        "w_max": {
+          "parameter_value": null,
+          "unit": "mm",
+          "clause": "§7.3.1(5), Tab. 7.1N",
+          "description": "Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges",
+          "en_recommended": 0.3,
+          "source_type": "en_recommended",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.3.1(5), Tab. 7.1N. Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur.",
+          "variants": [
+            {
+              "condition": "X0_XC1",
+              "value": 0.4,
+              "description": "Tab. 7.1N de l'EN, ligne X0/XC1 — 0,4 mm."
+            },
+            {
+              "condition": "XC2_XC4_XD_XS",
+              "value": 0.3,
+              "description": "Tab. 7.1N de l'EN, lignes XC2-XC4 et XD1-XD3/XS1-XS3 — 0,3 mm."
+            }
+          ]
+        },
+        "k3_crack_spacing": {
+          "parameter_value": 3.4,
+          "unit": "dimensionless",
+          "clause": "§7.3.4(3), eq. (7.11)",
+          "description": "Coefficient k3 de l'espacement maximal des fissures s_r,max",
+          "en_recommended": 3.4,
+          "source_type": "en_recommended",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur."
+        },
+        "k4_crack_spacing": {
+          "parameter_value": 0.425,
+          "unit": "dimensionless",
+          "clause": "§7.3.4(3), eq. (7.11)",
+          "description": "Coefficient k4 de l'espacement maximal des fissures s_r,max",
+          "en_recommended": 0.425,
+          "source_type": "en_recommended",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur."
         }
       }
     }

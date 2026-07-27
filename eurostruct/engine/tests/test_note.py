@@ -4,7 +4,8 @@ The property this file exists to defend: **no number reaches the page except
 through a journal entry**. Interdiction 1 forbids a language model producing a
 calculation result; the note makes that structural by having no arithmetic of
 its own, and :func:`test_every_printed_value_comes_from_a_journal_entry` checks
-it on a real three-section note rather than trusting the design.
+it on a real four-section note — bending, shear, anchorage and serviceability —
+rather than trusting the design.
 """
 
 from __future__ import annotations
@@ -16,11 +17,14 @@ from html import escape
 import pytest
 
 from eurostruct_engine.ec2 import (
+    CrackControlDetail,
+    ExposureClass,
     RectangularSection,
     ShearLinks,
     ShearSection,
     design_anchorage,
     design_flexure,
+    design_serviceability,
     design_shear,
 )
 from eurostruct_engine.legal import Language
@@ -55,12 +59,21 @@ def designs(params_fr):
     anchorage = design_anchorage(
         concrete=c, steel=s, phi=Q_(20, "mm"), params=params_fr, element="P1",
     )
-    return flexure, shear, anchorage
+    sls = design_serviceability(
+        section=RectangularSection(b=Q_(300, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm")),
+        concrete=c, steel=s, A_s=bars_area(4, 20),
+        M_qp=Q_(120, "kN*m"), M_char=Q_(180, "kN*m"), phi_creep=2.0,
+        detail=CrackControlDetail(
+            phi=Q_(20, "mm"), cover=Q_(40, "mm"), bar_spacing=Q_(60, "mm")
+        ),
+        exposure_class=ExposureClass.XC3, params=params_fr, element="P1",
+    )
+    return flexure, shear, anchorage, sls
 
 
 @pytest.fixture
 def note(designs, params_fr):
-    flexure, shear, anchorage = designs
+    flexure, shear, anchorage, sls = designs
     return CalculationNote(
         project="Immeuble R+4",
         element="Poutre P1",
@@ -75,6 +88,15 @@ def note(designs, params_fr):
             ),
             section_from_design(
                 anchorage, title="Ancrages", basis="EN 1992-1-1 §8.4 et §8.7",
+            ),
+            section_from_design(
+                sls, title="Etats limites de service",
+                basis="EN 1992-1-1 §7.2 et §7.3",
+                assumptions=(
+                    sls.cracking_statement,
+                    "Coefficient de fluage phi = 2,0 fourni par l'ingenieur",
+                    f"Classe d'exposition {sls.exposure_class.value}",
+                ),
             ),
         ),
         ndp_summary=params_fr.summary(),
@@ -138,7 +160,7 @@ def test_the_mandatory_notice_precedes_every_result(note) -> None:
 
 
 def test_the_notice_follows_the_language_of_the_note(designs, params_fr) -> None:
-    flexure, _, _ = designs
+    flexure, _, _, _ = designs
     section = section_from_design(flexure, title="Flexion", basis="§6.1")
     fr = CalculationNote(
         project="P", element="P1", sections=(section,),
@@ -204,7 +226,7 @@ def test_an_empty_note_is_refused(params_fr) -> None:
 
 
 def test_a_note_without_a_regulatory_framework_is_refused(designs, params_fr) -> None:
-    flexure, _, _ = designs
+    flexure, _, _, _ = designs
     stripped = dict(params_fr.summary())
     stripped["regulatory_framework"] = {}
     with pytest.raises(ValueError, match="cadre reglementaire"):
@@ -217,7 +239,7 @@ def test_a_note_without_a_regulatory_framework_is_refused(designs, params_fr) ->
 
 def test_a_section_that_checks_nothing_does_not_report_success(designs) -> None:
     """Silence must not read as a green tick."""
-    flexure, _, _ = designs
+    flexure, _, _, _ = designs
     bare = NoteSection(title="Note libre", basis="—", journal=flexure.journal)
     assert bare.passed is None
     assert bare.checks == ()
@@ -272,7 +294,7 @@ def test_the_note_serialises_whole(note) -> None:
 
     data = note.to_dict()
     assert json.dumps(data, sort_keys=True)
-    assert len(data["sections"]) == 3
+    assert len(data["sections"]) == 4
     assert data["engine_version"] == ENGINE_VERSION
     assert data["notice"] == note.notice
     assert data["unverified_parameters"] == list(note.unverified_parameters)

@@ -334,6 +334,114 @@
           "verified_at": null,
           "verified_by": null,
           "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+        },
+        "k1_stress_limit": {
+          "parameter_value": null,
+          "unit": "dimensionless",
+          "clause": "§7.2(2)",
+          "description": "Coefficient limitant la contrainte de compression du beton sous combinaison caracteristique, pour eviter la fissuration longitudinale: sigma_c <= k1 f_ck",
+          "en_recommended": 0.6,
+          "source_type": "national_annex",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "source_page": 17,
+          "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.2(2): « k1 = 0,6 pour toutes les classes d'exposition sauf XD, XF et XS pour lesquelles k1 = 0,5. » ECART: l'EN ne prescrit la limitation que pour XD, XF et XS, avec k1 = 0,6. L'ANB l'etend a toutes les classes ET la resserre a 0,5 pour XD, XF, XS.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "variants": [
+            {
+              "condition": "XD_XF_XS",
+              "value": 0.5,
+              "description": "§7.2(2) ANB: classes XD, XF et XS — k1 = 0,5."
+            },
+            {
+              "condition": "other",
+              "value": 0.6,
+              "description": "§7.2(2) ANB: « k1 = 0,6 pour toutes les classes d'exposition sauf XD, XF et XS »."
+            }
+          ]
+        },
+        "k3_steel_stress": {
+          "parameter_value": 0.8,
+          "unit": "dimensionless",
+          "clause": "§7.2(5)",
+          "description": "Coefficient limitant la contrainte de traction de l'acier sous combinaison caracteristique: sigma_s <= k3 f_yk",
+          "en_recommended": 0.8,
+          "source_type": "national_annex",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "source_page": 17,
+          "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.2(5): « Les valeurs recommandees de k3 (0,8), k4 (1,0) et k5 (0,75) sont normatives. »",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05"
+        },
+        "k4_steel_stress_imposed": {
+          "parameter_value": 1.0,
+          "unit": "dimensionless",
+          "clause": "§7.2(5)",
+          "description": "Coefficient applicable a la contrainte de l'acier lorsqu'elle resulte d'une deformation imposee: sigma_s <= k4 f_yk",
+          "en_recommended": 1.0,
+          "source_type": "national_annex",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "source_page": 17,
+          "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.2(5): « Les valeurs recommandees de k3 (0,8), k4 (1,0) et k5 (0,75) sont normatives. »",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05"
+        },
+        "w_max": {
+          "parameter_value": null,
+          "unit": "mm",
+          "clause": "§7.3.1(5), Tab. 7.1N",
+          "description": "Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges",
+          "en_recommended": 0.3,
+          "source_type": "national_annex",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "source_page": 17,
+          "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.1(5): « Le tableau 7.1N devient (ajout de la mention des classes d'environnement associees aux classes d'exposition) » Tableau 7.1N-ANB. ATTENTION — LES VALEURS PORTEES ICI SONT CELLES DU TABLEAU 7.1N DE L'EN, PAS CELLES DU TABLEAU 7.1N-ANB. Les cellules numeriques du tableau belge ne sont pas lisibles sur l'exemplaire depouille (seule la valeur 0,3 de la ligne XD est partiellement lisible). CE QUI MANQUE: une lecture des cellules du Tableau 7.1N-ANB, p. 17, et la correspondance classe d'exposition / classe d'environnement NBN B 15-001 que l'ANB y ajoute.",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+          "variants": [
+            {
+              "condition": "X0_XC1",
+              "value": 0.4,
+              "description": "Tab. 7.1N de l'EN, ligne X0/XC1 — 0,4 mm. NON RELEVE dans le Tableau 7.1N-ANB."
+            },
+            {
+              "condition": "XC2_XC4_XD_XS",
+              "value": 0.3,
+              "description": "Tab. 7.1N de l'EN, lignes XC2-XC4 et XD1-XD3/XS1-XS3 — 0,3 mm. La valeur 0,3 est partiellement lisible sur la ligne XD du Tableau 7.1N-ANB."
+            }
+          ]
+        },
+        "k3_crack_spacing": {
+          "parameter_value": 3.4,
+          "unit": "dimensionless",
+          "clause": "§7.3.4(3), eq. (7.11)",
+          "description": "Coefficient k3 de l'espacement maximal des fissures s_r,max",
+          "en_recommended": 3.4,
+          "source_type": "national_annex",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "source_page": 17,
+          "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.4(3): « Les valeurs recommandees de k3 (3,4) et k4 (0,425) sont normatives. »",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05"
+        },
+        "k4_crack_spacing": {
+          "parameter_value": 0.425,
+          "unit": "dimensionless",
+          "clause": "§7.3.4(3), eq. (7.11)",
+          "description": "Coefficient k4 de l'espacement maximal des fissures s_r,max",
+          "en_recommended": 0.425,
+          "source_type": "national_annex",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "source_page": 17,
+          "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.4(3): « Les valeurs recommandees de k3 (3,4) et k4 (0,425) sont normatives. »",
+          "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05"
         }
       }
     }
