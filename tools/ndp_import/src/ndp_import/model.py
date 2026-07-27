@@ -57,6 +57,41 @@ class DocumentStatus(str, Enum):
     REVIEWED = "reviewed"
 
 
+class DocumentRole(str, Enum):
+    """What a document *is*, normatively — interdiction 2 made structural.
+
+    The distinction matters more than it looks. "NF EN 1991-1-1" and
+    "NBN EN 1991-1-3" are the base Eurocode adopted as a national standard:
+    they carry the Eurocode's own *recommended* values, in their Notes. The
+    National Annex is a different document, and it is the only one that fixes
+    what a country actually adopted.
+
+    A value read from a base Eurocode is therefore ``en_recommended``, never
+    ``national_annex`` — and since the database refuses ``confirmed`` unless
+    ``source_type = 'national_annex'``, such a value can never become usable in
+    strict mode. That is the intended behaviour, not a limitation.
+    """
+
+    #: The Eurocode itself, in any national adoption (EN, NF EN, NBN EN, DIN EN).
+    #: Contains recommended values. Cannot yield a confirmed national parameter.
+    BASE_EUROCODE = "base_eurocode"
+    #: The National Annex proper (ANB, /NA, Anexo Nacional). The only document
+    #: that fixes nationally determined parameters.
+    NATIONAL_ANNEX = "national_annex"
+    #: National regulation outside the Eurocode system (CTE, Codigo
+    #: Estructural, NCSE-02, MVV TB, DTU).
+    NATIONAL_REGULATION = "national_regulation"
+    #: Guidance, worked examples, technical articles (CSTC/WTCB, JRC, CSTB).
+    #: Useful to a reviewer, never a source of an enforceable value.
+    SECONDARY_PUBLICATION = "secondary_publication"
+
+    @property
+    def can_fix_national_parameters(self) -> bool:
+        return self in (
+            DocumentRole.NATIONAL_ANNEX, DocumentRole.NATIONAL_REGULATION
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class SourceDocument:
     """An official document deposited into the importer.
@@ -68,6 +103,9 @@ class SourceDocument:
 
     doc_id: str                      # sha256 of the file
     filename: str
+    #: What this document is normatively. Declared by the depositing engineer,
+    #: because a filename saying "NBN" does not make a document an ANB.
+    role: DocumentRole
     country_code: str
     standard_family: str
     part: str
@@ -100,6 +138,8 @@ class SourceDocument:
         return {
             "doc_id": self.doc_id,
             "filename": self.filename,
+            "role": self.role.value,
+            "can_fix_national_parameters": self.role.can_fix_national_parameters,
             "country_code": self.country_code,
             "standard_family": self.standard_family,
             "part": self.part,

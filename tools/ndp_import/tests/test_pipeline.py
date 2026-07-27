@@ -20,6 +20,7 @@ import pytest
 from pdf_fixture import make_pdf
 
 from ndp_import import (
+    DocumentRole,
     ExtractionCandidate,
     MissingEvidence,
     ReviewDecision,
@@ -63,6 +64,7 @@ def doc(pdf: Path) -> SourceDocument:
     return SourceDocument(
         doc_id=SourceDocument.digest(pdf),
         filename=pdf.name,
+        role=DocumentRole.NATIONAL_ANNEX,
         country_code="BE",
         standard_family="EN 1992",
         part="1-1",
@@ -185,7 +187,7 @@ def test_scanned_document_is_refused(tmp_path) -> None:
     empty = make_pdf(tmp_path / "scan.pdf", [[]])
     d = SourceDocument(
         doc_id=SourceDocument.digest(empty), filename="scan.pdf",
-        country_code="BE", standard_family="EN 1992", part="1-1",
+        role=DocumentRole.NATIONAL_ANNEX, country_code="BE", standard_family="EN 1992", part="1-1",
         reference="X", publisher="Y", edition="1",
         effective_from=date(2026, 1, 1), language="fr", page_count=1,
         deposited_by="t", deposited_at="2026-07-26T09:00:00+00:00",
@@ -432,3 +434,78 @@ def test_dry_run_changes_nothing(run, tmp_path) -> None:
     records = to_engine_records(apply_decisions(run, [_accept(run, "alpha_cc", 0.85)]))
     merge_into_dataset(dataset, run.doc, records, dry_run=True)
     assert dataset.read_text(encoding="utf-8") == before
+
+
+# ---------------------------------------------------------------------------
+# Triage — interdiction 2 au niveau du document
+# ---------------------------------------------------------------------------
+def test_underscored_filename_still_identifies_an_annex(tmp_path) -> None:
+    """Regression: '_' is a word character, so \\bANB\\b missed 'EN_1990__ANB'.
+
+    The bug classified two genuine Belgian National Annexes as base Eurocodes,
+    which is the one mistake this triage exists to prevent.
+    """
+    from ndp_import import triage_document
+
+    pdf = make_pdf(tmp_path / "NBN_EN_1990__ANB.pdf", [["contenu de test"]])
+    assert triage_document(pdf).proposed_role is DocumentRole.NATIONAL_ANNEX
+
+
+def test_base_eurocode_is_not_mistaken_for_an_annex(tmp_path) -> None:
+    from ndp_import import triage_document
+
+    pdf = make_pdf(
+        tmp_path / "NBN_EN_199111.pdf",
+        [["norme belge NBN EN 1991-1-1 Eurocode 1 Actions sur les structures"]],
+    )
+    r = triage_document(pdf)
+    assert r.proposed_role is DocumentRole.BASE_EUROCODE
+    assert not r.usable_for_ndp
+    assert any("valeurs RECOMMANDEES" in b for b in r.blockers)
+
+
+def test_scanned_annex_is_flagged_for_ocr(tmp_path) -> None:
+    from ndp_import import triage_document
+
+    pdf = make_pdf(tmp_path / "NBN_EN_1990_ANB.pdf", [[]])
+    r = triage_document(pdf)
+    assert r.proposed_role is DocumentRole.NATIONAL_ANNEX   # still an annex
+    assert not r.machine_readable
+    assert not r.usable_for_ndp                             # but not usable yet
+    assert any("ROC" in b for b in r.blockers)
+
+
+def test_secondary_publication_is_refused(tmp_path) -> None:
+    from ndp_import import triage_document
+
+    pdf = make_pdf(tmp_path / "revue.pdf", [["CSTC magazine — Eurocode 0"]])
+    r = triage_document(pdf)
+    assert r.proposed_role is DocumentRole.SECONDARY_PUBLICATION
+    assert not r.usable_for_ndp
+
+
+def test_out_of_scope_standard_is_reported(tmp_path) -> None:
+    from ndp_import import triage_document
+
+    pdf = make_pdf(
+        tmp_path / "annexe.pdf",
+        [["NBN EN 1991-2 ANB Annexe nationale — actions sur les ponts"]],
+    )
+    r = triage_document(pdf, needed_standards=["EN 1992-1-1"])
+    assert r.proposed_role is DocumentRole.NATIONAL_ANNEX
+    assert r.usable_for_ndp          # it is a usable annex...
+    assert any("hors des normes" in b for b in r.blockers)  # ...for another standard
+
+
+def test_base_eurocode_can_never_be_confirmed(run) -> None:
+    """Interdiction 2: the recommended value is not what the country adopted."""
+    import dataclasses
+
+    base = dataclasses.replace(run.doc, role=DocumentRole.BASE_EUROCODE)
+    item = ReviewedParameter(
+        candidate=run.by_parameter()["alpha_cc"][0],
+        decision=_accept(run, "alpha_cc", 1.0),
+        document=base,
+    )
+    with pytest.raises(MissingEvidence, match="valeur RECOMMANDEE"):
+        to_engine_records([item])
