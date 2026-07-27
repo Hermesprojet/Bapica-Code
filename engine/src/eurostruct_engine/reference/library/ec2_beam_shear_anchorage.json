@@ -1,0 +1,231 @@
+{
+  "_comment": "Cas de reference a valeurs attendues DERIVEES INDEPENDAMMENT. Regenerer avec scripts/generate_shear_anchorage_references.py. Ne jamais recopier une valeur depuis une sortie du moteur: le cas attesterait alors que le moteur est d'accord avec lui-meme.",
+  "cases": [
+    {
+      "reference_id": "EC2-SH-101",
+      "title": "Effort tranchant ELU avec treillis — 300x550 mm, C30/37, cot(theta)=2,5, cadres HA10/150, V_Ed=300 kN",
+      "normative_scope": [
+        "EN 1992-1-1 §6.2.2",
+        "EN 1992-1-1 §6.2.3",
+        "EN 1992-1-1 §9.2.2"
+      ],
+      "country_scope": [
+        "FR"
+      ],
+      "source_type": "manual_reference",
+      "source_document": {
+        "title": "Resolution independante — treillis compte barre par barre, ecrasement par la trigonometrie de la bielle",
+        "publisher": "EUROSTRUCT — scripts/generate_shear_anchorage_references.py",
+        "edition": "1",
+        "locator": "",
+        "notes": "Valeurs attendues obtenues par une voie DISTINCTE de celle du moteur. L'accord des deux atteste l'algebre; il ne remplace pas un exemple resolu publie, et les cas 'official_worked_example' de planned_coverage.json restent des lacunes ouvertes."
+      },
+      "harness": "ec2.beam_shear",
+      "input_dataset": {
+        "country": "FR",
+        "as_of": "2026-07-26",
+        "strict_ndp": false,
+        "b_w": {
+          "value": 300.0,
+          "unit": "mm"
+        },
+        "d": {
+          "value": 550.0,
+          "unit": "mm"
+        },
+        "A_sl": {
+          "value": 1256.6370614359173,
+          "unit": "mm**2"
+        },
+        "concrete_grade": "C30/37",
+        "steel_grade": "B500B",
+        "V_Ed": {
+          "value": 300.0,
+          "unit": "kN"
+        },
+        "cot_theta": 2.5,
+        "links": {
+          "A_sw": {
+            "value": 157.0,
+            "unit": "mm**2"
+          },
+          "s": {
+            "value": 150.0,
+            "unit": "mm"
+          }
+        }
+      },
+      "expected_outputs": {
+        "V_Rd_c_kN": 90.06455713139596,
+        "V_Rd_s_kN": 563.1521739130435,
+        "V_Rd_max_kN": 540.7448275862068,
+        "V_Rd_kN": 540.7448275862068,
+        "Asw_over_s_min_mm2_per_m": 262.9068276024797,
+        "s_l_max_mm": 412.5,
+        "delta_F_td_kN": 375.0
+      },
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 1e-09
+        }
+      ],
+      "notes": "L'ecrasement des bielles gouverne (V_Rd,max < V_Rd,s), consequence previsible d'un cot(theta) eleve."
+    },
+    {
+      "reference_id": "EC2-SH-102",
+      "title": "Effort tranchant ELU sans armatures calculees — meme section, V_Ed=80 kN < V_Rd,c",
+      "normative_scope": [
+        "EN 1992-1-1 §6.2.1",
+        "EN 1992-1-1 §6.2.2"
+      ],
+      "country_scope": [
+        "FR"
+      ],
+      "source_type": "manual_reference",
+      "source_document": {
+        "title": "Resolution independante — eq. (6.2a) developpee, plancher v_min evalue a part",
+        "publisher": "EUROSTRUCT — scripts/generate_shear_anchorage_references.py",
+        "edition": "1",
+        "locator": "",
+        "notes": "Valeurs attendues obtenues par une voie DISTINCTE de celle du moteur. L'accord des deux atteste l'algebre; il ne remplace pas un exemple resolu publie, et les cas 'official_worked_example' de planned_coverage.json restent des lacunes ouvertes."
+      },
+      "harness": "ec2.beam_shear",
+      "input_dataset": {
+        "country": "FR",
+        "as_of": "2026-07-26",
+        "strict_ndp": false,
+        "b_w": {
+          "value": 300.0,
+          "unit": "mm"
+        },
+        "d": {
+          "value": 550.0,
+          "unit": "mm"
+        },
+        "A_sl": {
+          "value": 1256.6370614359173,
+          "unit": "mm**2"
+        },
+        "concrete_grade": "C30/37",
+        "steel_grade": "B500B",
+        "V_Ed": {
+          "value": 80.0,
+          "unit": "kN"
+        },
+        "cot_theta": 1.0
+      },
+      "expected_outputs": {
+        "V_Rd_c_kN": 90.06455713139596,
+        "V_Rd_kN": 90.06455713139596,
+        "Asw_over_s_min_mm2_per_m": 262.9068276024797,
+        "s_l_max_mm": 412.5,
+        "delta_F_td_kN": 0.0
+      },
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 1e-09
+        }
+      ],
+      "notes": "V_Ed <= V_Rd,c: aucune armature calculee. V_Rd,s et V_Rd,max sont ABSENTS des sorties, et non nuls — le §6.2.1 ne les calcule pas dans ce regime. Le plancher v_min ne gouverne pas ici."
+    },
+    {
+      "reference_id": "EC2-AN-101",
+      "title": "Ancrage droit HA20, C30/37, bonnes conditions d'adherence",
+      "normative_scope": [
+        "EN 1992-1-1 §8.4",
+        "EN 1992-1-1 §8.7"
+      ],
+      "country_scope": [
+        "FR"
+      ],
+      "source_type": "manual_reference",
+      "source_document": {
+        "title": "Resolution independante — equilibre de la barre: traction sur la section contre adherence sur la surface laterale",
+        "publisher": "EUROSTRUCT — scripts/generate_shear_anchorage_references.py",
+        "edition": "1",
+        "locator": "",
+        "notes": "Valeurs attendues obtenues par une voie DISTINCTE de celle du moteur. L'accord des deux atteste l'algebre; il ne remplace pas un exemple resolu publie, et les cas 'official_worked_example' de planned_coverage.json restent des lacunes ouvertes."
+      },
+      "harness": "ec2.anchorage",
+      "input_dataset": {
+        "country": "FR",
+        "as_of": "2026-07-26",
+        "strict_ndp": false,
+        "concrete_grade": "C30/37",
+        "steel_grade": "B500B",
+        "phi": {
+          "value": 20.0,
+          "unit": "mm"
+        },
+        "bond_condition": "good",
+        "in_tension": true
+      },
+      "expected_outputs": {
+        "f_bd_MPa": 3.041291561507733,
+        "l_b_rqd_mm": 714.7992882341523,
+        "l_bd_mm": 714.7992882341523,
+        "l_b_min_mm": 214.43978647024568,
+        "l_0_mm": 714.7992882341523,
+        "l_0_min_mm": 300.0,
+        "sigma_sd_MPa": 434.7826086956522
+      },
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 1e-09
+        }
+      ],
+      "notes": "Tous les coefficients du Tableau 8.2 valent 1,0."
+    },
+    {
+      "reference_id": "EC2-AN-102",
+      "title": "Ancrage HA16 en mauvaises conditions d'adherence",
+      "normative_scope": [
+        "EN 1992-1-1 §8.4.2"
+      ],
+      "country_scope": [
+        "FR"
+      ],
+      "source_type": "manual_reference",
+      "source_document": {
+        "title": "Resolution independante — meme equilibre, eta_1 = 0,7",
+        "publisher": "EUROSTRUCT — scripts/generate_shear_anchorage_references.py",
+        "edition": "1",
+        "locator": "",
+        "notes": "Valeurs attendues obtenues par une voie DISTINCTE de celle du moteur. L'accord des deux atteste l'algebre; il ne remplace pas un exemple resolu publie, et les cas 'official_worked_example' de planned_coverage.json restent des lacunes ouvertes."
+      },
+      "harness": "ec2.anchorage",
+      "input_dataset": {
+        "country": "FR",
+        "as_of": "2026-07-26",
+        "strict_ndp": false,
+        "concrete_grade": "C30/37",
+        "steel_grade": "B500B",
+        "phi": {
+          "value": 16.0,
+          "unit": "mm"
+        },
+        "bond_condition": "poor",
+        "in_tension": true
+      },
+      "expected_outputs": {
+        "f_bd_MPa": 2.128904093055413,
+        "l_b_rqd_mm": 816.9134722676026,
+        "l_bd_mm": 816.9134722676026,
+        "l_b_min_mm": 245.07404168028077,
+        "l_0_mm": 816.9134722676026,
+        "l_0_min_mm": 245.07404168028077,
+        "sigma_sd_MPa": 434.7826086956522
+      },
+      "tolerance_rules": [
+        {
+          "output": "*",
+          "rel": 1e-09
+        }
+      ],
+      "notes": "eta_1 = 0,7 coute 1/0,7 = 43 % de longueur en plus, a section et beton identiques."
+    }
+  ]
+}
