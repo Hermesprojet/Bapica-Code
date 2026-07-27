@@ -327,11 +327,15 @@ def _already_held() -> dict[str, str]:
     """
     from .catalogue import load_catalogue
 
-    return {
-        e.doc_id_sha256: e.reference
-        for e in load_catalogue()
-        if e.acquired and getattr(e, "doc_id_sha256", None)
-    }
+    held: dict[str, str] = {}
+    for e in load_catalogue():
+        if not e.acquired:
+            continue
+        if e.doc_id_sha256:
+            held[e.doc_id_sha256] = e.reference
+        for sha in e.alternate_copy_hashes:
+            held[sha] = f"{e.reference} (copie alternative deja enregistree)"
+    return held
 
 
 def render_triage(results: Sequence[TriageResult]) -> str:

@@ -41,6 +41,9 @@ class CatalogueEntry:
     #: sha256 of the file actually held. Ties "acquired" to a specific file,
     #: and lets a re-deposit of the same bytes be recognised as such.
     doc_id_sha256: str | None = None
+    #: Digests of other renderings of the same document (a scan beside the
+    #: text version). Held too, so re-depositing one is equally pointless.
+    alternate_copy_hashes: tuple[str, ...] = ()
 
     @property
     def standard(self) -> str:
@@ -89,6 +92,9 @@ def load_catalogue(path: Path | None = None) -> tuple[CatalogueEntry, ...]:
             phase=d.get("phase", "?"),
             document_role=d.get("document_role", "national_annex"),
             doc_id_sha256=d.get("doc_id_sha256"),
+            alternate_copy_hashes=tuple(
+                c["doc_id_sha256"] for c in d.get("alternate_copies", [])
+            ),
         )
         for d in raw["documents"]
     )

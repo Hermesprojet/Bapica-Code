@@ -96,7 +96,15 @@
       "effective_from": null,
       "parameters_expected": [],
       "doc_id_sha256": "9a2880b2f489a9803e1fc73b2268a0306ce2c298b568f0c52eeb10872980c29d",
-      "edition_read_from_cover": "1e uitg., oktober 2007 (version neerlandaise)"
+      "edition_read_from_cover": "1e uitg., oktober 2007 (version neerlandaise)",
+      "alternate_copies": [
+        {
+          "doc_id_sha256": "2de1dc9e81459f818abb6a2b471cf2b21b4eb2f71dbc29da1af95d2ed2d2a7d4",
+          "page_count": 9,
+          "machine_readable": false,
+          "notes": "Copie NUMERISEE (0 caractere extractible) du meme nombre de pages que la version texte neerlandaise detenue. Langue NON DETERMINEE: sans couche de texte ni metadonnees, elle ne peut pas etre etablie sans ROC, et elle n'est pas devinee. Inutilisable par l'extracteur; lisible par un humain."
+        }
+      ]
     },
     {
       "doc_key": "BE-EN199114-NA",
@@ -122,7 +130,15 @@
       "effective_from": null,
       "parameters_expected": [],
       "doc_id_sha256": "a406441e0b5b53b79e4d0940fef1df72a6617ac260dc5dcf7749070c4999ffaf",
-      "edition_read_from_cover": "1e uitg., december 2010 (version neerlandaise)"
+      "edition_read_from_cover": "1e uitg., december 2010 (version neerlandaise)",
+      "alternate_copies": [
+        {
+          "doc_id_sha256": "72741c82c16446738f756e322be6786e9e856f839d0f550c2d7a502da1262f8d",
+          "page_count": 60,
+          "machine_readable": false,
+          "notes": "Copie NUMERISEE (0 caractere extractible), 60 pages contre 63 pour la version texte neerlandaise detenue — l'ecart suggere une autre edition ou une autre langue, ce qui reste A ETABLIR et n'est pas devine. Inutilisable par l'extracteur; lisible par un humain."
+        }
+      ]
     },
     {
       "doc_key": "BE-EN199211-NA",

@@ -82,6 +82,31 @@ ACQUIRED: dict[str, tuple[str, str, int, str, str]] = {
 }
 
 
+#: A second copy of a document already held, in another form. Recorded so it
+#: is not deposited again, and so a reviewer knows another rendering exists —
+#: a scan is worthless to the extractor but a human can read it, and may need
+#: to when the machine-readable copy is in a language they do not work in.
+#:
+#: doc_key -> (sha256, pages, why it is kept)
+ALTERNATE_COPIES: dict[str, tuple[str, int, str]] = {
+    "BE-EN199113-NA": (
+        "2de1dc9e81459f818abb6a2b471cf2b21b4eb2f71dbc29da1af95d2ed2d2a7d4", 9,
+        "Copie NUMERISEE (0 caractere extractible) du meme nombre de pages que "
+        "la version texte neerlandaise detenue. Langue NON DETERMINEE: sans "
+        "couche de texte ni metadonnees, elle ne peut pas etre etablie sans "
+        "ROC, et elle n'est pas devinee. Inutilisable par l'extracteur; "
+        "lisible par un humain.",
+    ),
+    "BE-EN199114-NA": (
+        "72741c82c16446738f756e322be6786e9e856f839d0f550c2d7a502da1262f8d", 60,
+        "Copie NUMERISEE (0 caractere extractible), 60 pages contre 63 pour la "
+        "version texte neerlandaise detenue — l'ecart suggere une autre edition "
+        "ou une autre langue, ce qui reste A ETABLIR et n'est pas devine. "
+        "Inutilisable par l'extracteur; lisible par un humain.",
+    ),
+}
+
+
 def _verify_against_deposit(deposit: Path) -> int:
     """Recompute every digest from the files and refuse on any mismatch.
 
@@ -99,7 +124,9 @@ def _verify_against_deposit(deposit: Path) -> int:
 
     have = {SourceDocument.digest(p): p.name for p in sorted(deposit.glob("*.pdf"))}
     bad = 0
-    for key, (sha, *_rest) in sorted(ACQUIRED.items()):
+    checks = [(k, v[0]) for k, v in ACQUIRED.items()]
+    checks += [(f"{k} (copie alt.)", v[0]) for k, v in ALTERNATE_COPIES.items()]
+    for key, sha in sorted(checks):
         if sha in have:
             print(f"  OK   {key:18s} {sha[:16]}...  {have[sha]}")
         else:
@@ -111,7 +138,7 @@ def _verify_against_deposit(deposit: Path) -> int:
         print(f"{bad} empreinte(s) ne correspondent a aucun fichier. NE PAS "
               f"COMMITTER: une empreinte se calcule, elle ne se saisit pas.")
     else:
-        print(f"{len(ACQUIRED)} empreinte(s) verifiees contre les fichiers reels.")
+        print(f"{len(checks)} empreinte(s) verifiees contre les fichiers reels.")
     return 1 if bad else 0
 
 
@@ -139,6 +166,13 @@ def main(argv: list[str]) -> int:
         )
         entry.setdefault("parameters_expected", [])
 
+    for key, (sha, pages, why) in ALTERNATE_COPIES.items():
+        by_key[key].setdefault("alternate_copies", []).clear()
+        by_key[key]["alternate_copies"].append(
+            {"doc_id_sha256": sha, "page_count": pages, "machine_readable": False,
+             "notes": why}
+        )
+
     if "--dry-run" not in argv:
         CATALOGUE.write_text(
             json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -146,6 +180,7 @@ def main(argv: list[str]) -> int:
 
     total = sum(1 for e in data["documents"] if e["status"] != "not_acquired")
     print(f"{len(ACQUIRED)} annexe(s) belge(s) marquee(s) acquises.")
+    print(f"{len(ALTERNATE_COPIES)} copie(s) alternative(s) enregistree(s).")
     print(f"{total} document(s) en main au total dans le catalogue.")
     print()
     print("AUCUN parametre ne change de statut. Le mode strict reste bloque.")
