@@ -34,6 +34,10 @@ class CatalogueEntry:
     parameters_expected: tuple[str, ...]
     notes: str | None = None
     edition: str | None = None
+    #: Roadmap phase that needs this document — P0 blocks today.
+    phase: str = "?"
+    #: national_annex | national_regulation
+    document_role: str = "national_annex"
 
     @property
     def standard(self) -> str:
@@ -55,6 +59,8 @@ class CatalogueEntry:
             "status": self.status,
             "parameters_expected": list(self.parameters_expected),
             "edition": self.edition,
+            "phase": self.phase,
+            "document_role": self.document_role,
             "notes": self.notes,
         }
 
@@ -77,6 +83,8 @@ def load_catalogue(path: Path | None = None) -> tuple[CatalogueEntry, ...]:
             parameters_expected=tuple(d.get("parameters_expected", [])),
             notes=d["acquisition"].get("notes"),
             edition=d.get("edition"),
+            phase=d.get("phase", "?"),
+            document_role=d.get("document_role", "national_annex"),
         )
         for d in raw["documents"]
     )
@@ -90,29 +98,40 @@ def missing_documents(
 
 
 def render_catalogue(entries: tuple[CatalogueEntry, ...] | None = None) -> str:
+    """Group by country, then by roadmap phase: what to buy, and when."""
     entries = entries or load_catalogue()
-    missing = missing_documents(entries)
+    raw = json.loads(_DATA.read_text(encoding="utf-8"))
+    labels = raw.get("phases", {})
+    order = ["P0", "P1", "FEU", "P2", "P3", "P4", "P6"]
+
+    free = [e for e in entries if "gratuit" in e.how_to_acquire.lower()]
     lines = [
-        "=== Documents officiels a obtenir ===",
-        f"{len(entries)} document(s) au catalogue, {len(missing)} non acquis.",
+        "=== Documents officiels a obtenir, par pays ===",
+        f"{len(entries)} documents, dont {len(free)} librement telechargeables "
+        f"et {len(entries) - len(free)} payants.",
         "",
     ]
-    for e in entries:
-        flag = "MANQUE" if not e.acquired else e.status.upper()
-        lines.append(f"[{flag}] {e.doc_key} — {e.reference}")
-        lines.append(f"    {e.title}")
-        lines.append(f"    Editeur   : {e.publisher}")
-        lines.append(f"    Obtention : {e.how_to_acquire}")
-        lines.append(f"    Licence   : {e.licence}")
-        if e.parameters_expected:
-            lines.append(f"    Parametres attendus : {len(e.parameters_expected)}")
-        if e.notes:
-            lines.append(f"    Note      : {e.notes}")
-        lines.append("")
-    if missing:
-        lines.append(
-            "Tant que ces documents ne sont pas depouilles, les parametres "
-            "correspondants restent pending_verification et le mode strict "
-            "refuse de calculer."
-        )
+    for cc in ("BE", "FR", "ES", "DE"):
+        country = [e for e in entries if e.country_code == cc]
+        if not country:
+            continue
+        lines.append(f"--- {cc} " + "-" * 66)
+        for phase in order:
+            group = [e for e in country if e.phase == phase]
+            if not group:
+                continue
+            lines.append(f"  {labels.get(phase, phase)}")
+            for e in group:
+                cost = "gratuit" if "gratuit" in e.how_to_acquire.lower() else "payant"
+                params = (
+                    f"  [{len(e.parameters_expected)} parametres]"
+                    if e.parameters_expected else ""
+                )
+                lines.append(f"    - {e.reference:<44} {cost:<8}{params}")
+            lines.append("")
+    lines.append(
+        "Aucun de ces documents n'est acquis. Tant qu'ils ne sont pas "
+        "depouilles, les parametres restent pending_verification et le mode "
+        "strict refuse de calculer."
+    )
     return "\n".join(lines)

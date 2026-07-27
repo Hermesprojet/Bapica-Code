@@ -1,188 +1,2185 @@
 {
   "_comment": [
-    "Catalogue des documents officiels a obtenir pour renseigner les",
-    "parametres nationaux. C'est la liste de ce qui MANQUE, pas de ce qui est",
-    "acquis.",
+    "Catalogue des documents officiels a obtenir, par pays et par phase.",
+    "C'est la liste de ce qui MANQUE, pas de ce qui est acquis.",
     "",
-    "Aucun de ces documents n'est redistribuable: les Annexes Nationales sont",
-    "des publications payantes et protegees (NBN, AFNOR/BNTEC, UNE, DIN/Beuth).",
-    "Elles doivent etre acquises par l'organisation, puis deposees dans",
-    "l'importeur. Le depot n'est pas automatisable et ne doit pas l'etre.",
+    "Les Annexes Nationales sont payantes et non redistribuables (NBN, AFNOR,",
+    "UNE, DIN/Beuth). Les reglementations nationales espagnoles et la MVV TB",
+    "allemande sont en revanche librement telechargeables.",
     "",
-    "'parameters_expected' liste les NDP que le moteur attend de CE document.",
-    "Tant qu'il n'est pas depouille, ces parametres restent",
+    "Tant qu'un document n'est pas depouille, ses parametres restent",
     "pending_verification et le mode strict bloque le calcul."
   ],
+  "phases": {
+    "P0": "P0 — poutre beton (BLOQUANT AUJOURD'HUI)",
+    "P1": "P1 — batiment courant beton",
+    "P2": "P2 — charpente metallique",
+    "P3": "P3 — bois",
+    "P4": "P4 — sismique et geotechnique avancee",
+    "P6": "P6 — mixte et ouvrages d'art",
+    "FEU": "Feu — transversal, des qu'une exigence R est imposee"
+  },
   "documents": [
     {
-      "doc_key": "BE-EN1992-1-1-ANB",
+      "doc_key": "BE-EN1990-NA",
       "country_code": "BE",
-      "standard_family": "EN 1992",
-      "part": "1-1",
-      "reference": "NBN EN 1992-1-1 ANB",
-      "title": "Eurocode 2 — Calcul des structures en beton — Partie 1-1 — Annexe Nationale belge",
+      "standard_family": "EN 1990",
+      "part": "-",
+      "reference": "NBN EN 1990 ANB",
+      "title": "Annexe Nationale a l'EN 1990 — Bases de calcul: combinaisons ELU/ELS, coefficients gamma et psi, classes de consequences",
       "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
       "acquisition": {
-        "how": "Achat sur le portail NBN (https://www.nbn.be), ou consultation en salle de lecture NBN.",
-        "licence": "Document payant, non redistribuable. Une licence par poste ou par organisation.",
-        "languages": ["fr", "nl"],
-        "notes": "Verifier l'edition en vigueur ET les amendements (A1, AC) eventuels."
-      },
-      "status": "not_acquired",
-      "edition": null,
-      "effective_from": null,
-      "parameters_expected": [
-        "alpha_cc", "alpha_ct",
-        "gamma_C_persistent", "gamma_S_persistent",
-        "gamma_C_accidental", "gamma_S_accidental",
-        "k1_redistribution", "k2_redistribution",
-        "As_min_coeff", "As_min_floor", "As_max_ratio",
-        "C_Rd_c_coeff", "v_min_coeff", "k1_shear",
-        "nu1_coeff", "nu1_fck_divisor", "alpha_cw",
-        "cot_theta_min", "cot_theta_max",
-        "rho_w_min_coeff", "s_l_max_coeff", "s_t_max_coeff"
-      ]
-    },
-    {
-      "doc_key": "FR-EN1992-1-1-NA",
-      "country_code": "FR",
-      "standard_family": "EN 1992",
-      "part": "1-1",
-      "reference": "NF EN 1992-1-1/NA",
-      "title": "Eurocode 2 — Calcul des structures en beton — Partie 1-1 — Annexe Nationale a la NF EN 1992-1-1",
-      "publisher": "AFNOR — Association francaise de normalisation",
-      "acquisition": {
-        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
         "licence": "Document payant, non redistribuable.",
-        "languages": ["fr"],
-        "notes": "Verifier les amendements. La NA francaise assortit alpha_cc de conditions selon la nature de la sollicitation: relever le texte integral de la clause, pas seulement la valeur."
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P1. Bases de calcul: combinaisons ELU/ELS, coefficients gamma et psi, classes de consequences"
       },
-      "status": "not_acquired",
-      "edition": null,
-      "effective_from": null,
-      "parameters_expected": [
-        "alpha_cc", "alpha_ct",
-        "gamma_C_persistent", "gamma_S_persistent",
-        "gamma_C_accidental", "gamma_S_accidental",
-        "k1_redistribution", "k2_redistribution",
-        "As_min_coeff", "As_min_floor", "As_max_ratio",
-        "C_Rd_c_coeff", "v_min_coeff", "k1_shear",
-        "nu1_coeff", "nu1_fck_divisor", "alpha_cw",
-        "cot_theta_min", "cot_theta_max",
-        "rho_w_min_coeff", "s_l_max_coeff", "s_t_max_coeff"
-      ]
-    },
-    {
-      "doc_key": "ES-EN1992-1-1-AN",
-      "country_code": "ES",
-      "standard_family": "EN 1992",
-      "part": "1-1",
-      "reference": "UNE-EN 1992-1-1 Anexo Nacional",
-      "title": "Eurocodigo 2 — Proyecto de estructuras de hormigon — Parte 1-1 — Anexo Nacional",
-      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
-      "acquisition": {
-        "how": "Achat sur https://www.une.org.",
-        "licence": "Document payant, non redistribuable.",
-        "languages": ["es"],
-        "notes": "ATTENTION: meme depouille, l'Anexo Nacional des UNE-EN ne rend pas l'Eurocode opposable en Espagne. Le referentiel reglementaire est le Codigo Estructural (RD 470/2021) et le CTE. Le Codigo Estructural, lui, est publie gratuitement au BOE."
-      },
-      "status": "not_acquired",
-      "edition": null,
-      "effective_from": null,
-      "parameters_expected": [
-        "alpha_cc", "alpha_ct",
-        "gamma_C_persistent", "gamma_S_persistent",
-        "gamma_C_accidental", "gamma_S_accidental",
-        "k1_redistribution", "k2_redistribution",
-        "As_min_coeff", "As_min_floor", "As_max_ratio",
-        "C_Rd_c_coeff", "v_min_coeff", "k1_shear",
-        "nu1_coeff", "nu1_fck_divisor", "alpha_cw",
-        "cot_theta_min", "cot_theta_max",
-        "rho_w_min_coeff", "s_l_max_coeff", "s_t_max_coeff"
-      ]
-    },
-    {
-      "doc_key": "ES-CODIGO-ESTRUCTURAL",
-      "country_code": "ES",
-      "standard_family": "Codigo Estructural",
-      "part": "RD 470/2021",
-      "reference": "Real Decreto 470/2021 — Codigo Estructural",
-      "title": "Codigo Estructural, qui a remplace l'EHE-08",
-      "publisher": "Boletin Oficial del Estado (BOE)",
-      "acquisition": {
-        "how": "Telechargement gratuit sur https://www.boe.es (BOE-A-2021-13681).",
-        "licence": "Publication officielle, librement consultable.",
-        "languages": ["es"],
-        "notes": "SEUL document de cette liste librement accessible. C'est le referentiel opposable en Espagne: son depouillement est prioritaire sur celui de l'Anexo Nacional UNE-EN."
-      },
+      "document_role": "national_annex",
+      "phase": "P1",
       "status": "not_acquired",
       "edition": null,
       "effective_from": null,
       "parameters_expected": []
     },
     {
-      "doc_key": "DE-EN1992-1-1-NA",
-      "country_code": "DE",
+      "doc_key": "BE-EN199111-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1991",
+      "part": "1-1",
+      "reference": "NBN EN 1991-1-1 ANB",
+      "title": "Annexe Nationale a l'EN 1991-1-1 — Poids volumiques, poids propres, charges d'exploitation (categories A a K)",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P1. Poids volumiques, poids propres, charges d'exploitation (categories A a K)"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199113-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1991",
+      "part": "1-3",
+      "reference": "NBN EN 1991-1-3 ANB",
+      "title": "Annexe Nationale a l'EN 1991-1-3 — Neige: zones, s_k, coefficients de forme, accumulations",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P1. Neige: zones, s_k, coefficients de forme, accumulations"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199114-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1991",
+      "part": "1-4",
+      "reference": "NBN EN 1991-1-4 ANB",
+      "title": "Annexe Nationale a l'EN 1991-1-4 — Vent: zones, v_b0, categories de terrain, coefficients de pression",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P1. Vent: zones, v_b0, categories de terrain, coefficients de pression"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199211-NA",
+      "country_code": "BE",
       "standard_family": "EN 1992",
       "part": "1-1",
-      "reference": "DIN EN 1992-1-1/NA",
-      "title": "Eurocode 2 — Bemessung und Konstruktion von Stahlbeton- und Spannbetontragwerken — Teil 1-1 — Nationaler Anhang",
-      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "reference": "NBN EN 1992-1-1 ANB",
+      "title": "Annexe Nationale a l'EN 1992-1-1 — BETON ARME: alpha_cc, gamma_C, gamma_S, k1/k2, A_s,min/max, effort tranchant",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
       "acquisition": {
-        "how": "Achat sur https://www.beuth.de.",
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
         "licence": "Document payant, non redistribuable.",
-        "languages": ["de"],
-        "notes": "Depouiller aussi DIN EN 1992-1-1/NA/A1 (amendement) et verifier quelle edition la MVV TB du Land rend obligatoire: elle peut differer d'un Land a l'autre."
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P0. BETON ARME: alpha_cc, gamma_C, gamma_S, k1/k2, A_s,min/max, effort tranchant"
       },
+      "document_role": "national_annex",
+      "phase": "P0",
       "status": "not_acquired",
       "edition": null,
       "effective_from": null,
       "parameters_expected": [
-        "alpha_cc", "alpha_ct",
-        "gamma_C_persistent", "gamma_S_persistent",
-        "gamma_C_accidental", "gamma_S_accidental",
-        "k1_redistribution", "k2_redistribution",
-        "As_min_coeff", "As_min_floor", "As_max_ratio",
-        "C_Rd_c_coeff", "v_min_coeff", "k1_shear",
-        "nu1_coeff", "nu1_fck_divisor", "alpha_cw",
-        "cot_theta_min", "cot_theta_max",
-        "rho_w_min_coeff", "s_l_max_coeff", "s_t_max_coeff"
+        "alpha_cc",
+        "alpha_ct",
+        "gamma_C_persistent",
+        "gamma_S_persistent",
+        "gamma_C_accidental",
+        "gamma_S_accidental",
+        "k1_redistribution",
+        "k2_redistribution",
+        "As_min_coeff",
+        "As_min_floor",
+        "As_max_ratio",
+        "C_Rd_c_coeff",
+        "v_min_coeff",
+        "k1_shear",
+        "nu1_coeff",
+        "nu1_fck_divisor",
+        "alpha_cw",
+        "cot_theta_min",
+        "cot_theta_max",
+        "rho_w_min_coeff",
+        "s_l_max_coeff",
+        "s_t_max_coeff"
       ]
+    },
+    {
+      "doc_key": "BE-EN19971-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1997",
+      "part": "1",
+      "reference": "NBN EN 1997-1 ANB",
+      "title": "Annexe Nationale a l'EN 1997-1 — Geotechnique: approche de calcul (DA1/DA2/DA2*/DA3), coefficients partiels, portance",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P1. Geotechnique: approche de calcul (DA1/DA2/DA2*/DA3), coefficients partiels, portance"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199311-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1993",
+      "part": "1-1",
+      "reference": "NBN EN 1993-1-1 ANB",
+      "title": "Annexe Nationale a l'EN 1993-1-1 — ACIER: gamma_M0/M1/M2, courbes de flambement, methode de deversement",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P2. ACIER: gamma_M0/M1/M2, courbes de flambement, methode de deversement"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199318-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1993",
+      "part": "1-8",
+      "reference": "NBN EN 1993-1-8 ANB",
+      "title": "Annexe Nationale a l'EN 1993-1-8 — Assemblages: coefficients partiels des boulons et soudures",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P2. Assemblages: coefficients partiels des boulons et soudures"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199315-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1993",
+      "part": "1-5",
+      "reference": "NBN EN 1993-1-5 ANB",
+      "title": "Annexe Nationale a l'EN 1993-1-5 — Voilement des plaques",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P2. Voilement des plaques"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199511-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1995",
+      "part": "1-1",
+      "reference": "NBN EN 1995-1-1 ANB",
+      "title": "Annexe Nationale a l'EN 1995-1-1 — BOIS: gamma_M, k_mod, k_def, classes de service",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P3. BOIS: gamma_M, k_mod, k_def, classes de service"
+      },
+      "document_role": "national_annex",
+      "phase": "P3",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN19981-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1998",
+      "part": "1",
+      "reference": "NBN EN 1998-1 ANB",
+      "title": "Annexe Nationale a l'EN 1998-1 — SISMIQUE: zonage, a_gR, spectres, classes de sol, coefficient q, classes d'importance",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P4. SISMIQUE: zonage, a_gR, spectres, classes de sol, coefficient q, classes d'importance"
+      },
+      "document_role": "national_annex",
+      "phase": "P4",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN19985-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1998",
+      "part": "5",
+      "reference": "NBN EN 1998-5 ANB",
+      "title": "Annexe Nationale a l'EN 1998-5 — Fondations et soutenements sismiques",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P4. Fondations et soutenements sismiques"
+      },
+      "document_role": "national_annex",
+      "phase": "P4",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199112-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1991",
+      "part": "1-2",
+      "reference": "NBN EN 1991-1-2 ANB",
+      "title": "Annexe Nationale a l'EN 1991-1-2 — Actions sur les structures exposees au feu",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase FEU. Actions sur les structures exposees au feu"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199212-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1992",
+      "part": "1-2",
+      "reference": "NBN EN 1992-1-2 ANB",
+      "title": "Annexe Nationale a l'EN 1992-1-2 — Beton au feu: methodes tabulees, isotherme 500 C",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase FEU. Beton au feu: methodes tabulees, isotherme 500 C"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199312-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1993",
+      "part": "1-2",
+      "reference": "NBN EN 1993-1-2 ANB",
+      "title": "Annexe Nationale a l'EN 1993-1-2 — Acier au feu",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase FEU. Acier au feu"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199512-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1995",
+      "part": "1-2",
+      "reference": "NBN EN 1995-1-2 ANB",
+      "title": "Annexe Nationale a l'EN 1995-1-2 — Bois au feu: section reduite",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase FEU. Bois au feu: section reduite"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN199411-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1994",
+      "part": "1-1",
+      "reference": "NBN EN 1994-1-1 ANB",
+      "title": "Annexe Nationale a l'EN 1994-1-1 — MIXTE acier-beton: connecteurs, dalles collaborantes",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P6. MIXTE acier-beton: connecteurs, dalles collaborantes"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN19912-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1991",
+      "part": "2",
+      "reference": "NBN EN 1991-2 ANB",
+      "title": "Annexe Nationale a l'EN 1991-2 — Ponts: modeles de charge LM1-LM4, fatigue",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P6. Ponts: modeles de charge LM1-LM4, fatigue"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN19922-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1992",
+      "part": "2",
+      "reference": "NBN EN 1992-2 ANB",
+      "title": "Annexe Nationale a l'EN 1992-2 — Ponts beton",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P6. Ponts beton"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-EN19932-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1993",
+      "part": "2",
+      "reference": "NBN EN 1993-2 ANB",
+      "title": "Annexe Nationale a l'EN 1993-2 — Ponts metalliques",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Phase P6. Ponts metalliques"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-AR-FEU",
+      "country_code": "BE",
+      "standard_family": "reglementation nationale",
+      "part": "-",
+      "reference": "Arrete Royal",
+      "title": "Arrete Royal — Normes de base en prevention incendie (annexes)",
+      "publisher": "Service public federal Interieur",
+      "acquisition": {
+        "how": "Telechargement gratuit sur https://www.securitecivile.be / Moniteur belge.",
+        "licence": "Publication officielle, librement consultable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Fixe les exigences de resistance au feu (R/EI) par type de batiment. Determine CE QU'IL FAUT verifier; les EN 199x-1-2 disent COMMENT."
+      },
+      "document_role": "national_regulation",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "BE-NBN-S21-204",
+      "country_code": "BE",
+      "standard_family": "reglementation nationale",
+      "part": "-",
+      "reference": "NBN S 21-204",
+      "title": "NBN S 21-204 — Protection incendie dans les batiments",
+      "publisher": "NBN",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be.",
+        "licence": "Document payant.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Complete l'AR pour les batiments scolaires et assimiles."
+      },
+      "document_role": "national_regulation",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN1990-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1990",
+      "part": "-",
+      "reference": "NF EN 1990/NA",
+      "title": "Annexe Nationale a l'EN 1990 — Bases de calcul: combinaisons ELU/ELS, coefficients gamma et psi, classes de consequences",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P1. Bases de calcul: combinaisons ELU/ELS, coefficients gamma et psi, classes de consequences"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199111-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1991",
+      "part": "1-1",
+      "reference": "NF EN 1991-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1991-1-1 — Poids volumiques, poids propres, charges d'exploitation (categories A a K)",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P1. Poids volumiques, poids propres, charges d'exploitation (categories A a K)"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199113-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1991",
+      "part": "1-3",
+      "reference": "NF EN 1991-1-3/NA",
+      "title": "Annexe Nationale a l'EN 1991-1-3 — Neige: zones, s_k, coefficients de forme, accumulations",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P1. Neige: zones, s_k, coefficients de forme, accumulations"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199114-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1991",
+      "part": "1-4",
+      "reference": "NF EN 1991-1-4/NA",
+      "title": "Annexe Nationale a l'EN 1991-1-4 — Vent: zones, v_b0, categories de terrain, coefficients de pression",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P1. Vent: zones, v_b0, categories de terrain, coefficients de pression"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199211-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1992",
+      "part": "1-1",
+      "reference": "NF EN 1992-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1992-1-1 — BETON ARME: alpha_cc, gamma_C, gamma_S, k1/k2, A_s,min/max, effort tranchant",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P0. BETON ARME: alpha_cc, gamma_C, gamma_S, k1/k2, A_s,min/max, effort tranchant"
+      },
+      "document_role": "national_annex",
+      "phase": "P0",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": [
+        "alpha_cc",
+        "alpha_ct",
+        "gamma_C_persistent",
+        "gamma_S_persistent",
+        "gamma_C_accidental",
+        "gamma_S_accidental",
+        "k1_redistribution",
+        "k2_redistribution",
+        "As_min_coeff",
+        "As_min_floor",
+        "As_max_ratio",
+        "C_Rd_c_coeff",
+        "v_min_coeff",
+        "k1_shear",
+        "nu1_coeff",
+        "nu1_fck_divisor",
+        "alpha_cw",
+        "cot_theta_min",
+        "cot_theta_max",
+        "rho_w_min_coeff",
+        "s_l_max_coeff",
+        "s_t_max_coeff"
+      ]
+    },
+    {
+      "doc_key": "FR-EN19971-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1997",
+      "part": "1",
+      "reference": "NF EN 1997-1/NA",
+      "title": "Annexe Nationale a l'EN 1997-1 — Geotechnique: approche de calcul (DA1/DA2/DA2*/DA3), coefficients partiels, portance",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P1. Geotechnique: approche de calcul (DA1/DA2/DA2*/DA3), coefficients partiels, portance"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199311-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1993",
+      "part": "1-1",
+      "reference": "NF EN 1993-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1993-1-1 — ACIER: gamma_M0/M1/M2, courbes de flambement, methode de deversement",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P2. ACIER: gamma_M0/M1/M2, courbes de flambement, methode de deversement"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199318-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1993",
+      "part": "1-8",
+      "reference": "NF EN 1993-1-8/NA",
+      "title": "Annexe Nationale a l'EN 1993-1-8 — Assemblages: coefficients partiels des boulons et soudures",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P2. Assemblages: coefficients partiels des boulons et soudures"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199315-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1993",
+      "part": "1-5",
+      "reference": "NF EN 1993-1-5/NA",
+      "title": "Annexe Nationale a l'EN 1993-1-5 — Voilement des plaques",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P2. Voilement des plaques"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199511-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1995",
+      "part": "1-1",
+      "reference": "NF EN 1995-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1995-1-1 — BOIS: gamma_M, k_mod, k_def, classes de service",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P3. BOIS: gamma_M, k_mod, k_def, classes de service"
+      },
+      "document_role": "national_annex",
+      "phase": "P3",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN19981-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1998",
+      "part": "1",
+      "reference": "NF EN 1998-1/NA",
+      "title": "Annexe Nationale a l'EN 1998-1 — SISMIQUE: zonage, a_gR, spectres, classes de sol, coefficient q, classes d'importance",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P4. SISMIQUE: zonage, a_gR, spectres, classes de sol, coefficient q, classes d'importance"
+      },
+      "document_role": "national_annex",
+      "phase": "P4",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN19985-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1998",
+      "part": "5",
+      "reference": "NF EN 1998-5/NA",
+      "title": "Annexe Nationale a l'EN 1998-5 — Fondations et soutenements sismiques",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P4. Fondations et soutenements sismiques"
+      },
+      "document_role": "national_annex",
+      "phase": "P4",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199112-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1991",
+      "part": "1-2",
+      "reference": "NF EN 1991-1-2/NA",
+      "title": "Annexe Nationale a l'EN 1991-1-2 — Actions sur les structures exposees au feu",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase FEU. Actions sur les structures exposees au feu"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199212-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1992",
+      "part": "1-2",
+      "reference": "NF EN 1992-1-2/NA",
+      "title": "Annexe Nationale a l'EN 1992-1-2 — Beton au feu: methodes tabulees, isotherme 500 C",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase FEU. Beton au feu: methodes tabulees, isotherme 500 C"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199312-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1993",
+      "part": "1-2",
+      "reference": "NF EN 1993-1-2/NA",
+      "title": "Annexe Nationale a l'EN 1993-1-2 — Acier au feu",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase FEU. Acier au feu"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199512-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1995",
+      "part": "1-2",
+      "reference": "NF EN 1995-1-2/NA",
+      "title": "Annexe Nationale a l'EN 1995-1-2 — Bois au feu: section reduite",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase FEU. Bois au feu: section reduite"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN199411-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1994",
+      "part": "1-1",
+      "reference": "NF EN 1994-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1994-1-1 — MIXTE acier-beton: connecteurs, dalles collaborantes",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P6. MIXTE acier-beton: connecteurs, dalles collaborantes"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN19912-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1991",
+      "part": "2",
+      "reference": "NF EN 1991-2/NA",
+      "title": "Annexe Nationale a l'EN 1991-2 — Ponts: modeles de charge LM1-LM4, fatigue",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P6. Ponts: modeles de charge LM1-LM4, fatigue"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN19922-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1992",
+      "part": "2",
+      "reference": "NF EN 1992-2/NA",
+      "title": "Annexe Nationale a l'EN 1992-2 — Ponts beton",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P6. Ponts beton"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-EN19932-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1993",
+      "part": "2",
+      "reference": "NF EN 1993-2/NA",
+      "title": "Annexe Nationale a l'EN 1993-2 — Ponts metalliques",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Phase P6. Ponts metalliques"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-SEISME-ZONAGE",
+      "country_code": "FR",
+      "standard_family": "reglementation nationale",
+      "part": "-",
+      "reference": "Decret 2010-1254, decret 2010-1255 et arrete du 22 octobre 2010",
+      "title": "Decret 2010-1254, decret 2010-1255 et arrete du 22 octobre 2010",
+      "publisher": "Journal officiel de la Republique francaise",
+      "acquisition": {
+        "how": "Telechargement gratuit sur https://www.legifrance.gouv.fr.",
+        "licence": "Publication officielle, librement consultable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Zonage sismique reglementaire (5 zones) et categories d'importance I a IV. L'EN 1998-1/NA seule ne suffit pas."
+      },
+      "document_role": "national_regulation",
+      "phase": "P4",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "FR-DTU",
+      "country_code": "FR",
+      "standard_family": "reglementation nationale",
+      "part": "-",
+      "reference": "DTU applicables en execution (13.1/13.2, 21, 31.x, 32.1)",
+      "title": "DTU applicables en execution (13.1/13.2, 21, 31.x, 32.1)",
+      "publisher": "AFNOR / CSTB",
+      "acquisition": {
+        "how": "Achat AFNOR ou abonnement CSTB.",
+        "licence": "Documents payants.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "Regles d'execution completant les Eurocodes. Opposables en marche prive."
+      },
+      "document_role": "national_regulation",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN1990-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1990",
+      "part": "-",
+      "reference": "UNE-EN 1990 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1990 — Bases de calcul: combinaisons ELU/ELS, coefficients gamma et psi, classes de consequences",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P1. Bases de calcul: combinaisons ELU/ELS, coefficients gamma et psi, classes de consequences"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199111-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1991",
+      "part": "1-1",
+      "reference": "UNE-EN 1991-1-1 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1991-1-1 — Poids volumiques, poids propres, charges d'exploitation (categories A a K)",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P1. Poids volumiques, poids propres, charges d'exploitation (categories A a K)"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199113-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1991",
+      "part": "1-3",
+      "reference": "UNE-EN 1991-1-3 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1991-1-3 — Neige: zones, s_k, coefficients de forme, accumulations",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P1. Neige: zones, s_k, coefficients de forme, accumulations"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199114-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1991",
+      "part": "1-4",
+      "reference": "UNE-EN 1991-1-4 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1991-1-4 — Vent: zones, v_b0, categories de terrain, coefficients de pression",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P1. Vent: zones, v_b0, categories de terrain, coefficients de pression"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199211-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1992",
+      "part": "1-1",
+      "reference": "UNE-EN 1992-1-1 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1992-1-1 — BETON ARME: alpha_cc, gamma_C, gamma_S, k1/k2, A_s,min/max, effort tranchant",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P0. BETON ARME: alpha_cc, gamma_C, gamma_S, k1/k2, A_s,min/max, effort tranchant"
+      },
+      "document_role": "national_annex",
+      "phase": "P0",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": [
+        "alpha_cc",
+        "alpha_ct",
+        "gamma_C_persistent",
+        "gamma_S_persistent",
+        "gamma_C_accidental",
+        "gamma_S_accidental",
+        "k1_redistribution",
+        "k2_redistribution",
+        "As_min_coeff",
+        "As_min_floor",
+        "As_max_ratio",
+        "C_Rd_c_coeff",
+        "v_min_coeff",
+        "k1_shear",
+        "nu1_coeff",
+        "nu1_fck_divisor",
+        "alpha_cw",
+        "cot_theta_min",
+        "cot_theta_max",
+        "rho_w_min_coeff",
+        "s_l_max_coeff",
+        "s_t_max_coeff"
+      ]
+    },
+    {
+      "doc_key": "ES-EN19971-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1997",
+      "part": "1",
+      "reference": "UNE-EN 1997-1 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1997-1 — Geotechnique: approche de calcul (DA1/DA2/DA2*/DA3), coefficients partiels, portance",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P1. Geotechnique: approche de calcul (DA1/DA2/DA2*/DA3), coefficients partiels, portance"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199311-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1993",
+      "part": "1-1",
+      "reference": "UNE-EN 1993-1-1 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1993-1-1 — ACIER: gamma_M0/M1/M2, courbes de flambement, methode de deversement",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P2. ACIER: gamma_M0/M1/M2, courbes de flambement, methode de deversement"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199318-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1993",
+      "part": "1-8",
+      "reference": "UNE-EN 1993-1-8 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1993-1-8 — Assemblages: coefficients partiels des boulons et soudures",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P2. Assemblages: coefficients partiels des boulons et soudures"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199315-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1993",
+      "part": "1-5",
+      "reference": "UNE-EN 1993-1-5 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1993-1-5 — Voilement des plaques",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P2. Voilement des plaques"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199511-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1995",
+      "part": "1-1",
+      "reference": "UNE-EN 1995-1-1 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1995-1-1 — BOIS: gamma_M, k_mod, k_def, classes de service",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P3. BOIS: gamma_M, k_mod, k_def, classes de service"
+      },
+      "document_role": "national_annex",
+      "phase": "P3",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN19981-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1998",
+      "part": "1",
+      "reference": "UNE-EN 1998-1 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1998-1 — SISMIQUE: zonage, a_gR, spectres, classes de sol, coefficient q, classes d'importance",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P4. SISMIQUE: zonage, a_gR, spectres, classes de sol, coefficient q, classes d'importance"
+      },
+      "document_role": "national_annex",
+      "phase": "P4",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN19985-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1998",
+      "part": "5",
+      "reference": "UNE-EN 1998-5 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1998-5 — Fondations et soutenements sismiques",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P4. Fondations et soutenements sismiques"
+      },
+      "document_role": "national_annex",
+      "phase": "P4",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199112-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1991",
+      "part": "1-2",
+      "reference": "UNE-EN 1991-1-2 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1991-1-2 — Actions sur les structures exposees au feu",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase FEU. Actions sur les structures exposees au feu"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199212-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1992",
+      "part": "1-2",
+      "reference": "UNE-EN 1992-1-2 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1992-1-2 — Beton au feu: methodes tabulees, isotherme 500 C",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase FEU. Beton au feu: methodes tabulees, isotherme 500 C"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199312-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1993",
+      "part": "1-2",
+      "reference": "UNE-EN 1993-1-2 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1993-1-2 — Acier au feu",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase FEU. Acier au feu"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199512-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1995",
+      "part": "1-2",
+      "reference": "UNE-EN 1995-1-2 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1995-1-2 — Bois au feu: section reduite",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase FEU. Bois au feu: section reduite"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN199411-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1994",
+      "part": "1-1",
+      "reference": "UNE-EN 1994-1-1 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1994-1-1 — MIXTE acier-beton: connecteurs, dalles collaborantes",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P6. MIXTE acier-beton: connecteurs, dalles collaborantes"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN19912-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1991",
+      "part": "2",
+      "reference": "UNE-EN 1991-2 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1991-2 — Ponts: modeles de charge LM1-LM4, fatigue",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P6. Ponts: modeles de charge LM1-LM4, fatigue"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN19922-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1992",
+      "part": "2",
+      "reference": "UNE-EN 1992-2 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1992-2 — Ponts beton",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P6. Ponts beton"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-EN19932-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1993",
+      "part": "2",
+      "reference": "UNE-EN 1993-2 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1993-2 — Ponts metalliques",
+      "publisher": "UNE / AENOR — Asociacion Espanola de Normalizacion",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Phase P6. Ponts metalliques"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-CODIGO-ESTRUCTURAL",
+      "country_code": "ES",
+      "standard_family": "reglementation nationale",
+      "part": "-",
+      "reference": "Real Decreto 470/2021",
+      "title": "Real Decreto 470/2021 — Codigo Estructural",
+      "publisher": "Boletin Oficial del Estado",
+      "acquisition": {
+        "how": "Telechargement GRATUIT sur https://www.boe.es (BOE-A-2021-13681).",
+        "licence": "Publication officielle, librement consultable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "REFERENTIEL OPPOSABLE en Espagne, remplace l'EHE-08. Prioritaire sur l'Anexo Nacional des UNE-EN."
+      },
+      "document_role": "national_regulation",
+      "phase": "P0",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-CTE",
+      "country_code": "ES",
+      "standard_family": "reglementation nationale",
+      "part": "-",
+      "reference": "Codigo Tecnico de la Edificacion",
+      "title": "Codigo Tecnico de la Edificacion — DB-SE, DB-SE-AE, DB-SE-C, DB-SE-A, DB-SE-M, DB-SE-F, DB-SI",
+      "publisher": "Ministerio de Vivienda",
+      "acquisition": {
+        "how": "Telechargement GRATUIT sur https://www.codigotecnico.org.",
+        "licence": "Publication officielle, librement consultable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Documents de base opposables: actions, fondations, acier, bois, maconnerie, incendie."
+      },
+      "document_role": "national_regulation",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "ES-NCSE-02",
+      "country_code": "ES",
+      "standard_family": "reglementation nationale",
+      "part": "-",
+      "reference": "NCSE-02",
+      "title": "NCSE-02 — Norma de Construccion Sismorresistente",
+      "publisher": "Ministerio de Fomento",
+      "acquisition": {
+        "how": "Telechargement GRATUIT sur https://www.boe.es.",
+        "licence": "Publication officielle, librement consultable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "Norme sismique espagnole, DISTINCTE de l'EN 1998 dans son application reglementaire."
+      },
+      "document_role": "national_regulation",
+      "phase": "P4",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN1990-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1990",
+      "part": "-",
+      "reference": "DIN EN 1990/NA",
+      "title": "Annexe Nationale a l'EN 1990 — Bases de calcul: combinaisons ELU/ELS, coefficients gamma et psi, classes de consequences",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P1. Bases de calcul: combinaisons ELU/ELS, coefficients gamma et psi, classes de consequences"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199111-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1991",
+      "part": "1-1",
+      "reference": "DIN EN 1991-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1991-1-1 — Poids volumiques, poids propres, charges d'exploitation (categories A a K)",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P1. Poids volumiques, poids propres, charges d'exploitation (categories A a K)"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199113-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1991",
+      "part": "1-3",
+      "reference": "DIN EN 1991-1-3/NA",
+      "title": "Annexe Nationale a l'EN 1991-1-3 — Neige: zones, s_k, coefficients de forme, accumulations",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P1. Neige: zones, s_k, coefficients de forme, accumulations"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199114-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1991",
+      "part": "1-4",
+      "reference": "DIN EN 1991-1-4/NA",
+      "title": "Annexe Nationale a l'EN 1991-1-4 — Vent: zones, v_b0, categories de terrain, coefficients de pression",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P1. Vent: zones, v_b0, categories de terrain, coefficients de pression"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199211-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1992",
+      "part": "1-1",
+      "reference": "DIN EN 1992-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1992-1-1 — BETON ARME: alpha_cc, gamma_C, gamma_S, k1/k2, A_s,min/max, effort tranchant",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P0. BETON ARME: alpha_cc, gamma_C, gamma_S, k1/k2, A_s,min/max, effort tranchant"
+      },
+      "document_role": "national_annex",
+      "phase": "P0",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": [
+        "alpha_cc",
+        "alpha_ct",
+        "gamma_C_persistent",
+        "gamma_S_persistent",
+        "gamma_C_accidental",
+        "gamma_S_accidental",
+        "k1_redistribution",
+        "k2_redistribution",
+        "As_min_coeff",
+        "As_min_floor",
+        "As_max_ratio",
+        "C_Rd_c_coeff",
+        "v_min_coeff",
+        "k1_shear",
+        "nu1_coeff",
+        "nu1_fck_divisor",
+        "alpha_cw",
+        "cot_theta_min",
+        "cot_theta_max",
+        "rho_w_min_coeff",
+        "s_l_max_coeff",
+        "s_t_max_coeff"
+      ]
+    },
+    {
+      "doc_key": "DE-EN19971-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1997",
+      "part": "1",
+      "reference": "DIN EN 1997-1/NA",
+      "title": "Annexe Nationale a l'EN 1997-1 — Geotechnique: approche de calcul (DA1/DA2/DA2*/DA3), coefficients partiels, portance",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P1. Geotechnique: approche de calcul (DA1/DA2/DA2*/DA3), coefficients partiels, portance"
+      },
+      "document_role": "national_annex",
+      "phase": "P1",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199311-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1993",
+      "part": "1-1",
+      "reference": "DIN EN 1993-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1993-1-1 — ACIER: gamma_M0/M1/M2, courbes de flambement, methode de deversement",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P2. ACIER: gamma_M0/M1/M2, courbes de flambement, methode de deversement"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199318-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1993",
+      "part": "1-8",
+      "reference": "DIN EN 1993-1-8/NA",
+      "title": "Annexe Nationale a l'EN 1993-1-8 — Assemblages: coefficients partiels des boulons et soudures",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P2. Assemblages: coefficients partiels des boulons et soudures"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199315-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1993",
+      "part": "1-5",
+      "reference": "DIN EN 1993-1-5/NA",
+      "title": "Annexe Nationale a l'EN 1993-1-5 — Voilement des plaques",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P2. Voilement des plaques"
+      },
+      "document_role": "national_annex",
+      "phase": "P2",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199511-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1995",
+      "part": "1-1",
+      "reference": "DIN EN 1995-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1995-1-1 — BOIS: gamma_M, k_mod, k_def, classes de service",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P3. BOIS: gamma_M, k_mod, k_def, classes de service"
+      },
+      "document_role": "national_annex",
+      "phase": "P3",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN19981-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1998",
+      "part": "1",
+      "reference": "DIN EN 1998-1/NA",
+      "title": "Annexe Nationale a l'EN 1998-1 — SISMIQUE: zonage, a_gR, spectres, classes de sol, coefficient q, classes d'importance",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P4. SISMIQUE: zonage, a_gR, spectres, classes de sol, coefficient q, classes d'importance"
+      },
+      "document_role": "national_annex",
+      "phase": "P4",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN19985-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1998",
+      "part": "5",
+      "reference": "DIN EN 1998-5/NA",
+      "title": "Annexe Nationale a l'EN 1998-5 — Fondations et soutenements sismiques",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P4. Fondations et soutenements sismiques"
+      },
+      "document_role": "national_annex",
+      "phase": "P4",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199112-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1991",
+      "part": "1-2",
+      "reference": "DIN EN 1991-1-2/NA",
+      "title": "Annexe Nationale a l'EN 1991-1-2 — Actions sur les structures exposees au feu",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase FEU. Actions sur les structures exposees au feu"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199212-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1992",
+      "part": "1-2",
+      "reference": "DIN EN 1992-1-2/NA",
+      "title": "Annexe Nationale a l'EN 1992-1-2 — Beton au feu: methodes tabulees, isotherme 500 C",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase FEU. Beton au feu: methodes tabulees, isotherme 500 C"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199312-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1993",
+      "part": "1-2",
+      "reference": "DIN EN 1993-1-2/NA",
+      "title": "Annexe Nationale a l'EN 1993-1-2 — Acier au feu",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase FEU. Acier au feu"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199512-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1995",
+      "part": "1-2",
+      "reference": "DIN EN 1995-1-2/NA",
+      "title": "Annexe Nationale a l'EN 1995-1-2 — Bois au feu: section reduite",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase FEU. Bois au feu: section reduite"
+      },
+      "document_role": "national_annex",
+      "phase": "FEU",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN199411-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1994",
+      "part": "1-1",
+      "reference": "DIN EN 1994-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1994-1-1 — MIXTE acier-beton: connecteurs, dalles collaborantes",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P6. MIXTE acier-beton: connecteurs, dalles collaborantes"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN19912-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1991",
+      "part": "2",
+      "reference": "DIN EN 1991-2/NA",
+      "title": "Annexe Nationale a l'EN 1991-2 — Ponts: modeles de charge LM1-LM4, fatigue",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P6. Ponts: modeles de charge LM1-LM4, fatigue"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN19922-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1992",
+      "part": "2",
+      "reference": "DIN EN 1992-2/NA",
+      "title": "Annexe Nationale a l'EN 1992-2 — Ponts beton",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P6. Ponts beton"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-EN19932-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1993",
+      "part": "2",
+      "reference": "DIN EN 1993-2/NA",
+      "title": "Annexe Nationale a l'EN 1993-2 — Ponts metalliques",
+      "publisher": "DIN — Deutsches Institut fur Normung / Beuth Verlag",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de. Verifier aussi l'amendement /NA/A1.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Phase P6. Ponts metalliques"
+      },
+      "document_role": "national_annex",
+      "phase": "P6",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
     },
     {
       "doc_key": "DE-MVV-TB",
       "country_code": "DE",
-      "standard_family": "MVV TB",
+      "standard_family": "reglementation nationale",
       "part": "-",
       "reference": "Muster-Verwaltungsvorschrift Technische Baubestimmungen",
-      "title": "MVV TB — liste des regles techniques de construction rendues obligatoires",
+      "title": "Muster-Verwaltungsvorschrift Technische Baubestimmungen",
       "publisher": "DIBt — Deutsches Institut fur Bautechnik",
       "acquisition": {
-        "how": "Telechargement gratuit sur https://www.dibt.de. Declinaison par Land a verifier separement.",
+        "how": "Telechargement GRATUIT sur https://www.dibt.de. Declinaison par Land a verifier.",
         "licence": "Publication officielle, librement consultable.",
-        "languages": ["de"],
-        "notes": "Determine QUELLES editions des DIN EN .../NA sont en vigueur. A depouiller avant les annexes elles-memes."
+        "languages": [
+          "de"
+        ],
+        "notes": "Determine QUELLES editions des DIN EN .../NA sont en vigueur, Land par Land. A depouiller AVANT les annexes elles-memes."
       },
+      "document_role": "national_regulation",
+      "phase": "P0",
+      "status": "not_acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": []
+    },
+    {
+      "doc_key": "DE-DIN-1054",
+      "country_code": "DE",
+      "standard_family": "reglementation nationale",
+      "part": "-",
+      "reference": "DIN 1054",
+      "title": "DIN 1054 — Baugrund, Sicherheitsnachweise im Erd- und Grundbau",
+      "publisher": "DIN / Beuth",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de.",
+        "licence": "Document payant.",
+        "languages": [
+          "de"
+        ],
+        "notes": "Complement national a l'EN 1997-1. L'Allemagne applique l'approche DA2*."
+      },
+      "document_role": "national_regulation",
+      "phase": "P1",
       "status": "not_acquired",
       "edition": null,
       "effective_from": null,
       "parameters_expected": []
     }
-  ],
-  "planned": {
-    "_comment": [
-      "Ordre de travail demande: beton arme, acier, bois, mixte, geotechnique,",
-      "sismique. Les documents ci-dessous seront ajoutes au catalogue quand le",
-      "module moteur correspondant existera, pour ne pas declarer un besoin",
-      "dont on ne sait pas encore quels parametres il recouvre."
-    ],
-    "order": [
-      {"family": "beton arme", "standards": ["EN 1992-1-1", "EN 1992-1-2"], "status": "en cours"},
-      {"family": "acier", "standards": ["EN 1993-1-1", "EN 1993-1-8"], "status": "a venir"},
-      {"family": "bois", "standards": ["EN 1995-1-1"], "status": "a venir"},
-      {"family": "mixte", "standards": ["EN 1994-1-1"], "status": "a venir"},
-      {"family": "geotechnique", "standards": ["EN 1997-1"], "status": "a venir"},
-      {"family": "sismique", "standards": ["EN 1998-1", "EN 1998-5"], "status": "a venir"}
-    ]
-  }
+  ]
 }

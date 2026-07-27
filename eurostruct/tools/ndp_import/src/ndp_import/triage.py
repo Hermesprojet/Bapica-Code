@@ -38,6 +38,17 @@ _ANNEX_MARKERS = re.compile(
     re.IGNORECASE,
 )
 
+#: National regulation outside the Eurocode system. It *can* fix requirements
+#: (Belgian Arrete Royal on fire, Spanish Codigo Estructural, German MVV TB),
+#: so it must not be lumped in with the base Eurocodes.
+_REGULATION_MARKERS = re.compile(
+    r"arrete\s+royal|koninklijk\s+besluit|moniteur\s+belge|"
+    r"real\s+decreto|codigo\s+estructural|codigo\s+tecnico|\bCTE\b|\bNCSE\b|"
+    r"\bMVV\s*TB\b|verwaltungsvorschrift|\bDIN\s*1054\b|\bDTU\b|"
+    r"\bNBN\s*S\s*\d|normes?\s+de\s+base",
+    re.IGNORECASE,
+)
+
 #: Guidance and articles, never a source of an enforceable value.
 _SECONDARY_MARKERS = re.compile(
     r"\bCSTC\b|\bWTCB\b|\bJRC\b|\bCSTB\b|magazine|\bnotes?\s+d[eu]\s+information\b",
@@ -101,6 +112,8 @@ def _classify(front: str, filename: str) -> DocumentRole:
         return DocumentRole.SECONDARY_PUBLICATION
     if _ANNEX_MARKERS.search(hay):
         return DocumentRole.NATIONAL_ANNEX
+    if _REGULATION_MARKERS.search(hay):
+        return DocumentRole.NATIONAL_REGULATION
     return DocumentRole.BASE_EUROCODE
 
 
