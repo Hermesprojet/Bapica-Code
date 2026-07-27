@@ -697,6 +697,52 @@ def test_a_published_annex_is_not_flagged_as_a_draft(tmp_path, front) -> None:
     assert r.usable_for_ndp
 
 
+def test_a_download_bait_page_is_refused_even_titled_as_an_annex(tmp_path) -> None:
+    """A deposited "Eurocode 7 part 2" was an SEO scraper page.
+
+    Two pages of "DOWNLOAD! DIRECT DOWNLOAD!" with injected off-topic phrases.
+    The triage classified it neatly as a base Eurocode covering EN 1997-2 —
+    harmless only by luck, since base Eurocodes are refused anyway. Dressed as
+    an annex, the same page came back usable.
+    """
+    from ndp_import import triage_document
+
+    r = triage_document(
+        make_pdf(
+            tmp_path / "Eurocode7Part2.pdf",
+            [[
+                "Eurocode 7 part 2 pdf DOWNLOAD! DIRECT DOWNLOAD!",
+                "NBN EN 1997-2 ANB Annexe nationale ICS 91.010.30",
+            ]],
+        )
+    )
+    assert r.is_impersonation
+    assert not r.usable_for_ndp
+    assert any("N'EST PAS UNE NORME" in b for b in r.blockers)
+
+
+def test_a_document_without_publication_identity_is_refused(tmp_path) -> None:
+    """No ICS, no standards body, no gazette: nobody publishes it."""
+    from ndp_import import triage_document
+
+    r = triage_document(
+        make_pdf(tmp_path / "notes.pdf", [["Annexe nationale EN 1992-1-1 alpha cc 0,85"]])
+    )
+    assert not r.has_publication_identity
+    assert not r.usable_for_ndp
+    assert any("identite de publication" in b for b in r.blockers)
+
+
+def test_scans_are_not_penalised_for_a_missing_hallmark(tmp_path) -> None:
+    """A scan has no text layer for an unrelated reason; OCR is its blocker."""
+    from ndp_import import triage_document
+
+    r = triage_document(make_pdf(tmp_path / "NBN_EN_1990_ANB.pdf", [[]]))
+    assert r.has_publication_identity          # non juge, pas juge coupable
+    assert any("ROC" in b for b in r.blockers)
+    assert not any("identite de publication" in b for b in r.blockers)
+
+
 def test_base_eurocode_is_not_mistaken_for_an_annex(tmp_path) -> None:
     from ndp_import import triage_document
 

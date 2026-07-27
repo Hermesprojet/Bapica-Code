@@ -83,6 +83,33 @@ _SUPERSEDES = re.compile(
 )
 
 
+#: Download-bait pages that impersonate a standard. A deposited file claiming
+#: to be "Eurocode 7 part 2" turned out to be an SEO scraper page: two pages of
+#: "DOWNLOAD! DIRECT DOWNLOAD!", doubled glyphs ("EEuurrooccooddee") and
+#: injected off-topic phrases. The triage classified it neatly as a base
+#: Eurocode covering EN 1997-2 — harmless only because base Eurocodes are
+#: refused anyway. The same page carrying "Annexe Nationale" would have come
+#: back usable.
+_NOT_A_STANDARD_MARKERS = re.compile(
+    r"direct\s+download|download\s*!|free\s+pdf\s+download|"
+    r"click\s+here\s+to\s+download|torrent",
+    re.IGNORECASE,
+)
+
+#: How an official publication identifies itself. Every legitimate document in
+#: the deposit carries one: an ICS code, a standards-body banner, or — for
+#: national regulations — the official gazette it appeared in. A file bearing
+#: none of these has no publication identity, and nothing that has no
+#: publication identity can fix a normative value.
+_PUBLICATION_HALLMARK = re.compile(
+    r"\bICS[:\s]|\bcou\s*:|EUROPEAN\s+STANDARD|NORME\s+EUROP|EUROPÄISCHE\s+NORM|"
+    r"Norme\s+belge|Belgische\s+norm|MONITEUR\s+BELGE|BELGISCH\s+STAATSBLAD|"
+    r"\bNBN\b|\bAFNOR\b|\bDIN\b|\bUNE-?EN\b|\bAENOR\b|\bBOE\b|"
+    r"journal\s+officiel|bundesanzeiger",
+    re.IGNORECASE,
+)
+
+
 def _is_draft(front: str, filename: str) -> bool:
     """Whether the document *is* a draft, not merely whether it mentions one.
 
@@ -129,6 +156,12 @@ class TriageResult:
     #: Draft, pre-standard or publisher preview. Never usable, regardless of
     #: role: its values have no legal force and may still change.
     is_draft: bool
+    #: Download-bait page dressed as a standard. Never usable.
+    is_impersonation: bool
+    #: Carries an ICS code, a standards-body banner or an official gazette.
+    #: A document without one cannot say under whose authority it speaks.
+    #: True for scans, whose text layer is empty for an unrelated reason.
+    has_publication_identity: bool
     front_matter: str
     blockers: tuple[str, ...]
 
@@ -140,12 +173,15 @@ class TriageResult:
     def usable_for_ndp(self) -> bool:
         """Can this document yield a *national* parameter at all?
 
-        A draft never can, whatever its cover claims: prEN 1997-1:2022 and a
-        published NBN EN 1997-1 ANB look alike to every other marker here.
+        Four independent ways to fail, and a document must clear all of them.
+        The role check alone is not enough: a draft annex, and an SEO page
+        carrying the word "ANB", both classify as NATIONAL_ANNEX.
         """
         return (
             self.machine_readable
             and not self.is_draft
+            and not self.is_impersonation
+            and self.has_publication_identity
             and self.proposed_role.can_fix_national_parameters
         )
 
@@ -159,6 +195,8 @@ class TriageResult:
             "proposed_role": self.proposed_role.value,
             "proposed_standard": self.proposed_standard,
             "is_draft": self.is_draft,
+            "is_impersonation": self.is_impersonation,
+            "has_publication_identity": self.has_publication_identity,
             "usable_for_ndp": self.usable_for_ndp,
             "blockers": list(self.blockers),
         }
@@ -207,8 +245,26 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
     role = _classify(front, path.name)
     standard = _standard_of(front, path.name)
     is_draft = _is_draft(front, path.name)
+    #: Only judged when there IS a text layer: a scan legitimately shows none.
+    looks_official = not text.strip() or bool(_PUBLICATION_HALLMARK.search(front))
+
+    is_impersonation = bool(
+        _NOT_A_STANDARD_MARKERS.search(_searchable(front, path.name))
+    )
 
     blockers: list[str] = []
+    if is_impersonation:
+        blockers.append(
+            "CE N'EST PAS UNE NORME: la page porte des marqueurs de "
+            "telechargement publicitaire. Un document normatif ne se presente "
+            "jamais ainsi. Ne rien en extraire, quel que soit le titre annonce."
+        )
+    if not looks_official:
+        blockers.append(
+            "aucune identite de publication (ni code ICS, ni banniere "
+            "d'organisme de normalisation, ni journal officiel): impossible "
+            "d'etablir qui publie ce document ni sous quelle autorite"
+        )
     if is_draft:
         blockers.append(
             "PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce "
@@ -246,6 +302,8 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
         proposed_role=role,
         proposed_standard=standard,
         is_draft=is_draft,
+        is_impersonation=is_impersonation,
+        has_publication_identity=looks_official,
         front_matter=front,
         blockers=tuple(blockers),
     )
