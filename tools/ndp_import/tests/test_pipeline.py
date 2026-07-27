@@ -158,6 +158,27 @@ def test_no_acquired_document_promotes_a_parameter() -> None:
         )
 
 
+def test_catalogue_report_does_not_deny_what_is_in_hand() -> None:
+    """Regression: the footer said "aucun ... n'est acquis" with three in hand.
+
+    A report that under-states what we hold is not a safe error: it hides that
+    a document is available to be read, and it contradicts the entries printed
+    just above it.
+    """
+    from ndp_import import load_catalogue, render_catalogue
+
+    entries = load_catalogue()
+    held = [e for e in entries if e.acquired]
+    assert held, "le jeu de test suppose au moins un document acquis"
+
+    text = render_catalogue(entries)
+    assert "Aucun de ces documents n'est acquis" not in text
+    assert f"{len(held)} document(s) EN MAIN" in text
+    assert "[EN MAIN]" in text
+    # ...et la detention ne doit jamais se lire comme une confirmation.
+    assert "ne confirme AUCUNE valeur" in text
+
+
 def test_catalogue_names_the_freely_available_documents() -> None:
     """Some documents are public; the catalogue must not bury that."""
     entries = {e.doc_key: e for e in load_catalogue()}
@@ -543,6 +564,87 @@ def test_underscored_filename_still_identifies_an_annex(tmp_path) -> None:
 
     pdf = make_pdf(tmp_path / "NBN_EN_1990__ANB.pdf", [["contenu de test"]])
     assert triage_document(pdf).proposed_role is DocumentRole.NATIONAL_ANNEX
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "expected"),
+    [
+        ("EN_199211.pdf", "EN 1992-1-1 Eurocode 2", "EN 1992-1-1"),
+        ("EN_199315.pdf", "EN 1993-1-5 Eurocode 3", "EN 1993-1-5"),
+        # Les deux qui echouaient: la partie a deux chiffres etait tronquee.
+        ("EN_1993110.pdf", "EN 1993-1-10 Eurocode 3", "EN 1993-1-10"),
+        ("EN_1993111.pdf", "EN 1993-1-11 Eurocode 3", "EN 1993-1-11"),
+        ("EN_19912.pdf", "EN 1991-2 Eurocode 1", "EN 1991-2"),
+        ("EN_1990.pdf", "EN 1990 Eurocode 0", "EN 1990"),
+    ],
+)
+def test_two_digit_part_numbers_are_read_whole(tmp_path, name, text, expected) -> None:
+    """Regression: 'EN 1993-1-10' etait annonce 'EN 1993-1'.
+
+    Le quantificateur de la partie n'acceptait qu'un chiffre. Sur '1-10' la
+    frontiere de mot ne tombait pas apres le premier '1', la regex refluait, et
+    le document sortait sous une reference qui n'existe pas — donc ecarte comme
+    hors perimetre. L'ANB acier renvoie justement a l'EN 1993-1-10 en
+    §3.2.3(3).
+    """
+    from ndp_import import triage_document
+
+    assert triage_document(make_pdf(tmp_path / name, [[text]])).proposed_standard == (
+        expected
+    )
+
+
+#: Une page filigranee: le texte utile, puis la colonne de lettres isolees que
+#: laisse un tampon vertical a l'extraction.
+_WATERMARK_COLUMN = list("NATIONALMIRROR")
+_CLAUSE_LINE = "Clause 3.1.6(1)P : la valeur de alpha cc est 0,85."
+
+
+def _deposited(pdf: Path, page_count: int) -> SourceDocument:
+    return SourceDocument(
+        doc_id=SourceDocument.digest(pdf), filename=pdf.name,
+        role=DocumentRole.NATIONAL_ANNEX, country_code="BE",
+        standard_family="EN 1992", part="1-1",
+        reference="NBN EN 1992-1-1 ANB", publisher="NBN", edition="TEST-2026",
+        effective_from=date(2026, 1, 1), language="fr", page_count=page_count,
+        deposited_by="ing. A. Dupont", deposited_at="2026-07-26T09:00:00+00:00",
+    )
+
+
+def test_vertical_watermark_page_yields_no_candidate(tmp_path) -> None:
+    """NBN EN 1993-1-2 ANB stamps every page, and the letters split the numbers.
+
+    Its table of critical temperatures extracts as "5E61" for 561 and "4M57"
+    for 457. Neither is repairable by rule, so the page must produce nothing at
+    all — and must say that it produced nothing *on purpose*.
+    """
+    from ndp_import import page_carries_vertical_overlay
+
+    watermarked = [_CLAUSE_LINE, *_WATERMARK_COLUMN]
+    assert page_carries_vertical_overlay("\n".join(watermarked))
+    assert not page_carries_vertical_overlay(_CLAUSE_LINE)
+
+    pdf = make_pdf(tmp_path / "ANB_filigrane.pdf", [watermarked, [_CLAUSE_LINE]])
+    run = extract_document(_deposited(pdf, 2), pdf, parameters=["alpha_cc"])
+
+    assert run.pages_skipped_overlay == (1,)
+    assert all(c.page != 1 for c in run.candidates)
+    # ...et la page saine reste lisible: la garde ecarte des pages, pas le document.
+    assert any(c.page == 2 for c in run.candidates)
+
+
+def test_skipped_pages_are_reported_not_silently_dropped(tmp_path) -> None:
+    """'non trouve' ne doit jamais vouloir dire 'j'ai refuse de lire'."""
+    pdf = make_pdf(
+        tmp_path / "ANB_filigrane2.pdf", [[_CLAUSE_LINE, *_WATERMARK_COLUMN]]
+    )
+    run = extract_document(_deposited(pdf, 1), pdf, parameters=["alpha_cc"])
+    text = ReviewQueue(run).render()
+
+    assert not run.candidates
+    assert "filigrane" in text
+    assert "p. 1" in text
+    assert "ne veut pas dire" in text
 
 
 def test_base_eurocode_is_not_mistaken_for_an_annex(tmp_path) -> None:

@@ -96,6 +96,18 @@ class ReviewQueue:
                 lines.append(f"      autres lectures: {others}")
             lines.append("")
 
+        if self.run.pages_skipped_overlay:
+            pages = ", ".join(str(p) for p in self.run.pages_skipped_overlay)
+            lines.append("  PAGES NON LUES — filigrane vertical entrelace au texte:")
+            lines.append(f"    p. {pages}")
+            lines.append(
+                "    L'extracteur n'a RIEN propose depuis ces pages. Le filigrane "
+                "traverse les nombres (« 5E61 » pour 561): un chiffre lu y serait "
+                "peut-etre coupe, et aucune regle ne permet de trancher. "
+                "A ouvrir a la main."
+            )
+            lines.append("")
+
         if self.run.not_found:
             lines.append("  PARAMETRES NON TROUVES dans ce document:")
             for name in self.run.not_found:
@@ -104,6 +116,11 @@ class ReviewQueue:
                 "    Ces parametres restent pending_verification. Verifier "
                 "s'ils figurent dans un amendement ou une autre partie."
             )
+            if self.run.pages_skipped_overlay:
+                lines.append(
+                    "    ATTENTION: des pages ont ete ecartees ci-dessus. "
+                    "« Non trouve » ne veut pas dire « absent de l'annexe »."
+                )
         return "\n".join(lines)
 
 

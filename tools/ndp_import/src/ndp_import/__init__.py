@@ -17,7 +17,11 @@ from .catalogue import (
     missing_documents,
     render_catalogue,
 )
-from .extract import extract_document, read_pages
+from .extract import (
+    extract_document,
+    page_carries_vertical_overlay,
+    read_pages,
+)
 from .model import (
     EXTRACTOR_VERSION,
     DocumentRole,
@@ -50,7 +54,7 @@ __all__ = [
     "SourceDocument", "ExtractionCandidate", "ExtractionRun", "DocumentStatus",
     "DocumentRole",
     "ReviewDecision", "ReviewOutcome", "ReviewedParameter", "EXTRACTOR_VERSION",
-    "extract_document", "read_pages",
+    "extract_document", "read_pages", "page_carries_vertical_overlay",
     "PATTERNS", "ParameterPattern", "patterns_for", "parse_number",
     "ReviewQueue", "load_decisions", "apply_decisions", "to_engine_records",
     "merge_into_dataset", "MissingEvidence",

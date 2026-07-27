@@ -96,6 +96,34 @@ def _normalise(text: str) -> str:
     return re.sub(r"[ \t ]+", " ", text.replace("\n", " "))
 
 
+#: A watermark set vertically extracts as a column of one-letter lines. Unlike
+#: the "(cid:NN)" case these glyphs map to real characters, so nothing marks
+#: them as artefacts — and they land *inside* numbers. NBN EN 1993-1-2 ANB
+#: carries "NATIONAL MIRROR COMMITTEE" down every page: its table of critical
+#: temperatures reads "5E61" for 561, "4M57" for 457, "R722" for 722.
+_SOLO_CAPITAL_LINE = re.compile(r"^[A-Z]$")
+
+#: Below this, isolated capitals are ordinary typography — a subscript on its
+#: own line, an axis label. NBN EN 1993-1-1 ANB peaks at 6 on formula pages and
+#: must not be flagged; the watermarked annex reaches 24 on every page.
+_OVERLAY_THRESHOLD = 8
+
+
+def page_carries_vertical_overlay(text: str) -> bool:
+    """Whether *text* shows the signature of a vertical watermark.
+
+    Detects the *shape* of the overlay rather than its wording, so it holds for
+    any publisher's stamp in any language. A page that carries one cannot be
+    read for values: the overlay's letters are interleaved with the real
+    glyphs, and a number they split is not recoverable by rule — "5E61" could
+    be 561 or 5610. Choosing between them is the guess this pipeline exists to
+    prevent, so the page yields nothing.
+    """
+    return sum(1 for line in text.split("\n") if _SOLO_CAPITAL_LINE.fullmatch(line.strip())) >= (
+        _OVERLAY_THRESHOLD
+    )
+
+
 def _candidate_id(doc_id: str, name: str, page: int, offset: int, token: str) -> str:
     raw = f"{doc_id}:{name}:{page}:{offset}:{token}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
@@ -186,11 +214,18 @@ def extract_from_pages(
     candidates: list[ExtractionCandidate] = []
     found: set[str] = set()
 
+    # Ecartees AVANT toute recherche: sur une page filigranee, un nombre lu est
+    # un nombre peut-etre coupe. Mieux vaut ne rien proposer que proposer 561
+    # quand la page porte 5E61.
+    overlaid = {p.number for p in pages if page_carries_vertical_overlay(p.text)}
+
     for pattern in wanted:
         clause_re = pattern.clause_regex()
         symbol_re = pattern.symbol_regex()
 
         for page in pages:
+            if page.number in overlaid:
+                continue
             text = _normalise(page.text)
             if not text:
                 continue
@@ -257,4 +292,5 @@ def extract_from_pages(
         run_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         extractor_version=EXTRACTOR_VERSION,
         not_found=not_found,
+        pages_skipped_overlay=tuple(sorted(overlaid)),
     )
