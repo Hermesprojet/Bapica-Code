@@ -318,9 +318,27 @@ def triage_batch(
     )
 
 
+def _already_held() -> dict[str, str]:
+    """sha256 -> reference, for documents the catalogue already records.
+
+    Deposits repeat. The same three EN 1994 annexes arrived three times over,
+    byte for byte, because nothing in the triage said "you already have this".
+    Re-sending a file costs the depositor real effort and buys nothing.
+    """
+    from .catalogue import load_catalogue
+
+    return {
+        e.doc_id_sha256: e.reference
+        for e in load_catalogue()
+        if e.acquired and getattr(e, "doc_id_sha256", None)
+    }
+
+
 def render_triage(results: Sequence[TriageResult]) -> str:
     usable = [r for r in results if r.usable_for_ndp]
     scanned = [r for r in results if not r.machine_readable]
+    held = _already_held()
+    repeats = [r for r in results if r.doc_id in held]
 
     lines = [
         "=== Triage des documents deposes ===",
@@ -331,13 +349,28 @@ def render_triage(results: Sequence[TriageResult]) -> str:
     for r in results:
         mark = "OK    " if r.usable_for_ndp else "REJET "
         std = r.proposed_standard or "norme non identifiee"
+        seen = "  [DEJA EN MAIN]" if r.doc_id in held else ""
         lines.append(
             f"[{mark}] {r.path.name[:44]:<46} {r.page_count:>3}p  "
-            f"{r.proposed_role.value:<22} {std}"
+            f"{r.proposed_role.value:<22} {std}{seen}"
         )
         for b in r.blockers:
             lines.append(f"           - {b}")
     lines.append("")
+
+    if repeats:
+        lines.append(
+            f"{len(repeats)} document(s) DEJA EN MAIN — meme empreinte qu'un "
+            "fichier deja enregistre:"
+        )
+        for r in repeats:
+            lines.append(f"    - {r.path.name} = {held[r.doc_id]}")
+        lines.append(
+            "    Les redeposer ne change rien. Si l'un est bloque sur une ROC, "
+            "c'est une version AVEC couche de texte qu'il faut, pas le meme "
+            "fichier a nouveau."
+        )
+        lines.append("")
 
     if scanned:
         lines.append(
