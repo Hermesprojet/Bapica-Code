@@ -45,16 +45,16 @@
         }
       },
       "expected_outputs": {
-        "mu": 0.13774104683195593,
-        "xi": 0.18601727990998942,
-        "x_mm": 102.30950395049419,
-        "z_mm": 509.0761984198023,
-        "eps_s": 0.015315456293595896,
-        "As_strength_mm2": 1129.496923613456,
+        "mu": 0.1620482903905364,
+        "xi": 0.22233318019429377,
+        "x_mm": 122.28324910686158,
+        "z_mm": 501.0867003572554,
+        "eps_s": 0.012242139778423537,
+        "As_strength_mm2": 1147.506009618789,
         "As_min_mm2": 248.51696759748907,
         "As_max_mm2": 7200.0,
-        "As_required_mm2": 1129.496923613456,
-        "M_Rd_kNm": 250.0
+        "As_required_mm2": 1147.506009618789,
+        "M_Rd_kNm": 249.99999999999997
       },
       "tolerance_rules": [
         {
@@ -63,7 +63,7 @@
           "reason": "Attente obtenue analytiquement, non arrondie: la comparer a 1 % masquerait une erreur d'algebre. 1e-9 laisse passer le bruit de la dichotomie et rien d'autre."
         }
       ],
-      "notes": "alpha_cc = 1,0, gamma_C = 1,5, gamma_S = 1,15 (valeurs recommandees EN, jeu de NDP non verifie: le cas tourne en mode non strict)."
+      "notes": "alpha_cc = 0,85 (NBN EN 1992-1-1 ANB §3.1.6(1)P, flexion), gamma_C = 1,5, gamma_S = 1,15. Jeu de NDP non encore confirme par un ingenieur: le cas tourne en mode non strict."
     },
     {
       "reference_id": "EC2-BF-002",
@@ -110,15 +110,15 @@
         }
       },
       "expected_outputs": {
-        "mu": 0.1422222222222222,
-        "xi": 0.19261853829587325,
-        "x_mm": 86.67834223314296,
-        "z_mm": 415.3286631067428,
-        "eps_s": 0.014670629010920004,
-        "As_strength_mm2": 664.5339571207628,
+        "mu": 0.16732026143790849,
+        "xi": 0.2303803733712576,
+        "x_mm": 103.67116801706592,
+        "z_mm": 408.5315327931736,
+        "eps_s": 0.011692266375746146,
+        "As_strength_mm2": 675.590444911213,
         "As_min_mm2": 150.05038932088016,
         "As_max_mm2": 5000.0,
-        "As_required_mm2": 664.5339571207628,
+        "As_required_mm2": 675.590444911213,
         "M_Rd_kNm": 119.99999999999999
       },
       "tolerance_rules": [
@@ -128,7 +128,7 @@
           "reason": "Attente obtenue analytiquement, non arrondie: la comparer a 1 % masquerait une erreur d'algebre. 1e-9 laisse passer le bruit de la dichotomie et rien d'autre."
         }
       ],
-      "notes": "alpha_cc = 1,0, gamma_C = 1,5, gamma_S = 1,15 (valeurs recommandees EN, jeu de NDP non verifie: le cas tourne en mode non strict)."
+      "notes": "alpha_cc = 0,85 (NBN EN 1992-1-1 ANB §3.1.6(1)P, flexion), gamma_C = 1,5, gamma_S = 1,15. Jeu de NDP non encore confirme par un ingenieur: le cas tourne en mode non strict."
     },
     {
       "reference_id": "EC2-BF-003",
@@ -175,15 +175,15 @@
         }
       },
       "expected_outputs": {
-        "mu": 0.11739538766565795,
-        "xi": 0.1565470227097925,
-        "x_mm": 115.84479680524646,
-        "z_mm": 693.6620812779014,
-        "eps_s": 0.018857499615232632,
-        "As_strength_mm2": 1989.4413104687658,
+        "mu": 0.138112220783127,
+        "xi": 0.18656250298725674,
+        "x_mm": 138.05625221057,
+        "z_mm": 684.777499115772,
+        "eps_s": 0.01526046871133086,
+        "As_strength_mm2": 2015.2531322684272,
         "As_min_mm2": 494.07741902573105,
         "As_max_mm2": 12800.0,
-        "As_required_mm2": 1989.4413104687658,
+        "As_required_mm2": 2015.2531322684272,
         "M_Rd_kNm": 599.9999999999999
       },
       "tolerance_rules": [
@@ -193,7 +193,7 @@
           "reason": "Attente obtenue analytiquement, non arrondie: la comparer a 1 % masquerait une erreur d'algebre. 1e-9 laisse passer le bruit de la dichotomie et rien d'autre."
         }
       ],
-      "notes": "alpha_cc = 1,0, gamma_C = 1,5, gamma_S = 1,15 (valeurs recommandees EN, jeu de NDP non verifie: le cas tourne en mode non strict)."
+      "notes": "alpha_cc = 0,85 (NBN EN 1992-1-1 ANB §3.1.6(1)P, flexion), gamma_C = 1,5, gamma_S = 1,15. Jeu de NDP non encore confirme par un ingenieur: le cas tourne en mode non strict."
     },
     {
       "reference_id": "EC2-BF-004",
@@ -240,15 +240,15 @@
         }
       },
       "expected_outputs": {
-        "mu": 0.11574074074074074,
-        "xi": 0.15418515013475692,
-        "x_mm": 55.50665404851249,
-        "z_mm": 337.797338380595,
-        "eps_s": 0.01919998113917599,
-        "As_strength_mm2": 340.4408114975433,
+        "mu": 0.13616557734204793,
+        "xi": 0.1837061517545455,
+        "x_mm": 66.13421463163638,
+        "z_mm": 333.54631414734547,
+        "eps_s": 0.015552165464096377,
+        "As_strength_mm2": 344.7797056129311,
         "As_min_mm2": 103.44760448182204,
         "As_max_mm2": 3200.0,
-        "As_required_mm2": 340.4408114975433,
+        "As_required_mm2": 344.7797056129311,
         "M_Rd_kNm": 40.0
       },
       "tolerance_rules": [
@@ -258,7 +258,7 @@
           "reason": "Attente obtenue analytiquement, non arrondie: la comparer a 1 % masquerait une erreur d'algebre. 1e-9 laisse passer le bruit de la dichotomie et rien d'autre."
         }
       ],
-      "notes": "alpha_cc = 1,0, gamma_C = 1,5, gamma_S = 1,15 (valeurs recommandees EN, jeu de NDP non verifie: le cas tourne en mode non strict)."
+      "notes": "alpha_cc = 0,85 (NBN EN 1992-1-1 ANB §3.1.6(1)P, flexion), gamma_C = 1,5, gamma_S = 1,15. Jeu de NDP non encore confirme par un ingenieur: le cas tourne en mode non strict."
     },
     {
       "reference_id": "EC2-BF-005",
@@ -305,16 +305,16 @@
         }
       },
       "expected_outputs": {
-        "mu": 0.008264462809917356,
-        "xi": 0.010373623336850634,
-        "x_mm": 5.705492835267849,
-        "z_mm": 547.7178028658928,
-        "eps_s": 0.33389416656539006,
-        "As_strength_mm2": 62.98864090135705,
+        "mu": 0.009722897423432183,
+        "xi": 0.012213287536267646,
+        "x_mm": 6.717308144947205,
+        "z_mm": 547.3130767420212,
+        "eps_s": 0.28307312698212234,
+        "As_strength_mm2": 63.03521963218458,
         "As_min_mm2": 248.51696759748907,
         "As_max_mm2": 7200.0,
         "As_required_mm2": 248.51696759748907,
-        "M_Rd_kNm": 58.4550548983307
+        "M_Rd_kNm": 58.283363907605
       },
       "tolerance_rules": [
         {
@@ -323,7 +323,7 @@
           "reason": "Attente obtenue analytiquement, non arrondie: la comparer a 1 % masquerait une erreur d'algebre. 1e-9 laisse passer le bruit de la dichotomie et rien d'autre."
         }
       ],
-      "notes": "alpha_cc = 1,0, gamma_C = 1,5, gamma_S = 1,15 (valeurs recommandees EN, jeu de NDP non verifie: le cas tourne en mode non strict)."
+      "notes": "alpha_cc = 0,85 (NBN EN 1992-1-1 ANB §3.1.6(1)P, flexion), gamma_C = 1,5, gamma_S = 1,15. Jeu de NDP non encore confirme par un ingenieur: le cas tourne en mode non strict."
     },
     {
       "reference_id": "EC2-BF-R01",

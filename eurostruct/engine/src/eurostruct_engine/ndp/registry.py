@@ -25,6 +25,7 @@ from typing import Any, Final, Iterable, Sequence
 from ..exceptions import (
     DeprecatedNationalParameter,
     NationalAnnexIncomplete,
+    UnrepresentableNationalParameter,
     UnverifiedNationalParameter,
 )
 from ..traceability import Clause, Journal, Provenance
@@ -243,6 +244,20 @@ class ParameterSet:
                 )
                 continue
 
+            if p.validation_status is ValidationStatus.NOT_REPRESENTABLE:
+                blocking.append(
+                    BlockingParameter(
+                        key=key, reason="not_representable",
+                        detail=(
+                            p.notes
+                            or "l'annexe fixe ce parametre sous une forme non scalaire"
+                        ),
+                        standard=standard, parameter_name=name,
+                        national_annex_reference=annex.reference, clause=p.clause,
+                    )
+                )
+                continue
+
             if self.strict and not p.usable_in_strict_mode:
                 blocking.append(
                     BlockingParameter(
@@ -298,10 +313,16 @@ class ParameterSet:
         if p.validation_status is ValidationStatus.DEPRECATED:
             raise DeprecatedNationalParameter(key, p.notes)
 
+        if p.validation_status is ValidationStatus.NOT_REPRESENTABLE:
+            raise UnrepresentableNationalParameter(key, p.notes)
+
         if self.strict and not p.usable_in_strict_mode:
             raise UnverifiedNationalParameter(
                 key, self.registry.country_code, p.validation_status.value
             )
+
+        if p.parameter_value is None:  # pragma: no cover - guarded above
+            raise UnrepresentableNationalParameter(key, p.notes)
 
         q = Q_(p.parameter_value, p.unit)
         if journal is not None and key not in journal._index:  # noqa: SLF001
@@ -411,7 +432,11 @@ def load_country_registry(country: str) -> CountryRegistry:
                 effective_from=_as_date(item.get("effective_from")) or eff_from,
                 effective_to=_as_date(item.get("effective_to")) or eff_to,
                 parameter_name=name,
-                parameter_value=float(item["parameter_value"]),
+                parameter_value=(
+                    None
+                    if item.get("parameter_value") is None
+                    else float(item["parameter_value"])
+                ),
                 unit=item.get("unit", "dimensionless"),
                 source_official=item.get("source_official", a["source_official"]),
                 source_url_or_doc_id=item.get(

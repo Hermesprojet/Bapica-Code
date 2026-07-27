@@ -53,12 +53,12 @@ def test_full_calculation_over_the_contract() -> None:
     resp = run_ec2_beam_flexure(Ec2BeamFlexureRequest.model_validate(BASE_PAYLOAD))
     assert resp.element == "P1"
     assert resp.result.As_required.unit == "mm**2"
-    assert resp.result.As_required.value == pytest.approx(1129.4969236134557)
+    assert resp.result.As_required.value == pytest.approx(1147.506009618789)
     assert resp.result.M_Rd.unit == "kN*m"
     assert resp.verification.max_utilisation == pytest.approx(1.0, abs=1e-9)
     assert resp.ndp.country == "BE"
     # The response is serialisable as-is: this is what the API returns.
-    assert json.loads(resp.model_dump_json())["result"]["mu"] == pytest.approx(0.137741, abs=1e-6)
+    assert json.loads(resp.model_dump_json())["result"]["mu"] == pytest.approx(0.162048, abs=1e-6)
 
 
 def test_unknown_field_is_rejected() -> None:

@@ -61,7 +61,7 @@ def test_full_calculation_runs_with_the_network_off(network_disabled) -> None:
         element="P1",
         A_s_provided=bars_area(4, 20),
     )
-    assert r.As_required.to("mm**2").magnitude == pytest.approx(1129.4969236134557)
+    assert r.As_required.to("mm**2").magnitude == pytest.approx(1147.506009618789)
     assert r.report.passed
     assert r.journal.steps
 

@@ -895,8 +895,15 @@
           "type": "string"
         },
         "parameter_value": {
-          "title": "Parameter Value",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parameter Value"
         },
         "part": {
           "title": "Part",
@@ -1413,7 +1420,8 @@
       "enum": [
         "confirmed",
         "pending_verification",
-        "deprecated"
+        "deprecated",
+        "not_representable"
       ],
       "title": "ValidationStatusDTO",
       "type": "string"
