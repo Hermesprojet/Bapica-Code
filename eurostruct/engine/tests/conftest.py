@@ -36,6 +36,48 @@ def params_fr():
 
 
 @pytest.fixture
+def params_be_shear():
+    """Belgium, with a HYPOTHETICAL scalar bound on the strut angle.
+
+    NBN EN 1992-1-1 ANB §6.2.3(2) fixes cot θ_max by an expression the scalar
+    model cannot hold, so real Belgian data refuses the shear check outright —
+    which ``test_belgium_is_refused_for_want_of_a_strut_bound`` verifies.
+
+    That refusal also makes the Belgian alpha_cc branching unreachable in a
+    shear calculation, and that branching is the whole reason the conditional
+    mechanism was built. So this fixture rebuilds the registry with the EN
+    recommendation substituted for that ONE parameter, purely to reach the code
+    path. The value 2,5 is not asserted anywhere and never leaves the tests;
+    what is asserted is that alpha_cc resolves to the "other" branch.
+    """
+    import dataclasses
+
+    from eurostruct_engine.ndp.model import ValidationStatus
+    from eurostruct_engine.ndp.registry import ParameterSet
+
+    base = load_parameter_set("BE", strict=False, as_of=AS_OF)
+    annex = base.registry.annex_for("EN 1992-1-1", AS_OF)
+    patched = tuple(
+        dataclasses.replace(
+            p,
+            parameter_value=2.5,
+            validation_status=ValidationStatus.PENDING_VERIFICATION,
+            notes="HYPOTHESE DE TEST — pas la valeur de l'ANB belge.",
+        )
+        if p.parameter_name == "cot_theta_max" else p
+        for p in annex.parameters
+    )
+    registry = dataclasses.replace(
+        base.registry,
+        annexes=tuple(
+            dataclasses.replace(a, parameters=patched) if a is annex else a
+            for a in base.registry.annexes
+        ),
+    )
+    return ParameterSet(registry=registry, region=None, as_of=AS_OF, strict=False)
+
+
+@pytest.fixture
 def c30():
     return concrete("C30/37")
 
