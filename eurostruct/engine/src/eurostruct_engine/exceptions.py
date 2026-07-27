@@ -63,9 +63,11 @@ class UnverifiedNationalParameter(EurostructEngineError):
         self.status = status
         super().__init__(
             f"NDP '{key}' pour le pays '{country}' a le statut '{status}'. "
-            "Un calcul destine a un livrable signe exige le statut "
-            "'na_confirmed' (valeur relevee dans l'Annexe Nationale publiee). "
-            "Faire verifier et confirmer ce parametre par un ingenieur habilite."
+            "Un calcul destine a un livrable signe exige le statut 'confirmed' "
+            "(valeur relevee dans l'Annexe Nationale publiee, page citee). "
+            "C'est la validation NORMATIVE, niveau 1: elle porte sur le "
+            "referentiel du pays et se fait une fois. Un ingenieur du bureau "
+            "d'etudes la realise; aucun tiers exterieur n'est requis."
         )
 
 

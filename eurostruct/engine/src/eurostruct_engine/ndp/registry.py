@@ -139,9 +139,13 @@ class PreflightReport:
                 lines.append(f"    - {b.key}{clause}{ref}")
             lines.append("")
         lines.append(
-            "Action: faire relever chaque valeur dans l'Annexe Nationale publiee "
-            "par un ingenieur habilite, puis passer le parametre au statut "
-            "'confirmed' avec verified_by et verified_at."
+            "Action (validation NORMATIVE, niveau 1 sur 3): faire relever chaque "
+            "valeur dans l'Annexe Nationale publiee, a la page citee, puis passer "
+            "le parametre au statut 'confirmed' avec verified_by et verified_at. "
+            "Le relecteur est un ingenieur du bureau d'etudes: aucun tiers "
+            "exterieur n'est requis. Cette etape porte sur le referentiel du "
+            "pays, pas sur le projet — elle se fait une fois et sert a toutes "
+            "les etudes."
         )
         return "\n".join(lines)
 

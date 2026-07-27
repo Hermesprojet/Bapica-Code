@@ -122,7 +122,11 @@ def test_preflight_report_is_readable_and_machine_parsable() -> None:
     text = report.render()
     assert "Calcul impossible pour BE" in text
     assert "NBN EN 1992-1-1 ANB" in text
-    assert "ingenieur habilite" in text
+    # Le message doit dire de QUELLE des trois validations il s'agit, et que
+    # le relecteur est un ingenieur du bureau d'etudes — pas un tiers.
+    assert "NORMATIVE" in text
+    assert "ingenieur du bureau d'etudes" in text
+    assert "aucun tiers" in text.lower()
     for b in report.blocking:
         assert b.key in text
 
