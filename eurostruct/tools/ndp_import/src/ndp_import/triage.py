@@ -55,6 +55,46 @@ _SECONDARY_MARKERS = re.compile(
     re.IGNORECASE,
 )
 
+#: A draft or withdrawn edition. CEN prefixes drafts with "pr" (prEN, prNBN),
+#: pre-standards with "ENV", and national bodies mirror that (oSIST prEN...).
+#: Publishers' preview extracts ("iTeh STANDARD PREVIEW") are the same problem.
+#:
+#: This must be tested BEFORE the annex markers. A draft National Annex says
+#: "annexe nationale" on its cover exactly like a published one, so without
+#: this it came back usable_for_ndp with no blocker at all — the single worst
+#: outcome this triage exists to prevent, since a draft carries values that
+#: have no legal force and may still change.
+_DRAFT_MARKERS = re.compile(
+    r"\bpr[-\s]?EN\b|\bpr[-\s]?NBN\b|\bpr[-\s]?NF\b|\boSIST\b|\bENV\b|"
+    r"standard\s+preview|projet\s+de\s+norme|ontwerp[-\s]?norm|"
+    r"norm[-\s]?entwurf|proyecto\s+de\s+norma|draft\s+standard|"
+    r"final\s+draft|enquiry\s+draft",
+    re.IGNORECASE,
+)
+
+#: A published standard names the pre-standard it supersedes, right on its
+#: cover: "Remplace ENV 1993-1-2:1995". Matching the citation instead of the
+#: document's own designation flagged 13 published Eurocodes as drafts — a
+#: guard that rejects the documents we actually hold is worse than no guard.
+_SUPERSEDES = re.compile(
+    r"(?:remplace|replaces|supersedes|vervangt|ersetzt|sustituye|"
+    r"annule\s+et\s+remplace|withdrawn)\s*(?::|)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_draft(front: str, filename: str) -> bool:
+    """Whether the document *is* a draft, not merely whether it mentions one.
+
+    A marker counts only when it designates this document. Anything introduced
+    by a supersession verb refers to a superseded edition and is ignored.
+    """
+    hay = _searchable(front, filename)
+    for m in _DRAFT_MARKERS.finditer(hay):
+        if not _SUPERSEDES.search(hay[max(0, m.start() - 40) : m.start()]):
+            return True
+    return False
+
 # Chaque composante de la partie accepte DEUX chiffres. Avec un seul, la
 # regex ne pouvait pas atteindre la fin de « EN 1993-1-10 »: faute de
 # frontiere de mot apres le premier « 1 » de « 10 », elle refluait sur
@@ -86,6 +126,9 @@ class TriageResult:
     text_chars: int
     proposed_role: DocumentRole
     proposed_standard: str | None
+    #: Draft, pre-standard or publisher preview. Never usable, regardless of
+    #: role: its values have no legal force and may still change.
+    is_draft: bool
     front_matter: str
     blockers: tuple[str, ...]
 
@@ -95,8 +138,16 @@ class TriageResult:
 
     @property
     def usable_for_ndp(self) -> bool:
-        """Can this document yield a *national* parameter at all?"""
-        return self.machine_readable and self.proposed_role.can_fix_national_parameters
+        """Can this document yield a *national* parameter at all?
+
+        A draft never can, whatever its cover claims: prEN 1997-1:2022 and a
+        published NBN EN 1997-1 ANB look alike to every other marker here.
+        """
+        return (
+            self.machine_readable
+            and not self.is_draft
+            and self.proposed_role.can_fix_national_parameters
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -107,6 +158,7 @@ class TriageResult:
             "machine_readable": self.machine_readable,
             "proposed_role": self.proposed_role.value,
             "proposed_standard": self.proposed_standard,
+            "is_draft": self.is_draft,
             "usable_for_ndp": self.usable_for_ndp,
             "blockers": list(self.blockers),
         }
@@ -154,8 +206,16 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
 
     role = _classify(front, path.name)
     standard = _standard_of(front, path.name)
+    is_draft = _is_draft(front, path.name)
 
     blockers: list[str] = []
+    if is_draft:
+        blockers.append(
+            "PROJET ou pre-norme (prEN / prNBN / ENV / apercu d'editeur): ce "
+            "document n'a aucune force reglementaire et ses valeurs peuvent "
+            "encore changer. Il ne peut fixer aucun parametre national, meme "
+            "s'il porte « annexe nationale » sur sa couverture."
+        )
     if not text.strip():
         blockers.append(
             "aucune couche de texte: document numerise, une ROC est necessaire "
@@ -185,6 +245,7 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
         text_chars=len(text),
         proposed_role=role,
         proposed_standard=standard,
+        is_draft=is_draft,
         front_matter=front,
         blockers=tuple(blockers),
     )
