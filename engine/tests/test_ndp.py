@@ -28,6 +28,7 @@ from eurostruct_engine.ndp import (
     load_country_registry,
     load_parameter_set,
 )
+from eurostruct_engine.traceability import Journal
 from eurostruct_engine.units import Q_
 
 AS_OF = date(2026, 7, 26)
@@ -301,11 +302,22 @@ def test_an_unknown_case_is_refused_rather_than_approximated() -> None:
     assert e.value.conditions == ("axial_and_bending", "other")
 
 
-def test_a_case_on_an_unconditional_parameter_is_refused() -> None:
-    """Passer un cas la ou l'annexe n'en definit aucun donnerait le change."""
-    ps = load_parameter_set("BE", strict=False, as_of=AS_OF)
-    with pytest.raises(ValueError, match="ne definit"):
-        ps.get(f"{EC2_11}:As_min_coeff", condition="axial_and_bending")
+def test_a_case_on_an_unconditional_parameter_is_accepted_and_noted() -> None:
+    """Declarer son cas est toujours correct; brancher dessus regarde l'annexe.
+
+    Cette regle etait d'abord posee a l'envers — un cas fourni la ou l'annexe
+    n'en definit aucun etait refuse. Elle punissait l'appelant pour la forme de
+    l'annexe: le module d'effort tranchant, correct en annonçant « other »,
+    echouait sur la France dont alpha_cc est un simple scalaire. La valeur
+    unique s'applique a tous les cas, et le journal dit que la distinction
+    n'existe pas ici.
+    """
+    ps = load_parameter_set("FR", strict=False, as_of=AS_OF)
+    j = Journal("test")
+    assert ps.get(f"{EC2_11}:alpha_cc", j, condition="other").magnitude == 1.0
+    detail = j.get(f"{EC2_11}:alpha_cc").provenance.detail
+    assert "cas declare: other" in detail
+    assert "ne distingue pas les cas" in detail
 
 
 def test_a_conditional_parameter_may_not_also_carry_a_default() -> None:

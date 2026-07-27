@@ -343,12 +343,14 @@ class ParameterSet:
                 raise ConditionalParameterNeedsContext(key, p.conditions, condition)
             value = p.value_for(condition)
         else:
-            if condition is not None:
-                raise ValueError(
-                    f"cas '{condition}' fourni pour '{key}', qui ne definit "
-                    "aucune variante. Le passer laisserait croire qu'une "
-                    "condition a ete honoree alors que rien ne l'a verifiee."
-                )
+            # Un cas fourni la ou l'annexe ne distingue pas n'est PAS une
+            # erreur. Le module a raison d'annoncer la verification qu'il
+            # effectue; que l'annexe branche ou non dessus la regarde, elle.
+            # Refuser ici punissait l'appelant pour la forme de l'annexe: le
+            # module d'effort tranchant, correct en declarant « other »,
+            # echouait sur la France dont l'alpha_cc est un simple scalaire.
+            # La valeur unique s'applique alors a tous les cas, y compris
+            # celui-la, et le journal note que la distinction n'existe pas.
             value = p.parameter_value
 
         if value is None:  # pragma: no cover - guarded above
@@ -361,9 +363,7 @@ class ParameterSet:
                 description=p.description,
                 value=q,
                 provenance=Provenance.national_annex(
-                    key,
-                    _provenance_detail(p)
-                    + (f" [cas: {condition}]" if condition else ""),
+                    key, _provenance_detail(p) + _case_note(p, condition)
                 ),
                 clause=_clause_of(p),
             )
@@ -419,6 +419,20 @@ def _clause_of(p: NationalParameter) -> Clause:
     return Clause(
         standard=p.standard, clause=p.clause, equation=None, national_note=note
     )
+
+
+def _case_note(p: NationalParameter, condition: str | None) -> str:
+    """What the journal says about the verification case that was declared.
+
+    Three situations, and the note de calcul must distinguish them: a branch
+    was chosen, a case was declared but this annex does not branch on it, or
+    no case was in play at all.
+    """
+    if condition is None:
+        return ""
+    if p.is_conditional:
+        return f" [cas: {condition}]"
+    return f" [cas declare: {condition}; cette annexe ne distingue pas les cas]"
 
 
 def _provenance_detail(p: NationalParameter) -> str:
