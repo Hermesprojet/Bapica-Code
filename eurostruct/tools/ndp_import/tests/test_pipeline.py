@@ -98,13 +98,52 @@ def test_catalogue_lists_the_documents_to_obtain() -> None:
         assert e.licence, f"{e.doc_key}: statut de licence non precise"
 
 
-def test_no_annex_is_claimed_to_be_acquired() -> None:
-    """Honesty check: nothing has been obtained, and the catalogue says so."""
-    entries = load_catalogue()
-    assert len(missing_documents(entries)) == len(entries)
-    for e in entries:
-        assert e.status == "not_acquired"
-        assert e.edition is None
+def test_acquired_entries_carry_their_evidence() -> None:
+    """An entry may only claim to be acquired if it can prove which file.
+
+    The catalogue is an inventory, not the parameter store: marking a document
+    acquired says "we hold this file", never "we trust its values". The sha256
+    is what ties the claim to a specific file.
+    """
+    import json
+
+    from ndp_import.catalogue import _DATA
+
+    raw = json.loads(_DATA.read_text(encoding="utf-8"))
+    acquired = [d for d in raw["documents"] if d["status"] != "not_acquired"]
+    for d in acquired:
+        assert d.get("doc_id_sha256"), f"{d['doc_key']}: acquis sans empreinte"
+        assert d.get("edition_read_from_cover"), (
+            f"{d['doc_key']}: acquis sans edition relevee sur la page de garde"
+        )
+        # Read from the cover is not the same as declared by the depositor.
+        assert "DECLARER" in d["acquisition"]["notes"], (
+            f"{d['doc_key']}: l'edition lue doit rester a declarer"
+        )
+
+
+def test_no_acquired_document_promotes_a_parameter() -> None:
+    """Holding the file changes nothing about the values it contains.
+
+    This is the property that matters: the Belgian EC2 annex is now in hand and
+    readable, and every one of its parameters is still pending_verification.
+    """
+    from ndp_import.catalogue import load_catalogue as _load
+
+    engine_data = (
+        Path(__file__).resolve().parents[3]
+        / "engine/src/eurostruct_engine/ndp/data/be.json"
+    )
+    import json
+
+    be = json.loads(engine_data.read_text(encoding="utf-8"))
+    statuses = {
+        p["validation_status"]
+        for a in be["annexes"] for p in a["parameters"].values()
+    }
+    assert statuses == {"pending_verification"}, (
+        "un parametre a change de statut sans decision de relecture signee"
+    )
 
 
 def test_catalogue_names_the_freely_available_documents() -> None:
