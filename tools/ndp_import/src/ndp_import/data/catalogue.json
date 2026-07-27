@@ -131,11 +131,11 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P0. BETON ARME: alpha_cc, gamma_C, gamma_S, k1/k2, A_s,min/max, effort tranchant"
+        "notes": "ACQUIS en version texte (31 pages, 50237 caracteres). Une version scannee de 34 pages avait ete deposee auparavant; la version texte la remplace. Metadonnees ci-dessus LUES sur la page de garde, a DECLARER par le deposant: le champ edition n'est jamais deduit. La page de garde precise: « La norme NBN EN 1992-1-1 ne peut etre utilisee en Belgique qu'en combinaison avec son annexe nationale. »"
       },
       "document_role": "national_annex",
       "phase": "P0",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
       "parameters_expected": [
@@ -161,7 +161,11 @@
         "rho_w_min_coeff",
         "s_l_max_coeff",
         "s_t_max_coeff"
-      ]
+      ],
+      "edition_read_from_cover": "1e ed., aout 2010",
+      "publication_authorised": "2010-02-19",
+      "annexes_base_standard": "NBN EN 1992-1-1, 1e ed. fevrier 2005",
+      "doc_id_sha256": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1"
     },
     {
       "doc_key": "BE-EN19971-NA",
