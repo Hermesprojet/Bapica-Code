@@ -35,7 +35,7 @@ from pathlib import Path
 
 from .catalogue import render_catalogue
 from .model import DocumentRole
-from .extract import extract_document
+from .extract import extract_document, read_pages
 from .model import ExtractionCandidate, ExtractionRun, SourceDocument
 from .review import (
     ReviewQueue,
@@ -44,6 +44,29 @@ from .review import (
     merge_into_dataset,
     to_engine_records,
 )
+
+
+def _expected_for(doc: SourceDocument) -> list[str] | None:
+    """The parameters the catalogue expects from *this* document.
+
+    Without this the extractor searched every pattern it knows, so an EC2
+    annex came back reporting that ``theta_crit_classe_4`` was "not found" —
+    a steel-fire parameter that has no business being looked for there. The
+    noise matters: a reviewer scanning a long "not found" list to spot the
+    entries that actually concern their document will eventually stop reading
+    it. ``ExtractionRun.not_found`` has always documented itself as
+    catalogue-driven; this makes the behaviour match.
+
+    Returns ``None`` — meaning "search everything" — when the catalogue has no
+    entry for the document, so an unknown one is still fully explored.
+    """
+    from .catalogue import load_catalogue
+
+    standard = f"{doc.standard_family}-{doc.part}"
+    for entry in load_catalogue():
+        if entry.country_code == doc.country_code and entry.standard == standard:
+            return list(entry.parameters_expected) or None
+    return None
 
 
 def _load_run(path: Path) -> ExtractionRun:
@@ -155,11 +178,16 @@ def main(argv: list[str] | None = None) -> int:
             edition=args.edition,
             effective_from=date.fromisoformat(args.effective_from),
             language=args.language,
-            page_count=0,
+            # Compte reel, pas zero: l'en-tete de la file de relecture affiche
+            # ce nombre, et « 0 pages » sur un document de 31 pages est une
+            # fausse indication dans le dossier que l'ingenieur signe.
+            page_count=len(read_pages(args.pdf)),
             deposited_by=args.deposited_by,
             deposited_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         )
-        run = extract_document(doc, args.pdf, parameters=args.parameters)
+        run = extract_document(
+            doc, args.pdf, parameters=args.parameters or _expected_for(doc)
+        )
         args.out.write_text(
             json.dumps(run.to_dict(), indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
