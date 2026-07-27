@@ -129,6 +129,24 @@ _MOJIBAKE_HIGH_RATIO = 0.5
 _MOJIBAKE_MIN_CHARS = 200
 
 
+#: A standard put through machine translation. Deposited once: the French NA
+#: to EN 1990 (NF P 06-100-2) arrived as a Google-translated English rendering,
+#: stamped "© Machine Translated by Google" on its own cover.
+#:
+#: This is not the normative text in any language. AFNOR published it in
+#: French; a translation engine produced this. Worse, the machine mangles the
+#: very things that matter — the deposited file spells its own classification
+#: index "P 0 6-100-2" and the standard it annexes "N F EN 1 990", with spaces
+#: injected inside identifiers. A decimal comma has every chance of faring no
+#: better.
+_MACHINE_TRANSLATION_MARKERS = re.compile(
+    r"machine\s+translated|traduit\s+automatiquement|"
+    r"translated\s+by\s+google|automatische\s+ubersetzung|"
+    r"traduccion\s+automatica|machinaal\s+vertaald",
+    re.IGNORECASE,
+)
+
+
 def text_is_mis_decoded(text: str) -> bool:
     """Whether *text* is dominated by Latin-1 supplement characters.
 
@@ -192,6 +210,8 @@ class TriageResult:
     is_impersonation: bool
     #: Text extracts but is systematically mis-decoded. Never usable.
     is_mis_decoded: bool
+    #: Put through a translation engine. Never the normative text.
+    is_machine_translated: bool
     #: Carries an ICS code, a standards-body banner or an official gazette.
     #: A document without one cannot say under whose authority it speaks.
     #: True for scans, whose text layer is empty for an unrelated reason.
@@ -216,6 +236,7 @@ class TriageResult:
             and not self.is_draft
             and not self.is_impersonation
             and not self.is_mis_decoded
+            and not self.is_machine_translated
             and self.has_publication_identity
             and self.proposed_role.can_fix_national_parameters
         )
@@ -232,6 +253,7 @@ class TriageResult:
             "is_draft": self.is_draft,
             "is_impersonation": self.is_impersonation,
             "is_mis_decoded": self.is_mis_decoded,
+            "is_machine_translated": self.is_machine_translated,
             "has_publication_identity": self.has_publication_identity,
             "usable_for_ndp": self.usable_for_ndp,
             "blockers": list(self.blockers),
@@ -282,6 +304,7 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
     standard = _standard_of(front, path.name)
     is_draft = _is_draft(front, path.name)
     is_mis_decoded = text_is_mis_decoded(text)
+    is_machine_translated = bool(_MACHINE_TRANSLATION_MARKERS.search(text[:4000]))
     #: Only judged when there IS a text layer: a scan legitimately shows none.
     looks_official = not text.strip() or bool(_PUBLICATION_HALLMARK.search(front))
 
@@ -290,6 +313,16 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
     )
 
     blockers: list[str] = []
+    if is_machine_translated:
+        blockers.append(
+            "TRADUCTION AUTOMATIQUE: ce document porte la marque d'un moteur "
+            "de traduction. Ce n'est le texte normatif dans AUCUNE langue — "
+            "l'organisme l'a publie dans la sienne, une machine a produit "
+            "celui-ci. Elle abime justement ce qui compte: le fichier depose "
+            "ecrit son propre indice « P 0 6-100-2 » et « N F EN 1 990 », avec "
+            "des espaces inseres dans les identifiants. Obtenir la version "
+            "publiee par l'organisme."
+        )
     if is_mis_decoded:
         blockers.append(
             "TEXTE MAL DECODE: la police du PDF ne porte pas de table de "
@@ -350,6 +383,7 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
         is_draft=is_draft,
         is_impersonation=is_impersonation,
         is_mis_decoded=is_mis_decoded,
+        is_machine_translated=is_machine_translated,
         has_publication_identity=looks_official,
         front_matter=front,
         blockers=tuple(blockers),

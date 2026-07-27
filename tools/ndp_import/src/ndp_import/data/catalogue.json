@@ -741,14 +741,16 @@
         "languages": [
           "fr"
         ],
-        "notes": "Phase P1. Neige: zones, s_k, coefficients de forme, accumulations"
+        "notes": "ACQUIS en version texte (12 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification. Charges de neige. Document AFNOR AUTHENTIQUE: © AFNOR 2007, FA151261, ISSN 0335-3931, indice de classement P 06-113-1/NA, ICS 91.010.30 ; 91.080.01. Annexe a la NF EN 1991-1-3:2004. INCOMPLET: c'est l'edition de base de mai 2007, SANS les amendements A1 (juillet 2011) ni A2 (juillet 2022) dont l'existence est connue par une consolidation d'editeur deposee en parallele. Avant tout usage sur un projet courant, obtenir ces deux amendements aupres d'AFNOR. Aucun parametre n'est renseigne a partir de ce document."
       },
       "document_role": "national_annex",
       "phase": "P1",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "72e8940932f90b6a051b2f8a677438bcf873413646f4f7ffb3207b517d6bc026",
+      "edition_read_from_cover": "mai 2007, 1er tirage 2007-05-F"
     },
     {
       "doc_key": "FR-EN199114-NA",
