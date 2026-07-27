@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .model import (
+    DocumentRole,
     ExtractionCandidate,
     ExtractionRun,
     ReviewDecision,
@@ -169,6 +170,19 @@ def to_engine_records(
             continue
 
         doc, dec, cand = item.document, item.decision, item.candidate
+
+        # Interdiction 2, enforced at the document level: the recommended value
+        # printed in the Eurocode's own Note is not what the country adopted.
+        if not doc.role.can_fix_national_parameters:
+            raise MissingEvidence(
+                f"impossible de confirmer '{cand.parameter_name}' depuis "
+                f"{doc.reference}: ce document est de type '{doc.role.value}'. "
+                "Seule une Annexe Nationale (ou une reglementation nationale) "
+                "fixe un parametre determine nationalement. Un Eurocode de "
+                "base, meme homologue NF ou enregistre NBN, ne porte que la "
+                "valeur RECOMMANDEE."
+            )
+
         missing: list[str] = []
         if not doc.publisher.strip():
             missing.append("source officielle (publisher)")

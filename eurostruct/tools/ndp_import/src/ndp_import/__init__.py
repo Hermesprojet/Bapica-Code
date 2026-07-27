@@ -20,6 +20,7 @@ from .catalogue import (
 from .extract import extract_document, read_pages
 from .model import (
     EXTRACTOR_VERSION,
+    DocumentRole,
     DocumentStatus,
     ExtractionCandidate,
     ExtractionRun,
@@ -29,6 +30,12 @@ from .model import (
     SourceDocument,
 )
 from .patterns import PATTERNS, ParameterPattern, parse_number, patterns_for
+from .triage import (
+    TriageResult,
+    render_triage,
+    triage_batch,
+    triage_document,
+)
 from .review import (
     MissingEvidence,
     ReviewQueue,
@@ -41,9 +48,11 @@ from .review import (
 __all__ = [
     "CatalogueEntry", "load_catalogue", "missing_documents", "render_catalogue",
     "SourceDocument", "ExtractionCandidate", "ExtractionRun", "DocumentStatus",
+    "DocumentRole",
     "ReviewDecision", "ReviewOutcome", "ReviewedParameter", "EXTRACTOR_VERSION",
     "extract_document", "read_pages",
     "PATTERNS", "ParameterPattern", "patterns_for", "parse_number",
     "ReviewQueue", "load_decisions", "apply_decisions", "to_engine_records",
     "merge_into_dataset", "MissingEvidence",
+    "TriageResult", "triage_document", "triage_batch", "render_triage",
 ]

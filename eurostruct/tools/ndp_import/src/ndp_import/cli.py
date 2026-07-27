@@ -34,6 +34,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .catalogue import render_catalogue
+from .model import DocumentRole
 from .extract import extract_document
 from .model import ExtractionCandidate, ExtractionRun, SourceDocument
 from .review import (
@@ -49,7 +50,9 @@ def _load_run(path: Path) -> ExtractionRun:
     raw = json.loads(path.read_text(encoding="utf-8"))
     d = raw["document"]
     doc = SourceDocument(
-        doc_id=d["doc_id"], filename=d["filename"], country_code=d["country_code"],
+        doc_id=d["doc_id"], filename=d["filename"],
+        role=DocumentRole(d.get("role", "base_eurocode")),
+        country_code=d["country_code"],
         standard_family=d["standard_family"], part=d["part"],
         reference=d["reference"], publisher=d["publisher"], edition=d["edition"],
         effective_from=date.fromisoformat(d["effective_from"]),
@@ -83,8 +86,21 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("catalogue", help="documents officiels a obtenir")
 
+    tr = sub.add_parser("triage", help="classer des documents deposes")
+    tr.add_argument("paths", nargs="+", type=Path)
+    tr.add_argument(
+        "--needed", nargs="*", default=["EN 1992-1-1"],
+        help="normes dont le moteur a besoin (defaut: EN 1992-1-1)",
+    )
+    tr.add_argument("--json", type=Path, default=None)
+
     ex = sub.add_parser("extract", help="depouiller un document depose")
     ex.add_argument("--pdf", type=Path, required=True)
+    ex.add_argument(
+        "--role", required=True,
+        choices=[r.value for r in DocumentRole],
+        help="nature normative DECLAREE du document; un nom de fichier ne suffit pas",
+    )
     ex.add_argument("--country", required=True)
     ex.add_argument("--standard", required=True, help='ex. "EN 1992"')
     ex.add_argument("--part", required=True, help='ex. "1-1"')
@@ -112,10 +128,24 @@ def main(argv: list[str] | None = None) -> int:
         print(render_catalogue())
         return 0
 
+    if args.cmd == "triage":
+        from .triage import render_triage, triage_batch
+
+        results = triage_batch(args.paths, needed_standards=args.needed)
+        print(render_triage(results))
+        if args.json:
+            args.json.write_text(
+                json.dumps([r.to_dict() for r in results], indent=2,
+                           ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+        return 0
+
     if args.cmd == "extract":
         doc = SourceDocument(
             doc_id=SourceDocument.digest(args.pdf),
             filename=args.pdf.name,
+            role=DocumentRole(args.role),
             country_code=args.country.upper(),
             standard_family=args.standard,
             part=args.part,
