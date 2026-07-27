@@ -362,6 +362,38 @@ def render_triage(results: Sequence[TriageResult]) -> str:
             lines.append(f"           - {b}")
     lines.append("")
 
+    # Plusieurs fichiers DISTINCTS pour une meme norme: editions concurrentes,
+    # ou versions linguistiques. Le triage ne tranche pas — il ne peut pas lire
+    # une date d'edition sans la deviner — mais il refuse de laisser le choix
+    # se faire par hasard. C'est ainsi que la 1e ed. 2007 de l'ANB EN 1990 a
+    # ete enregistree alors que la 2e ed. 2013, qui la remplace explicitement,
+    # se trouvait dans le meme depot.
+    rival: dict[str, list[TriageResult]] = {}
+    for r in results:
+        if r.proposed_role is DocumentRole.NATIONAL_ANNEX and r.proposed_standard:
+            rival.setdefault(r.proposed_standard, []).append(r)
+    contested = {
+        std: rs for std, rs in rival.items() if len({x.doc_id for x in rs}) > 1
+    }
+    if contested:
+        lines.append(
+            f"{len(contested)} norme(s) avec PLUSIEURS FICHIERS DISTINCTS — "
+            "verifier laquelle est l'edition en vigueur:"
+        )
+        for std, rs in sorted(contested.items()):
+            lines.append(f"    {std}:")
+            for r in sorted(rs, key=lambda x: x.path.name):
+                lines.append(
+                    f"      - {r.path.name} ({r.page_count}p, "
+                    f"{r.text_chars} car.)"
+                )
+        lines.append(
+            "    Editions concurrentes ou versions linguistiques: la date "
+            "d'edition se lit sur la page de garde et se DECLARE. Une edition "
+            "remplacee ne doit pas servir a un projet courant."
+        )
+        lines.append("")
+
     if repeats:
         lines.append(
             f"{len(repeats)} document(s) DEJA EN MAIN — meme empreinte qu'un "

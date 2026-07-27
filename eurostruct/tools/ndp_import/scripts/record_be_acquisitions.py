@@ -44,10 +44,16 @@ _COMMON = (
 #: doc_key -> (sha256, edition read from cover, pages, language, note)
 ACQUIRED: dict[str, tuple[str, str, int, str, str]] = {
     "BE-EN1990-NA": (
-        "40a8eeac9471d7203e81ff8a03921e064775734a1ad2e7c468f8dff63f943b16",
-        "1e ed., septembre 2007", 15, "fr",
+        "cc74a2b5d0acd99cdbeeaaccba1af80d660861a57c253c97b568893ec2116a66",
+        "2e ed., janvier 2013", 33, "fr",
         "Base de calcul des structures: coefficients partiels et combinaisons "
-        "d'actions. Aucun motif d'extraction ecrit a ce jour.",
+        "d'actions. EDITION EN VIGUEUR. Sa page de garde porte « Remplace: "
+        "NBN EN 1990 ANB (2007) »; autorisation de publication du 28 septembre "
+        "2012. Annexe a la NBN EN 1990, 1e ed. juillet 2002, y compris "
+        "l'amendement NBN EN 1990/A1:2006. La 1e edition (2007, 15 pages) est "
+        "aussi detenue et enregistree comme edition anterieure — le moteur "
+        "resout l'annexe par la date de reference du projet. "
+        "Aucun motif d'extraction ecrit a ce jour.",
     ),
     "BE-EN199111-NA": (
         "16acbb56fcc160a3867ac000f91505a79724bed28f3ca58500cfcf06b7c9a58e",
@@ -89,6 +95,15 @@ ACQUIRED: dict[str, tuple[str, str, int, str, str]] = {
 #:
 #: doc_key -> (sha256, pages, why it is kept)
 ALTERNATE_COPIES: dict[str, tuple[str, int, str]] = {
+    "BE-EN1990-NA": (
+        "40a8eeac9471d7203e81ff8a03921e064775734a1ad2e7c468f8dff63f943b16", 15,
+        "EDITION ANTERIEURE, 1e ed. septembre 2007, version texte francaise. "
+        "Explicitement remplacee par la 2e ed. janvier 2013 (« Remplace: "
+        "NBN EN 1990 ANB (2007) » en couverture). Conservee, non jetee: le "
+        "moteur resout l'annexe applicable par la date de reference du projet, "
+        "et une etude anterieure a 2013 releve de cette edition. NE DOIT PAS "
+        "servir pour un projet courant.",
+    ),
     "BE-EN199113-NA": (
         "2de1dc9e81459f818abb6a2b471cf2b21b4eb2f71dbc29da1af95d2ed2d2a7d4", 9,
         "Copie NUMERISEE (0 caractere extractible) du meme nombre de pages que "
@@ -166,10 +181,13 @@ def main(argv: list[str]) -> int:
         )
         entry.setdefault("parameters_expected", [])
 
+    for key in {k for k in ALTERNATE_COPIES}:
+        by_key[key]["alternate_copies"] = []
     for key, (sha, pages, why) in ALTERNATE_COPIES.items():
-        by_key[key].setdefault("alternate_copies", []).clear()
         by_key[key]["alternate_copies"].append(
-            {"doc_id_sha256": sha, "page_count": pages, "machine_readable": False,
+            {"doc_id_sha256": sha, "page_count": pages,
+             # La 1e ed. d'EN 1990 EST lisible; les autres copies sont des scans.
+             "machine_readable": key == "BE-EN1990-NA",
              "notes": why}
         )
 
