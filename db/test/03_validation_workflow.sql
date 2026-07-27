@@ -261,6 +261,125 @@ end
 $$;
 
 
+-- ---------------------------------------------------------------------
+-- 8. Qui a le droit de signer — validation METIER (niveau 2 sur 3)
+--
+-- La signature revient au bureau d'etudes qui realise l'etude. Aucun tiers
+-- exterieur n'est requis. Mais le signataire doit etre membre ACTIF de
+-- l'organisation du projet, et porter le role de validation technique.
+-- ---------------------------------------------------------------------
+do $$
+declare ok boolean; org uuid; proj uuid; calc uuid; outsider uuid;
+begin
+  -- Un projet qui porte REELLEMENT un calcul: prendre le premier projet venu
+  -- donnait un calculation_id null, et l'insertion echouait sur la contrainte
+  -- de non-nullite au lieu du controle qu'on veut eprouver.
+  select c.id, p.id, p.org_id into calc, proj, org
+    from calculations c join projects p on p.id = c.project_id
+   order by c.id limit 1;
+
+  -- 8a. Un compte qui n'est membre de rien ne signe pas.
+  outsider := '99999999-9999-9999-9999-999999999999';
+  insert into auth.users (id, email) values (outsider, 'tiers@ailleurs.example')
+    on conflict (id) do nothing;
+
+  ok := false;
+  begin
+    insert into validations (org_id, project_id, calculation_id, validated_by,
+                             validator_name, validator_role, statement,
+                             engine_version, ndp_set_version, inputs_hash)
+    values (org, proj, calc, outsider, 'Tiers Exterieur',
+            'validating_engineer', 'Je valide', '0.3.0', '0.1.0-draft', 'sha256:x');
+  exception when insufficient_privilege then ok := true;
+  end;
+  if not ok then
+    raise exception 'un non-membre a pu signer une validation';
+  end if;
+
+  -- 8b. Un membre desactive ne signe plus, meme avec le bon role.
+  insert into organization_members (org_id, user_id, role, is_active, deactivated_at)
+  values (org, outsider, 'validating_engineer', false, now())
+  on conflict (org_id, user_id) do update
+    set role = 'validating_engineer', is_active = false, deactivated_at = now();
+
+  ok := false;
+  begin
+    insert into validations (org_id, project_id, calculation_id, validated_by,
+                             validator_name, validator_role, statement,
+                             engine_version, ndp_set_version, inputs_hash)
+    values (org, proj, calc, outsider, 'Ancien Collaborateur',
+            'validating_engineer', 'Je valide', '0.3.0', '0.1.0-draft', 'sha256:x');
+  exception when check_violation then ok := true;
+  end;
+  if not ok then
+    raise exception 'un membre desactive a pu signer une validation';
+  end if;
+
+  -- 8c. Une raison sociale ne signe pas: il faut un nom de personne.
+  update organization_members set is_active = true, deactivated_at = null
+   where org_id = org and user_id = outsider;
+
+  ok := false;
+  begin
+    insert into validations (org_id, project_id, calculation_id, validated_by,
+                             validator_name, validator_role, statement,
+                             engine_version, ndp_set_version, inputs_hash)
+    values (org, proj, calc, outsider, '   ',
+            'validating_engineer', 'Je valide', '0.3.0', '0.1.0-draft', 'sha256:x');
+  exception when check_violation then ok := true;
+  end;
+  if not ok then
+    raise exception 'une signature sans nom de personne a ete acceptee';
+  end if;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 9. Le role et le numero d'inscription sont DERIVES, jamais crus sur parole
+-- ---------------------------------------------------------------------
+-- Regression: une reecriture de check_validator_is_authorised() avait
+-- supprime ces deux derivations sans que rien ne le signale, sinon ce test.
+do $$
+declare org uuid; proj uuid; calc uuid; signer uuid; v record;
+begin
+  -- Un projet qui porte REELLEMENT un calcul: prendre le premier projet venu
+  -- donnait un calculation_id null, et l'insertion echouait sur la contrainte
+  -- de non-nullite au lieu du controle qu'on veut eprouver.
+  select c.id, p.id, p.org_id into calc, proj, org
+    from calculations c join projects p on p.id = c.project_id
+   order by c.id limit 1;
+  signer := 'a1a1a1a1-0000-0000-0000-000000000009';
+
+  insert into auth.users (id, email) values (signer, 'ing@bureau.example')
+    on conflict (id) do nothing;
+  insert into organization_members (org_id, user_id, role, professional_id)
+  values (org, signer, 'validating_engineer', 'BE-ING-9099')
+  on conflict (org_id, user_id) do update
+    set role = 'validating_engineer', professional_id = 'BE-ING-9099';
+
+  -- On MENT sur le role: la ligne doit etre corrigee depuis l'adhesion.
+  insert into validations (id, org_id, project_id, calculation_id, validated_by,
+                           validator_name, validator_role, statement,
+                           engine_version, ndp_set_version, inputs_hash)
+  values ('77777777-0000-0000-0000-000000000009', org, proj, calc, signer,
+          'Ingenieur Du Bureau', 'viewer', 'Je valide',
+          '0.3.0', '0.1.0-draft', 'sha256:y');
+
+  select * into v from validations
+   where id = '77777777-0000-0000-0000-000000000009';
+  if v.validator_role <> 'validating_engineer' then
+    raise exception 'validator_role n''a pas ete derive de l''adhesion: %',
+      v.validator_role;
+  end if;
+  if v.professional_id is distinct from 'BE-ING-9099' then
+    raise exception 'le numero d''inscription n''a pas ete fige: %',
+      v.professional_id;
+  end if;
+end
+$$;
+
+
 \echo ''
 \echo '================================================='
 \echo ' EPIC 4: workflow de validation verifie.'
