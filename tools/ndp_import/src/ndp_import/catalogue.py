@@ -51,7 +51,31 @@ class CatalogueEntry:
 
     @property
     def acquired(self) -> bool:
+        """Whether a file is held at all — readable, whatever its authority."""
         return self.status != "not_acquired"
+
+    @property
+    def is_authoritative(self) -> bool:
+        """Whether the held file is the text that GOVERNS.
+
+        Two very different things get called "having the document":
+
+        ``acquired``
+            A readable file is in hand. Enough to prepare: locate the clauses,
+            build the review dossier, write the extraction patterns.
+
+        ``acquired`` **and** ``is_authoritative``
+            That file is the published standard itself. Only then may a value
+            read from it be confirmed.
+
+        The French National Annexes arrived as publisher's consolidations whose
+        own covers state « seules les Normes individuellement homologuees et
+        composant cette compilation font foi », watermarked with another
+        organisation's licence. They are perfectly readable and they are not
+        what governs. Collapsing the two states would let a value be confirmed
+        against a document that disclaims being the source.
+        """
+        return self.status == "acquired"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -139,18 +163,33 @@ def render_catalogue(entries: tuple[CatalogueEntry, ...] | None = None) -> str:
                     f"  [{len(e.parameters_expected)} parametres]"
                     if e.parameters_expected else ""
                 )
-                # Marque ce qui est en main. Sans elle, ce rapport annoncait
-                # comme « a obtenir » des documents deja lus.
-                mark = "[EN MAIN] " if e.acquired else "          "
+                # Marque ce qui est en main, et distingue ce qui FAIT FOI.
+                # Sans la premiere, ce rapport annonçait comme « a obtenir »
+                # des documents deja lus; sans la seconde, une consolidation
+                # d'editeur se lirait comme la norme elle-meme.
+                mark = (
+                    "[EN MAIN] " if e.is_authoritative
+                    else "[LECTURE] " if e.acquired
+                    else "          "
+                )
                 lines.append(f"    {mark}{e.reference:<44} {cost:<8}{params}")
             lines.append("")
 
+    reading = [e for e in entries if e.acquired and not e.is_authoritative]
     if held:
         lines.append(
-            f"{len(held)} document(s) EN MAIN. Les detenir ne confirme AUCUNE "
+            f"{len(held) - len(reading)} document(s) EN MAIN qui font foi, "
+            f"{len(reading)} en LECTURE SEULE. Les detenir ne confirme AUCUNE "
             "valeur: seule la decision nominative d'un ingenieur habilite fait "
             "passer un parametre en 'confirmed'. Le mode strict reste bloque."
         )
+        if reading:
+            lines.append(
+                "  [LECTURE] = fichier lisible qui ne fait PAS foi "
+                "(consolidation d'editeur, copie licenciee a un tiers). "
+                "Il sert a preparer le depouillement; il ne peut appuyer "
+                "aucune valeur confirmee."
+            )
     else:
         lines.append(
             "Aucun de ces documents n'est acquis. Tant qu'ils ne sont pas "

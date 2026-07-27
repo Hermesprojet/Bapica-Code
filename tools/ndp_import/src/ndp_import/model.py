@@ -119,6 +119,17 @@ class SourceDocument:
     deposited_at: str
     effective_to: date | None = None
     notes: str | None = None
+    #: Whether this FILE is the published standard, or a rendering of it.
+    #:
+    #: A publisher's consolidation, a copy licensed to another organisation, a
+    #: translation: all readable, none of them what governs. The French NAs
+    #: arrived that way, with covers stating « seules les Normes
+    #: individuellement homologuees et composant cette compilation font foi ».
+    #:
+    #: Declared by the depositor like everything else here. Defaults to True
+    #: because the ordinary case is a real standard; setting it False is a
+    #: statement that this file only serves to PREPARE the reading.
+    is_authoritative: bool = True
 
     @staticmethod
     def digest(path: Path) -> str:

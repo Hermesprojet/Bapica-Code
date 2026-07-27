@@ -181,7 +181,8 @@ def test_catalogue_report_does_not_deny_what_is_in_hand() -> None:
 
     text = render_catalogue(entries)
     assert "Aucun de ces documents n'est acquis" not in text
-    assert f"{len(held)} document(s) EN MAIN" in text
+    authoritative = [e for e in entries if e.is_authoritative]
+    assert f"{len(authoritative)} document(s) EN MAIN qui font foi" in text
     assert "[EN MAIN]" in text
     # ...et la detention ne doit jamais se lire comme une confirmation.
     assert "ne confirme AUCUNE valeur" in text
@@ -910,6 +911,51 @@ def test_out_of_scope_standard_is_reported(tmp_path) -> None:
     assert r.proposed_role is DocumentRole.NATIONAL_ANNEX
     assert r.usable_for_ndp          # it is a usable annex...
     assert any("hors des normes" in b for b in r.blockers)  # ...for another standard
+
+
+def test_a_non_authoritative_file_can_never_confirm_a_value(run) -> None:
+    """A readable file is not necessarily the text that governs.
+
+    The French NAs arrived as publisher's consolidations whose own covers say
+    « seules les Normes individuellement homologuees et composant cette
+    compilation font foi », watermarked with another organisation's licence.
+    They are perfectly usable to PREPARE the reading and must never back a
+    confirmed value: the note de calcul would cite a document that denies
+    being the source.
+    """
+    import dataclasses
+
+    reading_only = dataclasses.replace(run.doc, is_authoritative=False)
+    cand = run.candidates[0]
+    decision = ReviewDecision(
+        candidate_id=cand.candidate_id, outcome=ReviewOutcome.ACCEPTED,
+        verified_by="ing. C. Meunier", verified_at="2026-07-27T10:00:00+00:00",
+        final_value=0.85, source_page=cand.page,
+    )
+    item = ReviewedParameter(
+        candidate=cand, decision=decision, document=reading_only
+    )
+    with pytest.raises(MissingEvidence, match="NON OPPOSABLE"):
+        to_engine_records([item])
+
+    # Le meme document declare opposable passe: c'est bien ce seul champ qui
+    # bloque, pas un effet de bord.
+    ok = ReviewedParameter(candidate=cand, decision=decision, document=run.doc)
+    assert to_engine_records([ok])
+
+
+def test_the_catalogue_separates_holding_from_authority() -> None:
+    """Two states, and the report must not merge them."""
+    from ndp_import import load_catalogue, render_catalogue
+
+    entries = load_catalogue()
+    for e in entries:
+        if e.is_authoritative:
+            assert e.acquired, f"{e.doc_key}: fait foi sans etre detenu"
+
+    text = render_catalogue(entries)
+    assert "[EN MAIN]" in text
+    assert "ne confirme AUCUNE valeur" in text
 
 
 def test_base_eurocode_can_never_be_confirmed(run) -> None:

@@ -200,6 +200,20 @@ def to_engine_records(
                 "valeur RECOMMANDEE."
             )
 
+        # Un fichier lisible n'est pas forcement le texte qui fait foi. Une
+        # consolidation d'editeur declare elle-meme le contraire; confirmer
+        # une valeur contre elle citerait, dans la note de calcul, un document
+        # qui nie etre la source.
+        if not doc.is_authoritative:
+            raise MissingEvidence(
+                f"impossible de confirmer '{cand.parameter_name}' depuis "
+                f"{doc.reference}: ce fichier est declare NON OPPOSABLE "
+                "(consolidation d'editeur, copie licenciee a un tiers, "
+                "traduction). Il sert a preparer le depouillement — reperer "
+                "les clauses, batir le dossier de relecture — mais une valeur "
+                "confirmee doit citer la norme publiee par l'organisme."
+            )
+
         missing: list[str] = []
         if not doc.publisher.strip():
             missing.append("source officielle (publisher)")
