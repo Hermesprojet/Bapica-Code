@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Final, Iterable, Sequence
 
 from ..exceptions import (
+    ConditionalParameterNeedsContext,
     DeprecatedNationalParameter,
     NationalAnnexIncomplete,
     UnrepresentableNationalParameter,
@@ -34,6 +35,7 @@ from .model import (
     CountryRegistry,
     NationalAnnex,
     NationalParameter,
+    ParameterVariant,
     RegulatoryFramework,
     SourceType,
     ValidationStatus,
@@ -287,12 +289,23 @@ class ParameterSet:
             raise NationalAnnexIncomplete(report)
 
     # --- access -----------------------------------------------------------
-    def get(self, key: str, journal: Journal | None = None) -> Quantity:
+    def get(
+        self,
+        key: str,
+        journal: Journal | None = None,
+        *,
+        condition: str | None = None,
+    ) -> Quantity:
         """Fetch a parameter, recording its provenance in *journal*.
 
         Prefer calling :meth:`require` once up front: this method raises on the
         first problem it meets, which is the right behaviour for a single
         lookup but a poor experience as a discovery mechanism.
+
+        :param condition: which verification is being performed, for parameters
+            the National Annex branches. Mandatory for those, refused for the
+            others — passing one where the annex defines no branch would look
+            like the condition had been honoured when nothing checked it.
         """
         p = self.find(key)
         if p is None:
@@ -321,16 +334,33 @@ class ParameterSet:
                 key, self.registry.country_code, p.validation_status.value
             )
 
-        if p.parameter_value is None:  # pragma: no cover - guarded above
+        if p.is_conditional:
+            if condition is None or condition not in p.conditions:
+                raise ConditionalParameterNeedsContext(key, p.conditions, condition)
+            value = p.value_for(condition)
+        else:
+            if condition is not None:
+                raise ValueError(
+                    f"cas '{condition}' fourni pour '{key}', qui ne definit "
+                    "aucune variante. Le passer laisserait croire qu'une "
+                    "condition a ete honoree alors que rien ne l'a verifiee."
+                )
+            value = p.parameter_value
+
+        if value is None:  # pragma: no cover - guarded above
             raise UnrepresentableNationalParameter(key, p.notes)
 
-        q = Q_(p.parameter_value, p.unit)
+        q = Q_(value, p.unit)
         if journal is not None and key not in journal._index:  # noqa: SLF001
             journal.input(
                 symbol=key,
                 description=p.description,
                 value=q,
-                provenance=Provenance.national_annex(key, _provenance_detail(p)),
+                provenance=Provenance.national_annex(
+                    key,
+                    _provenance_detail(p)
+                    + (f" [cas: {condition}]" if condition else ""),
+                ),
                 clause=_clause_of(p),
             )
         return q
@@ -452,6 +482,13 @@ def load_country_registry(country: str) -> CountryRegistry:
                 clause=item["clause"],
                 description=item["description"],
                 en_recommended=item.get("en_recommended"),
+                variants=tuple(
+                    ParameterVariant(
+                        condition=v["condition"], value=float(v["value"]),
+                        description=v["description"],
+                    )
+                    for v in item.get("variants", [])
+                ),
             )
             for name, item in sorted(a["parameters"].items())
         )

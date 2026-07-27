@@ -28,7 +28,7 @@
       "source_url_or_doc_id": "https://www.nbn.be",
       "parameters": {
         "alpha_cc": {
-          "parameter_value": 0.85,
+          "parameter_value": null,
           "unit": "dimensionless",
           "clause": "§3.1.6(1)P",
           "description": "Coefficient tenant compte des effets de longue duree sur la resistance en compression du beton (domaine EN: 0,8 a 1,0)",
@@ -37,9 +37,21 @@
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 10. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §3.1.6(1)P: « Pour les verifications a l'ELU de la resistance a l'effort normal, la flexion simple ou composee, la valeur de alpha_cc vaut 0,85. Pour les autres cas, alpha_cc vaut 1,0. » ECART par rapport a la valeur recommandee EN (1,0). ATTENTION: valeur CONDITIONNELLE — 0,85 en flexion, 1,0 dans les autres cas. Le moteur ne stocke qu'un scalaire et retient 0,85, ce qui est le cas couvert par le module de flexion. Toute extension a d'autres sollicitations devra modeliser la condition.",
+          "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 10. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Valeur CONDITIONNELLE, portee par des variantes: 0,85 pour effort normal et flexion, 1,0 pour les autres cas. Aucune valeur unique n'est stockee — un scalaire serait lu par tout module qui oublie de preciser la verification.",
           "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
-          "source_page": 10
+          "source_page": 10,
+          "variants": [
+            {
+              "condition": "axial_and_bending",
+              "value": 0.85,
+              "description": "§3.1.6(1)P: « Pour les verifications a l'ELU de la resistance a l'effort normal, la flexion simple ou composee, la valeur de alpha_cc vaut 0,85. »"
+            },
+            {
+              "condition": "other",
+              "value": 1.0,
+              "description": "§3.1.6(1)P: « Pour les autres cas, alpha_cc vaut 1,0. » Couvre notamment l'effort tranchant, la torsion et le poinconnement."
+            }
+          ]
         },
         "alpha_ct": {
           "parameter_value": 1.0,

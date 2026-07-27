@@ -87,7 +87,7 @@ def main() -> int:
                     "effective_from, effective_to, parameter_name, parameter_value, "
                     "unit, source_official, source_url_or_doc_id, source_type, "
                     "validation_status, verified_at, verified_by, notes, clause, "
-                    "description, en_recommended)\n"
+                    "description, en_recommended, has_variants)\n"
                     f"select a.id, {q(country)}::country_code, "
                     f"{q(annex['standard_family'])}, {q(annex['part'])}, "
                     f"{q(annex['reference'])}, {q(annex['edition'])}, "
@@ -104,7 +104,8 @@ def main() -> int:
                     + ("::timestamptz" if item.get("verified_at") else "")
                     + ", null, "
                     f"{q(item.get('notes'))}, {q(item['clause'])}, "
-                    f"{q(item['description'])}, {num(item.get('en_recommended'))}\n"
+                    f"{q(item['description'])}, {num(item.get('en_recommended'))}, "
+                    f"{'true' if item.get('variants') else 'false'}\n"
                     "from national_annexes a\n"
                     f"where a.country_code = {q(country)}::country_code\n"
                     f"  and a.standard_family = {q(annex['standard_family'])}\n"
@@ -113,6 +114,19 @@ def main() -> int:
                     "on conflict (country_code, standard_family, part, "
                     "parameter_name, effective_from) do nothing;"
                 )
+                for v in item.get("variants", []):
+                    out.append(
+                        "insert into national_annex_parameter_variants "
+                        "(parameter_id, condition, value, description)\n"
+                        f"select p.id, {q(v['condition'])}, {num(v['value'])}, "
+                        f"{q(v['description'])}\n"
+                        "from national_annex_parameters p\n"
+                        f"where p.country_code = {q(country)}::country_code\n"
+                        f"  and p.standard_family = {q(annex['standard_family'])}\n"
+                        f"  and p.part = {q(annex['part'])}\n"
+                        f"  and p.parameter_name = {q(name)}\n"
+                        "on conflict (parameter_id, condition) do nothing;"
+                    )
             out.append("")
 
     out.append("commit;")

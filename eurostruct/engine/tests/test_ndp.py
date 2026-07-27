@@ -15,6 +15,7 @@ from eurostruct_engine.basis import DesignSituation
 from eurostruct_engine.ec2 import RectangularSection, design_flexure
 from eurostruct_engine.ec2.beam_flexure import EC2_11, required_parameters
 from eurostruct_engine.exceptions import (
+    ConditionalParameterNeedsContext,
     DeprecatedNationalParameter,
     NationalAnnexIncomplete,
     UnrepresentableNationalParameter,
@@ -159,7 +160,9 @@ def test_non_strict_mode_allows_exploratory_work() -> None:
     p = load_parameter_set("BE", strict=False, as_of=AS_OF)
     assert p.preflight(required_parameters(DesignSituation.PERSISTENT)).ok
     # Valeur belge relevee dans l'ANB, non encore confirmee par un ingenieur.
-    assert p.get(f"{EC2_11}:alpha_cc").magnitude == 0.85
+    # alpha_cc est conditionnel: il faut dire quelle verification on fait.
+    assert p.get(f"{EC2_11}:alpha_cc", condition="axial_and_bending").magnitude == 0.85
+    assert p.get(f"{EC2_11}:alpha_cc", condition="other").magnitude == 1.0
 
 
 def test_missing_parameter_is_never_defaulted() -> None:
@@ -251,13 +254,84 @@ def test_a_value_may_not_go_missing_without_saying_why() -> None:
 
     ps = load_parameter_set("BE", strict=False, as_of=AS_OF)
     annex = ps.registry.annexes[0]
-    alpha = next(p for p in annex.parameters if p.parameter_name == "alpha_cc")
+    # Un parametre scalaire ordinaire, sans variantes.
+    scalar = next(p for p in annex.parameters if p.parameter_name == "As_min_coeff")
     cot = next(p for p in annex.parameters if p.parameter_name == "cot_theta_max")
 
     with pytest.raises(ValueError, match="not_representable"):
-        dataclasses.replace(alpha, parameter_value=None)      # value lost
+        dataclasses.replace(scalar, parameter_value=None)     # value lost
     with pytest.raises(ValueError, match="not_representable"):
         dataclasses.replace(cot, parameter_value=2.5)         # value invented
+
+
+# ---------------------------------------------------------------------------
+# Parametres conditionnels — l'annexe donne plusieurs valeurs selon le cas
+# ---------------------------------------------------------------------------
+def test_belgian_alpha_cc_has_two_branches_and_no_default() -> None:
+    """§3.1.6(1)P: 0,85 en flexion, 1,0 « pour les autres cas ».
+
+    Aucune valeur unique n'est stockee. Un scalaire serait lu par tout module
+    qui oublie de preciser sa verification — c'est exactement l'erreur que
+    l'effort tranchant aurait commise en heritant du 0,85 de la flexion.
+    """
+    p = load_parameter_set("BE", strict=False, as_of=AS_OF).find(f"{EC2_11}:alpha_cc")
+    assert p is not None
+    assert p.is_conditional
+    assert p.parameter_value is None
+    assert set(p.conditions) == {"axial_and_bending", "other"}
+    assert p.value_for("axial_and_bending") == 0.85
+    assert p.value_for("other") == 1.0
+
+
+def test_reading_a_conditional_parameter_without_a_case_is_refused() -> None:
+    ps = load_parameter_set("BE", strict=False, as_of=AS_OF)
+    with pytest.raises(ConditionalParameterNeedsContext, match="aucun cas"):
+        ps.get(f"{EC2_11}:alpha_cc")
+
+
+def test_an_unknown_case_is_refused_rather_than_approximated() -> None:
+    ps = load_parameter_set("BE", strict=False, as_of=AS_OF)
+    with pytest.raises(ConditionalParameterNeedsContext) as e:
+        ps.get(f"{EC2_11}:alpha_cc", condition="fatigue")
+    assert "n'est pas prevu" in str(e.value)
+    assert e.value.conditions == ("axial_and_bending", "other")
+
+
+def test_a_case_on_an_unconditional_parameter_is_refused() -> None:
+    """Passer un cas la ou l'annexe n'en definit aucun donnerait le change."""
+    ps = load_parameter_set("BE", strict=False, as_of=AS_OF)
+    with pytest.raises(ValueError, match="ne definit"):
+        ps.get(f"{EC2_11}:As_min_coeff", condition="axial_and_bending")
+
+
+def test_a_conditional_parameter_may_not_also_carry_a_default() -> None:
+    import dataclasses
+
+    from eurostruct_engine.ndp.model import ParameterVariant
+
+    ps = load_parameter_set("BE", strict=False, as_of=AS_OF)
+    alpha = ps.find(f"{EC2_11}:alpha_cc")
+    assert alpha is not None
+    with pytest.raises(ValueError, match="valeur par defaut"):
+        dataclasses.replace(alpha, parameter_value=0.85)
+    with pytest.raises(ValueError, match="en double"):
+        dataclasses.replace(
+            alpha,
+            variants=(*alpha.variants, ParameterVariant("other", 0.9, "doublon")),
+        )
+
+
+def test_flexure_declares_the_case_it_computes() -> None:
+    """Le journal doit montrer QUELLE branche a servi, pas seulement sa valeur."""
+    r = design_flexure(
+        section=RectangularSection(b=Q_(300, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm")),
+        concrete=concrete("C30/37"), steel=reinforcement("B500B"),
+        M_Ed=Q_(250, "kN*m"),
+        params=load_parameter_set("BE", strict=False, as_of=AS_OF),
+    )
+    step = r.journal.get(f"{EC2_11}:alpha_cc")
+    assert step.value.magnitude == 0.85
+    assert "axial_and_bending" in step.provenance.detail
 
 
 # ---------------------------------------------------------------------------

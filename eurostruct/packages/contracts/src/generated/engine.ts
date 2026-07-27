@@ -222,6 +222,7 @@ export interface NdpEntryDTO {
   standard_family: string;
   unit: string;
   validation_status: ValidationStatusDTO;
+  variants?: ParameterVariantDTO[];
   verified_at?: string | null;
   verified_by?: string | null;
 }
@@ -239,6 +240,15 @@ export interface NdpSummaryDTO {
   strict: boolean;
   /** Parameters not yet confirmed against the published National Annex. */
   unverified: string[];
+}
+
+/** One branch of a parameter the National Annex makes conditional. Belgium's alpha_cc is 0,85 for axial force and bending, 1,0 otherwise. The frontend must never collapse this to one number for display without saying which case it shows. */
+export interface ParameterVariantDTO {
+  /** Which verification this branch applies to, matched exactly. */
+  condition: string;
+  /** What the annex says about this branch. */
+  description: string;
+  value: number;
 }
 
 /** Result of checking every required national parameter before running. Returned in full on refusal, so the user fixes the whole list in one pass. */
