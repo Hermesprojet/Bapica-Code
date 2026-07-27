@@ -387,7 +387,12 @@ def design_flexure(
     suffix = situation.partial_factor_suffix
     gamma_C = float(params.get(f"{EC2_11}:gamma_C_{suffix}", j).magnitude)
     gamma_S = float(params.get(f"{EC2_11}:gamma_S_{suffix}", j).magnitude)
-    alpha_cc = float(params.get(f"{EC2_11}:alpha_cc", j).magnitude)
+    # §3.1.6(1)P: la flexion simple releve du cas « effort normal et flexion ».
+    # L'Annexe belge y met 0,85 et 1,0 partout ailleurs; le module doit dire
+    # lequel il applique, il n'a pas le droit de se voir servir un defaut.
+    alpha_cc = float(
+        params.get(f"{EC2_11}:alpha_cc", j, condition="axial_and_bending").magnitude
+    )
     k1 = float(params.get(f"{EC2_11}:k1_redistribution", j).magnitude)
     k2 = float(params.get(f"{EC2_11}:k2_redistribution", j).magnitude)
     as_min_coeff = float(params.get(f"{EC2_11}:As_min_coeff", j).magnitude)

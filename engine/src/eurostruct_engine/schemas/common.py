@@ -28,6 +28,7 @@ __all__ = [
     "VerificationReportDTO",
     "ValidationStatusDTO",
     "SourceTypeDTO",
+    "ParameterVariantDTO",
     "NdpEntryDTO",
     "NationalAnnexDTO",
     "RegulatoryFrameworkDTO",
@@ -162,6 +163,21 @@ class ValidationStatusDTO(str, Enum):
     NOT_REPRESENTABLE = "not_representable"
 
 
+class ParameterVariantDTO(Strict):
+    """One branch of a parameter the National Annex makes conditional.
+
+    Belgium's alpha_cc is 0,85 for axial force and bending, 1,0 otherwise. The
+    frontend must never collapse this to one number for display without saying
+    which case it shows.
+    """
+
+    condition: str = Field(
+        description="Which verification this branch applies to, matched exactly."
+    )
+    value: float
+    description: str = Field(description="What the annex says about this branch.")
+
+
 class SourceTypeDTO(str, Enum):
     NATIONAL_ANNEX = "national_annex"
     EN_RECOMMENDED = "en_recommended"
@@ -185,10 +201,13 @@ class NdpEntryDTO(Strict):
     effective_from: str
     effective_to: str | None = None
     parameter_name: str
-    #: ``null`` when ``validation_status`` is ``not_representable``: the annex
-    #: prescribes something no single number can stand for, and the contract
-    #: says so rather than shipping a placeholder.
+    #: ``null`` when ``validation_status`` is ``not_representable`` (nothing to
+    #: store), or when ``variants`` is non-empty (the value depends on which
+    #: check is being made, and a default would be read by every caller that
+    #: forgot to say). The contract says so rather than shipping a placeholder.
     parameter_value: float | None
+    #: Per-check branches. When present, a consumer MUST pick by ``condition``.
+    variants: list["ParameterVariantDTO"] = Field(default_factory=list)
     unit: str
     source_official: str
     source_url_or_doc_id: str | None = None

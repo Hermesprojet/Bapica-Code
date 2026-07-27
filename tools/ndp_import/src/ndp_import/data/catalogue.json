@@ -618,14 +618,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Fixe les exigences de resistance au feu (R/EI) par type de batiment. Determine CE QU'IL FAUT verifier; les EN 199x-1-2 disent COMMENT."
+        "notes": "ACQUIS en version texte (29 pages, langue fr+nl+de). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Arrete Royal — Annexe 6 « Normes de base » resistance au feu. Publie au Moniteur Belge, donc OPPOSABLE de plein droit, contrairement a une norme NBN qui doit etre rendue obligatoire. Fixe les exigences R par type et hauteur de batiment. Le PDF melange les trois langues nationales dans un meme flux de texte: un depouillement automatique devra les separer avant toute lecture."
       },
       "document_role": "national_regulation",
       "phase": "FEU",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "63dc2ef0905b966dec980615aaee14aba39bf17f152d5e4acb405d97f6b07f5b",
+      "edition_read_from_cover": "Moniteur Belge du 15.07.2009, Ed. 2, p. 49369"
     },
     {
       "doc_key": "BE-NBN-S21-204",
@@ -642,14 +644,42 @@
           "fr",
           "nl"
         ],
-        "notes": "Complete l'AR pour les batiments scolaires et assimiles."
+        "notes": "ACQUIS en version texte (50 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. NBN S 21-204 — Protection incendie dans les batiments, batiments SCOLAIRES. La page de garde ne porte ni date ni numero d'edition reperable (50 pages, 19029 caracteres): l'edition reste A ETABLIR par le deposant et n'est pas deduite. Portee restreinte aux batiments scolaires, ce que le titre du catalogue ne disait pas."
       },
       "document_role": "national_regulation",
       "phase": "FEU",
-      "status": "not_acquired",
+      "status": "acquired",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "doc_id_sha256": "129c5b7b8a7e6e8fececcae94dd3172f14fce4e2ce43329757544cafb7999d03",
+      "edition_read_from_cover": "edition NON LUE sur la page de garde"
+    },
+    {
+      "doc_key": "BE-NBN-S21-208-1",
+      "country_code": "BE",
+      "standard_family": "NBN S 21-208",
+      "part": "1",
+      "reference": "NBN S 21-208-1",
+      "title": "Protection incendie dans les batiments — conception et calcul des installations d'evacuation de fumees et de chaleur (EFC), partie 1: grands espaces interieurs non cloisonnes s'etendant sur un niveau",
+      "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be, ou consultation en salle de lecture NBN.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "ACQUIS en version texte (44 pages, langue fr+nl). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. NBN S 21-208-1 — Evacuation de fumees et de chaleur (EFC), grands espaces interieurs non cloisonnes sur un niveau. Ne figurait pas au catalogue: le document etait en main, lisible, et invisible du rapport « a obtenir ». Edition de 1995: verifier qu'aucune revision n'est parue avant de s'en servir."
+      },
+      "document_role": "national_regulation",
+      "phase": "FEU",
+      "status": "acquired",
+      "edition": null,
+      "effective_from": null,
+      "parameters_expected": [],
+      "doc_id_sha256": "ba5ec888933fb68d4b96bb8ac73478bfecce5b665ec1b39d5014ea2c64ea66b9",
+      "edition_read_from_cover": "1e ed., mai 1995"
     },
     {
       "doc_key": "FR-EN1990-NA",

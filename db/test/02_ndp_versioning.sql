@@ -97,6 +97,72 @@ $$;
 
 
 -- ---------------------------------------------------------------------
+-- 0 bis. Un parametre conditionnel porte ses branches, jamais un defaut
+-- ---------------------------------------------------------------------
+do $$
+declare ok boolean := false; n integer; target uuid;
+begin
+  select id into target from national_annex_parameters
+   where country_code = 'BE' and parameter_name = 'alpha_cc';
+
+  -- alpha_cc belge: 0,85 en flexion, 1,0 sinon, et AUCUNE valeur unique.
+  perform 1 from national_annex_parameters
+   where id = target and has_variants and parameter_value is null;
+  if not found then
+    raise exception
+      'alpha_cc belge porte une valeur unique alors que l''ANB §3.1.6(1)P en '
+      'donne deux selon la verification';
+  end if;
+
+  select count(*) into n from national_annex_parameter_variants
+   where parameter_id = target;
+  if n <> 2 then
+    raise exception 'attendu 2 branches pour alpha_cc, trouve %', n;
+  end if;
+
+  perform 1 from national_annex_parameter_variants
+   where parameter_id = target and condition = 'axial_and_bending' and value = 0.85;
+  if not found then raise exception 'branche flexion absente ou <> 0,85'; end if;
+
+  perform 1 from national_annex_parameter_variants
+   where parameter_id = target and condition = 'other' and value = 1.0;
+  if not found then raise exception 'branche « autres cas » absente ou <> 1,0'; end if;
+
+  -- Une branche publiee ne se reecrit pas plus qu'une valeur.
+  begin
+    update national_annex_parameter_variants set value = 0.9
+     where parameter_id = target and condition = 'other';
+  exception when restrict_violation then ok := true;
+  end;
+  if not ok then
+    raise exception 'une branche de parametre national a pu etre ecrasee';
+  end if;
+
+  -- Et on ne peut pas porter a la fois des branches et une valeur unique.
+  ok := false;
+  begin
+    insert into national_annex_parameters (
+      annex_id, country_code, standard_family, part, national_annex_reference,
+      edition, effective_from, parameter_name, parameter_value, unit,
+      source_official, source_type, validation_status, clause, description,
+      has_variants)
+    select annex_id, country_code, standard_family, part,
+           national_annex_reference, edition, effective_from,
+           'parametre_avec_defaut_et_branches', 0.85, unit, source_official,
+           source_type, 'pending_verification', clause, description, true
+      from national_annex_parameters where id = target;
+  exception when check_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'un parametre a branches a pu porter aussi une valeur unique, qui '
+      'servirait de defaut au premier appelant distrait';
+  end if;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
 -- 1. Ecrasement d'une valeur interdit
 -- ---------------------------------------------------------------------
 do $$
@@ -106,9 +172,17 @@ begin
   -- le declencheur ne se plaint qu'en cas de changement reel (is distinct
   -- from), donc un litteral egal au seed passerait sans rien prouver. C'est
   -- exactement ce qui est arrive quand alpha_cc belge est passe de 1,0 a 0,85.
+  --
+  -- Et le parametre d'essai doit porter une VALEUR SCALAIRE. alpha_cc servait
+  -- ici jusqu'a ce qu'il devienne conditionnel: sa valeur est alors null,
+  -- « null + 1 » vaut null, l'update redevient un no-op et le test echouait en
+  -- annonçant qu'un ecrasement etait passe. Meme piege, deuxieme fois.
   select id, parameter_value into target, current_value
     from national_annex_parameters
-   where country_code = 'BE' and parameter_name = 'alpha_cc';
+   where country_code = 'BE' and parameter_name = 'As_min_coeff';
+  if current_value is null then
+    raise exception 'le parametre temoin doit porter une valeur scalaire';
+  end if;
 
   begin
     update national_annex_parameters

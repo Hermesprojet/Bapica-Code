@@ -21,6 +21,7 @@ __all__ = [
     "UnverifiedNationalParameter",
     "DeprecatedNationalParameter",
     "UnrepresentableNationalParameter",
+    "ConditionalParameterNeedsContext",
     "NationalAnnexIncomplete",
     "InconsistentInput",
     "UnitError",
@@ -103,6 +104,33 @@ class UnrepresentableNationalParameter(EurostructEngineError):
             f"l'Annexe Nationale le fixe sous une forme que le moteur ne sait "
             f"pas encore evaluer.{detail} Aucune valeur de substitution n'est "
             "utilisee: etendre le module de calcul avant de traiter ce cas."
+        )
+
+
+class ConditionalParameterNeedsContext(EurostructEngineError):
+    """A parameter with per-check branches was read without naming the check.
+
+    Refusing is the whole point. NBN EN 1992-1-1 ANB gives alpha_cc = 0,85 for
+    axial force and bending and 1,0 otherwise; a caller that does not say which
+    it is doing cannot be served a value, because either answer is wrong half
+    the time and neither would announce itself.
+    """
+
+    def __init__(self, key: str, conditions: tuple[str, ...], given: str | None) -> None:
+        self.key = key
+        self.conditions = conditions
+        self.given = given
+        known = ", ".join(conditions)
+        if given is None:
+            detail = (
+                "aucun cas n'a ete precise. Le module de calcul doit dire "
+                "laquelle des verifications il effectue."
+            )
+        else:
+            detail = f"le cas '{given}' n'est pas prevu par cette Annexe Nationale."
+        super().__init__(
+            f"le parametre national '{key}' prend une valeur differente selon "
+            f"la verification effectuee: {detail} Cas definis: {known}."
         )
 
 

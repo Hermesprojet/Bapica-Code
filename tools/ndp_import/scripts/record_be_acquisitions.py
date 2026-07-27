@@ -85,6 +85,39 @@ ACQUIRED: dict[str, tuple[str, str, int, str, str]] = {
         "Actions sur les ponts dues au trafic. Hors perimetre P1 (batiment). "
         "Aucun motif d'extraction ecrit a ce jour.",
     ),
+    # --- Reglementations nationales, hors systeme Eurocode -----------------
+    # Elles ne portent pas de NDP mais fixent des EXIGENCES (une duree de
+    # resistance au feu R, un compartimentage) que l'Eurocode presuppose sans
+    # les donner. Sans elles, on sait calculer une poutre au feu et pas quelle
+    # duree lui imposer.
+    "BE-AR-FEU": (
+        "63dc2ef0905b966dec980615aaee14aba39bf17f152d5e4acb405d97f6b07f5b",
+        "Moniteur Belge du 15.07.2009, Ed. 2, p. 49369", 29, "fr+nl+de",
+        "Arrete Royal — Annexe 6 « Normes de base » resistance au feu. "
+        "Publie au Moniteur Belge, donc OPPOSABLE de plein droit, contrairement "
+        "a une norme NBN qui doit etre rendue obligatoire. Fixe les exigences R "
+        "par type et hauteur de batiment. Le PDF melange les trois langues "
+        "nationales dans un meme flux de texte: un depouillement automatique "
+        "devra les separer avant toute lecture.",
+    ),
+    "BE-NBN-S21-208-1": (
+        "ba5ec888933fb68d4b96bb8ac73478bfecce5b665ec1b39d5014ea2c64ea66b9",
+        "1e ed., mai 1995", 44, "fr+nl",
+        "NBN S 21-208-1 — Evacuation de fumees et de chaleur (EFC), grands "
+        "espaces interieurs non cloisonnes sur un niveau. Ne figurait pas au "
+        "catalogue: le document etait en main, lisible, et invisible du "
+        "rapport « a obtenir ». Edition de 1995: verifier qu'aucune revision "
+        "n'est parue avant de s'en servir.",
+    ),
+    "BE-NBN-S21-204": (
+        "129c5b7b8a7e6e8fececcae94dd3172f14fce4e2ce43329757544cafb7999d03",
+        "edition NON LUE sur la page de garde", 50, "fr",
+        "NBN S 21-204 — Protection incendie dans les batiments, batiments "
+        "SCOLAIRES. La page de garde ne porte ni date ni numero d'edition "
+        "reperable (50 pages, 19029 caracteres): l'edition reste A ETABLIR par "
+        "le deposant et n'est pas deduite. Portee restreinte aux batiments "
+        "scolaires, ce que le titre du catalogue ne disait pas.",
+    ),
 }
 
 

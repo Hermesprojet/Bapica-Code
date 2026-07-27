@@ -969,6 +969,13 @@
         "validation_status": {
           "$ref": "#/$defs/ValidationStatusDTO"
         },
+        "variants": {
+          "items": {
+            "$ref": "#/$defs/ParameterVariantDTO"
+          },
+          "title": "Variants",
+          "type": "array"
+        },
         "verified_at": {
           "anyOf": [
             {
@@ -1085,6 +1092,33 @@
         "parameters"
       ],
       "title": "NdpSummaryDTO",
+      "type": "object"
+    },
+    "ParameterVariantDTO": {
+      "additionalProperties": false,
+      "description": "One branch of a parameter the National Annex makes conditional.\n\nBelgium's alpha_cc is 0,85 for axial force and bending, 1,0 otherwise. The\nfrontend must never collapse this to one number for display without saying\nwhich case it shows.",
+      "properties": {
+        "condition": {
+          "description": "Which verification this branch applies to, matched exactly.",
+          "title": "Condition",
+          "type": "string"
+        },
+        "description": {
+          "description": "What the annex says about this branch.",
+          "title": "Description",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "condition",
+        "value",
+        "description"
+      ],
+      "title": "ParameterVariantDTO",
       "type": "object"
     },
     "PreflightReportDTO": {

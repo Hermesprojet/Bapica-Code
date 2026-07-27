@@ -35,6 +35,7 @@ from typing import Any
 __all__ = [
     "ValidationStatus",
     "SourceType",
+    "ParameterVariant",
     "NationalParameter",
     "NationalAnnex",
     "RegulatoryFramework",
@@ -89,6 +90,39 @@ class SourceType(str, Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class ParameterVariant:
+    """One branch of a parameter whose value depends on what is being checked.
+
+    NBN EN 1992-1-1 ANB §3.1.6(1)P is the reason this exists:
+
+        « Pour les verifications a l'ELU de la resistance a l'effort normal, la
+        flexion simple ou composee, la valeur de alpha_cc vaut 0,85. Pour les
+        autres cas, alpha_cc vaut 1,0. »
+
+    Two values, and which one applies depends on the verification. Storing the
+    bending value alone was defensible while bending was the only module; it
+    stops being defensible the moment a shear module exists, because shear is
+    "les autres cas" and would silently inherit 0,85 — a 15 % error on f_cd, in
+    the unsafe direction for strut crushing.
+    """
+
+    #: Free-form key, defined by the parameter, matched exactly. Not an enum:
+    #: each annex slices its conditions its own way, and inventing a shared
+    #: vocabulary would force a mapping nobody wrote down.
+    condition: str
+    value: float
+    #: What the annex says about this branch, verbatim where possible.
+    description: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "condition": self.condition,
+            "value": self.value,
+            "description": self.description,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class NationalParameter:
     """One nationally determined parameter, at one version.
 
@@ -132,6 +166,11 @@ class NationalParameter:
     #: The value recommended by the Eurocode, when it differs. Lets the note
     #: state both the national value and what it departs from.
     en_recommended: float | None = None
+    #: Branches, when the annex gives different values for different checks.
+    #: A parameter with variants has NO ``parameter_value``: a default would be
+    #: read by every caller that forgot to say which check it is doing, which
+    #: is exactly the mistake the variants exist to prevent.
+    variants: tuple[ParameterVariant, ...] = ()
 
     def __post_init__(self) -> None:
         """A missing value and a non-scalar parameter must be the same thing.
@@ -141,6 +180,30 @@ class NationalParameter:
         nobody stated. The absence of a number is only ever legitimate when the
         record says why.
         """
+        if self.variants:
+            if self.parameter_value is not None:
+                raise ValueError(
+                    f"{self.country_code}/{self.standard}:{self.parameter_name}: "
+                    "un parametre a variantes ne doit pas porter aussi une valeur "
+                    "unique. Elle servirait de valeur par defaut au premier "
+                    "appelant qui oublie de preciser le cas, ce que les variantes "
+                    "existent precisement pour empecher."
+                )
+            if self.validation_status is ValidationStatus.NOT_REPRESENTABLE:
+                raise ValueError(
+                    f"{self.country_code}/{self.standard}:{self.parameter_name}: "
+                    "un parametre a variantes EST representable, par cas. Le "
+                    "statut 'not_representable' est reserve a ce qu'aucun jeu "
+                    "de valeurs ne peut porter."
+                )
+            conditions = [v.condition for v in self.variants]
+            if len(set(conditions)) != len(conditions):
+                raise ValueError(
+                    f"{self.country_code}/{self.standard}:{self.parameter_name}: "
+                    f"conditions en double dans les variantes: {conditions}"
+                )
+            return
+
         if (self.parameter_value is None) != (
             self.validation_status is ValidationStatus.NOT_REPRESENTABLE
         ):
@@ -176,6 +239,22 @@ class NationalParameter:
         return self.validation_status is ValidationStatus.CONFIRMED
 
     @property
+    def is_conditional(self) -> bool:
+        """Whether reading this parameter requires naming the check."""
+        return bool(self.variants)
+
+    def value_for(self, condition: str) -> float | None:
+        """The branch matching *condition*, or ``None`` if there is none."""
+        for v in self.variants:
+            if v.condition == condition:
+                return v.value
+        return None
+
+    @property
+    def conditions(self) -> tuple[str, ...]:
+        return tuple(v.condition for v in self.variants)
+
+    @property
     def is_refused_in_every_mode(self) -> bool:
         """Statuses no mode, however permissive, may read a number through."""
         return self.validation_status in (
@@ -209,6 +288,7 @@ class NationalParameter:
             "clause": self.clause,
             "description": self.description,
             "en_recommended": self.en_recommended,
+            "variants": [v.to_dict() for v in self.variants],
         }
 
 
