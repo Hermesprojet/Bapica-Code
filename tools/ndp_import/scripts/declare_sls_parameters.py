@@ -57,6 +57,26 @@ W_MAX_XC2_XC4_XD_XS = "XC2_XC4_XD_XS"
 K1_XD_XF_XS = "XD_XF_XS"
 K1_OTHER = "other"
 
+#: Conditions for K of Table 7.4N — the structural system. A single scalar
+#: would be wrong by a factor of nearly four between a cantilever (0,4) and an
+#: interior span (1,5), and nothing in the geometry announces which is which.
+K_SYSTEMS: list[tuple[str, float, str]] = [
+    ("simply_supported", 1.0,
+     "Tab. 7.4N: poutre isostatique, dalle isostatique portant dans une ou "
+     "deux directions."),
+    ("end_span_continuous", 1.3,
+     "Tab. 7.4N: travee de rive d'une poutre continue ou d'une dalle continue "
+     "portant dans une direction, ou dalle portant dans deux directions "
+     "continue le long d'un grand cote."),
+    ("interior_span_continuous", 1.5,
+     "Tab. 7.4N: travee intermediaire d'une poutre ou d'une dalle portant "
+     "dans une ou deux directions."),
+    ("flat_slab", 1.2,
+     "Tab. 7.4N: dalle sur appuis ponctuels (plancher-dalle), sur la base de "
+     "la plus grande portee."),
+    ("cantilever", 0.4, "Tab. 7.4N: console."),
+]
+
 
 def _en(
     value: float | None,
@@ -227,6 +247,23 @@ def be_parameters(doc_id: str | None) -> dict[str, dict[str, Any]]:
             "sont normatives. »",
             en_recommended=0.425, doc_id=doc_id,
         ),
+        "K_span_depth": _be(
+            None, "dimensionless", "§7.4.2(2), Tab. 7.4N",
+            "Coefficient K du rapport portee/hauteur utile dispensant du "
+            "calcul de la fleche, selon le systeme structural",
+            18,
+            "§7.4.2(2): « Les valeurs de K recommandees (Tableau 7.4N) sont "
+            "normatives. » A RAPPROCHER de §7.4.1(3), ou l'ANB ajoute: « La "
+            "norme NBN B 03-003 donne des indications quant aux limites de "
+            "fleches en fonction de la destination de l'element. » CE "
+            "DOCUMENT N'EST PAS EN MAIN: les limites de fleche belges (§7.4.1) "
+            "restent inconnues. Seule la dispense du §7.4.2 est modelisee.",
+            doc_id=doc_id,
+            variants=[
+                {"condition": cond, "value": value, "description": desc}
+                for cond, value, desc in K_SYSTEMS
+            ],
+        ),
     }
 
 
@@ -295,6 +332,15 @@ def en_parameters() -> dict[str, dict[str, Any]]:
         "k4_crack_spacing": _en(
             0.425, "dimensionless", "§7.3.4(3), eq. (7.11)",
             "Coefficient k4 de l'espacement maximal des fissures s_r,max",
+        ),
+        "K_span_depth": _en(
+            None, "dimensionless", "§7.4.2(2), Tab. 7.4N",
+            "Coefficient K du rapport portee/hauteur utile dispensant du "
+            "calcul de la fleche, selon le systeme structural",
+            variants=[
+                {"condition": cond, "value": value, "description": desc}
+                for cond, value, desc in K_SYSTEMS
+            ],
         ),
     }
 

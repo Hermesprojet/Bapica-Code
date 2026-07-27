@@ -52,6 +52,54 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'K_span_depth', null, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 18. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.4.2(2): « Les valeurs de K recommandees (Tableau 7.4N) sont normatives. » A RAPPROCHER de §7.4.1(3), ou l''ANB ajoute: « La norme NBN B 03-003 donne des indications quant aux limites de fleches en fonction de la destination de l''element. » CE DOCUMENT N''EST PAS EN MAIN: les limites de fleche belges (§7.4.1) restent inconnues. Seule la dispense du §7.4.2 est modelisee.', '§7.4.2(2), Tab. 7.4N', 'Coefficient K du rapport portee/hauteur utile dispensant du calcul de la fleche, selon le systeme structural', null, true
+from national_annexes a
+where a.country_code = 'BE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'simply_supported', 1.0, 'Tab. 7.4N: poutre isostatique, dalle isostatique portant dans une ou deux directions.'
+from national_annex_parameters p
+where p.country_code = 'BE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'end_span_continuous', 1.3, 'Tab. 7.4N: travee de rive d''une poutre continue ou d''une dalle continue portant dans une direction, ou dalle portant dans deux directions continue le long d''un grand cote.'
+from national_annex_parameters p
+where p.country_code = 'BE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'interior_span_continuous', 1.5, 'Tab. 7.4N: travee intermediaire d''une poutre ou d''une dalle portant dans une ou deux directions.'
+from national_annex_parameters p
+where p.country_code = 'BE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'flat_slab', 1.2, 'Tab. 7.4N: dalle sur appuis ponctuels (plancher-dalle), sur la base de la plus grande portee.'
+from national_annex_parameters p
+where p.country_code = 'BE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'cantilever', 0.4, 'Tab. 7.4N: console.'
+from national_annex_parameters p
+where p.country_code = 'BE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
 select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'alpha_cc', null, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 10. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Valeur CONDITIONNELLE, portee par des variantes: 0,85 pour effort normal et flexion, 1,0 pour les autres cas. Aucune valeur unique n''est stockee — un scalaire serait lu par tout module qui oublie de preciser la verification.', '§3.1.6(1)P', 'Coefficient tenant compte des effets de longue duree sur la resistance en compression du beton (domaine EN: 0,8 a 1,0)', 1.0, true
 from national_annexes a
 where a.country_code = 'BE'::country_code
@@ -332,6 +380,54 @@ where a.country_code = 'DE'::country_code
   and a.edition = 'NON RELEVE — edition reelle a renseigner'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'DE'::country_code, 'EN 1992', '1-1', 'DIN EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'K_span_depth', null, 'dimensionless', 'DIN — Deutsches Institut fur Normung', 'https://www.din.de', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.4.2(2), Tab. 7.4N. Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.4.2(2), Tab. 7.4N', 'Coefficient K du rapport portee/hauteur utile dispensant du calcul de la fleche, selon le systeme structural', null, true
+from national_annexes a
+where a.country_code = 'DE'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'simply_supported', 1.0, 'Tab. 7.4N: poutre isostatique, dalle isostatique portant dans une ou deux directions.'
+from national_annex_parameters p
+where p.country_code = 'DE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'end_span_continuous', 1.3, 'Tab. 7.4N: travee de rive d''une poutre continue ou d''une dalle continue portant dans une direction, ou dalle portant dans deux directions continue le long d''un grand cote.'
+from national_annex_parameters p
+where p.country_code = 'DE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'interior_span_continuous', 1.5, 'Tab. 7.4N: travee intermediaire d''une poutre ou d''une dalle portant dans une ou deux directions.'
+from national_annex_parameters p
+where p.country_code = 'DE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'flat_slab', 1.2, 'Tab. 7.4N: dalle sur appuis ponctuels (plancher-dalle), sur la base de la plus grande portee.'
+from national_annex_parameters p
+where p.country_code = 'DE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'cantilever', 0.4, 'Tab. 7.4N: console.'
+from national_annex_parameters p
+where p.country_code = 'DE'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
 select a.id, 'DE'::country_code, 'EN 1992', '1-1', 'DIN EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'alpha_cc', 1.0, 'dimensionless', 'DIN — Deutsches Institut fur Normung', 'https://www.din.de', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§3.1.6(1)P', 'Coefficient tenant compte des effets de longue duree sur la resistance en compression du beton (domaine EN: 0,8 a 1,0)', 1.0, false
 from national_annexes a
 where a.country_code = 'DE'::country_code
@@ -596,6 +692,54 @@ where a.country_code = 'ES'::country_code
   and a.edition = 'NON RELEVE — edition reelle a renseigner'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'ES'::country_code, 'EN 1992', '1-1', 'UNE-EN 1992-1-1 AN', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'K_span_depth', null, 'dimensionless', 'AENOR / UNE — Asociacion Espanola de Normalizacion', 'https://www.une.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.4.2(2), Tab. 7.4N. Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.4.2(2), Tab. 7.4N', 'Coefficient K du rapport portee/hauteur utile dispensant du calcul de la fleche, selon le systeme structural', null, true
+from national_annexes a
+where a.country_code = 'ES'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'simply_supported', 1.0, 'Tab. 7.4N: poutre isostatique, dalle isostatique portant dans une ou deux directions.'
+from national_annex_parameters p
+where p.country_code = 'ES'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'end_span_continuous', 1.3, 'Tab. 7.4N: travee de rive d''une poutre continue ou d''une dalle continue portant dans une direction, ou dalle portant dans deux directions continue le long d''un grand cote.'
+from national_annex_parameters p
+where p.country_code = 'ES'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'interior_span_continuous', 1.5, 'Tab. 7.4N: travee intermediaire d''une poutre ou d''une dalle portant dans une ou deux directions.'
+from national_annex_parameters p
+where p.country_code = 'ES'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'flat_slab', 1.2, 'Tab. 7.4N: dalle sur appuis ponctuels (plancher-dalle), sur la base de la plus grande portee.'
+from national_annex_parameters p
+where p.country_code = 'ES'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'cantilever', 0.4, 'Tab. 7.4N: console.'
+from national_annex_parameters p
+where p.country_code = 'ES'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
 select a.id, 'ES'::country_code, 'EN 1992', '1-1', 'UNE-EN 1992-1-1 AN', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'alpha_cc', 1.0, 'dimensionless', 'AENOR / UNE — Asociacion Espanola de Normalizacion', 'https://www.une.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§3.1.6(1)P', 'Coefficient tenant compte des effets de longue duree sur la resistance en compression du beton (domaine EN: 0,8 a 1,0)', 1.0, false
 from national_annexes a
 where a.country_code = 'ES'::country_code
@@ -859,6 +1003,54 @@ where a.country_code = 'FR'::country_code
   and a.part = '1-1'
   and a.edition = 'NON RELEVE — edition reelle a renseigner'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'K_span_depth', null, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.4.2(2), Tab. 7.4N. Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.4.2(2), Tab. 7.4N', 'Coefficient K du rapport portee/hauteur utile dispensant du calcul de la fleche, selon le systeme structural', null, true
+from national_annexes a
+where a.country_code = 'FR'::country_code
+  and a.standard_family = 'EN 1992'
+  and a.part = '1-1'
+  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'simply_supported', 1.0, 'Tab. 7.4N: poutre isostatique, dalle isostatique portant dans une ou deux directions.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'end_span_continuous', 1.3, 'Tab. 7.4N: travee de rive d''une poutre continue ou d''une dalle continue portant dans une direction, ou dalle portant dans deux directions continue le long d''un grand cote.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'interior_span_continuous', 1.5, 'Tab. 7.4N: travee intermediaire d''une poutre ou d''une dalle portant dans une ou deux directions.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'flat_slab', 1.2, 'Tab. 7.4N: dalle sur appuis ponctuels (plancher-dalle), sur la base de la plus grande portee.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'cantilever', 0.4, 'Tab. 7.4N: console.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'K_span_depth'
+on conflict (parameter_id, condition) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
 select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'alpha_cc', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§3.1.6(1)P', 'Coefficient tenant compte des effets de longue duree sur la resistance en compression du beton (domaine EN: 0,8 a 1,0)', 1.0, false
 from national_annexes a

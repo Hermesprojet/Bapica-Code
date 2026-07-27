@@ -384,6 +384,45 @@
           "verified_at": null,
           "verified_by": null,
           "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur."
+        },
+        "K_span_depth": {
+          "parameter_value": null,
+          "unit": "dimensionless",
+          "clause": "§7.4.2(2), Tab. 7.4N",
+          "description": "Coefficient K du rapport portee/hauteur utile dispensant du calcul de la fleche, selon le systeme structural",
+          "en_recommended": null,
+          "source_type": "en_recommended",
+          "validation_status": "pending_verification",
+          "verified_at": null,
+          "verified_by": null,
+          "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.4.2(2), Tab. 7.4N. Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur.",
+          "variants": [
+            {
+              "condition": "simply_supported",
+              "value": 1.0,
+              "description": "Tab. 7.4N: poutre isostatique, dalle isostatique portant dans une ou deux directions."
+            },
+            {
+              "condition": "end_span_continuous",
+              "value": 1.3,
+              "description": "Tab. 7.4N: travee de rive d'une poutre continue ou d'une dalle continue portant dans une direction, ou dalle portant dans deux directions continue le long d'un grand cote."
+            },
+            {
+              "condition": "interior_span_continuous",
+              "value": 1.5,
+              "description": "Tab. 7.4N: travee intermediaire d'une poutre ou d'une dalle portant dans une ou deux directions."
+            },
+            {
+              "condition": "flat_slab",
+              "value": 1.2,
+              "description": "Tab. 7.4N: dalle sur appuis ponctuels (plancher-dalle), sur la base de la plus grande portee."
+            },
+            {
+              "condition": "cantilever",
+              "value": 0.4,
+              "description": "Tab. 7.4N: console."
+            }
+          ]
         }
       }
     }
