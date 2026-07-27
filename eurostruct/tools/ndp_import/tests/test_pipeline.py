@@ -151,10 +151,18 @@ def test_no_acquired_document_promotes_a_parameter() -> None:
         "not_representable",
     }
 
-    # Et un parametre sans valeur doit dire pourquoi il n'en a pas.
+    # Et un parametre sans valeur doit dire pourquoi il n'en a pas. Deux
+    # raisons legitimes, et seulement deux: rien a stocker
+    # ('not_representable'), ou une valeur par cas (variantes). Un troisieme
+    # cas serait une valeur perdue.
     for p in params:
-        assert (p["parameter_value"] is None) == (
-            p["validation_status"] == "not_representable"
+        explained = (
+            p["validation_status"] == "not_representable" or bool(p.get("variants"))
+        )
+        assert (p["parameter_value"] is None) == explained, p
+        # Les deux raisons s'excluent: une valeur par cas EST representable.
+        assert not (
+            p["validation_status"] == "not_representable" and p.get("variants")
         )
 
 
