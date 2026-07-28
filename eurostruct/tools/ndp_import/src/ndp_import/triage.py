@@ -336,9 +336,56 @@ class TriageResult:
         }
 
 
+#: How a document declares, in its own title block, that it IS the National
+#: Annex — as opposed to merely mentioning one. AFNOR prints the indice de
+#: classement with the ``/NA`` suffix; the title says "Annexe nationale à la".
+#: Neither appears on a guidance note that discusses an annex.
+_SELF_DECLARED_ANNEX = re.compile(
+    r"annexe\s+nationale\s+(?:a|à)\s+la\b|national\s+annex\s+to\b|"
+    r"nationale\s+bijlage\s+bij\b|nationaler\s+anhang\s+zu\b|"
+    r"anexo\s+nacional\s+a\b|"
+    # Indice de classement portant le suffixe /NA: « P 06-100-1/NA ».
+    r"\b[A-Z]\s?\d{2}-\d{3}(?:-\d+)?(?:/[A-Z]\d)?/NA\b",
+    re.IGNORECASE,
+)
+
+
+#: How a document states, in its own words, that it IS a standard. A guidance
+#: note never carries these: no "Dossier du CSTC" is an homologated standard,
+#: and none bears an indice de classement.
+_SELF_DECLARED_STANDARD = re.compile(
+    r"norme\s+fran(?:c|ç)aise\s+homologu(?:e|é)e|norme\s+europ(?:e|é)enne|"
+    r"belgische\s+norm|norme\s+belge|european\s+standard|"
+    r"indice\s+de\s+classement",
+    re.IGNORECASE,
+)
+
+
 def _classify(front: str, filename: str) -> DocumentRole:
+    """Propose a role from the front matter.
+
+    Order matters, and one ordering was wrong. ``_SECONDARY_MARKERS`` used to
+    win outright, so a genuine AFNOR National Annex delivered through Reef4 —
+    the CSTB's document platform — was classified as CSTB guidance. The
+    DISTRIBUTOR's banner sits on page 1 above the publisher's own cover, and it
+    was overriding the document's identity.
+
+    That is the worst direction for this particular error: the earlier bugs
+    admitted documents that should have been refused, which the downstream
+    guards still caught. This one REFUSED a document that is exactly what the
+    engine has been waiting for, and no downstream guard recovers from that —
+    the file just looks unusable.
+
+    So a document that declares itself the National Annex in its own title
+    block keeps that role, whoever delivered the PDF.
+    """
     hay = _searchable(front, filename)
-    if _SECONDARY_MARKERS.search(hay):
+    if _SELF_DECLARED_ANNEX.search(hay):
+        return DocumentRole.NATIONAL_ANNEX
+    # Le meme bandeau Reef4/CSTB coiffait aussi la NF EN 1990 elle-meme, qui
+    # porte « Statut: Norme francaise homologuee ». Un document qui se declare
+    # norme n'est pas une publication secondaire, quel qu'en soit le diffuseur.
+    if _SECONDARY_MARKERS.search(hay) and not _SELF_DECLARED_STANDARD.search(hay):
         return DocumentRole.SECONDARY_PUBLICATION
     if _ANNEX_MARKERS.search(hay):
         return DocumentRole.NATIONAL_ANNEX

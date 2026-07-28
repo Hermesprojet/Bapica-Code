@@ -1099,3 +1099,73 @@ def test_a_solid_DDENV_designation_is_a_pre_standard(tmp_path) -> None:
     r = triage_document(pdf)
     assert r.is_draft
     assert not r.usable_for_ndp
+
+
+# ---------------------------------------------------------------------------
+# The distributor's banner must not override the document's identity
+# ---------------------------------------------------------------------------
+def test_a_national_annex_delivered_through_a_platform_stays_an_annex(
+    tmp_path,
+) -> None:
+    """The worst-direction bug of this pipeline, and the only one so far.
+
+    NF EN 1990/NA arrived through Reef4 — the CSTB's document platform — whose
+    banner sits on page 1 above AFNOR's own cover. ``_SECONDARY_MARKERS``
+    matched ``CSTB`` and won outright, so a genuine National Annex was
+    classified as CSTB guidance and refused.
+
+    Every earlier bug ADMITTED something that should have been refused, and the
+    downstream guards still caught it. This one REFUSED exactly what the engine
+    has been waiting for, and nothing downstream recovers from that: the file
+    simply looks unusable.
+    """
+    from ndp_import import triage_document
+    from ndp_import.model import DocumentRole
+
+    front = (
+        "Reef4 - CSTB Page 1 sur 10 Reef4 version 4.4.3.1 - Edition 167 - "
+        "Mars 2012 Document : NF EN 1990/NA (décembre 2011) : Eurocodes "
+        "structuraux - Bases de calcul des structures - Annexe nationale à la "
+        "NF EN 1990 (Indice de classement : P06-100-1/NA) NF EN 1990/NA "
+        "Décembre 2011 P 06-100-1/NA"
+    )
+    r = triage_document(make_pdf(tmp_path / "na.pdf", [[front]]), ["EN 1990"])
+    assert r.proposed_role is DocumentRole.NATIONAL_ANNEX
+    assert r.usable_for_ndp, r.blockers
+
+
+def test_a_standard_delivered_through_a_platform_is_not_guidance(tmp_path) -> None:
+    """Same banner over NF EN 1990 itself, which says « Norme francaise
+    homologuee ». Still refused — a base Eurocode carries recommended values —
+    but for THAT reason, not as though it were a magazine article.
+    """
+    from ndp_import import triage_document
+    from ndp_import.model import DocumentRole
+
+    front = (
+        "Reef4 - CSTB Page 1 sur 63 Document : NF EN 1990 (mars 2003) : "
+        "Eurocodes structuraux - Bases de calcul des structures (Indice de "
+        "classement : P06-100-1) Statut Norme française homologuée"
+    )
+    r = triage_document(make_pdf(tmp_path / "base.pdf", [[front]]), ["EN 1990"])
+    assert r.proposed_role is DocumentRole.BASE_EUROCODE
+    assert not r.usable_for_ndp
+
+
+def test_real_guidance_is_still_classified_as_secondary(tmp_path) -> None:
+    """The guard must not swallow what it was built for.
+
+    A CSTC information note discusses annexes and is not one. It carries no
+    indice de classement and no homologation status, which is what separates
+    it from a standard the CSTB merely delivered.
+    """
+    from ndp_import import triage_document
+    from ndp_import.model import DocumentRole
+
+    front = (
+        "Les Dossiers du CSTC — Note d'information technique — application "
+        "des Eurocodes et de leurs annexes nationales en Belgique"
+    )
+    r = triage_document(make_pdf(tmp_path / "cstc.pdf", [[front]]))
+    assert r.proposed_role is DocumentRole.SECONDARY_PUBLICATION
+    assert not r.usable_for_ndp
