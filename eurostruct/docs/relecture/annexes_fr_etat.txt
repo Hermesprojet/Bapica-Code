@@ -1,5 +1,5 @@
 === FR — annexes nationales ===
-39 detenue(s), 3 manquante(s), 42 au catalogue.
+42 detenue(s), 3 manquante(s), 45 au catalogue.
 
 --- MANQUANTES (3) ---
 norme            reference au catalogue             indice           phase
@@ -7,7 +7,7 @@ EN 1997-1        NF EN 1997-1/NA                    a rechercher     P1
 EN 1998-1        NF EN 1998-1/NA                    a rechercher     P4
 EN 1998-5        NF EN 1998-5/NA                    a rechercher     P4
 
---- DETENUES (39), indice lu en couverture ---
+--- DETENUES (42), indice lu en couverture ---
 norme            reference                indice               edition
 EN 1990          NF EN 1990/NA            P 06-100-1/NA        décembre 2011 (PARSEE en page 1)
 EN 1990-A1       NF EN 1990/A1/NA         P 06-100-1/A1/NA     décembre 2007 (PARSEE en page 1)
@@ -48,6 +48,9 @@ EN 1994-1-2      NF EN 1994-1-2/NA        P22-412-2            octobre 2007 (PAR
 EN 1994-2        NF EN 1994-2/NA          P22-420-1/NA         mai 2007 (PARSEE en page 1)
 EN 1995-1-1      NF EN 1995-1-1/NA        P21-711-1/NA         mai 2010 (PARSEE en page 1)
 EN 1995-1-2      NF EN 1995-1-2/NA        P21-712-1/NA         avril 2007 (PARSEE en page 1)
+EN 1995-2        NF EN 1995-2/NA          P21-720-1/NA         avril 2007 (PARSEE en page 1)
+EN 1996-1-1      NF EN 1996-1-1/NA        P10-611-1/NA         décembre 2009 (PARSEE en page 1)
+EN 1996-1-2      NF EN 1996-1-2/NA        P10-612-1/NA         septembre 2008 (PARSEE en page 1)
 
 --- structure OBSERVEE des indices, aide a la recherche ---
 Ce n'est PAS une regle: c'est ce qu'on lit sur les documents en
@@ -60,12 +63,19 @@ main. Deux contre-exemples suffisent a interdire d'extrapoler.
   EN 1992-1-2    P 18-712-1        EN 1992-3  P 18-730
   EN 1993-1-1..9 P 22-311-1 a P 22-319-1
   EN 1993-2/3/4/5  P 22-320 / 331-332 / 341 / 350
+  EN 1994-1-1/2  P 22-411-1 / 420-1     (mixte, meme P 22)
+  EN 1995-x      P 21-711-1 / 712-1 / 720-1   (bois)
+  EN 1996-1-x    P 10-611-1 / 612-1           (maconnerie)
 
   RUPTURES CONSTATEES:
    * EN 1991-1-1: l'annexe s'appelle NF P 06-111-2, PAS
      « NF EN 1991-1-1/NA ». Aucune convention /NA.
    * EN 1993-1-10/1-11/1-12: P 22-380-1 / 381 / 382, et non la
      suite P 22-3110 qu'on attendrait apres P 22-319-1.
+   * la FAMILLE change avec le materiau et ne se devine pas:
+     P 06 actions, P 18 beton, P 21 bois, P 22 acier ET mixte,
+     P 10 maconnerie. L'acier et le mixte partagent P 22, le
+     bois et la maconnerie ont chacun la leur.
 
   Rechercher sur https://www.boutique.afnor.org par le numero de la norme
   (« EN 1997-1 »), pas par l'indice suppose.
