@@ -97,6 +97,34 @@ READINGS: dict[str, tuple[str, str, str, str, str]] = {
         "P 06-115-1/NA",
         "Annexe nationale a la NF EN 1991-1-5 (actions thermiques).",
     ),
+    "2ea0d20f-NF_EN_199116__NA.pdf": (
+        "FR-EN199116-NA", "NF EN 1991-1-6/NA", "mars 2009",
+        "P 06-116-1/NA",
+        "Annexe nationale de la NF EN 1991-1-6 (actions en cours "
+        "d'execution).",
+    ),
+    "196fabd4-NF_EN_199117__NA.pdf": (
+        "FR-EN199117-NA", "NF EN 1991-1-7/NA", "septembre 2008",
+        "P 06-117/NA",
+        "Annexe nationale a la NF EN 1991-1-7 (actions accidentelles). "
+        "ATTENTION a l'indice: « P 06-117/NA », SANS le segment numerique "
+        "supplementaire que portent ses voisines (P 06-116-1/NA, "
+        "P 06-115-1/NA). Ce n'est pas une coquille de lecture.",
+    ),
+    "f8e2e1ed-NF_EN_19912__NA.pdf": (
+        "FR-EN19912-NA", "NF EN 1991-2/NA", "mars 2008", "P 06-120-1/NA",
+        "Annexe nationale a la NF EN 1991-2 (actions sur les ponts dues au "
+        "trafic).",
+    ),
+    "8b5cd71f-NF_EN_19913__NA.pdf": (
+        "FR-EN19913-NA", "NF EN 1991-3/NA", "janvier 2010", "P 06-130/NA",
+        "Annexe nationale a la NF EN 1991-3 (actions induites par les "
+        "appareils de levage et les machines).",
+    ),
+    "1054d11a-NF_EN_19914__NA.pdf": (
+        "FR-EN19914-NA", "NF EN 1991-4/NA", "novembre 2007", "P 06-140/NA",
+        "Annexe nationale a la NF EN 1991-4 (silos et reservoirs).",
+    ),
 }
 
 
@@ -108,6 +136,61 @@ def _split(key: str) -> tuple[str, str, str]:
         return "EN 1990", "", ("A1" if "A1" in body else "")
     digits = body[2:]
     return f"EN {digits[:4]}", "", "-".join(digits[4:]) or ""
+
+
+#: Mirroring a newly discovered standard onto the other three countries.
+#: Recording a French annex creates a catalogue entry France alone carries,
+#: which breaks the invariant that the four countries track the same set of
+#: standards — and a country silently missing an entry is a country whose
+#: acquisition list is quietly incomplete. Done here rather than patched after
+#: each batch, because each batch broke it again.
+_MIRROR = {
+    "BE": ("NBN", "NBN {std} ANB", "Achat sur https://www.nbn.be."),
+    "ES": ("AENOR", "UNE-{std} Anexo Nacional", "Achat sur https://www.une.org."),
+    "DE": ("DIN", "DIN {std}/NA", "Achat sur https://www.beuth.de."),
+}
+
+
+def _mirror_to_other_countries(data: dict) -> list[str]:
+    """Give BE, ES and DE an entry for every standard only France carries."""
+    by_country: dict[str, dict[str, dict]] = {}
+    for e in data["documents"]:
+        if e.get("document_role") != "national_annex":
+            continue
+        key = f"{e['standard_family']}|{e['part']}"
+        by_country.setdefault(e["country_code"], {})[key] = e
+
+    created = []
+    for key, fr_entry in by_country.get("FR", {}).items():
+        family, part = key.split("|")
+        std = f"{family}-{part}" if part else family
+        for cc, (publisher, pattern, how) in _MIRROR.items():
+            if key in by_country.get(cc, {}):
+                continue
+            doc_key = f"{cc}-{fr_entry['doc_key'].split('-', 1)[1]}"
+            data["documents"].append({
+                "doc_key": doc_key, "country_code": cc,
+                "standard_family": family, "part": part,
+                "reference": pattern.format(std=std),
+                "title": f"Annexe Nationale a l'{std}",
+                "publisher": publisher,
+                "acquisition": {
+                    "how": how,
+                    "licence": "Document payant, non redistribuable.",
+                    "languages": [],
+                    "notes": (
+                        "REFERENCE A CONFIRMER. La designation nationale d'une "
+                        "annexe n'est PAS previsible: la France publie celle de "
+                        "l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. "
+                        "Le libelle porte ici est une hypothese de FORME, a "
+                        "remplacer par ce que porte le document reel."
+                    ),
+                },
+                "parameters_expected": [], "phase": "P1",
+                "document_role": "national_annex", "status": "not_acquired",
+            })
+            created.append(doc_key)
+    return created
 
 
 def main(argv: list[str]) -> int:
@@ -211,6 +294,8 @@ def main(argv: list[str]) -> int:
             f"{key:20s} {ref:22s} {edition:16s} {status:22s} {digest[:16]}"
         )
 
+    mirrored = _mirror_to_other_countries(data)
+
     if not args.dry_run:
         CATALOGUE.write_text(
             json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -221,6 +306,14 @@ def main(argv: list[str]) -> int:
         print("   " + line)
     if created:
         print(f"\nEntree(s) creee(s) au catalogue: {', '.join(created)}")
+    if mirrored:
+        print(f"\n{len(mirrored)} entree(s) miroir creee(s) pour BE/ES/DE, "
+              "statut not_acquired,")
+        print("reference marquee « A CONFIRMER »: les quatre pays doivent "
+              "suivre le meme")
+        print("jeu de normes, sinon la liste d'acquisition d'un pays est "
+              "silencieusement")
+        print("incomplete.")
     if missing_file:
         print(f"\nFICHIER(S) ABSENT(S) de {args.dir}: {', '.join(missing_file)}")
     print()
