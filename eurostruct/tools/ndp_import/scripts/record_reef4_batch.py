@@ -62,10 +62,19 @@ _PLATFORM = re.compile(
 #: Les espaces internes sont tolerees et retirees ensuite: un exemplaire
 #: ecrit « P22- 382/NA », avec une espace APRES le tiret, et la classe de
 #: caracteres s'y arretait en rendant « P22- ».
+#:
+#: L'indice apparait DEUX fois et les deux ne concordent pas toujours. Sur
+#: NF EN 1994-1-2/NA, le bandeau Reef4 annonce « P22-412-2 » quand le bloc de
+#: titre AFNOR porte « P 22-412-1/NA ». Le controle de double mention ne
+#: portait que sur la reference et laissait passer: il porte maintenant aussi
+#: sur l'indice, et un desaccord est SIGNALE plutot que tranche.
 _INDICE = re.compile(
     r"Indice\s+de\s+classement\s*:\s*(?P<indice>[A-Z]\s?[\dA-Z/\s-]*?[\dA-Z])"
     r"(?=\s*[)\n]|\s+[A-Z]{2})"
 )
+
+#: L'indice tel que le bloc AFNOR l'imprime, hors parentheses.
+_INDICE_TITLE = re.compile(r"\b([A-Z]\s?\d{2}-\s?[\dA-Z/-]*\d(?:/[A-Z]{2})?)\b")
 
 #: What the document says it is an annex TO. The ``/A1`` suffix is part of the
 #: identity, not decoration: without it NF EN 1990/NA and NF EN 1990/A1/NA
@@ -115,6 +124,26 @@ def identify(path: Path) -> dict[str, str] | None:
               "les deux mentions de la page 1 ne se confirment pas")
         return None
 
+    indice_platform = re.sub(r"\s+", "", ind.group("indice"))
+    # Le bloc AFNOR suit la ligne Reef4: on cherche l'indice APRES elle.
+    tail = front[ind.end():]
+    alt = [re.sub(r"\s+", "", m.group(1)) for m in _INDICE_TITLE.finditer(tail[:200])]
+    # Seul un ecart sur le NUMERO est signale. NF EN 1991-1-2/NA porte
+    # « P06-112-2/NA » au bandeau et « P06-112-2 » au titre: c'est la meme
+    # reference, ecrite avec et sans son suffixe. Signaler ca reviendrait a
+    # crier au loup, et une alerte qui crie au loup finit ignoree — y compris
+    # le jour ou elle porte sur un vrai desaccord comme celui de
+    # NF EN 1994-1-2/NA, « P22-412-2 » contre « P22-412-1/NA ».
+    def _number(x: str) -> str:
+        return x.split("/")[0]
+
+    disagreement = next(
+        (a for a in alt
+         if _number(a) != _number(indice_platform)
+         and a[:6] == indice_platform[:6]),
+        None,
+    )
+
     m = re.match(r"(\w+)\s+(\d{4})", edition)
     effective = (
         f"{m.group(2)}-{MONTHS.get(m.group(1).lower(), '01')}-01" if m else None
@@ -128,7 +157,7 @@ def identify(path: Path) -> dict[str, str] | None:
         family, _, part = parent_std.partition("-")
     return {
         "reference": ref, "edition": edition,
-        "indice": re.sub(r"\s+", "", ind.group("indice")),
+        "indice": indice_platform, "indice_disagreement": disagreement,
         "standard_family": family.strip(), "part": part.strip(),
         "effective_from": effective,
         "doc_id_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -222,7 +251,17 @@ def main(argv: list[str]) -> int:
             (previous_note + "\n\n--- exemplaire Reef4 ---\n" if previous_note else "")
             + f"Identite PARSEE en page 1 de {ident['filename']}, et confirmee "
             f"par la double mention de la page (bandeau Reef4 + bloc AFNOR). "
-            f"Indice de classement: {ident['indice']}. Edition "
+            f"Indice de classement: {ident['indice']}. "
+            + (
+                f"DESACCORD INTERNE AU DOCUMENT: le bandeau de la plateforme "
+                f"annonce « {ident['indice']} » et le bloc de titre de "
+                f"l'editeur porte « {ident['indice_disagreement']} ». Les deux "
+                "sont reproduits tels quels; aucun n'est retenu contre "
+                "l'autre. A TRANCHER sur l'exemplaire papier ou aupres de "
+                "l'AFNOR avant tout achat ou toute citation. "
+                if ident.get("indice_disagreement") else ""
+            )
+            + f"Edition "
             f"{ident['edition']}. STATUT A DECLARER par l'ingenieur qui "
             "depose: 'acquired' si l'exemplaire fait foi pour le bureau "
             "d'etudes. Detenir ce fichier ne confirme aucune valeur."

@@ -1,16 +1,13 @@
 === FR — annexes nationales ===
-34 detenue(s), 6 manquante(s), 40 au catalogue.
+39 detenue(s), 3 manquante(s), 42 au catalogue.
 
---- MANQUANTES (6) ---
+--- MANQUANTES (3) ---
 norme            reference au catalogue             indice           phase
-EN 1994-1-1      NF EN 1994-1-1/NA                  a rechercher     P6
-EN 1995-1-1      NF EN 1995-1-1/NA                  a rechercher     P3
-EN 1995-1-2      NF EN 1995-1-2/NA                  a rechercher     FEU
 EN 1997-1        NF EN 1997-1/NA                    a rechercher     P1
 EN 1998-1        NF EN 1998-1/NA                    a rechercher     P4
 EN 1998-5        NF EN 1998-5/NA                    a rechercher     P4
 
---- DETENUES (34), indice lu en couverture ---
+--- DETENUES (39), indice lu en couverture ---
 norme            reference                indice               edition
 EN 1990          NF EN 1990/NA            P 06-100-1/NA        décembre 2011 (PARSEE en page 1)
 EN 1990-A1       NF EN 1990/A1/NA         P 06-100-1/A1/NA     décembre 2007 (PARSEE en page 1)
@@ -46,6 +43,11 @@ EN 1993-3-2      NF EN 1993-3-2/NA        P22-332/NA           juillet 2008 (PAR
 EN 1993-4-1      NF EN 1993-4-1/NA        P22-341/NA           septembre 2010 (PARSEE en page 1)
 EN 1993-5        NF EN 1993-5/NA          P22-350/NA           août 2008 (PARSEE en page 1)
 EN 1993-6        NF EN 1993-6/NA          P22-360/NA           décembre 2011 (PARSEE en page 1)
+EN 1994-1-1      NF EN 1994-1-1/NA        P22-411-1/NA         avril 2007 (PARSEE en page 1)
+EN 1994-1-2      NF EN 1994-1-2/NA        P22-412-2            octobre 2007 (PARSEE en page 1)
+EN 1994-2        NF EN 1994-2/NA          P22-420-1/NA         mai 2007 (PARSEE en page 1)
+EN 1995-1-1      NF EN 1995-1-1/NA        P21-711-1/NA         mai 2010 (PARSEE en page 1)
+EN 1995-1-2      NF EN 1995-1-2/NA        P21-712-1/NA         avril 2007 (PARSEE en page 1)
 
 --- structure OBSERVEE des indices, aide a la recherche ---
 Ce n'est PAS une regle: c'est ce qu'on lit sur les documents en
