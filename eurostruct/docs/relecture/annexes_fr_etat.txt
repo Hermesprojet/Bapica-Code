@@ -1,11 +1,10 @@
 === FR — annexes nationales ===
-49 detenue(s), 1 manquante(s), 50 au catalogue.
+51 detenue(s), 0 manquante(s), 51 au catalogue.
 
---- MANQUANTES (1) ---
+--- MANQUANTES (0) ---
 norme            reference au catalogue             indice           phase
-EN 1998-5        NF EN 1998-5/NA                    a rechercher     P4
 
---- DETENUES (49), indice lu en couverture ---
+--- DETENUES (51), indice lu en couverture ---
 norme            reference                indice               edition
 EN 1990          NF EN 1990/NA            P 06-100-1/NA        décembre 2011 (PARSEE en page 1)
 EN 1990-A1       NF EN 1990/A1/NA         P 06-100-1/A1/NA     décembre 2007 (PARSEE en page 1)
@@ -56,6 +55,8 @@ EN 1998-1        NF EN 1998-1/NA          P06-030-1/NA         décembre 2007 (P
 EN 1998-2        NF EN 1998-2/NA          P06-032/NA           octobre 2007 (PARSEE en page 1)
 EN 1998-3        NF EN 1998-3/NA          P06-033-1/NA         janvier 2008 (PARSEE en page 1)
 EN 1998-4        NF EN 1998-4/NA          P06-034/NA           janvier 2008 (PARSEE en page 1)
+EN 1998-5        NF EN 1998-5/NA          P06-035-1/NA         octobre 2007 (PARSEE en page 1)
+EN 1998-6        NF EN 1998-6/NA          P06-036-1/NA         octobre 2007 (PARSEE en page 1)
 
 --- structure OBSERVEE des indices, aide a la recherche ---
 Ce n'est PAS une regle: c'est ce qu'on lit sur les documents en
@@ -72,7 +73,8 @@ main. Deux contre-exemples suffisent a interdire d'extrapoler.
   EN 1995-x      P 21-711-1 / 712-1 / 720-1   (bois)
   EN 1996-x      P 10-611-1 / 612-1 / 620 / 630 (maconnerie)
   EN 1997-1      P 94-251-1                    (geotechnique)
-  EN 1998-1/2/3/4  P 06-030-1 / 032 / 033-1 / 034  (sismique)
+  EN 1998-1..6   P 06-030-1 / 032 / 033-1 / 034 / 035-1 /
+                 036-1                          (sismique)
 
   RUPTURES CONSTATEES:
    * EN 1991-1-1: l'annexe s'appelle NF P 06-111-2, PAS
@@ -89,13 +91,17 @@ main. Deux contre-exemples suffisent a interdire d'extrapoler.
      contre-exemple le plus net: connaitre la famille ne suffit
      meme pas a cadrer la recherche.
 
-  UNE seule extrapolation est ici mieux etayee que les autres,
-  et elle reste une hypothese: les parties 1 a 4 de l'EN 1998
-  occupent P 06-030-1, 032, 033-1 et 034, quatre points d'une
-  meme serie serree. « P 06-035 » pour la partie 5 est donc
-  plausible — a VERIFIER, pas a commander sur cette base. Les
-  quatre ruptures ci-dessus rappellent ce que vaut une serie
-  qui parait reguliere.
+  UNE extrapolation a ete tentee et VERIFIEE ensuite, elle
+  merite d'etre racontee. Sur la foi de P 06-030-1, 032, 033-1
+  et 034, « P 06-035 » avait ete propose pour l'EN 1998-5, en
+  precisant qu'il fallait le verifier. Le document porte
+  « P 06-035-1/NA »: bon numero, plus un segment -1 imprevu —
+  que 032 et 034 n'ont pas, et que 030, 033 et 036 ont.
+
+  Une recherche sur la chaine exacte « P 06-035 » aurait donc pu
+  ne rien rendre. C'est la cinquieme fois que la regularite
+  apparente deraille sur un detail, et la meilleure raison de
+  chercher par le NUMERO DE NORME.
 
   Rechercher sur https://www.boutique.afnor.org par le numero de la norme
   (« EN 1998-5 »), pas par l'indice suppose.
