@@ -4900,6 +4900,396 @@
       "phase": "P1",
       "document_role": "national_annex",
       "status": "not_acquired"
+    },
+    {
+      "doc_key": "FR-EN199911-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1999",
+      "part": "1-1",
+      "reference": "NF EN 1999-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1999-1-1 — Regles generales",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ. Chercher par le NUMERO DE NORME (« EN 1999-1-1 »), pas par un indice construit.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "REFERENCE A CONFIRMER — le libelle porte ici est une hypothese de FORME. Cinq contre-exemples releves dans ce depot interdisent de construire une designation: NF P 06-111-2 sans /NA, le saut P 22-380 des EC3 1-10 a 1-12, la famille qui suit le materiau, le sismique en P 06-03x etranger aux actions en P 06-1xx, et le segment -1 imprevu de P 06-035-1/NA. La norme de base de cette partie n'est pas en main."
+      },
+      "parameters_expected": [],
+      "phase": "P7",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "FR-EN199912-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1999",
+      "part": "1-2",
+      "reference": "NF EN 1999-1-2/NA",
+      "title": "Annexe Nationale a l'EN 1999-1-2 — Calcul du comportement au feu",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ. Chercher par le NUMERO DE NORME (« EN 1999-1-2 »), pas par un indice construit.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "REFERENCE A CONFIRMER — le libelle porte ici est une hypothese de FORME. Cinq contre-exemples releves dans ce depot interdisent de construire une designation: NF P 06-111-2 sans /NA, le saut P 22-380 des EC3 1-10 a 1-12, la famille qui suit le materiau, le sismique en P 06-03x etranger aux actions en P 06-1xx, et le segment -1 imprevu de P 06-035-1/NA. La norme de BASE NF EN 1999-1-2 est en main et porte l'indice P 22-152: l'aluminium partage donc la famille P 22 avec l'acier et le mixte. C'est une indication sur la FAMILLE, pas sur le numero de l'annexe."
+      },
+      "parameters_expected": [],
+      "phase": "FEU",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "FR-EN199913-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1999",
+      "part": "1-3",
+      "reference": "NF EN 1999-1-3/NA",
+      "title": "Annexe Nationale a l'EN 1999-1-3 — Structures sensibles a la fatigue",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ. Chercher par le NUMERO DE NORME (« EN 1999-1-3 »), pas par un indice construit.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "REFERENCE A CONFIRMER — le libelle porte ici est une hypothese de FORME. Cinq contre-exemples releves dans ce depot interdisent de construire une designation: NF P 06-111-2 sans /NA, le saut P 22-380 des EC3 1-10 a 1-12, la famille qui suit le materiau, le sismique en P 06-03x etranger aux actions en P 06-1xx, et le segment -1 imprevu de P 06-035-1/NA. La norme de BASE NF EN 1999-1-3 est en main et porte l'indice P 22-153: l'aluminium partage donc la famille P 22 avec l'acier et le mixte. C'est une indication sur la FAMILLE, pas sur le numero de l'annexe."
+      },
+      "parameters_expected": [],
+      "phase": "P7",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "FR-EN199914-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1999",
+      "part": "1-4",
+      "reference": "NF EN 1999-1-4/NA",
+      "title": "Annexe Nationale a l'EN 1999-1-4 — Tôles de structure formees a froid",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ. Chercher par le NUMERO DE NORME (« EN 1999-1-4 »), pas par un indice construit.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "REFERENCE A CONFIRMER — le libelle porte ici est une hypothese de FORME. Cinq contre-exemples releves dans ce depot interdisent de construire une designation: NF P 06-111-2 sans /NA, le saut P 22-380 des EC3 1-10 a 1-12, la famille qui suit le materiau, le sismique en P 06-03x etranger aux actions en P 06-1xx, et le segment -1 imprevu de P 06-035-1/NA. La norme de BASE NF EN 1999-1-4 est en main et porte l'indice P 22-154: l'aluminium partage donc la famille P 22 avec l'acier et le mixte. C'est une indication sur la FAMILLE, pas sur le numero de l'annexe."
+      },
+      "parameters_expected": [],
+      "phase": "P7",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "FR-EN199915-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1999",
+      "part": "1-5",
+      "reference": "NF EN 1999-1-5/NA",
+      "title": "Annexe Nationale a l'EN 1999-1-5 — Structures en coque",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ. Chercher par le NUMERO DE NORME (« EN 1999-1-5 »), pas par un indice construit.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "REFERENCE A CONFIRMER — le libelle porte ici est une hypothese de FORME. Cinq contre-exemples releves dans ce depot interdisent de construire une designation: NF P 06-111-2 sans /NA, le saut P 22-380 des EC3 1-10 a 1-12, la famille qui suit le materiau, le sismique en P 06-03x etranger aux actions en P 06-1xx, et le segment -1 imprevu de P 06-035-1/NA. La norme de BASE NF EN 1999-1-5 est en main et porte l'indice P 22-155: l'aluminium partage donc la famille P 22 avec l'acier et le mixte. C'est une indication sur la FAMILLE, pas sur le numero de l'annexe."
+      },
+      "parameters_expected": [],
+      "phase": "P7",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "BE-EN199911-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1999",
+      "part": "1-1",
+      "reference": "NBN EN 1999-1-1 ANB",
+      "title": "Annexe Nationale a l'EN 1999-1-1",
+      "publisher": "NBN",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "ES-EN199911-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1999",
+      "part": "1-1",
+      "reference": "UNE-EN 1999-1-1 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1999-1-1",
+      "publisher": "AENOR",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "DE-EN199911-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1999",
+      "part": "1-1",
+      "reference": "DIN EN 1999-1-1/NA",
+      "title": "Annexe Nationale a l'EN 1999-1-1",
+      "publisher": "DIN",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "BE-EN199912-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1999",
+      "part": "1-2",
+      "reference": "NBN EN 1999-1-2 ANB",
+      "title": "Annexe Nationale a l'EN 1999-1-2",
+      "publisher": "NBN",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "ES-EN199912-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1999",
+      "part": "1-2",
+      "reference": "UNE-EN 1999-1-2 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1999-1-2",
+      "publisher": "AENOR",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "DE-EN199912-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1999",
+      "part": "1-2",
+      "reference": "DIN EN 1999-1-2/NA",
+      "title": "Annexe Nationale a l'EN 1999-1-2",
+      "publisher": "DIN",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "BE-EN199913-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1999",
+      "part": "1-3",
+      "reference": "NBN EN 1999-1-3 ANB",
+      "title": "Annexe Nationale a l'EN 1999-1-3",
+      "publisher": "NBN",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "ES-EN199913-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1999",
+      "part": "1-3",
+      "reference": "UNE-EN 1999-1-3 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1999-1-3",
+      "publisher": "AENOR",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "DE-EN199913-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1999",
+      "part": "1-3",
+      "reference": "DIN EN 1999-1-3/NA",
+      "title": "Annexe Nationale a l'EN 1999-1-3",
+      "publisher": "DIN",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "BE-EN199914-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1999",
+      "part": "1-4",
+      "reference": "NBN EN 1999-1-4 ANB",
+      "title": "Annexe Nationale a l'EN 1999-1-4",
+      "publisher": "NBN",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "ES-EN199914-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1999",
+      "part": "1-4",
+      "reference": "UNE-EN 1999-1-4 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1999-1-4",
+      "publisher": "AENOR",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "DE-EN199914-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1999",
+      "part": "1-4",
+      "reference": "DIN EN 1999-1-4/NA",
+      "title": "Annexe Nationale a l'EN 1999-1-4",
+      "publisher": "DIN",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "BE-EN199915-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1999",
+      "part": "1-5",
+      "reference": "NBN EN 1999-1-5 ANB",
+      "title": "Annexe Nationale a l'EN 1999-1-5",
+      "publisher": "NBN",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "ES-EN199915-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1999",
+      "part": "1-5",
+      "reference": "UNE-EN 1999-1-5 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1999-1-5",
+      "publisher": "AENOR",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "DE-EN199915-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1999",
+      "part": "1-5",
+      "reference": "DIN EN 1999-1-5/NA",
+      "title": "Annexe Nationale a l'EN 1999-1-5",
+      "publisher": "DIN",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
     }
   ]
 }
