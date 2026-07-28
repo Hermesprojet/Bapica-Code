@@ -20,8 +20,8 @@
       "standard_family": "EN 1992",
       "part": "1-1",
       "reference": "NF EN 1992-1-1/NA",
-      "edition": "NON RELEVE — edition reelle a renseigner",
-      "effective_from": "2026-07-26",
+      "edition": "mars 2007 (LUE en page 1), indice P 18-711-1/NA",
+      "effective_from": "2007-03-01",
       "effective_to": null,
       "source_official": "AFNOR — Association francaise de normalisation",
       "source_url_or_doc_id": "https://www.afnor.org",
@@ -32,11 +32,13 @@
           "clause": "§3.1.6(1)P",
           "description": "Coefficient tenant compte des effets de longue duree sur la resistance en compression du beton (domaine EN: 0,8 a 1,0)",
           "en_recommended": 1.0,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NF EN 1992-1-1/NA (mars 2007), p. 7. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §3.1.6(1)P: « La valeur de alpha_cc a utiliser est celle recommandee. » CONFIRME la valeur 1,0 deja portee. ECART NET avec la Belgique, dont l'ANB descend a 0,85 en flexion: le meme calcul ne donne pas le meme resultat dans les deux pays.",
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 7
         },
         "alpha_ct": {
           "parameter_value": 1.0,
@@ -44,11 +46,13 @@
           "clause": "§3.1.6(2)P",
           "description": "Coefficient tenant compte des effets de longue duree sur la resistance en traction du beton",
           "en_recommended": 1.0,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NF EN 1992-1-1/NA (mars 2007), p. 7. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §3.1.6(2)P: « La valeur de alpha_ct a utiliser est celle recommandee. »",
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 7
         },
         "gamma_C_persistent": {
           "parameter_value": 1.5,
@@ -56,11 +60,13 @@
           "clause": "§2.4.2.4(1), Tab. 2.1N",
           "description": "Coefficient partiel du beton — situations durables et transitoires",
           "en_recommended": 1.5,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NF EN 1992-1-1/NA (mars 2007), p. 6. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1): « Les valeurs des coefficients partiels relatifs aux materiaux a utiliser pour les etats-limites ultimes sont celles du Tableau 2.1N recommande. »",
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 6
         },
         "gamma_S_persistent": {
           "parameter_value": 1.15,
@@ -68,11 +74,13 @@
           "clause": "§2.4.2.4(1), Tab. 2.1N",
           "description": "Coefficient partiel de l'acier de beton arme — situations durables et transitoires",
           "en_recommended": 1.15,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NF EN 1992-1-1/NA (mars 2007), p. 6. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1), Tableau 2.1N recommande: acier 1,15.",
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 6
         },
         "gamma_C_accidental": {
           "parameter_value": 1.2,
@@ -164,23 +172,44 @@
           "clause": "§6.2.2(1)",
           "description": "Coefficient de C_Rd,c = 0,18/gamma_C, resistance a l'effort tranchant sans armatures d'effort tranchant",
           "en_recommended": 0.18,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NF EN 1992-1-1/NA (mars 2007), p. 12. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): « Les valeurs a utiliser sont les suivantes: C_Rd,c = 0,18/gamma_C ». Conforme a la recommandation EN.",
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 12
         },
         "v_min_coeff": {
-          "parameter_value": 0.035,
+          "parameter_value": null,
           "unit": "dimensionless",
           "clause": "§6.2.2(1), eq. (6.3N)",
           "description": "Coefficient de v_min = 0,035 k^(3/2) fck^(1/2)",
           "en_recommended": 0.035,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NF EN 1992-1-1/NA (mars 2007), p. 12. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): la France REMPLACE l'expression unique de l'EN par trois, selon l'element. ATTENTION — les valeurs stockees ici valent gamma_C = 1,5 (situation durable ou transitoire). L'annexe ecrit 0,053/gamma_C, pas un nombre: en situation accidentelle (gamma_C = 1,2) le coefficient devient 0,04417 et non 0,03533. Le modele ne sait pas porter une expression; ce point reste a traiter.",
+          "variants": [
+            {
+              "condition": "beam",
+              "value": 0.035333333333333335,
+              "description": "§6.2.2(1) NA: « 0,053/gamma_C k^3/2 f_ck^1/2 pour les poutres, et pour les dalles autres que celles ci-dessus ». 0,053/1,5 = 0,035333. La valeur recommandee EN est 0,035: proche, et differente."
+            },
+            {
+              "condition": "slab_with_transverse_redistribution",
+              "value": 0.22666666666666668,
+              "description": "§6.2.2(1) NA: « 0,34/gamma_C f_ck^1/2 sur les dalles beneficiant d'un effet de redistribution transversale sous le cas de charge considere ». ATTENTION: cette expression N'A PAS le terme k^3/2. Un module qui multiplierait cette valeur par k^3/2 se tromperait; la condition doit etre traitee par le module, pas seulement lue."
+            },
+            {
+              "condition": "wall",
+              "value": 0.2333333333333333,
+              "description": "§6.2.2(1) NA: « 0,35/gamma_C f_ck^1/2 pour les voiles ». Sans terme k^3/2 non plus."
+            }
+          ],
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 12
         },
         "k1_shear": {
           "parameter_value": 0.15,
@@ -188,11 +217,13 @@
           "clause": "§6.2.2(1)",
           "description": "Coefficient k1 de la contribution de l'effort normal a V_Rd,c",
           "en_recommended": 0.15,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NF EN 1992-1-1/NA (mars 2007), p. 12. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): « k1 = 0,15 ».",
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 12
         },
         "nu1_coeff": {
           "parameter_value": 0.6,
@@ -200,11 +231,13 @@
           "clause": "§6.2.2(6), eq. (6.6N)",
           "description": "Coefficient nu de la resistance du beton fissure a l'effort tranchant: nu = 0,6 [1 - fck/250]",
           "en_recommended": 0.6,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "Valeur RECOMMANDEE par l'Eurocode, reportee comme point de depart. A relever dans l'Annexe Nationale publiee, puis passer validation_status a 'confirmed' avec verified_by et verified_at."
+          "notes": "LU par le pipeline d'import dans NF EN 1992-1-1/NA (mars 2007), p. 12. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(6): « La valeur de nu a utiliser est celle recommandee. »",
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 12
         },
         "nu1_fck_divisor": {
           "parameter_value": 250.0,
@@ -344,11 +377,11 @@
           "clause": "§7.3.1(5), Tab. 7.1N",
           "description": "Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges",
           "en_recommended": 0.3,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.3.1(5), Tab. 7.1N. Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur.",
+          "notes": "§7.3.1(5) p.15 de NF EN 1992-1-1/NA (mars 2007): « les valeurs de w_max a utiliser sont donnees dans le Tableau 7.1NF ». La France REMPLACE donc le Tableau 7.1N. ATTENTION — LES VALEURS PORTEES ICI SONT CELLES DU TABLEAU 7.1N DE L'EN, PAS CELLES DU TABLEAU 7.1NF. Les cellules numeriques du tableau francais ne s'extraient pas de ce rendu (extract_tables rend des lignes vides, et le texte au fil ne porte aucun des nombres). CE QUI MANQUE: une lecture des cellules du Tableau 7.1NF, p. 16. L'annexe ajoute par ailleurs que les dalles et voiles de plus de 0,8 m et les poutres de plus de 2 m relevent de la NF EN 1992-2 ou 1992-3 — hors du domaine de ce moteur.",
           "variants": [
             {
               "condition": "X0_XC1",
@@ -360,19 +393,23 @@
               "value": 0.3,
               "description": "Tab. 7.1N de l'EN, lignes XC2-XC4 et XD1-XD3/XS1-XS3 — 0,3 mm."
             }
-          ]
+          ],
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 16
         },
         "k3_crack_spacing": {
-          "parameter_value": 3.4,
+          "parameter_value": null,
           "unit": "dimensionless",
           "clause": "§7.3.4(3), eq. (7.11)",
           "description": "Coefficient k3 de l'espacement maximal des fissures s_r,max",
           "en_recommended": 3.4,
-          "source_type": "en_recommended",
-          "validation_status": "pending_verification",
+          "source_type": "national_annex",
+          "validation_status": "not_representable",
           "verified_at": null,
           "verified_by": null,
-          "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur."
+          "notes": "SANS VALEUR EXPLOITABLE. §7.3.4(3) p.17: la France NE retient 3,4 que pour les enrobages inferieurs ou egaux a 25 mm. « Pour des enrobages plus grands, la valeur de k3 a utiliser est k3 = 3,4 (25/c)^2/3 (c en mm). » C'est une FORMULE dependant de l'enrobage, pas une constante. A l'enrobage de 40 mm du cas de reference du moteur elle vaut 2,486, soit 27 % sous la valeur stockee — dans le sens qui SOUS-ESTIME l'espacement des fissures, donc l'ouverture. Ce parametre reste sans valeur tant que le modele n'admet pas une expression.",
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 17
         },
         "k4_crack_spacing": {
           "parameter_value": 0.425,
@@ -380,11 +417,13 @@
           "clause": "§7.3.4(3), eq. (7.11)",
           "description": "Coefficient k4 de l'espacement maximal des fissures s_r,max",
           "en_recommended": 0.425,
-          "source_type": "en_recommended",
+          "source_type": "national_annex",
           "validation_status": "pending_verification",
           "verified_at": null,
           "verified_by": null,
-          "notes": "VALEUR RECOMMANDEE PAR L'EN, utilisee comme valeur d'attente. L'Annexe Nationale de ce pays N'A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l'AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n'a pas ete relevee et confirmee par un ingenieur."
+          "notes": "LU par le pipeline d'import dans NF EN 1992-1-1/NA (mars 2007), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.4(3): « La valeur de k4 a utiliser est celle recommandee. »",
+          "source_doc_id": "af4ca4a401dabf2944680c9c8ce487ca12777de5b8a10bbd93ed446fe75a7ce5",
+          "source_page": 17
         },
         "K_span_depth": {
           "parameter_value": null,

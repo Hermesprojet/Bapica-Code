@@ -22,12 +22,20 @@ Three cases, chosen to reach three different branches:
                   uncracked, so ``is_cracked`` must come back 0
 ``EC2-SLS-103``   widely spaced bars — equation (7.14) instead of (7.11)
 
-France is used throughout. Belgium would exercise the ANB deviation on ``k1``,
-but that deviation is already locked by
-``test_belgium_tightens_the_concrete_stress_limit_in_XS``; a reference case is
-the wrong instrument for it, because ``w_max`` in the Belgian data set carries
-values read from the EN table and not from Table 7.1N-ANB. Pinning those here
-would give them an authority nobody granted.
+Belgium is used throughout, and the choice is forced rather than preferred.
+France cannot run this module at all: NF EN 1992-1-1/NA §7.3.4(3) makes ``k3``
+a formula in the cover — ``3,4 (25/c)^{2/3}`` beyond 25 mm — which the scalar
+parameter model cannot hold, so the preflight refuses. NBN EN 1992-1-1 ANB
+§7.3.4(3) declares the recommended 3,4 and 0,425 normative, which the model can.
+
+These cases were originally built on France and went red the day the French
+annex was actually read. That is the reference suite doing its job: it caught a
+change in the NORMATIVE data, not in the arithmetic.
+
+``w_max`` is pinned here only as the value the data set carries. Both annexes
+replace Table 7.1N — Belgium with 7.1N-ANB, France with 7.1NF — and neither
+table's cells extract from the copies in hand. The number these cases lock is
+therefore the EN table's, and it is not evidence about either country.
 
 Run from engine/:
     python scripts/generate_serviceability_references.py [--dry-run]
@@ -43,7 +51,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parents[1]
 LIBRARY = HERE / "src/eurostruct_engine/reference/library"
 
-COUNTRY = "FR"
+COUNTRY = "BE"
 AS_OF = "2026-07-26"
 
 FCK, FYK, ES = 30.0, 500.0, 200000.0
@@ -51,7 +59,7 @@ FCK, FYK, ES = 30.0, 500.0, 200000.0
 K_T = 0.4
 K1_BOND, K2_BENDING = 0.8, 0.5
 #: §7.3.4(3) and §7.2 — nationally determined; the values below are the EN
-#: recommendations, which is what the French data set carries today.
+#: recommendations, which is what the Belgian ANB declares normative.
 K3_CRACK, K4_CRACK = 3.4, 0.425
 K1_STRESS, K3_STEEL = 0.6, 0.8
 

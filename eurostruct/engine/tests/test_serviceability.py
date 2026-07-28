@@ -29,6 +29,7 @@ from eurostruct_engine.ec2 import (
 from eurostruct_engine.exceptions import (
     ConditionalParameterNeedsContext,
     InconsistentInput,
+    NationalAnnexIncomplete,
     OutOfValidationDomain,
 )
 from eurostruct_engine.materials import concrete, reinforcement
@@ -148,14 +149,16 @@ def test_the_governing_check_is_the_one_with_the_highest_ratio(params_be) -> Non
 # ---------------------------------------------------------------------------
 # The National Annex must change the answer
 # ---------------------------------------------------------------------------
-def test_belgium_tightens_the_concrete_stress_limit_in_XS(params_be, params_fr) -> None:
+def test_belgium_tightens_the_concrete_stress_limit_in_XS(
+    params_be, params_fr_sls
+) -> None:
     """NBN EN 1992-1-1 ANB §7.2(2): k1 = 0,5 in XD/XF/XS, 0,6 elsewhere.
 
     EN 1992-1-1 recommends 0,6. The same beam, same class, must therefore fail
     in Belgium and pass in France — the parameter layer earning its keep.
     """
     be = _design(params_be, exposure_class=ExposureClass.XS2)
-    fr = _design(params_fr, exposure_class=ExposureClass.XS2)
+    fr = _design(params_fr_sls, exposure_class=ExposureClass.XS2)
 
     assert be.sigma_c_limit.to("MPa").magnitude == pytest.approx(15.0)   # 0,5 x 30
     assert fr.sigma_c_limit.to("MPa").magnitude == pytest.approx(18.0)   # 0,6 x 30
@@ -166,11 +169,40 @@ def test_belgium_tightens_the_concrete_stress_limit_in_XS(params_be, params_fr) 
     assert fr.report.passed
 
 
-def test_outside_XD_XF_XS_the_two_countries_agree(params_be, params_fr) -> None:
-    """The Belgian deviation is confined to the classes the annex names."""
+def test_outside_XD_XF_XS_the_two_countries_agree(params_be, params_fr_sls) -> None:
+    """The Belgian deviation is confined to the classes the annex names.
+
+    France needs the patched fixture here — see
+    :func:`test_france_refuses_crack_width_for_want_of_a_formula`.
+    """
     be = _design(params_be, exposure_class=ExposureClass.XC3)
-    fr = _design(params_fr, exposure_class=ExposureClass.XC3)
+    fr = _design(params_fr_sls, exposure_class=ExposureClass.XC3)
     assert be.sigma_c_limit == fr.sigma_c_limit
+
+
+def test_france_refuses_crack_width_for_want_of_a_formula(params_fr) -> None:
+    """Interdiction 6, on the country that most needs it.
+
+    NF EN 1992-1-1/NA §7.3.4(3) keeps k3 = 3,4 only up to a 25 mm cover. Beyond
+    that it is ``3,4 (25/c)^{2/3}`` — a formula in the cover, not a constant. At
+    the 40 mm cover used throughout this file that is 2,486, twenty-seven per
+    cent below the stored value, and in the direction that UNDERSTATES crack
+    spacing and therefore crack width.
+
+    So the engine refuses. It does not fall back on 3,4, and it does not
+    silently apply the EN recommendation France declined to adopt. The French
+    crack-width check stays unavailable until the module can evaluate the
+    expression — which is a defect to fix, not a value to sign.
+    """
+    with pytest.raises(NationalAnnexIncomplete) as exc:
+        _design(params_fr)
+
+    # Le refus vient du PREFLIGHT, pas de la lecture du parametre: tous les
+    # bloquants sont rapportes d'un coup, avant qu'aucun calcul ne commence.
+    message = str(exc.value)
+    assert "k3_crack_spacing" in message
+    assert "not_representable" in message
+    assert "NF EN 1992-1-1/NA" in message
 
 
 @pytest.mark.parametrize(

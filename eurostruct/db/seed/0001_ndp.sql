@@ -968,48 +968,48 @@ on conflict (parameter_id, condition) do nothing;
 
 -- NF EN 1992-1-1/NA (EN 1992-1-1)
 insert into national_annexes (country_code, standard_family, part, reference, edition, effective_from, effective_to, source_official, source_url_or_doc_id)
-values ('FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org')
+values ('FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org')
 on conflict (country_code, standard_family, part, edition) do nothing;
 
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'As_max_ratio', 0.04, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.1.1(3)', 'Section maximale d''armature tendue ou comprimee, hors recouvrements: 0,04 Ac', 0.04, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'As_max_ratio', 0.04, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.1.1(3)', 'Section maximale d''armature tendue ou comprimee, hors recouvrements: 0,04 Ac', 0.04, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'As_min_coeff', 0.26, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.1.1(1), eq. (9.1N)', 'Coefficient de la section minimale d''armature tendue: 0,26 fctm/fyk bt d', 0.26, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'As_min_coeff', 0.26, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.1.1(1), eq. (9.1N)', 'Coefficient de la section minimale d''armature tendue: 0,26 fctm/fyk bt d', 0.26, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'As_min_floor', 0.0013, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.1.1(1), eq. (9.1N)', 'Plancher de la section minimale d''armature tendue: 0,0013 bt d', 0.0013, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'As_min_floor', 0.0013, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.1.1(1), eq. (9.1N)', 'Plancher de la section minimale d''armature tendue: 0,0013 bt d', 0.0013, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'C_Rd_c_coeff', 0.18, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.2(1)', 'Coefficient de C_Rd,c = 0,18/gamma_C, resistance a l''effort tranchant sans armatures d''effort tranchant', 0.18, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'C_Rd_c_coeff', 0.18, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NF EN 1992-1-1/NA (mars 2007), p. 12. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): « Les valeurs a utiliser sont les suivantes: C_Rd,c = 0,18/gamma_C ». Conforme a la recommandation EN.', '§6.2.2(1)', 'Coefficient de C_Rd,c = 0,18/gamma_C, resistance a l''effort tranchant sans armatures d''effort tranchant', 0.18, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'K_span_depth', null, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.4.2(2), Tab. 7.4N. Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.4.2(2), Tab. 7.4N', 'Coefficient K du rapport portee/hauteur utile dispensant du calcul de la fleche, selon le systeme structural', null, true
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'K_span_depth', null, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.4.2(2), Tab. 7.4N. Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.4.2(2), Tab. 7.4N', 'Coefficient K du rapport portee/hauteur utile dispensant du calcul de la fleche, selon le systeme structural', null, true
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameter_variants (parameter_id, condition, value, description)
 select p.id, 'simply_supported', 1.0, 'Tab. 7.4N: poutre isostatique, dalle isostatique portant dans une ou deux directions.'
@@ -1052,100 +1052,100 @@ where p.country_code = 'FR'::country_code
   and p.parameter_name = 'K_span_depth'
 on conflict (parameter_id, condition) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'alpha_cc', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§3.1.6(1)P', 'Coefficient tenant compte des effets de longue duree sur la resistance en compression du beton (domaine EN: 0,8 a 1,0)', 1.0, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'alpha_cc', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NF EN 1992-1-1/NA (mars 2007), p. 7. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §3.1.6(1)P: « La valeur de alpha_cc a utiliser est celle recommandee. » CONFIRME la valeur 1,0 deja portee. ECART NET avec la Belgique, dont l''ANB descend a 0,85 en flexion: le meme calcul ne donne pas le meme resultat dans les deux pays.', '§3.1.6(1)P', 'Coefficient tenant compte des effets de longue duree sur la resistance en compression du beton (domaine EN: 0,8 a 1,0)', 1.0, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'alpha_ct', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§3.1.6(2)P', 'Coefficient tenant compte des effets de longue duree sur la resistance en traction du beton', 1.0, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'alpha_ct', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NF EN 1992-1-1/NA (mars 2007), p. 7. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §3.1.6(2)P: « La valeur de alpha_ct a utiliser est celle recommandee. »', '§3.1.6(2)P', 'Coefficient tenant compte des effets de longue duree sur la resistance en traction du beton', 1.0, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'alpha_cw', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.3(3)', 'Coefficient alpha_cw tenant compte de l''etat de contrainte dans la membrure comprimee. 1,0 pour une structure non precontrainte', 1.0, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'alpha_cw', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.3(3)', 'Coefficient alpha_cw tenant compte de l''etat de contrainte dans la membrure comprimee. 1,0 pour une structure non precontrainte', 1.0, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'cot_theta_max', 2.5, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.3(2), eq. (6.7N)', 'Borne superieure de cot(theta), inclinaison des bielles', 2.5, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'cot_theta_max', 2.5, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.3(2), eq. (6.7N)', 'Borne superieure de cot(theta), inclinaison des bielles', 2.5, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'cot_theta_min', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.3(2), eq. (6.7N)', 'Borne inferieure de cot(theta), inclinaison des bielles', 1.0, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'cot_theta_min', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.3(2), eq. (6.7N)', 'Borne inferieure de cot(theta), inclinaison des bielles', 1.0, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'gamma_C_accidental', 1.2, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§2.4.2.4(1), Tab. 2.1N', 'Coefficient partiel du beton — situations accidentelles', 1.2, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'gamma_C_accidental', 1.2, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§2.4.2.4(1), Tab. 2.1N', 'Coefficient partiel du beton — situations accidentelles', 1.2, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'gamma_C_persistent', 1.5, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§2.4.2.4(1), Tab. 2.1N', 'Coefficient partiel du beton — situations durables et transitoires', 1.5, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'gamma_C_persistent', 1.5, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NF EN 1992-1-1/NA (mars 2007), p. 6. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1): « Les valeurs des coefficients partiels relatifs aux materiaux a utiliser pour les etats-limites ultimes sont celles du Tableau 2.1N recommande. »', '§2.4.2.4(1), Tab. 2.1N', 'Coefficient partiel du beton — situations durables et transitoires', 1.5, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'gamma_S_accidental', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§2.4.2.4(1), Tab. 2.1N', 'Coefficient partiel de l''acier — situations accidentelles', 1.0, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'gamma_S_accidental', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§2.4.2.4(1), Tab. 2.1N', 'Coefficient partiel de l''acier — situations accidentelles', 1.0, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'gamma_S_persistent', 1.15, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§2.4.2.4(1), Tab. 2.1N', 'Coefficient partiel de l''acier de beton arme — situations durables et transitoires', 1.15, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'gamma_S_persistent', 1.15, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NF EN 1992-1-1/NA (mars 2007), p. 6. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1), Tableau 2.1N recommande: acier 1,15.', '§2.4.2.4(1), Tab. 2.1N', 'Coefficient partiel de l''acier de beton arme — situations durables et transitoires', 1.15, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k1_redistribution', 0.44, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§5.5(4)', 'Coefficient k1 bornant xu/d pour la ductilite (fck <= 50 MPa)', 0.44, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'k1_redistribution', 0.44, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§5.5(4)', 'Coefficient k1 bornant xu/d pour la ductilite (fck <= 50 MPa)', 0.44, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k1_shear', 0.15, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.2(1)', 'Coefficient k1 de la contribution de l''effort normal a V_Rd,c', 0.15, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'k1_shear', 0.15, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NF EN 1992-1-1/NA (mars 2007), p. 12. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): « k1 = 0,15 ».', '§6.2.2(1)', 'Coefficient k1 de la contribution de l''effort normal a V_Rd,c', 0.15, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k1_stress_limit', null, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(2). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(2)', 'Coefficient limitant la contrainte de compression du beton sous combinaison caracteristique: sigma_c <= k1 f_ck', 0.6, true
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'k1_stress_limit', null, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(2). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(2)', 'Coefficient limitant la contrainte de compression du beton sous combinaison caracteristique: sigma_c <= k1 f_ck', 0.6, true
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameter_variants (parameter_id, condition, value, description)
 select p.id, 'XD_XF_XS', 0.6, '§7.2(2): l''EN impose la limitation pour les classes XD, XF et XS, avec k1 = 0,6 recommande.'
@@ -1164,100 +1164,124 @@ where p.country_code = 'FR'::country_code
   and p.parameter_name = 'k1_stress_limit'
 on conflict (parameter_id, condition) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k2_redistribution', 1.25, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§5.5(4)', 'Coefficient k2 bornant xu/d pour la ductilite. Recommandation EN: 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa). Au-dela de C50/60 ce parametre doit etre re-exprime.', 1.25, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'k2_redistribution', 1.25, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§5.5(4)', 'Coefficient k2 bornant xu/d pour la ductilite. Recommandation EN: 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa). Au-dela de C50/60 ce parametre doit etre re-exprime.', 1.25, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k3_crack_spacing', 3.4, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.4(3), eq. (7.11)', 'Coefficient k3 de l''espacement maximal des fissures s_r,max', 3.4, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'k3_crack_spacing', null, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'not_representable'::ndp_validation_status, null, null, 'SANS VALEUR EXPLOITABLE. §7.3.4(3) p.17: la France NE retient 3,4 que pour les enrobages inferieurs ou egaux a 25 mm. « Pour des enrobages plus grands, la valeur de k3 a utiliser est k3 = 3,4 (25/c)^2/3 (c en mm). » C''est une FORMULE dependant de l''enrobage, pas une constante. A l''enrobage de 40 mm du cas de reference du moteur elle vaut 2,486, soit 27 % sous la valeur stockee — dans le sens qui SOUS-ESTIME l''espacement des fissures, donc l''ouverture. Ce parametre reste sans valeur tant que le modele n''admet pas une expression.', '§7.3.4(3), eq. (7.11)', 'Coefficient k3 de l''espacement maximal des fissures s_r,max', 3.4, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k3_steel_stress', 0.8, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(5)', 'Coefficient limitant la contrainte de traction de l''acier sous combinaison caracteristique: sigma_s <= k3 f_yk', 0.8, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'k3_steel_stress', 0.8, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(5)', 'Coefficient limitant la contrainte de traction de l''acier sous combinaison caracteristique: sigma_s <= k3 f_yk', 0.8, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k4_crack_spacing', 0.425, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.4(3), eq. (7.11). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.4(3), eq. (7.11)', 'Coefficient k4 de l''espacement maximal des fissures s_r,max', 0.425, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'k4_crack_spacing', 0.425, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NF EN 1992-1-1/NA (mars 2007), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.4(3): « La valeur de k4 a utiliser est celle recommandee. »', '§7.3.4(3), eq. (7.11)', 'Coefficient k4 de l''espacement maximal des fissures s_r,max', 0.425, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'k4_steel_stress_imposed', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(5)', 'Coefficient applicable a la contrainte de l''acier resultant d''une deformation imposee: sigma_s <= k4 f_yk', 1.0, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'k4_steel_stress_imposed', 1.0, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.2(5). Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.2(5)', 'Coefficient applicable a la contrainte de l''acier resultant d''une deformation imposee: sigma_s <= k4 f_yk', 1.0, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'nu1_coeff', 0.6, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.2(6), eq. (6.6N)', 'Coefficient nu de la resistance du beton fissure a l''effort tranchant: nu = 0,6 [1 - fck/250]', 0.6, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'nu1_coeff', 0.6, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NF EN 1992-1-1/NA (mars 2007), p. 12. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(6): « La valeur de nu a utiliser est celle recommandee. »', '§6.2.2(6), eq. (6.6N)', 'Coefficient nu de la resistance du beton fissure a l''effort tranchant: nu = 0,6 [1 - fck/250]', 0.6, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'nu1_fck_divisor', 250.0, 'MPa', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.2(6), eq. (6.6N)', 'Diviseur de fck dans nu = 0,6 [1 - fck/250]', 250.0, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'nu1_fck_divisor', 250.0, 'MPa', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.2(6), eq. (6.6N)', 'Diviseur de fck dans nu = 0,6 [1 - fck/250]', 250.0, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'rho_w_min_coeff', 0.08, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(5), eq. (9.5N)', 'Coefficient du taux minimal d''armatures d''effort tranchant: rho_w,min = 0,08 sqrt(fck)/fyk', 0.08, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'rho_w_min_coeff', 0.08, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(5), eq. (9.5N)', 'Coefficient du taux minimal d''armatures d''effort tranchant: rho_w,min = 0,08 sqrt(fck)/fyk', 0.08, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 's_l_max_coeff', 0.75, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(6), eq. (9.6N)', 'Coefficient de l''espacement longitudinal maximal des cadres: s_l,max = 0,75 d (1 + cot alpha)', 0.75, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 's_l_max_coeff', 0.75, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(6), eq. (9.6N)', 'Coefficient de l''espacement longitudinal maximal des cadres: s_l,max = 0,75 d (1 + cot alpha)', 0.75, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 's_t_max_coeff', 0.75, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(8), eq. (9.8N)', 'Coefficient de l''espacement transversal maximal des brins: s_t,max = 0,75 d <= 600 mm', 0.75, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 's_t_max_coeff', 0.75, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(8), eq. (9.8N)', 'Coefficient de l''espacement transversal maximal des brins: s_t,max = 0,75 d <= 600 mm', 0.75, false
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'v_min_coeff', 0.035, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.2(1), eq. (6.3N)', 'Coefficient de v_min = 0,035 k^(3/2) fck^(1/2)', 0.035, false
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'v_min_coeff', null, 'dimensionless', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU par le pipeline d''import dans NF EN 1992-1-1/NA (mars 2007), p. 12. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): la France REMPLACE l''expression unique de l''EN par trois, selon l''element. ATTENTION — les valeurs stockees ici valent gamma_C = 1,5 (situation durable ou transitoire). L''annexe ecrit 0,053/gamma_C, pas un nombre: en situation accidentelle (gamma_C = 1,2) le coefficient devient 0,04417 et non 0,03533. Le modele ne sait pas porter une expression; ce point reste a traiter.', '§6.2.2(1), eq. (6.3N)', 'Coefficient de v_min = 0,035 k^(3/2) fck^(1/2)', 0.035, true
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'beam', 0.035333333333333335, '§6.2.2(1) NA: « 0,053/gamma_C k^3/2 f_ck^1/2 pour les poutres, et pour les dalles autres que celles ci-dessus ». 0,053/1,5 = 0,035333. La valeur recommandee EN est 0,035: proche, et differente.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'v_min_coeff'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'slab_with_transverse_redistribution', 0.22666666666666668, '§6.2.2(1) NA: « 0,34/gamma_C f_ck^1/2 sur les dalles beneficiant d''un effet de redistribution transversale sous le cas de charge considere ». ATTENTION: cette expression N''A PAS le terme k^3/2. Un module qui multiplierait cette valeur par k^3/2 se tromperait; la condition doit etre traitee par le module, pas seulement lue.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'v_min_coeff'
+on conflict (parameter_id, condition) do nothing;
+insert into national_annex_parameter_variants (parameter_id, condition, value, description)
+select p.id, 'wall', 0.2333333333333333, '§6.2.2(1) NA: « 0,35/gamma_C f_ck^1/2 pour les voiles ». Sans terme k^3/2 non plus.'
+from national_annex_parameters p
+where p.country_code = 'FR'::country_code
+  and p.standard_family = 'EN 1992'
+  and p.part = '1-1'
+  and p.parameter_name = 'v_min_coeff'
+on conflict (parameter_id, condition) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'NON RELEVE — edition reelle a renseigner', '2026-07-26'::date, null, 'w_max', null, 'mm', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'VALEUR RECOMMANDEE PAR L''EN, utilisee comme valeur d''attente. L''Annexe Nationale de ce pays N''A PAS ETE OUVERTE pour cette clause. Ce qui manque: le texte publie de l''AN pour §7.3.1(5), Tab. 7.1N. Le mode strict refuse de calculer tant que la valeur n''a pas ete relevee et confirmee par un ingenieur.', '§7.3.1(5), Tab. 7.1N', 'Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges', 0.3, true
+select a.id, 'FR'::country_code, 'EN 1992', '1-1', 'NF EN 1992-1-1/NA', 'mars 2007 (LUE en page 1), indice P 18-711-1/NA', '2007-03-01'::date, null, 'w_max', null, 'mm', 'AFNOR — Association francaise de normalisation', 'https://www.afnor.org', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, '§7.3.1(5) p.15 de NF EN 1992-1-1/NA (mars 2007): « les valeurs de w_max a utiliser sont donnees dans le Tableau 7.1NF ». La France REMPLACE donc le Tableau 7.1N. ATTENTION — LES VALEURS PORTEES ICI SONT CELLES DU TABLEAU 7.1N DE L''EN, PAS CELLES DU TABLEAU 7.1NF. Les cellules numeriques du tableau francais ne s''extraient pas de ce rendu (extract_tables rend des lignes vides, et le texte au fil ne porte aucun des nombres). CE QUI MANQUE: une lecture des cellules du Tableau 7.1NF, p. 16. L''annexe ajoute par ailleurs que les dalles et voiles de plus de 0,8 m et les poutres de plus de 2 m relevent de la NF EN 1992-2 ou 1992-3 — hors du domaine de ce moteur.', '§7.3.1(5), Tab. 7.1N', 'Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges', 0.3, true
 from national_annexes a
 where a.country_code = 'FR'::country_code
   and a.standard_family = 'EN 1992'
   and a.part = '1-1'
-  and a.edition = 'NON RELEVE — edition reelle a renseigner'
+  and a.edition = 'mars 2007 (LUE en page 1), indice P 18-711-1/NA'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameter_variants (parameter_id, condition, value, description)
 select p.id, 'X0_XC1', 0.4, 'Tab. 7.1N de l''EN, ligne X0/XC1 — 0,4 mm.'

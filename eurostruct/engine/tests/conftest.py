@@ -91,3 +91,47 @@ def b500b():
 def section_300x600():
     """The reference section used across the hand-checked cases."""
     return RectangularSection(b=Q_(300, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm"))
+
+
+@pytest.fixture
+def params_fr_sls():
+    """France, with a HYPOTHETICAL scalar k3 for crack spacing.
+
+    NF EN 1992-1-1/NA §7.3.4(3) keeps k3 = 3,4 only up to a 25 mm cover; beyond
+    that it becomes ``3,4 (25/c)^{2/3}``, a formula in the cover. The scalar
+    model cannot hold that, so real French data refuses the crack-width check
+    outright — which ``test_france_refuses_crack_width_for_want_of_a_formula``
+    verifies.
+
+    That refusal also makes every downstream assembly unreachable for France:
+    the note de calcul cannot carry a serviceability section, and the §7.2
+    stress limits — which France does NOT modify — become untestable with it.
+    So this fixture substitutes the EN recommendation for that ONE parameter,
+    purely to reach the code path. The value 3,4 is not asserted anywhere and
+    never leaves the tests; what is exercised is the assembly around it.
+    """
+    import dataclasses
+
+    from eurostruct_engine.ndp.model import ValidationStatus
+    from eurostruct_engine.ndp.registry import ParameterSet
+
+    base = load_parameter_set("FR", strict=False, as_of=AS_OF)
+    annex = base.registry.annex_for("EN 1992-1-1", AS_OF)
+    patched = tuple(
+        dataclasses.replace(
+            p,
+            parameter_value=3.4,
+            validation_status=ValidationStatus.PENDING_VERIFICATION,
+            notes="HYPOTHESE DE TEST — pas ce que dit le NA francais.",
+        )
+        if p.parameter_name == "k3_crack_spacing" else p
+        for p in annex.parameters
+    )
+    registry = dataclasses.replace(
+        base.registry,
+        annexes=tuple(
+            dataclasses.replace(a, parameters=patched) if a is annex else a
+            for a in base.registry.annexes
+        ),
+    )
+    return ParameterSet(registry=registry, region=None, as_of=AS_OF, strict=False)

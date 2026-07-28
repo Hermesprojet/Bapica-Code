@@ -332,7 +332,15 @@ def design_shear(
     # sous-estimerait f_cd de 15 %, donc V_Rd,max — dans le sens defavorable.
     alpha_cc = float(params.get(f"{EC2_11}:alpha_cc", j, condition="other").magnitude)
     c_rd_c = float(params.get(f"{EC2_11}:C_Rd_c_coeff", j).magnitude)
-    v_min_c = float(params.get(f"{EC2_11}:v_min_coeff", j).magnitude)
+    # §6.2.2(1): la France ne donne pas la meme expression selon l'element.
+    # NF EN 1992-1-1/NA remplace l'expression unique de l'EN par trois —
+    # 0,053/gamma_C k^3/2 f_ck^1/2 pour les POUTRES, 0,34/gamma_C f_ck^1/2 pour
+    # les dalles a redistribution transversale, 0,35/gamma_C f_ck^1/2 pour les
+    # voiles. Les deux dernieres n'ont PAS le terme k^3/2 que ce module
+    # applique: ce module ne couvre donc que la poutre, et le declare.
+    v_min_c = float(
+        params.get(f"{EC2_11}:v_min_coeff", j, condition="beam").magnitude
+    )
     k1_shear = float(params.get(f"{EC2_11}:k1_shear", j).magnitude)
     alpha_cw = float(params.get(f"{EC2_11}:alpha_cw", j).magnitude)
     nu1_c = float(params.get(f"{EC2_11}:nu1_coeff", j).magnitude)

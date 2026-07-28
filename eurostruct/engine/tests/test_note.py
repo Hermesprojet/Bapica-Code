@@ -46,7 +46,7 @@ ISSUED = date(2026, 7, 27)
 
 
 @pytest.fixture
-def designs(params_fr):
+def designs(params_fr, params_fr_sls):
     c, s = concrete("C30/37"), reinforcement("B500B")
     flexure = design_flexure(
         section=RectangularSection(b=Q_(300, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm")),
@@ -68,7 +68,7 @@ def designs(params_fr):
         detail=CrackControlDetail(
             phi=Q_(20, "mm"), cover=Q_(40, "mm"), bar_spacing=Q_(60, "mm")
         ),
-        exposure_class=ExposureClass.XC3, params=params_fr, element="P1",
+        exposure_class=ExposureClass.XC3, params=params_fr_sls, element="P1",
     )
     span_depth = check_span_depth(
         section=RectangularSection(b=Q_(300, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm")),

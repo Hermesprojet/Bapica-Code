@@ -10,7 +10,7 @@
         "EN 1992-1-1 §7.3.4"
       ],
       "country_scope": [
-        "FR"
+        "BE"
       ],
       "source_type": "manual_reference",
       "source_document": {
@@ -22,7 +22,7 @@
       },
       "harness": "ec2.serviceability",
       "input_dataset": {
-        "country": "FR",
+        "country": "BE",
         "as_of": "2026-07-26",
         "strict_ndp": false,
         "b": {
@@ -103,7 +103,7 @@
         "EN 1992-1-1 §7.3.4(2)"
       ],
       "country_scope": [
-        "FR"
+        "BE"
       ],
       "source_type": "manual_reference",
       "source_document": {
@@ -115,7 +115,7 @@
       },
       "harness": "ec2.serviceability",
       "input_dataset": {
-        "country": "FR",
+        "country": "BE",
         "as_of": "2026-07-26",
         "strict_ndp": false,
         "b": {
@@ -195,7 +195,7 @@
         "EN 1992-1-1 §7.3.4(3)"
       ],
       "country_scope": [
-        "FR"
+        "BE"
       ],
       "source_type": "manual_reference",
       "source_document": {
@@ -207,7 +207,7 @@
       },
       "harness": "ec2.serviceability",
       "input_dataset": {
-        "country": "FR",
+        "country": "BE",
         "as_of": "2026-07-26",
         "strict_ndp": false,
         "b": {
