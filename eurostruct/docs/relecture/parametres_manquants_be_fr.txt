@@ -1,0 +1,98 @@
+==========================================================================
+FR — NF EN 1992-1-1/NA (mars 2007, P 18-711-1/NA)
+Document EN MAIN ; 29 parametres
+==========================================================================
+
+[A LIRE] 18
+    As_max_ratio               §9.2.1.1(3)                        clause jamais ouverte; l'annexe est pourtant en main
+    As_min_coeff               §9.2.1.1(1), eq. (9.1N)            clause jamais ouverte; l'annexe est pourtant en main
+    As_min_floor               §9.2.1.1(1), eq. (9.1N)            clause jamais ouverte; l'annexe est pourtant en main
+    K_span_depth               §7.4.2(2), Tab. 7.4N               clause jamais ouverte; l'annexe est pourtant en main
+    alpha_cw                   §6.2.3(3)                          clause jamais ouverte; l'annexe est pourtant en main
+    cot_theta_max              §6.2.3(2), eq. (6.7N)              clause jamais ouverte; l'annexe est pourtant en main
+    cot_theta_min              §6.2.3(2), eq. (6.7N)              clause jamais ouverte; l'annexe est pourtant en main
+    gamma_C_accidental         §2.4.2.4(1), Tab. 2.1N             clause jamais ouverte; l'annexe est pourtant en main
+    gamma_S_accidental         §2.4.2.4(1), Tab. 2.1N             clause jamais ouverte; l'annexe est pourtant en main
+    k1_redistribution          §5.5(4)                            clause jamais ouverte; l'annexe est pourtant en main
+    k1_stress_limit            §7.2(2)                            clause jamais ouverte; l'annexe est pourtant en main
+    k2_redistribution          §5.5(4)                            clause jamais ouverte; l'annexe est pourtant en main
+    k3_steel_stress            §7.2(5)                            clause jamais ouverte; l'annexe est pourtant en main
+    k4_steel_stress_imposed    §7.2(5)                            clause jamais ouverte; l'annexe est pourtant en main
+    nu1_fck_divisor            §6.2.2(6), eq. (6.6N)              clause jamais ouverte; l'annexe est pourtant en main
+    rho_w_min_coeff            §9.2.2(5), eq. (9.5N)              clause jamais ouverte; l'annexe est pourtant en main
+    s_l_max_coeff              §9.2.2(6), eq. (9.6N)              clause jamais ouverte; l'annexe est pourtant en main
+    s_t_max_coeff              §9.2.2(8), eq. (9.8N)              clause jamais ouverte; l'annexe est pourtant en main
+
+[A CONFIRMER] 9
+    C_Rd_c_coeff               §6.2.2(1)                          p. 12 de l'annexe detenue
+    alpha_cc                   §3.1.6(1)P                         p. 7 de l'annexe detenue
+    alpha_ct                   §3.1.6(2)P                         p. 7 de l'annexe detenue
+    gamma_C_persistent         §2.4.2.4(1), Tab. 2.1N             p. 6 de l'annexe detenue
+    gamma_S_persistent         §2.4.2.4(1), Tab. 2.1N             p. 6 de l'annexe detenue
+    k1_shear                   §6.2.2(1)                          p. 12 de l'annexe detenue
+    k4_crack_spacing           §7.3.4(3), eq. (7.11)              p. 17 de l'annexe detenue
+    nu1_coeff                  §6.2.2(6), eq. (6.6N)              p. 12 de l'annexe detenue
+    v_min_coeff                §6.2.2(1), eq. (6.3N)              p. 12 de l'annexe detenue
+
+[PAGE ILLISIBLE] 1
+    w_max                      §7.3.1(5), Tab. 7.1N               cellules du tableau national non extractibles de l'exemplaire detenu
+
+[CODE, PAS DOCUMENT] 1
+    k3_crack_spacing           §7.3.4(3), eq. (7.11)              aucun document ne debloque: le modele doit apprendre l'expression
+
+==========================================================================
+BE — NBN EN 1992-1-1 ANB (1e ed., aout 2010)
+Document EN MAIN ; 29 parametres
+==========================================================================
+
+[A LIRE] 6
+    alpha_cw                   §6.2.3(3)                          clause jamais ouverte; l'annexe est pourtant en main
+    nu1_coeff                  §6.2.2(6), eq. (6.6N)              clause jamais ouverte; l'annexe est pourtant en main
+    nu1_fck_divisor            §6.2.2(6), eq. (6.6N)              clause jamais ouverte; l'annexe est pourtant en main
+    rho_w_min_coeff            §9.2.2(5), eq. (9.5N)              clause jamais ouverte; l'annexe est pourtant en main
+    s_l_max_coeff              §9.2.2(6), eq. (9.6N)              clause jamais ouverte; l'annexe est pourtant en main
+    s_t_max_coeff              §9.2.2(8), eq. (9.8N)              clause jamais ouverte; l'annexe est pourtant en main
+
+[A CONFIRMER] 21
+    As_max_ratio               §9.2.1.1(3)                        p. 22 de l'annexe detenue
+    As_min_coeff               §9.2.1.1(1), eq. (9.1N)            p. 22 de l'annexe detenue
+    As_min_floor               §9.2.1.1(1), eq. (9.1N)            p. 22 de l'annexe detenue
+    C_Rd_c_coeff               §6.2.2(1)                          p. 17 de l'annexe detenue
+    K_span_depth               §7.4.2(2), Tab. 7.4N               p. 18 de l'annexe detenue
+    alpha_cc                   §3.1.6(1)P                         p. 10 de l'annexe detenue
+    alpha_ct                   §3.1.6(2)P                         p. 10 de l'annexe detenue
+    cot_theta_min              §6.2.3(2), eq. (6.7N)              p. 17 de l'annexe detenue
+    gamma_C_accidental         §2.4.2.4(1), Tab. 2.1N             p. 8 de l'annexe detenue
+    gamma_C_persistent         §2.4.2.4(1), Tab. 2.1N             p. 8 de l'annexe detenue
+    gamma_S_accidental         §2.4.2.4(1), Tab. 2.1N             p. 8 de l'annexe detenue
+    gamma_S_persistent         §2.4.2.4(1), Tab. 2.1N             p. 8 de l'annexe detenue
+    k1_redistribution          §5.5(4)                            p. 15 de l'annexe detenue
+    k1_shear                   §6.2.2(1)                          p. 17 de l'annexe detenue
+    k1_stress_limit            §7.2(2)                            p. 17 de l'annexe detenue
+    k2_redistribution          §5.5(4)                            p. 15 de l'annexe detenue
+    k3_crack_spacing           §7.3.4(3), eq. (7.11)              p. 17 de l'annexe detenue
+    k3_steel_stress            §7.2(5)                            p. 17 de l'annexe detenue
+    k4_crack_spacing           §7.3.4(3), eq. (7.11)              p. 17 de l'annexe detenue
+    k4_steel_stress_imposed    §7.2(5)                            p. 17 de l'annexe detenue
+    v_min_coeff                §6.2.2(1), eq. (6.3N)              p. 17 de l'annexe detenue
+
+[PAGE ILLISIBLE] 1
+    w_max                      §7.3.1(5), Tab. 7.1N               cellules du tableau national non extractibles de l'exemplaire detenu
+
+[CODE, PAS DOCUMENT] 1
+    cot_theta_max              §6.2.3(2), eq. (6.7N)              aucun document ne debloque: le modele doit apprendre l'expression
+
+==========================================================================
+OU LES TROUVER
+==========================================================================
+A LIRE et A CONFIRMER: dans l'annexe deja detenue. Rien a acheter.
+  Ce qui manque est une lecture humaine, pas un document.
+
+PAGE ILLISIBLE: un exemplaire lisible d'UNE page.
+  BE  Tableau 7.1N-ANB, p. 17 de NBN EN 1992-1-1 ANB   -> NBN
+  FR  Tableau 7.1NF,    p. 16 de NF EN 1992-1-1/NA     -> AFNOR
+  Un tirage papier ou un autre rendu PDF suffit.
+
+CODE, PAS DOCUMENT: rien a chercher. Ces deux parametres sont
+  fixes par une formule, et le moteur ne sait porter qu'un
+  scalaire. C'est un developpement, pas une acquisition.
