@@ -123,7 +123,7 @@ def main(argv: list[str]) -> int:
         print("  EN 1995-x      P 21-711-1 / 712-1 / 720-1   (bois)")
         print("  EN 1996-x      P 10-611-1 / 612-1 / 620 / 630 (maconnerie)")
         print("  EN 1997-1      P 94-251-1                    (geotechnique)")
-        print("  EN 1998-1      P 06-030-1                    (sismique)")
+        print("  EN 1998-1/2/3/4  P 06-030-1 / 032 / 033-1 / 034  (sismique)")
         print()
         print("  RUPTURES CONSTATEES:")
         print("   * EN 1991-1-1: l'annexe s'appelle NF P 06-111-2, PAS")
@@ -140,8 +140,16 @@ def main(argv: list[str]) -> int:
         print("     contre-exemple le plus net: connaitre la famille ne suffit")
         print("     meme pas a cadrer la recherche.")
         print()
+        print("  UNE seule extrapolation est ici mieux etayee que les autres,")
+        print("  et elle reste une hypothese: les parties 1 a 4 de l'EN 1998")
+        print("  occupent P 06-030-1, 032, 033-1 et 034, quatre points d'une")
+        print("  meme serie serree. « P 06-035 » pour la partie 5 est donc")
+        print("  plausible — a VERIFIER, pas a commander sur cette base. Les")
+        print("  quatre ruptures ci-dessus rappellent ce que vaut une serie")
+        print("  qui parait reguliere.")
+        print()
         print(f"  Rechercher sur {PUBLISHER_SITE[cc]} par le numero de la norme")
-        print("  (« EN 1997-1 »), pas par l'indice suppose.")
+        print("  (« EN 1998-5 »), pas par l'indice suppose.")
     return 0
 
 
