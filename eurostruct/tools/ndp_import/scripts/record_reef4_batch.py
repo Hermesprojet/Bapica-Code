@@ -59,17 +59,24 @@ _PLATFORM = re.compile(
 #: character class must admit the letters of the /NA and /A1 suffixes: a first
 #: pass stopped at "P22-314/" and dropped the very segment that says the
 #: document is an annex.
+#: Les espaces internes sont tolerees et retirees ensuite: un exemplaire
+#: ecrit « P22- 382/NA », avec une espace APRES le tiret, et la classe de
+#: caracteres s'y arretait en rendant « P22- ».
 _INDICE = re.compile(
-    r"Indice\s+de\s+classement\s*:\s*(?P<indice>[A-Z]\s?[\dA-Z/-]+)"
+    r"Indice\s+de\s+classement\s*:\s*(?P<indice>[A-Z]\s?[\dA-Z/\s-]*?[\dA-Z])"
+    r"(?=\s*[)\n]|\s+[A-Z]{2})"
 )
 
 #: What the document says it is an annex TO. The ``/A1`` suffix is part of the
 #: identity, not decoration: without it NF EN 1990/NA and NF EN 1990/A1/NA
 #: collapse onto one catalogue key and the second silently overwrites the
 #: first. They are two different documents, both in force.
+#: Insensible a la casse: un exemplaire ecrit « Annexe Nationale », avec une
+#: majuscule a nationale, et la regex le rejetait comme illisible.
 _ANNEX_TO = re.compile(
-    r"[Aa]nnexe\s+nationale\s+(?:a|à|de)\s+la\s+"
+    r"annexe\s+nationale\s+(?:a|à|de)\s+la\s+"
     r"(?P<parent>NF\s+EN\s+[\d-]+(?:/A\d)?)",
+    re.IGNORECASE,
 )
 
 MONTHS = {
@@ -120,7 +127,8 @@ def identify(path: Path) -> dict[str, str] | None:
     else:
         family, _, part = parent_std.partition("-")
     return {
-        "reference": ref, "edition": edition, "indice": _norm(ind.group("indice")),
+        "reference": ref, "edition": edition,
+        "indice": re.sub(r"\s+", "", ind.group("indice")),
         "standard_family": family.strip(), "part": part.strip(),
         "effective_from": effective,
         "doc_id_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
