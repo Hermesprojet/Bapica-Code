@@ -144,6 +144,8 @@ def main(argv: list[str]) -> int:
     by_key = {e["doc_key"]: e for e in data["documents"]}
 
     recorded, superseded, skipped, created = [], [], [], []
+    duplicates: list[str] = []
+    seen: dict[str, tuple[str, str]] = {}   # cle -> (fichier, empreinte)
     for path in sorted(args.dir.glob("*ANB*.pdf")):
         ident = identify(path)
         if ident is None:
@@ -152,6 +154,22 @@ def main(argv: list[str]) -> int:
 
         flat = (ident["standard_family"] + ident["part"]).replace(" ", "").replace("-", "")
         key = f"BE-{flat}-NA"
+        # Deux fichiers pour une meme entree: ce n'est pas toujours un
+        # conflit. Une archive contenait « ..._ANB_2011(F).pdf » et
+        # « ..._ANB_2011(F) (1).pdf », octet pour octet identiques. Un doublon
+        # exact est sans consequence et se signale; deux fichiers DIFFERENTS
+        # qui revendiquent la meme entree sont un conflit, et rien n'est ecrit.
+        if key in seen:
+            prev_file, prev_digest = seen[key]
+            if prev_digest == ident["doc_id_sha256"]:
+                duplicates.append(f"{key}: {ident['filename']} = {prev_file}")
+            else:
+                print(f"  CONFLIT sur {key}: {ident['filename']} et "
+                      f"{prev_file} different. Aucun des deux n'est retenu.")
+                skipped.append(ident["filename"])
+            continue
+        seen[key] = (ident["filename"], ident["doc_id_sha256"])
+
         entry = by_key.get(key)
         if entry is None:
             # Le depot cree l'entree, comme cote francais. Refuser aurait
@@ -253,6 +271,10 @@ def main(argv: list[str]) -> int:
             print("   " + line)
         print("   Closes par effective_to, empreintes conservees. Une etude")
         print("   signee sous l'ancienne edition reste lisible.")
+    if duplicates:
+        print(f"\n{len(duplicates)} doublon(s) exact(s) ignore(s) sans consequence:")
+        for line in duplicates:
+            print("   " + line)
     if created:
         print(f"\n{len(created)} entree(s) creee(s): "
               f"{', '.join(sorted(created))}")

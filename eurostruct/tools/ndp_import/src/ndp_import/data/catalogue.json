@@ -323,14 +323,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P2. Voilement des plaques"
+        "notes": "Phase P2. Voilement des plaques\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-1-5_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-1-5_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P2",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "doc_id_sha256": "aeee6f79f333a6ce5521cb7e9ce11e24c12e3ac15219a7f54776452030902bae"
     },
     {
       "doc_key": "BE-EN199511-NA",
@@ -3025,12 +3027,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-1-4_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-1-4_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "d64c20748b69294dc9d0cc7d6c7e2cb42f5ac21703d959ef70e4c880fe8ff6ee"
     },
     {
       "doc_key": "ES-EN199314-NA",
@@ -3082,12 +3087,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-1-7_ANB_2011(F) (1).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-1-7_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-1-7_ANB_2011(F) (1).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "62c2ad0325ae17063683ae1a86648f0eb69aa06c165bc7afd46dbc2cd71fe6b7"
     },
     {
       "doc_key": "ES-EN199317-NA",
@@ -3253,12 +3261,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-1-6_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-1-6_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "51847eb31bd1b610315bb458657b82a93700cc4efe50be08f4467e7b4818a76a"
     },
     {
       "doc_key": "ES-EN199316-NA",
@@ -3927,7 +3938,7 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-4-1_ANB_2011(F) (1).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-4-1_ANB_2011(F) (1).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-4-1_ANB_2011(F) (1).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-4-1_ANB_2011(F) (1).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-4-1_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-4-1_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",

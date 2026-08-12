@@ -190,7 +190,7 @@ def main(argv: list[str]) -> int:
     by_key = {e["doc_key"]: e for e in data["documents"]}
 
     recorded, created, skipped = [], [], []
-    seen_this_run: dict[str, str] = {}
+    seen_this_run: dict[str, tuple[str, str]] = {}
     for path in sorted(args.dir.glob("*NA*.pdf")):
         ident = identify(path)
         if ident is None:
@@ -198,13 +198,20 @@ def main(argv: list[str]) -> int:
             continue
 
         key = doc_key(ident["standard_family"], ident["part"], set(by_key))
+        # Un doublon EXACT n'est pas un conflit: une archive belge livrait
+        # deux fois le meme fichier, octet pour octet. Refuser les deux aurait
+        # ecarte un document legitime parce qu'il avait ete joint deux fois.
         if key in seen_this_run:
-            print(f"  COLLISION sur {key}: {ident['filename']} et "
-                  f"{seen_this_run[key]} revendiquent la meme entree. "
-                  "Aucun des deux n'est ecrit.")
-            skipped.append(ident["filename"])
+            prev_file, prev_digest = seen_this_run[key]
+            if prev_digest == ident["doc_id_sha256"]:
+                print(f"  doublon exact ignore: {ident['filename']} "
+                      f"= {prev_file}")
+            else:
+                print(f"  CONFLIT sur {key}: {ident['filename']} et "
+                      f"{prev_file} different. Aucun des deux n'est retenu.")
+                skipped.append(ident["filename"])
             continue
-        seen_this_run[key] = ident["filename"]
+        seen_this_run[key] = (ident["filename"], ident["doc_id_sha256"])
 
         entry = by_key.get(key)
         if entry is None:
