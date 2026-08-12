@@ -138,38 +138,48 @@ def _split(key: str) -> tuple[str, str, str]:
     return f"EN {digits[:4]}", "", "-".join(digits[4:]) or ""
 
 
-#: Mirroring a newly discovered standard onto the other three countries.
-#: Recording a French annex creates a catalogue entry France alone carries,
-#: which breaks the invariant that the four countries track the same set of
-#: standards — and a country silently missing an entry is a country whose
-#: acquisition list is quietly incomplete. Done here rather than patched after
-#: each batch, because each batch broke it again.
-_MIRROR = {
-    "BE": ("NBN", "NBN {std} ANB", "Achat sur https://www.nbn.be."),
-    "ES": ("AENOR", "UNE-{std} Anexo Nacional", "Achat sur https://www.une.org."),
-    "DE": ("DIN", "DIN {std}/NA", "Achat sur https://www.beuth.de."),
+#: Mirroring a newly discovered standard onto the countries that lack it.
+#:
+#: A first version mirrored FROM FRANCE ONLY, because every standard had
+#: arrived through the French deposit. Then NBN EN 1993-4-2 ANB and 4-3 ANB
+#: arrived from Belgium, France had no such entry, and nothing was mirrored:
+#: three countries silently lost two lines of their acquisition list.
+#:
+#: So the direction is no longer fixed. Any standard held by ANY country gets
+#: an entry in the three others.
+_PUBLISHERS = {
+    "FR": ("AFNOR — Association francaise de normalisation", "NF {std}/NA",
+           "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+           ["fr"]),
+    "BE": ("NBN — Bureau de Normalisation", "NBN {std} ANB",
+           "Achat sur https://www.nbn.be.", ["fr", "nl"]),
+    "ES": ("AENOR", "UNE-{std} Anexo Nacional",
+           "Achat sur https://www.une.org.", ["es"]),
+    "DE": ("DIN", "DIN {std}/NA", "Achat sur https://www.beuth.de.", ["de"]),
 }
 
 
 def _mirror_to_other_countries(data: dict) -> list[str]:
-    """Give BE, ES and DE an entry for every standard only France carries."""
-    by_country: dict[str, dict[str, dict]] = {}
+    """Give every country an entry for every standard any country carries."""
+    seen: dict[str, dict[str, dict]] = {}
     for e in data["documents"]:
         if e.get("document_role") != "national_annex":
             continue
         key = f"{e['standard_family']}|{e['part']}"
-        by_country.setdefault(e["country_code"], {})[key] = e
+        seen.setdefault(key, {})[e["country_code"]] = e
 
     created = []
-    for key, fr_entry in by_country.get("FR", {}).items():
+    for key, per_country in seen.items():
         family, part = key.split("|")
         std = f"{family}-{part}" if part else family
-        for cc, (publisher, pattern, how) in _MIRROR.items():
-            if key in by_country.get(cc, {}):
+        # La cle suit l'orthographe deja en usage pour cette norme.
+        sample = next(iter(per_country.values()))
+        suffix = sample["doc_key"].split("-", 1)[1]
+        for cc, (publisher, pattern, how, langs) in _PUBLISHERS.items():
+            if cc in per_country:
                 continue
-            doc_key = f"{cc}-{fr_entry['doc_key'].split('-', 1)[1]}"
             data["documents"].append({
-                "doc_key": doc_key, "country_code": cc,
+                "doc_key": f"{cc}-{suffix}", "country_code": cc,
                 "standard_family": family, "part": part,
                 "reference": pattern.format(std=std),
                 "title": f"Annexe Nationale a l'{std}",
@@ -177,7 +187,7 @@ def _mirror_to_other_countries(data: dict) -> list[str]:
                 "acquisition": {
                     "how": how,
                     "licence": "Document payant, non redistribuable.",
-                    "languages": [],
+                    "languages": langs,
                     "notes": (
                         "REFERENCE A CONFIRMER. La designation nationale d'une "
                         "annexe n'est PAS previsible: la France publie celle de "
@@ -186,10 +196,10 @@ def _mirror_to_other_countries(data: dict) -> list[str]:
                         "remplacer par ce que porte le document reel."
                     ),
                 },
-                "parameters_expected": [], "phase": "P1",
+                "parameters_expected": [], "phase": sample.get("phase", "P2"),
                 "document_role": "national_annex", "status": "not_acquired",
             })
-            created.append(doc_key)
+            created.append(f"{cc}-{suffix}")
     return created
 
 

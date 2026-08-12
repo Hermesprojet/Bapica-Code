@@ -1,8 +1,11 @@
 === FR — annexes nationales ===
-51 detenue(s), 5 manquante(s), 56 au catalogue.
+51 detenue(s), 8 manquante(s), 59 au catalogue.
 
---- MANQUANTES (5) ---
+--- MANQUANTES (8) ---
 norme            reference au catalogue             indice           phase
+EN 1993-4-2      NF EN 1993-4-2/NA (forme supposee) a rechercher     P2
+EN 1993-4-3      NF EN 1993-4-3/NA (forme supposee) a rechercher     P2
+EN 1997-2        NF EN 1997-2/NA (forme supposee)   a rechercher     P1
 EN 1999-1-1      NF EN 1999-1-1/NA (forme supposee) a rechercher     P7
 EN 1999-1-2      NF EN 1999-1-2/NA (forme supposee) a rechercher     FEU
 EN 1999-1-3      NF EN 1999-1-3/NA (forme supposee) a rechercher     P7

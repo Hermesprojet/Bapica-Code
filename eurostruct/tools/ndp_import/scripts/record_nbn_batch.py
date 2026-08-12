@@ -50,6 +50,9 @@ from pathlib import Path
 
 import pdfplumber
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from record_fr_reef4_annexes import _mirror_to_other_countries  # noqa: E402
+
 HERE = Path(__file__).resolve().parents[1]
 CATALOGUE = HERE / "src/ndp_import/data/catalogue.json"
 
@@ -140,7 +143,7 @@ def main(argv: list[str]) -> int:
     data = json.loads(CATALOGUE.read_text(encoding="utf-8"))
     by_key = {e["doc_key"]: e for e in data["documents"]}
 
-    recorded, superseded, skipped = [], [], []
+    recorded, superseded, skipped, created = [], [], [], []
     for path in sorted(args.dir.glob("*ANB*.pdf")):
         ident = identify(path)
         if ident is None:
@@ -151,9 +154,27 @@ def main(argv: list[str]) -> int:
         key = f"BE-{flat}-NA"
         entry = by_key.get(key)
         if entry is None:
-            print(f"  IGNORE {path.name}: aucune entree {key} au catalogue")
-            skipped.append(path.name)
-            continue
+            # Le depot cree l'entree, comme cote francais. Refuser aurait
+            # oblige a une intervention manuelle a chaque nouvelle partie —
+            # EN 1993-4-2 et 4-3 sont arrivees ainsi, et aucune phase ne les
+            # prevoyait.
+            entry = {
+                "doc_key": key, "country_code": "BE",
+                "standard_family": ident["standard_family"],
+                "part": ident["part"], "reference": ident["reference"],
+                "title": f"Annexe Nationale — {ident['reference']}",
+                "publisher": "NBN — Bureau de Normalisation",
+                "acquisition": {
+                    "how": "Achat sur https://www.nbn.be.",
+                    "licence": "Document payant, non redistribuable.",
+                    "languages": ["fr", "nl"], "notes": "",
+                },
+                "parameters_expected": [], "phase": "P2",
+                "document_role": "national_annex", "status": "not_acquired",
+            }
+            data["documents"].append(entry)
+            by_key[key] = entry
+            created.append(key)
 
         acq = entry.setdefault("acquisition", {})
         previous_note = (acq.get("notes") or "").strip()
@@ -216,6 +237,8 @@ def main(argv: list[str]) -> int:
             f"{ident['effective_from'] or '?':12s} {ident['doc_id_sha256'][:12]}"
         )
 
+    mirrored = _mirror_to_other_countries(data)
+
     if not args.dry_run:
         CATALOGUE.write_text(
             json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -230,6 +253,11 @@ def main(argv: list[str]) -> int:
             print("   " + line)
         print("   Closes par effective_to, empreintes conservees. Une etude")
         print("   signee sous l'ancienne edition reste lisible.")
+    if created:
+        print(f"\n{len(created)} entree(s) creee(s): "
+              f"{', '.join(sorted(created))}")
+    if mirrored:
+        print(f"{len(mirrored)} entree(s) miroir FR/ES/DE.")
     if skipped:
         print(f"\n{len(skipped)} fichier(s) ignore(s).")
     return 0

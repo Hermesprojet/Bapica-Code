@@ -3686,12 +3686,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-3-1_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-3-1_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "b778fc706f94b9eae0a5dcd2c171aa9e359bbad9f180ac388774f68e3b3c191b"
     },
     {
       "doc_key": "ES-EN199331-NA",
@@ -3743,12 +3746,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-3-2_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-3-2_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "3f5b1b8b8a42c3ab7f2b82648a9d65425b15a58da8b9af2c7d5515b2cd588ab4"
     },
     {
       "doc_key": "ES-EN199332-NA",
@@ -3850,12 +3856,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-5_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-5_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "06aa5e82fe7e72ed73774e67f1c2558fcc5b8a38765432ebc77e2234fa52e516"
     },
     {
       "doc_key": "ES-EN19935-NA",
@@ -3907,12 +3916,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-4-1_ANB_2011(F) (1).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-4-1_ANB_2011(F) (1).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "06bc2522a1bd14ba19754ef04052b0ee6344326a71e1ca6541d97bd3fb1e535a"
     },
     {
       "doc_key": "ES-EN199341-NA",
@@ -3989,12 +4001,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-6_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-6_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "b417b7e0731983acf109b73e7feec53c7628cf22b5fc4d81a8ecc7ad84918aef"
     },
     {
       "doc_key": "ES-EN19936-NA",
@@ -5411,6 +5426,182 @@
       },
       "parameters_expected": [],
       "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "BE-EN199342-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1993",
+      "part": "4-2",
+      "reference": "NBN EN 1993-4-2 ANB",
+      "title": "Annexe Nationale — NBN EN 1993-4-2 ANB",
+      "publisher": "NBN — Bureau de Normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Identite PARSEE en page 1 de NBN_EN_1993-4-2_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-4-2_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
+      },
+      "parameters_expected": [],
+      "phase": "P2",
+      "document_role": "national_annex",
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "d47dab9da128e1369fe3de8c4b803bb3c2e1aa27795508add1d8642abb0104fa"
+    },
+    {
+      "doc_key": "BE-EN199343-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1993",
+      "part": "4-3",
+      "reference": "NBN EN 1993-4-3 ANB",
+      "title": "Annexe Nationale — NBN EN 1993-4-3 ANB",
+      "publisher": "NBN — Bureau de Normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr",
+          "nl"
+        ],
+        "notes": "Identite PARSEE en page 1 de NBN_EN_1993-4-3_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-4-3_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
+      },
+      "parameters_expected": [],
+      "phase": "P2",
+      "document_role": "national_annex",
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "1446e724f708d78591dc6cd2faf19e80679a6cae4171630e9283d0d97df216c3"
+    },
+    {
+      "doc_key": "FR-EN199342-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1993",
+      "part": "4-2",
+      "reference": "NF EN 1993-4-2/NA",
+      "title": "Annexe Nationale a l'EN 1993-4-2",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P2",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "ES-EN199342-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1993",
+      "part": "4-2",
+      "reference": "UNE-EN 1993-4-2 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1993-4-2",
+      "publisher": "AENOR",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P2",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "DE-EN199342-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1993",
+      "part": "4-2",
+      "reference": "DIN EN 1993-4-2/NA",
+      "title": "Annexe Nationale a l'EN 1993-4-2",
+      "publisher": "DIN",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P2",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "FR-EN199343-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1993",
+      "part": "4-3",
+      "reference": "NF EN 1993-4-3/NA",
+      "title": "Annexe Nationale a l'EN 1993-4-3",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org, ou abonnement COBAZ.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "fr"
+        ],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P2",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "ES-EN199343-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1993",
+      "part": "4-3",
+      "reference": "UNE-EN 1993-4-3 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1993-4-3",
+      "publisher": "AENOR",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "es"
+        ],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P2",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "DE-EN199343-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1993",
+      "part": "4-3",
+      "reference": "DIN EN 1993-4-3/NA",
+      "title": "Annexe Nationale a l'EN 1993-4-3",
+      "publisher": "DIN",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [
+          "de"
+        ],
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P2",
       "document_role": "national_annex",
       "status": "not_acquired"
     }
