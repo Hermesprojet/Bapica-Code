@@ -1,0 +1,86 @@
+=== BE — annexes nationales ===
+9 detenue(s), 47 manquante(s), 56 au catalogue.
+
+--- MANQUANTES (47) ---
+norme            reference au catalogue             indice           phase
+EN 1990-A1       NBN EN 1990/A1 ANB (forme supposee) a rechercher     P1
+EN 1991-1-5      NBN EN 1991-1-5 ANB (forme supposee) a rechercher     P1
+EN 1991-1-6      NBN EN 1991-1-6 ANB (forme supposee) a rechercher     P1
+EN 1991-1-7      NBN EN 1991-1-7 ANB (forme supposee) a rechercher     P1
+EN 1991-3        NBN EN 1991-3 ANB (forme supposee) a rechercher     P1
+EN 1991-4        NBN EN 1991-4 ANB (forme supposee) a rechercher     P1
+EN 1992-1-2      NBN EN 1992-1-2 ANB                a rechercher     FEU
+EN 1992-2        NBN EN 1992-2 ANB                  a rechercher     P6
+EN 1992-3        NBN EN 1992-3 ANB (forme supposee) a rechercher     P1
+EN 1993-1-3      NBN EN 1993-1-3 ANB (forme supposee) a rechercher     P1
+EN 1993-1-4      NBN EN 1993-1-4 ANB (forme supposee) a rechercher     P1
+EN 1993-1-5      NBN EN 1993-1-5 ANB                a rechercher     P2
+EN 1993-1-6      NBN EN 1993-1-6 ANB (forme supposee) a rechercher     P1
+EN 1993-1-7      NBN EN 1993-1-7 ANB (forme supposee) a rechercher     P1
+EN 1993-1-8      NBN EN 1993-1-8 ANB                a rechercher     P2
+EN 1993-1-9      NBN EN 1993-1-9 ANB (forme supposee) a rechercher     P1
+EN 1993-1-10     NBN EN 1993-1-10 ANB (forme supposee) a rechercher     P1
+EN 1993-1-11     NBN EN 1993-1-11 ANB (forme supposee) a rechercher     P1
+EN 1993-1-12     NBN EN 1993-1-12 ANB (forme supposee) a rechercher     P1
+EN 1993-2        NBN EN 1993-2 ANB                  a rechercher     P6
+EN 1993-3-1      NBN EN 1993-3-1 ANB (forme supposee) a rechercher     P1
+EN 1993-3-2      NBN EN 1993-3-2 ANB (forme supposee) a rechercher     P1
+EN 1993-4-1      NBN EN 1993-4-1 ANB (forme supposee) a rechercher     P1
+EN 1993-5        NBN EN 1993-5 ANB (forme supposee) a rechercher     P1
+EN 1993-6        NBN EN 1993-6 ANB (forme supposee) a rechercher     P1
+EN 1994-1-1      NBN EN 1994-1-1 ANB                a rechercher     P6
+EN 1994-1-2      NBN EN 1994-1-2 ANB (forme supposee) a rechercher     P1
+EN 1994-2        NBN EN 1994-2 ANB (forme supposee) a rechercher     P1
+EN 1995-1-1      NBN EN 1995-1-1 ANB                a rechercher     P3
+EN 1995-1-2      NBN EN 1995-1-2 ANB                a rechercher     FEU
+EN 1995-2        NBN EN 1995-2 ANB (forme supposee) a rechercher     P1
+EN 1996-1-1      NBN EN 1996-1-1 ANB (forme supposee) a rechercher     P1
+EN 1996-1-2      NBN EN 1996-1-2 ANB (forme supposee) a rechercher     P1
+EN 1996-2        NBN EN 1996-2 ANB (forme supposee) a rechercher     P1
+EN 1996-3        NBN EN 1996-3 ANB (forme supposee) a rechercher     P1
+EN 1997-1        NBN EN 1997-1 ANB                  a rechercher     P1
+EN 1998-1        NBN EN 1998-1 ANB                  a rechercher     P4
+EN 1998-2        NBN EN 1998-2 ANB (forme supposee) a rechercher     P1
+EN 1998-3        NBN EN 1998-3 ANB (forme supposee) a rechercher     P1
+EN 1998-4        NBN EN 1998-4 ANB (forme supposee) a rechercher     P1
+EN 1998-5        NBN EN 1998-5 ANB                  a rechercher     P4
+EN 1998-6        NBN EN 1998-6 ANB (forme supposee) a rechercher     P1
+EN 1999-1-1      NBN EN 1999-1-1 ANB (forme supposee) a rechercher     P1
+EN 1999-1-2      NBN EN 1999-1-2 ANB (forme supposee) a rechercher     P1
+EN 1999-1-3      NBN EN 1999-1-3 ANB (forme supposee) a rechercher     P1
+EN 1999-1-4      NBN EN 1999-1-4 ANB (forme supposee) a rechercher     P1
+EN 1999-1-5      NBN EN 1999-1-5 ANB (forme supposee) a rechercher     P1
+
+--- DETENUES (9), indice lu en couverture ---
+norme            reference                indice               edition
+EN 1990          NBN EN 1990 ANB          (non releve)         2e ed., janvier 2013
+EN 1991-1-1      NBN EN 1991-1-1 ANB      (non releve)         1e ed., septembre 2007
+EN 1991-1-2      NBN EN 1991-1-2 ANB      (non releve)         1e ed., mai 2008
+EN 1991-1-3      NBN EN 1991-1-3 ANB      (non releve)         1e uitg., oktober 2007 (version ne
+EN 1991-1-4      NBN EN 1991-1-4 ANB      (non releve)         1e uitg., december 2010 (version n
+EN 1991-2        NBN EN 1991-2 ANB        (non releve)         1e ed., octobre 2011
+EN 1992-1-1      NBN EN 1992-1-1 ANB      (non releve)         1e ed., aout 2010
+EN 1993-1-1      NBN EN 1993-1-1 ANB      (non releve)         1e ed., decembre 2010
+EN 1993-1-2      NBN EN 1993-1-2 ANB      (non releve)         1e ed., decembre 2010
+
+--- comment chercher chez le NBN ---
+Le NBN ne numerote pas ses annexes par un indice de classement:
+la reference EST le nom du document. Il n'y a donc rien a
+deviner de ce cote, contrairement a la France.
+
+La forme « NBN EN <norme> ANB » se lit a l'identique sur les
+NEUF annexes detenues, sans exception. C'est une regularite
+bien mieux etablie que celle des indices francais — mais elle
+porte sur neuf documents d'une seule famille de parties, et le
+depot francais a montre qu'une serie reguliere peut rompre.
+
+A verifier au passage sur chaque fiche produit:
+  * L'EDITION. NBN EN 1990 ANB est detenu en 2e ed. 2013 et un
+    registre externe annonce une edition 2021 — non verifiee.
+    Une annexe remplacee ne doit pas servir a un projet courant.
+  * LA LANGUE. Deux des neuf annexes detenues sont en
+    neerlandais (1991-1-3 et 1991-1-4). Le NBN publie en FR et
+    en NL; verifier laquelle est commandee.
+
+  Boutique: https://www.nbn.be — recherche par le numero de la
+  norme, puis filtrer sur les documents « ANB ».
