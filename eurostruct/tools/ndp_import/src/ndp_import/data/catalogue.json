@@ -35,22 +35,31 @@
           "fr",
           "nl"
         ],
-        "notes": "ACQUIS en version texte (33 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Base de calcul des structures: coefficients partiels et combinaisons d'actions. EDITION EN VIGUEUR. Sa page de garde porte « Remplace: NBN EN 1990 ANB (2007) »; autorisation de publication du 28 septembre 2012. Annexe a la NBN EN 1990, 1e ed. juillet 2002, y compris l'amendement NBN EN 1990/A1:2006. La 1e edition (2007, 15 pages) est aussi detenue et enregistree comme edition anterieure — le moteur resout l'annexe par la date de reference du projet. Aucun motif d'extraction ecrit a ce jour.\n\n--- SIGNALEMENT ---\nEDITION A VERIFIER D'URGENCE — ce document est au statut 'acquired', il FAIT FOI, et l'exemplaire detenu est la 2e edition de janvier 2013. Un registre externe depose le 2026-07-28 (leads/registre_externe_annexes_be_fr_de_es.json, sha256 b0de96eb83487cec...) affirme l'existence d'une edition NBN EN 1990 ANB:2021, entree en vigueur le 2021-03-23. CETTE AFFIRMATION N'EST PAS VERIFIEE: le fichier ne cite aucun identifiant de document ni URL, ses champs 'parameters' sont tous vides, et rien n'etablit qui l'a produit. Elle n'est donc PAS traitee comme un fait, et le statut n'est pas modifie sur cette seule base. Mais un document qui gouverne et qui pourrait etre remplace ne peut pas rester silencieux: A CONFIRMER aupres du NBN avant tout usage sur un projet. Si l'edition 2021 existe, l'exemplaire de 2013 doit etre clos par effective_to et la nouvelle version acquise."
+        "notes": "ACQUIS en version texte (33 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Base de calcul des structures: coefficients partiels et combinaisons d'actions. EDITION EN VIGUEUR. Sa page de garde porte « Remplace: NBN EN 1990 ANB (2007) »; autorisation de publication du 28 septembre 2012. Annexe a la NBN EN 1990, 1e ed. juillet 2002, y compris l'amendement NBN EN 1990/A1:2006. La 1e edition (2007, 15 pages) est aussi detenue et enregistree comme edition anterieure — le moteur resout l'annexe par la date de reference du projet. Aucun motif d'extraction ecrit a ce jour.\n\n--- SIGNALEMENT ---\nEDITION A VERIFIER D'URGENCE — ce document est au statut 'acquired', il FAIT FOI, et l'exemplaire detenu est la 2e edition de janvier 2013. Un registre externe depose le 2026-07-28 (leads/registre_externe_annexes_be_fr_de_es.json, sha256 b0de96eb83487cec...) affirme l'existence d'une edition NBN EN 1990 ANB:2021, entree en vigueur le 2021-03-23. CETTE AFFIRMATION N'EST PAS VERIFIEE: le fichier ne cite aucun identifiant de document ni URL, ses champs 'parameters' sont tous vides, et rien n'etablit qui l'a produit. Elle n'est donc PAS traitee comme un fait, et le statut n'est pas modifie sur cette seule base. Mais un document qui gouverne et qui pourrait etre remplace ne peut pas rester silencieux: A CONFIRMER aupres du NBN avant tout usage sur un projet. Si l'edition 2021 existe, l'exemplaire de 2013 doit etre clos par effective_to et la nouvelle version acquise.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN EN 1990 ANB_2021_fr.pdf. Edition 2021, en vigueur depuis 2021-03-23. CETTE EDITION REMPLACE NBN EN 1990 ANB:2013 — l'exemplaire precedemment detenu (2e ed., janvier 2013) est PERIME et a ete clos par effective_to; son empreinte est conservee dans superseded_copies, une etude signee sous l'ancienne edition devant rester lisible dix ans. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P1",
       "status": "acquired",
       "edition": null,
-      "effective_from": null,
+      "effective_from": "2021-03-23",
       "parameters_expected": [],
-      "doc_id_sha256": "cc74a2b5d0acd99cdbeeaaccba1af80d660861a57c253c97b568893ec2116a66",
-      "edition_read_from_cover": "2e ed., janvier 2013",
+      "doc_id_sha256": "f87026b548a94d3caf734a7dd524ec2b16d730e9c450fa0242da1df1d511a9fe",
+      "edition_read_from_cover": "2021 (PARSEE en page 1)",
       "alternate_copies": [
         {
           "doc_id_sha256": "40a8eeac9471d7203e81ff8a03921e064775734a1ad2e7c468f8dff63f943b16",
           "page_count": 15,
           "machine_readable": true,
           "notes": "EDITION ANTERIEURE, 1e ed. septembre 2007, version texte francaise. Explicitement remplacee par la 2e ed. janvier 2013 (« Remplace: NBN EN 1990 ANB (2007) » en couverture). Conservee, non jetee: le moteur resout l'annexe applicable par la date de reference du projet, et une etude anterieure a 2013 releve de cette edition. NE DOIT PAS servir pour un projet courant."
+        }
+      ],
+      "superseded_copies": [
+        {
+          "reference": "NBN EN 1990 ANB",
+          "edition": "2e ed., janvier 2013",
+          "doc_id_sha256": "cc74a2b5d0acd99cdbeeaaccba1af80d660861a57c253c97b568893ec2116a66",
+          "effective_to": "2021-03-22",
+          "superseded_by": "NBN EN 1990 ANB:2021"
         }
       ]
     },
@@ -69,7 +78,7 @@
           "fr",
           "nl"
         ],
-        "notes": "ACQUIS en version texte (11 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Poids volumiques, charges d'exploitation. Aucun motif d'extraction ecrit a ce jour."
+        "notes": "ACQUIS en version texte (11 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Poids volumiques, charges d'exploitation. Aucun motif d'extraction ecrit a ce jour.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1991-1-1_ANB_2007(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., septembre 2007, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P1",
@@ -77,8 +86,8 @@
       "edition": null,
       "effective_from": null,
       "parameters_expected": [],
-      "doc_id_sha256": "16acbb56fcc160a3867ac000f91505a79724bed28f3ca58500cfcf06b7c9a58e",
-      "edition_read_from_cover": "1e ed., septembre 2007"
+      "doc_id_sha256": "3f0b0592036bc1428c11e789cba81a179a73d9d795defbfd49d62c9a1735df16",
+      "edition_read_from_cover": "1e éd., septembre 2007 (PARSEE en page 1)"
     },
     {
       "doc_key": "BE-EN199113-NA",
@@ -129,7 +138,7 @@
           "fr",
           "nl"
         ],
-        "notes": "ACQUIS en version texte (63 pages, langue nl). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Actions du vent. Version NEERLANDAISE: la version francaise n'a pas ete deposee. Aucun motif d'extraction ecrit a ce jour."
+        "notes": "ACQUIS en version texte (63 pages, langue nl). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Actions du vent. Version NEERLANDAISE: la version francaise n'a pas ete deposee. Aucun motif d'extraction ecrit a ce jour.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1991-1-4_ANB_2010(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., décembre 2010, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P1",
@@ -137,8 +146,8 @@
       "edition": null,
       "effective_from": null,
       "parameters_expected": [],
-      "doc_id_sha256": "a406441e0b5b53b79e4d0940fef1df72a6617ac260dc5dcf7749070c4999ffaf",
-      "edition_read_from_cover": "1e uitg., december 2010 (version neerlandaise)",
+      "doc_id_sha256": "81e90be3a3b186ac9f5c4d1420a66d9225a85f43d25afbc8fbc3c115f1098106",
+      "edition_read_from_cover": "1e éd., décembre 2010 (PARSEE en page 1)",
       "alternate_copies": [
         {
           "doc_id_sha256": "72741c82c16446738f756e322be6786e9e856f839d0f550c2d7a502da1262f8d",
@@ -214,14 +223,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P1. Geotechnique: approche de calcul (DA1/DA2/DA2*/DA3), coefficients partiels, portance"
+        "notes": "Phase P1. Geotechnique: approche de calcul (DA1/DA2/DA2*/DA3), coefficients partiels, portance\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN EN 1997-1 ANB_2022_fr.pdf. Edition 2022, en vigueur depuis 2022-04-15. Le document declare remplacer NBN EN 1997-1 ANB:2014, edition qui n'etait pas detenue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P1",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
-      "effective_from": null,
-      "parameters_expected": []
+      "effective_from": "2022-04-15",
+      "parameters_expected": [],
+      "edition_read_from_cover": "2022 (PARSEE en page 1)",
+      "doc_id_sha256": "cc5d5536871f0ad80bd5856267437cfe113d045fde1108d873867a1cddb57588"
     },
     {
       "doc_key": "BE-EN199311-NA",
@@ -286,14 +297,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P2. Assemblages: coefficients partiels des boulons et soudures"
+        "notes": "Phase P2. Assemblages: coefficients partiels des boulons et soudures\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1993-1-8_ANB_2010(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., décembre 2010, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P2",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "edition_read_from_cover": "1e éd., décembre 2010 (PARSEE en page 1)",
+      "doc_id_sha256": "61b73907874d992c36fcb84cb51335aa6942a26e5bf7af019dd9b651e4e4711c"
     },
     {
       "doc_key": "BE-EN199315-NA",
@@ -334,14 +347,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P3. BOIS: gamma_M, k_mod, k_def, classes de service"
+        "notes": "Phase P3. BOIS: gamma_M, k_mod, k_def, classes de service\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1995-1-1_ANB_2012(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., juillet 2012, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P3",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "edition_read_from_cover": "1e éd., juillet 2012 (PARSEE en page 1)",
+      "doc_id_sha256": "fa1bcb8c36e3d7975657abc197e1266447f2cb1c3a1fdc946ba1e57bc26626e5"
     },
     {
       "doc_key": "BE-EN19981-NA",
@@ -382,21 +397,23 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P4. Fondations et soutenements sismiques"
+        "notes": "Phase P4. Fondations et soutenements sismiques\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1998-5_ANB_2011(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., octobre 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P4",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "edition_read_from_cover": "1e éd., octobre 2011 (PARSEE en page 1)",
+      "doc_id_sha256": "e95419be0cd8847888a46d03d36cbf0f27b26361ab1baf5ab4de57dad98e0da7"
     },
     {
       "doc_key": "BE-EN199112-NA",
       "country_code": "BE",
       "standard_family": "EN 1991",
       "part": "1-2",
-      "reference": "NBN EN 1991-1-2 ANB",
+      "reference": "NBN EN 1991-1-2-ANB",
       "title": "Annexe Nationale a l'EN 1991-1-2 — Actions sur les structures exposees au feu",
       "publisher": "NBN — Bureau de Normalisation / Bureau voor Normalisatie",
       "acquisition": {
@@ -406,7 +423,7 @@
           "fr",
           "nl"
         ],
-        "notes": "ACQUIS en version texte (27 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Actions sur les structures exposees au feu. Aucun motif d'extraction ecrit a ce jour."
+        "notes": "ACQUIS en version texte (27 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Actions sur les structures exposees au feu. Aucun motif d'extraction ecrit a ce jour.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1991-1-2_ANB_2008(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., mai 2008, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "FEU",
@@ -414,8 +431,8 @@
       "edition": null,
       "effective_from": null,
       "parameters_expected": [],
-      "doc_id_sha256": "bb39ccad867e4cb183534719143f07dffd7ab71a17512137482dc841514c7808",
-      "edition_read_from_cover": "1e ed., mai 2008"
+      "doc_id_sha256": "445c97f34a89e68b33482375bf43a8ab5f429e87c0b1e825f57c9ef447259b39",
+      "edition_read_from_cover": "1e éd., mai 2008 (PARSEE en page 1)"
     },
     {
       "doc_key": "BE-EN199212-NA",
@@ -432,14 +449,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase FEU. Beton au feu: methodes tabulees, isotherme 500 C"
+        "notes": "Phase FEU. Beton au feu: methodes tabulees, isotherme 500 C\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN EN 1992-1-2 ANB_2021_fr.pdf. Edition 2021, en vigueur depuis 2021-03-23. Le document declare remplacer NBN EN 1992-1-2 ANB:2010, edition qui n'etait pas detenue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "FEU",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
-      "effective_from": null,
-      "parameters_expected": []
+      "effective_from": "2021-03-23",
+      "parameters_expected": [],
+      "edition_read_from_cover": "2021 (PARSEE en page 1)",
+      "doc_id_sha256": "9eef72d4e0fa587593a11b4bbcc55c8158f3825436d7b7791472c4d6c4a2b992"
     },
     {
       "doc_key": "BE-EN199312-NA",
@@ -496,14 +515,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase FEU. Bois au feu: section reduite"
+        "notes": "Phase FEU. Bois au feu: section reduite\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1995-1-2_ANB_2012(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., juillet 2012, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "FEU",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "edition_read_from_cover": "1e éd., juillet 2012 (PARSEE en page 1)",
+      "doc_id_sha256": "cbd8bee152827ca2ca8425728fc74af4a1f82aa63d7e26a3d28da2cccafc9446"
     },
     {
       "doc_key": "BE-EN199411-NA",
@@ -520,14 +541,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P6. MIXTE acier-beton: connecteurs, dalles collaborantes"
+        "notes": "Phase P6. MIXTE acier-beton: connecteurs, dalles collaborantes\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1994-1-1_ANB_2010(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., décembre 2010, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P6",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "edition_read_from_cover": "1e éd., décembre 2010 (PARSEE en page 1)",
+      "doc_id_sha256": "8f5ddbe52a54e991d6ec0813a867300c5eca68bd41582f47593c7ee4c0720006"
     },
     {
       "doc_key": "BE-EN19912-NA",
@@ -544,7 +567,7 @@
           "fr",
           "nl"
         ],
-        "notes": "ACQUIS en version texte (43 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Actions sur les ponts dues au trafic. Hors perimetre P1 (batiment). Aucun motif d'extraction ecrit a ce jour."
+        "notes": "ACQUIS en version texte (43 pages, langue fr). Metadonnees LUES sur la page de garde, a DECLARER par le deposant. Detenir ce fichier ne confirme aucune valeur: tous les parametres restent pending_verification tant qu'un ingenieur habilite n'a pas signe. Actions sur les ponts dues au trafic. Hors perimetre P1 (batiment). Aucun motif d'extraction ecrit a ce jour.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1991-2_ANB_2011(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., octobre 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P6",
@@ -552,8 +575,8 @@
       "edition": null,
       "effective_from": null,
       "parameters_expected": [],
-      "doc_id_sha256": "25735718283606f39fec41fae861b95cbfefd9e795b3d2c86b0763221191c11e",
-      "edition_read_from_cover": "1e ed., octobre 2011"
+      "doc_id_sha256": "7890e52059d0bf36d9c5b6043e7bec62b2ef81621e60c5cc9ebc5f04d4088394",
+      "edition_read_from_cover": "1e éd., octobre 2011 (PARSEE en page 1)"
     },
     {
       "doc_key": "BE-EN19922-NA",
@@ -2478,12 +2501,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER — la designation nationale n'est pas previsible (cf. NF P 06-111-2 pour l'EN 1991-1-1 en France)."
+        "notes": "REFERENCE A CONFIRMER — la designation nationale n'est pas previsible (cf. NF P 06-111-2 pour l'EN 1991-1-1 en France).\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1991-1-5_ANB_2009(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., juin 2009, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., juin 2009 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "fd731c0fdb149a24978428073cf075dec0ecbe67fd386ac1a0324c2697f4a17a"
     },
     {
       "doc_key": "ES-EN199115-NA",
@@ -2585,12 +2611,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1991-1-6_ANB_2010(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., décembre 2010, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., décembre 2010 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "369f0caa7f1828ce52c1f93d8dfbdf9ff548cb25a858a81da981155a1d0ef9e2"
     },
     {
       "doc_key": "ES-EN199116-NA",
@@ -2642,12 +2671,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1991-1-7_ANB_2012(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., février 2012, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., février 2012 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "3c1e5b8713db3c37c64450d9d5caf992ab8d0ce1f413eeaa8009bd0879e51729"
     },
     {
       "doc_key": "ES-EN199117-NA",
@@ -2806,12 +2838,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1991-4_ANB_2011(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., octobre 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., octobre 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "66bf04d04af6e59a851a4f1d725eb5f250c99232f0be296f9afe011d62c6fede"
     },
     {
       "doc_key": "ES-EN19914-NA",
@@ -4061,12 +4096,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1994-1-2_ANB_2010(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., décembre 2010, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., décembre 2010 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "86ca25e5f66d54dcf509be208a6e62e147a1e5722dcf033ba4fec9d12c7c60ac"
     },
     {
       "doc_key": "ES-EN199412-NA",
@@ -4118,12 +4156,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1994-2_ANB_2011(F).pdf. Indice de classement NBN: B 51. Edition 1e éd., mars 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., mars 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "42c08b9e9b1397a3908e5ef7024327e50d49b61aa0df4b94387093261569d6d7"
     },
     {
       "doc_key": "ES-EN19942-NA",
@@ -4250,12 +4291,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1995-2_ANB_2012(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., juillet 2012, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., juillet 2012 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "a06f080bd4a6b8549abc8def57af8db4dce6f4867c073d603d0e70b9525e2a74"
     },
     {
       "doc_key": "ES-EN19952-NA",
@@ -5285,6 +5329,85 @@
         "licence": "Document payant, non redistribuable.",
         "languages": [],
         "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "FR-EN19972-NA",
+      "country_code": "FR",
+      "standard_family": "EN 1997",
+      "part": "2",
+      "reference": "NF EN 1997-2/NA",
+      "title": "Annexe Nationale a l'EN 1997-2 — Reconnaissance des terrains et essais",
+      "publisher": "AFNOR — Association francaise de normalisation",
+      "acquisition": {
+        "how": "Achat sur https://www.boutique.afnor.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER hors BE. Entree creee par le depot de NBN EN 1997-2 ANB, que le catalogue ne prevoyait pas: la reconnaissance des terrains ne figurait dans aucune phase."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "BE-EN19972-NA",
+      "country_code": "BE",
+      "standard_family": "EN 1997",
+      "part": "2",
+      "reference": "NBN EN 1997-2 ANB",
+      "title": "Annexe Nationale a l'EN 1997-2 — Reconnaissance des terrains et essais",
+      "publisher": "NBN",
+      "acquisition": {
+        "how": "Achat sur https://www.nbn.be.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER hors BE. Entree creee par le depot de NBN EN 1997-2 ANB, que le catalogue ne prevoyait pas: la reconnaissance des terrains ne figurait dans aucune phase.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1997-2_ANB_2013(F).pdf. Indice de classement NBN: B 05. Edition 1e éd., avril 2013, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., avril 2013 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "2ea25918570c9f747ecab83679a55a25381d4e187344f742390b009c53363732"
+    },
+    {
+      "doc_key": "ES-EN19972-NA",
+      "country_code": "ES",
+      "standard_family": "EN 1997",
+      "part": "2",
+      "reference": "UNE-EN 1997-2 Anexo Nacional",
+      "title": "Annexe Nationale a l'EN 1997-2 — Reconnaissance des terrains et essais",
+      "publisher": "AENOR",
+      "acquisition": {
+        "how": "Achat sur https://www.une.org.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER hors BE. Entree creee par le depot de NBN EN 1997-2 ANB, que le catalogue ne prevoyait pas: la reconnaissance des terrains ne figurait dans aucune phase."
+      },
+      "parameters_expected": [],
+      "phase": "P1",
+      "document_role": "national_annex",
+      "status": "not_acquired"
+    },
+    {
+      "doc_key": "DE-EN19972-NA",
+      "country_code": "DE",
+      "standard_family": "EN 1997",
+      "part": "2",
+      "reference": "DIN EN 1997-2/NA",
+      "title": "Annexe Nationale a l'EN 1997-2 — Reconnaissance des terrains et essais",
+      "publisher": "DIN",
+      "acquisition": {
+        "how": "Achat sur https://www.beuth.de.",
+        "licence": "Document payant, non redistribuable.",
+        "languages": [],
+        "notes": "REFERENCE A CONFIRMER hors BE. Entree creee par le depot de NBN EN 1997-2 ANB, que le catalogue ne prevoyait pas: la reconnaissance des terrains ne figurait dans aucune phase."
       },
       "parameters_expected": [],
       "phase": "P1",
