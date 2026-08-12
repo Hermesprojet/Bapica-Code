@@ -595,14 +595,16 @@
           "fr",
           "nl"
         ],
-        "notes": "Phase P6. Ponts beton"
+        "notes": "Phase P6. Ponts beton\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1992-2_ANB_2014(F).pdf. Indice de classement NBN: B 15. Edition 1e éd., mai 2014, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "document_role": "national_annex",
       "phase": "P6",
-      "status": "not_acquired",
+      "status": "acquired_for_reading",
       "edition": null,
       "effective_from": null,
-      "parameters_expected": []
+      "parameters_expected": [],
+      "edition_read_from_cover": "1e éd., mai 2014 (PARSEE en page 1)",
+      "doc_id_sha256": "de716ef94dd43bc8320b1efa3d1a8788af75009fc8f0abb7a6a53fc2aefd17a5"
     },
     {
       "doc_key": "BE-EN19932-NA",
@@ -2785,12 +2787,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1991-3_ANB_2011(F).pdf. Indice de classement NBN: B 03. Edition 1e éd., octobre 2011, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., octobre 2011 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "9268431f20e837f2b80334e6e1d319b3fae9029aa3dd81f162b343e78a53049e"
     },
     {
       "doc_key": "ES-EN19913-NA",
@@ -3147,12 +3152,15 @@
         "how": "Achat sur https://www.nbn.be.",
         "licence": "Document payant, non redistribuable.",
         "languages": [],
-        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel."
+        "notes": "REFERENCE A CONFIRMER. La designation nationale d'une annexe n'est PAS previsible: la France publie celle de l'EN 1991-1-1 sous « NF P 06-111-2 », sans suffixe /NA. Le libelle porte ici est une hypothese de FORME, a remplacer par ce que porte le document reel.\n\n--- exemplaire NBN depose ---\nIdentite PARSEE en page 1 de NBN_EN_1992-3_ANB_2013(F).pdf. Indice de classement NBN: B 15. Edition 1e éd., avril 2013, en vigueur depuis date non lue. STATUT A DECLARER par l'ingenieur qui depose."
       },
       "parameters_expected": [],
       "phase": "P1",
       "document_role": "national_annex",
-      "status": "not_acquired"
+      "status": "acquired_for_reading",
+      "edition_read_from_cover": "1e éd., avril 2013 (PARSEE en page 1)",
+      "effective_from": null,
+      "doc_id_sha256": "9cbc5343018c304d5036e4724a98793fd75f5e088589415f447e07c23bd4c1d5"
     },
     {
       "doc_key": "ES-EN19923-NA",
