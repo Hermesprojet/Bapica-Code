@@ -1,7 +1,7 @@
 === BE — annexes nationales ===
-31 detenue(s), 28 manquante(s), 59 au catalogue.
+35 detenue(s), 24 manquante(s), 59 au catalogue.
 
---- MANQUANTES (28) ---
+--- MANQUANTES (24) ---
 norme            reference au catalogue             indice           phase
 EN 1990-A1       NBN EN 1990/A1 ANB (forme supposee) a rechercher     P1
 EN 1991-3        NBN EN 1991-3 ANB (forme supposee) a rechercher     P1
@@ -12,11 +12,7 @@ EN 1993-1-4      NBN EN 1993-1-4 ANB (forme supposee) a rechercher     P1
 EN 1993-1-5      NBN EN 1993-1-5 ANB                a rechercher     P2
 EN 1993-1-6      NBN EN 1993-1-6 ANB (forme supposee) a rechercher     P1
 EN 1993-1-7      NBN EN 1993-1-7 ANB (forme supposee) a rechercher     P1
-EN 1993-1-9      NBN EN 1993-1-9 ANB (forme supposee) a rechercher     P1
 EN 1993-1-10     NBN EN 1993-1-10 ANB (forme supposee) a rechercher     P1
-EN 1993-1-11     NBN EN 1993-1-11 ANB (forme supposee) a rechercher     P1
-EN 1993-1-12     NBN EN 1993-1-12 ANB (forme supposee) a rechercher     P1
-EN 1993-2        NBN EN 1993-2 ANB                  a rechercher     P6
 EN 1996-1-1      NBN EN 1996-1-1 ANB (forme supposee) a rechercher     P1
 EN 1996-1-2      NBN EN 1996-1-2 ANB (forme supposee) a rechercher     P1
 EN 1996-2        NBN EN 1996-2 ANB (forme supposee) a rechercher     P1
@@ -32,7 +28,7 @@ EN 1999-1-3      NBN EN 1999-1-3 ANB (forme supposee) a rechercher     P1
 EN 1999-1-4      NBN EN 1999-1-4 ANB (forme supposee) a rechercher     P1
 EN 1999-1-5      NBN EN 1999-1-5 ANB (forme supposee) a rechercher     P1
 
---- DETENUES (31), indice lu en couverture ---
+--- DETENUES (35), indice lu en couverture ---
 norme            reference                indice               edition
 EN 1990          NBN EN 1990 ANB          (non releve)         2021 (PARSEE en page 1)
 EN 1991-1-1      NBN EN 1991-1-1 ANB      (non releve)         1e éd., septembre 2007 (PARSEE en 
@@ -49,6 +45,10 @@ EN 1992-1-2      NBN EN 1992-1-2 ANB      (non releve)         2021 (PARSEE en p
 EN 1993-1-1      NBN EN 1993-1-1 ANB      (non releve)         1e ed., decembre 2010
 EN 1993-1-2      NBN EN 1993-1-2 ANB      (non releve)         1e ed., decembre 2010
 EN 1993-1-8      NBN EN 1993-1-8 ANB      (non releve)         1e éd., décembre 2010 (PARSEE en p
+EN 1993-1-9      NBN EN 1993-1-9 ANB      (non releve)         1e éd., décembre 2010 (PARSEE en p
+EN 1993-1-11     NBN EN 1993-1-11 ANB     (non releve)         1e éd., décembre 2010 (PARSEE en p
+EN 1993-1-12     NBN EN 1993-1-12 ANB     (non releve)         1e éd., décembre 2010 (PARSEE en p
+EN 1993-2        NBN EN 1993-2 ANB        (non releve)         1e éd., mars 2011 (PARSEE en page 
 EN 1993-3-1      NBN EN 1993-3-1 ANB      (non releve)         1e éd., mars 2011 (PARSEE en page 
 EN 1993-3-2      NBN EN 1993-3-2 ANB      (non releve)         1e éd., mars 2011 (PARSEE en page 
 EN 1993-4-1      NBN EN 1993-4-1 ANB      (non releve)         1e éd., mars 2011 (PARSEE en page 

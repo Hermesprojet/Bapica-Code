@@ -104,6 +104,26 @@ _TEACHING_MATERIAL = re.compile(
     re.IGNORECASE,
 )
 
+#: A standard PUBLISHED and NOT YET IN FORCE. A third state, and the deposit
+#: made it necessary: the second generation of Eurocodes is being issued
+#: (EN 1990-1:2023, EN 1993-1-8:2024, EN 1993-2:2026) while the first stays
+#: applicable. NBN prints the fact in capitals on the cover:
+#:
+#:     THIS STANDARD IS NOT YET APPLICABLE PENDING THE PUBLICATION OF ITS
+#:     ACCOMPANYING NATIONAL ANNEX ... The applicable standard in Belgium
+#:     remains the NBN EN 1993-2:2007.
+#:
+#: This is neither a draft nor a withdrawn edition. It is a real, published,
+#: numbered standard that a reader would take for the current one — and it is
+#: the most convincing impostor this triage has met, because everything about
+#: it is genuine except its force.
+_NOT_YET_APPLICABLE = re.compile(
+    r"not\s+yet\s+applicable|does\s+not\s+yet\s+have\s+the\s+status|"
+    r"pas\s+encore\s+d'?application|n'?est\s+pas\s+encore\s+applicable|"
+    r"nog\s+niet\s+van\s+toepassing|second\s+generation\s+eurocodes",
+    re.IGNORECASE,
+)
+
 #: A published standard names the pre-standard it supersedes, right on its
 #: cover: "Remplace ENV 1993-1-2:1995". Matching the citation instead of the
 #: document's own designation flagged 13 published Eurocodes as drafts — a
@@ -287,6 +307,8 @@ class TriageResult:
     #: Text layer reads right-to-left. Disables every keyword guard at
     #: once, so it is reported before all of them.
     is_reversed: bool = False
+    #: Published, numbered, and declaring itself not yet in force.
+    is_not_yet_applicable: bool = False
     #: Publisher's own "Uncontrolled Copy" stamp: not maintained.
     is_uncontrolled_copy: bool = False
     #: Lecture deck, guide or commentary rather than the normative text.
@@ -310,6 +332,7 @@ class TriageResult:
             and not self.is_impersonation
             and not self.is_mis_decoded
             and not self.is_reversed
+            and not self.is_not_yet_applicable
             and not self.is_uncontrolled_copy
             and not self.is_teaching_material
             and not self.is_machine_translated
@@ -427,6 +450,7 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
     standard = _standard_of(front, path.name)
     is_draft = _is_draft(front, path.name)
     is_mis_decoded = text_is_mis_decoded(text)
+    is_not_yet_applicable = bool(_NOT_YET_APPLICABLE.search(front))
     is_reversed = text_is_reversed(text)
     # Cherche AUSSI a l'envers. Le cas qui a impose ce garde n'avait pas son
     # corps inverse — seul le FILIGRANE l'etait, et c'est lui qui porte la
@@ -446,6 +470,17 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
     )
 
     blockers: list[str] = []
+    if is_not_yet_applicable:
+        blockers.append(
+            "PUBLIEE MAIS PAS ENCORE APPLICABLE: le document declare lui-meme "
+            "qu'il n'est pas en vigueur, en attente de son annexe nationale et "
+            "de la strategie de publication des Eurocodes de 2e generation. "
+            "C'est le cas le plus trompeur rencontre: tout y est authentique "
+            "— editeur, numero, mise en page — SAUF la force reglementaire. "
+            "La norme applicable reste celle de 1re generation, que le "
+            "document nomme d'ailleurs. Ne rien en extraire tant qu'elle n'est "
+            "pas entree en vigueur."
+        )
     if is_reversed:
         blockers.append(
             "TEXTE RENDU A L'ENVERS: la couche de texte se lit de droite a "
@@ -544,6 +579,7 @@ def triage_document(path: Path, needed_standards: Sequence[str] = ()) -> TriageR
         is_impersonation=is_impersonation,
         is_mis_decoded=is_mis_decoded,
         is_reversed=is_reversed,
+        is_not_yet_applicable=is_not_yet_applicable,
         is_uncontrolled_copy=is_uncontrolled,
         is_teaching_material=is_teaching,
         is_machine_translated=is_machine_translated,

@@ -1169,3 +1169,48 @@ def test_real_guidance_is_still_classified_as_secondary(tmp_path) -> None:
     r = triage_document(make_pdf(tmp_path / "cstc.pdf", [[front]]))
     assert r.proposed_role is DocumentRole.SECONDARY_PUBLICATION
     assert not r.usable_for_ndp
+
+
+def test_a_published_standard_not_yet_in_force_is_refused(tmp_path) -> None:
+    """The most convincing impostor this triage has met.
+
+    The second generation of Eurocodes is being published — EN 1990-1:2023,
+    EN 1993-1-8:2024, EN 1993-2:2026 — while the first generation stays in
+    force. NBN prints the fact on the cover, in capitals:
+
+        THIS STANDARD IS NOT YET APPLICABLE PENDING THE PUBLICATION OF ITS
+        ACCOMPANYING NATIONAL ANNEX ... The applicable standard in Belgium
+        remains the NBN EN 1993-2:2007.
+
+    It is neither a draft nor a withdrawn edition: publisher, number, layout
+    and text are all genuine. Only its force is missing, and nothing but that
+    sentence distinguishes it from the standard actually in force.
+    """
+    from ndp_import import triage_document
+
+    front = (
+        "Belgian Standard EN 1993-2:2026 NBN EN 1993-2:2026 Eurocode 3 - "
+        "Design of steel structures - Part 2: Bridges (THIS STANDARD IS NOT "
+        "YET APPLICABLE PENDING THE PUBLICATION OF ITS ACCOMPANYING NATIONAL "
+        "ANNEX AND THE PUBLICATION STRATEGY OF THE SECOND GENERATION "
+        "EUROCODES. The applicable standard in Belgium remains the "
+        "NBN EN 1993-2:2007.) Valid from 01-01-2026 ICS 91.010.30"
+    )
+    r = triage_document(make_pdf(tmp_path / "gen2.pdf", [[front]]))
+    assert r.is_not_yet_applicable
+    assert not r.usable_for_ndp
+    assert any("PAS ENCORE APPLICABLE" in b for b in r.blockers)
+
+
+def test_a_national_annex_in_force_is_not_caught_by_that_guard(tmp_path) -> None:
+    """The guard must not swallow the annexes the engine is waiting for."""
+    from ndp_import import triage_document
+
+    front = (
+        "ICS: 91.010.30 NBN EN 1993-2 ANB Norme belge 1e éd., mars 2011 "
+        "Indice de classement: B 51 Eurocode 3 - Calcul des structures en "
+        "acier - Partie 2 : Ponts métalliques - Annexe nationale"
+    )
+    r = triage_document(make_pdf(tmp_path / "anb.pdf", [[front]]), ["EN 1993-2"])
+    assert not r.is_not_yet_applicable
+    assert r.usable_for_ndp, r.blockers
