@@ -1,0 +1,271 @@
+==============================================================================
+AUDIT DES ANNEXES NATIONALES — FR
+==============================================================================
+59 au catalogue | 51 detenues | 1 transcrites dans le moteur | 0 inventoriees non transcrites | 50 jamais ouvertes
+
+DETENUE n'est pas LUE, et LUE n'est pas CONFIRMEE. La presence d'un
+PDF ne fait passer aucune valeur a « confirmed »: le seul chemin y
+menant passe par un verificateur NOMME et une date de verification.
+
+------------------------------------------------------------------------------
+1. INVENTAIRE — une ligne par annexe
+------------------------------------------------------------------------------
+norme          reference                  edition                statut                 params
+EN 1990        NF EN 1990/NA              décembre 2011          acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1990-A1     NF EN 1990/A1/NA           décembre 2007          acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-1-1    NF P 06-111-2              juin 2004 (LUE en page acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-1-2    NF EN 1991-1-2/NA          février 2007           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-1-3    NF EN 1991-1-3/NA          mai 2007               acquired               INVENTAIRE NON ETABLI
+EN 1991-1-4    NF EN 1991-1-4/NA          mars 2008              acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-1-5    NF EN 1991-1-5/NA          février 2008           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-1-6    NF EN 1991-1-6/NA          mars 2009              acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-1-7    NF EN 1991-1-7/NA          septembre 2008         acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-2      NF EN 1991-2/NA            mars 2008              acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-3      NF EN 1991-3/NA            janvier 2010           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-4      NF EN 1991-4/NA            novembre 2007          acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1992-1-1    NF EN 1992-1-1/NA          mars 2007              acquired_for_reading   29 transcrits
+EN 1992-1-2    NF EN 1992-1-2/NA          octobre 2007           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1992-2      NF EN 1992-2/NA            avril 2007             acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1992-3      NF EN 1992-3/NA            juillet 2008           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-1    NF EN 1993-1-1/NA          mai 2007               acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-2    NF EN 1993-1-2/NA          octobre 2007           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-3    NF EN 1993-1-3/NA          octobre 2007           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-4    NF EN 1993-1-4/NA          mars 2008              acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-5    NF EN 1993-1-5/NA          octobre 2007           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-6    NF EN 1993-1-6/NA          mai 2010               acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-7    NF EN 1993-1-7/NA          août 2008              acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-8    NF EN 1993-1-8/NA          juillet 2007           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-9    NF EN 1993-1-9/NA          avril 2007             acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-10   NF EN 1993-1-10/NA         avril 2007             acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-11   NF EN 1993-1-11/NA         décembre 2007          acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-12   NF EN 1993-1-12/NA         août 2008              acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-2      NF EN 1993-2/NA            décembre 2007          acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-3-1    NF EN 1993-3-1/NA          juillet 2008           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-3-2    NF EN 1993-3-2/NA          juillet 2008           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-4-1    NF EN 1993-4-1/NA          septembre 2010         acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-4-2    NF EN 1993-4-2/NA          —                      not_acquired           —
+EN 1993-4-3    NF EN 1993-4-3/NA          —                      not_acquired           —
+EN 1993-5      NF EN 1993-5/NA            août 2008              acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-6      NF EN 1993-6/NA            décembre 2011          acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1994-1-1    NF EN 1994-1-1/NA          avril 2007             acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1994-1-2    NF EN 1994-1-2/NA          octobre 2007           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1994-2      NF EN 1994-2/NA            mai 2007               acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1995-1-1    NF EN 1995-1-1/NA          mai 2010               acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1995-1-2    NF EN 1995-1-2/NA          avril 2007             acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1995-2      NF EN 1995-2/NA            avril 2007             acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1996-1-1    NF EN 1996-1-1/NA          décembre 2009          acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1996-1-2    NF EN 1996-1-2/NA          septembre 2008         acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1996-2      NF EN 1996-2/NA            décembre 2007          acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1996-3      NF EN 1996-3/NA            décembre 2009          acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1997-1      NF EN 1997-1/NA            septembre 2006         acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1997-2      NF EN 1997-2/NA            —                      not_acquired           —
+EN 1998-1      NF EN 1998-1/NA            décembre 2007          acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-2      NF EN 1998-2/NA            octobre 2007           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-3      NF EN 1998-3/NA            janvier 2008           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-4      NF EN 1998-4/NA            janvier 2008           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-5      NF EN 1998-5/NA            octobre 2007           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-6      NF EN 1998-6/NA            octobre 2007           acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1999-1-1    NF EN 1999-1-1/NA          —                      not_acquired           —
+EN 1999-1-2    NF EN 1999-1-2/NA          —                      not_acquired           —
+EN 1999-1-3    NF EN 1999-1-3/NA          —                      not_acquired           —
+EN 1999-1-4    NF EN 1999-1-4/NA          —                      not_acquired           —
+EN 1999-1-5    NF EN 1999-1-5/NA          —                      not_acquired           —
+
+Fichiers deposes (pour remonter du catalogue au PDF):
+   EN 1990        f8a438d7-NF_EN_1990__NA.pdf
+   EN 1990-A1     aaeee55f-NF_EN_1990__A1__NA.pdf
+   EN 1991-1-1    non trace
+   EN 1991-1-2    78368e72-NF_EN_199112__NA.pdf
+   EN 1991-1-3    32fec0c6-NF_EN_199113__NA.pdf
+   EN 1991-1-4    a7cad75a-NF_EN_199114__NA.pdf
+   EN 1991-1-5    bff8c1f7-NF_EN_199115__NA.pdf
+   EN 1991-1-6    2ea0d20f-NF_EN_199116__NA.pdf
+   EN 1991-1-7    196fabd4-NF_EN_199117__NA.pdf
+   EN 1991-2      f8e2e1ed-NF_EN_19912__NA.pdf
+   EN 1991-3      8b5cd71f-NF_EN_19913__NA.pdf
+   EN 1991-4      1054d11a-NF_EN_19914__NA.pdf
+   EN 1992-1-1    9e59e8ab-NF_EN_199211__NA.pdf
+   EN 1992-1-2    9e02090b-NF_EN_199212__NA.pdf
+   EN 1992-2      e4b02e74-NF_EN_19922__NA.pdf
+   EN 1992-3      9748c812-NF_EN_19923__NA.pdf
+   EN 1993-1-1    3e3b5c4c-NF_EN_199311__NA.pdf
+   EN 1993-1-2    56907f81-NF_EN_199312__NA.pdf
+   EN 1993-1-3    ab6d3a81-NF_EN_199313__NA.pdf
+   EN 1993-1-4    0b0a6fc9-NF_EN_199314__NA.pdf
+   EN 1993-1-5    f222b42c-NF_EN_199315__NA.pdf
+   EN 1993-1-6    bd8c7b20-NF_EN_199316__NA.pdf
+   EN 1993-1-7    22046025-NF_EN_199317__NA.pdf
+   EN 1993-1-8    71859276-NF_EN_199318__NA.pdf
+   EN 1993-1-9    a6a75502-NF_EN_199319__NA.pdf
+   EN 1993-1-10   27047899-NF_EN_1993110__NA.pdf
+   EN 1993-1-11   830e2fc6-NF_EN_1993111__NA.pdf
+   EN 1993-1-12   c1ccebb9-NF_EN_1993112__NA.pdf
+   EN 1993-2      795e3b77-NF_EN_19932__NA.pdf
+   EN 1993-3-1    148c896c-NF_EN_199331__NA.pdf
+   EN 1993-3-2    22c24cab-NF_EN_199332__NA.pdf
+   EN 1993-4-1    c7939052-NF_EN_199341__NA.pdf
+   EN 1993-5      953127ef-NF_EN_19935_NA.pdf
+   EN 1993-6      3d67d741-NF_EN_19936_NA.pdf
+   EN 1994-1-1    8e98f722-NF_EN_199411__NA.pdf
+   EN 1994-1-2    b91ed9d7-NF_EN_199412__NA.pdf
+   EN 1994-2      e889ce59-NF_EN_19942__NA.pdf
+   EN 1995-1-1    d8c268a0-NF_EN_199511__NA.pdf
+   EN 1995-1-2    ef8e9df6-NF_EN_199512__NA.pdf
+   EN 1995-2      c167468b-NF_EN_19952__NA.pdf
+   EN 1996-1-1    e561072d-NF_EN_199611__NA.pdf
+   EN 1996-1-2    d03fdd66-NF_EN_199612__NA.pdf
+   EN 1996-2      97ae8998-NF_EN_19962__NA.pdf
+   EN 1996-3      3e9d9440-NF_EN_19963__NA.pdf
+   EN 1997-1      f4459951-NF_EN_19971__NA.pdf
+   EN 1998-1      7a698b06-NF_EN_19981__NA.pdf
+   EN 1998-2      75633b75-NF_EN_19982__NA.pdf
+   EN 1998-3      335b1ea5-NF_EN_19983__NA.pdf
+   EN 1998-4      0f1c28e5-NF_EN_19984__NA.pdf
+   EN 1998-5      86df2a82-NF_EN_19985__NA.pdf
+   EN 1998-6      61a212e2-NF_EN_19986__NA.pdf
+
+------------------------------------------------------------------------------
+2. LES ANNEXES LUES — detail parametre par parametre
+------------------------------------------------------------------------------
+
+### NF EN 1992-1-1/NA — mars 2007   [acquired_for_reading]
+    29 parametres inventories
+  [A CONFIRMER — valeur lue dans l'annexe, non validee] 9
+      -> il manque un verificateur nomme et une date
+      C_Rd_c_coeff               §6.2.2(1)                          p. 12
+      alpha_cc                   §3.1.6(1)P                         p. 7
+      alpha_ct                   §3.1.6(2)P                         p. 7
+      gamma_C_persistent         §2.4.2.4(1), Tab. 2.1N             p. 6
+      gamma_S_persistent         §2.4.2.4(1), Tab. 2.1N             p. 6
+      k1_shear                   §6.2.2(1)                          p. 12
+      k4_crack_spacing           §7.3.4(3), eq. (7.11)              p. 17
+      nu1_coeff                  §6.2.2(6), eq. (6.6N)              p. 12
+      v_min_coeff                §6.2.2(1), eq. (6.3N)              p. 12
+  [CLAUSE NON ANALYSEE — la valeur portee est la RECOMMANDATION EN] 18
+      -> l'annexe est en main; la clause n'a jamais ete ouverte
+      As_max_ratio               §9.2.1.1(3)                        page non relevee
+      As_min_coeff               §9.2.1.1(1), eq. (9.1N)            page non relevee
+      As_min_floor               §9.2.1.1(1), eq. (9.1N)            page non relevee
+      K_span_depth               §7.4.2(2), Tab. 7.4N               page non relevee
+      alpha_cw                   §6.2.3(3)                          page non relevee
+      cot_theta_max              §6.2.3(2), eq. (6.7N)              page non relevee
+      cot_theta_min              §6.2.3(2), eq. (6.7N)              page non relevee
+      gamma_C_accidental         §2.4.2.4(1), Tab. 2.1N             page non relevee
+      gamma_S_accidental         §2.4.2.4(1), Tab. 2.1N             page non relevee
+      k1_redistribution          §5.5(4)                            page non relevee
+      k1_stress_limit            §7.2(2)                            page non relevee
+      k2_redistribution          §5.5(4)                            page non relevee
+      k3_steel_stress            §7.2(5)                            page non relevee
+      k4_steel_stress_imposed    §7.2(5)                            page non relevee
+      nu1_fck_divisor            §6.2.2(6), eq. (6.6N)              page non relevee
+      rho_w_min_coeff            §9.2.2(5), eq. (9.5N)              page non relevee
+      s_l_max_coeff              §9.2.2(6), eq. (9.6N)              page non relevee
+      s_t_max_coeff              §9.2.2(8), eq. (9.8N)              page non relevee
+  [VALEUR D'ATTENTE — la valeur portee N'EST PAS la valeur nationale] 1
+      -> un exemplaire lisible de la page. En attendant, les valeurs portees sont celles de l'EN sous une etiquette nationale
+      w_max                      §7.3.1(5), Tab. 7.1N               p. 16
+  [FORMULE, PAS CONSTANTE — aucun document ne debloque] 1
+      -> le modele du moteur doit admettre une expression
+      k3_crack_spacing           §7.3.4(3), eq. (7.11)              p. 17
+
+------------------------------------------------------------------------------
+3. INVENTORIEES MAIS NON TRANSCRITES DANS LE MOTEUR
+------------------------------------------------------------------------------
+   Aucune.
+
+Ces annexes ONT ete ouvertes: la liste ci-dessus vient d'une lecture,
+pas d'une deduction. Ce qui manque n'est ni le document ni la
+lecture, mais la transcription dans le jeu de donnees du moteur —
+avec, pour chaque parametre, clause, page, valeur et statut.
+
+------------------------------------------------------------------------------
+4. DETENUES MAIS JAMAIS OUVERTES
+------------------------------------------------------------------------------
+50 annexes. Pour chacune, l'inventaire des parametres
+n'est PAS etabli — et cet audit ne l'invente pas. Personne ne sait
+quelles clauses elles fixent tant que personne ne les a lues.
+
+   EN 1990        NF EN 1990/NA                    décembre 2011
+   EN 1990-A1     NF EN 1990/A1/NA                 décembre 2007
+   EN 1991-1-1    NF P 06-111-2                    juin 2004 (LUE en page 1
+   EN 1991-1-2    NF EN 1991-1-2/NA                février 2007
+   EN 1991-1-3    NF EN 1991-1-3/NA                mai 2007
+   EN 1991-1-4    NF EN 1991-1-4/NA                mars 2008
+   EN 1991-1-5    NF EN 1991-1-5/NA                février 2008
+   EN 1991-1-6    NF EN 1991-1-6/NA                mars 2009
+   EN 1991-1-7    NF EN 1991-1-7/NA                septembre 2008
+   EN 1991-2      NF EN 1991-2/NA                  mars 2008
+   EN 1991-3      NF EN 1991-3/NA                  janvier 2010
+   EN 1991-4      NF EN 1991-4/NA                  novembre 2007
+   EN 1992-1-2    NF EN 1992-1-2/NA                octobre 2007
+   EN 1992-2      NF EN 1992-2/NA                  avril 2007
+   EN 1992-3      NF EN 1992-3/NA                  juillet 2008
+   EN 1993-1-1    NF EN 1993-1-1/NA                mai 2007
+   EN 1993-1-2    NF EN 1993-1-2/NA                octobre 2007
+   EN 1993-1-3    NF EN 1993-1-3/NA                octobre 2007
+   EN 1993-1-4    NF EN 1993-1-4/NA                mars 2008
+   EN 1993-1-5    NF EN 1993-1-5/NA                octobre 2007
+   EN 1993-1-6    NF EN 1993-1-6/NA                mai 2010
+   EN 1993-1-7    NF EN 1993-1-7/NA                août 2008
+   EN 1993-1-8    NF EN 1993-1-8/NA                juillet 2007
+   EN 1993-1-9    NF EN 1993-1-9/NA                avril 2007
+   EN 1993-1-10   NF EN 1993-1-10/NA               avril 2007
+   EN 1993-1-11   NF EN 1993-1-11/NA               décembre 2007
+   EN 1993-1-12   NF EN 1993-1-12/NA               août 2008
+   EN 1993-2      NF EN 1993-2/NA                  décembre 2007
+   EN 1993-3-1    NF EN 1993-3-1/NA                juillet 2008
+   EN 1993-3-2    NF EN 1993-3-2/NA                juillet 2008
+   EN 1993-4-1    NF EN 1993-4-1/NA                septembre 2010
+   EN 1993-5      NF EN 1993-5/NA                  août 2008
+   EN 1993-6      NF EN 1993-6/NA                  décembre 2011
+   EN 1994-1-1    NF EN 1994-1-1/NA                avril 2007
+   EN 1994-1-2    NF EN 1994-1-2/NA                octobre 2007
+   EN 1994-2      NF EN 1994-2/NA                  mai 2007
+   EN 1995-1-1    NF EN 1995-1-1/NA                mai 2010
+   EN 1995-1-2    NF EN 1995-1-2/NA                avril 2007
+   EN 1995-2      NF EN 1995-2/NA                  avril 2007
+   EN 1996-1-1    NF EN 1996-1-1/NA                décembre 2009
+   EN 1996-1-2    NF EN 1996-1-2/NA                septembre 2008
+   EN 1996-2      NF EN 1996-2/NA                  décembre 2007
+   EN 1996-3      NF EN 1996-3/NA                  décembre 2009
+   EN 1997-1      NF EN 1997-1/NA                  septembre 2006
+   EN 1998-1      NF EN 1998-1/NA                  décembre 2007
+   EN 1998-2      NF EN 1998-2/NA                  octobre 2007
+   EN 1998-3      NF EN 1998-3/NA                  janvier 2008
+   EN 1998-4      NF EN 1998-4/NA                  janvier 2008
+   EN 1998-5      NF EN 1998-5/NA                  octobre 2007
+   EN 1998-6      NF EN 1998-6/NA                  octobre 2007
+
+Ce que chacune peut cacher: cote francais, l'ouverture de l'annexe
+EC2 1-1 a montre que v_min_coeff valait 0,053/gamma_C et non 0,035.
+Le moteur calculait FAUX en silence. Chaque ligne ci-dessus est un
+risque de la meme nature, non encore leve.
+
+------------------------------------------------------------------------------
+5. EDITIONS — ce qui est ouvert
+------------------------------------------------------------------------------
+   Aucune question d'edition ouverte.
+
+------------------------------------------------------------------------------
+6. CE QUI MANQUE, PAR NATURE
+------------------------------------------------------------------------------
+A ACHETER (8):
+   EN 1993-4-2    NF EN 1993-4-2/NA
+   EN 1993-4-3    NF EN 1993-4-3/NA
+   EN 1997-2      NF EN 1997-2/NA
+   EN 1999-1-1    NF EN 1999-1-1/NA
+   EN 1999-1-2    NF EN 1999-1-2/NA
+   EN 1999-1-3    NF EN 1999-1-3/NA
+   EN 1999-1-4    NF EN 1999-1-4/NA
+   EN 1999-1-5    NF EN 1999-1-5/NA
+A LIRE — clauses jamais ouvertes dans une annexe EN MAIN: 18
+A CONFIRMER — valeurs lues, verificateur nomme manquant: 9
+VALEUR D'ATTENTE — valeur portee non nationale: 1
+FORMULE — developpement, pas acquisition: 1
+A TRANSCRIRE — parametres lus, absents du moteur: 0 (dans 0 annexes)
+INVENTAIRE NON ETABLI — annexes detenues jamais ouvertes: 50
+
+Les trois premieres lignes se resolvent par une LECTURE humaine.
+La quatrieme par du CODE. La cinquieme est la plus large et la
+moins visible: elle ne se compte pas en parametres, parce que
+personne ne sait encore combien il y en a.

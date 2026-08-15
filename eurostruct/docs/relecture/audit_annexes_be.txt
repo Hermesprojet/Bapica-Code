@@ -1,0 +1,304 @@
+==============================================================================
+AUDIT DES ANNEXES NATIONALES — BE
+==============================================================================
+59 au catalogue | 56 detenues | 1 transcrites dans le moteur | 2 inventoriees non transcrites | 53 jamais ouvertes
+
+DETENUE n'est pas LUE, et LUE n'est pas CONFIRMEE. La presence d'un
+PDF ne fait passer aucune valeur a « confirmed »: le seul chemin y
+menant passe par un verificateur NOMME et une date de verification.
+
+------------------------------------------------------------------------------
+1. INVENTAIRE — une ligne par annexe
+------------------------------------------------------------------------------
+norme          reference                  edition                statut                 params
+EN 1990        NBN EN 1990 ANB            2021                   acquired               INVENTAIRE NON ETABLI
+EN 1990-A1     NBN EN 1990/A1 ANB         —                      not_acquired           —
+EN 1991-1-1    NBN EN 1991-1-1 ANB        1e éd., septembre 2007 acquired               INVENTAIRE NON ETABLI
+EN 1991-1-2    NBN EN 1991-1-2-ANB        1e éd., mai 2008       acquired               INVENTAIRE NON ETABLI
+EN 1991-1-3    NBN EN 1991-1-3 ANB        1e uitg., oktober 2007 acquired               INVENTAIRE NON ETABLI
+EN 1991-1-4    NBN EN 1991-1-4 ANB        1e éd., décembre 2010  acquired               INVENTAIRE NON ETABLI
+EN 1991-1-5    NBN EN 1991-1-5 ANB        1e éd., juin 2009      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-1-6    NBN EN 1991-1-6 ANB        1e éd., décembre 2010  acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-1-7    NBN EN 1991-1-7 ANB        1e éd., février 2012   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-2      NBN EN 1991-2 ANB          1e éd., octobre 2011   acquired               INVENTAIRE NON ETABLI
+EN 1991-3      NBN EN 1991-3 ANB          1e éd., octobre 2011   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1991-4      NBN EN 1991-4 ANB          1e éd., octobre 2011   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1992-1-1    NBN EN 1992-1-1 ANB        1e ed., aout 2010      acquired               29 transcrits
+EN 1992-1-2    NBN EN 1992-1-2 ANB        2021                   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1992-2      NBN EN 1992-2 ANB          1e éd., mai 2014       acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1992-3      NBN EN 1992-3 ANB          1e éd., avril 2013     acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-1    NBN EN 1993-1-1 ANB        1e ed., decembre 2010  acquired               11 inventories, 0 transcrit
+EN 1993-1-2    NBN EN 1993-1-2 ANB        1e ed., decembre 2010  acquired               5 inventories, 0 transcrit
+EN 1993-1-3    NBN EN 1993-1-3 ANB        —                      not_acquired           —
+EN 1993-1-4    NBN EN 1993-1-4 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-5    NBN EN 1993-1-5 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-6    NBN EN 1993-1-6 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-7    NBN EN 1993-1-7 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-8    NBN EN 1993-1-8 ANB        1e éd., décembre 2010  acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-9    NBN EN 1993-1-9 ANB        1e éd., décembre 2010  acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-10   NBN EN 1993-1-10 ANB       —                      not_acquired           —
+EN 1993-1-11   NBN EN 1993-1-11 ANB       1e éd., décembre 2010  acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-1-12   NBN EN 1993-1-12 ANB       1e éd., décembre 2010  acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-2      NBN EN 1993-2 ANB          1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-3-1    NBN EN 1993-3-1 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-3-2    NBN EN 1993-3-2 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-4-1    NBN EN 1993-4-1 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-4-2    NBN EN 1993-4-2 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-4-3    NBN EN 1993-4-3 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-5      NBN EN 1993-5 ANB          1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1993-6      NBN EN 1993-6 ANB          1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1994-1-1    NBN EN 1994-1-1 ANB        1e éd., décembre 2010  acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1994-1-2    NBN EN 1994-1-2 ANB        1e éd., décembre 2010  acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1994-2      NBN EN 1994-2 ANB          1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1995-1-1    NBN EN 1995-1-1 ANB        1e éd., juillet 2012   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1995-1-2    NBN EN 1995-1-2 ANB        1e éd., juillet 2012   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1995-2      NBN EN 1995-2 ANB          1e éd., juillet 2012   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1996-1-1    NBN EN 1996-1-1+A1 ANB     2016                   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1996-1-2    NBN EN 1996-1-2 ANB        2019                   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1996-2      NBN EN 1996-2 ANB          1e éd., novembre 2010  acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1996-3      NBN EN 1996-3 ANB          1e éd., février 2012   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1997-1      NBN EN 1997-1 ANB          2022                   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1997-2      NBN EN 1997-2 ANB          1e éd., avril 2013     acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-1      NBN EN 1998-1 ANB          1e éd., octobre 2011   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-2      NBN EN 1998-2 ANB          1e éd., janvier 2013   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-3      NBN EN 1998-3 ANB          1e éd., octobre 2011   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-4      NBN EN 1998-4 ANB          1e éd., octobre 2011   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-5      NBN EN 1998-5 ANB          1e éd., octobre 2011   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1998-6      NBN EN 1998-6 ANB          1e éd., octobre 2011   acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1999-1-1    NBN EN 1999-1-1 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1999-1-2    NBN EN 1999-1-2 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1999-1-3    NBN EN 1999-1-3 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1999-1-4    NBN EN 1999-1-4 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+EN 1999-1-5    NBN EN 1999-1-5 ANB        1e éd., mars 2011      acquired_for_reading   INVENTAIRE NON ETABLI
+
+Fichiers deposes (pour remonter du catalogue au PDF):
+   EN 1990        non trace
+   EN 1991-1-1    NBN_EN_1991-1-1_ANB_2007(F).pdf
+   EN 1991-1-2    NBN_EN_1991-1-2_ANB_2008(F).pdf
+   EN 1991-1-3    non trace
+   EN 1991-1-4    NBN_EN_1991-1-4_ANB_2010(F).pdf
+   EN 1991-1-5    NBN_EN_1991-1-5_ANB_2009(F).pdf
+   EN 1991-1-6    NBN_EN_1991-1-6_ANB_2010(F).pdf
+   EN 1991-1-7    NBN_EN_1991-1-7_ANB_2012(F).pdf
+   EN 1991-2      NBN_EN_1991-2_ANB_2011(F).pdf
+   EN 1991-3      NBN_EN_1991-3_ANB_2011(F).pdf
+   EN 1991-4      NBN_EN_1991-4_ANB_2011(F).pdf
+   EN 1992-1-1    non trace
+   EN 1992-1-2    non trace
+   EN 1992-2      NBN_EN_1992-2_ANB_2014(F).pdf
+   EN 1992-3      NBN_EN_1992-3_ANB_2013(F).pdf
+   EN 1993-1-1    non trace
+   EN 1993-1-2    non trace
+   EN 1993-1-4    NBN_EN_1993-1-4_ANB_2011(F).pdf
+   EN 1993-1-5    NBN_EN_1993-1-5_ANB_2011(F).pdf
+   EN 1993-1-6    NBN_EN_1993-1-6_ANB_2011(F).pdf
+   EN 1993-1-7    NBN_EN_1993-1-7_ANB_2011(F).pdf
+   EN 1993-1-8    NBN_EN_1993-1-8_ANB_2010(F).pdf
+   EN 1993-1-9    NBN_EN_1993-1-9_ANB_2010(F).pdf
+   EN 1993-1-11   NBN_EN_1993-1-11_ANB_2010(F).pdf
+   EN 1993-1-12   NBN_EN_1993-1-12_ANB_2010(F).pdf
+   EN 1993-2      NBN_EN_1993-2_ANB_2011(F).pdf
+   EN 1993-3-1    NBN_EN_1993-3-1_ANB_2011(F).pdf
+   EN 1993-3-2    NBN_EN_1993-3-2_ANB_2011(F).pdf
+   EN 1993-4-1    NBN_EN_1993-4-1_ANB_2011(F).pdf
+   EN 1993-4-2    NBN_EN_1993-4-2_ANB_2011(F).pdf
+   EN 1993-4-3    NBN_EN_1993-4-3_ANB_2011(F).pdf
+   EN 1993-5      NBN_EN_1993-5_ANB_2011(F).pdf
+   EN 1993-6      NBN_EN_1993-6_ANB_2011(F).pdf
+   EN 1994-1-1    NBN_EN_1994-1-1_ANB_2010(F).pdf
+   EN 1994-1-2    NBN_EN_1994-1-2_ANB_2010(F).pdf
+   EN 1994-2      NBN_EN_1994-2_ANB_2011(F).pdf
+   EN 1995-1-1    NBN_EN_1995-1-1_ANB_2012(F).pdf
+   EN 1995-1-2    NBN_EN_1995-1-2_ANB_2012(F).pdf
+   EN 1995-2      NBN_EN_1995-2_ANB_2012(F).pdf
+   EN 1996-1-1    non trace
+   EN 1996-1-2    non trace
+   EN 1996-2      NBN_EN_1996-2_ANB_2010(F).pdf
+   EN 1996-3      NBN_EN_1996-3_ANB_2012(F).pdf
+   EN 1997-1      non trace
+   EN 1997-2      NBN_EN_1997-2_ANB_2013(F).pdf
+   EN 1998-1      NBN_EN_1998-1_ANB_2011(F).pdf
+   EN 1998-2      NBN_EN_1998-2_ANB_2012(F).pdf
+   EN 1998-3      NBN_EN_1998-3_ANB_2011(F).pdf
+   EN 1998-4      non trace
+   EN 1998-5      NBN_EN_1998-5_ANB_2011(F).pdf
+   EN 1998-6      NBN_EN_1998-6_ANB_2011(F).pdf
+   EN 1999-1-1    NBN_EN_1999-1-1_ANB_2011(F).pdf
+   EN 1999-1-2    NBN_EN_1999-1-2_ANB_2011(F).pdf
+   EN 1999-1-3    NBN_EN_1999-1-3_ANB_2011(F).pdf
+   EN 1999-1-4    NBN_EN_1999-1-4_ANB_2011(F).pdf
+   EN 1999-1-5    NBN_EN_1999-1-5_ANB_2011(F).pdf
+
+------------------------------------------------------------------------------
+2. LES ANNEXES LUES — detail parametre par parametre
+------------------------------------------------------------------------------
+
+### NBN EN 1992-1-1 ANB — 1e ed., aout 2010   [acquired]
+    29 parametres inventories
+  [A CONFIRMER — valeur lue dans l'annexe, non validee] 21
+      -> il manque un verificateur nomme et une date
+      As_max_ratio               §9.2.1.1(3)                        p. 22
+      As_min_coeff               §9.2.1.1(1), eq. (9.1N)            p. 22
+      As_min_floor               §9.2.1.1(1), eq. (9.1N)            p. 22
+      C_Rd_c_coeff               §6.2.2(1)                          p. 17
+      K_span_depth               §7.4.2(2), Tab. 7.4N               p. 18
+      alpha_cc                   §3.1.6(1)P                         p. 10
+      alpha_ct                   §3.1.6(2)P                         p. 10
+      cot_theta_min              §6.2.3(2), eq. (6.7N)              p. 17
+      gamma_C_accidental         §2.4.2.4(1), Tab. 2.1N             p. 8
+      gamma_C_persistent         §2.4.2.4(1), Tab. 2.1N             p. 8
+      gamma_S_accidental         §2.4.2.4(1), Tab. 2.1N             p. 8
+      gamma_S_persistent         §2.4.2.4(1), Tab. 2.1N             p. 8
+      k1_redistribution          §5.5(4)                            p. 15
+      k1_shear                   §6.2.2(1)                          p. 17
+      k1_stress_limit            §7.2(2)                            p. 17
+      k2_redistribution          §5.5(4)                            p. 15
+      k3_crack_spacing           §7.3.4(3), eq. (7.11)              p. 17
+      k3_steel_stress            §7.2(5)                            p. 17
+      k4_crack_spacing           §7.3.4(3), eq. (7.11)              p. 17
+      k4_steel_stress_imposed    §7.2(5)                            p. 17
+      v_min_coeff                §6.2.2(1), eq. (6.3N)              p. 17
+  [CLAUSE NON ANALYSEE — la valeur portee est la RECOMMANDATION EN] 6
+      -> l'annexe est en main; la clause n'a jamais ete ouverte
+      alpha_cw                   §6.2.3(3)                          page non relevee
+      nu1_coeff                  §6.2.2(6), eq. (6.6N)              page non relevee
+      nu1_fck_divisor            §6.2.2(6), eq. (6.6N)              page non relevee
+      rho_w_min_coeff            §9.2.2(5), eq. (9.5N)              page non relevee
+      s_l_max_coeff              §9.2.2(6), eq. (9.6N)              page non relevee
+      s_t_max_coeff              §9.2.2(8), eq. (9.8N)              page non relevee
+  [VALEUR D'ATTENTE — la valeur portee N'EST PAS la valeur nationale] 1
+      -> un exemplaire lisible de la page. En attendant, les valeurs portees sont celles de l'EN sous une etiquette nationale
+      w_max                      §7.3.1(5), Tab. 7.1N               p. 17
+  [FORMULE, PAS CONSTANTE — aucun document ne debloque] 1
+      -> le modele du moteur doit admettre une expression
+      cot_theta_max              §6.2.3(2), eq. (6.7N)              p. 17
+
+------------------------------------------------------------------------------
+3. INVENTORIEES MAIS NON TRANSCRITES DANS LE MOTEUR
+------------------------------------------------------------------------------
+   EN 1993-1-1  NBN EN 1993-1-1 ANB            11 parametres inventories, aucun dans le moteur
+        alpha_LT
+        alpha_cr_min_plastique
+        beta_deversement
+        gamma_M0
+        gamma_M1
+        gamma_M2
+        k_fl
+        k_imperfection_element
+        lambda_LT_0
+        lambda_c_0
+        temperature_service_min
+      [non scalaire] annexes_belges_propres: p.21 — Les annexes C a G ANB definissent des methodes BELGES pour M_cr, N_cr/N_cr,T/N_cr,TF, L_cr et lambda_LT. Elles n'existent pas dans l'EN: un mot
+      [non scalaire] ductilite: p.17 — §3.2.2(1): « Les valeurs recommandees sont normatives. » Trois criteres de ductilite, pas un nombre.
+      [non scalaire] interaction_flexion_compression: p.20 — §6.3.3(5): « La methode 1 est normative. » L'annexe A de la NBN EN 1993-1-1:2005 est normative en Belgique; l'annexe B « n'est PAS d'applicatio
+      [non scalaire] proprietes_materiaux: p.7 — §3.2.1(1): « L'option “a” est normative. »
+      [non scalaire] table_3_2_epaisseur: p.18 — §3.2.4(1): « La classification recommandee au tableau 3.2 est normative pour les batiments. » C'est un tableau entier.
+      [non scalaire] table_5_1_imperfections: p.18 — §5.3.2(3): « Les valeurs recommandees au tableau 5.1 sont normatives. » Tableau entier, avec une reinterpretation belge des termes « analyse el
+   EN 1993-1-2  NBN EN 1993-1-2 ANB            5 parametres inventories, aucun dans le moteur
+        gamma_M_fi
+        theta_crit_classe_4
+        theta_crit_comprime
+        theta_crit_poutre_hyperstatique
+        theta_crit_poutre_isostatique
+      [non scalaire] k_c_facteur_correction: p.7 — Tableau 4.4 ANB: k_c = 0,6+0,3psi+0,15psi^2, avec k_c <= 1 pour -1 <= psi <= 1; k_c = 1 pour d'autres diagrammes de moment. FORMULE dependant du
+      [non scalaire] tableau_4_1a_a_4_1e_ANB: p.11 — Temperatures critiques des colonnes comprimees (S235/S275/S355/S420/S460) selon l'elancement relatif et le taux d'utilisation. Pages 11 a 15, f
+      [non scalaire] tableau_4_5_ANB_deversement: p.8 — Limites inferieures de lambda_LT,theta,com requerant la verification au deversement. Page 8: le tableau est une IMAGE, aucun texte extractible, 
+      [non scalaire] tableau_4_5_ANB_temperature: p.16 — Temperature de l'acier apres 30 min d'exposition au feu normalise, selon k_sh A_m/V. Page 16, meme filigrane.
+
+Ces annexes ONT ete ouvertes: la liste ci-dessus vient d'une lecture,
+pas d'une deduction. Ce qui manque n'est ni le document ni la
+lecture, mais la transcription dans le jeu de donnees du moteur —
+avec, pour chaque parametre, clause, page, valeur et statut.
+
+------------------------------------------------------------------------------
+4. DETENUES MAIS JAMAIS OUVERTES
+------------------------------------------------------------------------------
+53 annexes. Pour chacune, l'inventaire des parametres
+n'est PAS etabli — et cet audit ne l'invente pas. Personne ne sait
+quelles clauses elles fixent tant que personne ne les a lues.
+
+   EN 1990        NBN EN 1990 ANB                  2021
+   EN 1991-1-1    NBN EN 1991-1-1 ANB              1e éd., septembre 2007
+   EN 1991-1-2    NBN EN 1991-1-2-ANB              1e éd., mai 2008
+   EN 1991-1-3    NBN EN 1991-1-3 ANB              1e uitg., oktober 2007 (
+   EN 1991-1-4    NBN EN 1991-1-4 ANB              1e éd., décembre 2010
+   EN 1991-1-5    NBN EN 1991-1-5 ANB              1e éd., juin 2009
+   EN 1991-1-6    NBN EN 1991-1-6 ANB              1e éd., décembre 2010
+   EN 1991-1-7    NBN EN 1991-1-7 ANB              1e éd., février 2012
+   EN 1991-2      NBN EN 1991-2 ANB                1e éd., octobre 2011
+   EN 1991-3      NBN EN 1991-3 ANB                1e éd., octobre 2011
+   EN 1991-4      NBN EN 1991-4 ANB                1e éd., octobre 2011
+   EN 1992-1-2    NBN EN 1992-1-2 ANB              2021
+   EN 1992-2      NBN EN 1992-2 ANB                1e éd., mai 2014
+   EN 1992-3      NBN EN 1992-3 ANB                1e éd., avril 2013
+   EN 1993-1-4    NBN EN 1993-1-4 ANB              1e éd., mars 2011
+   EN 1993-1-5    NBN EN 1993-1-5 ANB              1e éd., mars 2011
+   EN 1993-1-6    NBN EN 1993-1-6 ANB              1e éd., mars 2011
+   EN 1993-1-7    NBN EN 1993-1-7 ANB              1e éd., mars 2011
+   EN 1993-1-8    NBN EN 1993-1-8 ANB              1e éd., décembre 2010
+   EN 1993-1-9    NBN EN 1993-1-9 ANB              1e éd., décembre 2010
+   EN 1993-1-11   NBN EN 1993-1-11 ANB             1e éd., décembre 2010
+   EN 1993-1-12   NBN EN 1993-1-12 ANB             1e éd., décembre 2010
+   EN 1993-2      NBN EN 1993-2 ANB                1e éd., mars 2011
+   EN 1993-3-1    NBN EN 1993-3-1 ANB              1e éd., mars 2011
+   EN 1993-3-2    NBN EN 1993-3-2 ANB              1e éd., mars 2011
+   EN 1993-4-1    NBN EN 1993-4-1 ANB              1e éd., mars 2011
+   EN 1993-4-2    NBN EN 1993-4-2 ANB              1e éd., mars 2011
+   EN 1993-4-3    NBN EN 1993-4-3 ANB              1e éd., mars 2011
+   EN 1993-5      NBN EN 1993-5 ANB                1e éd., mars 2011
+   EN 1993-6      NBN EN 1993-6 ANB                1e éd., mars 2011
+   EN 1994-1-1    NBN EN 1994-1-1 ANB              1e éd., décembre 2010
+   EN 1994-1-2    NBN EN 1994-1-2 ANB              1e éd., décembre 2010
+   EN 1994-2      NBN EN 1994-2 ANB                1e éd., mars 2011
+   EN 1995-1-1    NBN EN 1995-1-1 ANB              1e éd., juillet 2012
+   EN 1995-1-2    NBN EN 1995-1-2 ANB              1e éd., juillet 2012
+   EN 1995-2      NBN EN 1995-2 ANB                1e éd., juillet 2012
+   EN 1996-1-1    NBN EN 1996-1-1+A1 ANB           2016
+   EN 1996-1-2    NBN EN 1996-1-2 ANB              2019
+   EN 1996-2      NBN EN 1996-2 ANB                1e éd., novembre 2010
+   EN 1996-3      NBN EN 1996-3 ANB                1e éd., février 2012
+   EN 1997-1      NBN EN 1997-1 ANB                2022
+   EN 1997-2      NBN EN 1997-2 ANB                1e éd., avril 2013
+   EN 1998-1      NBN EN 1998-1 ANB                1e éd., octobre 2011
+   EN 1998-2      NBN EN 1998-2 ANB                1e éd., janvier 2013
+   EN 1998-3      NBN EN 1998-3 ANB                1e éd., octobre 2011
+   EN 1998-4      NBN EN 1998-4 ANB                1e éd., octobre 2011
+   EN 1998-5      NBN EN 1998-5 ANB                1e éd., octobre 2011
+   EN 1998-6      NBN EN 1998-6 ANB                1e éd., octobre 2011
+   EN 1999-1-1    NBN EN 1999-1-1 ANB              1e éd., mars 2011
+   EN 1999-1-2    NBN EN 1999-1-2 ANB              1e éd., mars 2011
+   EN 1999-1-3    NBN EN 1999-1-3 ANB              1e éd., mars 2011
+   EN 1999-1-4    NBN EN 1999-1-4 ANB              1e éd., mars 2011
+   EN 1999-1-5    NBN EN 1999-1-5 ANB              1e éd., mars 2011
+
+Ce que chacune peut cacher: cote francais, l'ouverture de l'annexe
+EC2 1-1 a montre que v_min_coeff valait 0,053/gamma_C et non 0,035.
+Le moteur calculait FAUX en silence. Chaque ligne ci-dessus est un
+risque de la meme nature, non encore leve.
+
+------------------------------------------------------------------------------
+5. EDITIONS — ce qui est ouvert
+------------------------------------------------------------------------------
+   EN 1990      ed. 2e ed., janvier 2013           CLOSE le 2021-03-22 -> NBN EN 1990 ANB:2021
+   EN 1996-1-1  ed. 1e éd., novembre 2010          CLOSE le 2016-05-11 -> NBN EN 1996-1-1+A1 ANB:2016
+   EN 1996-1-2  ed. 1e éd., février 2012           annoncee_remplacee | fait foi: pending_verification
+        piece manquante: Date d'homologation publiee au Moniteur belge. La couverture de 2019 ecrit « remplaceRA », au futur: la publication par le NBN est acquise, l'homologation qui r
+
+------------------------------------------------------------------------------
+6. CE QUI MANQUE, PAR NATURE
+------------------------------------------------------------------------------
+A ACHETER (3):
+   EN 1990-A1     NBN EN 1990/A1 ANB
+   EN 1993-1-3    NBN EN 1993-1-3 ANB
+   EN 1993-1-10   NBN EN 1993-1-10 ANB
+A LIRE — clauses jamais ouvertes dans une annexe EN MAIN: 6
+A CONFIRMER — valeurs lues, verificateur nomme manquant: 21
+VALEUR D'ATTENTE — valeur portee non nationale: 1
+FORMULE — developpement, pas acquisition: 1
+A TRANSCRIRE — parametres lus, absents du moteur: 16 (dans 2 annexes)
+INVENTAIRE NON ETABLI — annexes detenues jamais ouvertes: 53
+
+Les trois premieres lignes se resolvent par une LECTURE humaine.
+La quatrieme par du CODE. La cinquieme est la plus large et la
+moins visible: elle ne se compte pas en parametres, parce que
+personne ne sait encore combien il y en a.
