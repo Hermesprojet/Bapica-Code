@@ -1419,3 +1419,97 @@ def test_two_editions_of_one_annex_are_not_a_collision(tmp_path, capsys) -> None
     # Deux fichiers pour une meme edition: aucune entree creee.
     assert "BE-EN19986-NA" not in docs
     assert "CONFLIT" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# La pile normative: le texte d'un cote, la decision de l'autre
+# ---------------------------------------------------------------------------
+def test_a_base_eurocode_is_held_without_being_authoritative() -> None:
+    """Le chainon qui manquait, et l'erreur de raisonnement qui l'avait cache.
+
+    Le catalogue a longtemps compte ZERO Eurocode de base pour quatre pays,
+    alors que des normes de base dormaient sur le disque. Elles avaient ete
+    triees, correctement refusees comme sources de NDP, puis oubliees: « ne
+    peut pas confirmer un NDP » avait ete pris pour « sans interet ».
+
+    Or les Annexes Nationales fonctionnent par DESIGNATION — « la valeur
+    recommandee (formule 6.6N) est normative » — sans reimprimer l'expression.
+    Le texte est dans la norme de base. Sans elle, la decision belge est
+    tracable et son contenu ne l'est pas.
+
+    Deux proprietes, et il faut les deux: le document est DETENU, et il n'est
+    JAMAIS `acquired`. `acquired` designe l'autorite de fixer une valeur
+    nationale, qu'un Eurocode de base ne peut pas avoir.
+    """
+    import json
+
+    from ndp_import.catalogue import _DATA
+
+    raw = json.loads(_DATA.read_text(encoding="utf-8"))
+    bases = [d for d in raw["documents"] if d.get("document_role") == "base_eurocode"]
+    assert bases, "aucun Eurocode de base au catalogue"
+    for d in bases:
+        assert d["status"] != "acquired", (
+            f"{d['doc_key']}: un Eurocode de base ne fait jamais foi pour un NDP"
+        )
+        assert d.get("doc_id_sha256")
+        assert not d.get("parameters_expected"), (
+            f"{d['doc_key']}: une norme de base ne fixe aucun parametre national"
+        )
+
+
+def test_the_ec2_stack_records_that_corrigenda_are_appended_not_merged() -> None:
+    """Le piege que ce champ existe pour desamorcer.
+
+    ``NBN_EN_1992-1-1_2005(F)+AC.pdf`` s'annonce « (+AC:2010) » en couverture,
+    ce qui se lit spontanement comme « corrigenda deja integres ». Ils ne le
+    sont pas: ils sont ANNEXES en fin de volume, et le corps porte toujours le
+    texte de 2004.
+
+    La verification qui l'a etabli est reproductible: §6.2.5(2) du corps donne
+    c = 0,25 / 0,35 / 0,45, tandis que la modification n° 29 du corrigendum
+    remplace ces memes valeurs — et que l'ANB, elle, cite les valeurs
+    corrigees. Lire le corps seul, c'est appliquer un texte que deux
+    corrigenda ont amende.
+
+    ``contained_layers`` est ce qui empeche un lecteur futur — humain ou
+    script — de prendre les pages 7-253 pour le texte applicable.
+    """
+    import json
+
+    from ndp_import.catalogue import _DATA
+
+    raw = json.loads(_DATA.read_text(encoding="utf-8"))
+    base = next(d for d in raw["documents"] if d["doc_key"] == "BE-EN199211-BASE")
+    layers = {c["layer"]: c["pages"] for c in base["contained_layers"]}
+    assert any("corps" in k for k in layers), "le corps de la norme n'est pas situe"
+    assert any("AC:2008" in k for k in layers), (
+        "les modifications des corrigenda ne sont pas situees"
+    )
+    # Corps et corrigenda occupent des plages DISJOINTES: c'est precisement
+    # ce qui prouve qu'ils ne sont pas fondus.
+    corps = next(v for k, v in layers.items() if "corps" in k)
+    corr = next(v for k, v in layers.items() if "AC:2008" in k)
+    assert int(corps.split("-")[1]) < int(corr.split("-")[0])
+    assert "NON FONDUS" in base["acquisition"]["notes"]
+
+
+def test_the_second_generation_is_held_and_powerless() -> None:
+    """Publiee, numerotee, authentique — et sans force en Belgique.
+
+    Sa propre page 1 le dit: « This document does not replace the existing
+    standard NBN EN 1992-1-1:2005 and its amendment NBN EN 1992-1-1/A1:2015 ».
+
+    Elle est conservee parce qu'elle rend un autre service: c'est SA page 1
+    qui nomme la pile de premiere generation, AC:2010 compris. Sans elle, on
+    ignorait qu'AC:2010 existait.
+    """
+    import json
+
+    from ndp_import.catalogue import _DATA
+
+    raw = json.loads(_DATA.read_text(encoding="utf-8"))
+    gen2 = next(d for d in raw["documents"] if d["doc_key"] == "BE-EN199211-GEN2")
+    assert gen2.get("not_yet_applicable") is True
+    assert gen2["status"] != "acquired"
+    assert "NE JAMAIS" in gen2["acquisition"]["notes"]

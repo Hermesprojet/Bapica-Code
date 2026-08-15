@@ -1,220 +1,223 @@
 # Pile normative EC2 Belgique — quelle version de chaque formule fait foi
 
-Établi le 2026-08-15 **uniquement sur documents détenus**. Chaque affirmation
-porte sa source, page comprise. Ce qui n'est pas établi est dit tel quel.
+**Statut : RÉSOLU.** Établi le 2026-08-15 **uniquement sur documents détenus**.
+Chaque affirmation porte sa source, page comprise.
+
+> **Version du 15/08 au matin :** « le contenu des cinq formules n'est
+> traçable à aucun document détenu ; quatre documents à acheter. »
+> **Version après réception de `Gmail (7).zip` :** la pile complète est en
+> main. **Aucun achat n'est nécessaire.** Le blocage est fermé.
 
 ---
 
-## Ce qui est établi, et par quoi
+## La pile, et où elle se trouve physiquement
 
-### F1 — L'ANB:2010 se lie explicitement à `2005 + AC:2008`
-
-`NBN EN 1992-1-1 ANB:2010 (F)`, avant-propos national, **p. 3** puis
-introduction **p. 4**, la même phrase deux fois :
-
-> « La norme NBN EN 1992-1-1:2005 « Eurocode 2 : Calcul des structures en
-> béton - Partie 1-1 : Règles générales et règles pour les bâtiments
-> **(+ AC:2008)** » comprend l'annexe nationale NBN EN 1992-1-1 ANB:2010 qui a
-> un caractère normatif en Belgique. »
-
-et, **p. 3** :
-
-> « Le corrigendum **NBN EN 1992-1-1/AC:2008**, tel que publié par le CEN, est
-> ajouté à cette [norme] »
-
-### F2 — L'ANB applique AC:2008 nommément dans deux clauses, et deux seulement
-
-Recherche exhaustive sur les 31 pages. La mention `[Corrigendum EN 1992-1-1
-:2008]` apparaît **deux fois** :
-
-| page | clause | objet |
+| couche | référence | où |
 |---|---|---|
-| p. 14 | §4.4.1.3(4) | enrobage |
-| p. 17 | §6.2.5(2) | valeurs de c et µ, reprise de bétonnage |
+| base | `NBN EN 1992-1-1:2005`, 1re éd. février 2005, indice B 15 | `NBN_EN_1992-1-1_2005(F)+AC.pdf`, **p. 7-253** |
+| corrigendum | `EN 1992-1-1:2004/AC:2010` | même fichier, **p. 254-255** |
+| corrigenda | « Modifications issues de l'`AC:2008` (et modifiées par l'`AC:2010`) » — **120 entrées** | même fichier, **p. 256-279** |
+| amendement | `NBN EN 1992-1-1/A1` (1re éd. fév. 2015) = `EN 1992-1-1:2004/A1:2014` | `NBN_EN_1992-1-1_A1_2014(E).pdf`, 9 pages |
+| annexe nationale | `NBN EN 1992-1-1 ANB:2010`, 1re éd. août 2010, indice B 15 | `NBN_EN_1992-1-1_ANB_2010(F).pdf`, 31 pages |
 
-**Aucune des cinq formules qui nous intéressent n'y figure.** Cela ne prouve
-pas qu'AC:2008 les laisse intactes — l'ANB ne signale que ce qu'elle a besoin
-de reformuler — mais c'est le seul indice disponible, et il est faible.
+### ⚠️ Le piège de ce fichier
 
-### F3 — L'ANB ne mentionne jamais AC:2010 ni A1:2015
+La couverture annonce **« (+AC:2010) »**, ce qui se lit spontanément comme
+« corrigenda déjà intégrés ». **Ils ne le sont pas.** Ils sont **annexés** en
+fin de volume et le corps porte toujours le texte de 2004.
 
-Recherche exhaustive : zéro occurrence sur 31 pages. C'est attendu —
-autorisation de publication **19 février 2010**, édition **août 2010** — et
-cela veut dire que **l'ANB n'a pu prendre en compte ni l'un ni l'autre**.
+**Vérification qui l'établit**, reproductible : §6.2.5(2) du corps (p. 109)
+donne `c = 0,25 / 0,35 / 0,45` ; la **modification n° 29** du corrigendum
+(p. 260) remplace exactement ces valeurs ; et l'ANB, p. 17, cite les valeurs
+**corrigées** `0,025–0,10 / 0,20 / 0,40` sous la mention
+`[Corrigendum EN 1992-1-1 :2008]`.
 
-### F4 — La pile complète de 1re génération, nommée par un document détenu
-
-`NBN EN 1992-1-1:2023` (2e génération), **page 1**, mention « Replaces » :
-
-> « Replaces NBN EN 1992-2/AC:2008, **NBN EN 1992-1-1/AC:2008**, **NBN EN
-> 1992-1-1/AC:2010**, NBN EN 1992-3:2006, NBN EN 1992-2:2005, **NBN EN
-> 1992-1-1/A1:2015**, **NBN EN 1992-1-1:2005** »
-
-Cette ligne **confirme votre hypothèse sur les quatre documents** :
-`AC:2008`, `AC:2010` et `A1:2015` existent tous les trois, tous publiés par le
-NBN. `AC:2010` n'était pas une supposition à écarter.
-
-### F5 — La 1re génération reste en vigueur
-
-Même page 1 du document de 2023 :
-
-> « This document **does not replace** the existing standard NBN EN
-> 1992-1-1:2005 and its amendment NBN EN 1992-1-1/A1:2015 »
-
-C'est l'état `not_yet_applicable` : publié, numéroté, authentique, sans force,
-en attente de son Annexe Nationale. Le triage l'attrape déjà.
-
-### F6 — Aucun `NBN EN 1992-1-1+A1 ANB` n'est connu
-
-Ni sur disque, ni au catalogue, ni cité par aucun document détenu. Or le NBN
-**a** rééedité l'ANB EC6 en `NBN EN 1996-1-1+A1 ANB:2016` précisément parce
-que la base avait reçu son A1. Deux lectures de cette asymétrie, et le
-document ne tranche pas :
-
-- soit `A1:2015` n'a touché aucune clause à NDP, et aucune réédition n'était
-  nécessaire ;
-- soit une réédition existe et nous l'ignorons ;
-- soit l'ANB:2010 reste formellement liée au texte pré-A1.
-
-**Question à porter au NBN.** Elle n'est pas théorique : elle décide si
-l'annexe détenue couvre, ou non, la base telle qu'amendée.
-
-### F7 — L'ANB fixe TOUS les NDP
-
-**p. 5** : « Tous les NDP sont fixés par la présente ANB ». Aucun choix n'est
-laissé au projet individuel. Le moteur n'a donc jamais à demander un NDP EC2
-à l'utilisateur en Belgique.
-
-### F8 — L'ANB rend l'Annexe C normative
-
-**p. 27** : Annexe C **normative** en Belgique ; annexes A, B, D, E, F, G, H,
-I, J restent informatives. Point 7 de vos décisions : l'annexe C est une
-exigence de calcul, pas une option.
-
-### F9 — L'ANB introduit les symboles f<sub>ywk</sub> / f<sub>ywd</sub>
-
-**p. 6** : « Ajouter dans la liste des symboles f<sub>ywk</sub> et
-f<sub>ywd</sub> qui sont respectivement la limite d'élasticité caractéristique
-et de calcul de l'acier des **étriers** ».
-
-Corroboration directe de la substitution de §9.2.2(5) : la Belgique
-**introduit le symbole** avant de s'en servir. Ce n'est pas une coquille.
+**Lire le corps sans lire les 120 modifications, c'est appliquer le texte de
+2004.** C'est enregistré dans `contained_layers` au catalogue, et un test le
+verrouille.
 
 ---
 
-## La matrice
+## Méthode de vérification des couches 2 et 3
 
-Pour chaque formule : ce qui la rend applicable en Belgique, quelle version
-fait foi, et par quoi c'est établi.
+**Corrigenda.** Les pages 256-279 sont une liste numérotée de **120
+modifications**, chacune introduite par « *N. Modification(s) en X.Y.Z* ».
+L'énumération complète a été extraite. Elle est l'inventaire exhaustif de ce
+que les deux corrigenda changent.
 
-| formule | clause | rendue normative par | version faisant foi | établi ? |
+**Amendement A1.** Neuf pages, lues intégralement. Son sommaire (p. 4)
+énumère **sept** modifications : avant-propos, §3.3.2, §3.3.4, §6.4.5,
+§11.6.4.2, §12.6.5.2, §H.1.2. Rien d'autre.
+
+---
+
+## Les cinq formules — résultat
+
+### 1. `ν` — Expression (6.6N), §6.2.2(6)
+
+| couche | verdict | preuve |
+|---|---|---|
+| **base** | `ν = 0,6·[1 − f_ck/250]`, f_ck en MPa | p. 102 du fichier. Reconstruite au caractère : `0,6` (x=106-114), crochet `[` (x=121,3), `1` (x=124,6), `−` (x=130,7), `f_ck` (x=141,8), **barre de fraction tracée x=138,5→156,5**, `250` en dessous, crochet `]` (x=157,2). Ce n'est donc pas « 0,61 » : le crochet sépare le 0,6 du 1 |
+| **AC:2008 / AC:2010** | **non modifiée** | §6.2.2 est modifié (entrée n° 26) mais seulement au **paragraphe (1)**, reformulation sur N_Ed. L'Expression (6.6N) apparaît 6 fois dans les corrigenda : 2 fois comme « Tableau 9.6N » (autre objet), 2 fois comme « (11.6.6N) » (béton léger), 2 fois **citée** dans les modifications de §6.5.4. Jamais comme cible |
+| **A1:2014** | **non modifiée** | absente des sept modifications |
+| **ANB:2010** | adoptée telle quelle | §6.2.2(6), folio 15 : « La valeur recommandée (formule 6.6N) est normative » |
+
+**➜ Règle belge : `ν = 0,6 · [1 − f_ck / 250]`, f_ck en MPa.**
+Type : `formula`. Variable : `f_ck`.
+
+> `nu1_coeff = 0,6` et `nu1_fck_divisor = 250` doivent **fusionner** en une
+> formule unique. Deux scalaires séparés autorisent des combinaisons qui
+> n'existent dans aucun texte.
+
+**Réserve subsistante.** §6.2.3(3) NOTE 1 de l'ANB écrit « Formule
+**6.6N-ANB** ». Aucune formule de ce nom n'existe dans les 31 pages de
+l'ANB ni dans la base. L'EN, lui, dit en §6.2.3(3) Note 1 que « la valeur
+recommandée de ν₁ est ν (voir l'Expression (6.6N)) ». La lecture cohérente
+est ν₁ = ν, mais le suffixe reste **inexpliqué** : question au NBN.
+
+**Second point ouvert.** L'EN §6.2.3(3) Note 2 offre une **alternative** —
+si la contrainte de calcul des armatures d'effort tranchant est < 80 % de
+f_ywk, on peut prendre ν₁ = 0,6 (f_ck ≤ 60 MPa) ou 0,9 − f_ck/200 > 0,5
+(f_ck > 60 MPa), Expressions (6.10.aN)/(6.10.bN). L'ANB **corrige la
+rédaction** de cette Note 2 sans la supprimer, ce qui suggère qu'elle reste
+ouverte en Belgique. À trancher avant implémentation.
+
+---
+
+### 2. `α_cw` — Expressions (6.11.aN) à (6.11.cN), §6.2.3(3)
+
+| couche | verdict | preuve |
+|---|---|---|
+| **base** | quatre branches, ci-dessous | p. 104, reconstruites avec leurs indices (`cpcdcpcd`, `cdcpcd`, `cpcdcdcpcd`) |
+| **AC:2008 / AC:2010** | **non modifiées** | §6.2.3 est modifié (entrée n° 27) aux paragraphes **(1), (5), (6) et (8)** — pas au **(3)**, où vivent les 6.11. La chaîne « 6.11 » n'apparaît **0 fois** dans les 24 pages de corrigenda |
+| **A1:2014** | **non modifiées** | absentes des sept modifications |
+| **ANB:2010** | adoptées telles quelles | §6.2.3(3) NOTE 3, folio 15 : « L'expression de α_cw recommandée (Formules 6.11aN à cN) est normative » |
+
+**➜ Règle belge :**
+
+| condition | α_cw |
+|---|---|
+| structures **non précontraintes** | `1` |
+| `0 < σ_cp ≤ 0,25 f_cd` | `1 + σ_cp/f_cd` (6.11.aN) |
+| `0,25 f_cd < σ_cp ≤ 0,5 f_cd` | `1,25` (6.11.bN) |
+| `0,5 f_cd < σ_cp < 1,0 f_cd` | `2,5·(1 − σ_cp/f_cd)` (6.11.cN) |
+
+Type : `conditional_rule`. Variables : `sigma_cp`, `f_cd`.
+
+> Le scalaire `1,0` actuellement stocké est **la branche non précontrainte
+> seule**, présentée sans sa condition.
+
+---
+
+### 3. `ρ_w,min` — Expression (9.5N), §9.2.2(5)
+
+| couche | verdict | preuve |
+|---|---|---|
+| **base** | `ρ_w,min = (0,08·√f_ck)/f_yk` | p. 179. **Le radical est tracé en vecteurs, pas en caractères** : quatre segments à x=130,3→150,4 dont la barre horizontale x=137,2→150,4, qui couvre exactement le `f` (x=137,6) et son indice `ck`. Le radical porte donc sur f_ck seul |
+| **AC:2008 / AC:2010** | **non modifiée** | §9.2.2 **absent** des 120 entrées (seuls §9.2.1.4 et §9.2.4 y figurent). « 9.5N » : 0 occurrence |
+| **A1:2014** | **non modifiée** | absente des sept modifications |
+| **ANB:2010** | **MODIFIÉE** | §9.2.2(5), folio 20 : « La valeur de ρ_w,min recommandée (Formule 9.5N) est normative. **Dans la formule 9.5N, lire f_ywk à la place de f_yk, exprimé en MPa.** » |
+
+**➜ Règle belge : `ρ_w,min = (0,08 · √f_ck) / f_ywk`, en MPa.**
+Type : `formula`. Variables : `f_ck`, **`f_ywk`**.
+
+> **La seule des cinq où la Belgique modifie le texte.** Corroboration
+> indépendante : l'ANB p. 6 **introduit** les symboles f_ywk et f_ywd,
+> « acier des **étriers** », avant de s'en servir. Ce n'est pas une coquille.
+
+---
+
+### 4. `s_l,max` — Expression (9.6N), §9.2.2(6)
+
+| couche | verdict | preuve |
+|---|---|---|
+| **base** | `s_l,max = 0,75 d (1 + cot α)` | p. 179, extraction propre. `α` = inclinaison des armatures d'effort tranchant sur l'axe longitudinal |
+| **AC:2008 / AC:2010** | **non modifiée** | §9.2.2 absent des 120 entrées. Les 2 occurrences de « 9.6N » sont des « **Tableau** 9.6N » (p. 267), objet différent de l'**Expression** (9.6N) |
+| **A1:2014** | **non modifiée** | — |
+| **ANB:2010** | adoptée telle quelle | §9.2.2(6), folio 20 |
+
+**➜ Règle belge : `s_l,max = 0,75 · d · (1 + cot α)`.**
+Type : `formula`. Variables : `d`, `alpha`.
+
+> Homonymie à ne pas confondre : l'EN a **à la fois** un Tableau 9.6N et une
+> Expression (9.6N). Une recherche par chaîne les mélange.
+
+---
+
+### 5. `s_t,max` — Expression (9.8N), §9.2.2(8)
+
+| couche | verdict | preuve |
+|---|---|---|
+| **base** | `s_t,max = 0,75 d ≤ 600 mm` | p. 179 |
+| **AC:2008 / AC:2010** | **non modifiée** | §9.2.2 absent. « 9.8N » : 0 occurrence |
+| **A1:2014** | **non modifiée** | — |
+| **ANB:2010** | adoptée telle quelle | §9.2.2(8), folio 21 |
+
+**➜ Règle belge : `s_t,max = min(0,75 · d ; 600 mm)`.**
+Type : `formula`. Variable : `d`.
+
+> Le scalaire `0,75` stocké seul perd le **plafond de 600 mm**.
+
+---
+
+## Récapitulatif
+
+| formule | modifiée par AC ? | modifiée par A1 ? | modifiée par l'ANB ? | type |
 |---|---|---|---|---|
-| **6.6N** | §6.2.2(6) | ANB §6.2.2(6), folio 15 : « la valeur recommandée (formule 6.6N) est normative » | texte de `2005`, tel que modifié par `AC:2008` + `AC:2010` + `A1:2015` | **liaison : oui** (F1)<br>**contenu : NON** |
-| **6.11aN–cN** | §6.2.3(3) | ANB §6.2.3(3) NOTE 3, folio 15 : « l'expression de α<sub>cw</sub> recommandée (Formules 6.11aN à cN) est normative » | idem | **liaison : oui**<br>**contenu : NON** |
-| **9.5N** | §9.2.2(5) | ANB §9.2.2(5), folio 20, **+ modification belge** : « lire f<sub>ywk</sub> à la place de f<sub>yk</sub> » | texte de `2005` amendé, **puis** substitution belge appliquée par-dessus | **liaison : oui**<br>**modification belge : oui** (F9)<br>**contenu de base : NON** |
-| **9.6N** | §9.2.2(6) | ANB §9.2.2(6), folio 20 | idem 6.6N | **liaison : oui**<br>**contenu : NON** |
-| **9.8N** | §9.2.2(8) | ANB §9.2.2(8), folio 21 | idem 6.6N | **liaison : oui**<br>**contenu : NON** |
+| 6.6N | non | non | non — adoptée | `formula` |
+| 6.11aN–cN | non | non | non — adoptées | `conditional_rule` |
+| 9.5N | non | non | **OUI — f_ywk ← f_yk** | `formula` |
+| 9.6N | non | non | non — adoptée | `formula` |
+| 9.8N | non | non | non — adoptée | `formula` |
 
-### Ce que « contenu : NON » veut dire exactement
-
-**Aucun document détenu ne contient le texte de ces cinq formules**, ni dans
-sa version 2005, ni amendée. Et **savoir si `AC:2008`, `AC:2010` ou `A1:2015`
-les modifie ne peut être établi par aucun document en main.**
-
-Votre crainte est donc entièrement fondée et je ne peux pas la lever :
-**rien ne permet aujourd'hui d'affirmer que le texte de 2005 est encore le
-texte applicable pour ces cinq formules.** Trois documents postérieurs ont pu
-les toucher, et deux d'entre eux (`AC:2010`, `A1:2015`) sont postérieurs à
-l'ANB elle-même, donc invisibles depuis elle.
-
-L'ordre d'application est en revanche établi et sans ambiguïté :
-
-```
-EN 1992-1-1:2005                      texte de base
-      + AC:2008                       corrigendum, incorporé par l'ANB (F1)
-      + AC:2010                       corrigendum, postérieur à l'ANB (F4)
-      + A1:2015                       amendement, postérieur à l'ANB (F4)
-      + ANB:2010                      choix belges, modifications, ajouts
-                                      -> §9.2.2(5): f_ywk remplace f_yk
-                                      -> §6.2.2(1): ×1,25 dalles sur bords
-                                      -> §6.2.3(2): cot θ_max propre
-```
-
-Une seule exception dans tout le lot : **`cot_theta_max`**. L'ANB ne renvoie à
-rien — elle imprime sa propre formule. Aucun corrigendum, aucun amendement du
-texte de base ne peut la modifier. Elle est intégralement établie, folio 15.
+**Le texte de 2005 est bien le texte applicable pour les cinq.** La crainte
+était légitime — §6.2.2 et §6.2.3 *sont* touchés par les corrigenda, et il a
+fallu lire ces deux entrées pour constater qu'elles visent d'autres
+paragraphes.
 
 ---
 
-## Documents à acquérir — liste exacte
+## Tests exigés par ces résultats
 
-### Indispensables (4)
+Écrits ou à écrire selon qu'ils portent sur le catalogue (faits) ou sur le
+moteur (transcription à venir).
 
-| # | référence exacte | pourquoi |
+| # | test | état |
 |---|---|---|
-| 1 | `NBN EN 1992-1-1:2005` (version FR) | texte des cinq formules |
-| 2 | `NBN EN 1992-1-1/AC:2008` | l'ANB l'incorpore explicitement (F1) — sans lui, la base détenue ne serait pas celle que l'ANB vise |
-| 3 | `NBN EN 1992-1-1/AC:2010` | postérieur à l'ANB. Effet sur les cinq formules **inconnu** |
-| 4 | `NBN EN 1992-1-1/A1:2015` | postérieur à l'ANB. Effet **inconnu** |
-
-**À demander au NBN avant de commander les quatre séparément** : existe-t-il
-une **version consolidée** `NBN EN 1992-1-1:2005+A1:2015` intégrant les
-corrigenda ? C'est la pratique de plusieurs organismes, et cela réduirait
-l'achat à un document. Je ne l'affirme pas pour le NBN : je n'ai pas son
-catalogue.
-
-### Question à poser en même temps
-
-> L'annexe nationale `NBN EN 1992-1-1 ANB:2010` s'applique-t-elle à la norme
-> de base telle qu'amendée par `A1:2015` ? Une annexe nationale rééditée
-> (`NBN EN 1992-1-1+A1 ANB` ou équivalent) existe-t-elle ?
-
-Motif : le NBN a rééedité l'ANB EC6 en `+A1` dans la situation analogue (F6).
-
-### Non nécessaires à l'achat
-
-- **Parties 1-2, 2 et 3** : les normes de base sont **déjà sur disque**
-  (`NBN_EN_1992-1-2_2005(E)+AC`, `NBN_EN_1992-2_2005(E)`,
-  `NBN_EN_1992-3_2006(E)`), ainsi que `NBN EN 1992-1-2:2004/A1:2019`.
-- **`NBN EN 1992-1-1:2023`** : détenue, et sans force (F5). À cataloguer comme
-  `not_yet_applicable`, pas à utiliser.
+| T1 | un `base_eurocode` est détenu et n'est **jamais** `acquired` | ✅ écrit |
+| T2 | corps et corrigenda occupent des plages de pages **disjointes** — la preuve qu'ils ne sont pas fondus | ✅ écrit |
+| T3 | la 2ᵉ génération est détenue et `not_yet_applicable` | ✅ écrit |
+| T4 | `ν(f_ck)` décroît strictement ; borne haute 0,6 en f_ck → 0 | à écrire avec la transcription |
+| T5 | `α_cw` : continuité aux bornes 0,25 f_cd et 0,5 f_cd ; le cas non précontraint rend exactement 1,0 ; refus hors domaine σ_cp ≥ f_cd | idem |
+| T6 | `ρ_w,min` : **un cas où f_ywk ≠ f_yk doit donner un résultat différent de la formule EN**. Un test avec f_ywk = f_yk ne prouve rien — c'est le seul cas où les deux coïncident | idem |
+| T7 | `s_l,max` : cas α = 90° (étriers droits) explicite ; monotonie en `d` | idem |
+| T8 | `s_t,max` : un cas de grande hauteur utile où **le plafond gouverne** — sans quoi il n'est jamais exercé | idem |
+| T9 | `cot θ_max` : σ_cp = 0 rend exactement **2,0** (et non 2,5) ; plafond 3 atteint sous forte précontrainte ; refus si σ_cp > 0,2 f_cd | idem |
 
 ---
 
-## Un défaut de catalogue révélé au passage
+## Questions restant ouvertes au NBN
 
-Le catalogue enregistre **zéro Eurocode de base**, pour les quatre pays. Or au
-moins sept normes de base sont sur disque, non cataloguées :
+1. **« Formule 6.6N-ANB »** (ANB §6.2.3(3) NOTE 1) — désignation sans référent
+   dans aucun des deux documents.
+2. **L'alternative ν₁ des Expressions (6.10.aN)/(6.10.bN)** reste-t-elle
+   ouverte en Belgique ? L'ANB corrige la rédaction de la Note 2 sans la
+   supprimer.
+3. **L'ANB:2010 s'applique-t-elle à la base amendée par A1:2015 ?** Aucun
+   `NBN EN 1992-1-1+A1 ANB` n'est connu, alors que le NBN **a** réédité l'ANB
+   EC6 en `+A1` dans la situation analogue.
+4. **NDP nouveau non fixé.** A1 introduit `k_max` en §6.4.5(1), recommandé
+   1,5. L'ANB:2010 lui est antérieure et affirme p. 5 que « tous les NDP sont
+   fixés » — vrai en 2010, **plus vrai après 2015**. Qui fixe `k_max` en
+   Belgique ?
 
-```
-NBN_EN_1992-1-2_2005(E)+AC.pdf          NBN_EN_1992-2_2005(E).pdf
-NBN_EN_1992-3_2006(E).pdf               NBN EN 1992-1-2_2004_A1_2019_en.pdf
-nbn_en_1992-1-1_2023_en.pdf             nbn_en_1992-1-2_2023_en.pdf
-```
-
-Elles ont été triées, correctement refusées comme sources de NDP — une norme
-de base ne porte que des recommandations — **puis oubliées**. C'est une erreur
-de raisonnement de ma part : « ne peut pas confirmer un NDP » a été traité
-comme « sans intérêt », alors que ces documents portent le **texte des
-formules** que les annexes rendent normatives.
-
-Il faut un rôle de document distinct : `base_eurocode` détenu, jamais
-autorisé à fixer un NDP, mais **autorisé à fournir le texte d'une expression**
-qu'une annexe nationale désigne. C'est le chaînon qui manquait au modèle.
+Aucune de ces quatre questions ne bloque les cinq formules. Les trois
+premières concernent ν₁ et la portée de l'annexe ; la quatrième concerne le
+poinçonnement, hors périmètre actuel.
 
 ---
 
-## Conséquence sur la suite
+## Achat
 
-- **Transcription des cinq formules : bloquée**, en attente des 4 documents.
-  Aucune ne sera écrite depuis la mémoire.
-- **`cot_theta_max` : peut être préparé** — formule intégralement lue,
-  provenance `NATIONAL_ANNEX`, statut non confirmé jusqu'à validation humaine.
-- **`w_max` : reste `NATIONAL_ANNEX_PENDING`** jusqu'à confirmation visuelle
-  des appels de notes.
-- **Étapes 1 à 3** (rôles, `value_provenance`, types de règles) : indépendantes
-  de tout document, peuvent démarrer.
-
-**Le projet reste non compatible Belgique.** Sur les cinq formules, la
-documentation elle-même n'est pas complète : la liaison est établie, le
-contenu ne l'est pas.
+**Aucun.** Les quatre documents jugés indispensables le 15/08 au matin sont
+tous en main. La liste d'achat est vide.

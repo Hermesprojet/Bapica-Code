@@ -27,6 +27,7 @@ règle implémentée.
 | niveau | mesure | état |
 |---|---|---|
 | 1. Documenté | annexes détenues | **56 / 59** |
+| 1bis. Texte de base | pile EC2 1-1 (base + 2 corrigenda + A1) | **complète** |
 | 2. Transcrit | annexes portées dans le moteur | **1 / 56** |
 | 3. Confirmé | paramètres validés par un vérificateur nommé | **0 / 29** |
 | 4. Codé | paramètres consommés par le moteur | 10 / 29 |
@@ -60,20 +61,28 @@ l'édition 2018 une validation portant sur celle de 2010.
 
 Arrêté Royal, `NBN S 21-204`, `NBN S 21-208-1`.
 
-### Eurocodes de base — 0 détenu
+### Eurocodes de base — la pile EC2 1-1 est complète
 
-**Aucune norme de base n'est détenue, pour aucun des quatre pays.**
+**RÉSOLU le 15/08.** Le catalogue comptait zéro Eurocode de base ; il en
+enregistre maintenant trois pour l'EC2 1-1, sous le rôle `base_eurocode` qui
+existait dans le modèle sans être utilisé :
 
-Ce n'est pas un détail d'inventaire. Les Annexes Nationales belges
-fonctionnent massivement par **désignation** :
+| entrée | référence | rôle |
+|---|---|---|
+| `BE-EN199211-BASE` | `NBN EN 1992-1-1:2005 (+AC:2010)` | base + les deux corrigenda, annexés p. 256-279 |
+| `BE-EN199211-A1` | `NBN EN 1992-1-1/A1 (2015)` = `EN 1992-1-1:2004/A1:2014` | amendement, 7 modifications |
+| `BE-EN199211-GEN2` | `NBN EN 1992-1-1:2023` | 2ᵉ génération, `not_yet_applicable` |
 
-> « NOTE La valeur recommandée (formule 6.6N) est normative. »
+Un `base_eurocode` est **détenu sans jamais faire foi** : le modèle refuse
+`confirmed` si `source_type ≠ national_annex`. Ce qu'il apporte n'est pas une
+valeur nationale, c'est le **texte** d'une expression que l'annexe désigne.
 
-L'ANB rend la formule normative **sans la réimprimer**. Son texte est dans
-`NBN EN 1992-1-1:2005`. Sans cette norme, la décision belge est traçable et
-son contenu ne l'est pas.
+**Piège enregistré au catalogue** (`contained_layers`) : la couverture annonce
+« (+AC:2010) » mais les corrigenda sont **annexés, pas fondus**. Le corps
+(p. 7-253) porte le texte de 2004. Vérifié sur §6.2.5(2), où le corps donne
+`c = 0,25 / 0,35 / 0,45` et la modification n° 29 les remplace.
 
-**Cinq des sept paramètres analysés sont bloqués par cette seule absence.**
+Restent non catalogués : les bases EC2 1-2, 2 et 3, sur disque.
 
 ### Questions d'édition ouvertes
 
@@ -242,11 +251,25 @@ mode strict échoue donc intégralement, dès le premier paramètre demandé.
 Rien ne manque qu'une lecture humaine et une signature. Ces 21 valeurs sont
 lues, paginées, sourcées.
 
-### Blocage 2 — la norme de base absente (5 paramètres)
+### ~~Blocage 2 — la norme de base absente~~ — **FERMÉ le 15/08**
 
-`alpha_cw`, `nu1_coeff`, `nu1_fck_divisor`, `rho_w_min_coeff`,
-`s_l_max_coeff` : l'ANB les rend normatifs **par désignation**, sans imprimer
-l'expression. `NBN EN 1992-1-1:2005` lèverait les cinq d'un coup.
+Les cinq formules (6.6N, 6.11aN–cN, 9.5N, 9.6N, 9.8N) sont extraites de la
+base, et l'effet des corrigenda et de l'amendement est établi :
+
+| formule | AC:2008/AC:2010 | A1:2014 | ANB:2010 |
+|---|---|---|---|
+| 6.6N | non modifiée | non modifiée | adoptée |
+| 6.11aN–cN | non modifiée | non modifiée | adoptées |
+| 9.5N | non modifiée | non modifiée | **modifiée — f_ywk ← f_yk** |
+| 9.6N | non modifiée | non modifiée | adoptée |
+| 9.8N | non modifiée | non modifiée | adoptée |
+
+Méthode : les 120 modifications des corrigenda ont été énumérées, et les
+sept de l'A1 lues intégralement. §6.2.2 et §6.2.3 **sont** touchés par les
+corrigenda — il a fallu lire ces deux entrées pour constater qu'elles visent
+d'autres paragraphes. Détail dans `docs/relecture/BE_EC2_NORMATIVE_STACK.md`.
+
+**Aucun achat n'est nécessaire.** La liste d'achat est vide.
 
 ### Blocage 3 — le modèle ne porte pas d'expression (7 paramètres)
 
@@ -319,7 +342,8 @@ problèmes.
    → permet ensuite d'enregistrer l'archive du 15/08 sans faux héritage.
 3. **Étendre le modèle de règle** aux quatre types (décision 6) — puis
    transcrire les sept paramètres analysés.
-4. **Acquérir `NBN EN 1992-1-1:2005`** — lève cinq blocages d'un seul achat.
+4. ~~Acquérir `NBN EN 1992-1-1:2005`~~ — **fait**, la pile est en main.
+   Transcrire les cinq formules une fois l'étape 3 livrée.
 5. **Corriger les trois défauts de code** du §4.
 6. **Traiter les méthodes propres des annexes** comme des exigences de calcul
    (décision 7), en commençant par les annexes C à G de l'EC3 1-1.
