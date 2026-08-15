@@ -1,27 +1,13 @@
 === BE — annexes nationales ===
-42 detenue(s), 17 manquante(s), 59 au catalogue.
+56 detenue(s), 3 manquante(s), 59 au catalogue.
 
---- MANQUANTES (17) ---
+--- MANQUANTES (3) ---
 norme            reference au catalogue             indice           phase
 EN 1990-A1       NBN EN 1990/A1 ANB (forme supposee) a rechercher     P1
 EN 1993-1-3      NBN EN 1993-1-3 ANB (forme supposee) a rechercher     P1
 EN 1993-1-10     NBN EN 1993-1-10 ANB (forme supposee) a rechercher     P1
-EN 1996-1-1      NBN EN 1996-1-1 ANB (forme supposee) a rechercher     P1
-EN 1996-1-2      NBN EN 1996-1-2 ANB (forme supposee) a rechercher     P1
-EN 1996-2        NBN EN 1996-2 ANB (forme supposee) a rechercher     P1
-EN 1996-3        NBN EN 1996-3 ANB (forme supposee) a rechercher     P1
-EN 1998-1        NBN EN 1998-1 ANB                  a rechercher     P4
-EN 1998-2        NBN EN 1998-2 ANB (forme supposee) a rechercher     P1
-EN 1998-3        NBN EN 1998-3 ANB (forme supposee) a rechercher     P1
-EN 1998-4        NBN EN 1998-4 ANB (forme supposee) a rechercher     P1
-EN 1998-6        NBN EN 1998-6 ANB (forme supposee) a rechercher     P1
-EN 1999-1-1      NBN EN 1999-1-1 ANB (forme supposee) a rechercher     P1
-EN 1999-1-2      NBN EN 1999-1-2 ANB (forme supposee) a rechercher     P1
-EN 1999-1-3      NBN EN 1999-1-3 ANB (forme supposee) a rechercher     P1
-EN 1999-1-4      NBN EN 1999-1-4 ANB (forme supposee) a rechercher     P1
-EN 1999-1-5      NBN EN 1999-1-5 ANB (forme supposee) a rechercher     P1
 
---- DETENUES (42), indice lu en couverture ---
+--- DETENUES (56), indice lu en couverture ---
 norme            reference                indice               edition
 EN 1990          NBN EN 1990 ANB          (non releve)         2021 (PARSEE en page 1)
 EN 1991-1-1      NBN EN 1991-1-1 ANB      (non releve)         1e éd., septembre 2007 (PARSEE en 
@@ -62,9 +48,23 @@ EN 1994-2        NBN EN 1994-2 ANB        (non releve)         1e éd., mars 201
 EN 1995-1-1      NBN EN 1995-1-1 ANB      (non releve)         1e éd., juillet 2012 (PARSEE en pa
 EN 1995-1-2      NBN EN 1995-1-2 ANB      (non releve)         1e éd., juillet 2012 (PARSEE en pa
 EN 1995-2        NBN EN 1995-2 ANB        (non releve)         1e éd., juillet 2012 (PARSEE en pa
+EN 1996-1-1      NBN EN 1996-1-1+A1 ANB   (non releve)         2016 (PARSEE en page 1)
+EN 1996-1-2      NBN EN 1996-1-2 ANB      (non releve)         2019 (PARSEE en page 1)
+EN 1996-2        NBN EN 1996-2 ANB        (non releve)         1e éd., novembre 2010 (PARSEE en p
+EN 1996-3        NBN EN 1996-3 ANB        (non releve)         1e éd., février 2012 (PARSEE en pa
 EN 1997-1        NBN EN 1997-1 ANB        (non releve)         2022 (PARSEE en page 1)
 EN 1997-2        NBN EN 1997-2 ANB        (non releve)         1e éd., avril 2013 (PARSEE en page
+EN 1998-1        NBN EN 1998-1 ANB        (non releve)         1e éd., octobre 2011 (PARSEE en pa
+EN 1998-2        NBN EN 1998-2 ANB        (non releve)         1e éd., janvier 2013 (PARSEE en pa
+EN 1998-3        NBN EN 1998-3 ANB        (non releve)         1e éd., octobre 2011 (PARSEE en pa
+EN 1998-4        NBN EN 1998-4 ANB        (non releve)         1e éd., octobre 2011 (PARSEE en pa
 EN 1998-5        NBN EN 1998-5 ANB        (non releve)         1e éd., octobre 2011 (PARSEE en pa
+EN 1998-6        NBN EN 1998-6 ANB        (non releve)         1e éd., octobre 2011 (PARSEE en pa
+EN 1999-1-1      NBN EN 1999-1-1 ANB      (non releve)         1e éd., mars 2011 (PARSEE en page 
+EN 1999-1-2      NBN EN 1999-1-2 ANB      (non releve)         1e éd., mars 2011 (PARSEE en page 
+EN 1999-1-3      NBN EN 1999-1-3 ANB      (non releve)         1e éd., mars 2011 (PARSEE en page 
+EN 1999-1-4      NBN EN 1999-1-4 ANB      (non releve)         1e éd., mars 2011 (PARSEE en page 
+EN 1999-1-5      NBN EN 1999-1-5 ANB      (non releve)         1e éd., mars 2011 (PARSEE en page 
 
 --- comment chercher chez le NBN ---
 CORRECTION d'une affirmation precedente: le NBN attribue bien

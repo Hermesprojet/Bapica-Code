@@ -1214,3 +1214,208 @@ def test_a_national_annex_in_force_is_not_caught_by_that_guard(tmp_path) -> None
     r = triage_document(make_pdf(tmp_path / "anb.pdf", [[front]]), ["EN 1993-2"])
     assert not r.is_not_yet_applicable
     assert r.usable_for_ndp, r.blockers
+
+
+# ---------------------------------------------------------------------------
+# Lire une couverture NBN: l'amendement, le futur, et le document technique
+#
+# Les quatre tests qui suivent viennent tous du meme depot — l'EC6 et l'EC8/EC9
+# belges — et chacun corrige une lecture de couverture qui etait fausse.
+# ---------------------------------------------------------------------------
+def _nbn(name: str = "record_nbn_batch"):
+    """Charger un script de scripts/, qui n'est pas un paquet installe."""
+    import importlib.util
+    import sys
+    from pathlib import Path as _P
+
+    root = _P(__file__).resolve().parents[1] / "scripts"
+    sys.path.insert(0, str(root))
+    spec = importlib.util.spec_from_file_location(name, root / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_an_amended_annex_belongs_to_the_standard_it_amends(tmp_path) -> None:
+    """« NBN EN 1996-1-1+A1 ANB:2016 » est l'annexe de l'EN 1996-1-1.
+
+    Deux exigences, et la seconde est la moins evidente:
+
+    * la reference doit etre LUE avec son « +A1 » — sans quoi le fichier est
+      ignore en silence et le catalogue continue d'annoncer l'edition 2010
+      comme l'annexe belge en vigueur, alors que le document en main la
+      declare remplacee depuis le 12-05-2016;
+    * elle doit retomber sur l'entree de l'EN 1996-1-1, PAS sur une entree
+      « EN 1996-1-1+A1 » distincte. L'annexe de la norme amendee est l'annexe
+      de la norme: deux entrees jumelles n'auraient jamais compare leurs
+      editions, et la plus ancienne serait restee valide a cote de la neuve.
+    """
+    mod = _nbn()
+    front = [
+        "Norme belge",
+        "NBN EN 1996-1-1+A1 ANB:2016",
+        "Eurocode 6 : Calcul des ouvrages en maconnerie - Partie 1-1 - "
+        "Annexe nationale",
+        "Valable a partir de 12-05-2016",
+    ]
+    ident = mod.identify(make_pdf(tmp_path / "a.pdf", [front]))
+    assert ident is not None
+    assert ident["reference"] == "NBN EN 1996-1-1+A1 ANB"
+    assert ident["edition"] == "2016"
+    assert ident["effective_from"] == "2016-05-12"
+    # La cle de catalogue ignore l'amendement.
+    assert (ident["standard_family"], ident["part"]) == ("EN 1996", "1-1")
+
+
+def test_a_cover_replacing_two_documents_names_both(tmp_path) -> None:
+    """« Remplace NBN EN 1996-1-1 ANB:2010 et NBN/DTD EN 1996-1-1+A1 ANB:2014 »
+
+    Une seule reference etait lue. Le second document — le projet technique de
+    2014 — passait a la trappe: s'il avait ete detenu, il serait reste ouvert
+    au catalogue apres avoir ete officiellement remplace.
+    """
+    mod = _nbn()
+    front = [
+        "Norme belge",
+        "NBN EN 1996-1-1+A1 ANB:2016",
+        "Valable a partir de 12-05-2016",
+        "Remplace NBN EN 1996-1-1 ANB:2010 et NBN/DTD EN 1996-1-1+A1 ANB:2014",
+    ]
+    ident = mod.identify(make_pdf(tmp_path / "b.pdf", [front]))
+    assert ident["replaces"] == [
+        "NBN EN 1996-1-1 ANB:2010",
+        "NBN/DTD EN 1996-1-1+A1 ANB:2014",
+    ]
+    assert ident["supersession_is_effective"] is True
+
+
+def test_a_future_tense_replacement_is_not_a_replacement(tmp_path) -> None:
+    """« Cette norme remplaceRA le NBN EN 1996-1-2 ANB:2012. »
+
+    Le futur n'est pas une coquille. En Belgique une norme ne devient
+    obligatoire que par homologation publiee au Moniteur belge; le NBN ecrit
+    « remplace » quand c'est fait et « remplacera » quand ca ne l'est pas.
+
+    Clore l'edition 2012 sur la foi de ce futur reviendrait a dater un arrete
+    royal que personne n'a lu — c'est-a-dire a inventer la seule chose qui
+    manque. Les deux editions restent detenues et la question de savoir
+    laquelle fait foi reste ouverte, en toutes lettres.
+    """
+    mod = _nbn()
+    front = [
+        "Norme belge",
+        "NBN EN 1996-1-2 ANB:2019",
+        "Valable a partir de 10-05-2019",
+        "Cette norme remplacera le NBN EN 1996-1-2 ANB:2012.",
+    ]
+    ident = mod.identify(make_pdf(tmp_path / "c.pdf", [front]))
+    assert ident["replaces"] == ["NBN EN 1996-1-2 ANB:2012"]
+    assert ident["supersession_is_effective"] is False
+
+
+def test_a_technical_document_is_not_a_standard_but_citing_one_is_harmless(
+    tmp_path,
+) -> None:
+    """« Document NBN/DTD ... technique belge »: publie, numerote, et sans force.
+
+    Sa propre couverture dit que son contenu est identique au projet de norme
+    prNBN mis a l'enquete publique, et qu'une norme le remplacera apres
+    homologation. Il doit etre refuse.
+
+    Le second volet est celui qui a manque au premier jet: la couverture de
+    l'annexe AUTHENTIQUE de 2016 cite « NBN/DTD » dans sa ligne « Remplace ».
+    Une garde qui cherchait « NBN/DTD » n'importe ou refusait donc exactement
+    le document attendu — la faute que triage.py documente pour _SUPERSEDES,
+    refaite ici. Nommer un document n'est pas en etre un.
+    """
+    mod = _nbn()
+    dtd = make_pdf(tmp_path / "dtd.pdf", [[
+        "Document NBN/DTD EN 1996-1-1+A1 ANB",
+        "technique belge",
+        "1e ed., octobre 2014",
+        "Le contenu de ce document est identique a celui du projet de norme "
+        "prNBN EN 1996-1-1+A1 ANB mis a l'enquete publique.",
+    ]])
+    assert mod.identify(dtd) is None
+
+    citing = make_pdf(tmp_path / "citing.pdf", [[
+        "Norme belge",
+        "NBN EN 1996-1-1+A1 ANB:2016",
+        "Valable a partir de 12-05-2016",
+        "Remplace NBN EN 1996-1-1 ANB:2010 et NBN/DTD EN 1996-1-1+A1 ANB:2014",
+    ]])
+    assert mod.identify(citing) is not None
+
+
+def test_the_triage_also_refuses_the_technical_document(tmp_path) -> None:
+    """Deuxieme ligne de defense, independante du lecteur de couvertures.
+
+    Le recorder refuse le DTD sur sa designation propre. Le triage le refuse
+    sur une autre phrase de la meme page — « projet de norme », « prNBN » —
+    et c'est lui qui garde la porte des valeurs. Les deux doivent tenir seuls.
+    """
+    from ndp_import import triage_document
+
+    r = triage_document(make_pdf(tmp_path / "dtd.pdf", [[
+        "Document NBN/DTD EN 1996-1-1+A1 ANB technique belge - Eurocode 6 - "
+        "Annexe nationale - Le contenu de ce document est identique a celui "
+        "du projet de norme prNBN EN 1996-1-1+A1 ANB mis a l'enquete publique."
+    ]]))
+    assert r.is_draft
+    assert not r.usable_for_ndp
+
+
+def test_two_editions_of_one_annex_are_not_a_collision(tmp_path, capsys) -> None:
+    """Une succession d'editions est la vie normale d'une norme.
+
+    La garde anti-collision avait ete ecrite pour un cas reel et etroit: une
+    archive livrant « ..._ANB_2011(F).pdf » et « ... (1).pdf », octet pour
+    octet identiques. Elle traitait donc TOUTE paire de fichiers differents
+    revendiquant la meme entree comme un conflit, et n'en retenait aucun.
+
+    Le depot de l'EC6 a livre l'EN 1996-1-2 ANB en 2012 ET en 2019. Resultat:
+    la Belgique se retrouvait sans aucune annexe EC6 feu alors qu'on en
+    detient deux. Une garde qui rejette ce qu'on possede est pire que pas de
+    garde — c'est le meme diagnostic que pour la banniere CSTB.
+
+    Ce qui reste un conflit: deux fichiers DIFFERENTS portant la MEME edition.
+    La, rien ne permet de choisir, et rien n'est ecrit.
+    """
+    mod = _nbn()
+
+    def cover(part: str, year: str, day: str, extra: list[str] | None = None):
+        return [
+            "Norme belge",
+            f"NBN EN {part} ANB:{year}",
+            f"Valable a partir de {day}",
+        ] + (extra or [])
+
+    src = tmp_path / "depot"
+    src.mkdir()
+    make_pdf(src / "ANB_1996-1-2_2012.pdf", [cover("1996-1-2", "2012", "01-02-2012")])
+    make_pdf(src / "ANB_1996-1-2_2019.pdf", [cover(
+        "1996-1-2", "2019", "10-05-2019",
+        ["Cette norme remplacera le NBN EN 1996-1-2 ANB:2012."])])
+    # Meme edition, deux fichiers differents: le vrai conflit.
+    make_pdf(src / "ANB_1998-6_a.pdf", [cover("1998-6", "2011", "01-03-2011")])
+    make_pdf(src / "ANB_1998-6_b.pdf", [cover("1998-6", "2011", "02-03-2011")])
+
+    cat = tmp_path / "catalogue.json"
+    cat.write_text(json.dumps({"documents": []}), encoding="utf-8")
+    mod.CATALOGUE = cat
+    assert mod.main(["record_nbn_batch", "--dir", str(src)]) == 0
+
+    docs = {d["doc_key"]: d for d in json.loads(cat.read_text())["documents"]}
+
+    # Les deux editions sont detenues sous UNE entree, la recente en tete.
+    ec6 = docs["BE-EN199612-NA"]
+    assert "2019" in ec6["edition_read_from_cover"]
+    assert [c["edition"] for c in ec6["concurrent_copies"]] == ["2012"]
+    # ... et le futur n'a ferme personne.
+    assert "superseded_copies" not in ec6
+    assert ec6["concurrent_copies"][0]["governing_edition"] == "pending_verification"
+    assert "Moniteur belge" in ec6["concurrent_copies"][0]["missing_evidence"]
+
+    # Deux fichiers pour une meme edition: aucune entree creee.
+    assert "BE-EN19986-NA" not in docs
+    assert "CONFLIT" in capsys.readouterr().out

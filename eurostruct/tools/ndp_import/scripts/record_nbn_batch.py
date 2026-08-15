@@ -34,6 +34,34 @@ says which edition replaced it and on what date. Ten-year liability means a
 study signed in 2019 was signed against the 2013 annex, and that has to stay
 readable.
 
+... and what happens when the cover writes the future tense
+------------------------------------------------------------
+Nothing is closed. The EC6 deposit brought this sentence:
+
+    Cette norme remplaceRA le NBN EN 1996-1-2 ANB:2012.
+
+In Belgium a standard becomes binding only through homologation published in
+the Moniteur belge. NBN writes "remplace" once that has happened and
+"remplacera" while it has not, and the difference is two letters. Closing the
+2012 edition on the strength of a future tense would mean dating a royal
+decree nobody has read — inventing precisely the thing that is missing. Both
+editions stay held, ``governing_edition`` is ``pending_verification``, and
+``missing_evidence`` names the document that would settle it.
+
+Three further shapes this deposit made necessary
+-------------------------------------------------
+* ``NBN EN 1996-1-1+A1 ANB`` — the annex to the AMENDED standard. It files
+  under the unamended entry, because the annex to EN 1996-1-1+A1 is the annex
+  to EN 1996-1-1; a twin entry would never have compared its edition with the
+  2010 one sitting next to it.
+* ``Remplace X:2010 et Y:2014`` — two references after one verb. Only the
+  first was read.
+* ``Document NBN/DTD ... technique belge`` — published, numbered, and without
+  force: its own cover says the content is that of the prNBN draft under
+  public enquiry. Refused. But the guard is anchored on the document's own
+  designation, because the genuine 2016 annex CITES the DTD in its "Remplace"
+  line, and a looser rule refused exactly the document that was wanted.
+
 Run from tools/ndp_import/:
     python scripts/record_nbn_batch.py --dir DIR [--dry-run]
 """
@@ -56,8 +84,25 @@ from record_fr_reef4_annexes import _mirror_to_other_countries  # noqa: E402
 HERE = Path(__file__).resolve().parents[1]
 CATALOGUE = HERE / "src/ndp_import/data/catalogue.json"
 
+#: La reference d'une annexe belge, sous les quatre formes rencontrees:
+#:
+#:     NBN EN 1990 ANB          la forme ordinaire
+#:     NBN EN 1991-1-2-ANB      tiret au lieu de l'espace, un seul document
+#:     NBN EN 1996-1-1+A1 ANB   annexe de la norme AMENDEE
+#:     NBN/DTD EN 1996-1-1+A1 ANB   document technique, voir _is_dtd
+#:
+#: Le suffixe « +A1 » a coute cher: le depot de l'EC6 a apporte
+#: « NBN EN 1996-1-1+A1 ANB:2016 », qui remplace l'edition 2010, et l'ancienne
+#: expression ne le reconnaissait pas. Resultat: le fichier etait IGNORE en
+#: silence, l'edition 2010 restait enregistree comme l'annexe belge de
+#: l'EN 1996-1-1, et le catalogue affirmait detenir une edition que le
+#: document en main declare remplacee depuis le 12-05-2016. C'est exactement
+#: la panne que ce script avait ete ecrit pour empecher, revenue par une forme
+#: que l'expression ne couvrait pas.
+_REF = r"NBN(?:/DTD)?\s+EN\s+[\d-]+(?:\+A\d)?(?:/A\d)?[\s-]ANB"
+
 _SELF = re.compile(
-    r"Norme\s+belge\s+(?P<ref>NBN\s+EN\s+[\d-]+(?:/A\d)?[\s-]ANB)\s*:\s*(?P<year>\d{4})",
+    rf"Norme\s+belge\s+(?P<ref>{_REF})\s*:\s*(?P<year>\d{{4}})",
     re.IGNORECASE,
 )
 #: « Valable a partir de 23-03-2021 ». Un premier jet acceptait « d » et
@@ -78,20 +123,60 @@ _VALID_FROM = re.compile(
 #: affirme, le NBN en attribue donc un; il est bien plus large que l'indice
 #: AFNOR (une famille, pas un document) mais il existe.
 _SELF_OLD = re.compile(
-    r"(?P<ref>NBN\s+EN\s+[\d-]+(?:/A\d)?[\s-]ANB)\s+Norme\s+belge\s+"
+    rf"(?P<ref>{_REF})\s+Norme\s+belge\s+"
     r"(?P<edition>\d+e?\s+(?:ed|éd)\.?,?\s+[a-zéû]+\s+(?P<year>\d{4}))",
     re.IGNORECASE,
 )
 _INDICE_BE = re.compile(r"Indice\s+de\s+classement\s*:\s*([A-Z]\s?\d+)",
                         re.IGNORECASE)
-_REPLACES = re.compile(
-    r"Remplace\s+(?P<ref>NBN\s+EN\s+[\d-]+(?:/A\d)?[\s-]ANB)\s*:\s*(?P<year>\d{4})",
+
+#: « Remplace » ou « remplaceRA ». Le futur n'est pas une coquille de
+#: l'editeur, c'est un etat distinct, et le NBN ecrit les deux:
+#:
+#:     NBN EN 1996-1-1+A1 ANB:2016 — « Remplace NBN EN 1996-1-1 ANB:2010 et
+#:                                     NBN/DTD EN 1996-1-1+A1 ANB:2014 »
+#:     NBN EN 1996-1-2 ANB:2019    — « Cette norme remplaceRA le
+#:                                     NBN EN 1996-1-2 ANB:2012. »
+#:
+#: En Belgique une norme ne devient obligatoire que par homologation publiee
+#: au Moniteur belge. Le futur dit: publiee, homologation non encore acquise.
+#: Clore l'edition ancienne sur la foi d'un futur reviendrait a declarer
+#: perime un document qui reste peut-etre le seul en vigueur — donc a inventer
+#: la date d'un arrete royal que personne n'a lu.
+#:
+#: Deux references peuvent suivre le verbe, separees par « et ». Une seule
+#: etait lue: sur la couverture 2016, le DTD 2014 passait a la trappe.
+_REPLACES_CLAUSE = re.compile(
+    r"(?:Cette\s+norme\s+)?Remplace(?P<future>ra)?\s+(?P<list>[^.]*)",
     re.IGNORECASE,
 )
+_REPLACED_REF = re.compile(rf"(?P<ref>{_REF})\s*:\s*(?P<year>\d{{4}})",
+                           re.IGNORECASE)
+
+#: « Document NBN/DTD ... technique belge ». Ce n'est pas une norme: sa propre
+#: couverture dit que son contenu est « identique a celui du projet de norme
+#: prNBN ... mis a l'enquete publique », et qu'une norme le remplacera apres
+#: homologation. Un projet publie sous une autre couverture reste un projet.
+#:
+#: ANCRE SUR « Document » — et la raison merite d'etre ecrite, parce que le
+#: premier jet a refait, dans ce fichier, la faute que triage.py documente
+#: pour _SUPERSEDES. « NBN/DTD » nu matchait aussi la CITATION que porte la
+#: couverture de 2016: « Remplace NBN EN 1996-1-1 ANB:2010 et NBN/DTD
+#: EN 1996-1-1+A1 ANB:2014 ». L'annexe authentique de 2016 — celle qu'on
+#: attend — etait refusee parce qu'elle nomme le projet qu'elle remplace.
+#: Nommer un document n'est pas en etre un.
+_IS_DTD_SELF = re.compile(r"Document\s+NBN\s*/\s*DTD\s+EN", re.IGNORECASE)
+_IS_DTD_ANY = re.compile(r"NBN\s*/\s*DTD", re.IGNORECASE)
 
 
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s or "").strip()
+
+
+def _year_of(edition: str) -> str | None:
+    """L'annee d'une edition, ecrite « 2016 » ou « 1e ed., novembre 2010 »."""
+    years = re.findall(r"(?:19|20)\d{2}", edition or "")
+    return years[-1] if years else None
 
 
 def identify(path: Path) -> dict | None:
@@ -100,16 +185,42 @@ def identify(path: Path) -> dict | None:
 
     me = _SELF.search(front)
     old = None if me else _SELF_OLD.search(front)
+
+    # Le document se designe lui-meme comme DTD, ou bien il porte « NBN/DTD »
+    # sans jamais se dire « Norme belge » — auquel cas la mention ne peut pas
+    # etre une citation faite par une norme.
+    if _IS_DTD_SELF.search(front) or (_IS_DTD_ANY.search(front) and not (me or old)):
+        print(f"  REFUSE {path.name}: « Document NBN/DTD ... technique belge ». "
+              "Sa couverture declare son contenu identique au projet de norme "
+              "prNBN mis a l'enquete publique, et annonce qu'une norme le "
+              "remplacera apres homologation au Moniteur belge. Un projet "
+              "publie sous une autre couverture reste un projet: aucune valeur "
+              "nationale ne peut en etre tiree.")
+        return None
+
     if not (me or old):
         print(f"  IGNORE {path.name}: ni « Norme belge NBN ... ANB:AAAA » "
               "ni « NBN ... ANB Norme belge Ne ed., ... »")
         return None
 
     vf = _VALID_FROM.search(front)
-    rep = _REPLACES.search(front)
     ind = _INDICE_BE.search(front)
+    clause = _REPLACES_CLAUSE.search(front)
+    replaced = (
+        [
+            {"reference": _norm(m.group("ref")), "year": m.group("year")}
+            for m in _REPLACED_REF.finditer(clause.group("list"))
+        ]
+        if clause else []
+    )
     ref = _norm((me or old).group("ref"))
-    std = ref.replace("NBN ", "").replace(" ANB", "").replace("-ANB", "").strip()
+    # Le « +A1 » appartient a la REFERENCE, pas a la partie. L'annexe de
+    # l'EN 1996-1-1+A1 est l'annexe de l'EN 1996-1-1 amendee, pas celle d'une
+    # norme distincte: elle doit retomber sur la meme entree BE-EN199611-NA,
+    # sans quoi le depot creerait une entree jumelle et les deux editions
+    # cohabiteraient sans jamais se rencontrer.
+    std = re.sub(r"\+A\d", "", ref)
+    std = std.replace("NBN ", "").replace(" ANB", "").replace("-ANB", "").strip()
     family, _, part = std.partition("-")
     if family.startswith("EN 1990") or " " not in std:
         family, part = std, ""
@@ -122,12 +233,13 @@ def identify(path: Path) -> dict | None:
     )
     return {
         "reference": ref, "edition": edition,
+        "edition_year": (me.group("year") if me else old.group("year")),
         "indice": _norm(ind.group(1)) if ind else None,
         "effective_from": (f"{vf.group(3)}-{vf.group(2)}-{vf.group(1)}" if vf else None),
-        "replaces": (
-            f"{_norm(rep.group('ref'))}:{rep.group('year')}" if rep else None
-        ),
-        "replaces_year": rep.group("year") if rep else None,
+        "replaces": [f"{r['reference']}:{r['year']}" for r in replaced],
+        "replaces_years": [r["year"] for r in replaced],
+        # « remplacera »: annonce, pas effet. Voir _REPLACES_CLAUSE.
+        "supersession_is_effective": bool(clause and not clause.group("future")),
         "standard_family": family, "part": part,
         "doc_id_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "filename": path.name,
@@ -145,30 +257,50 @@ def main(argv: list[str]) -> int:
 
     recorded, superseded, skipped, created = [], [], [], []
     duplicates: list[str] = []
-    seen: dict[str, tuple[str, str]] = {}   # cle -> (fichier, empreinte)
+    announced: list[str] = []
+    groups: dict[str, list[dict]] = {}
     for path in sorted(args.dir.glob("*ANB*.pdf")):
         ident = identify(path)
         if ident is None:
             skipped.append(path.name)
             continue
-
         flat = (ident["standard_family"] + ident["part"]).replace(" ", "").replace("-", "")
-        key = f"BE-{flat}-NA"
-        # Deux fichiers pour une meme entree: ce n'est pas toujours un
-        # conflit. Une archive contenait « ..._ANB_2011(F).pdf » et
-        # « ..._ANB_2011(F) (1).pdf », octet pour octet identiques. Un doublon
-        # exact est sans consequence et se signale; deux fichiers DIFFERENTS
-        # qui revendiquent la meme entree sont un conflit, et rien n'est ecrit.
-        if key in seen:
-            prev_file, prev_digest = seen[key]
-            if prev_digest == ident["doc_id_sha256"]:
-                duplicates.append(f"{key}: {ident['filename']} = {prev_file}")
+        groups.setdefault(f"BE-{flat}-NA", []).append(ident)
+
+    for key, idents in groups.items():
+        # Plusieurs fichiers pour une meme entree, trois cas et non deux.
+        #
+        # 1. Doublon exact — « ..._ANB_2011(F).pdf » et « ... (1).pdf »,
+        #    octet pour octet identiques. Sans consequence, signale.
+        # 2. Deux EDITIONS de la meme annexe: 2012 et 2019 pour l'EN 1996-1-2.
+        #    Un premier jet criait CONFLIT et n'en retenait AUCUNE — la
+        #    Belgique se retrouvait sans annexe EC6 feu alors qu'on en detient
+        #    deux. La garde avait ete ecrite pour le cas 1 et la succession
+        #    d'editions, qui est la vie normale d'une norme, y tombait.
+        # 3. Deux fichiers DIFFERENTS de meme edition: la, rien n'est retenu.
+        by_digest: dict[str, dict] = {}
+        for ident in idents:
+            d = ident["doc_id_sha256"]
+            if d in by_digest:
+                duplicates.append(
+                    f"{key}: {ident['filename']} = {by_digest[d]['filename']}")
             else:
-                print(f"  CONFLIT sur {key}: {ident['filename']} et "
-                      f"{prev_file} different. Aucun des deux n'est retenu.")
-                skipped.append(ident["filename"])
+                by_digest[d] = ident
+        unique = list(by_digest.values())
+
+        editions = {i["edition_year"] for i in unique}
+        if len(unique) > 1 and len(editions) < len(unique):
+            print(f"  CONFLIT sur {key}: "
+                  + ", ".join(sorted(i["filename"] for i in unique))
+                  + " revendiquent la MEME edition et different. "
+                  "Aucun n'est retenu.")
+            skipped.extend(i["filename"] for i in unique)
             continue
-        seen[key] = (ident["filename"], ident["doc_id_sha256"])
+
+        # La plus recente devient l'exemplaire courant; les autres sont
+        # traitees ensuite, chacune selon ce que la couverture recente en dit.
+        unique.sort(key=lambda i: (i["effective_from"] or "", i["edition_year"]))
+        older, ident = unique[:-1], unique[-1]
 
         entry = by_key.get(key)
         if entry is None:
@@ -201,26 +333,95 @@ def main(argv: list[str]) -> int:
         )
         previous_digest = entry.get("doc_id_sha256")
 
-        # Le document dit lui-meme ce qu'il remplace. Si l'exemplaire detenu
-        # porte cette edition, il est PERIME: on le clot, on ne l'ecrase pas.
-        closed = None
-        if ident["replaces_year"] and ident["replaces_year"] in previous_edition:
-            eff = ident["effective_from"]
-            closed = {
-                "reference": entry["reference"],
-                "edition": previous_edition,
-                "doc_id_sha256": previous_digest,
-                "effective_to": (
-                    (date.fromisoformat(eff) - timedelta(days=1)).isoformat()
-                    if eff else None
+        # Le document dit lui-meme ce qu'il remplace. Trois sorties, et une
+        # seule ferme l'edition ancienne.
+        #
+        #   « Remplace X:AAAA »    -> X est PERIMEE, close par effective_to.
+        #   « remplaceRA X:AAAA »  -> annonce. L'homologation au Moniteur belge
+        #                             n'est pas lue: laquelle des deux fait foi
+        #                             reste pending_verification.
+        #   rien sur X             -> on detient deux editions et la recente ne
+        #                             dit rien de l'ancienne. Meme reponse.
+        #
+        # Une edition ancienne n'est jamais supprimee: dix ans de
+        # responsabilite decennale exigent qu'une etude signee sous elle reste
+        # lisible.
+        closed: list[str] = []
+        held_alongside: list[str] = []
+
+        def _older_copy(ref: str, edition: str, digest: str | None) -> None:
+            year = "".join(c for c in edition if c.isdigit())[-4:]
+            named = year and year in ident["replaces_years"]
+            if named and ident["supersession_is_effective"]:
+                eff = ident["effective_from"]
+                entry.setdefault("superseded_copies", []).append({
+                    "reference": ref, "edition": edition,
+                    "doc_id_sha256": digest,
+                    "effective_to": (
+                        (date.fromisoformat(eff) - timedelta(days=1)).isoformat()
+                        if eff else None
+                    ),
+                    "superseded_by": f"{ident['reference']}:{ident['edition']}",
+                })
+                closed.append(f"{ref} ed. {edition}")
+                superseded.append(
+                    f"{ref} ed. {edition} -> remplacee par "
+                    f"{ident['reference']}:{ident['edition']}")
+                return
+            entry.setdefault("concurrent_copies", []).append({
+                "reference": ref, "edition": edition,
+                "doc_id_sha256": digest,
+                "relation_to_current": (
+                    "annoncee_remplacee" if named else "non_mentionnee"),
+                "governing_edition": "pending_verification",
+                "missing_evidence": (
+                    "Date d'homologation publiee au Moniteur belge. La "
+                    f"couverture de {ident['edition']} ecrit « remplaceRA », "
+                    "au futur: la publication par le NBN est acquise, "
+                    "l'homologation qui rend la norme obligatoire ne l'est "
+                    "pas. Sans arrete royal lu, laquelle des deux editions "
+                    "fait foi ne peut etre affirmee."
+                    if named else
+                    f"Mention explicite du sort de l'edition {edition}. La "
+                    f"couverture de {ident['edition']} ne la nomme pas: rien "
+                    "dans le document en main ne permet de la declarer "
+                    "perimee, ni de la declarer en vigueur."
                 ),
-                "superseded_by": f"{ident['reference']}:{ident['edition']}",
-            }
-            entry.setdefault("superseded_copies", []).append(closed)
-            superseded.append(
-                f"{entry['reference']} ed. {previous_edition} -> remplacee par "
-                f"{ident['edition']}"
-            )
+            })
+            held_alongside.append(f"{ref} ed. {edition}")
+            announced.append(
+                f"{key}: {ident['edition']} et {edition} detenues, laquelle "
+                f"fait foi = pending_verification "
+                f"({'« remplacera », au futur' if named else 'sans mention'})")
+
+        # L'exemplaire deja au catalogue n'est pas forcement le plus ancien:
+        # rien n'empeche de deposer en second une edition anterieure. Le
+        # comparer par l'annee avant d'en tirer quoi que ce soit, faute de
+        # quoi un depot dans le desordre ferait RECULER le catalogue.
+        prev_year = _year_of(previous_edition)
+        if previous_digest and previous_digest != ident["doc_id_sha256"]:
+            if prev_year and prev_year > ident["edition_year"]:
+                entry.setdefault("concurrent_copies", []).append({
+                    "reference": ident["reference"], "edition": ident["edition"],
+                    "doc_id_sha256": ident["doc_id_sha256"],
+                    "relation_to_current": "anterieure_a_l_exemplaire_detenu",
+                    "governing_edition": previous_edition,
+                    "missing_evidence": None,
+                })
+                print(f"  {key}: {ident['filename']} porte l'edition "
+                      f"{ident['edition']}, ANTERIEURE a l'exemplaire detenu "
+                      f"({previous_edition}). Conservee comme copie, l'entree "
+                      "n'est pas modifiee.")
+                held_alongside.append(f"{ident['reference']} ed. {ident['edition']}")
+                continue
+            if prev_year == ident["edition_year"]:
+                # Meme edition, fichier different: une empreinte de plus, pas
+                # une edition de plus.
+                entry.setdefault("alternate_copy_hashes", []).append(previous_digest)
+            else:
+                _older_copy(entry["reference"], previous_edition, previous_digest)
+        for o in older:
+            _older_copy(o["reference"], o["edition"], o["doc_id_sha256"])
 
         entry.update({
             "reference": ident["reference"],
@@ -239,14 +440,23 @@ def main(argv: list[str]) -> int:
             + f"Edition {ident['edition']}, en vigueur depuis "
             + f"{ident['effective_from'] or 'date non lue'}. "
             + (
-                f"CETTE EDITION REMPLACE {ident['replaces']} — l'exemplaire "
-                f"precedemment detenu ({previous_edition}) est PERIME et a ete "
-                "clos par effective_to; son empreinte est conservee dans "
+                f"CETTE EDITION REMPLACE {', '.join(closed)} — exemplaire(s) "
+                "PERIME(S), clos par effective_to; empreintes conservees dans "
                 "superseded_copies, une etude signee sous l'ancienne edition "
                 "devant rester lisible dix ans. "
-                if closed else
-                (f"Le document declare remplacer {ident['replaces']}, edition "
-                 "qui n'etait pas detenue. " if ident["replaces"] else "")
+                if closed else ""
+            )
+            + (
+                f"DEUX EDITIONS DETENUES: {', '.join(held_alongside)} a cote de "
+                f"celle-ci. Laquelle fait foi est pending_verification — voir "
+                "concurrent_copies[].missing_evidence. Aucune valeur ne doit "
+                "etre confirmee depuis l'une ou l'autre avant que la question "
+                "soit tranchee sur piece. "
+                if held_alongside else ""
+            )
+            + (
+                f"Le document declare remplacer {', '.join(ident['replaces'])}. "
+                if ident["replaces"] and not closed and not held_alongside else ""
             )
             + "STATUT A DECLARER par l'ingenieur qui depose."
         )
@@ -271,6 +481,14 @@ def main(argv: list[str]) -> int:
             print("   " + line)
         print("   Closes par effective_to, empreintes conservees. Une etude")
         print("   signee sous l'ancienne edition reste lisible.")
+    if announced:
+        print(f"\n*** {len(announced)} ENTREE(S) A DEUX EDITIONS, "
+              "SANS SUCCESSION ETABLIE ***")
+        for line in announced:
+            print("   " + line)
+        print("   « Remplacera » est un futur: le NBN a publie, l'homologation")
+        print("   au Moniteur belge n'est pas lue. Clore l'ancienne edition")
+        print("   reviendrait a dater un arrete royal que personne n'a vu.")
     if duplicates:
         print(f"\n{len(duplicates)} doublon(s) exact(s) ignore(s) sans consequence:")
         for line in duplicates:
