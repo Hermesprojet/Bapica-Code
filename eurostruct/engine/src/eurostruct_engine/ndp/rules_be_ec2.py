@@ -25,10 +25,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from enum import Enum
 
 from ..units import Q_, Quantity
 from .model import ValidationStatus, ValueProvenance
 from .rules import (
+    OutsideValidityDomain,
     Branch,
     ConditionalRule,
     DomainBound,
@@ -644,8 +646,22 @@ def _cot_theta_max(
 # ---------------------------------------------------------------------------
 # Resolution du point fixe de cot(theta)
 # ---------------------------------------------------------------------------
-_TOLERANCE = 1e-9
-_MAX_ITERATIONS = 50
+_TOLERANCE = 1e-12
+_MAX_ITERATIONS = 200
+_COT_CAP = 3.0
+
+
+class Termination(str, Enum):
+    """Pourquoi la resolution s'est arretee. Jamais implicite."""
+
+    #: Residu |c - F(c)| <= tolerance, VERIFIE a la sortie sur la valeur retenue.
+    CONVERGED = "converged"
+    #: Le plafond normatif 3 est lui-meme le point fixe: F(3) = 3.
+    UPPER_BOUND = "upper_bound"
+    #: Budget d'iterations epuise sans residu acceptable. AUCUNE valeur rendue.
+    MAX_ITERATIONS = "max_iterations"
+    #: Entrees hors du domaine de la regle. AUCUNE valeur rendue.
+    INVALID_DOMAIN = "invalid_domain"
 
 
 @dataclass(frozen=True, slots=True)
@@ -653,36 +669,62 @@ class CotThetaIteration:
     """Une iteration, telle qu'elle sera imprimee dans la note de calcul."""
 
     index: int
-    cot_theta_trial: float
+    previous: float
+    computed: float
+    residual: float
     Asw_over_s: Quantity
-    cot_theta_max: float
-    delta: float
 
 
 @dataclass(frozen=True, slots=True)
 class CotThetaSolution:
-    """Resultat de la resolution, converge ou refuse — jamais approche."""
+    """Resultat: converge, plafonne, ou REFUSE — jamais approche.
 
-    converged: bool
+    ``cot_theta`` ne vaut ``None`` que pour les deux terminaisons d'echec: une
+    valeur presente a donc toujours passe la verification de residu.
+    """
+
+    termination: Termination
     cot_theta: float | None
-    cot_theta_max: float | None
+    residual: float | None
     iterations: tuple[CotThetaIteration, ...]
+    #: Pente A de la demonstration ci-dessous, conservee pour l'audit.
+    slope_A: float | None = None
     refusal: str | None = None
+
+    @property
+    def accepted(self) -> bool:
+        return self.termination in (Termination.CONVERGED, Termination.UPPER_BOUND)
 
     @property
     def journal(self) -> tuple[str, ...]:
         lines = [
-            f"iter {i.index}: cot(theta) = {i.cot_theta_trial:.6f} -> "
-            f"A_sw/s = {i.Asw_over_s.to('mm**2/m').magnitude:.2f} mm2/m -> "
-            f"cot(theta)_max = {i.cot_theta_max:.6f} (delta {i.delta:.2e})"
+            f"iter {i.index}: c = {i.previous:.9f} -> F(c) = {i.computed:.9f}"
+            f" | residu {i.residual:.3e}"
+            f" | A_sw/s = {i.Asw_over_s.to('mm**2/m').magnitude:.2f} mm2/m"
             for i in self.iterations
         ]
-        lines.append(
-            f"CONVERGE en {len(self.iterations)} iteration(s): "
-            f"cot(theta) = {self.cot_theta:.6f}"
-            if self.converged else f"REFUS: {self.refusal}"
-        )
+        if self.accepted:
+            lines.append(
+                f"{self.termination.value.upper()} en {len(self.iterations)}"
+                f" iteration(s): cot(theta) = {self.cot_theta:.9f},"
+                f" residu final {self.residual:.3e} <= {_TOLERANCE:.0e}"
+            )
+        else:
+            lines.append(f"REFUS [{self.termination.value}]: {self.refusal}")
         return tuple(lines)
+
+
+def fixed_point_closed_form(A: float) -> float:
+    """Point fixe exact de ``F(c) = min(3 ; 2 + A c)``, demontre ci-dessous.
+
+    Sert d'ORACLE INDEPENDANT dans les tests. Deux methodes distinctes qui
+    s'accordent valent mieux qu'une methode qu'on croit juste: c'est la
+    discipline des cas de reference du moteur, etablis par bissection quand la
+    forme fermee existe, et inversement.
+    """
+    if A >= 1.0 / 3.0:
+        return _COT_CAP
+    return 2.0 / (1.0 - A)
 
 
 def solve_cot_theta(
@@ -698,54 +740,99 @@ def solve_cot_theta(
     s: Quantity,
     cot_theta_min: float = 1.0,
 ) -> CotThetaSolution:
-    """Resoudre cot(theta) sous la borne belge, par point fixe borne.
+    """Resoudre cot(theta) sous la borne belge de §6.2.3(2).
 
-    Pourquoi une iteration plutot qu'un choix prudent
-    --------------------------------------------------
-    Un premier jet bridait le choix initial a ``[1 ; 2]``, ou 2 est la valeur
-    de la borne sans precontrainte. C'etait sur, et sur-conservatif: la regle
-    belge autorise jusqu'a 3, et s'en priver ferait ferrailler plus que le
-    texte ne l'exige des qu'il y a precontrainte.
+    Demonstration de la convergence
+    --------------------------------
+    Elle n'est pas invoquee, elle se calcule. En reportant
+    ``A_sw/s = V_Ed/(z f_ywd c)`` dans la borne de l'ANB::
 
-    Pourquoi elle converge, et pourquoi ce n'est pas circulaire
-    ------------------------------------------------------------
-    ``A_sw/s = V_Ed/(z f_ywd cot(theta))`` decroit quand cot(theta) croit, et
-    ``cot(theta)_max = 2 + k1 sigma_cp b_w d s/(A_sw z f_ywd)`` croit quand
-    ``A_sw/s`` decroit. La suite est donc croissante, et majoree par 3: elle
-    converge. Le point fixe est atteint, pas approche.
+        cot_max = 2 + k1 sigma_cp b_w d s / (A_sw z f_ywd)
+                = 2 + k1 sigma_cp b_w d s / ((V_Ed s/(z f_ywd c)) z f_ywd)
+                = 2 + (k1 sigma_cp b_w d / V_Ed) . c
 
-    Sans precontrainte, ``sigma_cp = 0`` annule le terme et la borne vaut 2
-    des la premiere iteration, quel que soit le ferraillage.
+    ``s``, ``z`` et ``f_ywd`` se simplifient TOUS LES TROIS, et ``A_sw`` avec
+    eux. L'application d'iteration est donc affine::
+
+        F(c) = min(3 ; 2 + A c),   A = k1 sigma_cp b_w d / V_Ed >= 0
+
+    F est croissante (A >= 0) et majoree par 3. Partant de
+    ``c_0 = cot_theta_min`` avec ``F(c_0) >= 2 > c_0``, la suite est croissante
+    et bornee: elle converge. Son point fixe vaut ``2/(1-A)`` si ``A < 1/3``,
+    et ``3`` sinon — le plafond normatif devenant lui-meme point fixe des que
+    ``2 + 3A >= 3``.
+
+    Sans precontrainte ``A = 0``: F est constante egale a 2, atteinte des la
+    premiere iteration, quel que soit le ferraillage.
+
+    Ce que le solveur fait quand meme
+    ----------------------------------
+    La demonstration ne dispense pas de VERIFIER. Le residu
+    ``|c - F(c)| <= tolerance`` est controle a la sortie SUR LA VALEUR
+    RETENUE, independamment de ce que la boucle croit avoir fait; une
+    terminaison qui ne le passe pas ne rend aucune valeur. La convergence est
+    lineaire de rapport A et ralentit quand A approche 1/3, d'ou un budget de
+    200 iterations.
     """
     if V_Ed.magnitude <= 0:
-        raise ValueError("V_Ed doit etre strictement positif pour dimensionner.")
+        return CotThetaSolution(
+            Termination.INVALID_DOMAIN, None, None, (),
+            refusal="V_Ed doit etre strictement positif pour dimensionner.",
+        )
+
+    A = float((k_1 * sigma_cp * b_w * d / V_Ed).to("dimensionless").magnitude)
+
+    def F(c: float) -> tuple[float, Quantity]:
+        asw_over_s = (V_Ed / (z * f_ywd * c)).to("mm**2/m")
+        value = COT_THETA_MAX.evaluate(
+            k_1=k_1, sigma_cp=sigma_cp, b_w=b_w, d=d, s=s,
+            A_sw=(asw_over_s * s).to("mm**2"), z=z, f_ywd=f_ywd, f_cd=f_cd,
+        )
+        return float(value.magnitude), asw_over_s
 
     steps: list[CotThetaIteration] = []
-    cot = float(cot_theta_min)
-    for index in range(1, _MAX_ITERATIONS + 1):
-        asw_over_s = (V_Ed / (z * f_ywd * cot)).to("mm**2/m")
-        # La regle veut A_sw et s separement; le rapport suffit et evite
-        # d'inventer un espacement a ce stade.
-        cot_max = float(
-            COT_THETA_MAX.evaluate(
-                k_1=k_1, sigma_cp=sigma_cp, b_w=b_w, d=d, s=s,
-                A_sw=(asw_over_s * s).to("mm**2"), z=z, f_ywd=f_ywd, f_cd=f_cd,
-            ).magnitude
+    c = float(cot_theta_min)
+    try:
+        for index in range(1, _MAX_ITERATIONS + 1):
+            nxt, asw_over_s = F(c)
+            residual = abs(nxt - c)
+            steps.append(CotThetaIteration(index, c, nxt, residual, asw_over_s))
+            if residual <= _TOLERANCE:
+                check, _ = F(nxt)
+                final_residual = abs(nxt - check)
+                if final_residual > _TOLERANCE:
+                    return CotThetaSolution(
+                        Termination.MAX_ITERATIONS, None, final_residual,
+                        tuple(steps), slope_A=A,
+                        refusal=(
+                            f"residu de sortie {final_residual:.3e} > tolerance"
+                            f" {_TOLERANCE:.0e} alors que la boucle s'estimait"
+                            " convergee. Aucune valeur n'est retenue."
+                        ),
+                    )
+                termination = (
+                    Termination.UPPER_BOUND
+                    if nxt >= _COT_CAP - _TOLERANCE
+                    else Termination.CONVERGED
+                )
+                return CotThetaSolution(
+                    termination, nxt, final_residual, tuple(steps), slope_A=A
+                )
+            c = nxt
+    except OutsideValidityDomain as exc:
+        return CotThetaSolution(
+            Termination.INVALID_DOMAIN, None, None, tuple(steps), slope_A=A,
+            refusal=str(exc),
         )
-        nxt = min(cot_max, 3.0)
-        delta = abs(nxt - cot)
-        steps.append(CotThetaIteration(index, cot, asw_over_s, cot_max, delta))
-        if delta <= _TOLERANCE:
-            return CotThetaSolution(True, nxt, cot_max, tuple(steps))
-        cot = nxt
 
     return CotThetaSolution(
-        False, None, None, tuple(steps),
+        Termination.MAX_ITERATIONS, None, steps[-1].residual, tuple(steps),
+        slope_A=A,
         refusal=(
-            f"cot(theta) n'a pas converge en {_MAX_ITERATIONS} iterations "
-            f"(dernier ecart {steps[-1].delta:.2e} > {_TOLERANCE:.0e}). "
-            "Aucune valeur n'est retenue: une valeur approchee serait un "
-            "resultat que le moteur ne peut pas justifier. Le journal des "
-            "iterations est joint pour que l'ingenieur tranche."
+            f"cot(theta) n'a pas converge en {_MAX_ITERATIONS} iterations"
+            f" (residu {steps[-1].residual:.3e} > {_TOLERANCE:.0e}). Aucune"
+            " valeur n'est retenue: une valeur approchee serait un resultat que"
+            " le moteur ne peut pas justifier. Le journal est joint pour que"
+            " l'ingenieur tranche."
         ),
     )

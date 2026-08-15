@@ -362,3 +362,103 @@ def test_T9_cot_theta_max_declares_how_the_circularity_is_broken() -> None:
             validation_status=ValidationStatus.PENDING_VERIFICATION,
             value_provenance=ValueProvenance.NATIONAL_ANNEX,
         )
+
+
+# ---------------------------------------------------------------------------
+# Le solveur de cot(theta): convergence demontree, et verifiee quand meme
+# ---------------------------------------------------------------------------
+def _solve(sigma_mpa: float, **kw):
+    from eurostruct_engine.ndp.rules_be_ec2 import solve_cot_theta
+
+    args = dict(
+        V_Ed=Q_(250.0, "kN"), k_1=Q_(0.15, ""), sigma_cp=Q_(sigma_mpa, "MPa"),
+        b_w=Q_(300.0, "mm"), d=Q_(450.0, "mm"), z=Q_(405.0, "mm"),
+        f_ywd=Q_(435.0, "MPa"), f_cd=Q_(20.0, "MPa"), s=Q_(200.0, "mm"),
+    )
+    args.update(kw)
+    return solve_cot_theta(**args)
+
+
+@pytest.mark.parametrize("sigma_mpa,f_cd_mpa", [
+    (0.0, 20.0), (0.5, 20.0), (1.0, 20.0), (2.0, 20.0), (3.0, 20.0),
+    (4.0, 20.0), (5.0, 30.0), (6.0, 30.0), (9.0, 50.0), (10.0, 50.0),
+])
+@pytest.mark.parametrize("f_ywd_mpa", [300.0, 435.0, 500.0])
+@pytest.mark.parametrize("geometry", [
+    {"b_w": Q_(200.0, "mm"), "d": Q_(300.0, "mm"), "z": Q_(270.0, "mm")},
+    {"b_w": Q_(300.0, "mm"), "d": Q_(450.0, "mm"), "z": Q_(405.0, "mm")},
+    {"b_w": Q_(500.0, "mm"), "d": Q_(900.0, "mm"), "z": Q_(810.0, "mm")},
+])
+@pytest.mark.parametrize("s_mm", [100.0, 300.0])
+def test_the_solver_agrees_with_an_independent_closed_form(
+    sigma_mpa, f_cd_mpa, f_ywd_mpa, geometry, s_mm
+) -> None:
+    """180 combinaisons, confrontees a une methode INDEPENDANTE.
+
+    L'iteration part de cot = 1 et applique F. L'oracle resout l'equation de
+    point fixe algebriquement. Les deux n'ont en commun que la formule de
+    l'ANB: si l'une se trompe, elles divergent.
+
+    C'est la discipline des cas de reference du moteur — bissection contre
+    forme fermee — appliquee ici.
+
+    La demonstration montre aussi que s, z, f_ywd et A_sw se SIMPLIFIENT: ces
+    trois axes de parametrage ne doivent donc rien changer au resultat, et
+    c'est verifie plutot que suppose.
+    """
+    from eurostruct_engine.ndp.rules_be_ec2 import Termination, fixed_point_closed_form
+
+    sol = _solve(sigma_mpa, f_cd=Q_(f_cd_mpa, "MPa"),
+                 f_ywd=Q_(f_ywd_mpa, "MPa"), s=Q_(s_mm, "mm"), **geometry)
+    if sol.termination is Termination.INVALID_DOMAIN:
+        # sigma_cp > 0,2 f_cd: refus attendu, aucune valeur.
+        assert sol.cot_theta is None
+        assert sigma_mpa > 0.2 * f_cd_mpa
+        return
+
+    assert sol.accepted, sol.refusal
+    assert sol.cot_theta == pytest.approx(fixed_point_closed_form(sol.slope_A), abs=1e-9)
+    # Le residu de sortie a ete verifie sur la valeur retenue.
+    assert sol.residual is not None and sol.residual <= 1e-12
+    assert 1.0 <= sol.cot_theta <= 3.0
+
+
+def test_the_solver_names_why_it_stopped() -> None:
+    """Quatre terminaisons, et deux d'entre elles ne rendent aucune valeur."""
+    from eurostruct_engine.ndp.rules_be_ec2 import Termination
+
+    # Sans precontrainte: convergence en 2 iterations, cot = 2 exactement.
+    sans = _solve(0.0)
+    assert sans.termination is Termination.CONVERGED
+    assert sans.cot_theta == pytest.approx(2.0)
+    assert sans.slope_A == pytest.approx(0.0)
+
+    # Precontrainte forte: le plafond normatif EST le point fixe.
+    plafond = _solve(6.0, f_cd=Q_(30.0, "MPa"))
+    assert plafond.termination is Termination.UPPER_BOUND
+    assert plafond.cot_theta == pytest.approx(3.0)
+
+    # Hors domaine: sigma_cp > 0,2 f_cd.
+    hors = _solve(5.0)
+    assert hors.termination is Termination.INVALID_DOMAIN
+    assert hors.cot_theta is None and hors.refusal
+
+    # Effort nul: domaine invalide, pas une division par zero.
+    nul = _solve(0.0, V_Ed=Q_(0.0, "kN"))
+    assert nul.termination is Termination.INVALID_DOMAIN
+    assert nul.cot_theta is None
+
+
+def test_the_solver_journals_every_iteration() -> None:
+    """Chaque iteration porte precedent, calcule et residu — auditable."""
+    sol = _solve(2.0)
+    assert len(sol.iterations) >= 2
+    for it in sol.iterations:
+        assert it.residual == pytest.approx(abs(it.computed - it.previous))
+    # Suite croissante, comme la demonstration l'annonce.
+    valeurs = [it.previous for it in sol.iterations]
+    assert all(a <= b for a, b in zip(valeurs, valeurs[1:]))
+    # Residus decroissants: convergence lineaire de rapport A.
+    residus = [it.residual for it in sol.iterations]
+    assert all(a >= b for a, b in zip(residus, residus[1:]))
+    assert sol.journal[-1].startswith("CONVERGED")
