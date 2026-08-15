@@ -634,15 +634,28 @@ def design_shear(
                display_unit="kN")
 
         if r_cot is not None:
-            # VERIFICATION A POSTERIORI. cot(theta) etant donne par
-            # l'ingenieur, aucune iteration n'est necessaire ici: le
-            # ferraillage requis en decoule, et la borne se calcule dessus.
-            # solve_cot_theta() sert au cas ou le moteur CHOISIT l'angle.
-            s_assumed = Q_(1.0, "m")
+            # VERIFICATION A POSTERIORI, avec une distinction qui n'est pas un
+            # detail: la borne de l'ANB porte sur le ferraillage REEL de la
+            # poutre.
+            #
+            #   * armatures IMPOSEES (links fourni): A_sw/s est une donnee
+            #     independante. La substitution A_sw/s = V_Ed/(z f_ywd cot)
+            #     ne s'applique PAS — l'utiliser remplacerait le ferraillage
+            #     en place par celui qu'un calcul aurait produit, et donnerait
+            #     une borne qui n'est pas celle de cette poutre-la.
+            #   * DIMENSIONNEMENT (aucun link): le ferraillage requis decoule
+            #     de l'equilibre, et c'est lui qui gouverne.
+            #
+            # C'est la meme precondition que celle inscrite dans la signature
+            # de solve_cot_theta_for_design().
+            asw_s_for_bound = (
+                links.per_metre if links is not None else Asw_s_req
+            )
+            s_ref = Q_(1.0, "m")
             cot_max_rule = float(r_cot.evaluate(
                 k_1=Q_(k1_shear, ""), sigma_cp=Q_(sigma_cp, "MPa"),
-                b_w=section.b_w, d=section.d, s=s_assumed,
-                A_sw=(Asw_s_req * s_assumed).to("mm**2"), z=z,
+                b_w=section.b_w, d=section.d, s=s_ref,
+                A_sw=(asw_s_for_bound * s_ref).to("mm**2"), z=z,
                 f_ywd=fywd, f_cd=fcd,
             ).magnitude)
             _record_rule(j, r_cot, Q_(cot_max_rule, "dimensionless"))

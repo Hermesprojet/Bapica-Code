@@ -368,7 +368,7 @@ def test_T9_cot_theta_max_declares_how_the_circularity_is_broken() -> None:
 # Le solveur de cot(theta): convergence demontree, et verifiee quand meme
 # ---------------------------------------------------------------------------
 def _solve(sigma_mpa: float, **kw):
-    from eurostruct_engine.ndp.rules_be_ec2 import solve_cot_theta
+    from eurostruct_engine.ndp.rules_be_ec2 import solve_cot_theta_for_design
 
     args = dict(
         V_Ed=Q_(250.0, "kN"), k_1=Q_(0.15, ""), sigma_cp=Q_(sigma_mpa, "MPa"),
@@ -376,7 +376,7 @@ def _solve(sigma_mpa: float, **kw):
         f_ywd=Q_(435.0, "MPa"), f_cd=Q_(20.0, "MPa"), s=Q_(200.0, "mm"),
     )
     args.update(kw)
-    return solve_cot_theta(**args)
+    return solve_cot_theta_for_design(**args)
 
 
 @pytest.mark.parametrize("sigma_mpa,f_cd_mpa", [
@@ -443,10 +443,20 @@ def test_the_solver_names_why_it_stopped() -> None:
     assert hors.termination is Termination.INVALID_DOMAIN
     assert hors.cot_theta is None and hors.refusal
 
-    # Effort nul: domaine invalide, pas une division par zero.
+    # Effort nul: SANS OBJET, et non « domaine invalide ». Il n'y a pas
+    # d'erreur — il n'y a simplement aucune armature d'effort tranchant a
+    # dimensionner, donc aucun cot(theta) a resoudre. Classer cela en refus
+    # aurait fait passer une absence de travail pour une anomalie.
     nul = _solve(0.0, V_Ed=Q_(0.0, "kN"))
-    assert nul.termination is Termination.INVALID_DOMAIN
+    assert nul.termination is Termination.NOT_APPLICABLE
     assert nul.cot_theta is None
+    assert not nul.accepted
+
+    # sigma_cp < 0: traction. EN §6.2.3(3) p.104 definit sigma_cp « mesuree
+    # positivement »; aucune branche ne couvre une traction.
+    traction = _solve(-1.0)
+    assert traction.termination is Termination.INVALID_DOMAIN
+    assert "positivement" in traction.refusal
 
 
 def test_the_solver_journals_every_iteration() -> None:
@@ -462,3 +472,208 @@ def test_the_solver_journals_every_iteration() -> None:
     residus = [it.residual for it in sol.iterations]
     assert all(a >= b for a, b in zip(residus, residus[1:]))
     assert sol.journal[-1].startswith("CONVERGED")
+
+
+# ---------------------------------------------------------------------------
+# La substitution elle-meme, et ses conditions de validite
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("c", [1.0, 1.5, 2.0, 2.7, 3.0])
+@pytest.mark.parametrize("s_mm", [75.0, 100.0, 200.0, 350.0])
+@pytest.mark.parametrize("z_mm", [270.0, 380.0, 405.0, 500.0, 810.0])
+def test_the_substitution_holds_for_required_reinforcement(c, s_mm, z_mm) -> None:
+    """L'expression ANB NON SIMPLIFIEE contre l'expression simplifiee.
+
+    C'est la verification qui avait ete faite HORS DEPOT avant d'ecrire le
+    code, sur 81 combinaisons. Une verification externe non persistee ne fait
+    pas partie de la preuve reproductible: la voici, elargie a 100 cas.
+
+    Cote gauche: la formule de l'ANB telle qu'elle est imprimee, evaluee avec
+    A_sw calcule par l'equilibre (6.8). Cote droit: 2 + A c. Les deux doivent
+    coincider EXACTEMENT — a l'arrondi flottant pres — puisque s, z, f_ywd et
+    A_sw se simplifient algebriquement.
+
+    Le parametrage sur s et z est le test de l'invariance annoncee: si la
+    simplification etait fausse, ces axes feraient bouger le resultat.
+    """
+    from eurostruct_engine.ndp.rules_be_ec2 import COT_THETA_MAX
+
+    V_Ed, k_1 = Q_(250.0, "kN"), Q_(0.15, "")
+    sigma_cp, b_w, d = Q_(2.0, "MPa"), Q_(300.0, "mm"), Q_(450.0, "mm")
+    f_ywd, f_cd = Q_(435.0, "MPa"), Q_(20.0, "MPa")
+    s, z = Q_(s_mm, "mm"), Q_(z_mm, "mm")
+
+    # (6.8): l'armature REQUISE a cet angle — la precondition de la substitution.
+    A_sw = (V_Ed / (z * f_ywd * c) * s).to("mm**2")
+
+    non_simplifiee = float(COT_THETA_MAX.evaluate(
+        k_1=k_1, sigma_cp=sigma_cp, b_w=b_w, d=d, s=s,
+        A_sw=A_sw, z=z, f_ywd=f_ywd, f_cd=f_cd,
+    ).magnitude)
+
+    A = float((k_1 * sigma_cp * b_w * d / V_Ed).to("dimensionless").magnitude)
+    simplifiee = min(2.0 + A * c, 3.0)
+
+    assert non_simplifiee == pytest.approx(simplifiee, rel=1e-12), (
+        f"c={c} s={s_mm} z={z_mm}: {non_simplifiee!r} != {simplifiee!r}"
+    )
+
+
+def test_the_substitution_must_not_be_used_for_a_given_reinforcement() -> None:
+    """Armature IMPOSEE: A_sw/s est une donnee, pas une consequence de cot.
+
+    Le solveur porte cette precondition dans son nom. La verifier ici, c'est
+    montrer que l'oublier CHANGE le resultat: avec un ferraillage impose plus
+    faible que le requis, la borne de l'ANB est differente de celle que la
+    forme simplifiee donnerait.
+    """
+    from eurostruct_engine.ndp.rules_be_ec2 import COT_THETA_MAX
+
+    V_Ed, c = Q_(250.0, "kN"), 2.0
+    k_1, sigma_cp = Q_(0.15, ""), Q_(2.0, "MPa")
+    b_w, d, z = Q_(300.0, "mm"), Q_(450.0, "mm"), Q_(405.0, "mm")
+    f_ywd, f_cd, s = Q_(435.0, "MPa"), Q_(20.0, "MPa"), Q_(200.0, "mm")
+
+    requise = (V_Ed / (z * f_ywd * c) * s).to("mm**2")
+    imposee = requise * 0.6          # l'ingenieur a mis moins que le requis
+
+    borne_requise = float(COT_THETA_MAX.evaluate(
+        k_1=k_1, sigma_cp=sigma_cp, b_w=b_w, d=d, s=s,
+        A_sw=requise, z=z, f_ywd=f_ywd, f_cd=f_cd).magnitude)
+    borne_imposee = float(COT_THETA_MAX.evaluate(
+        k_1=k_1, sigma_cp=sigma_cp, b_w=b_w, d=d, s=s,
+        A_sw=imposee, z=z, f_ywd=f_ywd, f_cd=f_cd).magnitude)
+
+    assert borne_imposee != pytest.approx(borne_requise)
+    # Moins d'armature -> borne PLUS HAUTE (le terme est en 1/A_sw).
+    assert borne_imposee > borne_requise
+
+
+def test_the_slope_A_is_dimensionless_in_the_engine_units() -> None:
+    """[] . [pression] . [longueur]^2 / [force] doit etre sans dimension."""
+    A = (Q_(0.15, "") * Q_(2.0, "MPa") * Q_(300.0, "mm") * Q_(450.0, "mm")
+         / Q_(250.0, "kN")).to_base_units()
+    assert A.dimensionless
+    assert float(A.to("dimensionless").magnitude) == pytest.approx(0.162)
+
+
+@pytest.mark.parametrize("A_cible,attendu", [
+    (0.0, "converged"),
+    (1.0 / 3.0 - 1e-6, "converged"),
+    (1.0 / 3.0, "upper_bound"),
+    (1.0 / 3.0 + 1e-6, "upper_bound"),
+    (0.9, "upper_bound"),
+])
+def test_termination_is_classified_on_A_not_on_proximity_to_three(
+    A_cible, attendu
+) -> None:
+    """A = 1/3 exactement: la suite approche 3 SANS activer le min.
+
+    Classer sur la proximite numerique de 3 aurait rendu « converged » alors
+    que la solution mathematique EST la borne. Le classement se fait donc sur
+    A, ou le seuil est exact.
+    """
+    from eurostruct_engine.ndp.rules_be_ec2 import fixed_point_closed_form
+
+    # A = k1 sigma_cp b_w d / V_Ed: on regle sigma_cp pour viser A.
+    V_Ed, k_1 = Q_(250.0, "kN"), Q_(0.15, "")
+    b_w, d = Q_(300.0, "mm"), Q_(450.0, "mm")
+    facteur = float((k_1 * b_w * d / V_Ed).to("1/MPa").magnitude)
+    sigma = A_cible / facteur
+    # f_cd assez grand pour que sigma_cp <= 0,2 f_cd reste satisfait.
+    sol = _solve(sigma, f_cd=Q_(max(20.0, sigma / 0.2 + 1.0), "MPa"))
+
+    assert sol.termination.value == attendu, sol.journal[-1]
+    assert sol.cot_theta == pytest.approx(fixed_point_closed_form(sol.slope_A),
+                                          abs=1e-9)
+    if attendu == "upper_bound":
+        assert sol.cot_theta == pytest.approx(3.0)
+
+
+@pytest.mark.parametrize("champ,valeur", [
+    ("V_Ed", Q_(float("nan"), "kN")),
+    ("V_Ed", Q_(float("inf"), "kN")),
+    ("sigma_cp", Q_(float("nan"), "MPa")),
+    ("b_w", Q_(float("inf"), "mm")),
+])
+def test_non_finite_inputs_never_yield_a_value(champ, valeur) -> None:
+    """NaN et infinis: aucune valeur acceptee, quelle que soit la sortie.
+
+    Le solveur peut les refuser au domaine ou epuiser son budget; ce qui est
+    interdit, c'est qu'il rende un cot(theta). Un NaN qui traverse une
+    comparaison la rend fausse en silence — c'est la facon la plus discrete
+    de produire un resultat faux.
+    """
+    sol = _solve(2.0, **{champ: valeur})
+    if sol.accepted:
+        assert math.isfinite(sol.cot_theta), sol.journal[-1]
+        assert 1.0 <= sol.cot_theta <= 3.0
+    else:
+        assert sol.cot_theta is None
+
+
+def test_the_solver_refuses_inconsistent_units() -> None:
+    """Une longueur passee pour une contrainte est refusee, pas convertie."""
+    with pytest.raises((UnitError, OutOfValidationDomain)):
+        _solve(2.0, sigma_cp=Q_(300.0, "mm"))
+    with pytest.raises((UnitError, OutOfValidationDomain)):
+        _solve(2.0, b_w=Q_(300.0, "MPa"))
+
+
+@pytest.mark.parametrize("V_kN", [80.0, 150.0, 250.0, 600.0])
+@pytest.mark.parametrize("k1", [0.10, 0.15, 0.20])
+@pytest.mark.parametrize("b_mm,d_mm", [(200.0, 300.0), (300.0, 450.0), (500.0, 900.0)])
+def test_A_is_driven_by_V_Ed_k1_and_geometry(V_kN, k1, b_mm, d_mm) -> None:
+    """Les quatre grandeurs qui determinent REELLEMENT A.
+
+    s, z et f_ywd n'y figurent pas — ils se simplifient. Ceux-la, si.
+    """
+    from eurostruct_engine.ndp.rules_be_ec2 import fixed_point_closed_form
+
+    sol = _solve(2.0, V_Ed=Q_(V_kN, "kN"), k_1=Q_(k1, ""),
+                 b_w=Q_(b_mm, "mm"), d=Q_(d_mm, "mm"))
+    attendu_A = k1 * 2.0 * b_mm * d_mm / (V_kN * 1000.0)
+    assert sol.slope_A == pytest.approx(attendu_A, rel=1e-12)
+    assert sol.accepted
+    assert sol.cot_theta == pytest.approx(fixed_point_closed_form(sol.slope_A),
+                                          abs=1e-9)
+
+
+def test_the_iteration_budget_is_derived_not_chosen() -> None:
+    """26 iterations suffisent sur A <= 1/3; le budget les majore de peu.
+
+    Un premier jet portait 200, ce qui remplacait une borne calculable par une
+    constante confortable.
+    """
+    import math as _m
+
+    from eurostruct_engine.ndp.rules_be_ec2 import _MAX_ITERATIONS, _TOLERANCE
+
+    theorique = _m.ceil(_m.log(2.0 / _TOLERANCE) / _m.log(3.0))
+    assert theorique == 26
+    assert _MAX_ITERATIONS >= theorique
+    assert _MAX_ITERATIONS <= 4 * theorique, (
+        "budget trop large: une constante ne doit pas remplacer une borne"
+    )
+    # Et le pire cas mesure reste sous la borne theorique.
+    pire = _solve(4.0)          # A = 0,324
+    assert len(pire.iterations) <= theorique
+
+
+def test_the_report_shows_raw_values_and_the_actual_tolerance() -> None:
+    """Lever l'ambiguite d'affichage signalee sur le tableau precedent.
+
+    L'ecart apparent au neuvieme chiffre venait du formatage, pas du calcul.
+    La solution porte donc les valeurs BRUTES et l'ecart, pour qu'aucune
+    lecture ne depende d'un arrondi d'impression.
+    """
+    sol = _solve(4.0)
+    assert sol.cot_theta is not None and sol.closed_form is not None
+    assert sol.difference_to_closed_form == pytest.approx(
+        abs(sol.cot_theta - sol.closed_form)
+    )
+    assert sol.difference_to_closed_form < 1e-9
+    assert sol.tolerance == 1e-12
+    dernier = sol.journal[-1]
+    for attendu in ("iteration =", "forme fermee =", "ecart =", "residu",
+                    "tolerance ="):
+        assert attendu in dernier

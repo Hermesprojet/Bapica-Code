@@ -27,6 +27,7 @@ import math
 from dataclasses import dataclass
 from enum import Enum
 
+from ..exceptions import UnitError
 from ..units import Q_, Quantity
 from .model import ValidationStatus, ValueProvenance
 from .rules import (
@@ -644,21 +645,41 @@ def _cot_theta_max(
 
 
 # ---------------------------------------------------------------------------
-# Resolution du point fixe de cot(theta)
+# Resolution du point fixe de cot(theta) — DIMENSIONNEMENT UNIQUEMENT
 # ---------------------------------------------------------------------------
 _TOLERANCE = 1e-12
-_MAX_ITERATIONS = 200
+
+#: Budget d'iterations, DERIVE et non choisi.
+#:
+#: Sur la branche utile ``A < 1/3``, l'iteration est affine de rapport A, donc
+#: contractante de rapport au plus 1/3. L'ecart initial est majore par
+#: ``3 - 1 = 2``, et il faut ``2 . (1/3)^n <= 1e-12``, soit
+#: ``n >= ln(2e12)/ln 3 = 25,8`` -> 26 iterations. Le cas mesure A = 0,324 en
+#: demande exactement 26. Sur ``A >= 1/3``, le plafond est atteint en 3.
+#:
+#: 64 laisse donc un facteur 2,5 de marge sur la borne theorique. Un premier
+#: jet portait 200, ce qui remplacait une borne justifiee par une constante
+#: confortable — et masquait qu'on savait la calculer.
+_MAX_ITERATIONS = 64
 _COT_CAP = 3.0
+_A_CAP_THRESHOLD = 1.0 / 3.0
 
 
 class Termination(str, Enum):
     """Pourquoi la resolution s'est arretee. Jamais implicite."""
 
-    #: Residu |c - F(c)| <= tolerance, VERIFIE a la sortie sur la valeur retenue.
+    #: Residu |c - F(c)| <= tolerance, VERIFIE a la sortie sur la valeur
+    #: retenue, et le point fixe analytique n'est PAS le plafond.
     CONVERGED = "converged"
-    #: Le plafond normatif 3 est lui-meme le point fixe: F(3) = 3.
+    #: Le plafond normatif 3 est le point fixe analytique (A >= 1/3).
+    #: Classe sur A, pas sur la proximite numerique de 3: a A = 1/3 exactement
+    #: la suite approche 3 par en dessous sans jamais activer le min, et
+    #: « converged » aurait masque que la solution EST la borne.
     UPPER_BOUND = "upper_bound"
-    #: Budget d'iterations epuise sans residu acceptable. AUCUNE valeur rendue.
+    #: Aucune armature d'effort tranchant n'est a dimensionner (V_Ed = 0).
+    #: Ce n'est pas une erreur: il n'y a rien a resoudre.
+    NOT_APPLICABLE = "not_applicable"
+    #: Budget epuise sans residu acceptable. AUCUNE valeur rendue.
     MAX_ITERATIONS = "max_iterations"
     #: Entrees hors du domaine de la regle. AUCUNE valeur rendue.
     INVALID_DOMAIN = "invalid_domain"
@@ -677,9 +698,9 @@ class CotThetaIteration:
 
 @dataclass(frozen=True, slots=True)
 class CotThetaSolution:
-    """Resultat: converge, plafonne, ou REFUSE — jamais approche.
+    """Resultat: converge, plafonne, sans objet, ou REFUSE — jamais approche.
 
-    ``cot_theta`` ne vaut ``None`` que pour les deux terminaisons d'echec: une
+    ``cot_theta`` ne vaut ``None`` que pour les terminaisons sans resultat: une
     valeur presente a donc toujours passe la verification de residu.
     """
 
@@ -687,8 +708,13 @@ class CotThetaSolution:
     cot_theta: float | None
     residual: float | None
     iterations: tuple[CotThetaIteration, ...]
-    #: Pente A de la demonstration ci-dessous, conservee pour l'audit.
+    #: Pente A de la demonstration, conservee pour l'audit.
     slope_A: float | None = None
+    #: Point fixe par la forme fermee, calcule independamment de l'iteration.
+    closed_form: float | None = None
+    #: |iteration - forme fermee|, pour lever toute ambiguite d'affichage.
+    difference_to_closed_form: float | None = None
+    tolerance: float = _TOLERANCE
     refusal: str | None = None
 
     @property
@@ -698,36 +724,40 @@ class CotThetaSolution:
     @property
     def journal(self) -> tuple[str, ...]:
         lines = [
-            f"iter {i.index}: c = {i.previous:.9f} -> F(c) = {i.computed:.9f}"
+            f"iter {i.index}: c = {i.previous!r} -> F(c) = {i.computed!r}"
             f" | residu {i.residual:.3e}"
-            f" | A_sw/s = {i.Asw_over_s.to('mm**2/m').magnitude:.2f} mm2/m"
+            f" | A_sw/s = {i.Asw_over_s.to('mm**2/m').magnitude:.4f} mm2/m"
             for i in self.iterations
         ]
         if self.accepted:
             lines.append(
                 f"{self.termination.value.upper()} en {len(self.iterations)}"
-                f" iteration(s): cot(theta) = {self.cot_theta:.9f},"
-                f" residu final {self.residual:.3e} <= {_TOLERANCE:.0e}"
+                f" iteration(s) | A = {self.slope_A!r}"
+                f" | iteration = {self.cot_theta!r}"
+                f" | forme fermee = {self.closed_form!r}"
+                f" | ecart = {self.difference_to_closed_form:.3e}"
+                f" | residu |c-F(c)| = {self.residual:.3e}"
+                f" | tolerance = {self.tolerance:.3e}"
             )
+        elif self.termination is Termination.NOT_APPLICABLE:
+            lines.append(f"SANS OBJET: {self.refusal}")
         else:
             lines.append(f"REFUS [{self.termination.value}]: {self.refusal}")
         return tuple(lines)
 
 
 def fixed_point_closed_form(A: float) -> float:
-    """Point fixe exact de ``F(c) = min(3 ; 2 + A c)``, demontre ci-dessous.
+    """Point fixe exact de ``F(c) = min(3 ; 2 + A c)``.
 
-    Sert d'ORACLE INDEPENDANT dans les tests. Deux methodes distinctes qui
-    s'accordent valent mieux qu'une methode qu'on croit juste: c'est la
-    discipline des cas de reference du moteur, etablis par bissection quand la
-    forme fermee existe, et inversement.
+    ``2/(1-A)`` pour ``0 <= A < 1/3``; ``3`` pour ``A >= 1/3``. A ``A = 1/3``
+    les deux expressions coincident: ``2/(1-1/3) = 3``.
     """
-    if A >= 1.0 / 3.0:
+    if A >= _A_CAP_THRESHOLD:
         return _COT_CAP
     return 2.0 / (1.0 - A)
 
 
-def solve_cot_theta(
+def solve_cot_theta_for_design(
     *,
     V_Ed: Quantity,
     k_1: Quantity,
@@ -740,47 +770,97 @@ def solve_cot_theta(
     s: Quantity,
     cot_theta_min: float = 1.0,
 ) -> CotThetaSolution:
-    """Resoudre cot(theta) sous la borne belge de §6.2.3(2).
+    """Resoudre cot(theta) EN DIMENSIONNEMENT — precondition, pas detail.
+
+    PRECONDITION D'EMPLOI
+    ----------------------
+    Ce solveur suppose que ``A_sw/s`` est l'armature REQUISE, deduite de
+    l'equilibre a l'angle courant::
+
+        A_sw/s = V_Ed / (z f_ywd cot(theta))                          (6.8)
+
+    C'est ce qui autorise la substitution ci-dessous. **Elle ne vaut pas pour
+    la verification d'une armature imposee**: la, ``A_sw/s`` est une donnee
+    independante, elle ne se deduit pas de cot(theta), et l'eliminer
+    reviendrait a remplacer le ferraillage reel de la poutre par celui qu'un
+    calcul aurait produit. Pour ce cas, evaluer ``COT_THETA_MAX`` directement
+    avec le ferraillage en place — voir ``beam_shear``, qui distingue les deux.
 
     Demonstration de la convergence
     --------------------------------
-    Elle n'est pas invoquee, elle se calcule. En reportant
-    ``A_sw/s = V_Ed/(z f_ywd c)`` dans la borne de l'ANB::
+    En reportant (6.8) dans la borne de l'ANB::
 
         cot_max = 2 + k1 sigma_cp b_w d s / (A_sw z f_ywd)
                 = 2 + k1 sigma_cp b_w d s / ((V_Ed s/(z f_ywd c)) z f_ywd)
                 = 2 + (k1 sigma_cp b_w d / V_Ed) . c
 
-    ``s``, ``z`` et ``f_ywd`` se simplifient TOUS LES TROIS, et ``A_sw`` avec
-    eux. L'application d'iteration est donc affine::
+    ``s``, ``z``, ``f_ywd`` et ``A_sw`` se simplifient. L'application est
+    affine::
 
-        F(c) = min(3 ; 2 + A c),   A = k1 sigma_cp b_w d / V_Ed >= 0
+        F(c) = min(3 ; 2 + A c),   A = k1 sigma_cp b_w d / V_Ed
 
-    F est croissante (A >= 0) et majoree par 3. Partant de
-    ``c_0 = cot_theta_min`` avec ``F(c_0) >= 2 > c_0``, la suite est croissante
-    et bornee: elle converge. Son point fixe vaut ``2/(1-A)`` si ``A < 1/3``,
-    et ``3`` sinon — le plafond normatif devenant lui-meme point fixe des que
-    ``2 + 3A >= 3``.
+    A est sans dimension: ``[] . [pression] . [longueur]^2 / [force]``, et
+    ``[pression] = [force]/[longueur]^2``. Le moteur le VERIFIE a chaque appel
+    plutot que de s'y fier.
 
-    Sans precontrainte ``A = 0``: F est constante egale a 2, atteinte des la
-    premiere iteration, quel que soit le ferraillage.
+    ``A >= 0`` n'est pas suppose non plus: il decoule des conventions relevees
+    ci-dessous, et les entrees qui le violeraient sont refusees.
 
-    Ce que le solveur fait quand meme
-    ----------------------------------
-    La demonstration ne dispense pas de VERIFIER. Le residu
-    ``|c - F(c)| <= tolerance`` est controle a la sortie SUR LA VALEUR
-    RETENUE, independamment de ce que la boucle croit avoir fait; une
-    terminaison qui ne le passe pas ne rend aucune valeur. La convergence est
-    lineaire de rapport A et ralentit quand A approche 1/3, d'ou un budget de
-    200 iterations.
+    Conventions de signe, relevees et non choisies
+    -----------------------------------------------
+    ``sigma_cp``
+        EN 1992-1-1:2004 (F) §6.2.3(3), p. 104: « la contrainte de compression
+        moyenne dans le beton due a l'effort normal de calcul, **mesuree
+        positivement** ». Compression positive, donc. Une valeur negative
+        (traction) n'est couverte par AUCUNE branche de 6.11aN-cN, qui
+        commence a « 1 pour les structures non precontraintes » puis
+        « 0 < sigma_cp » : refus explicite, pas d'extrapolation.
+    ``V_Ed``
+        Effort tranchant agissant de calcul, §6.2.1, employe en grandeur.
+        ``V_Ed = 0`` n'est pas un domaine invalide: il n'y a simplement aucune
+        armature d'effort tranchant a dimensionner, d'ou ``NOT_APPLICABLE``.
+    ``k_1``
+        §6.2.2(1), sans dimension, positif (0,15 en Belgique).
+    ``b_w``, ``d``
+        Longueurs strictement positives par construction geometrique.
     """
-    if V_Ed.magnitude <= 0:
-        return CotThetaSolution(
-            Termination.INVALID_DOMAIN, None, None, (),
-            refusal="V_Ed doit etre strictement positif pour dimensionner.",
+    def refuse(reason: str, term: Termination = Termination.INVALID_DOMAIN):
+        return CotThetaSolution(term, None, None, (), refusal=reason)
+
+    if V_Ed.magnitude < 0:
+        return refuse(
+            "V_Ed est employe en grandeur (§6.2.1); une valeur negative "
+            "traduit une convention de signe non prevue par ce module."
+        )
+    if V_Ed.magnitude == 0:
+        return refuse(
+            "V_Ed = 0: aucune armature d'effort tranchant n'est a "
+            "dimensionner, donc aucun cot(theta) a resoudre. Ce n'est pas un "
+            "refus — il n'y a rien a calculer.",
+            Termination.NOT_APPLICABLE,
+        )
+    if sigma_cp.magnitude < 0:
+        return refuse(
+            "sigma_cp < 0. EN 1992-1-1 §6.2.3(3) p.104 la definit « mesuree "
+            "positivement » (compression). Une traction n'est couverte par "
+            "aucune branche de 6.11aN-cN ni par la borne de l'ANB: le texte "
+            "ne dit rien, et l'extrapoler serait l'inventer."
+        )
+    if k_1.magnitude < 0 or b_w.magnitude <= 0 or d.magnitude <= 0:
+        return refuse(
+            "k_1 doit etre positif ou nul et la geometrie strictement "
+            "positive; sans quoi A < 0 et la demonstration de convergence "
+            "tombe."
         )
 
-    A = float((k_1 * sigma_cp * b_w * d / V_Ed).to("dimensionless").magnitude)
+    A_q = (k_1 * sigma_cp * b_w * d / V_Ed).to_base_units()
+    if not A_q.dimensionless:
+        raise UnitError(
+            f"k1.sigma_cp.b_w.d/V_Ed devrait etre sans dimension, obtenu "
+            f"{A_q.dimensionality}. Verifier les unites des entrees."
+        )
+    A = float(A_q.to("dimensionless").magnitude)
+    closed = fixed_point_closed_form(A)
 
     def F(c: float) -> tuple[float, Quantity]:
         asw_over_s = (V_Ed / (z * f_ywd * c)).to("mm**2/m")
@@ -803,36 +883,42 @@ def solve_cot_theta(
                 if final_residual > _TOLERANCE:
                     return CotThetaSolution(
                         Termination.MAX_ITERATIONS, None, final_residual,
-                        tuple(steps), slope_A=A,
+                        tuple(steps), slope_A=A, closed_form=closed,
                         refusal=(
                             f"residu de sortie {final_residual:.3e} > tolerance"
                             f" {_TOLERANCE:.0e} alors que la boucle s'estimait"
                             " convergee. Aucune valeur n'est retenue."
                         ),
                     )
+                # Classement par A, exact, et non par proximite de 3.
                 termination = (
-                    Termination.UPPER_BOUND
-                    if nxt >= _COT_CAP - _TOLERANCE
+                    Termination.UPPER_BOUND if A >= _A_CAP_THRESHOLD
                     else Termination.CONVERGED
                 )
                 return CotThetaSolution(
-                    termination, nxt, final_residual, tuple(steps), slope_A=A
+                    termination, nxt, final_residual, tuple(steps),
+                    slope_A=A, closed_form=closed,
+                    difference_to_closed_form=abs(nxt - closed),
                 )
             c = nxt
     except OutsideValidityDomain as exc:
         return CotThetaSolution(
-            Termination.INVALID_DOMAIN, None, None, tuple(steps), slope_A=A,
-            refusal=str(exc),
+            Termination.INVALID_DOMAIN, None, None, tuple(steps),
+            slope_A=A, closed_form=closed, refusal=str(exc),
         )
 
     return CotThetaSolution(
         Termination.MAX_ITERATIONS, None, steps[-1].residual, tuple(steps),
-        slope_A=A,
+        slope_A=A, closed_form=closed,
         refusal=(
             f"cot(theta) n'a pas converge en {_MAX_ITERATIONS} iterations"
-            f" (residu {steps[-1].residual:.3e} > {_TOLERANCE:.0e}). Aucune"
-            " valeur n'est retenue: une valeur approchee serait un resultat que"
-            " le moteur ne peut pas justifier. Le journal est joint pour que"
-            " l'ingenieur tranche."
+            f" (residu {steps[-1].residual:.3e} > {_TOLERANCE:.0e}), alors que"
+            f" la borne theorique est de 26 pour A = {A:.4f}. Aucune valeur"
+            " n'est retenue."
         ),
     )
+
+
+#: Ancien nom. Le nouveau porte la precondition dans sa signature, ce qui est
+#: le seul endroit ou elle ne peut pas etre oubliee.
+solve_cot_theta = solve_cot_theta_for_design
