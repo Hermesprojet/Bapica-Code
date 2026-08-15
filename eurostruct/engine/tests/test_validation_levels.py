@@ -96,3 +96,115 @@ def test_an_organisation_name_is_not_a_signature() -> None:
     allowed, reason = validator_may_sign(_validator(full_name="   "), ORG)
     assert not allowed
     assert "nom de personne" in reason
+
+
+# ---------------------------------------------------------------------------
+# Niveau 1 et niveau 2 sont deux personnes, pas un champ partage
+# ---------------------------------------------------------------------------
+def test_a_normative_reading_is_bound_to_one_edition() -> None:
+    """Une validation normative ne s'herite JAMAIS d'une edition a la suivante.
+
+    Le cas est reel et il attendait: l'archive du 15/08 apporte
+    ``NBN EN 1993-1-1 ANB:2018``, qui remplace l'edition de decembre 2010 —
+    laquelle porte onze parametres et le statut le plus eleve du catalogue.
+
+    Faire heriter la validation aurait presente comme verifiees des valeurs
+    lues dans un document que personne n'a ouvert. Une nouvelle edition existe
+    justement parce que quelque chose a change.
+    """
+    from eurostruct_engine.validation_levels import (
+        NormativeValidation,
+        NormativeVerifier,
+        normative_validation_applies,
+    )
+
+    v = NormativeValidation(
+        country_code="BE", standard_family="EN 1993", part="1-1",
+        edition="1e ed., decembre 2010", parameter_name="gamma_M0",
+        verifier=NormativeVerifier("u1", "Relecteur Test", "2026-08-15"),
+        source_doc_id="a" * 64, source_page=12,
+    )
+
+    ok, why = normative_validation_applies(
+        v, country_code="BE", standard_family="EN 1993", part="1-1",
+        edition="1e ed., decembre 2010",
+    )
+    assert ok, why
+
+    ok, why = normative_validation_applies(
+        v, country_code="BE", standard_family="EN 1993", part="1-1",
+        edition="2018",
+    )
+    assert not ok
+    assert "JAMAIS" in why and "2018" in why
+
+
+def test_a_normative_reading_does_not_cross_a_border_or_a_part() -> None:
+    """Meme parametre, autre pays ou autre partie: autre lecture."""
+    from eurostruct_engine.validation_levels import (
+        NormativeValidation,
+        NormativeVerifier,
+        normative_validation_applies,
+    )
+
+    v = NormativeValidation(
+        country_code="BE", standard_family="EN 1992", part="1-1",
+        edition="2010", parameter_name="alpha_cc",
+        verifier=NormativeVerifier("u1", "Relecteur Test", "2026-08-15"),
+        source_doc_id="b" * 64, source_page=10,
+    )
+    assert not normative_validation_applies(
+        v, country_code="FR", standard_family="EN 1992", part="1-1",
+        edition="2010")[0]
+    assert not normative_validation_applies(
+        v, country_code="BE", standard_family="EN 1992", part="1-2",
+        edition="2010")[0]
+
+
+def test_the_platform_can_never_sign_a_client_study() -> None:
+    """Decision produit, ecrite dans le code plutot que dans une politique.
+
+    L'exploitant de la plateforme ne repond pas professionnellement des etudes
+    d'un bureau d'etudes client. Un systeme qui laisserait son compte signer
+    placerait la responsabilite chez celui qui a installe le logiciel — en
+    silence, et par defaut.
+
+    Le controle d'organisation attrape deja le cas courant. Celui-ci attrape
+    le reste: un exploitant ajoute a l'organisation d'un client pour du
+    support ne signe toujours pas ses etudes.
+    """
+    from eurostruct_engine.validation_levels import (
+        ProjectValidatingEngineer,
+        validator_may_sign,
+    )
+
+    exploitant = ProjectValidatingEngineer(
+        user_id="p1", full_name="Exploitant Plateforme", role="platform_owner",
+        org_id="ORG-CLIENT", is_active=True,   # meme organisation, exprès
+    )
+    ok, why = validator_may_sign(exploitant, "ORG-CLIENT")
+    assert not ok
+    assert "plateforme" in why and "bureau d'etudes" in why
+
+
+def test_a_normative_verifier_is_not_a_project_signatory() -> None:
+    """Deux types distincts, et non un drapeau sur un type partage.
+
+    Avoir lu l'Annexe Nationale ne fait prendre la responsabilite d'aucune
+    etude. Les deux roles peuvent etre tenus par deux personnes qui n'ont
+    aucun rapport, et le modele doit rendre la confusion impossible plutot que
+    la deconseiller.
+    """
+    from eurostruct_engine.validation_levels import (
+        NormativeVerifier,
+        ProjectValidatingEngineer,
+    )
+
+    assert NormativeVerifier is not ProjectValidatingEngineer
+    champs_normatif = set(NormativeVerifier.__dataclass_fields__)
+    champs_projet = set(ProjectValidatingEngineer.__dataclass_fields__)
+    # Le verificateur normatif n'a NI organisation NI role: sa lecture ne
+    # depend d'aucun projet et n'engage aucun bureau d'etudes.
+    assert "org_id" not in champs_normatif
+    assert "role" not in champs_normatif
+    assert {"org_id", "role", "is_active"} <= champs_projet

@@ -35,6 +35,7 @@ from typing import Any
 __all__ = [
     "ValidationStatus",
     "SourceType",
+    "ValueProvenance",
     "ParameterVariant",
     "NationalParameter",
     "NationalAnnex",
@@ -87,6 +88,45 @@ class SourceType(str, Enum):
     #: National regulation outside the Eurocode system (CTE, Código
     #: Estructural, NCSE-02, MVV TB, DTU...).
     NATIONAL_REGULATION = "national_regulation"
+
+
+class ValueProvenance(str, Enum):
+    """Where the NUMBER came from — which is not the same as which document.
+
+    ``SourceType`` names the document. This names the *value*, and the two come
+    apart in the one case that matters most.
+
+    ``w_max`` is the case. It is labelled ``source_type = national_annex``,
+    because the Belgian annex is indeed where it belongs and where its clause
+    and page point. But the numbers stored in its variants are the EN's Table
+    7.1N values, carried as a placeholder because the Belgian Table 7.1N-ANB
+    was unreadable on the copy first deposited. The note said so in capitals;
+    the model said nothing. A module reading ``variants`` without reading
+    ``notes`` applied European values believing it applied Belgian ones.
+
+    This enum is what the note was doing in prose.
+    """
+
+    #: The Eurocode's own recommended value, carried as a starting point. It is
+    #: NOT a national value, whatever the surrounding record says.
+    EUROCODE_DEFAULT = "eurocode_default"
+    #: Read in the published National Annex, at the cited page.
+    NATIONAL_ANNEX = "national_annex"
+    #: The annex fixes this, and the text is not yet transcribed — because a
+    #: page is unreadable, or because the annex designates an expression
+    #: printed in the base standard rather than reprinting it. The decision is
+    #: national; the number in hand is a placeholder.
+    NATIONAL_ANNEX_PENDING = "national_annex_pending"
+    #: Deduced rather than read. Never usable: interdiction 2.
+    INFERRED = "inferred"
+    #: Supplied by the user for their own project. Their responsibility,
+    #: recorded as such, and never presented as a national value.
+    USER_DEFINED = "user_defined"
+
+    @property
+    def is_national(self) -> bool:
+        """Whether this value may be presented as what the country adopted."""
+        return self is ValueProvenance.NATIONAL_ANNEX
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +211,13 @@ class NationalParameter:
     #: read by every caller that forgot to say which check it is doing, which
     #: is exactly the mistake the variants exist to prevent.
     variants: tuple[ParameterVariant, ...] = ()
+    #: Where the NUMBER came from. Defaults to ``None`` only so that records
+    #: written before this field existed still load; ``__post_init__`` then
+    #: derives it from ``source_type``, conservatively. Derivation is a
+    #: migration shim, not a feature: a record that means
+    #: ``NATIONAL_ANNEX_PENDING`` must say so, because no rule can distinguish
+    #: it from a read value.
+    value_provenance: "ValueProvenance | None" = None
 
     def __post_init__(self) -> None:
         """A missing value and a non-scalar parameter must be the same thing.
@@ -180,6 +227,37 @@ class NationalParameter:
         nobody stated. The absence of a number is only ever legitimate when the
         record says why.
         """
+        if self.value_provenance is None:
+            # Migration shim. Deliberately conservative in one direction only:
+            # a value from the Eurocode's Note becomes EUROCODE_DEFAULT, which
+            # blocks it in strict mode. A value from an annex becomes
+            # NATIONAL_ANNEX, which does not block — so a record that is really
+            # a placeholder MUST declare NATIONAL_ANNEX_PENDING itself. No rule
+            # can tell a placeholder from a reading; only the reader can.
+            object.__setattr__(self, "value_provenance", {
+                SourceType.EN_RECOMMENDED: ValueProvenance.EUROCODE_DEFAULT,
+                SourceType.NATIONAL_ANNEX: ValueProvenance.NATIONAL_ANNEX,
+                SourceType.NATIONAL_REGULATION: ValueProvenance.NATIONAL_ANNEX,
+            }[self.source_type])
+
+        if (
+            self.validation_status is ValidationStatus.CONFIRMED
+            and not self.value_provenance.is_national
+        ):
+            # La contradiction que ce champ existe pour rendre impossible.
+            # Confirmer, c'est declarer « j'ai lu l'annexe publiee et c'est
+            # bien cette valeur ». On ne peut pas le declarer d'un nombre dont
+            # le dossier dit qu'il vient d'ailleurs.
+            raise ValueError(
+                f"{self.country_code}/{self.standard}:{self.parameter_name}: "
+                f"statut 'confirmed' avec une provenance "
+                f"'{self.value_provenance.value}'. Une valeur ne peut etre "
+                "confirmee comme nationale que si elle a ete lue dans "
+                "l'Annexe Nationale. Une valeur recommandee par l'Eurocode, "
+                "une valeur d'attente ou une valeur deduite ne le sont pas, "
+                "quel que soit le document auquel la fiche renvoie."
+            )
+
         if self.variants:
             if self.parameter_value is not None:
                 raise ValueError(
@@ -236,7 +314,21 @@ class NationalParameter:
 
     @property
     def usable_in_strict_mode(self) -> bool:
-        return self.validation_status is ValidationStatus.CONFIRMED
+        """Two conditions, and both are needed.
+
+        ``CONFIRMED`` says *someone read the annex and answered for it*.
+        ``value_provenance.is_national`` says *the number itself came from
+        there*. They are not the same claim, and the second is the one that
+        was missing: nothing structural stopped a value carried from the
+        Eurocode's own Note from being confirmed as a national value.
+
+        ``__post_init__`` already refuses that combination at construction, so
+        this is the same rule stated where it is read.
+        """
+        return (
+            self.validation_status is ValidationStatus.CONFIRMED
+            and self.value_provenance.is_national
+        )
 
     @property
     def is_conditional(self) -> bool:

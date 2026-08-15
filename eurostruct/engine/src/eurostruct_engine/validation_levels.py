@@ -51,8 +51,13 @@ from enum import Enum
 __all__ = [
     "ValidationLevel",
     "TECHNICAL_VALIDATION_ROLES",
+    "PLATFORM_ROLES",
+    "ProjectValidatingEngineer",
     "Validator",
+    "NormativeVerifier",
+    "NormativeValidation",
     "validator_may_sign",
+    "normative_validation_applies",
 ]
 
 
@@ -97,10 +102,115 @@ class ValidationLevel(str, Enum):
 #: and widening the set here would take it away from them silently.
 TECHNICAL_VALIDATION_ROLES: frozenset[str] = frozenset({"validating_engineer"})
 
+#: Roles belonging to the platform itself, never to a client firm. They are
+#: refused outright at level 2, ahead of every other check.
+#:
+#: This is a product decision written into the code: the owner of EUROSTRUCT
+#: must never be the technical validator of a study produced by a client's
+#: engineering firm. Their account carries no professional liability for that
+#: firm's work, and a system that let it sign would place liability where it
+#: does not belong — silently, and by default, on whoever installed the
+#: software.
+#:
+#: The organisation check below would catch most of these already. This set
+#: catches the rest: a platform operator who has been added to a client
+#: organisation for support purposes still may not sign its studies.
+PLATFORM_ROLES: frozenset[str] = frozenset(
+    {"platform_owner", "platform_admin", "superuser", "support"}
+)
+
 
 @dataclass(frozen=True, slots=True)
-class Validator:
-    """Who is signing, as the application knows them at signature time."""
+class NormativeVerifier:
+    """Level 1. Who read the published National Annex, and answers for it.
+
+    Deliberately a *different type* from the level-2 signatory, not a flag on
+    a shared one. The two answer different questions, and a single ``verified_by``
+    field serving both is how a normative reading gets mistaken for a
+    professional endorsement of a project.
+
+    A normative verifier needs no organisation and no project: reading
+    ``NBN EN 1992-1-1 ANB §3.1.6(1)P`` is true for every Belgian project or for
+    none. What they need is a name and a date, because someone must answer for
+    "I opened the annex at that page and this is what it says".
+    """
+
+    verifier_id: str
+    #: Printed beside the value in the parameter report. A person, not a firm.
+    full_name: str
+    #: ISO date of the reading.
+    verified_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class NormativeValidation:
+    """A level-1 validation, bound to ONE edition of ONE annex.
+
+    The binding is the whole point. A reading of the December 2010 edition of
+    ``NBN EN 1993-1-1 ANB`` says nothing about the 2018 edition: the verifier
+    never saw it, and a new edition exists precisely because something changed.
+
+    Carrying the validation across editions would let a value be presented as
+    verified against a document nobody read. That failure has a name in this
+    project — it is what the catalogue's ``superseded_copies`` machinery exists
+    to prevent on the document side, and this is the same rule on the parameter
+    side.
+    """
+
+    country_code: str
+    standard_family: str
+    part: str
+    #: The edition READ. Not the entry, not the reference — the edition.
+    edition: str
+    parameter_name: str
+    verifier: NormativeVerifier
+    #: sha256 of the file that was on the verifier's screen.
+    source_doc_id: str
+    source_page: int
+
+
+def normative_validation_applies(
+    validation: NormativeValidation,
+    *,
+    country_code: str,
+    standard_family: str,
+    part: str,
+    edition: str,
+) -> tuple[bool, str]:
+    """Whether *validation* covers this exact (country, standard, edition).
+
+    Returns ``(applies, reason)``. Equality on all four, edition included:
+    there is no inheritance, no "close enough", no most-recent-wins.
+    """
+    if validation.country_code != country_code:
+        return False, (
+            f"validation etablie pour {validation.country_code}, demandee pour "
+            f"{country_code}. Un parametre national ne traverse pas une frontiere."
+        )
+    if (validation.standard_family, validation.part) != (standard_family, part):
+        return False, (
+            f"validation etablie pour {validation.standard_family}-{validation.part}, "
+            f"demandee pour {standard_family}-{part}."
+        )
+    if validation.parameter_name and validation.edition != edition:
+        return False, (
+            f"validation etablie sur l'edition {validation.edition}, demandee pour "
+            f"l'edition {edition}. Une validation normative ne s'herite JAMAIS "
+            f"d'une edition a la suivante: {validation.verifier.full_name} a lu "
+            f"{validation.edition}, pas {edition}. Une nouvelle edition existe "
+            "parce que quelque chose a change; il faut la relire."
+        )
+    return True, "validation applicable"
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectValidatingEngineer:
+    """Level 2. Who signs the study, as the application knows them.
+
+    The engineer **of the client firm**, on this project. Never the platform,
+    never a third-party certifier: the software does not replace the engineer,
+    it gives them something to check and sign.
+    """
 
     user_id: str
     #: Full name, printed in the note de calcul. An organisation name is not a
@@ -118,7 +228,14 @@ class Validator:
     professional_id: str | None = None
 
 
-def validator_may_sign(validator: Validator, project_org_id: str) -> tuple[bool, str]:
+#: L'ancien nom, conserve pour ne pas casser les appelants. Le nouveau dit
+#: lequel des trois niveaux il porte, ce que « Validator » ne disait pas.
+Validator = ProjectValidatingEngineer
+
+
+def validator_may_sign(
+    validator: ProjectValidatingEngineer, project_org_id: str
+) -> tuple[bool, str]:
     """Whether *validator* may perform an ENGINEERING validation on a project.
 
     Returns ``(allowed, reason)``. The reason is written for the person who
@@ -129,6 +246,21 @@ def validator_may_sign(validator: Validator, project_org_id: str) -> tuple[bool,
     so the interface can refuse early, with a sentence rather than a constraint
     violation.
     """
+    if isinstance(validator, NormativeVerifier):  # pragma: no cover - garde de type
+        return False, (
+            "un verificateur normatif n'est pas un signataire de projet. Avoir "
+            "lu l'Annexe Nationale ne fait prendre la responsabilite d'aucune "
+            "etude: ce sont deux niveaux distincts, portes par deux personnes "
+            "qui peuvent n'avoir aucun rapport."
+        )
+    if validator.role in PLATFORM_ROLES:
+        return False, (
+            f"le role '{validator.role}' appartient a la plateforme, pas au "
+            "bureau d'etudes. L'exploitant du logiciel ne peut jamais valider "
+            "techniquement l'etude d'un client: il n'en repond pas "
+            "professionnellement. La validation appartient au bureau d'etudes "
+            "qui realise l'etude et a son ingenieur responsable."
+        )
     if not validator.full_name.strip():
         return False, (
             "la signature doit porter un nom de personne. Une raison sociale "

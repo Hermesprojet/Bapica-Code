@@ -39,6 +39,7 @@ from .model import (
     RegulatoryFramework,
     SourceType,
     ValidationStatus,
+    ValueProvenance,
 )
 
 __all__ = [
@@ -493,6 +494,13 @@ def load_country_registry(country: str) -> CountryRegistry:
                 source_doc_id=item.get("source_doc_id"),
                 source_page=item.get("source_page"),
                 source_type=SourceType(item.get("source_type", "national_annex")),
+                # Absent du JSON -> derive par __post_init__ depuis source_type.
+                # Present -> il fait autorite, y compris quand il CONTREDIT
+                # source_type: c'est tout l'interet du champ (cf. w_max).
+                value_provenance=(
+                    ValueProvenance(item["value_provenance"])
+                    if item.get("value_provenance") else None
+                ),
                 validation_status=ValidationStatus(item["validation_status"]),
                 verified_at=item.get("verified_at"),
                 verified_by=item.get("verified_by"),

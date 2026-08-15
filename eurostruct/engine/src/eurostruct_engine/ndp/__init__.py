@@ -18,6 +18,7 @@ from .model import (
     RegulatoryFramework,
     SourceType,
     ValidationStatus,
+    ValueProvenance,
 )
 from .registry import (
     BlockingParameter,
@@ -31,6 +32,7 @@ from .registry import (
 __all__ = [
     "ValidationStatus",
     "SourceType",
+    "ValueProvenance",
     "NationalParameter",
     "NationalAnnex",
     "RegulatoryFramework",

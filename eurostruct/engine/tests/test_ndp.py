@@ -420,3 +420,84 @@ def test_calculation_freezes_the_parameter_set_it_used() -> None:
     assert ndp["annexes"][0]["reference"] == "NBN EN 1992-1-1 ANB"
     assert ndp["unverified"]              # honestly reported in the deliverable
     assert ndp["regulatory_framework"]["binding_reference"]
+
+
+# ---------------------------------------------------------------------------
+# value_provenance — d'ou vient le NOMBRE, pas de quel document
+# ---------------------------------------------------------------------------
+def test_a_eurocode_default_can_never_be_confirmed_as_national() -> None:
+    """La contradiction que ce champ rend impossible a construire.
+
+    Confirmer, c'est declarer « j'ai lu l'Annexe Nationale publiee et c'est
+    bien cette valeur ». On ne peut pas le declarer d'un nombre dont la fiche
+    elle-meme dit qu'il vient de la recommandation europeenne.
+
+    Avant ce champ, rien de structurel ne l'empechait: il suffisait qu'un
+    relecteur passe le statut a `confirmed` sur une fiche portant 0,6 semé
+    depuis l'EN pour que le mode strict laisse passer une valeur europeenne
+    presentee comme belge.
+    """
+    import datetime as _dt
+
+    import pytest
+
+    from eurostruct_engine.ndp import (
+        NationalParameter,
+        SourceType,
+        ValidationStatus,
+        ValueProvenance,
+    )
+
+    def build(prov):
+        return NationalParameter(
+            country_code="BE", standard_family="EN 1992", part="1-1",
+            national_annex_reference="NBN EN 1992-1-1 ANB", edition="2010",
+            effective_from=_dt.date(2010, 8, 1), effective_to=None,
+            parameter_name="essai", parameter_value=0.6, unit="dimensionless",
+            source_official="NBN", source_url_or_doc_id=None,
+            source_doc_id="c" * 64, source_page=15,
+            source_type=SourceType.NATIONAL_ANNEX,
+            validation_status=ValidationStatus.CONFIRMED,
+            verified_at="2026-08-15", verified_by="Relecteur Test",
+            notes=None, clause="§6.2.2(6)", description="essai",
+            value_provenance=prov,
+        )
+
+    for refuse in (
+        ValueProvenance.EUROCODE_DEFAULT,
+        ValueProvenance.NATIONAL_ANNEX_PENDING,
+        ValueProvenance.INFERRED,
+        ValueProvenance.USER_DEFINED,
+    ):
+        with pytest.raises(ValueError, match="confirmed"):
+            build(refuse)
+
+    # La seule combinaison admise, et elle est utilisable en mode strict.
+    p = build(ValueProvenance.NATIONAL_ANNEX)
+    assert p.usable_in_strict_mode
+
+
+def test_provenance_is_derived_conservatively_when_absent() -> None:
+    """Un enregistrement ecrit avant ce champ doit encore se charger.
+
+    La derivation ne va que dans un sens sur: `en_recommended` devient
+    EUROCODE_DEFAULT, ce qui BLOQUE. Une fiche qui est en realite une valeur
+    d'attente doit le declarer elle-meme — aucune regle ne distingue une
+    valeur d'attente d'une lecture, seul le lecteur le sait.
+    """
+    from eurostruct_engine.ndp import ValueProvenance, load_country_registry
+
+    be = load_country_registry("BE")
+    params = be.annexes[0].parameters
+    by_name = {p.parameter_name: p for p in params}
+
+    # Les six clauses jamais ouvertes portent la recommandation EN.
+    assert by_name["nu1_coeff"].value_provenance is ValueProvenance.EUROCODE_DEFAULT
+    assert not by_name["nu1_coeff"].value_provenance.is_national
+
+    # w_max: etiquette national_annex, valeurs du tableau EN. C'est le cas qui
+    # a motive le champ, et le seul ou provenance et source_type divergent.
+    w = by_name["w_max"]
+    assert w.source_type.value == "national_annex"
+    assert w.value_provenance is ValueProvenance.NATIONAL_ANNEX_PENDING
+    assert not w.value_provenance.is_national
