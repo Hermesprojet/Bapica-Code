@@ -179,10 +179,24 @@ def main(argv: list[str]) -> int:
             "publisher": "NBN — Bureau de Normalisation",
             "document_role": "base_eurocode",
             "phase": "P2",
-            # Un Eurocode de base est DETENU, jamais autorite pour un NDP.
-            # `acquired` designerait une autorite qu'il ne peut pas avoir:
-            # le modele refuse deja `confirmed` si source_type n'est pas
-            # `national_annex`, et cette entree ne doit pas suggerer l'inverse.
+            # DEUX AXES, a ne pas confondre — et un premier jet les avait
+            # confondus ici meme.
+            #
+            #   `status`      axe DOCUMENTAIRE: le fichier en main est-il le
+            #                 texte publie qui gouverne, ou une consolidation
+            #                 d'editeur, une copie de revendeur, un projet ?
+            #   `document_role` axe NORMATIF: ce TYPE de document peut-il fixer
+            #                 un parametre national ? Voir
+            #                 DocumentRole.can_fix_national_parameters.
+            #
+            # Ils sont independants. Un Eurocode de base peut parfaitement
+            # etre `acquired` — ces exemplaires portent « norme belge
+            # enregistree » sans aucune reserve d'editeur — et rester incapable
+            # de fixer un NDP. Le refus vient du ROLE, jamais du statut.
+            #
+            # Si l'on met ici `acquired_for_reading`, c'est pour la seule
+            # raison qui vaille: l'identite a ete LUE par une machine sur une
+            # page de garde et n'a ete DECLAREE par personne.
             "status": "acquired_for_reading",
             "edition_read_from_cover": spec["edition_read_from_cover"],
             "publication_authorised": spec["publication_authorised"],

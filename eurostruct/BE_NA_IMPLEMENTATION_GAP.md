@@ -31,7 +31,7 @@ règle implémentée.
 | 2. Transcrit | annexes portées dans le moteur | **1 / 56** |
 | 3. Confirmé | paramètres validés par un vérificateur nommé | **0 / 29** |
 | 4. Codé | paramètres consommés par le moteur | 10 / 29 |
-| 5. Testé | 302 tests moteur + 84 tests import, tous verts | voir §5 |
+| 5. Testé | **374 moteur + 88 import = 462**, tous verts | voir §5 |
 | 6. Mode strict | paramètres franchissant la porte | **0** |
 
 ---
@@ -73,9 +73,36 @@ existait dans le modèle sans être utilisé :
 | `BE-EN199211-A1` | `NBN EN 1992-1-1/A1 (2015)` = `EN 1992-1-1:2004/A1:2014` | amendement, 7 modifications |
 | `BE-EN199211-GEN2` | `NBN EN 1992-1-1:2023` | 2ᵉ génération, `not_yet_applicable` |
 
-Un `base_eurocode` est **détenu sans jamais faire foi** : le modèle refuse
-`confirmed` si `source_type ≠ national_annex`. Ce qu'il apporte n'est pas une
-valeur nationale, c'est le **texte** d'une expression que l'annexe désigne.
+Ce qu'un `base_eurocode` apporte n'est pas une valeur nationale, c'est le
+**texte** d'une expression que l'annexe désigne.
+
+#### Deux axes, à ne pas confondre
+
+Une version antérieure de ce rapport les collapsait, et un test allait jusqu'à
+interdire le statut `acquired` aux normes de base. C'était faire porter le
+refus par le mauvais axe.
+
+| axe | champ | question | portée |
+|---|---|---|---|
+| **documentaire** | `status` | le fichier en main est-il le texte publié qui gouverne, ou une consolidation d'éditeur / une copie non déclarée ? | **le fichier** |
+| **normatif** | `document_role` | ce *type* de document peut-il fixer un paramètre national ? | **la nature du document** |
+
+Ils sont **indépendants**. Un Eurocode de base peut être parfaitement
+authentique — nos exemplaires portent « norme belge enregistrée » sans aucune
+réserve d'éditeur — et rester incapable de fixer un NDP : le refus vient de
+`DocumentRole.can_fix_national_parameters`, jamais du statut. Inversement une
+Annexe Nationale, seule habilitée, peut n'être détenue que sous forme de
+consolidation et ne rien confirmer du tout.
+
+Si les trois entrées ci-dessus sont à `acquired_for_reading`, c'est pour la
+seule raison qui vaille : leur identité a été **lue par une machine** sur une
+page de garde et **déclarée par personne**. Le jour où un ingénieur la
+déclare, elles passeront à `acquired` sans gagner la moindre autorité
+normative.
+
+Et cet axe documentaire n'a rien à voir avec `ValidationStatus.CONFIRMED`,
+qui est un troisième niveau encore : celui d'un **paramètre**, pas d'un
+document.
 
 **Piège enregistré au catalogue** (`contained_layers`) : la couverture annonce
 « (+AC:2010) » mais les corrigenda sont **annexés, pas fondus**. Le corps
@@ -216,15 +243,25 @@ n'avaient jamais pu être transcrites : **aucune des six n'est une constante.**
 
 ## 5. Ce qui est testé
 
-386 tests, tous verts : 302 moteur, 84 import.
+**462 tests, tous verts : 374 moteur, 88 import.**
 
-Couverture par suite : `test_ndp` 31, `test_serviceability` 29,
-`test_deflection` 28, `test_dxf_elevation` 23, `test_reference` 22,
-`test_ec2_anchorage` 20, `test_ec2_beam_shear` 18, `test_dxf` 18,
-`test_ec2_beam_flexure` 17, `test_note` 16, `test_units_and_traceability` 14,
-`test_legal` 13, `test_properties` 11, `test_contract` 11,
-`test_engine_isolation` 9, `test_validation_levels` 8, `test_materials` 8,
-`test_determinism` 7.
+> **Correction.** Une version antérieure de ce rapport annonçait « 302 moteur
+> + 84 import = 386 ». Ces nombres venaient d'un `grep -c "^def test"`, qui
+> compte les *fonctions* de test et ignore l'expansion des tests paramétrés.
+> Les chiffres ci-dessus viennent de la collecte pytest elle-même :
+>
+> ```bash
+> python -m pytest --collect-only -q   # dans engine/ puis tools/ndp_import/
+> ```
+
+Répartition moteur : `test_ndp` 49, `test_serviceability` 34, `test_legal` 33,
+`test_deflection` 32, `test_ec2_anchorage` 27, `test_dxf_elevation` 23,
+`test_reference` 22, `test_ec2_beam_shear` 21, `test_ec2_beam_flexure` 20,
+`test_dxf` 18, `test_note` 16, `test_materials` 16, `test_units_and_traceability` 14,
+`test_contract` 11, `test_properties` 11, `test_validation_levels` 11,
+`test_engine_isolation` 9, `test_determinism` 7.
+
+Import : `test_pipeline` 88.
 
 ### Ce que les tests ne couvrent pas
 
@@ -348,7 +385,9 @@ problèmes.
 6. **Traiter les méthodes propres des annexes** comme des exigences de calcul
    (décision 7), en commençant par les annexes C à G de l'EC3 1-1.
 
-Les étapes 1 à 3 ne dépendent d'aucun document. L'étape 4 est un achat.
+Les étapes 1 à 3 ne dépendent d'aucun document. **L'étape 4 n'est plus un
+achat** : la pile normative EC2 1-1 est détenue depuis le 15/08 et la liste
+d'achat est vide. Il reste une transcription, qui dépend de l'étape 3.
 
 ---
 

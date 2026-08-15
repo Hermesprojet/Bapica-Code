@@ -1437,25 +1437,62 @@ def test_a_base_eurocode_is_held_without_being_authoritative() -> None:
     Le texte est dans la norme de base. Sans elle, la decision belge est
     tracable et son contenu ne l'est pas.
 
-    Deux proprietes, et il faut les deux: le document est DETENU, et il n'est
-    JAMAIS `acquired`. `acquired` designe l'autorite de fixer une valeur
-    nationale, qu'un Eurocode de base ne peut pas avoir.
+    Ce que le document doit prouver: il est DETENU, avec une empreinte, et il
+    ne pretend fixer aucun parametre national.
+
+    Ce qu'il ne faut PAS lui demander: d'etre autre chose qu'`acquired`. Un
+    premier jet asserait ici ``status != "acquired"``, ce qui confond deux
+    axes independants — voir le test suivant.
     """
     import json
 
     from ndp_import.catalogue import _DATA
+    from ndp_import.model import DocumentRole
 
     raw = json.loads(_DATA.read_text(encoding="utf-8"))
     bases = [d for d in raw["documents"] if d.get("document_role") == "base_eurocode"]
     assert bases, "aucun Eurocode de base au catalogue"
+    assert not DocumentRole.BASE_EUROCODE.can_fix_national_parameters
     for d in bases:
-        assert d["status"] != "acquired", (
-            f"{d['doc_key']}: un Eurocode de base ne fait jamais foi pour un NDP"
-        )
         assert d.get("doc_id_sha256")
         assert not d.get("parameters_expected"), (
             f"{d['doc_key']}: une norme de base ne fixe aucun parametre national"
         )
+
+
+def test_documentary_status_and_normative_authority_are_two_axes() -> None:
+    """Les confondre a produit une assertion fausse, corrigee ici.
+
+    ``status`` repond a: **le fichier en main est-il le texte publie qui
+    gouverne ?** Il vaut ``acquired`` pour un exemplaire authentique, et
+    ``acquired_for_reading`` pour une consolidation d'editeur ou une copie
+    dont l'identite n'a pas ete declaree. C'est une question sur LE FICHIER.
+
+    ``document_role`` repond a: **ce type de document peut-il fixer un
+    parametre national ?** C'est une question sur LA NATURE du document, et
+    la reponse ne depend d'aucun fichier.
+
+    Les deux sont independants, et il faut qu'ils le restent. Un Eurocode de
+    base peut etre parfaitement authentique — nos exemplaires portent « norme
+    belge enregistree » sans reserve — et rester incapable de fixer un NDP.
+    Inversement une Annexe Nationale, seule habilitee a en fixer, peut n'etre
+    detenue que sous forme de consolidation d'editeur et ne rien confirmer du
+    tout.
+
+    Interdire ``acquired`` aux normes de base aurait fait porter le refus par
+    le mauvais axe: le jour ou l'identite d'une base est declaree par un
+    ingenieur, le catalogue aurait du mentir sur le fichier pour dire vrai sur
+    l'autorite.
+    """
+    from ndp_import.model import DocumentRole
+
+    autorises = {r for r in DocumentRole if r.can_fix_national_parameters}
+    assert autorises == {
+        DocumentRole.NATIONAL_ANNEX, DocumentRole.NATIONAL_REGULATION
+    }
+    # L'autorite ne se lit sur aucun statut: c'est une propriete du role seul.
+    assert not DocumentRole.BASE_EUROCODE.can_fix_national_parameters
+    assert not DocumentRole.SECONDARY_PUBLICATION.can_fix_national_parameters
 
 
 def test_the_ec2_stack_records_that_corrigenda_are_appended_not_merged() -> None:
