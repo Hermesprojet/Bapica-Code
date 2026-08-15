@@ -47,11 +47,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Final
 
 __all__ = [
     "ValidationLevel",
     "TECHNICAL_VALIDATION_ROLES",
     "PLATFORM_ROLES",
+    "CAN_VALIDATE_NORMATIVE_REFERENCE",
+    "NORMATIVE_MAINTENANCE_ROLES",
+    "verifier_may_validate_reference",
     "ProjectValidatingEngineer",
     "Validator",
     "NormativeVerifier",
@@ -120,6 +124,25 @@ PLATFORM_ROLES: frozenset[str] = frozenset(
 )
 
 
+#: The one authorisation that lets someone confirm a value of the normative
+#: reference. Deliberately its own name rather than a role: it grants exactly
+#: this and nothing adjacent.
+#:
+#: « Sans organisation ni role » described what a normative verifier does NOT
+#: need — a client firm, a project. It never meant that any identified person
+#: may confirm the reference. The reference is shared by every tenant: a wrong
+#: reading of ``gamma_C`` propagates to every Belgian study on the platform at
+#: once, which is a far wider blast radius than any single project signature.
+CAN_VALIDATE_NORMATIVE_REFERENCE: Final[str] = "can_validate_normative_reference"
+
+#: Roles carrying that authorisation. Maintenance of the normative reference,
+#: and strictly nothing else — holding it grants no access to any client
+#: project and no ability to sign one.
+NORMATIVE_MAINTENANCE_ROLES: frozenset[str] = frozenset(
+    {"normative_maintainer", "normative_reviewer"}
+)
+
+
 @dataclass(frozen=True, slots=True)
 class NormativeVerifier:
     """Level 1. Who read the published National Annex, and answers for it.
@@ -140,6 +163,54 @@ class NormativeVerifier:
     full_name: str
     #: ISO date of the reading.
     verified_at: str
+    #: Authorisations held. Confirming the reference requires
+    #: :data:`CAN_VALIDATE_NORMATIVE_REFERENCE` to be among them.
+    authorisations: frozenset[str] = frozenset()
+    #: Whether the account is still active. A departed maintainer must not be
+    #: able to confirm, even though past confirmations stay valid and readable.
+    is_active: bool = True
+
+
+def verifier_may_validate_reference(
+    verifier: NormativeVerifier,
+) -> tuple[bool, str]:
+    """Whether *verifier* may confirm a value of the normative reference.
+
+    Returns ``(allowed, reason)``.
+
+    What this authorisation does **not** do, and the reason it is separate
+    from every role in :data:`TECHNICAL_VALIDATION_ROLES`:
+
+    * it never allows signing a project — that is level 2, and it belongs to
+      the client firm's engineer;
+    * it carries no responsibility for any client study;
+    * it grants no access to project data.
+
+    The asymmetry is deliberate. A project signature engages one study and one
+    firm. A confirmation of the reference engages *every* study of that
+    jurisdiction, on every tenant, at once — so the gate is narrower, not
+    wider, than the one on signatures.
+    """
+    if not verifier.full_name.strip():
+        return False, (
+            "une lecture d'annexe se signe. Un identifiant technique ne repond "
+            "de rien: il faut un nom de personne."
+        )
+    if not verifier.is_active:
+        return False, (
+            "le compte du relecteur n'est plus actif. Les confirmations "
+            "passees restent valides et lisibles — elles ont ete faites — "
+            "mais il ne peut plus en produire de nouvelles."
+        )
+    if CAN_VALIDATE_NORMATIVE_REFERENCE not in verifier.authorisations:
+        return False, (
+            f"autorisation '{CAN_VALIDATE_NORMATIVE_REFERENCE}' absente. "
+            "Etre identifie ne suffit pas a confirmer le referentiel: une "
+            "valeur nationale erronee se propage a TOUTES les etudes de la "
+            "juridiction, sur tous les locataires, d'un seul coup. Cette "
+            "autorisation se donne a la maintenance normative et a elle seule."
+        )
+    return True, "validation normative autorisee"
 
 
 @dataclass(frozen=True, slots=True)
