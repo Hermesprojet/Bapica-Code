@@ -78,6 +78,7 @@ __all__ = [
     "implementation",
     "register",
     "get_rule",
+    "find_rule",
     "all_rules",
     "check_registry",
 ]
@@ -331,6 +332,21 @@ def get_rule(rule_id: str) -> "NormativeRule":
             f"{rule_id}: regle inconnue. Regles declarees: "
             f"{', '.join(sorted(_RULES))}"
         ) from None
+
+
+def find_rule(country_code: str, name: str) -> "NormativeRule | None":
+    """The typed rule a jurisdiction uses for *name*, or ``None``.
+
+    ``None`` means this country has no transcribed rule yet and still runs on
+    scalars. It does NOT mean "fall back to the Eurocode": the scalar path is
+    itself national data, and a country either has its rule or has its scalar.
+
+    One normative path per jurisdiction is the invariant. It is enforced from
+    the other side too: once a rule is branched in, the scalar it replaces is
+    marked DEPRECATED for that country, and DEPRECATED is refused in every
+    mode. A second path cannot survive silently.
+    """
+    return _RULES.get(f"{country_code.lower()}.ec2.{name}")
 
 
 def all_rules() -> tuple["NormativeRule", ...]:

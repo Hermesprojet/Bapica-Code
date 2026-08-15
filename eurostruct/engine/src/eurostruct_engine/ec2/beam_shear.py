@@ -57,7 +57,8 @@ from ..exceptions import (
 from ..materials.concrete import Concrete
 from ..materials.reinforcement import Reinforcement
 from ..ndp.registry import ParameterSet
-from ..traceability import EC2, Journal, Provenance
+from ..ndp.rules import find_rule
+from ..traceability import EC2, Journal, Provenance, ProvenanceKind
 from ..units import Q_, Quantity, fmt, require_dimension
 from ..verification import Check, VerificationReport
 from ..version import ENGINE_VERSION
@@ -86,10 +87,33 @@ _RHO_L_MAX = 0.02
 _SIGMA_CP_CAP_RATIO = 0.2
 
 
-def required_parameters(situation: DesignSituation) -> tuple[str, ...]:
-    """National parameters this module needs, for preflight (TICKET 1.3)."""
+#: Scalaire remplace -> regle typee qui le remplace. Un pays qui a la regle ne
+#: doit PLUS exiger le scalaire au prealable: il est deprecie chez lui, donc
+#: bloquant, et l'exiger rendrait tout calcul impossible. C'est la seconde
+#: moitie de « un seul chemin normatif par juridiction » — la premiere etant
+#: la deprecation elle-meme.
+_SCALARS_REPLACED_BY_RULES: Final[dict[str, str]] = {
+    "alpha_cw": "alpha_cw",
+    "nu1_coeff": "nu_strength_reduction",
+    "nu1_fck_divisor": "nu_strength_reduction",
+    "rho_w_min_coeff": "rho_w_min",
+    "s_l_max_coeff": "s_l_max",
+    "s_t_max_coeff": "s_t_max",
+    "cot_theta_max": "cot_theta_max",
+}
+
+
+def required_parameters(
+    situation: DesignSituation, country_code: str | None = None
+) -> tuple[str, ...]:
+    """National parameters this module needs, for preflight (TICKET 1.3).
+
+    ``country_code`` est optionnel pour ne pas casser les appelants, mais il
+    change le resultat: un pays dont les regles typees sont transcrites
+    n'exige plus les scalaires qu'elles remplacent.
+    """
     suffix = situation.partial_factor_suffix
-    return (
+    base = [
         f"{EC2_11}:gamma_C_{suffix}",
         f"{EC2_11}:gamma_S_{suffix}",
         f"{EC2_11}:alpha_cc",
@@ -97,13 +121,11 @@ def required_parameters(situation: DesignSituation) -> tuple[str, ...]:
         f"{EC2_11}:v_min_coeff",
         f"{EC2_11}:k1_shear",
         f"{EC2_11}:cot_theta_min",
-        f"{EC2_11}:cot_theta_max",
-        f"{EC2_11}:alpha_cw",
-        f"{EC2_11}:nu1_coeff",
-        f"{EC2_11}:nu1_fck_divisor",
-        f"{EC2_11}:rho_w_min_coeff",
-        f"{EC2_11}:s_l_max_coeff",
-    )
+    ]
+    for scalar, rule_name in _SCALARS_REPLACED_BY_RULES.items():
+        if country_code is None or find_rule(country_code, rule_name) is None:
+            base.append(f"{EC2_11}:{scalar}")
+    return tuple(base)
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,6 +272,11 @@ def _strut_bounds(params: ParameterSet, j: Journal) -> tuple[float, float]:
     annex explicitly does not adopt.
     """
     cot_min = float(params.get(f"{EC2_11}:cot_theta_min", j).magnitude)
+    if find_rule(params.registry.country_code, "cot_theta_max") is not None:
+        # La borne superieure est une FONCTION du ferraillage: elle ne peut
+        # pas etre connue ici, avant qu'il existe. Retourner None dit « a
+        # verifier plus bas », ce qui est different de « pas de borne ».
+        return cot_min, None
     try:
         cot_max = float(params.get(f"{EC2_11}:cot_theta_max", j).magnitude)
     except UnrepresentableNationalParameter as exc:
@@ -262,6 +289,27 @@ def _strut_bounds(params: ParameterSet, j: Journal) -> tuple[float, float]:
             clause="EN 1992-1-1 §6.2.3(2)",
         ) from exc
     return cot_min, cot_max
+
+
+def _record_rule(j: Journal, rule, value: Quantity, display_unit: str | None = None):
+    """Inscrire l'emploi d'une regle typee au journal, avant l'etape qui s'en sert.
+
+    Le journal refuse une etape dependant d'un symbole non enregistre — garde
+    utile, et c'est elle qui a impose ceci. Mais l'inscription vaut mieux que
+    la garde: la note de calcul doit montrer QUELLE regle a servi, avec son
+    autorite nationale et sa page, et non un coefficient tombe de nulle part.
+    """
+    a = rule.normative_authority
+    return j.input(
+        rule.rule_id, rule.description, value,
+        Provenance(
+            kind=ProvenanceKind.NATIONAL_ANNEX,
+            detail=f"{a.reference}:{a.edition} {a.clause} — {a.quote}",
+            document_id=a.doc_id_sha256, page=a.page_printed,
+            ndp_key=rule.rule_id,
+        ),
+        display_unit=display_unit,
+    )
 
 
 def design_shear(
@@ -301,7 +349,7 @@ def design_shear(
             clause="EN 1992-1-1 §3.1.2",
         )
 
-    params.require(required_parameters(situation))
+    params.require(required_parameters(situation, params.registry.country_code))
 
     j = Journal(f"Effort tranchant ELU — {element}")
     prov = dict(provenance or {})
@@ -342,18 +390,44 @@ def design_shear(
         params.get(f"{EC2_11}:v_min_coeff", j, condition="beam").magnitude
     )
     k1_shear = float(params.get(f"{EC2_11}:k1_shear", j).magnitude)
-    alpha_cw = float(params.get(f"{EC2_11}:alpha_cw", j).magnitude)
-    nu1_c = float(params.get(f"{EC2_11}:nu1_coeff", j).magnitude)
-    nu1_div = float(params.get(f"{EC2_11}:nu1_fck_divisor", j).magnitude)
-    rho_w_min_c = float(params.get(f"{EC2_11}:rho_w_min_coeff", j).magnitude)
-    s_l_max_c = float(params.get(f"{EC2_11}:s_l_max_coeff", j).magnitude)
+
+    # UN SEUL CHEMIN NORMATIF PAR JURIDICTION. Un pays dont les regles sont
+    # transcrites les utilise, et les scalaires qu'elles remplacent sont
+    # DEPRECATED chez lui — donc refuses dans tous les modes. Un pays dont
+    # elles ne le sont pas garde ses scalaires. Les deux chemins ne coexistent
+    # jamais pour un meme pays: c'est ce que `find_rule` retournant None ou
+    # une regle exprime, et ce que la deprecation garantit de l'autre cote.
+    cc = params.registry.country_code
+    r_alpha_cw = find_rule(cc, "alpha_cw")
+    r_nu = find_rule(cc, "nu_strength_reduction")
+    r_rho = find_rule(cc, "rho_w_min")
+    r_sl = find_rule(cc, "s_l_max")
+    r_st = find_rule(cc, "s_t_max")
+
+    if r_alpha_cw is None:
+        alpha_cw_scalar = float(params.get(f"{EC2_11}:alpha_cw", j).magnitude)
+    if r_nu is None:
+        nu1_c = float(params.get(f"{EC2_11}:nu1_coeff", j).magnitude)
+        nu1_div = float(params.get(f"{EC2_11}:nu1_fck_divisor", j).magnitude)
+    if r_rho is None:
+        rho_w_min_c = float(params.get(f"{EC2_11}:rho_w_min_coeff", j).magnitude)
+    if r_sl is None:
+        s_l_max_c = float(params.get(f"{EC2_11}:s_l_max_coeff", j).magnitude)
 
     cot_min, cot_max = _strut_bounds(params, j)
-    if not (cot_min <= cot_theta <= cot_max):
+    r_cot = find_rule(params.registry.country_code, "cot_theta_max")
+    if cot_max is not None and not (cot_min <= cot_theta <= cot_max):
         raise OutOfValidationDomain(
             "strut_angle_out_of_bounds",
             f"cot(theta) = {cot_theta} est hors des bornes nationales "
             f"[{cot_min} ; {cot_max}]. Choisir un angle admissible.",
+            clause="EN 1992-1-1 §6.2.3(2)",
+        )
+    if cot_theta < cot_min:
+        raise OutOfValidationDomain(
+            "strut_angle_out_of_bounds",
+            f"cot(theta) = {cot_theta} est sous la borne inferieure nationale "
+            f"{cot_min}.",
             clause="EN 1992-1-1 §6.2.3(2)",
         )
 
@@ -440,23 +514,64 @@ def design_shear(
     links_required = V_Ed.to("kN") > V_Rd_c
 
     # --- detailing minima, §9.2.2 -----------------------------------------
-    fyk_mpa = float(steel.fyk.to("MPa").magnitude)
-    rho_w_min = rho_w_min_c * math.sqrt(fck_mpa) / fyk_mpa
+    # f_ywk, PAS f_yk: l'ANB belge §9.2.2(5) substitue la limite d'elasticite
+    # des ETRIERS a celle des barres longitudinales. Le nom de variable disait
+    # « fyk » alors que l'objet passe est bien l'acier d'ame — juste par
+    # cablage, et faux a l'affichage: la note imprimait la forme EN, donc une
+    # regle que le moteur n'appliquait pas.
+    fywk_mpa = float(steel.fyk.to("MPa").magnitude)
+    if r_rho is not None:
+        rho_w_min = float(r_rho.evaluate(f_ck=concrete.fck, f_ywk=steel.fyk).magnitude)
+        _record_rule(j, r_rho, Q_(rho_w_min, "dimensionless"))
+        rho_depends = ("f_ck", "f_ywk", "b_w", r_rho.rule_id)
+        rho_latex = (r"\rho_{w,min} = 0{,}08\sqrt{f_{ck}}/f_{ywk}"
+                     r"\quad\text{(ANB §9.2.2(5): lire } f_{ywk}"
+                     r"\text{ au lieu de } f_{yk}\text{)}"
+                     r",\quad (A_{sw}/s)_{min} = \rho_{w,min} b_w")
+        rho_numeric = (f"0,08 · √{fck_mpa:.0f} / {fywk_mpa:.0f} (f_ywk) · "
+                       f"{fmt(section.b_w, 'mm', 0)}")
+    else:
+        rho_w_min = rho_w_min_c * math.sqrt(fck_mpa) / fywk_mpa
+        rho_depends = ("f_ck", "f_ywk", "b_w", f"{EC2_11}:rho_w_min_coeff")
+        rho_latex = (r"\rho_{w,min} = 0{,}08\sqrt{f_{ck}}/f_{yk}"
+                     r",\quad (A_{sw}/s)_{min} = \rho_{w,min} b_w")
+        rho_numeric = (f"{fmt(rho_w_min_c)} · √{fck_mpa:.0f} / {fywk_mpa:.0f} · "
+                       f"{fmt(section.b_w, 'mm', 0)}")
     Asw_s_min = (Q_(rho_w_min, "dimensionless") * section.b_w).to("mm**2/m")
     j.step("Asw_s_min", "Armature d'ame minimale par metre", Asw_s_min,
            EC2("§9.2.2(5)", "(9.5N)"),
-           latex=r"\rho_{w,min} = 0{,}08\sqrt{f_{ck}}/f_{yk},\quad (A_{sw}/s)_{min} = \rho_{w,min} b_w",
-           numeric=(f"{fmt(rho_w_min_c)} · √{fck_mpa:.0f} / {fyk_mpa:.0f} · "
-                    f"{fmt(section.b_w, 'mm', 0)}"),
-           depends_on=("f_ck", "f_ywk", "b_w", f"{EC2_11}:rho_w_min_coeff"),
-           display_unit="mm**2/m")
+           latex=rho_latex, numeric=rho_numeric,
+           depends_on=rho_depends, display_unit="mm**2/m")
 
-    s_l_max = (s_l_max_c * section.d).to("mm")
+    # Cadres droits: alpha = 90°, donc cot(alpha) = 0 et le facteur vaut 1.
+    # C'est pourquoi le scalaire 0,75 seul donnait le bon resultat ICI et
+    # seulement ici.
+    alpha_links = Q_(90.0, "degree")
+    if r_sl is not None:
+        s_l_max = r_sl.evaluate(d=section.d, alpha=alpha_links).to("mm")
+        _record_rule(j, r_sl, s_l_max, display_unit="mm")
+        sl_depends = ("d", r_sl.rule_id)
+    else:
+        s_l_max = (s_l_max_c * section.d).to("mm")
+        sl_depends = ("d", f"{EC2_11}:s_l_max_coeff")
     j.step("s_l_max", "Espacement longitudinal maximal des cadres", s_l_max,
            EC2("§9.2.2(6)", "(9.6N)"),
            latex=r"s_{l,max} = 0{,}75\, d\,(1 + \cot\alpha),\ \alpha = 90°",
-           numeric=f"{fmt(s_l_max_c)} · {fmt(section.d, 'mm', 0)}",
-           depends_on=("d", f"{EC2_11}:s_l_max_coeff"), display_unit="mm")
+           numeric=f"0,75 · {fmt(section.d, 'mm', 0)} · (1 + cot 90°)",
+           depends_on=sl_depends, display_unit="mm")
+
+    # §9.2.2(8): espacement TRANSVERSAL des brins. Declare depuis toujours au
+    # jeu de donnees et consomme par aucun module — donc jamais verifie.
+    if r_st is not None:
+        s_t_max = r_st.evaluate(d=section.d).to("mm")
+        _record_rule(j, r_st, s_t_max, display_unit="mm")
+        j.step("s_t_max", "Espacement transversal maximal des brins verticaux",
+               s_t_max, EC2("§9.2.2(8)", "(9.8N)"),
+               latex=r"s_{t,max} = \min(0{,}75\, d\ ;\ 600\ \mathrm{mm})",
+               numeric=(f"min(0,75 · {fmt(section.d, 'mm', 0)} ; 600 mm)"),
+               depends_on=("d", r_st.rule_id), display_unit="mm")
+    else:
+        s_t_max = None
 
     # --- truss, §6.2.3 -----------------------------------------------------
     checks: list[Check] = []
@@ -467,19 +582,44 @@ def design_shear(
         j.step("cot_theta", "Inclinaison des bielles retenue",
                Q_(cot_theta, "dimensionless"), EC2("§6.2.3(2)", "(6.7N)"),
                latex=r"\cot\theta,\quad \cot\theta_{min} \le \cot\theta \le \cot\theta_{max}",
-               numeric=f"{fmt(cot_theta)} (choix de l'ingenieur, borne [{cot_min} ; {cot_max}])",
-               depends_on=(f"{EC2_11}:cot_theta_min", f"{EC2_11}:cot_theta_max"))
+               numeric=(
+                   f"{fmt(cot_theta)} (choix de l'ingenieur, borne "
+                   f"[{cot_min} ; {cot_max if cot_max is not None else 'regle'}])"
+               ),
+               depends_on=(
+                   (f"{EC2_11}:cot_theta_min",) if r_cot is not None
+                   else (f"{EC2_11}:cot_theta_min", f"{EC2_11}:cot_theta_max")
+               ))
 
         # (6.8) inverted: the links needed to carry V_Ed on the chosen truss.
         Asw_s_req = (V_Ed / (z * fywd * cot_theta)).to("mm**2/m")
 
-        nu1 = nu1_c * (1.0 - fck_mpa / nu1_div)
+        if r_nu is not None:
+            nu1 = float(r_nu.evaluate(f_ck=concrete.fck).magnitude)
+            _record_rule(j, r_nu, Q_(nu1, "dimensionless"))
+            nu_depends = ("f_ck", r_nu.rule_id)
+            nu_numeric = f"0,6 · (1 − {fck_mpa:.0f} / 250)"
+        else:
+            nu1 = nu1_c * (1.0 - fck_mpa / nu1_div)
+            nu_depends = ("f_ck", f"{EC2_11}:nu1_coeff", f"{EC2_11}:nu1_fck_divisor")
+            nu_numeric = f"{fmt(nu1_c)} · (1 − {fck_mpa:.0f} / {nu1_div:.0f})"
         j.step("nu_1", "Coefficient de reduction du beton fissure a l'effort tranchant",
                Q_(nu1, "dimensionless"), EC2("§6.2.2(6)", "(6.6N)"),
                latex=r"\nu_1 = 0{,}6\left(1 - f_{ck}/250\right)",
-               numeric=f"{fmt(nu1_c)} · (1 − {fck_mpa:.0f} / {nu1_div:.0f})",
-               depends_on=("f_ck", f"{EC2_11}:nu1_coeff", f"{EC2_11}:nu1_fck_divisor"))
+               numeric=nu_numeric, depends_on=nu_depends)
 
+        # alpha_cw depend de sigma_cp: la branche « 1 » n'est que le cas non
+        # precontraint, et la porter comme scalaire etait faux des qu'il y a
+        # precontrainte.
+        if r_alpha_cw is not None:
+            alpha_cw = float(r_alpha_cw.evaluate(
+                sigma_cp=Q_(sigma_cp, "MPa"), f_cd=fcd
+            ).magnitude)
+            _record_rule(j, r_alpha_cw, Q_(alpha_cw, "dimensionless"))
+            acw_depends = ("sigma_cp", "f_cd", r_alpha_cw.rule_id)
+        else:
+            alpha_cw = alpha_cw_scalar
+            acw_depends = (f"{EC2_11}:alpha_cw",)
         V_Rd_max = (
             alpha_cw * section.b_w * z * nu1 * fcd / (cot_theta + 1.0 / cot_theta)
         ).to("kN")
@@ -490,9 +630,34 @@ def design_shear(
                numeric=(f"{fmt(alpha_cw)} · {fmt(section.b_w, 'mm', 0)} · "
                         f"{fmt(z, 'mm', 1)} · {nu1:.4f} · {fmt(fcd, 'MPa', 2)} / "
                         f"({fmt(cot_theta)} + {1.0 / cot_theta:.4f})"),
-               depends_on=("b_w", "z", "nu_1", "f_cd", "cot_theta",
-                           f"{EC2_11}:alpha_cw"),
+               depends_on=("b_w", "z", "nu_1", "f_cd", "cot_theta", *acw_depends),
                display_unit="kN")
+
+        if r_cot is not None:
+            # VERIFICATION A POSTERIORI. cot(theta) etant donne par
+            # l'ingenieur, aucune iteration n'est necessaire ici: le
+            # ferraillage requis en decoule, et la borne se calcule dessus.
+            # solve_cot_theta() sert au cas ou le moteur CHOISIT l'angle.
+            s_assumed = Q_(1.0, "m")
+            cot_max_rule = float(r_cot.evaluate(
+                k_1=Q_(k1_shear, ""), sigma_cp=Q_(sigma_cp, "MPa"),
+                b_w=section.b_w, d=section.d, s=s_assumed,
+                A_sw=(Asw_s_req * s_assumed).to("mm**2"), z=z,
+                f_ywd=fywd, f_cd=fcd,
+            ).magnitude)
+            _record_rule(j, r_cot, Q_(cot_max_rule, "dimensionless"))
+            if cot_theta > cot_max_rule:
+                raise OutOfValidationDomain(
+                    "strut_angle_out_of_bounds",
+                    f"cot(theta) = {cot_theta} depasse la borne nationale "
+                    f"calculee sur le ferraillage obtenu: "
+                    f"cot(theta)_max = {cot_max_rule:.4f} "
+                    f"({r_cot.normative_authority.reference} "
+                    f"{r_cot.normative_authority.clause}). "
+                    "Reprendre avec un angle admissible; la borne depend du "
+                    "ferraillage, elle a donc ete evaluee APRES lui.",
+                    clause="EN 1992-1-1 §6.2.3(2)",
+                )
 
         Asw_s_provided = links.per_metre if links is not None else Asw_s_req
         Asw_s_required = max(

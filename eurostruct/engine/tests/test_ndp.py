@@ -231,7 +231,8 @@ def test_belgian_cot_theta_max_carries_no_value() -> None:
     assert p.parameter_value is None
     assert p.validation_status is ValidationStatus.NOT_REPRESENTABLE
     assert p.en_recommended == 2.5          # what we did NOT store
-    assert "FORMULE" in (p.notes or "")
+    # La note pointe desormais la regle typee qui porte cette expression.
+    assert "be.ec2.cot_theta_max" in (p.notes or "")
 
 
 def test_unrepresentable_parameter_is_refused_even_outside_strict_mode() -> None:

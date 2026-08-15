@@ -114,7 +114,43 @@ def test_nothing_is_confirmed_and_nothing_passes_strict_mode() -> None:
     for rule in all_rules():
         assert rule.validation_status is ValidationStatus.PENDING_VERIFICATION
         assert not rule.usable_in_strict_mode
-        assert rule.value_provenance is ValueProvenance.NATIONAL_ANNEX
+
+
+def test_a_composed_rule_does_not_claim_the_annex_printed_its_formula() -> None:
+    """COMPOSED_NORMATIVE_RULE, et pourquoi NATIONAL_ANNEX serait un abus.
+
+    Etiqueter 6.6N « national_annex » reviendrait a dire que l'annexe belge
+    imprime « nu = 0,6[1 - f_ck/250] ». Elle ne l'imprime pas: elle ecrit
+    « la valeur recommandee (formule 6.6N) est normative », et l'expression
+    vit dans l'EN 1992-1-1:2004 p. 102.
+
+    9.5N est le cas ou la distinction est indispensable: la base fournit la
+    formule, l'annexe substitue f_ywk a f_yk, et la regle applicable n'existe
+    dans AUCUN des deux documents pris seul. Elle est COMPOSEE.
+
+    cot_theta_max fait exception dans l'autre sens: l'ANB imprime sa propre
+    formule et ne renvoie a rien. Elle est donc bien `national_annex`.
+    """
+    composees = {
+        r.rule_id for r in all_rules()
+        if r.value_provenance is ValueProvenance.COMPOSED_NORMATIVE_RULE
+    }
+    propres = {
+        r.rule_id for r in all_rules()
+        if r.value_provenance is ValueProvenance.NATIONAL_ANNEX
+    }
+    assert propres == {"be.ec2.cot_theta_max"}
+    assert "be.ec2.nu_strength_reduction" in composees
+    assert "be.ec2.rho_w_min" in composees
+
+    # Une regle composee reste NATIONALE: c'est bien la regle que le pays
+    # applique, et elle doit pouvoir franchir le mode strict une fois validee.
+    assert ValueProvenance.COMPOSED_NORMATIVE_RULE.is_national
+
+    # Et elle porte les deux moities, l'une sans l'autre ne suffirait pas.
+    for rid in composees:
+        r = next(x for x in all_rules() if x.rule_id == rid)
+        assert r.expression_sources and r.normative_authority.quote
 
 
 # ---------------------------------------------------------------------------
@@ -305,10 +341,15 @@ def test_T9_cot_theta_max_declares_how_the_circularity_is_broken() -> None:
     qui ne dit pas comment l'appelant doit sequencer cela.
     """
     ordre = R.COT_THETA_MAX.evaluation_order
-    assert "A POSTERIORI" in ordre
-    assert "REPRENDRE" in ordre
-    # Le moteur ne boucle pas tout seul: il refuse en nommant la reprise.
-    assert "ne boucle pas" in ordre
+    # Une iteration numerique CONTROLEE est autorisee; ce qui ne l'est pas,
+    # c'est une boucle silencieuse ou non bornee. L'ordre doit donc annoncer
+    # ses quatre garanties: bornes, convergence, plafond d'iterations, refus.
+    assert "POINT FIXE" in ordre
+    assert "1e-9" in ordre and "50 iterations" in ordre
+    assert "REFUS" in ordre
+    # Et il ne doit PAS brider le domaine initial: brider a 2 serait
+    # sur-conservatif des qu'il y a precontrainte.
+    assert "1,0 <= cot(theta) <= 3" in ordre
 
     from eurostruct_engine.ndp.rules import NormativeFunction
 

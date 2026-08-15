@@ -196,8 +196,12 @@ def test_shear_reads_the_other_cases_branch_of_alpha_cc(params_be_shear) -> None
 
     Inheriting the bending value (0,85) would under-estimate f_cd by 15 %, and
     through V_Rd,max the web crushing resistance — in the unsafe direction.
+
+    cot(theta) = 2,0 et non le 2,5 par defaut de ce fichier: depuis que la
+    regle belge de §6.2.3(2) est branchee, 2,5 est refuse en Belgique. Ce
+    test-ci porte sur alpha_cc, pas sur la borne des bielles.
     """
-    r = _design(params_be_shear)
+    r = _design(params_be_shear, cot_theta=2.0)
     step = r.journal.get(f"{EC2_11}:alpha_cc")
     assert step.value.magnitude == 1.0
     assert "other" in step.provenance.detail
@@ -208,20 +212,37 @@ def test_shear_reads_the_other_cases_branch_of_alpha_cc(params_be_shear) -> None
 # ---------------------------------------------------------------------------
 # Refusals
 # ---------------------------------------------------------------------------
-def test_belgium_is_refused_for_want_of_a_strut_bound(params_be) -> None:
-    """cot θ_max has no scalar value in the Belgian annex, so the check stops.
+def test_belgium_now_computes_its_own_strut_bound(params_be) -> None:
+    """Ce test disait « la Belgique est refusee faute de borne ». Plus vrai.
 
-    Substituting the EN recommendation of 2,5 would use a value NBN EN
-    1992-1-1 ANB §6.2.3(2) explicitly does not adopt. An unchecked bound is a
-    missing verification.
+    Il constatait une LACUNE: cot(theta)_max n'avait pas de valeur scalaire,
+    et le moteur s'arretait plutot que de substituer le 2,5 europeen que
+    l'ANB §6.2.3(2) n'adopte pas. Le refus etait le bon comportement tant que
+    la regle n'existait pas.
+
+    Elle existe maintenant, et le comportement change: le moteur CALCULE la
+    borne sur le ferraillage obtenu, et refuse l'angle qui la depasse en
+    disant laquelle. Pour une poutre non precontrainte elle vaut 2 — donc
+    cot(theta) = 2,5, qui passe en France, est refuse en Belgique.
+
+    C'est le resultat qui rendait un repli sur l'Eurocode NON CONSERVATIF:
+    2,5 aurait produit des armatures d'effort tranchant insuffisantes.
     """
-    from eurostruct_engine.exceptions import NationalAnnexIncomplete
+    with pytest.raises(OutOfValidationDomain) as e:
+        _design(params_be, cot_theta=2.5)
+    assert e.value.what == "strut_angle_out_of_bounds"
+    assert "2.0000" in e.value.detail
+    assert "NBN EN 1992-1-1 ANB" in e.value.detail
 
-    with pytest.raises(NationalAnnexIncomplete) as e:
-        _design(params_be)
-    keys = {b.key for b in e.value.blocking}
-    assert f"{EC2_11}:cot_theta_max" in keys
-    assert {b.reason for b in e.value.blocking} == {"not_representable"}
+    # A la borne, le calcul aboutit.
+    r = _design(params_be, cot_theta=2.0)
+    assert r.V_Rd.to("kN").magnitude > 0
+
+    # Et la note montre QUELLE regle a servi, avec son autorite nationale.
+    symbols = {step.symbol for step in r.journal.steps}
+    assert "be.ec2.cot_theta_max" in symbols
+    assert "be.ec2.rho_w_min" in symbols
+    assert "be.ec2.s_t_max" in symbols
 
 
 def test_a_strut_angle_outside_the_national_bounds_is_refused(params_fr) -> None:

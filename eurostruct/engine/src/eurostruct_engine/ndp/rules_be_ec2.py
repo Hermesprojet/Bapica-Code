@@ -24,6 +24,7 @@ and confusing them already produced one wrong reference in the dataset.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 from ..units import Q_, Quantity
 from .model import ValidationStatus, ValueProvenance
@@ -139,7 +140,7 @@ NU_STRENGTH_REDUCTION = register(FormulaRule(
         effect="adopte l'expression telle quelle",
     ),
     validation_status=ValidationStatus.PENDING_VERIFICATION,
-    value_provenance=ValueProvenance.NATIONAL_ANNEX,
+    value_provenance=ValueProvenance.COMPOSED_NORMATIVE_RULE,
     tests=("test_T4_nu_decreases_with_concrete_strength",),
     notes=(
         "REMPLACE les deux scalaires nu1_coeff = 0,6 et nu1_fck_divisor = 250. "
@@ -190,7 +191,7 @@ _SELECTOR = register(FormulaRule(
         page_printed=15, page_pdf=17, doc_id_sha256=_ANB_DOC,
     ),
     validation_status=ValidationStatus.PENDING_VERIFICATION,
-    value_provenance=ValueProvenance.NATIONAL_ANNEX,
+    value_provenance=ValueProvenance.COMPOSED_NORMATIVE_RULE,
     tests=("test_T5_alpha_cw_branches_and_boundaries",),
 ))
 
@@ -220,7 +221,7 @@ _ALPHA_CW_LINEAR = register(FormulaRule(
         page_printed=15, page_pdf=17, doc_id_sha256=_ANB_DOC,
     ),
     validation_status=ValidationStatus.PENDING_VERIFICATION,
-    value_provenance=ValueProvenance.NATIONAL_ANNEX,
+    value_provenance=ValueProvenance.COMPOSED_NORMATIVE_RULE,
     tests=("test_T5_alpha_cw_branches_and_boundaries",),
 ))
 
@@ -250,7 +251,7 @@ _ALPHA_CW_DECREASING = register(FormulaRule(
         page_printed=15, page_pdf=17, doc_id_sha256=_ANB_DOC,
     ),
     validation_status=ValidationStatus.PENDING_VERIFICATION,
-    value_provenance=ValueProvenance.NATIONAL_ANNEX,
+    value_provenance=ValueProvenance.COMPOSED_NORMATIVE_RULE,
     tests=("test_T5_alpha_cw_branches_and_boundaries",),
 ))
 
@@ -319,7 +320,7 @@ ALPHA_CW = register(ConditionalRule(
         effect="adopte les quatre branches telles quelles",
     ),
     validation_status=ValidationStatus.PENDING_VERIFICATION,
-    value_provenance=ValueProvenance.NATIONAL_ANNEX,
+    value_provenance=ValueProvenance.COMPOSED_NORMATIVE_RULE,
     tests=("test_T5_alpha_cw_branches_and_boundaries",),
     notes=(
         "REMPLACE le scalaire alpha_cw = 1,0, qui n'etait que la branche non "
@@ -391,7 +392,7 @@ RHO_W_MIN = register(FormulaRule(
         ),
     ),
     validation_status=ValidationStatus.PENDING_VERIFICATION,
-    value_provenance=ValueProvenance.NATIONAL_ANNEX,
+    value_provenance=ValueProvenance.COMPOSED_NORMATIVE_RULE,
     tests=("test_T6_rho_w_min_uses_the_stirrup_steel",),
     notes=(
         "Corroboration independante de la substitution: l'ANB p.6 INTRODUIT "
@@ -470,7 +471,7 @@ S_L_MAX = register(FormulaRule(
         page_printed=20, page_pdf=22, doc_id_sha256=_ANB_DOC,
     ),
     validation_status=ValidationStatus.PENDING_VERIFICATION,
-    value_provenance=ValueProvenance.NATIONAL_ANNEX,
+    value_provenance=ValueProvenance.COMPOSED_NORMATIVE_RULE,
     tests=("test_T7_s_l_max_vertical_stirrups_and_monotonicity",),
     notes=(
         "Le scalaire s_l_max_coeff = 0,75 seul ne disait pas quoi multiplier, "
@@ -525,7 +526,7 @@ S_T_MAX = register(FormulaRule(
         page_printed=21, page_pdf=23, doc_id_sha256=_ANB_DOC,
     ),
     validation_status=ValidationStatus.PENDING_VERIFICATION,
-    value_provenance=ValueProvenance.NATIONAL_ANNEX,
+    value_provenance=ValueProvenance.COMPOSED_NORMATIVE_RULE,
     tests=("test_T8_s_t_max_cap_governs_for_deep_beams",),
     notes=(
         "Le scalaire s_t_max_coeff = 0,75 perdait le PLAFOND de 600 mm — et "
@@ -603,17 +604,20 @@ COT_THETA_MAX = register(NormativeFunction(
     validation_status=ValidationStatus.PENDING_VERIFICATION,
     value_provenance=ValueProvenance.NATIONAL_ANNEX,
     evaluation_order=(
-        "VERIFICATION A POSTERIORI, AVEC REPRISE — jamais une boucle implicite. "
+        "POINT FIXE MONOTONE BORNE, itere par solve_cot_theta(). "
         "La formule depend de A_sw et s, qui sont des RESULTATS du "
-        "dimensionnement qu'elle contraint. La sequence imposee est: "
-        "(1) choisir cot(theta) dans [1,0 ; 2,0], ou 2,0 est la valeur de la "
-        "borne a sigma_cp = 0 et donc sa valeur la plus defavorable pour une "
-        "poutre precontrainte; (2) dimensionner A_sw/s; (3) evaluer cette "
-        "regle avec le ferraillage obtenu; (4) si cot(theta) retenu depasse "
-        "la borne calculee, REPRENDRE en (1) avec la borne obtenue. "
-        "Le moteur ne boucle pas tout seul: il calcule, verifie, et REFUSE en "
-        "nommant la reprise a faire. Une boucle automatique masquerait la "
-        "dependance circulaire au lieu de la rendre visible a l'ingenieur."
+        "dimensionnement qu'elle contraint: la dependance est reelle et elle "
+        "est resolue numeriquement, pas evitee. "
+        "Domaine initial = celui de la regle, 1,0 <= cot(theta) <= 3, et NON "
+        "un intervalle raccourci: brider a 2 serait sur-conservatif des qu'il "
+        "y a precontrainte, puisque la regle autorise jusqu'a 3. "
+        "Iteration: cot_0 = 1,0 (le plus defavorable), puis "
+        "cot_{n+1} = min(cot_theta_max(A_sw/s(cot_n)), 3). Monotone "
+        "croissante — un cot plus grand demande moins d'armatures, ce qui "
+        "releve la borne — et majoree par 3, donc convergente. "
+        "Convergence: |cot_{n+1} - cot_n| <= 1e-9. Maximum 50 iterations. "
+        "Chaque iteration est journalisee. Non-convergence = REFUS explicite, "
+        "jamais une valeur approchee ni une boucle silencieuse."
     ),
     tests=("test_T9_cot_theta_max_is_two_without_prestress",),
     notes=(
@@ -635,3 +639,113 @@ def _cot_theta_max(
         float(k_1.magnitude) * sigma_cp * b_w * d * s / (A_sw * z * f_ywd)
     ).to("dimensionless")
     return Q_(min(2.0 + float(term.magnitude), 3.0), "dimensionless")
+
+
+# ---------------------------------------------------------------------------
+# Resolution du point fixe de cot(theta)
+# ---------------------------------------------------------------------------
+_TOLERANCE = 1e-9
+_MAX_ITERATIONS = 50
+
+
+@dataclass(frozen=True, slots=True)
+class CotThetaIteration:
+    """Une iteration, telle qu'elle sera imprimee dans la note de calcul."""
+
+    index: int
+    cot_theta_trial: float
+    Asw_over_s: Quantity
+    cot_theta_max: float
+    delta: float
+
+
+@dataclass(frozen=True, slots=True)
+class CotThetaSolution:
+    """Resultat de la resolution, converge ou refuse — jamais approche."""
+
+    converged: bool
+    cot_theta: float | None
+    cot_theta_max: float | None
+    iterations: tuple[CotThetaIteration, ...]
+    refusal: str | None = None
+
+    @property
+    def journal(self) -> tuple[str, ...]:
+        lines = [
+            f"iter {i.index}: cot(theta) = {i.cot_theta_trial:.6f} -> "
+            f"A_sw/s = {i.Asw_over_s.to('mm**2/m').magnitude:.2f} mm2/m -> "
+            f"cot(theta)_max = {i.cot_theta_max:.6f} (delta {i.delta:.2e})"
+            for i in self.iterations
+        ]
+        lines.append(
+            f"CONVERGE en {len(self.iterations)} iteration(s): "
+            f"cot(theta) = {self.cot_theta:.6f}"
+            if self.converged else f"REFUS: {self.refusal}"
+        )
+        return tuple(lines)
+
+
+def solve_cot_theta(
+    *,
+    V_Ed: Quantity,
+    k_1: Quantity,
+    sigma_cp: Quantity,
+    b_w: Quantity,
+    d: Quantity,
+    z: Quantity,
+    f_ywd: Quantity,
+    f_cd: Quantity,
+    s: Quantity,
+    cot_theta_min: float = 1.0,
+) -> CotThetaSolution:
+    """Resoudre cot(theta) sous la borne belge, par point fixe borne.
+
+    Pourquoi une iteration plutot qu'un choix prudent
+    --------------------------------------------------
+    Un premier jet bridait le choix initial a ``[1 ; 2]``, ou 2 est la valeur
+    de la borne sans precontrainte. C'etait sur, et sur-conservatif: la regle
+    belge autorise jusqu'a 3, et s'en priver ferait ferrailler plus que le
+    texte ne l'exige des qu'il y a precontrainte.
+
+    Pourquoi elle converge, et pourquoi ce n'est pas circulaire
+    ------------------------------------------------------------
+    ``A_sw/s = V_Ed/(z f_ywd cot(theta))`` decroit quand cot(theta) croit, et
+    ``cot(theta)_max = 2 + k1 sigma_cp b_w d s/(A_sw z f_ywd)`` croit quand
+    ``A_sw/s`` decroit. La suite est donc croissante, et majoree par 3: elle
+    converge. Le point fixe est atteint, pas approche.
+
+    Sans precontrainte, ``sigma_cp = 0`` annule le terme et la borne vaut 2
+    des la premiere iteration, quel que soit le ferraillage.
+    """
+    if V_Ed.magnitude <= 0:
+        raise ValueError("V_Ed doit etre strictement positif pour dimensionner.")
+
+    steps: list[CotThetaIteration] = []
+    cot = float(cot_theta_min)
+    for index in range(1, _MAX_ITERATIONS + 1):
+        asw_over_s = (V_Ed / (z * f_ywd * cot)).to("mm**2/m")
+        # La regle veut A_sw et s separement; le rapport suffit et evite
+        # d'inventer un espacement a ce stade.
+        cot_max = float(
+            COT_THETA_MAX.evaluate(
+                k_1=k_1, sigma_cp=sigma_cp, b_w=b_w, d=d, s=s,
+                A_sw=(asw_over_s * s).to("mm**2"), z=z, f_ywd=f_ywd, f_cd=f_cd,
+            ).magnitude
+        )
+        nxt = min(cot_max, 3.0)
+        delta = abs(nxt - cot)
+        steps.append(CotThetaIteration(index, cot, asw_over_s, cot_max, delta))
+        if delta <= _TOLERANCE:
+            return CotThetaSolution(True, nxt, cot_max, tuple(steps))
+        cot = nxt
+
+    return CotThetaSolution(
+        False, None, None, tuple(steps),
+        refusal=(
+            f"cot(theta) n'a pas converge en {_MAX_ITERATIONS} iterations "
+            f"(dernier ecart {steps[-1].delta:.2e} > {_TOLERANCE:.0e}). "
+            "Aucune valeur n'est retenue: une valeur approchee serait un "
+            "resultat que le moteur ne peut pas justifier. Le journal des "
+            "iterations est joint pour que l'ingenieur tranche."
+        ),
+    )

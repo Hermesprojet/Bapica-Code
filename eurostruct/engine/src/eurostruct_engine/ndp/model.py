@@ -117,6 +117,22 @@ class ValueProvenance(str, Enum):
     #: printed in the base standard rather than reprinting it. The decision is
     #: national; the number in hand is a placeholder.
     NATIONAL_ANNEX_PENDING = "national_annex_pending"
+    #: The applicable rule is a COMPOSITION: the mathematics comes from the
+    #: base standard (checked against its corrigenda and amendment), the
+    #: national authority comes from the annex, and the annex may modify the
+    #: expression on its way through.
+    #:
+    #: Distinct from ``NATIONAL_ANNEX``, which means the number or the
+    #: expression was read IN the annex. Labelling 6.6N ``NATIONAL_ANNEX``
+    #: would say the Belgian annex prints « nu = 0,6[1 - f_ck/250] ». It does
+    #: not: it prints « la valeur recommandee (formule 6.6N) est normative »,
+    #: and the expression lives in EN 1992-1-1:2004 p. 102.
+    #:
+    #: 9.5N is the case that needs the distinction most: the base standard
+    #: supplies the formula, the annex substitutes f_ywk for f_yk, and the
+    #: applicable rule exists in NEITHER document alone. It is composed, and
+    #: the two halves are in ``expression_sources`` and ``normative_authority``.
+    COMPOSED_NORMATIVE_RULE = "composed_normative_rule"
     #: Deduced rather than read. Never usable: interdiction 2.
     INFERRED = "inferred"
     #: Supplied by the user for their own project. Their responsibility,
@@ -125,8 +141,17 @@ class ValueProvenance(str, Enum):
 
     @property
     def is_national(self) -> bool:
-        """Whether this value may be presented as what the country adopted."""
-        return self is ValueProvenance.NATIONAL_ANNEX
+        """Whether this may be presented as what the country adopted.
+
+        A composed rule qualifies: it IS the applicable national rule, even
+        though its mathematics is printed in the Eurocode. What it must never
+        claim is that the annex printed the formula — and that claim lives in
+        the label, not in this predicate.
+        """
+        return self in (
+            ValueProvenance.NATIONAL_ANNEX,
+            ValueProvenance.COMPOSED_NORMATIVE_RULE,
+        )
 
 
 @dataclass(frozen=True, slots=True)

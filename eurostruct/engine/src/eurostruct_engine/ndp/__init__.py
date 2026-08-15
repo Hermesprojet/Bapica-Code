@@ -20,6 +20,11 @@ from .model import (
     ValidationStatus,
     ValueProvenance,
 )
+# Les regles typees s'ENREGISTRENT a l'import. Sans cet import, find_rule()
+# rendrait None pour la Belgique et le moteur retomberait EN SILENCE sur les
+# scalaires deprecies — exactement le second chemin normatif que ce travail
+# supprime. L'import est donc fonctionnel, pas cosmetique.
+from . import rules_be_ec2 as _rules_be_ec2  # noqa: F401
 from .registry import (
     BlockingParameter,
     ParameterSet,
