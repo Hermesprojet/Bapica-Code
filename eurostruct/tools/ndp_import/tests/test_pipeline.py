@@ -139,8 +139,19 @@ def test_no_acquired_document_promotes_a_parameter() -> None:
     be = json.loads(engine_data.read_text(encoding="utf-8"))
     params = [p for a in be["annexes"] for p in a["parameters"].values()]
 
-    # Le sens du test est la NON-promotion. 'not_representable' est admis: il
-    # rend un parametre inutilisable, il n'en autorise aucun.
+    # Le sens du test est la NON-promotion. Trois statuts sont admis, et tous
+    # trois RETIRENT un parametre du calcul au lieu de l'y autoriser:
+    #
+    #   pending_verification  lu, non valide — bloque en mode strict
+    #   not_representable     l'annexe le fixe par une expression — bloque
+    #                         dans TOUS les modes
+    #   deprecated            remplace par une regle typee — bloque dans tous
+    #                         les modes. C'est une DEMOTION.
+    #
+    # 'deprecated' a ete ajoute quand les six scalaires belges ont ete
+    # remplaces par les regles be.ec2.*, pour qu'un seul chemin normatif
+    # subsiste par juridiction. Le test etait alors rouge, et il avait raison
+    # de l'etre: sa liste blanche ne connaissait pas ce statut.
     promoted = [p for p in params if p["validation_status"] == "confirmed"]
     assert not promoted, (
         "un parametre est passe en 'confirmed' sans decision de relecture "
@@ -149,6 +160,7 @@ def test_no_acquired_document_promotes_a_parameter() -> None:
     assert {p["validation_status"] for p in params} <= {
         "pending_verification",
         "not_representable",
+        "deprecated",
     }
 
     # Et un parametre sans valeur doit dire pourquoi il n'en a pas. Deux
