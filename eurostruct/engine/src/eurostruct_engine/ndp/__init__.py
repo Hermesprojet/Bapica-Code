@@ -25,6 +25,15 @@ from .model import (
 # scalaires deprecies — exactement le second chemin normatif que ce travail
 # supprime. L'import est donc fonctionnel, pas cosmetique.
 from . import rules_be_ec2 as _rules_be_ec2  # noqa: F401
+from .canonical import (
+    CANONICALIZATION_VERSION,
+    Digest,
+    EvidenceItem,
+    UnresolvableDependency,
+    evidence_digest,
+    implementation_digest,
+    normative_spec_digest,
+)
 from .registry import (
     BlockingParameter,
     ParameterSet,
@@ -38,6 +47,13 @@ __all__ = [
     "ValidationStatus",
     "SourceType",
     "ValueProvenance",
+    "CANONICALIZATION_VERSION",
+    "Digest",
+    "EvidenceItem",
+    "UnresolvableDependency",
+    "normative_spec_digest",
+    "implementation_digest",
+    "evidence_digest",
     "NationalParameter",
     "NationalAnnex",
     "RegulatoryFramework",
