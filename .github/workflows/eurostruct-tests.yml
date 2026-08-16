@@ -1,0 +1,58 @@
+# La CI appelle EXACTEMENT la meme commande que le poste de travail.
+#
+# Deux commandes distinctes, meme quand elles lancent les memes tests, finissent
+# par diverger — et c'est alors le rapport local qui ment. Un seul script, ici
+# et la-bas.
+#
+# --require-db rend la surface SQL OBLIGATOIRE en CI: une base est fournie par
+# le service ci-dessous, donc une surface non executee y est un echec, pas un
+# « partiel » tolere.
+name: eurostruct — tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports: ["5432:5432"]
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: dependances
+        run: |
+          python -m venv "$GITHUB_WORKSPACE/.venv-eurostruct"
+          source "$GITHUB_WORKSPACE/.venv-eurostruct/bin/activate"
+          python -m pip install --upgrade pip
+          pip install -e eurostruct/engine
+          pip install -e eurostruct/tools/ndp_import
+          pip install pytest
+
+      - name: client postgresql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      # LA commande canonique. Rien d'autre ne doit lancer de tests ici.
+      - name: suite canonique
+        run: ./eurostruct/run_tests.sh --require-db

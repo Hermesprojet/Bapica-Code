@@ -38,6 +38,18 @@ cd engine && python -m pytest tests/ -q          # 107 tests
 PGHOST=/tmp PGUSER=postgres ./db/test/run.sh     # garanties du schéma
 ```
 
+### La commande canonique
+
+**Un compte rendu de tests ne doit venir que d'ici.** Les commandes
+ci-dessus lancent chacune UNE surface; les enchaîner à la main est
+exactement ce qui a permis d'annoncer « tous verts » alors qu'une
+suite était rouge.
+
+```bash
+./run_tests.sh                 # tout ce qui est lançable ici
+./run_tests.sh --require-db    # échoue si la base manque (CI)
+```
+
 ### Un calcul de bout en bout
 
 ```python
