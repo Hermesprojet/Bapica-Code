@@ -22,12 +22,12 @@ from eurostruct_engine.ec2 import (
     RectangularSection,
     ShearLinks,
     ShearSection,
+    StructuralSystem,
+    check_span_depth,
     design_anchorage,
     design_flexure,
     design_serviceability,
     design_shear,
-    check_span_depth,
-    StructuralSystem,
 )
 from eurostruct_engine.legal import Language
 from eurostruct_engine.materials import concrete, reinforcement

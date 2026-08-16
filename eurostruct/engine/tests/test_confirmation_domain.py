@@ -57,30 +57,51 @@ from eurostruct_engine.ndp.confirmation import (
 BRUXELLES = timezone(timedelta(hours=1))
 INSTANT = datetime(2026, 3, 4, 14, 30, tzinfo=BRUXELLES)
 
-#: Les deux documents que la spécification fictive déclare utiliser. Le dossier
-#: de revue doit couvrir les deux : c'est la propriété que 6.3a2 ajoute.
+#: Les documents de la spécification fictive. ``DOC_BASE`` porte DEUX sources —
+#: le corps et son corrigendum — comme le PDF belge réel.
 DOC_BASE = "a" * 64
 DOC_ANB = "b" * 64
 DOC_ETRANGER = "e" * 64
 
 
-def payload_de_spec(rule_id: str = "be.ec2.nu_strength_reduction") -> dict:
+def payload_de_spec(rule_id: str = "be.ec2.nu_strength_reduction", *,
+                    pdf_partage: bool = False,
+                    labels_ambigus: bool = False) -> dict:
     """Un payload de spécification **de la même forme que le vrai**.
 
     Construit à la main plutôt qu'emprunté au registre des règles : le domaine
     ne doit pas en dépendre, et un test le vérifie. La forme, elle, est celle
     que produit ``normative_spec_digest`` — sans quoi la lecture des sources
     déclarées ne prouverait rien.
+
+    ``pdf_partage`` ajoute un corrigendum **dans le même fichier** que le corps,
+    reproduisant le cas belge où le corrigendum est relié à la norme de base.
     """
+    sources = [
+        {"reference": "FICTIF EN 1992-1-1", "layer": "base",
+         "clause": "§9.2.2", "expression_label": "(9.5N)",
+         "effect": "FICTIF — texte d'origine", "document_digest": DOC_BASE},
+    ]
+    if pdf_partage:
+        sources.append({
+            "reference": "FICTIF EN 1992-1-1/AC:2008", "layer": "corrigendum",
+            "clause": "§9.2.2", "expression_label": "(9.5N)",
+            "effect": "FICTIF — non modifiee",
+            "document_digest": DOC_BASE,          # LE MEME FICHIER
+        })
+    if labels_ambigus:
+        # Deux sources que la cle ne distingue pas et qui visent deux
+        # expressions differentes: le paquet doit refuser.
+        sources.append({
+            "reference": "FICTIF EN 1992-1-1", "layer": "base",
+            "clause": "§9.2.2", "expression_label": "(9.6N)",
+            "effect": "FICTIF — autre expression", "document_digest": DOC_BASE,
+        })
     return {
         "kind": "normative_spec",
         "canonicalization_version": CANONICALIZATION_VERSION,
         "rule_id": rule_id,
-        "expression_sources": [
-            {"reference": "FICTIF EN 1992-1-1", "layer": "base",
-             "clause": "§9.2.2", "expression_label": "(9.5N)",
-             "effect": "FICTIF — texte d'origine", "document_digest": DOC_BASE},
-        ],
+        "expression_sources": sources,
         "normative_authority": {
             "country_code": "BE", "reference": "FICTIF NBN EN 1992-1-1 ANB",
             "edition": "2010", "clause": "§9.2.2(5)",
@@ -91,6 +112,7 @@ def payload_de_spec(rule_id: str = "be.ec2.nu_strength_reduction") -> dict:
 
 
 SPEC = digest_of(payload_de_spec())
+SPEC_PDF_PARTAGE = digest_of(payload_de_spec(pdf_partage=True))
 IMPL = digest_of({"regle": "be.ec2.nu", "quoi": "implementation"})
 
 
@@ -111,21 +133,48 @@ def pile(*, edition_annexe: str = "2010") -> NormativeStack:
     )
 
 
-def preuve(document: str = DOC_ANB, *, page: int = 15,
-           citation: str | None = None) -> EvidenceItem:
-    return EvidenceItem(
-        document_digest=document,
-        document_role="annexe" if document == DOC_ANB else "base",
-        reference="FICTIF NBN EN 1992-1-1 ANB" if document == DOC_ANB
-        else "FICTIF EN 1992-1-1",
-        edition="2010", clause="§9.2.2(5)", page_printed=page,
-        quote=citation or "FICTIF — citation de test, sans valeur normative.",
+def preuve_pour(src: RequiredSource, *, page: int = 15,
+                citation: str | None = None, **ecarts) -> EvidenceItem:
+    """Une preuve qui correspond **exactement** à *src*, sauf écarts demandés.
+
+    Les écarts servent les tests négatifs : mauvaise clause, mauvais rôle,
+    mauvaise édition. Page et citation, elles, ne participent pas à la
+    correspondance — elles sont le contenu humain du dossier.
+    """
+    champs = {
+        "document_digest": src.document_digest,
+        "document_role": src.role,
+        "reference": src.reference,
+        "edition": src.edition or "2010",
+        "clause": src.clause,
+        "page_printed": page,
+        "quote": citation or "FICTIF — citation de test, sans valeur normative.",
+    }
+    champs.update(ecarts)
+    return EvidenceItem(**champs)
+
+
+def dossier_pour(spec: Digest = SPEC, *, depart: int = 100,
+                 sauf: int | None = None) -> tuple[EvidenceItem, ...]:
+    """Un dossier couvrant **chaque source déclarée**, une preuve par source.
+
+    ``sauf`` retire la n-ième source : c'est ainsi qu'un dossier incomplet se
+    fabrique dans les tests, sans jamais deviner ce qui manque.
+    """
+    sources = required_sources(spec)
+    return tuple(
+        preuve_pour(src, page=depart + i)
+        for i, src in enumerate(sources) if i != sauf
     )
 
 
 def dossier_complet() -> tuple[EvidenceItem, ...]:
-    """Couvre les DEUX documents déclarés par la spécification."""
-    return (preuve(DOC_BASE, page=104), preuve(DOC_ANB, page=15))
+    return dossier_pour(SPEC)
+
+
+def dossier_variante() -> tuple[EvidenceItem, ...]:
+    """Mêmes sources, autres folios: un dossier valide mais **différent**."""
+    return dossier_pour(SPEC, depart=900)
 
 
 def paquet(*, edition_annexe: str = "2010", spec: Digest = SPEC,
@@ -142,7 +191,7 @@ def paquet(*, edition_annexe: str = "2010", spec: Digest = SPEC,
     return NormativeReviewPackage.of(
         country_code=country_code, standard_family=standard_family, part=part,
         rule_id=rule_id, stack=p, normative_spec=spec, implementation=impl,
-        evidence_items=items if items is not None else dossier_complet(),
+        evidence_items=items if items is not None else dossier_pour(spec),
     )
 
 
@@ -243,7 +292,7 @@ def test_le_contenu_des_collections_est_gele_aussi() -> None:
             country_code="BE", standard_family="EN 1992", part="1-1",
             rule_id="be.ec2.nu_strength_reduction", stack=pile(),
             normative_spec=SPEC, implementation=IMPL,
-            evidence_items=[preuve(DOC_BASE), preuve(DOC_ANB)],
+            evidence_items=list(dossier_complet()),
         )
     with pytest.raises(ConfirmationDomainError, match="frozenset est requis"):
         confirmation(authorisations_at_signature={"can_validate_normative_reference"})
@@ -733,8 +782,8 @@ def test_chaque_empreinte_change_la_cle_de_sujet() -> None:
         paquet(spec=digest_of(autre_spec)),
         paquet(impl=digest_of({"autre": True})),
         paquet(edition_annexe="2018"),
-        # Le dossier de preuve: une page differente suffit.
-        paquet(items=(preuve(DOC_BASE, page=999), preuve(DOC_ANB))),
+        # Le dossier de preuve: un folio different suffit.
+        paquet(items=dossier_variante()),
     ):
         autre = confirmation(package=paquet_modifie)
         assert autre.confirmation_subject_key != base.confirmation_subject_key
@@ -804,7 +853,7 @@ def test_deux_dossiers_de_preuve_differents_donnent_EVIDENCE_MISMATCH() -> None:
     Deux relecteurs qui n'ont pas ouvert les mêmes pages n'ont pas exercé deux
     regards sur la même chose.
     """
-    mauvais = paquet(items=(preuve(DOC_BASE, page=999), preuve(DOC_ANB)))
+    mauvais = paquet(items=dossier_variante())
     a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
                      package=mauvais)
     b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
@@ -832,7 +881,7 @@ def test_les_attestations_aux_preuves_divergentes_restent_conservees() -> None:
     a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
     b = confirmation(
         verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
-        package=paquet(items=(preuve(DOC_BASE, page=999), preuve(DOC_ANB))),
+        package=paquet(items=dossier_variante()),
     )
     p = InMemoryConfirmationProvider(confirmations=(a, b))
     rendues = p.confirmations_for(a.rule_id)
@@ -856,7 +905,7 @@ def test_un_dossier_partage_par_deux_regards_confirme_malgre_un_dossier_tiers(
     b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2")
     seul = confirmation(
         verifier="chloe", cid="FICTIF-c3", cle="FICTIF-k3",
-        package=paquet(items=(preuve(DOC_BASE, page=999), preuve(DOC_ANB))),
+        package=paquet(items=dossier_variante()),
     )
     verdict = evalue((a, b, seul))
     assert verdict.status is ConfirmationStatus.CONFIRMED
@@ -883,7 +932,7 @@ def test_une_attestation_revoquee_sur_un_autre_dossier_reste_diagnostiquee() -> 
     a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
     retiree = confirmation(
         verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
-        package=paquet(items=(preuve(DOC_BASE, page=999), preuve(DOC_ANB))),
+        package=paquet(items=dossier_variante()),
     )
     verdict = evalue((a, retiree), (revocation(retiree),))
     assert verdict.status is ConfirmationStatus.PARTIALLY_CONFIRMED
@@ -944,7 +993,7 @@ def test_l_ordre_des_controles_est_celui_qui_est_documente() -> None:
     autre_spec_payload["expression_sources"][0]["effect"] = "FICTIF — autre"
     autre_spec = digest_of(autre_spec_payload)
     autre_impl = digest_of({"code": "autre"})
-    mauvais_dossier = (preuve(DOC_BASE, page=999), preuve(DOC_ANB))
+    mauvais_dossier = dossier_variante()
     attendu = paquet()
 
     def cause(signee: NormativeReviewPackage, revoquee: bool = False):
@@ -1069,17 +1118,19 @@ def test_le_paquet_refuse_un_dossier_incomplet() -> None:
     Deux verificateurs peuvent tres bien s'accorder sur un dossier auquel il
     manque une couche. Le paquet le refuse **avant** toute signature.
     """
-    with pytest.raises(ConfirmationDomainError, match="INCOMPLET"):
-        paquet(items=(preuve(DOC_ANB),))          # l'annexe seule, sans la base
-    with pytest.raises(ConfirmationDomainError, match="INCOMPLET"):
-        paquet(items=(preuve(DOC_BASE),))         # la base seule, sans l'annexe
+    for manquante in range(len(required_sources(SPEC))):
+        with pytest.raises(ConfirmationDomainError, match="INCOMPLET"):
+            paquet(items=dossier_pour(SPEC, sauf=manquante))
 
 
 def test_le_paquet_refuse_une_preuve_etrangere_a_la_specification() -> None:
     """L'autre sens: une preuve tiree d'un document hors pile."""
-    with pytest.raises(ConfirmationDomainError, match="ne declare pas"):
-        paquet(items=(preuve(DOC_BASE), preuve(DOC_ANB),
-                      preuve(DOC_ETRANGER)))
+    etrangere = dataclasses.replace(
+        dossier_complet()[0], document_digest=DOC_ETRANGER,
+    )
+    with pytest.raises(ConfirmationDomainError,
+                       match="aucune source declaree"):
+        paquet(items=(*dossier_complet(), etrangere))
 
 
 def test_le_paquet_recalcule_sa_cle_et_son_empreinte_de_preuve() -> None:
@@ -1112,9 +1163,13 @@ def test_le_paquet_recalcule_sa_cle_et_son_empreinte_de_preuve() -> None:
 def test_modifier_un_element_de_preuve_change_le_sujet_attendu() -> None:
     """Exigence 7."""
     base = paquet()
+    sources = required_sources(SPEC)
     for modifie in (
-        (preuve(DOC_BASE, page=105), preuve(DOC_ANB)),
-        (preuve(DOC_BASE), preuve(DOC_ANB, citation="FICTIF — autre citation.")),
+        # un folio different
+        (preuve_pour(sources[0], page=105), preuve_pour(sources[1])),
+        # une citation differente
+        (preuve_pour(sources[0]),
+         preuve_pour(sources[1], citation="FICTIF — autre citation.")),
     ):
         assert paquet(items=modifie).subject_key != base.subject_key
 
@@ -1146,9 +1201,17 @@ def test_les_sources_requises_se_lisent_dans_le_payload_de_specification(
     """
     sources = required_sources(SPEC)
     assert {s.document_digest for s in sources} == {DOC_BASE, DOC_ANB}
-    assert {s.role for s in sources} == {"base", "autorite"}
+    assert {s.role for s in sources} == {"base", "annexe"}
     assert all(isinstance(s, RequiredSource) for s in sources)
     assert paquet().required_sources == sources
+
+    # La cle de correspondance porte les cinq composantes demandees, et NON
+    # l'effet, qui n'est que de la prose.
+    base = next(s for s in sources if s.role == "base")
+    assert base.match_key == (DOC_BASE, "FICTIF EN 1992-1-1", "base",
+                              "§9.2.2", None)
+    annexe = next(s for s in sources if s.role == "annexe")
+    assert annexe.edition == "2010", "l'autorite declare son edition"
 
 
 def test_une_version_de_canonicalisation_inconnue_est_refusee() -> None:
@@ -1299,99 +1362,244 @@ def test_plusieurs_confirmations_et_revocations_sans_postgresql() -> None:
 # Aucune confirmation n'y est creee: un paquet de revue n'est pas une
 # attestation, c'est ce qu'on presenterait a un relecteur.
 # ---------------------------------------------------------------------------
-def test_un_paquet_se_construit_sur_une_vraie_regle() -> None:
-    """« Les digests de specification et d'implementation sont ceux de la
-    regle courante » — verifie sur `be.ec2.rho_w_min`.
-
-    C'est la couche applicative qui construit le paquet, donc elle qui appelle
-    `normative_spec_digest` et `implementation_digest` sur la regle. Le domaine
-    ne peut pas le verifier lui-meme sans dependre du registre; ce test le
-    demontre a sa place.
-    """
-    from eurostruct_engine.ndp import rules_be_ec2 as RBE
+def _regle_reelle():
+    from eurostruct_engine.ndp import rules_be_ec2 as reelles
     from eurostruct_engine.ndp.canonical import (
         implementation_digest,
         normative_spec_digest,
     )
 
-    regle = RBE.RHO_W_MIN
-    spec = normative_spec_digest(regle)
-    impl = implementation_digest(regle)
+    regle = reelles.RHO_W_MIN
+    return regle, normative_spec_digest(regle), implementation_digest(regle)
 
+
+def _paquet_reel(items):
+    regle, spec, impl = _regle_reelle()
     sources = required_sources(spec)
-    assert len(sources) == 4, "base, corrigendum, amendement, autorite"
-    documents = {s.document_digest for s in sources}
-    assert len(documents) == 3, "base et corrigendum partagent le meme PDF"
-
-    items = tuple(
-        EvidenceItem(
-            document_digest=d, document_role="annexe", reference="FICTIF",
-            edition="FICTIF", clause="§9.2.2(5)", page_printed=i + 1,
-            quote=f"FICTIF — page temoin {i + 1}, sans valeur normative.",
-        )
-        for i, d in enumerate(sorted(documents))
-    )
-
-    p = NormativeReviewPackage.of(
+    return NormativeReviewPackage.of(
         country_code="BE", standard_family="EN 1992", part="1-1",
         rule_id=regle.rule_id,
         stack=NormativeStack.of(
             country_code="BE", standard_family="EN 1992", part="1-1",
             components=tuple(
                 NormativeStackComponent(
-                    "base" if s.role == "corrigendum" else
-                    ("annexe" if s.role == "autorite" else s.role),
-                    s.reference, "2010", i + 1, s.document_digest,
+                    s.role, s.reference, s.edition or "2010", i + 1,
+                    s.document_digest,
                 )
                 for i, s in enumerate(sources)
             ),
         ),
         normative_spec=spec, implementation=impl, evidence_items=items,
     )
+
+
+def test_quatre_sources_sur_trois_documents_pour_be_ec2_rho_w_min() -> None:
+    """Le cas reel qui a motive ce correctif.
+
+    `be.ec2.rho_w_min` declare QUATRE sources reparties sur TROIS documents:
+    le corps de l'EN et le corrigendum AC:2008 sont relies dans le meme PDF
+    belge et partagent donc leur empreinte.
+    """
+    _, spec, _ = _regle_reelle()
+    sources = required_sources(spec)
+
+    assert len(sources) == 4
+    assert len({s.document_digest for s in sources}) == 3
+    assert len({s.match_key for s in sources}) == 4, (
+        "quatre sources doivent rester quatre: si deux se confondent, une "
+        "preuve unique en couvrirait deux"
+    )
+    partagees = [s for s in sources
+                 if s.document_digest == sources[0].document_digest]
+    assert {s.role for s in partagees} == {"base", "corrigendum"}
+
+
+def test_une_preuve_par_document_ne_suffit_pas_sur_une_vraie_regle() -> None:
+    """Trois preuves pour quatre sources: REFUS.
+
+    C'est exactement ce que l'ancienne couverture par documents acceptait — et
+    ce que le test « quatre sources, trois documents » de 6.3a2 documentait
+    sans l'attraper.
+    """
+    _, spec, _ = _regle_reelle()
+    sources = required_sources(spec)
+
+    vues: set[str] = set()
+    une_par_document = []
+    for i, src in enumerate(sources):
+        if src.document_digest not in vues:
+            vues.add(src.document_digest)
+            une_par_document.append(preuve_pour(src, page=100 + i))
+    assert len(une_par_document) == 3
+
+    with pytest.raises(ConfirmationDomainError, match="INCOMPLET"):
+        _paquet_reel(tuple(une_par_document))
+
+
+def test_une_preuve_par_source_convient_sur_une_vraie_regle() -> None:
+    """Quatre preuves, une par source: accepte, et la cle est celle de la regle."""
+    regle, spec, impl = _regle_reelle()
+    sources = required_sources(spec)
+    p = _paquet_reel(tuple(
+        preuve_pour(src, page=100 + i) for i, src in enumerate(sources)
+    ))
     assert p.subject_key.rule_id == regle.rule_id
     assert p.subject_key.normative_spec_digest == spec.digest
     assert p.subject_key.implementation_digest == impl.digest
+    assert p.subject_key.evidence_digest == p.evidence.digest
 
 
-def test_un_dossier_incomplet_est_refuse_sur_une_vraie_regle() -> None:
-    """Le meme controle, sur la pile documentaire belge reelle.
+@pytest.mark.parametrize(
+    ("ecart", "quoi"),
+    [
+        ({"clause": "§9.9.9"}, "clause"),
+        ({"document_role": "reglement"}, "role"),
+        ({"reference": "FICTIF autre reference"}, "reference"),
+    ],
+    ids=["mauvaise_clause", "mauvais_role", "mauvaise_reference"],
+)
+def test_une_preuve_mal_rattachee_est_refusee_sur_une_vraie_regle(
+    ecart, quoi,
+) -> None:
+    """Bon document, mais rattache a autre chose que ce qu'il prouve.
 
-    Il manque l'annexe nationale — exactement le genre d'omission sur laquelle
-    deux relecteurs pourraient s'accorder sans que rien ne le signale.
+    Le systeme ne juge pas si la citation est intellectuellement correcte —
+    c'est le travail du verificateur. Il empeche seulement qu'elle soit
+    rattachee a une autre source structuree.
     """
-    from eurostruct_engine.ndp import rules_be_ec2 as RBE
-    from eurostruct_engine.ndp.canonical import (
-        implementation_digest,
-        normative_spec_digest,
-    )
-
-    regle = RBE.RHO_W_MIN
-    spec = normative_spec_digest(regle)
+    _, spec, _ = _regle_reelle()
     sources = required_sources(spec)
-    anb = next(s for s in sources if s.role == "autorite")
-    sans_annexe = sorted({s.document_digest for s in sources} - {anb.document_digest})
+    items = [preuve_pour(src, page=100 + i) for i, src in enumerate(sources)]
+    items[0] = preuve_pour(sources[0], page=100, **ecart)
 
-    items = tuple(
-        EvidenceItem(
-            document_digest=d, document_role="base", reference="FICTIF",
-            edition="FICTIF", clause="§9.2.2", page_printed=i + 1,
-            quote="FICTIF — sans valeur normative.",
-        )
-        for i, d in enumerate(sans_annexe)
-    )
+    with pytest.raises(ConfirmationDomainError):
+        _paquet_reel(tuple(items))
+
+
+def test_une_mauvaise_edition_est_refusee_quand_la_source_en_declare_une(
+) -> None:
+    """L'autorite normative declare son edition; les couches n'en declarent pas.
+
+    L'edition n'est donc comparee que la ou elle existe — la comparer partout
+    reviendrait a exiger une valeur que le referentiel ne fournit pas.
+    """
+    _, spec, _ = _regle_reelle()
+    sources = required_sources(spec)
+    avec_edition = [s for s in sources if s.edition is not None]
+    sans_edition = [s for s in sources if s.edition is None]
+    assert avec_edition and sans_edition, "les deux cas doivent exister"
+
+    # La source qui declare une edition: un ecart d'edition est refuse.
+    idx = sources.index(avec_edition[0])
+    items = [preuve_pour(src, page=100 + i) for i, src in enumerate(sources)]
+    items[idx] = preuve_pour(avec_edition[0], page=100, edition="1999")
     with pytest.raises(ConfirmationDomainError, match="INCOMPLET"):
-        NormativeReviewPackage.of(
-            country_code="BE", standard_family="EN 1992", part="1-1",
-            rule_id=regle.rule_id,
-            stack=NormativeStack.of(
-                country_code="BE", standard_family="EN 1992", part="1-1",
-                components=(NormativeStackComponent(
-                    "base", "EN 1992-1-1", "2004", 1, sans_annexe[0],
-                ),),
-            ),
-            normative_spec=spec, implementation=implementation_digest(regle),
-            evidence_items=items,
-        )
+        _paquet_reel(tuple(items))
+
+    # Celle qui n'en declare pas: l'edition de la preuve est libre.
+    idx = sources.index(sans_edition[0])
+    items = [preuve_pour(src, page=100 + i) for i, src in enumerate(sources)]
+    items[idx] = preuve_pour(sans_edition[0], page=100, edition="1999")
+    _paquet_reel(tuple(items))          # ne leve pas
+
+
+# --- le meme PDF portant deux couches, en fixture controlee ----------------
+def test_base_et_corrigendum_dans_le_meme_pdf_restent_deux_sources() -> None:
+    """Meme ``document_digest``, deux couches normatives distinctes."""
+    sources = required_sources(SPEC_PDF_PARTAGE)
+    partagees = [s for s in sources if s.document_digest == DOC_BASE]
+    assert len(partagees) == 2
+    assert {s.role for s in partagees} == {"base", "corrigendum"}
+    assert len({s.match_key for s in partagees}) == 2
+
+
+def test_une_preuve_de_la_base_ne_couvre_pas_le_corrigendum() -> None:
+    """La propriete centrale de ce correctif.
+
+    Une preuve du corps de la norme ne couvre pas le corrigendum, meme relie
+    dans le meme fichier.
+    """
+    sources = required_sources(SPEC_PDF_PARTAGE)
+    base = next(s for s in sources if s.role == "base")
+    autres = [s for s in sources if s.role != "corrigendum"]
+
+    # Toutes les sources SAUF le corrigendum: refus.
+    items = tuple(preuve_pour(s, page=100 + i) for i, s in enumerate(autres))
+    with pytest.raises(ConfirmationDomainError, match="INCOMPLET"):
+        paquet(spec=SPEC_PDF_PARTAGE, items=items)
+
+    # Dupliquer la preuve de la base ne comble rien: elle porte le role 'base'.
+    doublon = (*items, preuve_pour(base, page=777))
+    with pytest.raises(ConfirmationDomainError, match="INCOMPLET"):
+        paquet(spec=SPEC_PDF_PARTAGE, items=doublon)
+
+    # Une preuve par source: accepte.
+    complet = tuple(
+        preuve_pour(s, page=100 + i) for i, s in enumerate(sources)
+    )
+    assert paquet(spec=SPEC_PDF_PARTAGE, items=complet).subject_key
+
+
+def test_deux_sources_indistinguables_par_leur_cle_sont_refusees() -> None:
+    """``expression_label`` ne peut pas entrer dans la cle: refus explicite.
+
+    ``EvidenceItem`` n'a aucun champ ou exprimer le label d'une expression, et
+    lui en ajouter un changerait ``evidence_digest``, donc la canonicalisation.
+    Plutot que de laisser une preuve en couvrir deux au hasard, le paquet
+    refuse — la verification est reportee, pas inventee.
+    """
+    ambigu = digest_of(payload_de_spec(labels_ambigus=True))
+    sources = required_sources(ambigu)
+    with pytest.raises(ConfirmationDomainError, match="expressions differentes"):
+        paquet(spec=ambigu, items=tuple(
+            preuve_pour(s, page=100 + i) for i, s in enumerate(sources)
+        ))
+
+
+# ---------------------------------------------------------------------------
+# Integrite des Digest
+# ---------------------------------------------------------------------------
+def test_un_digest_ne_peut_pas_porter_un_hash_qui_ne_resume_pas_son_payload(
+) -> None:
+    """Les deux falsifications symetriques, toutes deux indetectables autrement.
+
+    Une structure immuable construite avec un faux hash reste fausse: geler un
+    mensonge n'en fait pas une preuve.
+    """
+    from eurostruct_engine.ndp.canonical import DigestIntegrityError
+
+    bon = digest_of({"a": 1})
+
+    # payload modifie sans recalcul du hash
+    with pytest.raises(DigestIntegrityError, match="calculee sur le payload"):
+        dataclasses.replace(bon, canonical_payload='{"a":2}')
+
+    # hash modifie sans modification du payload
+    with pytest.raises(DigestIntegrityError, match="calculee sur le payload"):
+        dataclasses.replace(bon, digest="0" * 64)
+
+    # algorithme inconnu: refuse plutot qu'accepte sans controle
+    with pytest.raises(DigestIntegrityError, match="inconnu"):
+        dataclasses.replace(bon, algorithm="md5")
+
+
+def test_les_digests_du_paquet_sont_integres_par_construction() -> None:
+    """La garantie couvre les quatre empreintes que le paquet manipule.
+
+    Elle est posee a la construction de ``Digest`` plutot que chez chaque
+    consommateur: un consommateur qui oublierait de verifier est exactement le
+    chemin par lequel un faux hash circulerait.
+    """
+    import hashlib
+
+    p = paquet()
+    for empreinte in (p.normative_spec, p.implementation, p.evidence,
+                      p.stack.digest):
+        attendu = hashlib.sha256(
+            empreinte.canonical_payload.encode("utf-8")
+        ).hexdigest()
+        assert empreinte.digest == attendu
+        assert empreinte.algorithm == "sha256"
 
 
 # ---------------------------------------------------------------------------

@@ -72,18 +72,18 @@ from typing import Any
 from ..exceptions import EurostructEngineError
 
 __all__ = [
+    "ALLOWED_EXCEPTIONS",
+    "ALLOWED_EXTERNAL_SYMBOLS",
     "CANONICALIZATION_VERSION",
+    "KERNEL_ALLOWED_SYMBOLS",
     "Digest",
     "UnresolvableDependency",
     "canonical_json",
     "digest_of",
-    "normative_spec_digest",
-    "implementation_digest",
-    "evidence_digest",
-    "ALLOWED_EXTERNAL_SYMBOLS",
-    "KERNEL_ALLOWED_SYMBOLS",
-    "ALLOWED_EXCEPTIONS",
     "evaluation_kernel_digest",
+    "evidence_digest",
+    "implementation_digest",
+    "normative_spec_digest",
 ]
 
 #: Version de la méthode. Elle change dès que la forme canonique change, pour
@@ -92,6 +92,16 @@ __all__ = [
 CANONICALIZATION_VERSION = "esc-canon/1"
 
 _ALGORITHM = "sha256"
+
+
+class DigestIntegrityError(EurostructEngineError):
+    """Un :class:`Digest` ne resume pas le payload qu'il porte.
+
+    Une structure immuable construite avec un faux hash reste fausse: geler un
+    mensonge n'en fait pas une preuve. Le controle est fait a la CONSTRUCTION
+    plutot que chez chaque consommateur — un consommateur qui oublierait de
+    verifier est exactement le chemin par lequel un faux hash circulerait.
+    """
 
 
 class UnresolvableDependency(EurostructEngineError):
@@ -111,6 +121,31 @@ class Digest:
     canonicalization_version: str
     canonical_payload: str
     digest: str
+
+    def __post_init__(self) -> None:
+        """Le hash DOIT etre celui du payload. Verifie, jamais suppose.
+
+        Les deux falsifications visees sont symetriques et toutes deux
+        indetectables autrement : modifier le payload sans recalculer le hash,
+        et modifier le hash sans toucher au payload.
+
+        L'algorithme inconnu est refuse plutot qu'accepte sans controle : ne
+        pas savoir verifier et laisser passer reviendrait a faire dependre la
+        garantie du nom qu'on donne a l'algorithme.
+        """
+        if self.algorithm != _ALGORITHM:
+            raise DigestIntegrityError(
+                f"algorithme '{self.algorithm}' inconnu, seul {_ALGORITHM!r} "
+                "est verifiable ici. Accepter sans controle ferait dependre "
+                "la garantie du nom donne a l'algorithme."
+            )
+        reel = hashlib.sha256(self.canonical_payload.encode("utf-8")).hexdigest()
+        if self.digest != reel:
+            raise DigestIntegrityError(
+                f"empreinte {self.digest[:16]}... annoncee, "
+                f"{reel[:16]}... calculee sur le payload porte. Une structure "
+                "immuable construite avec un faux hash reste fausse."
+            )
 
     def __eq__(self, other: object) -> bool:
         """Deux empreintes sont égales si leur digest ET leur méthode le sont.

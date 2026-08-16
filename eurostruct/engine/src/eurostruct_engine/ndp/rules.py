@@ -62,25 +62,25 @@ from ..units import Q_, Quantity, require_dimension
 from .model import ValidationStatus, ValueProvenance
 
 __all__ = [
-    "RuleKind",
-    "InputSpec",
-    "DomainBound",
-    "NormativeAuthority",
-    "ExpressionSource",
     "Branch",
-    "NormativeRule",
-    "ScalarRule",
-    "FormulaRule",
     "ConditionalRule",
+    "DomainBound",
+    "ExpressionSource",
+    "FormulaRule",
+    "InputSpec",
+    "NormativeAuthority",
     "NormativeFunction",
+    "NormativeRule",
     "OutsideValidityDomain",
     "RuleImplementationMissing",
-    "implementation",
-    "register",
-    "get_rule",
-    "find_rule",
+    "RuleKind",
+    "ScalarRule",
     "all_rules",
     "check_registry",
+    "find_rule",
+    "get_rule",
+    "implementation",
+    "register",
 ]
 
 

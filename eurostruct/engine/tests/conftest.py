@@ -20,7 +20,6 @@ from eurostruct_engine.materials import concrete, reinforcement
 from eurostruct_engine.ndp import load_parameter_set
 from eurostruct_engine.units import Q_
 
-
 #: Pinned so a calculation stays reproducible regardless of when the suite runs.
 AS_OF = date(2026, 7, 26)
 

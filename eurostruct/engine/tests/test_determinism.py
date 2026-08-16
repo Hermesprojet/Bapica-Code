@@ -22,8 +22,6 @@ import textwrap
 
 import pytest
 
-from datetime import date
-
 from eurostruct_engine.ec2 import RectangularSection, design_flexure
 from eurostruct_engine.materials import concrete, reinforcement
 from eurostruct_engine.materials.reinforcement import bars_area

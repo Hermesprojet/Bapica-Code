@@ -383,26 +383,92 @@ class ReviewerAttestationKey:
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True, slots=True)
 class RequiredSource:
-    """Un document que la specification normative declare utiliser.
+    """Une source normative que la specification declare utiliser.
 
-    Extrait du payload canonique de ``normative_spec_digest``, jamais saisi a
-    la main: c'est ce qui permet de verifier qu'un dossier de revue couvre
-    reellement la pile documentaire de la regle.
+    **Une source, pas un document.** La distinction n'est pas theorique : le
+    corps de l'EN 1992-1-1 et le corrigendum AC:2008 sont relies dans le meme
+    PDF belge et portent donc le **meme ``document_digest``**, tout en etant
+    deux couches normatives distinctes. Une couverture calculee sur les seuls
+    documents laissait une preuve unique satisfaire les deux — et c'etait le
+    cas jusqu'a ce correctif.
+
+    Extraite du payload canonique de ``normative_spec_digest``, jamais saisie a
+    la main.
     """
 
     document_digest: str
     reference: str
-    role: str          # base | corrigendum | amendement | annexe | autorite
+    #: Couche normative : base | corrigendum | amendement | annexe | reglement.
+    #: Meme vocabulaire que ``EvidenceItem.document_role``, sans quoi la
+    #: correspondance ne pourrait pas etre etablie.
+    role: str
+    clause: str
+    #: Comparee **seulement si la source en declare une**. Les couches
+    #: d'expression n'en portent pas dans le payload ; l'autorite normative si.
+    edition: str | None = None
+    #: Conserve pour l'affichage et pour la garde d'ambiguite ci-dessous, mais
+    #: **hors cle de correspondance** : ``EvidenceItem`` n'a pas de champ ou
+    #: l'exprimer. Voir :meth:`match_key`.
+    expression_label: str | None = None
+    #: Prose decrivant ce que la couche a fait. **Jamais** dans la cle : deux
+    #: sources qui ne differeraient que par cette phrase seraient la meme
+    #: source lue deux fois, et exiger d'une preuve qu'elle la reproduise
+    #: n'aurait aucun sens.
+    effect: str = ""
+
+    @property
+    def match_key(self) -> tuple[str, str, str, str, str | None]:
+        """Ce qui identifie la source pour la correspondance avec une preuve.
+
+        ``(document_digest, reference, role, clause, edition)``.
+
+        ``expression_label`` en est **absent a regret** : il identifie bien
+        *quelle formule* dans une clause, mais ``EvidenceItem`` n'a aucun champ
+        pour l'exprimer, et lui en ajouter un changerait ``evidence_digest``,
+        donc la canonicalisation. Plutot que d'ignorer le probleme en silence,
+        :class:`NormativeReviewPackage` **refuse** un jeu de sources dont deux
+        partageraient cette cle en differant par leur label.
+        """
+        return (self.document_digest, self.reference, self.role, self.clause,
+                self.edition)
+
+    def matches(self, item: EvidenceItem) -> bool:
+        """Cette preuve porte-t-elle bien sur **cette** source structuree ?
+
+        Le systeme ne juge pas si la citation est intellectuellement correcte —
+        c'est le travail du verificateur. Il empeche seulement qu'elle soit
+        rattachee a une autre source que celle qu'elle nomme.
+        """
+        if item.document_digest != self.document_digest:
+            return False
+        if item.reference != self.reference:
+            return False
+        if item.document_role != self.role:
+            return False
+        if item.clause != self.clause:
+            return False
+        return not (self.edition is not None and item.edition != self.edition)
+
+
+#: Role attribue a l'autorite normative. Le payload de specification ne
+#: l'enregistre pas : ``NormativeAuthority`` porte pays, reference, edition,
+#: clause et effet, mais aucune couche. Pour les six regles belges c'est
+#: toujours l'annexe nationale, d'ou ce choix.
+#:
+#: La limite est reelle et signalee: une autorite qui serait un reglement (un
+#: arrete royal, par exemple) exigerait que le payload enregistre son role. Le
+#: mode d'echec est franc — la preuve ne correspondrait a aucune source et le
+#: paquet serait refuse — jamais silencieux.
+_AUTHORITY_ROLE = "annexe"
 
 
 def required_sources(normative_spec: Digest) -> tuple[RequiredSource, ...]:
-    """Les documents que la specification declare, lus dans son payload.
+    """Les sources que la specification declare, lues dans son payload.
 
     C'est possible parce que ``normative_spec_digest`` conserve son payload
     canonique et qu'il porte, pour chaque couche et pour l'autorite normative,
-    la reference **et** l'empreinte du document. Aucune verification n'est donc
-    reportee a un jalon ulterieur : le lien entre sources normatives et preuves
-    est verifiable des maintenant, et il l'est.
+    la reference, la clause **et** l'empreinte du document. Aucune verification
+    n'est donc reportee a un jalon ulterieur.
 
     Refuse une version de canonicalisation inconnue plutot que de lire un
     payload dont la forme aurait change : deduire une couverture documentaire
@@ -419,24 +485,36 @@ def required_sources(normative_spec: Digest) -> tuple[RequiredSource, ...]:
         )
 
     sources: list[RequiredSource] = []
-    vus: set[str] = set()
-    for s in payload.get("expression_sources", ()):
-        cle = f"{s['document_digest']}|{s['layer']}"
-        if cle not in vus:
-            vus.add(cle)
-            sources.append(RequiredSource(
-                document_digest=s["document_digest"],
-                reference=s["reference"], role=s["layer"],
-            ))
+    for src in payload.get("expression_sources", ()):
+        sources.append(RequiredSource(
+            document_digest=src["document_digest"],
+            reference=src["reference"],
+            role=src["layer"],
+            clause=src["clause"],
+            edition=None,
+            expression_label=src.get("expression_label"),
+            effect=src.get("effect", ""),
+        ))
+
     autorite = payload.get("normative_authority") or {}
     if autorite.get("document_digest"):
-        cle = f"{autorite['document_digest']}|autorite"
-        if cle not in vus:
-            sources.append(RequiredSource(
-                document_digest=autorite["document_digest"],
-                reference=autorite["reference"], role="autorite",
-            ))
-    return tuple(sources)
+        sources.append(RequiredSource(
+            document_digest=autorite["document_digest"],
+            reference=autorite["reference"],
+            role=_AUTHORITY_ROLE,
+            clause=autorite["clause"],
+            edition=autorite.get("edition"),
+            expression_label=None,
+            effect=autorite.get("effect", ""),
+        ))
+
+    # Dedoublonnage sur l'IDENTITE COMPLETE, pas sur la cle: deux entrees
+    # rigoureusement identiques sont la meme source declaree deux fois.
+    uniques: list[RequiredSource] = []
+    for src in sources:
+        if src not in uniques:
+            uniques.append(src)
+    return tuple(uniques)
 
 
 @dataclass(frozen=True, slots=True)
@@ -511,33 +589,65 @@ class NormativeReviewPackage:
                 "couteuse a rattraper apres signature."
             )
 
-        # --- couverture documentaire, dans les DEUX sens -------------------
+        # --- couverture des SOURCES, dans les DEUX sens --------------------
+        # Sur les sources structurees et non sur les seuls documents: le corps
+        # de l'EN et son corrigendum sont relies dans le meme PDF belge et
+        # partagent donc leur empreinte. Compter les documents laissait une
+        # preuve unique satisfaire deux couches distinctes.
         exiges = required_sources(self.normative_spec)
-        attendus = {s.document_digest for s in exiges}
-        lus = {i.document_digest for i in self.evidence_items}
 
-        surnumeraires = lus - attendus
-        if surnumeraires:
-            raise ConfirmationDomainError(
-                f"le dossier cite {len(surnumeraires)} document(s) que la "
-                f"specification ne declare pas: "
-                f"{sorted(d[:16] for d in surnumeraires)}. Une preuve tiree "
-                "d'un document etranger a la pile n'atteste pas cette regle."
-            )
+        # Garde d'ambiguite: deux sources que la cle ne distingue pas mais qui
+        # visent deux formules differentes. La cle ne peut pas porter le label
+        # — EvidenceItem n'a pas de champ ou l'exprimer — donc on REFUSE plutot
+        # que de laisser une preuve en couvrir deux au hasard.
+        par_cle: dict[tuple, list[RequiredSource]] = {}
+        for src in exiges:
+            par_cle.setdefault(src.match_key, []).append(src)
+        for cle, groupe in par_cle.items():
+            labels = {g.expression_label for g in groupe}
+            if len(labels) > 1:
+                raise ConfirmationDomainError(
+                    f"deux sources requises partagent la cle {cle[1]!r} "
+                    f"/{cle[2]}/{cle[3]} mais visent des expressions "
+                    f"differentes {sorted(map(str, labels))}. Une preuve ne "
+                    "peut pas etre rattachee a l'une plutot qu'a l'autre: "
+                    "EvidenceItem n'exprime pas le label. Refus explicite."
+                )
 
-        manquants = attendus - lus
-        if manquants:
-            details = sorted(
-                f"{s.reference} ({s.role}, {s.document_digest[:16]})"
-                for s in exiges if s.document_digest in manquants
+        manquantes = [
+            src for src in exiges
+            if not any(src.matches(i) for i in self.evidence_items)
+        ]
+        if manquantes:
+            details = "; ".join(
+                f"{s.reference} ({s.role}, {s.clause}, "
+                f"{s.document_digest[:16]})" for s in manquantes
             )
             raise ConfirmationDomainError(
                 "dossier de revue INCOMPLET: aucune preuve pour "
-                f"{len(manquants)} document(s) declare(s) par la "
-                f"specification — {'; '.join(details)}. C'est precisement le "
-                "defaut que ce paquet existe pour empecher: deux verificateurs "
-                "peuvent tres bien s'accorder sur un dossier auquel il manque "
-                "une couche."
+                f"{len(manquantes)} source(s) declaree(s) par la "
+                f"specification — {details}. C'est precisement le defaut que "
+                "ce paquet existe pour empecher: deux verificateurs peuvent "
+                "tres bien s'accorder sur un dossier auquel il manque une "
+                "couche. Une preuve du corps de la norme ne couvre pas le "
+                "corrigendum, meme relie dans le meme fichier."
+            )
+
+        orphelines = [
+            i for i in self.evidence_items
+            if not any(src.matches(i) for src in exiges)
+        ]
+        if orphelines:
+            details = "; ".join(
+                f"{i.reference} ({i.document_role}, {i.clause}, "
+                f"{i.document_digest[:16]})" for i in orphelines
+            )
+            raise ConfirmationDomainError(
+                f"le dossier contient {len(orphelines)} preuve(s) ne "
+                f"correspondant a aucune source declaree — {details}. Une "
+                "preuve doit nommer la source qu'elle atteste: bon document "
+                "mais mauvaise clause, mauvais role ou mauvaise edition, c'est "
+                "une preuve rattachee a autre chose que ce qu'elle prouve."
             )
 
         object.__setattr__(self, "evidence", evidence_digest(self.evidence_items))

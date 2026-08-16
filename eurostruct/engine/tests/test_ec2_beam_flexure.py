@@ -10,8 +10,6 @@ though every other formula in the module agreed with it.
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
 import pytest
 

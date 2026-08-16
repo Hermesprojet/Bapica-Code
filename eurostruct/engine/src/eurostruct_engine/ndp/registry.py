@@ -16,11 +16,11 @@ these files are what gets loaded into it (``db/seed/generate_ndp_seed.py``).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final, Iterable, Sequence
+from typing import Any, Final, Sequence
 
 from ..exceptions import (
     ConditionalParameterNeedsContext,
@@ -43,12 +43,12 @@ from .model import (
 )
 
 __all__ = [
-    "ParameterSet",
     "BlockingParameter",
+    "ParameterSet",
     "PreflightReport",
+    "available_countries",
     "load_country_registry",
     "load_parameter_set",
-    "available_countries",
 ]
 
 _DATA_DIR: Final[Path] = Path(__file__).parent / "data"
@@ -358,7 +358,7 @@ class ParameterSet:
             raise UnrepresentableNationalParameter(key, p.notes)
 
         q = Q_(value, p.unit)
-        if journal is not None and key not in journal._index:  # noqa: SLF001
+        if journal is not None and key not in journal._index:
             journal.input(
                 symbol=key,
                 description=p.description,

@@ -11,15 +11,6 @@ needs and asks the ParameterSet for them.
 
 from __future__ import annotations
 
-from .model import (
-    CountryRegistry,
-    NationalAnnex,
-    NationalParameter,
-    RegulatoryFramework,
-    SourceType,
-    ValidationStatus,
-    ValueProvenance,
-)
 # Les regles typees s'ENREGISTRENT a l'import. Sans cet import, find_rule()
 # rendrait None pour la Belgique et le moteur retomberait EN SILENCE sur les
 # scalaires deprecies — exactement le second chemin normatif que ce travail
@@ -34,6 +25,15 @@ from .canonical import (
     implementation_digest,
     normative_spec_digest,
 )
+from .model import (
+    CountryRegistry,
+    NationalAnnex,
+    NationalParameter,
+    RegulatoryFramework,
+    SourceType,
+    ValidationStatus,
+    ValueProvenance,
+)
 from .registry import (
     BlockingParameter,
     ParameterSet,
@@ -44,24 +44,24 @@ from .registry import (
 )
 
 __all__ = [
-    "ValidationStatus",
-    "SourceType",
-    "ValueProvenance",
     "CANONICALIZATION_VERSION",
+    "BlockingParameter",
+    "CountryRegistry",
     "Digest",
     "EvidenceItem",
-    "UnresolvableDependency",
-    "normative_spec_digest",
-    "implementation_digest",
-    "evidence_digest",
-    "NationalParameter",
     "NationalAnnex",
-    "RegulatoryFramework",
-    "CountryRegistry",
+    "NationalParameter",
     "ParameterSet",
     "PreflightReport",
-    "BlockingParameter",
-    "load_parameter_set",
-    "load_country_registry",
+    "RegulatoryFramework",
+    "SourceType",
+    "UnresolvableDependency",
+    "ValidationStatus",
+    "ValueProvenance",
     "available_countries",
+    "evidence_digest",
+    "implementation_digest",
+    "load_country_registry",
+    "load_parameter_set",
+    "normative_spec_digest",
 ]

@@ -31,7 +31,6 @@ from ..exceptions import UnitError
 from ..units import Q_, Quantity
 from .model import ValidationStatus, ValueProvenance
 from .rules import (
-    OutsideValidityDomain,
     Branch,
     ConditionalRule,
     DomainBound,
@@ -40,18 +39,19 @@ from .rules import (
     InputSpec,
     NormativeAuthority,
     NormativeFunction,
+    OutsideValidityDomain,
     RuleKind,
     implementation,
     register,
 )
 
 __all__ = [
-    "NU_STRENGTH_REDUCTION",
     "ALPHA_CW",
+    "COT_THETA_MAX",
+    "NU_STRENGTH_REDUCTION",
     "RHO_W_MIN",
     "S_L_MAX",
     "S_T_MAX",
-    "COT_THETA_MAX",
 ]
 
 # --- les trois documents de la pile, une fois -------------------------------
