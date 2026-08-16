@@ -55,17 +55,50 @@ run_pytest() {
     NOMS+=("$nom"); ETATS+=("ABSENT"); DETAILS+=("pas de repertoire tests/")
     EXIT=1; return
   fi
+
+  # COLLECTES: ce que pytest voit. Distinct de ce qu'il execute — une erreur
+  # de collecte, un skip de module ou un -k feraient diverger les deux, et
+  # c'est precisement l'ecart qu'un compte rendu doit montrer.
   local collectes
   collectes=$( (cd "$dir" && python -m pytest --collect-only -q 2>/dev/null) \
     | awk -F': ' '/^tests\/.*: [0-9]+$/{s+=$2} END{print s+0}')
-  local sortie
-  sortie=$( (cd "$dir" && python -m pytest -q 2>&1) )
-  local code=$?
+
+  # EXECUTES / REUSSIS / IGNORES / ECHOUES: lus dans le rapport JUnit, pas
+  # dans la sortie texte. Le pyproject porte deja « addopts = -q », donc un
+  # second -q en ligne de commande donne -qq et SUPPRIME la ligne de resume:
+  # compter sur elle etait fragile, et elle n'existait pas ici.
+  local xml; xml="$(mktemp)"
+  local sortie code
+  sortie=$( (cd "$dir" && python -m pytest --junit-xml="$xml" 2>&1) ); code=$?
+
+  local ex fa er sk ok
+  read -r ex fa er sk <<<"$(python - "$xml" <<'PY'
+import sys, xml.etree.ElementTree as ET
+try:
+    r = ET.parse(sys.argv[1]).getroot()
+    s = r if r.tag == "testsuite" else r.find("testsuite")
+    print(s.get("tests", 0), s.get("failures", 0), s.get("errors", 0), s.get("skipped", 0))
+except Exception:
+    print(0, 0, 0, 0)
+PY
+)"
+  rm -f "$xml"
+  ok=$(( ex - fa - er - sk ))
+  local detail="collectes ${collectes} | executes ${ex} | reussis ${ok} | ignores ${sk} | echoues $(( fa + er ))"
+
   if [[ $code -eq 0 ]]; then
-    NOMS+=("$nom"); ETATS+=("VERT"); DETAILS+=("$collectes tests collectes")
+    NOMS+=("$nom"); ETATS+=("VERT"); DETAILS+=("$detail")
   else
-    NOMS+=("$nom"); ETATS+=("ROUGE"); DETAILS+=("$collectes collectes — $(echo "$sortie" | grep -c '^FAILED') en echec")
+    NOMS+=("$nom"); ETATS+=("ROUGE"); DETAILS+=("$detail")
     echo "$sortie" | grep -E '^(FAILED|ERROR)' | sed 's/^/    /'
+    EXIT=1
+  fi
+
+  # Collectes et executes doivent coincider. Sinon des tests ont disparu
+  # entre la collecte et l'execution, ce qu'aucun « tous verts » ne doit
+  # masquer.
+  if [[ "$collectes" -ne "$ex" ]]; then
+    echo "    ATTENTION: ${collectes} collectes mais ${ex} executes"
     EXIT=1
   fi
 }
@@ -130,6 +163,13 @@ for i in "${!NOMS[@]}"; do
   [[ "${ETATS[$i]}" == "NON EXECUTEE" || "${ETATS[$i]}" == "ABSENT" ]] && NON_EXEC=1
 done
 echo "=============================================================="
+
+# Avec --require-db, seul COMPLET peut reussir. La garde est ECRITE ICI
+# plutot que deduite des branches ci-dessus: une propriete du contrat ne doit
+# pas dependre du fait qu'aucune branche future ne l'oubliera.
+if [[ $REQUIRE_DB -eq 1 && $NON_EXEC -eq 1 ]]; then
+  EXIT=1
+fi
 
 if [[ $EXIT -ne 0 ]]; then
   echo " VERDICT: ECHEC"
