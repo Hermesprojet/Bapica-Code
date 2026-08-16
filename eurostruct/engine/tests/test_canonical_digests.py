@@ -20,6 +20,7 @@ import unicodedata
 
 import pytest
 
+from eurostruct_engine.ndp import canonical as C
 from eurostruct_engine.ndp import rules_be_ec2 as R
 from eurostruct_engine.ndp.canonical import (
     ALLOWED_EXCEPTIONS,
@@ -36,7 +37,11 @@ from eurostruct_engine.ndp.canonical import (
     implementation_digest,
     normative_spec_digest,
 )
-from eurostruct_engine.ndp.rules import RuleKind, all_rules
+from eurostruct_engine.ndp.rules import (
+    RuleImplementationMissing,
+    RuleKind,
+    all_rules,
+)
 from eurostruct_engine.units import Q_, Quantity
 
 REGLES_BE = (
@@ -686,66 +691,158 @@ def test_le_noyau_entre_dans_toutes_les_empreintes_d_implementation() -> None:
 # ---------------------------------------------------------------------------
 # 6.2b — politique des décorateurs
 # ---------------------------------------------------------------------------
-def test_le_decorateur_implementation_rend_exactement_la_fonction_recue() -> None:
-    """Vérifié à l'exécution par une sonde, pas déduit de son AST.
+def test_la_preuve_d_identite_est_statique_et_n_execute_rien() -> None:
+    """6.2c — la sonde qui APPELAIT le decorateur est supprimee.
 
-    « Un décorateur enveloppant changerait son propre AST » ne suffisait pas :
-    son comportement peut aussi changer par une constante ou un registre.
+    Elle avait deux defauts, et le second est redhibitoire: elle inscrivait sa
+    sonde dans `_IMPLEMENTATIONS` (annule seulement par une restauration
+    explicite des registres DECLARES, donc pas pour un effet de bord ailleurs),
+    et surtout calculer une empreinte executait du code applicatif. Une
+    empreinte decrit; elle ne doit rien faire arriver.
     """
-    from eurostruct_engine.ndp.canonical import _verifie_identite
+    from eurostruct_engine.ndp.canonical import _preuve_identite_statique
     from eurostruct_engine.ndp.rules import implementation
 
-    assert _verifie_identite(implementation) is True
-
-
-def test_la_sonde_d_identite_ne_laisse_aucune_trace() -> None:
-    """La sonde APPELLE le décorateur: elle inscrivait donc dans le registre.
-
-    Sans restauration, le premier appel polluait ``_IMPLEMENTATIONS`` et tous
-    les suivants levaient « deux implementations enregistrees », que le
-    ``except`` transformait en « identité non vérifiée ». Le payload portait
-    alors ``identity_verified: false`` pour toutes les règles sauf une.
-    """
-    from eurostruct_engine.ndp.canonical import _verifie_identite
-    from eurostruct_engine.ndp.rules import (
-        _IMPLEMENTATIONS,
-        _RULES,
-        implementation,
+    assert _preuve_identite_statique(implementation) == "esc-identity/1/fabrique"
+    assert not hasattr(C, "_verifie_identite"), (
+        "la sonde executee doit avoir disparu du module, pas seulement de "
+        "son chemin d'appel"
     )
 
-    avant_i, avant_r = dict(_IMPLEMENTATIONS), dict(_RULES)
-    for _ in range(3):
-        assert _verifie_identite(implementation) is True
-    assert _IMPLEMENTATIONS == avant_i
-    assert _RULES == avant_r
+
+def test_la_preuve_statique_reconnait_la_forme_directe() -> None:
+    from eurostruct_engine.ndp.canonical import _preuve_identite_statique
+
+    def _direct(fn):
+        return fn
+
+    assert _preuve_identite_statique(_direct) == "esc-identity/1/direct"
 
 
-def test_un_decorateur_enveloppant_echoue_a_la_sonde() -> None:
-    from eurostruct_engine.ndp.canonical import _verifie_identite
+@pytest.mark.parametrize(
+    ("variante", "motif"),
+    [
+        # Enveloppe: la voie de retour ne rend pas le parametre.
+        ("""
+def _v(rule_id):
+    def decorate(fn):
+        def emballage(*a, **k):
+            return fn(*a, **k)
+        return emballage
+    return decorate
+""", "ne rend pas"),
+        # Reaffectation: `return fn` est vrai syntaxiquement, faux en fait.
+        ("""
+def _v(rule_id):
+    def decorate(fn):
+        fn = staticmethod(fn)
+        return fn
+    return decorate
+""", "reaffecte"),
+        # Chute en fin de corps: rend None sur une des voies.
+        ("""
+def _v(rule_id):
+    def decorate(fn):
+        if rule_id:
+            return fn
+    return decorate
+""", "voies de sortie"),
+        # La fabrique ne rend pas son decorateur interne.
+        ("""
+def _v(rule_id):
+    def decorate(fn):
+        return fn
+    return staticmethod(decorate)
+""", "ne rend pas"),
+        # Plus d'un parametre: la preuve ne sait pas lequel porte la fonction.
+        ("""
+def _v(rule_id):
+    def decorate(fn, autre):
+        return fn
+    return decorate
+""", "exactement un parametre"),
+    ],
+    ids=["enveloppe", "reaffectation", "chute", "fabrique_infidele", "deux_params"],
+)
+def test_un_decorateur_qui_ne_rend_pas_la_fonction_est_refuse(
+    tmp_path, variante, motif,
+) -> None:
+    """6.2c — chaque facon de rompre le contrat, prouvee sur l'AST seul.
 
-    def _enveloppant(rule_id):
-        def _deco(fn):
-            def _emballage(*a, **k):
-                return fn(*a, **k)
-            return _emballage
-        return _deco
-
-    assert _verifie_identite(_enveloppant) is False
-
-
-def test_un_decorateur_connu_qui_echoue_a_la_sonde_est_refuse(monkeypatch) -> None:
-    """Le traitement par liaison n'est valable que si l'identité tient.
-
-    S'il ne tient pas, ce qui s'exécute n'est pas ce dont on calcule
-    l'empreinte : refus, et non un champ ``identity_verified: false`` que
-    personne ne relit.
+    Aucune de ces variantes n'est EXECUTEE: c'est tout l'objet du correctif.
     """
-    from eurostruct_engine.ndp import canonical as _c
+    from eurostruct_engine.ndp.canonical import _preuve_identite_statique
+
+    module = tmp_path / "variante_deco.py"
+    module.write_text(variante, encoding="utf-8")
+    espace: dict = {}
+    exec(compile(variante, str(module), "exec"), espace)
+    fn = espace["_v"]
+    fn.__module__ = "eurostruct_engine.faux_deco"
+
+    with pytest.raises(UnresolvableDependency, match=motif):
+        _preuve_identite_statique(fn)
+
+
+def test_un_decorateur_connu_hors_contrat_est_refuse(monkeypatch) -> None:
+    """6.2c, exigence 5 — l'AST ne respecte plus le contrat: refus.
+
+    Le decorateur reste declare dans `_KNOWN_IDENTITY_DECORATORS`, mais sa
+    preuve statique echoue. La regle devient incalculable plutot que de
+    recevoir une empreinte qui atteste une identite fausse.
+    """
     from eurostruct_engine.ndp import rules_be_ec2 as _rbe
 
-    monkeypatch.setattr(_c, "_verifie_identite", lambda deco: False)
-    with pytest.raises(UnresolvableDependency, match="ne rend PAS la fonction"):
-        _c._closure(_rbe._nu, [], set())
+    def implementation(rule_id):
+        def decorate(fn):
+            def emballage(*a, **k):
+                return fn(*a, **k)
+            return emballage
+        return decorate
+
+    implementation.__module__ = "eurostruct_engine.ndp.rules"
+    monkeypatch.setattr(_rbe, "implementation", implementation)
+
+    with pytest.raises(UnresolvableDependency, match="ne rend pas"):
+        C._closure(_rbe._nu, [], set())
+
+
+def test_modifier_le_decorateur_change_l_empreinte(monkeypatch) -> None:
+    """6.2c — « toute modification du decorateur doit changer l'empreinte ».
+
+    Sa fermeture — AST et dependances — entre au payload comme celle de
+    n'importe laquelle de nos fonctions. La variante ci-dessous respecte le
+    contrat d'identite (elle rend bien `fn`) mais n'ecrit plus dans le
+    registre: le comportement change, l'empreinte doit changer.
+    """
+    from eurostruct_engine.ndp import rules_be_ec2 as _rbe
+
+    avant = implementation_digest(R.NU_STRENGTH_REDUCTION).digest
+
+    def implementation(rule_id):
+        def decorate(fn):
+            return fn
+        return decorate
+
+    implementation.__module__ = "eurostruct_engine.ndp.rules"
+    monkeypatch.setattr(_rbe, "implementation", implementation)
+
+    apres = implementation_digest(R.NU_STRENGTH_REDUCTION)
+    assert apres.digest != avant
+    assert "esc-identity/1/fabrique" in apres.canonical_payload
+
+
+def test_modifier_la_liaison_change_l_empreinte() -> None:
+    """L'autre moitie de la meme exigence: `rule_id -> fonction qualifiee`."""
+    import json
+
+    a = json.loads(implementation_digest(R.RHO_W_MIN).canonical_payload)
+    b = json.loads(implementation_digest(R.S_T_MAX).canonical_payload)
+    liaison = lambda p: [d["binding"] for f in p["closure"]
+                         for d in f.get("decorators", [])]
+    assert liaison(a) != liaison(b)
+    assert liaison(a) == [{"rule_id": "be.ec2.rho_w_min",
+                           "function": "eurostruct_engine.ndp.rules_be_ec2._rho_w_min"}]
 
 
 def test_la_liaison_rule_id_vers_fonction_est_enregistree() -> None:
@@ -758,7 +855,7 @@ def test_la_liaison_rule_id_vers_fonction_est_enregistree() -> None:
     (deco,) = decos
     assert deco["decorator"] == "eurostruct_engine.ndp.rules.implementation"
     assert deco["arguments"] == ["be.ec2.rho_w_min"]
-    assert deco["identity_verified"] is True
+    assert deco["identity_proof"] == "esc-identity/1/fabrique"
     assert deco["binding"] == {
         "rule_id": "be.ec2.rho_w_min",
         "function": "eurostruct_engine.ndp.rules_be_ec2._rho_w_min",
@@ -1118,6 +1215,318 @@ def _marqueur_exterieur(fn):
 @_marqueur_exterieur
 def _avec_decorateur_inconnu(x):
     return x
+
+
+# ---------------------------------------------------------------------------
+# 6.2c — PURETE de la canonicalisation
+#
+# La canonicalisation est une operation PURE: lecture et serialisation
+# uniquement. Elle ne mute aucun etat et n'execute aucun code applicatif.
+#
+# Ce n'etait pas le cas: la sonde d'identite APPELAIT `implementation`, qui
+# inscrivait sa sonde dans `_IMPLEMENTATIONS`. Une restauration explicite
+# annulait l'effet sur les registres DECLARES — donc pas un effet de bord
+# ailleurs. Une empreinte decrit; elle ne doit rien faire arriver.
+# ---------------------------------------------------------------------------
+#: Modifiee par `_decorateur_a_effet_de_bord` chaque fois qu'il est APPELE.
+SENTINELLE: list[str] = []
+
+
+def _decorateur_a_effet_de_bord(rule_id):
+    SENTINELLE.append(rule_id)
+
+    def decorate(fn):
+        SENTINELLE.append(f"decore:{rule_id}")
+        return fn
+    return decorate
+
+
+@_decorateur_a_effet_de_bord("a_l_import")
+def _fonction_a_decorateur_observable(x):
+    return x
+
+
+def _etat_mutable_des_modules() -> dict:
+    """Instantane de tout l'etat mutable de portee module qui nous concerne."""
+    from eurostruct_engine.ndp import canonical as _c
+    from eurostruct_engine.ndp import rules as _r
+
+    instantane: dict = {}
+    for module in (_c, _r):
+        for nom, valeur in vars(module).items():
+            if isinstance(valeur, (dict, list, set)) and not nom.startswith("__"):
+                instantane[f"{module.__name__}.{nom}"] = (
+                    sorted(map(str, valeur)) if isinstance(valeur, set)
+                    else str(valeur)
+                )
+    return instantane
+
+
+def _toutes_les_empreintes() -> dict[str, tuple[str, str]]:
+    return {
+        r.rule_id: (normative_spec_digest(r).digest, implementation_digest(r).digest)
+        for r in all_rules()
+    }
+
+
+def test_calculer_les_empreintes_ne_modifie_aucun_registre() -> None:
+    """Purete 1/7 — les registres de liaison sont intacts apres calcul."""
+    from eurostruct_engine.ndp.rules import _IMPLEMENTATIONS, _RULES
+
+    avant_i, avant_r = dict(_IMPLEMENTATIONS), dict(_RULES)
+    empreintes = _toutes_les_empreintes()
+    assert len(empreintes) == 9, "les neuf regles declarees"
+    for kind in RuleKind:
+        evaluation_kernel_digest(kind)
+
+    assert _IMPLEMENTATIONS == avant_i
+    assert _RULES == avant_r
+    assert not [k for k in _IMPLEMENTATIONS if "sonde" in k]
+
+
+def test_calculer_plusieurs_fois_ne_modifie_aucun_etat_mutable() -> None:
+    """Purete 2/7 — aucun etat mutable de module ne bouge, sur trois passes.
+
+    Porte sur TOUT dict, list ou set de portee module dans `canonical` et
+    `rules`, et pas seulement sur ceux qu'on pense concernes: `_IN_PROGRESS`
+    etait un ensemble global mute pendant le calcul et restaure par un
+    `finally` — nul en net, donc invisible a un test qui ne regarde qu'avant
+    et apres. Il est desormais passe en parametre.
+    """
+    avant = _etat_mutable_des_modules()
+    for _ in range(3):
+        _toutes_les_empreintes()
+    assert _etat_mutable_des_modules() == avant
+
+
+def test_l_ordre_de_calcul_ne_change_ni_les_payloads_ni_les_digests() -> None:
+    """Purete 3/7 — aucun cache ni accumulateur ne fait dependre A de B."""
+    regles = list(all_rules())
+
+    croissant = {
+        r.rule_id: (normative_spec_digest(r).canonical_payload,
+                    implementation_digest(r).canonical_payload)
+        for r in regles
+    }
+    decroissant = {
+        r.rule_id: (normative_spec_digest(r).canonical_payload,
+                    implementation_digest(r).canonical_payload)
+        for r in reversed(regles)
+    }
+    assert croissant == decroissant
+
+
+def test_un_decorateur_a_effet_de_bord_est_refuse_sans_etre_execute() -> None:
+    """Purete 4/7 — la sentinelle ne bouge pas, parce que rien n'est appele.
+
+    Le decorateur s'execute une fois a l'import, comme tout decorateur Python;
+    c'est la valeur APRES import qui sert de reference. Calculer l'empreinte
+    ne doit pas l'incrementer d'un cran.
+    """
+    assert SENTINELLE == ["a_l_import", "decore:a_l_import"], (
+        "temoin: le decorateur a bien tourne une fois, a l'import"
+    )
+    avant = list(SENTINELLE)
+
+    with pytest.raises(UnresolvableDependency, match="inconnu"):
+        C._closure(_fonction_a_decorateur_observable, [], set())
+
+    assert SENTINELLE == avant, (
+        "le canonicaliseur a EXECUTE le decorateur au lieu de le refuser"
+    )
+
+
+def test_aucun_decorateur_n_est_execute_pendant_le_calcul_des_empreintes(
+    monkeypatch,
+) -> None:
+    """Purete 4/7 bis — y compris le decorateur CONNU.
+
+    On remplace `implementation` par une variante qui respecte le contrat
+    d'identite mais consigne chacun de ses appels. Elle ne doit jamais etre
+    appelee: la preuve est desormais statique.
+    """
+    from eurostruct_engine.ndp import rules_be_ec2 as _rbe
+
+    def implementation(rule_id):
+        # Si le canonicaliseur APPELLE ce decorateur, ceci remonte et le test
+        # echoue bruyamment. Consigner les appels dans une liste aurait
+        # demande une globale mutable, que la fermeture refuse par ailleurs.
+        #
+        # La preuve statique accepte cette forme: une fonction dont la seule
+        # voie de sortie leve ne rend jamais de substitut, donc « elle rend
+        # exactement ce qu'elle a recu » y est vrai par vacuite.
+        raise RuleImplementationMissing(
+            f"le canonicaliseur a EXECUTE le decorateur pour {rule_id}"
+        )
+
+    implementation.__module__ = "eurostruct_engine.ndp.rules"
+    monkeypatch.setattr(_rbe, "implementation", implementation)
+
+    for regle in all_rules():
+        implementation_digest(regle)          # ne doit rien lever
+
+
+def test_les_empreintes_sont_identiques_dans_un_processus_neuf() -> None:
+    """Purete 6/7 — aucun etat accumule dans CE processus ne les influence.
+
+    Distinct du test PYTHONHASHSEED, qui compare des processus neufs entre eux:
+    ici on compare le processus courant — qui a deja calcule des centaines
+    d'empreintes et monkeypatche des modules — a un processus vierge.
+    """
+    import json
+    import os
+    import subprocess
+    import sys
+    import textwrap
+
+    ici = _toutes_les_empreintes()
+
+    programme = textwrap.dedent(
+        """
+        import json
+        from eurostruct_engine.ndp import rules_be_ec2  # noqa: F401
+        from eurostruct_engine.ndp.rules import all_rules
+        from eurostruct_engine.ndp.canonical import (
+            implementation_digest, normative_spec_digest,
+        )
+        print(json.dumps({
+            r.rule_id: [normative_spec_digest(r).digest,
+                        implementation_digest(r).digest]
+            for r in all_rules()
+        }))
+        """
+    )
+    r = subprocess.run(
+        [sys.executable, "-c", programme],
+        capture_output=True, text=True, check=True,
+        env=dict(os.environ, PYTHONHASHSEED="7"),
+    )
+    ailleurs = {k: tuple(v) for k, v in json.loads(r.stdout).items()}
+    assert ici == ailleurs
+
+
+def test_le_canonicaliseur_ne_mute_aucun_etat_de_portee_module() -> None:
+    """Purete 2/7 bis — prouve sur le SOURCE, pas par observation.
+
+    Un instantane pris avant et apres le calcul ne voit pas une mutation
+    transitoire: `_IN_PROGRESS` etait un ensemble global sur lequel on faisait
+    `.add()` puis `.discard()` dans un `finally`. Nul en net, donc invisible —
+    et pourtant la canonicalisation n'etait pas pure, ni reentrante.
+
+    Ce test lit le source du module et refuse toute mutation d'un conteneur de
+    portee module: affectation par indice, `del`, `+=`, ou appel d'une methode
+    mutante. C'est la forme verifiable de la phrase « lecture et serialisation
+    uniquement ».
+    """
+    import ast as _ast
+    import inspect as _inspect
+
+    MUTANTES = {
+        "add", "append", "extend", "insert", "remove", "pop", "clear",
+        "update", "discard", "setdefault", "popitem", "sort", "reverse",
+    }
+
+    arbre = _ast.parse(_inspect.getsource(C))
+
+    conteneurs: set[str] = set()
+    for noeud in arbre.body:
+        if isinstance(noeud, (_ast.Assign, _ast.AnnAssign)):
+            cibles = (noeud.targets if isinstance(noeud, _ast.Assign)
+                      else [noeud.target])
+            valeur = noeud.value
+            mutable = isinstance(valeur, (_ast.Dict, _ast.List, _ast.Set)) or (
+                isinstance(valeur, _ast.Call)
+                and isinstance(valeur.func, _ast.Name)
+                and valeur.func.id in ("dict", "list", "set")
+            )
+            if mutable:
+                conteneurs |= {c.id for c in cibles if isinstance(c, _ast.Name)}
+
+    # Temoin: si ce module n'a plus AUCUN conteneur mutable de portee module,
+    # le test ne verifie plus rien et doit le dire.
+    assert conteneurs, (
+        "aucun conteneur mutable de portee module: verifier que ce test a "
+        "encore un objet, plutot que de le croire vert"
+    )
+
+    fautes: list[str] = []
+    for noeud in _ast.walk(arbre):
+        if isinstance(noeud, _ast.Call) and isinstance(noeud.func, _ast.Attribute):
+            base = noeud.func.value
+            if (isinstance(base, _ast.Name) and base.id in conteneurs
+                    and noeud.func.attr in MUTANTES):
+                fautes.append(f"ligne {noeud.lineno}: {base.id}.{noeud.func.attr}()")
+        elif isinstance(noeud, (_ast.Assign, _ast.AugAssign, _ast.Delete)):
+            cibles = (noeud.targets if isinstance(noeud, _ast.Assign)
+                      else [noeud.target] if isinstance(noeud, _ast.AugAssign)
+                      else noeud.targets)
+            for c in cibles:
+                if isinstance(c, _ast.Subscript) and isinstance(c.value, _ast.Name):
+                    if c.value.id in conteneurs:
+                        fautes.append(f"ligne {noeud.lineno}: {c.value.id}[...]")
+
+    assert fautes == [], (
+        "la canonicalisation mute un etat de portee module: " + "; ".join(fautes)
+    )
+
+
+def test_les_listes_tenues_a_la_main_sont_controlees() -> None:
+    """Purete 7/7 — ni entree morte, ni usage reel non declare.
+
+    Les deux listes sont des DECISIONS humaines, pas des proprietes deduites.
+    Ce test les tient a leur usage reel dans les deux sens.
+    """
+    import json
+
+    from eurostruct_engine.ndp import rules as _r
+    from eurostruct_engine.ndp.canonical import (
+        _BINDING_REGISTRIES,
+        _KNOWN_IDENTITY_DECORATORS,
+        _preuve_identite_statique,
+    )
+
+    # --- registres de liaison ---------------------------------------------
+    declares = {f"eurostruct_engine.ndp.rules.{n}" for n in _BINDING_REGISTRIES}
+    for nom in _BINDING_REGISTRIES:
+        assert isinstance(getattr(_r, nom, None), dict), (
+            f"{nom} declare comme registre mais absent ou non-dict"
+        )
+
+    utilises: set[str] = set()
+    for kind in RuleKind:
+        payload = json.loads(evaluation_kernel_digest(kind).canonical_payload)
+        utilises |= {f["binding_registry"] for f in payload["closure"]
+                     if "binding_registry" in f}
+    for regle in all_rules():
+        payload = json.loads(implementation_digest(regle).canonical_payload)
+        utilises |= {f["binding_registry"] for f in payload["closure"]
+                     if "binding_registry" in f}
+        for f in payload["closure"]:
+            for d in f.get("decorators", []):
+                utilises |= {g["binding_registry"] for g in d["closure"]
+                             if "binding_registry" in g}
+    assert declares == utilises, (
+        f"declares={sorted(declares)} utilises={sorted(utilises)}"
+    )
+
+    # --- decorateurs a identite -------------------------------------------
+    for nom in _KNOWN_IDENTITY_DECORATORS:
+        obj = getattr(_r, nom, None)
+        assert obj is not None, f"{nom} declare mais introuvable dans rules"
+        # Declare veut dire PROUVABLE: une entree dont la preuve echoue rendrait
+        # toute regle qui l'emploie incalculable, sans que rien ne l'annonce.
+        assert _preuve_identite_statique(obj).startswith("esc-identity/")
+
+    employes: set[str] = set()
+    for regle in all_rules():
+        payload = json.loads(implementation_digest(regle).canonical_payload)
+        for f in payload["closure"]:
+            for d in f.get("decorators", []):
+                if "identity_proof" in d:
+                    employes.add(d["decorator"].rsplit(".", 1)[-1])
+    assert employes == set(_KNOWN_IDENTITY_DECORATORS), (
+        f"declares={sorted(_KNOWN_IDENTITY_DECORATORS)} employes={sorted(employes)}"
+    )
 
 
 # ---------------------------------------------------------------------------

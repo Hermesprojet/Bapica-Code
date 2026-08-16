@@ -1,7 +1,8 @@
-# Jalon 6.2b — Correctif des empreintes
+# Jalon 6.2b / 6.2c — Correctif des empreintes
 
-**Statut : correctif du jalon 6.2, en attente de contrôle.** Ne remet pas en
-cause l'architecture des trois empreintes ; ferme six angles morts.
+**Statut : 6.2b contrôlé, réserve bloquante levée par 6.2c.** Ne remet pas en
+cause l'architecture des trois empreintes ; ferme six angles morts (6.2b) puis
+la pureté de la canonicalisation (6.2c, §9).
 
 Le fil conducteur de ce correctif : **chaque durcissement demandé a fait
 apparaître un défaut réel du code de 6.2**, la plupart silencieux. C'est la
@@ -388,11 +389,8 @@ mutations ont été injectées et **toutes ont été rattrapées** :
    interne à Pint qui ne changerait pas son numéro de version ne serait pas vue.
    C'est un choix, pas un oubli — l'alternative serait d'empreindre Pint entier.
 
-4. **La sonde d'identité s'exécute au calcul de l'empreinte.** Elle appelle
-   réellement le décorateur. Les registres sont restaurés, mais un décorateur
-   qui aurait un effet de bord **ailleurs** que dans les registres déclarés ne
-   serait pas annulé. La parade actuelle est la liste `_KNOWN_IDENTITY_DECORATORS`,
-   qui n'en contient qu'un.
+4. ~~**La sonde d'identité s'exécute au calcul de l'empreinte.**~~ **Levée par
+   6.2c** — la sonde est supprimée, la preuve est statique. Voir §9.
 
 5. **`_BINDING_REGISTRIES` et `_KNOWN_IDENTITY_DECORATORS` sont des listes
    tenues à la main.** Elles sont courtes, commentées et verrouillées par les
@@ -405,3 +403,133 @@ mutations ont été injectées et **toutes ont été rattrapées** :
 
 7. **Non traité, hors périmètre 6.2b :** les quatre `open_normative_questions`,
    la confirmation visuelle de `w_max`, et la règle belge ×1,25 pour les dalles.
+
+
+---
+
+# 9. Jalon 6.2c — pureté de la canonicalisation
+
+**Réserve bloquante levée.** Le calcul d'une empreinte n'exécute plus aucun
+décorateur et ne produit plus aucun effet de bord.
+
+## 9.1 Stratégie retenue : preuve statique conservatrice (approche 1)
+
+`_preuve_identite_statique(deco)` établit sur le **seul AST**, sans jamais
+appeler le décorateur, qu'il rend exactement la fonction reçue. Deux formes
+sont reconnues :
+
+| forme | écriture | jeton au payload |
+|---|---|---|
+| `direct` | `def deco(fn): …; return fn` | `esc-identity/1/direct` |
+| `fabrique` | `def deco(arg): def interne(fn): …; return fn; return interne` | `esc-identity/1/fabrique` |
+
+`implementation` est une fabrique. Trois conditions, **toutes nécessaires**, sur
+la fonction qui doit rendre l'identité :
+
+1. **aucune voie de retour ne rend autre chose** — un seul `return emballage`
+   ruine la propriété ;
+2. **le nom n'est jamais réaffecté** — sinon `fn = enveloppe(fn)` puis
+   `return fn` satisfait la condition 1 en rendant un autre objet ;
+3. **toute voie de sortie termine** par ce `return` ou par un `raise` — une
+   chute en fin de corps rendrait `None`.
+
+Pour la fabrique, la condition s'applique **deux fois** : l'extérieur doit
+rendre exactement sa fonction interne, et l'interne exactement son paramètre.
+Le paramètre doit être unique et sans valeur par défaut : à plusieurs
+paramètres, la preuve devrait déterminer lequel porte la fonction, ce qu'elle
+ne sait pas faire.
+
+**Toute autre écriture est refusée, y compris si elle serait correcte.** Une
+preuve conservatrice qui refuse trop est un obstacle visible ; une preuve trop
+permissive est une fausse garantie.
+
+La preuve passe **avant** la résolution de la fermeture. Résoudre d'abord
+faisait refuser un décorateur enveloppant pour son appel indirect `fn(...)` —
+un refus juste, mais qui masquait la vraie raison et aurait laissé passer une
+rupture d'identité sans appel indirect.
+
+## 9.2 Suppression de la sonde exécutée
+
+`_verifie_identite` est **supprimée du module**, pas seulement de son chemin
+d'appel — un test le vérifie (`not hasattr(C, "_verifie_identite")`).
+
+Avec elle disparaissent la restauration des registres et sa limite : un effet de
+bord ailleurs que dans les registres déclarés n'aurait pas été annulé.
+
+Le traitement des décorateurs est en outre **unifié** : tout décorateur voit
+désormais sa fermeture entièrement résolue — AST et dépendances au payload —
+et le décorateur déclaré à identité y ajoute seulement sa preuve, ses arguments
+et sa liaison. Conséquence directe : **toute modification du décorateur change
+`implementation_digest`**, y compris une modification qui respecterait le
+contrat d'identité mais changerait son comportement (par exemple ne plus écrire
+dans le registre).
+
+Un **second état** a été retiré au passage : `_IN_PROGRESS`, la garde de cycle
+des règles internes, était un ensemble de portée module sur lequel on faisait
+`.add()` puis `.discard()` dans un `finally`. Nul en net, donc invisible à un
+instantané pris avant et après — et pourtant ni pur, ni réentrant. Il est passé
+en paramètre.
+
+## 9.3 Tests de pureté ajoutés
+
+| # | exigence | test |
+|---|---|---|
+| 1 | calculer les neuf empreintes ne modifie aucun registre | `test_calculer_les_empreintes_ne_modifie_aucun_registre` |
+| 2 | plusieurs calculs ne modifient aucun état mutable | `test_calculer_plusieurs_fois_ne_modifie_aucun_etat_mutable` (instantané de **tout** dict/list/set de portée module de `canonical` et `rules`) |
+| 2 bis | *aucune mutation, même transitoire* | `test_le_canonicaliseur_ne_mute_aucun_etat_de_portee_module` — relit le **source** du module et refuse affectation par indice, `del`, `+=` ou méthode mutante sur un conteneur de portée module |
+| 3 | l'ordre de calcul ne change ni payloads ni digests | `test_l_ordre_de_calcul_ne_change_ni_les_payloads_ni_les_digests` |
+| 4 | une sentinelle modifiée par un décorateur de test reste inchangée | `test_un_decorateur_a_effet_de_bord_est_refuse_sans_etre_execute` |
+| 4 bis | le décorateur **connu** n'est pas exécuté non plus | `test_aucun_decorateur_n_est_execute_pendant_le_calcul_des_empreintes` — variante qui **lève** si on l'appelle |
+| 5 | un décorateur connu hors contrat est refusé | `test_un_decorateur_connu_hors_contrat_est_refuse`, plus cinq variantes paramétrées (`enveloppe`, `reaffectation`, `chute`, `fabrique_infidele`, `deux_params`) |
+| 6 | digests identiques dans un processus neuf | `test_les_empreintes_sont_identiques_dans_un_processus_neuf` — compare le processus courant, qui a déjà calculé des centaines d'empreintes et monkeypatché des modules, à un processus vierge |
+| 7 | `_BINDING_REGISTRIES` et `_KNOWN_IDENTITY_DECORATORS` contrôlées | `test_les_listes_tenues_a_la_main_sont_controlees` — ni entrée morte, ni usage réel non déclaré, dans les deux sens |
+
+Le test 2 bis mérite d'être signalé : c'est celui qui aurait attrapé
+`_IN_PROGRESS`. Un test d'observation avant/après ne le pouvait pas.
+
+## 9.4 Vérification
+
+```
+$ ./run_tests.sh --require-db
+ moteur           VERT   collectes 830 | executes 830 | reussis 830 | ignores 0 | echoues 0
+ importeur        VERT   collectes  88 | executes  88 | reussis  88 | ignores 0 | echoues 0
+ garanties SQL    VERT   4 groupe(s) de garanties verifie(s)
+ VERDICT: COMPLET — les trois surfaces ont tourne, toutes vertes.
+```
+
+`test_canonical_digests.py` : 89 → **103 tests**.
+
+Trois mutations injectées, **toutes rattrapées** :
+
+| mutation | tests qui tombent |
+|---|---|
+| le canonicaliseur rappelle le décorateur | 1 |
+| `_IN_PROGRESS` redevient un état de module muté puis restauré | 1 (le test structurel — l'observationnel ne le voit pas) |
+| la preuve d'identité accepte tout | 9 |
+
+## 9.5 Limites restantes après 6.2c
+
+1. **Aucune confirmation n'existe encore** — jalon 6.3. Calculer une empreinte
+   ne valide rien.
+
+2. **`evidence_digest` n'est branché sur rien** : implémenté et testé, mais
+   aucune règle ne porte de preuve (§5).
+
+3. **La preuve d'identité est conservatrice.** Écrire `implementation`
+   autrement — avec un `try/finally`, un `match`, ou deux décorateurs internes —
+   serait refusé même si correct. C'est le compromis assumé : le refus est
+   visible et se corrige, une preuve permissive ne se voit pas.
+
+4. **La frontière externe reste une frontière.** `math`, `builtins` et `pint`
+   entrent par leur numéro de version, pas par leur contenu.
+
+5. **`_BINDING_REGISTRIES` et `_KNOWN_IDENTITY_DECORATORS` restent des listes
+   tenues à la main**, désormais verrouillées dans les deux sens (§9.3, test 7),
+   mais ce sont toujours des décisions humaines.
+
+6. **L'exemption d'appel indirect est reconnue syntaxiquement** :
+   `nom = REGISTRE[...]`. `REGISTRE.get(...)` serait refusé.
+
+7. **La pureté est prouvée sur `canonical.py` seul.** Le test structurel lit ce
+   module ; il ne parcourt pas `rules.py`. C'est cohérent — seul le
+   canonicaliseur est tenu d'être pur — mais cela reste une portée à connaître.

@@ -23,6 +23,30 @@ dépendances n'est pas entièrement résolue. Une fermeture incomplète donnerai
 une empreinte qui *paraît* couvrir le code sans le couvrir, ce qui est pire que
 pas d'empreinte du tout : elle inspirerait une confiance qu'elle ne mérite pas.
 
+La canonicalisation est une opération **pure**
+-----------------------------------------------
+**Lecture et sérialisation, rien d'autre.** Calculer une empreinte :
+
+- **n'exécute aucun code applicatif** — ni règle, ni décorateur, ni fonction du
+  noyau. Tout ce qui est établi sur ce code l'est par analyse de son AST ;
+- **ne mute aucun état** — ni les registres de liaison, ni un accumulateur de
+  portée module. Les gardes de récursion (``seen``, ``en_cours``) sont passées
+  en paramètres ;
+- **ne dépend pas de l'ordre** dans lequel les règles sont traitées, ni de ce
+  qui a été calculé avant dans le processus.
+
+Une empreinte *décrit* ; elle ne doit rien faire arriver. Ce n'était pas le cas
+avant le jalon 6.2c : la preuve d'identité du décorateur ``implementation``
+l'**appelait** réellement sur une fonction sonde, ce qui inscrivait cette sonde
+dans ``_IMPLEMENTATIONS``. Une restauration explicite annulait l'effet sur les
+registres *déclarés* — donc pas un effet de bord ailleurs. Cette preuve est
+désormais statique (voir :func:`_preuve_identite_statique`).
+
+Les tests de pureté sont dans ``test_canonical_digests.py``, section 6.2c ; l'un
+d'eux relit le source de ce module et **refuse toute mutation d'un conteneur de
+portée module**, parce qu'une mutation restaurée par un ``finally`` est nulle en
+net et donc invisible à un instantané pris avant et après.
+
 Le payload est conservé, pas seulement haché
 ---------------------------------------------
 Un hash seul ne dit pas, dix ans plus tard, ce qui a été signé. Chaque
@@ -256,7 +280,9 @@ def digest_of(payload: Any) -> Digest:
 # ---------------------------------------------------------------------------
 # 1. Empreinte de spécification normative
 # ---------------------------------------------------------------------------
-def _spec_payload(rule: Any, seen: dict[str, Digest]) -> dict[str, Any]:
+def _spec_payload(
+    rule: Any, seen: dict[str, Digest], en_cours: frozenset[str] | set[str],
+) -> dict[str, Any]:
     """Ce que le pays prescrit. Sans description, sans notes, sans citation.
 
     Exclus délibérément :
@@ -319,7 +345,7 @@ def _spec_payload(rule: Any, seen: dict[str, Digest]) -> dict[str, Any]:
     if isinstance(rule, ConditionalRule):
         # D5: les DIGESTS EXACTS des dépendances, jamais leurs seuls rule_id.
         # Sans cela, modifier alpha_cw_linear laisserait alpha_cw confirmée.
-        payload["selector"] = _child_spec_digest(rule.selector_rule_id, seen)
+        payload["selector"] = _child_spec_digest(rule.selector_rule_id, seen, en_cours)
         payload["branches"] = [
             {
                 "lower": b.lower,
@@ -328,7 +354,7 @@ def _spec_payload(rule: Any, seen: dict[str, Digest]) -> dict[str, Any]:
                 "upper_inclusive": b.upper_inclusive,
                 "value_scalar": b.value_scalar,
                 "value_rule": (
-                    _child_spec_digest(b.value_rule_id, seen)
+                    _child_spec_digest(b.value_rule_id, seen, en_cours)
                     if b.value_rule_id else None
                 ),
             }
@@ -343,31 +369,34 @@ def _spec_payload(rule: Any, seen: dict[str, Digest]) -> dict[str, Any]:
     return payload
 
 
-def _child_spec_digest(rule_id: str, seen: dict[str, Digest]) -> Digest:
+def _child_spec_digest(
+    rule_id: str, seen: dict[str, Digest], en_cours: set[str]
+) -> Digest:
+    """Empreinte de spécification d'une règle interne, avec garde de cycle.
+
+    ``en_cours`` est passé en PARAMÈTRE et non porté par le module. Un ensemble
+    global aurait été muté pendant le calcul — restauré par un ``finally``,
+    donc nul en net, mais la canonicalisation doit être pure et pas seulement
+    pure en apparence. Un état global n'est en outre pas réentrant : deux
+    calculs concurrents se seraient marchés dessus.
+    """
     from .rules import get_rule
 
     if rule_id in seen:
         return seen[rule_id]
-    if rule_id in _IN_PROGRESS:
+    if rule_id in en_cours:
         raise UnresolvableDependency(
             f"cycle de dépendances de règles sur '{rule_id}'. Une règle ne "
             "peut pas dépendre d'elle-même, directement ou non."
         )
-    _IN_PROGRESS.add(rule_id)
-    try:
-        d = digest_of(_spec_payload(get_rule(rule_id), seen))
-    finally:
-        _IN_PROGRESS.discard(rule_id)
+    d = digest_of(_spec_payload(get_rule(rule_id), seen, en_cours | {rule_id}))
     seen[rule_id] = d
     return d
 
 
-_IN_PROGRESS: set[str] = set()
-
-
 def normative_spec_digest(rule: Any) -> Digest:
     """*Quelle règle* — sans une ligne de code, sans une page de preuve."""
-    return digest_of(_spec_payload(rule, {}))
+    return digest_of(_spec_payload(rule, {}, frozenset()))
 
 
 # ---------------------------------------------------------------------------
@@ -716,53 +745,53 @@ def _closure(
             )
         obj = fn.__globals__.get(nom)
 
-        if nom in _KNOWN_IDENTITY_DECORATORS and obj is not None:
-            # Traitement particulier UNIQUEMENT pour les decorateurs dont on a
-            # verifie qu'ils rendent la fonction inchangee. « son AST changerait
-            # s'il enveloppait » ne suffisait pas: son comportement peut aussi
-            # changer par une constante globale ou un registre.
+        # Un decorateur doit etre une fonction DE NOTRE PAQUET. Sinon: refus.
+        # Aucun traitement superficiel n'est applique par defaut, meme a un
+        # decorateur d'identite exterieur parfaitement inoffensif — la
+        # fermeture ne le sait pas, et « inoffensif » ne se suppose pas.
+        if (not isinstance(obj, FunctionType)
+                or (obj.__module__ or "").split(".")[0] != _OUR_PACKAGE):
+            raise UnresolvableDependency(
+                f"{key}: decorateur '{nom}' inconnu. Un decorateur doit etre "
+                "une fonction de notre paquet, dont la fermeture transitive "
+                "est entierement resolue. Aucun traitement superficiel n'est "
+                "applique par defaut, et le canonicaliseur ne l'EXECUTE jamais "
+                "pour en decider."
+            )
+
+        entree: dict[str, Any] = {
+            "decorator": f"{obj.__module__}.{obj.__qualname__}",
+        }
+
+        if nom in _KNOWN_IDENTITY_DECORATORS:
+            # Preuve STATIQUE, sur l'AST, sans appeler le decorateur. La sonde
+            # qui l'executait est supprimee: calculer une empreinte ne doit
+            # produire aucun effet de bord ni executer de code applicatif.
             #
-            # On enregistre donc son identite, ses ARGUMENTS, et la LIAISON
-            # canonique rule_id -> fonction qualifiee. Le mecanisme qui resout
-            # ensuite cette liaison est dans le noyau (voir _KERNEL_BY_TYPE).
-            if not _verifie_identite(obj):
-                raise UnresolvableDependency(
-                    f"{key}: le decorateur '{nom}' figure parmi ceux dont "
-                    "l'identite est supposee verifiee, mais la sonde montre "
-                    "qu'il ne rend PAS la fonction recue. Le traitement par "
-                    "liaison serait alors faux: ce qui s'execute n'est pas ce "
-                    "dont on calcule l'empreinte. Retirez-le de "
-                    "_KNOWN_IDENTITY_DECORATORS pour que sa fermeture soit "
-                    "resolue entierement."
-                )
+            # La preuve passe AVANT la fermeture: elle est la precondition du
+            # traitement particulier. Resoudre d'abord la fermeture faisait
+            # refuser un decorateur enveloppant pour son appel indirect
+            # `fn(...)` — un refus juste, mais qui masquait la vraie raison et
+            # aurait laisse passer une rupture d'identite sans appel indirect.
+            entree["identity_proof"] = _preuve_identite_statique(obj)
             args = [
                 ast.literal_eval(a) for a in getattr(deco, "args", [])
                 if isinstance(a, ast.Constant)
             ]
-            decorateurs.append({
-                "decorator": f"{obj.__module__}.{obj.__qualname__}",
-                "arguments": args,
-                "identity_verified": True,   # sinon le refus ci-dessus
-                "binding": {"rule_id": args[0] if args else None,
-                            "function": key},
-            })
-            continue
+            entree["arguments"] = args
+            entree["binding"] = {"rule_id": args[0] if args else None,
+                                 "function": key}
 
-        # Tout autre decorateur: fermeture ENTIEREMENT resolue, ou refus.
-        if isinstance(obj, FunctionType) and (obj.__module__ or "").split(".")[0] == _OUR_PACKAGE:
-            sous: list[dict[str, Any]] = []
-            _closure(obj, sous, seen, autorises)
-            decorateurs.append({"decorator": f"{obj.__module__}.{obj.__qualname__}",
-                                "closure": sous})
-            continue
+        # Sa fermeture, comme celle de n'importe laquelle de nos fonctions:
+        # son AST et ses dependances entrent au payload, si bien que toute
+        # modification du decorateur change l'empreinte. Un `seen` PROPRE, pour
+        # que l'entree soit auto-suffisante et ne depende pas de ce qui a deja
+        # ete parcouru par ailleurs.
+        sous: list[dict[str, Any]] = []
+        _closure(obj, sous, set(), autorises)
+        entree["closure"] = sous
 
-        raise UnresolvableDependency(
-            f"{key}: decorateur '{nom}' inconnu. Un decorateur doit soit "
-            "figurer parmi ceux dont l'identite est verifiee "
-            f"({sorted(_KNOWN_IDENTITY_DECORATORS)}), soit voir sa fermeture "
-            "transitive entierement resolue. Aucun traitement superficiel "
-            "n'est applique par defaut."
-        )
+        decorateurs.append(entree)
 
     out.append({
         "function": key,
@@ -873,41 +902,174 @@ def _closure(
                                         "version": _external_version(racine)})
 
 
-def _verifie_identite(deco: FunctionType) -> bool:
-    """Le decorateur rend-il EXACTEMENT la fonction recue ?
+#: Version de la preuve d'identite. Elle entre au payload: durcir ou assouplir
+#: la preuve change ce qu'une empreinte atteste, donc l'empreinte elle-meme.
+IDENTITY_PROOF_VERSION = "esc-identity/1"
 
-    Verifie a l'execution, pas suppose: on lui donne une sonde et on regarde
-    si l'objet ressorti est le meme. Un decorateur qui enveloppe, memorise ou
-    substitue echoue ici — et le refus se produit alors au calcul de
-    l'empreinte, pas dans une note de bas de page.
 
-    La sonde a un EFFET DE BORD: `implementation` inscrit ce qu'on lui donne
-    dans `_IMPLEMENTATIONS`. Sans restauration, le premier appel polluait le
-    registre et tous les suivants levaient « deux implementations enregistrees
-    », que le `except` transformait en « identite non verifiee » pour toutes
-    les regles sauf la premiere. Les registres de liaison sont donc remis dans
-    leur etat exact, quoi qu'ait fait le decorateur.
+def _portee_propre(node: ast.AST) -> list[ast.AST]:
+    """Nœuds de la portée **propre** d'une fonction.
+
+    Ne descend pas dans les définitions imbriquées : leurs ``return`` sont
+    ceux d'une autre fonction et n'ont rien à dire sur celle-ci.
     """
-    from . import rules
+    trouves: list[ast.AST] = []
+    pile: list[ast.AST] = list(getattr(node, "body", []))
+    while pile:
+        n = pile.pop()
+        trouves.append(n)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda,
+                          ast.ClassDef)):
+            continue
+        pile.extend(ast.iter_child_nodes(n))
+    return trouves
 
-    registres = [
-        getattr(rules, n) for n in sorted(_BINDING_REGISTRIES)
-        if isinstance(getattr(rules, n, None), dict)
-    ]
-    avant = [dict(r) for r in registres]
 
-    def _sonde() -> None:      # pragma: no cover - jamais appelee
-        return None
+def _termine_par(corps: list[ast.stmt], nom: str) -> bool:
+    """Toute voie de sortie de *corps* rend-elle ``nom``, ou lève-t-elle ?
 
-    try:
-        rendu = deco("__sonde_identite__")(_sonde)
-    except Exception:
+    Conservateur par construction : une forme non reconnue répond ``False``,
+    donc refus. Mieux vaut refuser un décorateur écrit autrement que prouver
+    à tort qu'il rend la fonction reçue.
+    """
+    if not corps:
         return False
-    finally:
-        for registre, instantane in zip(registres, avant, strict=True):
-            registre.clear()
-            registre.update(instantane)
-    return rendu is _sonde
+    dernier = corps[-1]
+    if isinstance(dernier, ast.Return):
+        return isinstance(dernier.value, ast.Name) and dernier.value.id == nom
+    if isinstance(dernier, ast.Raise):
+        return True
+    if isinstance(dernier, ast.If):
+        return (bool(dernier.orelse)
+                and _termine_par(dernier.body, nom)
+                and _termine_par(dernier.orelse, nom))
+    return False
+
+
+def _rend_exactement(func: ast.AST, nom: str, quoi: str) -> None:
+    """Prouver statiquement que *func* rend l'objet lié à *nom*, ou lever.
+
+    Trois conditions, toutes nécessaires :
+
+    1. **aucun `return` ne rend autre chose** — un seul ``return emballage``
+       suffit à ruiner la propriété ;
+    2. **`nom` n'est jamais réaffecté** — sinon ``fn = enveloppe(fn)`` puis
+       ``return fn`` passerait la condition 1 en rendant un autre objet ;
+    3. **toute voie de sortie termine** par ce ``return`` ou par un ``raise``
+       — une chute en fin de corps rendrait ``None``.
+    """
+    portee = _portee_propre(func)
+
+    for n in portee:
+        if isinstance(n, ast.Name) and n.id == nom and isinstance(
+            n.ctx, (ast.Store, ast.Del)
+        ):
+            raise UnresolvableDependency(
+                f"{quoi}: '{nom}' est reaffecte. Rendre '{nom}' apres l'avoir "
+                "remplace n'est pas rendre ce qui a ete recu."
+            )
+
+    for n in portee:
+        if isinstance(n, ast.Return):
+            if not (isinstance(n.value, ast.Name) and n.value.id == nom):
+                raise UnresolvableDependency(
+                    f"{quoi}: une voie de retour ne rend pas '{nom}'. Le "
+                    "contrat d'identite n'est pas etabli."
+                )
+
+    if not _termine_par(getattr(func, "body", []), nom):
+        raise UnresolvableDependency(
+            f"{quoi}: les voies de sortie ne se terminent pas toutes par "
+            f"`return {nom}` ou par un `raise`. Une chute en fin de corps "
+            "rendrait None."
+        )
+
+
+def _preuve_identite_statique(deco: FunctionType) -> str:
+    """Prouver, **sans l'exécuter**, que *deco* rend la fonction qu'il reçoit.
+
+    Remplace la sonde qui appelait réellement le décorateur. Cette sonde avait
+    deux défauts, et le second est rédhibitoire pour une canonicalisation :
+
+    - elle avait un **effet de bord** — ``implementation`` inscrivait la sonde
+      dans ``_IMPLEMENTATIONS`` — que seule une restauration explicite des
+      registres déclarés annulait. Un effet de bord ailleurs n'aurait pas été
+      annulé ;
+    - calculer une empreinte **exécutait du code applicatif**. Une empreinte
+      décrit ; elle ne doit rien faire arriver.
+
+    Deux formes sont reconnues, toutes deux conservatrices :
+
+    ``direct``
+        ``def deco(fn): ...; return fn``
+
+    ``fabrique``
+        ``def deco(arg): def interne(fn): ...; return fn; return interne`` —
+        la forme d'``implementation``.
+
+    Toute autre écriture est **refusée**, y compris si elle serait correcte :
+    une preuve conservatrice qui refuse trop est un obstacle visible, une
+    preuve trop permissive est une fausse garantie.
+    """
+    quoi = f"{deco.__module__}.{deco.__qualname__}"
+    node = _function_ast(deco)
+
+    if getattr(node, "decorator_list", []):
+        raise UnresolvableDependency(
+            f"{quoi}: decorateur lui-meme decore. La preuve d'identite ne "
+            "couvre pas cette composition."
+        )
+
+    imbriquees = [
+        n for n in _portee_propre(node)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+
+    if not imbriquees:
+        # Forme directe: l'unique parametre est la fonction decoree.
+        parametres = _parametre_unique(node, quoi)
+        _rend_exactement(node, parametres, quoi)
+        return f"{IDENTITY_PROOF_VERSION}/direct"
+
+    if len(imbriquees) != 1:
+        raise UnresolvableDependency(
+            f"{quoi}: {len(imbriquees)} definitions imbriquees. La preuve "
+            "n'est etablie que pour une fabrique a un seul decorateur interne."
+        )
+
+    interne = imbriquees[0]
+    if interne.decorator_list:
+        raise UnresolvableDependency(
+            f"{quoi}: le decorateur interne '{interne.name}' est lui-meme "
+            "decore."
+        )
+
+    # La fabrique doit rendre EXACTEMENT sa fonction interne...
+    _rend_exactement(node, interne.name, f"{quoi} (fabrique)")
+    # ... et cette fonction interne doit rendre EXACTEMENT son parametre.
+    _rend_exactement(
+        interne, _parametre_unique(interne, f"{quoi}.{interne.name}"),
+        f"{quoi}.{interne.name}",
+    )
+    return f"{IDENTITY_PROOF_VERSION}/fabrique"
+
+
+def _parametre_unique(func: ast.AST, quoi: str) -> str:
+    """Le nom du paramètre qui reçoit la fonction décorée.
+
+    Exiger qu'il soit unique n'est pas cosmétique : un décorateur à plusieurs
+    paramètres pourrait rendre l'un ou l'autre, et la preuve devrait alors
+    déterminer lequel porte la fonction — ce qu'elle ne sait pas faire.
+    """
+    args = func.args  # type: ignore[attr-defined]
+    positionnels = list(args.posonlyargs) + list(args.args)
+    if (len(positionnels) != 1 or args.vararg or args.kwarg
+            or args.kwonlyargs or args.defaults):
+        raise UnresolvableDependency(
+            f"{quoi}: le contrat d'identite exige exactement un parametre "
+            "positionnel, sans valeur par defaut ni parametre variadique."
+        )
+    return positionnels[0].arg
 
 
 #: Les DEUX registres de liaison du moteur, nommes un par un. Ils resolvent
