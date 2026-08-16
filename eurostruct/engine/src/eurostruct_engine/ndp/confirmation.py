@@ -43,13 +43,20 @@ ce qu'une piste d'audit ne doit pas avoir.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field, fields
 from datetime import date, datetime
 from enum import Enum
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
 from ..exceptions import EurostructEngineError
-from .canonical import Digest, EvidenceItem, digest_of
+from .canonical import (
+    CANONICALIZATION_VERSION,
+    Digest,
+    EvidenceItem,
+    digest_of,
+    evidence_digest,
+)
 
 __all__ = [
     "FICTIONAL_PREFIX",
@@ -60,16 +67,21 @@ __all__ = [
     "ConfirmationProvider",
     "ConfirmationStatus",
     "ConfirmationSubjectKey",
+    "ExcludedAttestation",
+    "ExclusionCause",
     "InMemoryConfirmationProvider",
     "NormativeContext",
+    "NormativeReviewPackage",
     "NormativeRuleConfirmation",
     "NormativeRuleConfirmationRevocation",
     "NormativeStack",
     "NormativeStackComponent",
+    "RequiredSource",
     "ReviewerAttestationKey",
     "assert_provider_is_usable_in_production",
     "assess_confirmations",
     "independent_regards",
+    "required_sources",
 ]
 
 
@@ -367,6 +379,201 @@ class ReviewerAttestationKey:
 
 
 # ---------------------------------------------------------------------------
+# Le dossier presente aux verificateurs
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class RequiredSource:
+    """Un document que la specification normative declare utiliser.
+
+    Extrait du payload canonique de ``normative_spec_digest``, jamais saisi a
+    la main: c'est ce qui permet de verifier qu'un dossier de revue couvre
+    reellement la pile documentaire de la regle.
+    """
+
+    document_digest: str
+    reference: str
+    role: str          # base | corrigendum | amendement | annexe | autorite
+
+
+def required_sources(normative_spec: Digest) -> tuple[RequiredSource, ...]:
+    """Les documents que la specification declare, lus dans son payload.
+
+    C'est possible parce que ``normative_spec_digest`` conserve son payload
+    canonique et qu'il porte, pour chaque couche et pour l'autorite normative,
+    la reference **et** l'empreinte du document. Aucune verification n'est donc
+    reportee a un jalon ulterieur : le lien entre sources normatives et preuves
+    est verifiable des maintenant, et il l'est.
+
+    Refuse une version de canonicalisation inconnue plutot que de lire un
+    payload dont la forme aurait change : deduire une couverture documentaire
+    d'une structure qu'on interprete mal est pire que ne rien deduire.
+    """
+    payload = json.loads(normative_spec.canonical_payload)
+    if payload.get("canonicalization_version") != CANONICALIZATION_VERSION:
+        raise ConfirmationDomainError(
+            f"payload de specification en version "
+            f"{payload.get('canonicalization_version')!r}, attendu "
+            f"{CANONICALIZATION_VERSION!r}. La couverture documentaire se lit "
+            "dans une structure versionnee: l'interpreter au juge serait "
+            "inventer une garantie."
+        )
+
+    sources: list[RequiredSource] = []
+    vus: set[str] = set()
+    for s in payload.get("expression_sources", ()):
+        cle = f"{s['document_digest']}|{s['layer']}"
+        if cle not in vus:
+            vus.add(cle)
+            sources.append(RequiredSource(
+                document_digest=s["document_digest"],
+                reference=s["reference"], role=s["layer"],
+            ))
+    autorite = payload.get("normative_authority") or {}
+    if autorite.get("document_digest"):
+        cle = f"{autorite['document_digest']}|autorite"
+        if cle not in vus:
+            sources.append(RequiredSource(
+                document_digest=autorite["document_digest"],
+                reference=autorite["reference"], role="autorite",
+            ))
+    return tuple(sources)
+
+
+@dataclass(frozen=True, slots=True)
+class NormativeReviewPackage:
+    """**Ce qui est presente aux verificateurs**, avant toute signature.
+
+    L'objet que 6.3a2 ajoute, et la raison de l'ajouter : comparer les preuves
+    seulement *entre* attestations demontre qu'elles sont d'accord, pas
+    qu'elles portent sur le bon dossier. Deux verificateurs pouvaient confirmer
+    ensemble le meme dossier **incomplet**.
+
+    Les deux verificateurs recoivent **le meme paquet**. Leur confirmation en
+    reference le ``subject_key`` et n'ajoute que ce qui leur est propre :
+    identite, horodatage, autorisation, declaration personnelle, cle
+    d'idempotence.
+
+    ``evidence`` et ``subject_key`` sont ``init=False`` : **recalcules depuis
+    le contenu**. Un appelant ne peut pas fournir une cle qui ne correspond pas
+    a ce qu'elle pretend resumer, et c'est tout l'interet — une cle falsifiable
+    ne prouverait rien de ce qui a ete presente.
+    """
+
+    package_version: str
+    country_code: str
+    standard_family: str
+    part: str
+    rule_id: str
+    stack: NormativeStack
+    normative_spec: Digest
+    implementation: Digest
+    evidence_items: tuple[EvidenceItem, ...]
+
+    evidence: Digest = field(init=False)
+    subject_key: ConfirmationSubjectKey = field(init=False)
+
+    PACKAGE_VERSION: ClassVar[str] = "esc-review-package/1"
+
+    def __post_init__(self) -> None:
+        _exige_texte(self.package_version, "package_version")
+        for nom in ("country_code", "standard_family", "part", "rule_id"):
+            _exige_texte(getattr(self, nom), nom)
+        if not isinstance(self.stack, NormativeStack):
+            raise ConfirmationDomainError(
+                "stack: un snapshot structure est requis."
+            )
+        for nom in ("normative_spec", "implementation"):
+            if not isinstance(getattr(self, nom), Digest):
+                raise ConfirmationDomainError(f"{nom}: un Digest est requis.")
+        _exige_tuple(self.evidence_items, "evidence_items")
+        if not self.evidence_items:
+            raise ConfirmationDomainError(
+                "un dossier de revue vide ne presente rien a verifier."
+            )
+
+        # --- concordance avec la pile -------------------------------------
+        for nom in ("country_code", "standard_family", "part"):
+            if getattr(self.stack, nom) != getattr(self, nom):
+                raise ConfirmationDomainError(
+                    f"{nom}: le paquet dit '{getattr(self, nom)}' et sa pile "
+                    f"'{getattr(self.stack, nom)}'. Un dossier de revue "
+                    "presente une regle DANS une pile: les deux ne peuvent pas "
+                    "designer deux referentiels."
+                )
+
+        # --- concordance avec la specification ----------------------------
+        payload = json.loads(self.normative_spec.canonical_payload)
+        if payload.get("rule_id") != self.rule_id:
+            raise ConfirmationDomainError(
+                f"le paquet annonce la regle '{self.rule_id}' et porte "
+                f"l'empreinte de '{payload.get('rule_id')}'. Presenter une "
+                "regle sous le nom d'une autre est la confusion la plus "
+                "couteuse a rattraper apres signature."
+            )
+
+        # --- couverture documentaire, dans les DEUX sens -------------------
+        exiges = required_sources(self.normative_spec)
+        attendus = {s.document_digest for s in exiges}
+        lus = {i.document_digest for i in self.evidence_items}
+
+        surnumeraires = lus - attendus
+        if surnumeraires:
+            raise ConfirmationDomainError(
+                f"le dossier cite {len(surnumeraires)} document(s) que la "
+                f"specification ne declare pas: "
+                f"{sorted(d[:16] for d in surnumeraires)}. Une preuve tiree "
+                "d'un document etranger a la pile n'atteste pas cette regle."
+            )
+
+        manquants = attendus - lus
+        if manquants:
+            details = sorted(
+                f"{s.reference} ({s.role}, {s.document_digest[:16]})"
+                for s in exiges if s.document_digest in manquants
+            )
+            raise ConfirmationDomainError(
+                "dossier de revue INCOMPLET: aucune preuve pour "
+                f"{len(manquants)} document(s) declare(s) par la "
+                f"specification — {'; '.join(details)}. C'est precisement le "
+                "defaut que ce paquet existe pour empecher: deux verificateurs "
+                "peuvent tres bien s'accorder sur un dossier auquel il manque "
+                "une couche."
+            )
+
+        object.__setattr__(self, "evidence", evidence_digest(self.evidence_items))
+        object.__setattr__(self, "subject_key", ConfirmationSubjectKey(
+            country_code=self.country_code,
+            standard_family=self.standard_family,
+            part=self.part,
+            rule_id=self.rule_id,
+            stack_digest=self.stack.digest.digest,
+            normative_spec_digest=self.normative_spec.digest,
+            implementation_digest=self.implementation.digest,
+            evidence_digest=self.evidence.digest,
+        ))
+
+    @classmethod
+    def of(
+        cls, *, country_code: str, standard_family: str, part: str,
+        rule_id: str, stack: NormativeStack, normative_spec: Digest,
+        implementation: Digest, evidence_items: tuple[EvidenceItem, ...],
+    ) -> NormativeReviewPackage:
+        """Construire avec la version de paquet courante."""
+        return cls(
+            package_version=cls.PACKAGE_VERSION,
+            country_code=country_code, standard_family=standard_family,
+            part=part, rule_id=rule_id, stack=stack,
+            normative_spec=normative_spec, implementation=implementation,
+            evidence_items=evidence_items,
+        )
+
+    @property
+    def required_sources(self) -> tuple[RequiredSource, ...]:
+        """Les documents que la specification declare — pour l'affichage."""
+        return required_sources(self.normative_spec)
+
+
+# ---------------------------------------------------------------------------
 # La confirmation
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True, slots=True)
@@ -388,7 +595,6 @@ class NormativeRuleConfirmation:
     # --- les trois empreintes, payload conservé ---------------------------
     normative_spec: Digest
     implementation: Digest
-    evidence: Digest
 
     # --- la pile attestée, structurée -------------------------------------
     stack: NormativeStack
@@ -431,6 +637,12 @@ class NormativeRuleConfirmation:
     #: nombre de regards. Voir :meth:`normative_identity`.
     idempotency_key: str
 
+    #: **Recalculée** depuis ``evidence_items``, jamais fournie. Elle l'était,
+    #: et rien n'obligeait alors les deux à concorder : une attestation pouvait
+    #: annoncer l'empreinte du bon dossier tout en portant les pages d'un
+    #: autre.
+    evidence: Digest = field(init=False)
+
     #: Audit seulement. N'ouvre aucun droit sur un projet et n'est lue par
     #: aucun contrôle.
     verifier_affiliation: str | None = None
@@ -441,7 +653,7 @@ class NormativeRuleConfirmation:
                     "authorisation_scope_at_signature", "idempotency_key"):
             _exige_texte(getattr(self, nom), nom)
 
-        for nom in ("normative_spec", "implementation", "evidence"):
+        for nom in ("normative_spec", "implementation"):
             valeur = getattr(self, nom)
             if not isinstance(valeur, Digest):
                 raise ConfirmationDomainError(
@@ -472,6 +684,45 @@ class NormativeRuleConfirmation:
                 f"'{self.stack.country_code}'. Une confirmation atteste une "
                 "pile: les deux ne peuvent pas designer deux juridictions."
             )
+
+        object.__setattr__(
+            self, "evidence", evidence_digest(self.evidence_items),
+        )
+
+    @classmethod
+    def for_package(
+        cls, package: NormativeReviewPackage, *, confirmation_id: str,
+        verifier_id: str, verifier_name: str, verified_at: datetime,
+        authorisations_at_signature: frozenset[str],
+        authorisation_scope_at_signature: str, statement: str,
+        idempotency_key: str, verifier_affiliation: str | None = None,
+    ) -> NormativeRuleConfirmation:
+        """Signer **le paquet qui a ete presente**, sans pouvoir en changer.
+
+        Le sujet vient entierement du paquet ; l'appelant n'ajoute que ce qui
+        lui est propre. C'est la voie normale : construire une confirmation
+        champ par champ reste possible, mais rien ne garantit alors qu'elle
+        porte sur ce que le verificateur a reellement vu.
+        """
+        return cls(
+            confirmation_id=confirmation_id,
+            country_code=package.country_code,
+            standard_family=package.standard_family,
+            part=package.part,
+            rule_id=package.rule_id,
+            normative_spec=package.normative_spec,
+            implementation=package.implementation,
+            stack=package.stack,
+            evidence_items=package.evidence_items,
+            verifier_id=verifier_id,
+            verifier_name=verifier_name,
+            verified_at=verified_at,
+            authorisations_at_signature=authorisations_at_signature,
+            authorisation_scope_at_signature=authorisation_scope_at_signature,
+            statement=statement,
+            idempotency_key=idempotency_key,
+            verifier_affiliation=verifier_affiliation,
+        )
 
     @property
     def confirmation_subject_key(self) -> ConfirmationSubjectKey:
@@ -587,53 +838,107 @@ class ConfirmationPolicy:
 
 
 class ConfirmationStatus(str, Enum):
-    """L'état d'une règle **relativement à un contexte**, jamais en soi.
+    """L'etat du **sujet attendu**, et de lui seul.
 
-    La nouveauté d'un document ne périme rien : une confirmation de l'édition
-    2010 reste pleinement valide pour un calcul dont la pile demandée *est*
-    celle de 2010.
+    Volontairement court. Depuis 6.3a2, l'evaluation part d'un
+    :class:`NormativeReviewPackage` connu **independamment des attestations** :
+    les facons de diverger ne sont donc plus des etats globaux mais des causes
+    d'exclusion portees par chaque attestation (voir :class:`ExclusionCause`).
+
+    Melanger les deux rendait le statut ambigu des qu'une attestation etrangere
+    trainait dans le lot: « STACK_MISMATCH » ne disait pas si le sujet attendu
+    etait confirme par ailleurs.
     """
 
-    #: Aucune confirmation pour cette règle.
-    ABSENT = "absent"
-    #: Les empreintes concordent et la politique est satisfaite.
-    VALID_FOR_CONTEXT = "valid_for_context"
-    #: Le pays prescrit autre chose — il faut rouvrir l'annexe.
-    SPEC_MISMATCH = "spec_mismatch"
-    #: La prescription n'a pas bougé, le code si.
-    IMPLEMENTATION_MISMATCH = "implementation_mismatch"
-    #: La confirmation atteste une AUTRE pile. Elle reste valide en soi, pour
-    #: les calculs qui demandent cette pile-là.
-    STACK_MISMATCH = "stack_mismatch"
-    #: Des attestations concordent sur la règle, la pile, la prescription et le
-    #: code — mais **pas sur le dossier de preuve lu**. Elles restent conservées
-    #: individuellement et ne s'additionnent pas : deux relecteurs qui n'ont pas
-    #: ouvert les mêmes pages n'ont pas exercé deux regards sur la même chose.
-    EVIDENCE_MISMATCH = "evidence_mismatch"
-    #: Toutes les confirmations concordantes ont été révoquées.
+    #: Aucune attestation ne porte sur le sujet attendu. C'est aussi ce que
+    #: rend une evaluation sans aucune confirmation: le sujet attendu est connu
+    #: quand meme, puisqu'il vient du paquet de revue.
+    UNCONFIRMED = "unconfirmed"
+    #: Des regards valides sur le sujet attendu, mais pas assez. Un premier
+    #: relecteur a signe, le second manque.
+    PARTIALLY_CONFIRMED = "partially_confirmed"
+    #: La politique est satisfaite sur le sujet attendu exact.
+    CONFIRMED = "confirmed"
+    #: Des attestations portaient exactement sur le sujet attendu, et toutes
+    #: ont ete revoquees. Distinct d'UNCONFIRMED: « personne n'a jamais signe »
+    #: et « ce qui avait ete signe a ete retire » n'appellent pas la meme
+    #: enquete.
     REVOKED = "revoked"
-    #: L'état intermédiaire: des confirmations valides, mais pas assez de
-    #: regards indépendants. Un premier relecteur a signé, le second manque.
-    INSUFFICIENT_INDEPENDENT_CONFIRMATIONS = "insufficient_independent_confirmations"
+
+
+class ExclusionCause(str, Enum):
+    """Pourquoi une attestation n'entre pas dans le decompte.
+
+    Chaque cause est **portee par l'attestation**, jamais par le resultat
+    global. Une attestation tierce divergente reste ainsi visible meme quand
+    deux attestations exactes suffisent deja: la faire disparaitre du rapport
+    parce que le compte est bon reviendrait a cacher qu'un relecteur a signe
+    autre chose que ce qu'on lui presentait.
+    """
+
+    #: Autre regle, autre pays, autre norme ou autre partie. Jamais comptee, et
+    #: ce n'est meme pas un desaccord: l'attestation parle d'autre chose.
+    OTHER_SUBJECT = "other_subject"
+    #: Autre pile. L'attestation reste pleinement valide pour les calculs qui
+    #: demandent SA pile.
+    STACK_MISMATCH = "stack_mismatch"
+    #: Le pays prescrit autre chose que ce que le paquet presente.
+    SPEC_MISMATCH = "spec_mismatch"
+    #: Meme prescription, autre code.
+    IMPLEMENTATION_MISMATCH = "implementation_mismatch"
+    #: Meme regle, meme pile, meme code — mais pas le dossier presente. C'est
+    #: la cause que 6.3a2 rend detectable: comparer les preuves entre
+    #: attestations prouvait qu'elles etaient d'accord, pas qu'elles avaient lu
+    #: le bon dossier.
+    EVIDENCE_MISMATCH = "evidence_mismatch"
+    #: Attestation exacte, mais retiree.
+    REVOKED = "revoked"
+
+
+@dataclass(frozen=True, slots=True)
+class ExcludedAttestation:
+    """Une attestation ecartee, avec son identifiant et la raison.
+
+    Presente dans TOUT resultat, y compris ``CONFIRMED``.
+    """
+
+    confirmation_id: str
+    verifier_id: str
+    cause: ExclusionCause
+    detail: str
 
 
 @dataclass(frozen=True, slots=True)
 class ConfirmationAssessment:
-    """Le résultat d'une évaluation, avec de quoi agir dessus.
+    """Le resultat d'une evaluation, avec de quoi agir dessus.
 
     Porte les ``verifier_id`` retenus, et pas seulement leur nombre : « il en
-    manque un » et « il en manque un, et voici qui a déjà signé » ne coûtent
-    pas le même temps à celui qui doit trouver le second relecteur.
+    manque un » et « il en manque un, et voici qui a deja signe » ne coutent
+    pas le meme temps a celui qui doit trouver le second relecteur.
     """
 
     status: ConfirmationStatus
+    subject: ConfirmationSubjectKey
     regards: frozenset[str]
     policy: ConfirmationPolicy
     reason: str
+    excluded: tuple[ExcludedAttestation, ...] = ()
 
     @property
     def is_confirmed(self) -> bool:
-        return self.status is ConfirmationStatus.VALID_FOR_CONTEXT
+        return self.status is ConfirmationStatus.CONFIRMED
+
+    @property
+    def has_divergent_attestations(self) -> bool:
+        """Quelqu'un a signe autre chose que ce qui lui etait presente.
+
+        Exposee separement du statut: rendre ce conflit bloquant pour le mode
+        strict est une decision du branchement, pas du domaine. Le domaine se
+        contente de la rendre impossible a manquer.
+        """
+        return any(
+            e.cause is not ExclusionCause.REVOKED for e in self.excluded
+        )
 
 
 def independent_regards(
@@ -642,16 +947,16 @@ def independent_regards(
 ) -> frozenset[str]:
     """Les ``verifier_id`` distincts dont l'attestation est **active**.
 
-    Un ensemble, pas un compte : deux lignes de la même personne s'y fondent
-    d'elles-mêmes, sans qu'aucun appelant ait à y penser.
+    Un ensemble, pas un compte : deux lignes de la meme personne s'y fondent
+    d'elles-memes, sans qu'aucun appelant ait a y penser.
 
-    **Refuse un ensemble hétérogène.** Additionner des attestations qui ne
-    portent pas sur le même ``confirmation_subject_key`` est exactement ce que
-    ce modèle doit rendre impossible : deux regards sur deux sujets différents
-    ne font pas un double contrôle. Un appelant qui veut trier par sujet doit
+    **Refuse un ensemble heterogene.** Additionner des attestations qui ne
+    portent pas sur le meme ``confirmation_subject_key`` est exactement ce que
+    ce modele doit rendre impossible : deux regards sur deux sujets differents
+    ne font pas un double controle. Un appelant qui veut trier par sujet doit
     le faire avant, et :func:`assess_confirmations` s'en charge.
 
-    Une révocation retire **l'attestation ciblée** et elle seule.
+    Une revocation retire **l'attestation ciblee** et elle seule.
     """
     revoquees = {r.confirmation_id for r in revocations}
     actives = [c for c in confirmations if c.confirmation_id not in revoquees]
@@ -667,152 +972,174 @@ def independent_regards(
     return frozenset(c.verifier_id for c in actives)
 
 
+def _cause_d_exclusion(
+    c: NormativeRuleConfirmation,
+    attendu: NormativeReviewPackage,
+    revoquees: set[str],
+) -> tuple[ExclusionCause, str] | None:
+    """Pourquoi *c* n'entre pas dans le decompte, ou ``None`` si elle y entre.
+
+    Ordre des controles, de la cause la plus large a la plus etroite:
+
+    1. **sujet etranger** — autre regle, pays, norme ou partie. Ce n'est pas un
+       desaccord, l'attestation parle d'autre chose.
+    2. **pile** — une attestation faite sur une autre edition n'a aucune raison
+       de porter les memes empreintes; annoncer un ecart de specification
+       enverrait chercher un defaut de transcription la ou il n'y a qu'un ecart
+       d'edition.
+    3. **specification** — si le pays prescrit autre chose, l'ecart de code
+       n'en est que la consequence.
+    4. **implementation** — si le code a change, le dossier porte sur une regle
+       qui n'existe plus sous cette forme.
+    5. **dossier de preuve** — le relecteur a signe autre chose que ce qui lui
+       etait presente.
+    6. **revocation** — en dernier, et c'est un changement par rapport a
+       6.3a1: la revocation y precedait la preuve, pour eviter qu'une
+       attestation retiree ne produise un EVIDENCE_MISMATCH *global*. Ce risque
+       a disparu avec le paquet attendu, puisque le statut ne depend plus que
+       des attestations EXACTES. Diagnostiquer le desaccord de sujet avant le
+       retrait dit desormais quelque chose de plus utile: pourquoi elle a
+       probablement ete retiree.
+    """
+    a = attendu.subject_key
+    k = c.confirmation_subject_key
+
+    if (k.country_code, k.standard_family, k.part, k.rule_id) != (
+        a.country_code, a.standard_family, a.part, a.rule_id
+    ):
+        return (ExclusionCause.OTHER_SUBJECT,
+                f"atteste {k.country_code}/{k.standard_family}/{k.part}/"
+                f"{k.rule_id}, attendu {a.country_code}/{a.standard_family}/"
+                f"{a.part}/{a.rule_id}.")
+
+    if k.stack_digest != a.stack_digest:
+        return (ExclusionCause.STACK_MISMATCH,
+                f"pile {k.stack_digest[:16]}, attendue {a.stack_digest[:16]}. "
+                "L'attestation reste valide pour les calculs qui demandent sa "
+                "pile: il faut une relecture pour l'edition attendue, pas une "
+                "correction de code.")
+
+    if k.normative_spec_digest != a.normative_spec_digest:
+        return (ExclusionCause.SPEC_MISMATCH,
+                f"specification {k.normative_spec_digest[:16]}, attendue "
+                f"{a.normative_spec_digest[:16]}. Il faut rouvrir l'annexe.")
+
+    if k.implementation_digest != a.implementation_digest:
+        return (ExclusionCause.IMPLEMENTATION_MISMATCH,
+                f"implementation {k.implementation_digest[:16]}, attendue "
+                f"{a.implementation_digest[:16]}. La prescription n'a pas "
+                "bouge mais le CODE qui l'execute si.")
+
+    if k.evidence_digest != a.evidence_digest:
+        return (ExclusionCause.EVIDENCE_MISMATCH,
+                f"dossier de preuve {k.evidence_digest[:16]}, attendu "
+                f"{a.evidence_digest[:16]}. Le relecteur a signe un autre "
+                "dossier que celui qui lui etait presente: son accord avec un "
+                "autre relecteur sur ce meme autre dossier ne vaut pas pour le "
+                "paquet attendu.")
+
+    if c.confirmation_id in revoquees:
+        return (ExclusionCause.REVOKED, "attestation retiree.")
+
+    return None
+
+
 def assess_confirmations(
     *,
+    expected: NormativeReviewPackage,
     confirmations: tuple[NormativeRuleConfirmation, ...],
     revocations: tuple[NormativeRuleConfirmationRevocation, ...],
-    context: NormativeContext,
-    normative_spec: Digest,
-    implementation: Digest,
     policy: ConfirmationPolicy,
 ) -> ConfirmationAssessment:
-    """Confronter des attestations a un contexte, a des empreintes, entre elles.
+    """Confronter des attestations au **dossier qui devait leur etre presente**.
 
     Fonction **pure**, sans base et sans effet de bord. Elle n'est branchee sur
-    rien : le mode strict la consommera plus tard. Les empreintes attendues
-    sont passees en arguments plutot que deduites d'une regle, pour que ce
-    module ne depende pas du registre des regles.
+    rien : le mode strict la consommera plus tard.
 
-    Il n'y a **pas** d'``evidence`` en argument, et ce n'est pas un oubli : le
-    dossier de preuve n'est pas quelque chose que l'appelant *demande*, c'est
-    ce que les verificateurs *attestent*. Il ne se compare donc pas a une
-    valeur attendue mais **entre attestations**.
-
-    Ordre des controles
+    Ce que change 6.3a2
     -------------------
-    1. **pile** — une confirmation faite sur une autre edition n'a aucune
-       raison de porter les memes empreintes. Annoncer ``SPEC_MISMATCH``
-       enverrait chercher un defaut de transcription la ou il n'y a qu'un
-       ecart d'edition, et la confirmation reste pleinement valide pour les
-       calculs qui demandent *sa* pile.
-    2. **specification** — si le pays prescrit autre chose, l'ecart de code
-       n'en est que la consequence. Annoncer ``IMPLEMENTATION_MISMATCH``
-       enverrait lire un diff quand il faut ouvrir l'annexe.
-    3. **implementation** — si le code a change, le dossier de preuve porte
-       sur une regle qui n'existe plus sous cette forme ; comparer les
-       dossiers avant le code ferait discuter des pages lues alors que le
-       sujet lui-meme a bouge.
-    4. **revocation** — placee ici, et non apres la preuve : une attestation
-       retiree ne doit pas creer un desaccord de dossier qui n'existe plus.
-       Deux attestations aux preuves divergentes dont l'une est revoquee
-       laissent **un** regard, pas un ``EVIDENCE_MISMATCH``.
-    5. **dossier de preuve** — le premier controle qui compare les
-       attestations *entre elles* et non au contexte. Les trois premiers
-       disent « ceci ne concerne pas ce que vous demandez » ; celui-ci dit
-       « celles-ci concernent bien votre sujet, mais pas le meme dossier ».
-    6. **nombre de verificateurs distincts** — en dernier, parce qu'un
-       decompte n'a de sens qu'une fois etabli que l'on compte des regards sur
-       **le meme** ``confirmation_subject_key``.
+    L'ancienne signature recevait ``normative_spec`` et ``implementation`` mais
+    **aucun sujet attendu** : ni ``rule_id``, ni dossier de preuve. Le dossier
+    n'etait donc compare qu'*entre* attestations, ce qui demontrait leur accord
+    mutuel et non leur exactitude. Deux verificateurs pouvaient confirmer
+    ensemble le meme dossier **incomplet**, et le modele l'appelait CONFIRMED.
 
-    L'ecart avec l'ordre suggere (preuve avant revocation) est delibere et
-    porte sur le point 4 ; sa justification est ci-dessus.
+    Le sujet attendu vient desormais du :class:`NormativeReviewPackage`, connu
+    **independamment des attestations**. Aucune valeur normative n'est deduite
+    de la premiere confirmation recue — l'evaluation fonctionne d'ailleurs a
+    l'identique avec zero confirmation.
     """
-    if not confirmations:
-        return ConfirmationAssessment(
-            ConfirmationStatus.ABSENT, frozenset(), policy,
-            "aucune confirmation pour cette regle.",
+    if not isinstance(expected, NormativeReviewPackage):
+        raise ConfirmationDomainError(
+            "expected: un NormativeReviewPackage est requis. Le sujet attendu "
+            "ne se deduit pas des attestations recues."
         )
 
-    # --- 1. pile ----------------------------------------------------------
-    attendu = context.stack.digest.digest
-    meme_pile = tuple(
-        c for c in confirmations if c.stack.digest.digest == attendu
-    )
-    if not meme_pile:
-        piles = sorted({c.stack.digest.digest[:16] for c in confirmations})
-        return ConfirmationAssessment(
-            ConfirmationStatus.STACK_MISMATCH, frozenset(), policy,
-            f"confirmation(s) faite(s) sur une autre pile ({', '.join(piles)}) "
-            f"que celle demandee ({attendu[:16]}). Elles restent valides pour "
-            "les calculs qui demandent cette pile-la: il faut une relecture "
-            "pour l'edition demandee, pas une correction de code.",
-        )
-
-    # --- 2. specification normative ---------------------------------------
-    meme_spec = tuple(c for c in meme_pile if c.normative_spec == normative_spec)
-    if not meme_spec:
-        return ConfirmationAssessment(
-            ConfirmationStatus.SPEC_MISMATCH, frozenset(), policy,
-            "la specification normative de la regle a change depuis la "
-            "confirmation. Il faut rouvrir l'annexe.",
-        )
-
-    # --- 3. implementation -------------------------------------------------
-    meme_impl = tuple(c for c in meme_spec if c.implementation == implementation)
-    if not meme_impl:
-        return ConfirmationAssessment(
-            ConfirmationStatus.IMPLEMENTATION_MISMATCH, frozenset(), policy,
-            "la specification n'a pas bouge mais le CODE qui l'execute si. "
-            "Il faut comprendre pourquoi avant de reconfirmer.",
-        )
-
-    # --- 4. revocation -----------------------------------------------------
     revoquees = {r.confirmation_id for r in revocations}
-    actives = tuple(c for c in meme_impl if c.confirmation_id not in revoquees)
-    if not actives:
-        return ConfirmationAssessment(
-            ConfirmationStatus.REVOKED, frozenset(), policy,
-            f"les {len(meme_impl)} attestation(s) concordantes ont ete "
-            "revoquees.",
-        )
+    retenues: list[NormativeRuleConfirmation] = []
+    exclues: list[ExcludedAttestation] = []
+    exacts = 0
 
-    # --- 5. dossier de preuve ----------------------------------------------
-    # Regrouper par sujet COMPLET. A ce stade les sept premieres composantes de
-    # la cle sont deja communes; ne reste que le dossier de preuve pour les
-    # separer — et c'est bien lui qui decide si deux regards portent sur la
-    # meme chose.
-    par_sujet: dict[ConfirmationSubjectKey, set[str]] = {}
-    for c in actives:
-        par_sujet.setdefault(c.confirmation_subject_key, set()).add(c.verifier_id)
+    for c in confirmations:
+        verdict = _cause_d_exclusion(c, expected, revoquees)
+        if verdict is None:
+            exacts += 1
+            retenues.append(c)
+            continue
+        cause, detail = verdict
+        if cause is ExclusionCause.REVOKED:
+            exacts += 1
+        exclues.append(ExcludedAttestation(
+            confirmation_id=c.confirmation_id, verifier_id=c.verifier_id,
+            cause=cause, detail=detail,
+        ))
 
-    # Le meilleur groupe: celui qui reunit le plus de regards independants. Un
-    # groupe qui satisfait a lui seul la politique est un double controle
-    # complet sur un dossier partage; les autres attestations restent
-    # conservees, simplement non additionnees. Le second critere de tri rend
-    # le choix DETERMINISTE en cas d'egalite.
-    meilleur, ids = max(
-        par_sujet.items(), key=lambda kv: (len(kv[1]), kv[0].evidence_digest),
+    # Ordre stable, independant de l'ordre d'arrivee: un rapport dont les
+    # lignes changent de place d'une execution a l'autre est illisible en
+    # comparaison, et c'est exactement ce qu'un audit fait.
+    exclues.sort(key=lambda e: (e.cause.value, e.confirmation_id))
+
+    regards = frozenset(c.verifier_id for c in retenues)
+    sujet = expected.subject_key
+    divergentes = [e for e in exclues if e.cause is not ExclusionCause.REVOKED]
+    suffixe = (
+        f" {len(divergentes)} attestation(s) divergente(s) signalee(s)."
+        if divergentes else ""
     )
-    regards = frozenset(ids)
 
-    if not policy.is_satisfied_by(len(regards)) and len(par_sujet) > 1:
-        dossiers = sorted(k.evidence_digest[:16] for k in par_sujet)
+    if policy.is_satisfied_by(len(regards)):
         return ConfirmationAssessment(
-            ConfirmationStatus.EVIDENCE_MISMATCH, regards, policy,
-            f"{len(par_sujet)} dossiers de preuve distincts "
-            f"({', '.join(dossiers)}) pour la meme regle, la meme pile et le "
-            "meme code. Deux relecteurs qui n'ont pas ouvert les memes pages "
-            "n'ont pas exerce deux regards sur la meme chose: ces attestations "
-            "sont conservees mais ne s'additionnent pas.",
+            ConfirmationStatus.CONFIRMED, sujet, regards, policy,
+            f"{len(regards)} regard(s) independant(s) sur le sujet attendu "
+            f"exact.{suffixe}",
+            tuple(exclues),
         )
 
-    # --- 6. nombre de regards independants ---------------------------------
-    if not policy.is_satisfied_by(len(regards)):
+    if regards:
         manquants = policy.minimum_independent_confirmations - len(regards)
         return ConfirmationAssessment(
-            ConfirmationStatus.INSUFFICIENT_INDEPENDENT_CONFIRMATIONS,
-            regards, policy,
+            ConfirmationStatus.PARTIALLY_CONFIRMED, sujet, regards, policy,
             f"{len(regards)} regard(s) independant(s), "
             f"{policy.minimum_independent_confirmations} exige(s) par "
             f"{policy.policy_version}: il en manque {manquants}. "
-            f"Ont deja signe: {', '.join(sorted(regards))}.",
+            f"Ont deja signe: {', '.join(sorted(regards))}.{suffixe}",
+            tuple(exclues),
+        )
+
+    if exacts:
+        return ConfirmationAssessment(
+            ConfirmationStatus.REVOKED, sujet, regards, policy,
+            f"les {exacts} attestation(s) portant sur le sujet attendu ont "
+            f"ete revoquees.{suffixe}",
+            tuple(exclues),
         )
 
     return ConfirmationAssessment(
-        ConfirmationStatus.VALID_FOR_CONTEXT, regards, policy,
-        f"{len(regards)} regard(s) independant(s) sur le meme sujet: meme "
-        f"pile, memes empreintes, meme dossier de preuve "
-        f"({meilleur.evidence_digest[:16]}).",
+        ConfirmationStatus.UNCONFIRMED, sujet, regards, policy,
+        f"aucune attestation ne porte sur le sujet attendu "
+        f"({sujet.rule_id}, pile {sujet.stack_digest[:16]}, dossier "
+        f"{sujet.evidence_digest[:16]}).{suffixe}",
+        tuple(exclues),
     )
 
 
@@ -974,6 +1301,9 @@ class InMemoryConfirmationProvider:
 #: qu'un objet ajouté plus tard sans y figurer se voie.
 DOMAIN_OBJECTS: tuple[type, ...] = (
     ConfirmationSubjectKey,
+    RequiredSource,
+    NormativeReviewPackage,
+    ExcludedAttestation,
     ReviewerAttestationKey,
     NormativeStackComponent,
     NormativeStack,

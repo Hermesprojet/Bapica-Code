@@ -21,7 +21,13 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from eurostruct_engine.ndp.canonical import Digest, EvidenceItem, digest_of
+from eurostruct_engine.ndp.canonical import (
+    CANONICALIZATION_VERSION,
+    Digest,
+    EvidenceItem,
+    digest_of,
+    evidence_digest,
+)
 from eurostruct_engine.ndp.confirmation import (
     DOMAIN_OBJECTS,
     FICTIONAL_PREFIX,
@@ -31,25 +37,61 @@ from eurostruct_engine.ndp.confirmation import (
     ConfirmationProvider,
     ConfirmationStatus,
     ConfirmationSubjectKey,
+    ExclusionCause,
     InMemoryConfirmationProvider,
     NormativeContext,
+    NormativeReviewPackage,
     NormativeRuleConfirmation,
     NormativeRuleConfirmationRevocation,
     NormativeStack,
     NormativeStackComponent,
+    RequiredSource,
     ReviewerAttestationKey,
     assert_provider_is_usable_in_production,
     assess_confirmations,
     field_names,
     independent_regards,
+    required_sources,
 )
 
 BRUXELLES = timezone(timedelta(hours=1))
 INSTANT = datetime(2026, 3, 4, 14, 30, tzinfo=BRUXELLES)
 
-SPEC = digest_of({"regle": "be.ec2.nu", "quoi": "specification"})
+#: Les deux documents que la spécification fictive déclare utiliser. Le dossier
+#: de revue doit couvrir les deux : c'est la propriété que 6.3a2 ajoute.
+DOC_BASE = "a" * 64
+DOC_ANB = "b" * 64
+DOC_ETRANGER = "e" * 64
+
+
+def payload_de_spec(rule_id: str = "be.ec2.nu_strength_reduction") -> dict:
+    """Un payload de spécification **de la même forme que le vrai**.
+
+    Construit à la main plutôt qu'emprunté au registre des règles : le domaine
+    ne doit pas en dépendre, et un test le vérifie. La forme, elle, est celle
+    que produit ``normative_spec_digest`` — sans quoi la lecture des sources
+    déclarées ne prouverait rien.
+    """
+    return {
+        "kind": "normative_spec",
+        "canonicalization_version": CANONICALIZATION_VERSION,
+        "rule_id": rule_id,
+        "expression_sources": [
+            {"reference": "FICTIF EN 1992-1-1", "layer": "base",
+             "clause": "§9.2.2", "expression_label": "(9.5N)",
+             "effect": "FICTIF — texte d'origine", "document_digest": DOC_BASE},
+        ],
+        "normative_authority": {
+            "country_code": "BE", "reference": "FICTIF NBN EN 1992-1-1 ANB",
+            "edition": "2010", "clause": "§9.2.2(5)",
+            "effect": "FICTIF — substitution nationale",
+            "document_digest": DOC_ANB,
+        },
+    }
+
+
+SPEC = digest_of(payload_de_spec())
 IMPL = digest_of({"regle": "be.ec2.nu", "quoi": "implementation"})
-PREUVE = digest_of({"regle": "be.ec2.nu", "quoi": "preuve"})
 
 
 # ---------------------------------------------------------------------------
@@ -61,40 +103,62 @@ def pile(*, edition_annexe: str = "2010") -> NormativeStack:
         standard_family="EN 1992",
         part="1-1",
         components=(
-            NormativeStackComponent("base", "EN 1992-1-1", "2004", 1, "a" * 64),
+            NormativeStackComponent("base", "EN 1992-1-1", "2004", 1, DOC_BASE),
             NormativeStackComponent(
-                "annexe", "NBN EN 1992-1-1 ANB", edition_annexe, 2, "b" * 64,
+                "annexe", "NBN EN 1992-1-1 ANB", edition_annexe, 2, DOC_ANB,
             ),
         ),
     )
 
 
-def preuve_lue() -> EvidenceItem:
+def preuve(document: str = DOC_ANB, *, page: int = 15,
+           citation: str | None = None) -> EvidenceItem:
     return EvidenceItem(
-        document_digest="b" * 64, document_role="annexe",
-        reference="NBN EN 1992-1-1 ANB", edition="2010",
-        clause="§6.2.2(6)", page_printed=15,
-        quote="FICTIF — citation de test, sans valeur normative.",
+        document_digest=document,
+        document_role="annexe" if document == DOC_ANB else "base",
+        reference="FICTIF NBN EN 1992-1-1 ANB" if document == DOC_ANB
+        else "FICTIF EN 1992-1-1",
+        edition="2010", clause="§9.2.2(5)", page_printed=page,
+        quote=citation or "FICTIF — citation de test, sans valeur normative.",
+    )
+
+
+def dossier_complet() -> tuple[EvidenceItem, ...]:
+    """Couvre les DEUX documents déclarés par la spécification."""
+    return (preuve(DOC_BASE, page=104), preuve(DOC_ANB, page=15))
+
+
+def paquet(*, edition_annexe: str = "2010", spec: Digest = SPEC,
+           impl: Digest = IMPL, rule_id: str = "be.ec2.nu_strength_reduction",
+           items: tuple[EvidenceItem, ...] | None = None,
+           country_code: str = "BE", standard_family: str = "EN 1992",
+           part: str = "1-1") -> NormativeReviewPackage:
+    p = pile(edition_annexe=edition_annexe)
+    if (country_code, standard_family, part) != ("BE", "EN 1992", "1-1"):
+        p = dataclasses.replace(
+            p, country_code=country_code, standard_family=standard_family,
+            part=part,
+        )
+    return NormativeReviewPackage.of(
+        country_code=country_code, standard_family=standard_family, part=part,
+        rule_id=rule_id, stack=p, normative_spec=spec, implementation=impl,
+        evidence_items=items if items is not None else dossier_complet(),
     )
 
 
 def confirmation(
     *, verifier: str = "alice", cid: str | None = None,
-    cle: str | None = None, spec: Digest = SPEC, impl: Digest = IMPL,
-    stack: NormativeStack | None = None, **remplacements,
+    cle: str | None = None, package: NormativeReviewPackage | None = None,
+    **remplacements,
 ) -> NormativeRuleConfirmation:
-    """Une confirmation fictive. Le préfixe est porté par les identités."""
+    """Une attestation fictive **sur un paquet de revue**.
+
+    Passe par ``for_package``: c'est la voie qui garantit que le sujet signé
+    est celui qui a été présenté.
+    """
     vid = f"{FICTIONAL_PREFIX}{verifier}"
     base = {
         "confirmation_id": cid or f"{FICTIONAL_PREFIX}conf-{verifier}",
-        "country_code": "BE",
-        "standard_family": "EN 1992",
-        "part": "1-1",
-        "rule_id": "be.ec2.nu_strength_reduction",
-        "normative_spec": spec,
-        "implementation": impl,
-        "evidence": PREUVE,
-        "stack": stack if stack is not None else pile(),
         "verifier_id": vid,
         "verifier_name": f"FICTIF {verifier.title()}",
         "verified_at": INSTANT,
@@ -102,12 +166,13 @@ def confirmation(
             {"can_validate_normative_reference"}
         ),
         "authorisation_scope_at_signature": "BE/EN 1992/1-1",
-        "evidence_items": (preuve_lue(),),
         "statement": "FICTIF — j'ai lu l'annexe a la page indiquee.",
         "idempotency_key": cle or f"{FICTIONAL_PREFIX}idem-{verifier}",
     }
     base.update(remplacements)
-    return NormativeRuleConfirmation(**base)
+    return NormativeRuleConfirmation.for_package(
+        package if package is not None else paquet(), **base,
+    )
 
 
 def revocation(cible: NormativeRuleConfirmation, **remplacements):
@@ -131,6 +196,16 @@ def contexte(*, edition_annexe: str = "2010", strict: bool = False):
         stack=pile(edition_annexe=edition_annexe),
         as_of=date(2026, 3, 4),
         strict=strict,
+    )
+
+
+def evalue(confirmations=(), revocations=(), *, attendu=None, politique=None):
+    """Raccourci: évaluer contre un paquet attendu."""
+    return assess_confirmations(
+        expected=attendu if attendu is not None else paquet(),
+        confirmations=tuple(confirmations),
+        revocations=tuple(revocations),
+        policy=politique or ConfirmationPolicy.production(),
     )
 
 
@@ -164,13 +239,18 @@ def test_le_contenu_des_collections_est_gele_aussi() -> None:
     modifiable après signature tout en se présentant comme immuable.
     """
     with pytest.raises(ConfirmationDomainError, match="tuple est requis"):
-        confirmation(evidence_items=[preuve_lue()])
+        NormativeReviewPackage.of(
+            country_code="BE", standard_family="EN 1992", part="1-1",
+            rule_id="be.ec2.nu_strength_reduction", stack=pile(),
+            normative_spec=SPEC, implementation=IMPL,
+            evidence_items=[preuve(DOC_BASE), preuve(DOC_ANB)],
+        )
     with pytest.raises(ConfirmationDomainError, match="frozenset est requis"):
         confirmation(authorisations_at_signature={"can_validate_normative_reference"})
 
     c = confirmation()
     with pytest.raises(AttributeError):
-        c.evidence_items.append(preuve_lue())
+        c.evidence_items.append(preuve())
 
 
 def test_l_empreinte_de_pile_ne_peut_pas_etre_fournie() -> None:
@@ -269,14 +349,11 @@ def test_l_affiliation_du_verificateur_est_de_l_audit_pas_un_droit() -> None:
     sans = confirmation(verifier="alice")
     avec = dataclasses.replace(sans, verifier_affiliation="FICTIF Bureau SPRL")
 
-    commun = dict(
-        revocations=(), context=contexte(), normative_spec=SPEC,
-        implementation=IMPL, policy=ConfirmationPolicy("test", 1),
-    )
-    a = assess_confirmations(confirmations=(sans,), **commun)
-    b = assess_confirmations(confirmations=(avec,), **commun)
+    a = evalue((sans,), politique=ConfirmationPolicy("test", 1))
+    b = evalue((avec,), politique=ConfirmationPolicy("test", 1))
     assert a.status is b.status
     assert a.regards == b.regards
+    assert sans.confirmation_subject_key == avec.confirmation_subject_key
 
 
 # ---------------------------------------------------------------------------
@@ -405,12 +482,11 @@ def test_deux_lignes_du_meme_verificateur_font_un_seul_regard() -> None:
     b = confirmation(verifier="alice", cid="FICTIF-c2", cle="FICTIF-k2")
 
     verdict = assess_confirmations(
-        confirmations=(a, b), revocations=(), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
+        expected=paquet(), confirmations=(a, b),
+        revocations=(), policy=ConfirmationPolicy.production(),
     )
     assert verdict.regards == {f"{FICTIONAL_PREFIX}alice"}
-    assert verdict.status is ConfirmationStatus.INSUFFICIENT_INDEPENDENT_CONFIRMATIONS
+    assert verdict.status is ConfirmationStatus.PARTIALLY_CONFIRMED
     assert not verdict.is_confirmed
     assert "il en manque 1" in verdict.reason
 
@@ -421,14 +497,13 @@ def test_deux_verificateurs_distincts_font_deux_regards() -> None:
     b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2")
 
     verdict = assess_confirmations(
-        confirmations=(a, b), revocations=(), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
+        expected=paquet(), confirmations=(a, b),
+        revocations=(), policy=ConfirmationPolicy.production(),
     )
     assert verdict.regards == {
         f"{FICTIONAL_PREFIX}alice", f"{FICTIONAL_PREFIX}bob",
     }
-    assert verdict.status is ConfirmationStatus.VALID_FOR_CONTEXT
+    assert verdict.status is ConfirmationStatus.CONFIRMED
     assert verdict.is_confirmed
 
 
@@ -438,13 +513,9 @@ def test_l_etat_intermediaire_a_une_seule_confirmation_existe() -> None:
     Confondre les deux ferait soit perdre le premier regard, soit rendre la
     règle utilisable avec un seul.
     """
-    verdict = assess_confirmations(
-        confirmations=(confirmation(verifier="alice"),), revocations=(),
-        context=contexte(), normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
-    )
-    assert verdict.status is ConfirmationStatus.INSUFFICIENT_INDEPENDENT_CONFIRMATIONS
-    assert verdict.status is not ConfirmationStatus.ABSENT
+    verdict = evalue((confirmation(verifier="alice"),))
+    assert verdict.status is ConfirmationStatus.PARTIALLY_CONFIRMED
+    assert verdict.status is not ConfirmationStatus.UNCONFIRMED
     assert verdict.regards == {f"{FICTIONAL_PREFIX}alice"}
     assert f"{FICTIONAL_PREFIX}alice" in verdict.reason, (
         "savoir QUI a deja signe fait gagner du temps a qui cherche le second"
@@ -457,32 +528,23 @@ def test_revoquer_une_des_deux_confirmations_ramene_a_un_regard() -> None:
     b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2")
     politique = ConfirmationPolicy.production()
 
-    avant = assess_confirmations(
-        confirmations=(a, b), revocations=(), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL, policy=politique,
-    )
+    avant = evalue((a, b), politique=politique)
     assert avant.is_confirmed
 
-    apres = assess_confirmations(
-        confirmations=(a, b), revocations=(revocation(b),), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL, policy=politique,
-    )
+    apres = evalue((a, b), (revocation(b),), politique=politique)
     assert apres.regards == {f"{FICTIONAL_PREFIX}alice"}, (
         "la revocation de bob ne doit retirer que bob"
     )
-    assert apres.status is ConfirmationStatus.INSUFFICIENT_INDEPENDENT_CONFIRMATIONS
+    assert apres.status is ConfirmationStatus.PARTIALLY_CONFIRMED
 
 
 def test_revoquer_toutes_les_confirmations_donne_l_etat_revoque() -> None:
     a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
     b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2")
-    verdict = assess_confirmations(
-        confirmations=(a, b), revocations=(revocation(a), revocation(b)),
-        context=contexte(), normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
-    )
+    verdict = evalue((a, b), (revocation(a), revocation(b)))
     assert verdict.status is ConfirmationStatus.REVOKED
-    assert verdict.status is not ConfirmationStatus.ABSENT
+    assert verdict.status is not ConfirmationStatus.UNCONFIRMED
+    assert {e.cause for e in verdict.excluded} == {ExclusionCause.REVOKED}
 
 
 # ---------------------------------------------------------------------------
@@ -494,22 +556,19 @@ def test_une_confirmation_faite_sur_une_autre_pile_ne_vaut_pas_ici() -> None:
     La nouveauté d'un document ne périme rien : la confirmation de l'édition
     2010 vaut pleinement pour un projet régi par 2010.
     """
-    c = confirmation(stack=pile(edition_annexe="2010"))
-    verdict = assess_confirmations(
-        confirmations=(c,), revocations=(),
-        context=contexte(edition_annexe="2018"),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy("test", 1),
-    )
-    assert verdict.status is ConfirmationStatus.STACK_MISMATCH
-    assert "restent valides" in verdict.reason
+    c = confirmation(package=paquet(edition_annexe="2010"))
+    solo = ConfirmationPolicy("test", 1)
+
+    verdict = evalue((c,), attendu=paquet(edition_annexe="2018"), politique=solo)
+    assert verdict.status is ConfirmationStatus.UNCONFIRMED
+    (exclue,) = verdict.excluded
+    assert exclue.cause is ExclusionCause.STACK_MISMATCH
+    assert exclue.confirmation_id == c.confirmation_id
+    assert "reste valide pour les calculs qui demandent sa pile" in exclue.detail
+
     # Le meme objet, evalue contre SA pile, reste confirme.
-    assert assess_confirmations(
-        confirmations=(c,), revocations=(),
-        context=contexte(edition_annexe="2010"),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy("test", 1),
-    ).is_confirmed
+    assert evalue((c,), attendu=paquet(edition_annexe="2010"),
+                  politique=solo).is_confirmed
 
 
 def test_l_ecart_de_pile_est_annonce_avant_l_ecart_d_empreinte() -> None:
@@ -519,14 +578,12 @@ def test_l_ecart_de_pile_est_annonce_avant_l_ecart_d_empreinte() -> None:
     les mêmes empreintes. Annoncer ``SPEC_MISMATCH`` enverrait chercher un
     défaut de transcription là où il n'y a qu'un écart d'édition.
     """
-    c = confirmation(stack=pile(edition_annexe="2010"), spec=SPEC)
-    verdict = assess_confirmations(
-        confirmations=(c,), revocations=(),
-        context=contexte(edition_annexe="2018"),
-        normative_spec=digest_of({"regle": "autre"}), implementation=IMPL,
-        policy=ConfirmationPolicy("test", 1),
-    )
-    assert verdict.status is ConfirmationStatus.STACK_MISMATCH
+    c = confirmation(package=paquet(edition_annexe="2010"))
+    attendu = paquet(edition_annexe="2018",
+                     spec=digest_of(payload_de_spec("be.ec2.nu_strength_reduction")))
+    (exclue,) = evalue((c,), attendu=attendu,
+                       politique=ConfirmationPolicy("test", 1)).excluded
+    assert exclue.cause is ExclusionCause.STACK_MISMATCH
 
 
 def test_l_ordre_des_composants_change_la_pile() -> None:
@@ -551,35 +608,31 @@ def test_l_ordre_des_composants_change_la_pile() -> None:
 
 def test_les_deux_mesempreintes_restent_distinguees() -> None:
     """Spec et implémentation n'envoient pas au même endroit."""
-    commun = dict(
-        revocations=(), context=contexte(),
-        policy=ConfirmationPolicy("test", 1),
-    )
+    solo = ConfirmationPolicy("test", 1)
     c = confirmation()
 
-    spec = assess_confirmations(
-        confirmations=(c,), normative_spec=digest_of({"autre": 1}),
-        implementation=IMPL, **commun,
-    )
-    assert spec.status is ConfirmationStatus.SPEC_MISMATCH
-    assert "rouvrir l'annexe" in spec.reason
+    autre = payload_de_spec()
+    autre["expression_sources"][0]["effect"] = "FICTIF — texte modifie"
+    (par_spec,) = evalue(
+        (c,), attendu=paquet(spec=digest_of(autre)), politique=solo,
+    ).excluded
+    assert par_spec.cause is ExclusionCause.SPEC_MISMATCH
+    assert "rouvrir l'annexe" in par_spec.detail
 
-    impl = assess_confirmations(
-        confirmations=(c,), normative_spec=SPEC,
-        implementation=digest_of({"autre": 1}), **commun,
-    )
-    assert impl.status is ConfirmationStatus.IMPLEMENTATION_MISMATCH
-    assert "CODE" in impl.reason
+    (par_impl,) = evalue(
+        (c,), attendu=paquet(impl=digest_of({"autre": 1})), politique=solo,
+    ).excluded
+    assert par_impl.cause is ExclusionCause.IMPLEMENTATION_MISMATCH
+    assert "CODE" in par_impl.detail
 
 
 def test_une_regle_sans_confirmation_est_absente() -> None:
-    verdict = assess_confirmations(
-        confirmations=(), revocations=(), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
-    )
-    assert verdict.status is ConfirmationStatus.ABSENT
+    verdict = evalue()
+    assert verdict.status is ConfirmationStatus.UNCONFIRMED
     assert verdict.regards == frozenset()
+    assert verdict.excluded == ()
+    # Le sujet attendu est connu MALGRE l'absence d'attestation.
+    assert verdict.subject == paquet().subject_key
 
 
 # ---------------------------------------------------------------------------
@@ -673,12 +726,18 @@ def test_chaque_composante_identitaire_change_la_cle_de_sujet(champ, valeur) -> 
 def test_chaque_empreinte_change_la_cle_de_sujet() -> None:
     """Pile, spécification, implémentation, preuve: les quatre comptent."""
     base = confirmation()
-    autre_digest = digest_of({"autre": True})
-    for champ in ("normative_spec", "implementation", "evidence"):
-        autre = dataclasses.replace(base, **{champ: autre_digest})
-        assert autre.confirmation_subject_key != base.confirmation_subject_key, champ
-    sur_2018 = dataclasses.replace(base, stack=pile(edition_annexe="2018"))
-    assert sur_2018.confirmation_subject_key != base.confirmation_subject_key
+    autre_spec = payload_de_spec()
+    autre_spec["expression_sources"][0]["effect"] = "FICTIF — autre"
+
+    for paquet_modifie in (
+        paquet(spec=digest_of(autre_spec)),
+        paquet(impl=digest_of({"autre": True})),
+        paquet(edition_annexe="2018"),
+        # Le dossier de preuve: une page differente suffit.
+        paquet(items=(preuve(DOC_BASE, page=999), preuve(DOC_ANB))),
+    ):
+        autre = confirmation(package=paquet_modifie)
+        assert autre.confirmation_subject_key != base.confirmation_subject_key
 
 
 # --- le dossier de preuve, et ce qui n'en fait pas partie ------------------
@@ -690,11 +749,10 @@ def test_deux_verificateurs_sur_le_meme_sujet_donnent_CONFIRMED() -> None:
     assert a.reviewer_attestation_key != b.reviewer_attestation_key
 
     verdict = assess_confirmations(
-        confirmations=(a, b), revocations=(), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
+        expected=paquet(), confirmations=(a, b),
+        revocations=(), policy=ConfirmationPolicy.production(),
     )
-    assert verdict.status is ConfirmationStatus.VALID_FOR_CONTEXT
+    assert verdict.status is ConfirmationStatus.CONFIRMED
     assert verdict.is_confirmed
 
 
@@ -720,9 +778,8 @@ def test_une_declaration_personnelle_differente_reste_combinable() -> None:
     assert a.confirmation_subject_key == b.confirmation_subject_key
 
     verdict = assess_confirmations(
-        confirmations=(a, b), revocations=(), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
+        expected=paquet(), confirmations=(a, b),
+        revocations=(), policy=ConfirmationPolicy.production(),
     )
     assert verdict.is_confirmed
 
@@ -747,43 +804,45 @@ def test_deux_dossiers_de_preuve_differents_donnent_EVIDENCE_MISMATCH() -> None:
     Deux relecteurs qui n'ont pas ouvert les mêmes pages n'ont pas exercé deux
     regards sur la même chose.
     """
-    a = confirmation(
-        verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
-        evidence=digest_of({"dossier": "pages 15-16"}),
-    )
-    b = confirmation(
-        verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
-        evidence=digest_of({"dossier": "page 104 seulement"}),
-    )
+    mauvais = paquet(items=(preuve(DOC_BASE, page=999), preuve(DOC_ANB)))
+    a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
+                     package=mauvais)
+    b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
+                     package=mauvais)
+
+    # Meme regle, meme pile, meme code — et pourtant pas le dossier attendu.
     assert a.normative_spec == b.normative_spec
     assert a.implementation == b.implementation
     assert a.stack.digest == b.stack.digest
-    assert a.confirmation_subject_key != b.confirmation_subject_key
+    assert a.confirmation_subject_key == b.confirmation_subject_key
+    assert a.confirmation_subject_key != paquet().subject_key
 
-    verdict = assess_confirmations(
-        confirmations=(a, b), revocations=(), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
+    verdict = evalue((a, b))
+    assert verdict.status is ConfirmationStatus.UNCONFIRMED, (
+        "s'accorder a deux sur le MAUVAIS dossier ne confirme pas le paquet "
+        "attendu — c'est tout l'objet de 6.3a2"
     )
-    assert verdict.status is ConfirmationStatus.EVIDENCE_MISMATCH
     assert not verdict.is_confirmed
-    assert "ne s'additionnent pas" in verdict.reason
+    assert {e.cause for e in verdict.excluded} == {ExclusionCause.EVIDENCE_MISMATCH}
+    assert verdict.has_divergent_attestations
 
 
 def test_les_attestations_aux_preuves_divergentes_restent_conservees() -> None:
     """Elles ne sont pas additionnées; elles ne sont pas perdues non plus."""
-    a = confirmation(
-        verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
-        evidence=digest_of({"dossier": "A"}),
-    )
+    a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
     b = confirmation(
         verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
-        evidence=digest_of({"dossier": "B"}),
+        package=paquet(items=(preuve(DOC_BASE, page=999), preuve(DOC_ANB))),
     )
     p = InMemoryConfirmationProvider(confirmations=(a, b))
     rendues = p.confirmations_for(a.rule_id)
     assert len(rendues) == 2
     assert set(rendues) == {a, b}
+
+    # Et l'evaluation la SIGNALE au lieu de l'ignorer.
+    (exclue,) = evalue((a, b)).excluded
+    assert exclue.confirmation_id == b.confirmation_id
+    assert exclue.cause is ExclusionCause.EVIDENCE_MISMATCH
 
 
 def test_un_dossier_partage_par_deux_regards_confirme_malgre_un_dossier_tiers(
@@ -797,63 +856,57 @@ def test_un_dossier_partage_par_deux_regards_confirme_malgre_un_dossier_tiers(
     b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2")
     seul = confirmation(
         verifier="chloe", cid="FICTIF-c3", cle="FICTIF-k3",
-        evidence=digest_of({"dossier": "autre"}),
+        package=paquet(items=(preuve(DOC_BASE, page=999), preuve(DOC_ANB))),
     )
-    verdict = assess_confirmations(
-        confirmations=(a, b, seul), revocations=(), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
-    )
-    assert verdict.status is ConfirmationStatus.VALID_FOR_CONTEXT
+    verdict = evalue((a, b, seul))
+    assert verdict.status is ConfirmationStatus.CONFIRMED
     assert verdict.regards == {
         f"{FICTIONAL_PREFIX}alice", f"{FICTIONAL_PREFIX}bob",
     }
+    # L'attestation tierce n'est PAS silencieusement ignoree.
+    (exclue,) = verdict.excluded
+    assert exclue.confirmation_id == seul.confirmation_id
+    assert exclue.cause is ExclusionCause.EVIDENCE_MISMATCH
+    assert verdict.has_divergent_attestations
+    assert "divergente" in verdict.reason
 
 
-def test_une_attestation_revoquee_ne_cree_pas_de_desaccord_de_dossier() -> None:
-    """La révocation passe AVANT la preuve, et c'est ce cas qui l'exige.
+def test_une_attestation_revoquee_sur_un_autre_dossier_reste_diagnostiquee() -> None:
+    """Depuis 6.3a2, la révocation vient APRÈS le désaccord de sujet.
 
-    Deux attestations aux preuves divergentes dont l'une est révoquée laissent
-    un regard, pas un désaccord de dossier qui n'existe plus.
+    En 6.3a1 elle passait avant, pour qu'une attestation retirée ne produise
+    pas un ``EVIDENCE_MISMATCH`` **global**. Ce risque a disparu avec le paquet
+    attendu : le statut ne dépend plus que des attestations exactes, et
+    annoncer le désaccord de dossier dit désormais quelque chose de plus utile
+    — pourquoi elle a probablement été retirée.
     """
     a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
     retiree = confirmation(
         verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
-        evidence=digest_of({"dossier": "errone"}),
+        package=paquet(items=(preuve(DOC_BASE, page=999), preuve(DOC_ANB))),
     )
-    verdict = assess_confirmations(
-        confirmations=(a, retiree), revocations=(revocation(retiree),),
-        context=contexte(), normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
-    )
-    assert verdict.status is ConfirmationStatus.INSUFFICIENT_INDEPENDENT_CONFIRMATIONS
-    assert verdict.status is not ConfirmationStatus.EVIDENCE_MISMATCH
+    verdict = evalue((a, retiree), (revocation(retiree),))
+    assert verdict.status is ConfirmationStatus.PARTIALLY_CONFIRMED
     assert verdict.regards == {f"{FICTIONAL_PREFIX}alice"}
+    (exclue,) = verdict.excluded
+    assert exclue.cause is ExclusionCause.EVIDENCE_MISMATCH
 
 
 # --- non-combinabilité par pile et par implémentation ----------------------
 def test_memes_regle_et_spec_mais_piles_differentes_ne_se_combinent_pas() -> None:
     """Exigence 3."""
-    a = confirmation(
-        verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
-        stack=pile(edition_annexe="2010"),
-    )
-    b = confirmation(
-        verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
-        stack=pile(edition_annexe="2018"),
-    )
+    a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
+                     package=paquet(edition_annexe="2010"))
+    b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
+                     package=paquet(edition_annexe="2018"))
     assert a.normative_spec == b.normative_spec
     assert a.confirmation_subject_key != b.confirmation_subject_key
 
     # Contre la pile de a: seul le regard de a compte.
-    verdict = assess_confirmations(
-        confirmations=(a, b), revocations=(),
-        context=contexte(edition_annexe="2010"),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
-    )
+    verdict = evalue((a, b), attendu=paquet(edition_annexe="2010"))
     assert verdict.regards == {f"{FICTIONAL_PREFIX}alice"}
     assert not verdict.is_confirmed
+    assert verdict.excluded[0].cause is ExclusionCause.STACK_MISMATCH
 
     # Et l'addition brute est refusee a la racine.
     with pytest.raises(ConfirmationDomainError, match="sujets distincts"):
@@ -863,67 +916,263 @@ def test_memes_regle_et_spec_mais_piles_differentes_ne_se_combinent_pas() -> Non
 def test_memes_pile_et_spec_mais_implementations_differentes_ne_se_combinent_pas(
 ) -> None:
     """Exigence 4."""
-    autre_impl = digest_of({"code": "modifie"})
     a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
-    b = confirmation(
-        verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2", impl=autre_impl,
-    )
+    b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
+                     package=paquet(impl=digest_of({"code": "modifie"})))
     assert a.stack.digest == b.stack.digest
     assert a.normative_spec == b.normative_spec
     assert a.confirmation_subject_key != b.confirmation_subject_key
 
-    verdict = assess_confirmations(
-        confirmations=(a, b), revocations=(), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
-    )
+    verdict = evalue((a, b))
     assert verdict.regards == {f"{FICTIONAL_PREFIX}alice"}
     assert not verdict.is_confirmed
+    assert verdict.excluded[0].cause is ExclusionCause.IMPLEMENTATION_MISMATCH
 
     with pytest.raises(ConfirmationDomainError, match="sujets distincts"):
         independent_regards((a, b), ())
 
 
 def test_l_ordre_des_controles_est_celui_qui_est_documente() -> None:
-    """Pile, spec, implémentation, révocation, preuve, décompte.
+    """Sujet etranger, pile, specification, implementation, preuve, revocation.
 
-    Chaque étape est vérifiée en rendant fautives toutes celles qui suivent :
-    si l'ordre changeait, le diagnostic annoncé changerait aussi.
+    Chaque etape est verifiee en rendant fautives toutes celles qui suivent: si
+    l'ordre changeait, la cause annoncee changerait aussi. Une attestation
+    peut diverger de plusieurs facons a la fois, et c'est la cause la plus
+    LARGE qui doit etre annoncee — celle qui dit quoi faire.
     """
-    autre = digest_of({"tout": "autre"})
-    politique = ConfirmationPolicy.production()
+    autre_spec_payload = payload_de_spec()
+    autre_spec_payload["expression_sources"][0]["effect"] = "FICTIF — autre"
+    autre_spec = digest_of(autre_spec_payload)
+    autre_impl = digest_of({"code": "autre"})
+    mauvais_dossier = (preuve(DOC_BASE, page=999), preuve(DOC_ANB))
+    attendu = paquet()
 
-    # 1. pile fautive + spec fautive + impl fautive -> c'est la PILE qu'on
-    #    annonce, parce qu'une autre edition n'a aucune raison de porter les
-    #    memes empreintes.
-    sur_2018 = confirmation(stack=pile(edition_annexe="2018"), spec=autre, impl=autre)
-    assert assess_confirmations(
-        confirmations=(sur_2018,), revocations=(),
-        context=contexte(edition_annexe="2010"),
-        normative_spec=SPEC, implementation=IMPL, policy=politique,
-    ).status is ConfirmationStatus.STACK_MISMATCH
+    def cause(signee: NormativeReviewPackage, revoquee: bool = False):
+        c = confirmation(package=signee)
+        rev = (revocation(c),) if revoquee else ()
+        (exclue,) = evalue((c,), rev, attendu=attendu,
+                           politique=ConfirmationPolicy("test", 1)).excluded
+        return exclue.cause
 
-    # 2. pile bonne, spec fautive + impl fautive -> SPEC.
-    assert assess_confirmations(
-        confirmations=(confirmation(spec=autre, impl=autre),), revocations=(),
-        context=contexte(), normative_spec=SPEC, implementation=IMPL,
-        policy=politique,
-    ).status is ConfirmationStatus.SPEC_MISMATCH
+    # 1. autre regle + tout le reste fautif -> OTHER_SUBJECT.
+    #    Ce n'est meme pas un desaccord: l'attestation parle d'autre chose.
+    assert cause(paquet(
+        rule_id="be.ec2.s_t_max",
+        spec=digest_of(payload_de_spec("be.ec2.s_t_max")),
+        impl=autre_impl, edition_annexe="2018", items=mauvais_dossier,
+    )) is ExclusionCause.OTHER_SUBJECT
 
-    # 3. pile et spec bonnes, impl fautive -> IMPLEMENTATION.
-    assert assess_confirmations(
-        confirmations=(confirmation(impl=autre),), revocations=(),
-        context=contexte(), normative_spec=SPEC, implementation=IMPL,
-        policy=politique,
-    ).status is ConfirmationStatus.IMPLEMENTATION_MISMATCH
+    # 2. bonne regle, autre pile + spec + impl + dossier fautifs -> STACK.
+    assert cause(paquet(
+        edition_annexe="2018", spec=autre_spec, impl=autre_impl,
+        items=mauvais_dossier,
+    )) is ExclusionCause.STACK_MISMATCH
 
-    # 4. tout bon, mais tout revoque -> REVOKED (et non « pas assez de
-    #    regards », qui laisserait croire qu'il suffit d'en ajouter un).
-    c = confirmation()
-    assert assess_confirmations(
-        confirmations=(c,), revocations=(revocation(c),), context=contexte(),
-        normative_spec=SPEC, implementation=IMPL, policy=politique,
-    ).status is ConfirmationStatus.REVOKED
+    # 3. bonne pile, spec + impl + dossier fautifs -> SPEC.
+    assert cause(paquet(
+        spec=autre_spec, impl=autre_impl, items=mauvais_dossier,
+    )) is ExclusionCause.SPEC_MISMATCH
+
+    # 4. bonne spec, impl + dossier fautifs -> IMPLEMENTATION.
+    assert cause(paquet(
+        impl=autre_impl, items=mauvais_dossier,
+    )) is ExclusionCause.IMPLEMENTATION_MISMATCH
+
+    # 5. tout bon sauf le dossier -> EVIDENCE.
+    assert cause(paquet(items=mauvais_dossier)) is ExclusionCause.EVIDENCE_MISMATCH
+
+    # 6. tout bon, mais retiree -> REVOKED, en dernier.
+    assert cause(attendu, revoquee=True) is ExclusionCause.REVOKED
+
+
+def test_l_ordre_des_confirmations_ne_change_rien() -> None:
+    """Ni le statut, ni les diagnostics — quel que soit l'ordre d'arrivee.
+
+    Un rapport dont les lignes changent de place d'une execution a l'autre est
+    illisible en comparaison, et comparer est exactement ce qu'un audit fait.
+    """
+    a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
+    b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2")
+    divergente = confirmation(
+        verifier="chloe", cid="FICTIF-c3", cle="FICTIF-k3",
+        package=paquet(edition_annexe="2018"),
+    )
+    etrangere = confirmation(
+        verifier="david", cid="FICTIF-c4", cle="FICTIF-k4",
+        package=paquet(rule_id="be.ec2.s_t_max",
+                       spec=digest_of(payload_de_spec("be.ec2.s_t_max"))),
+    )
+    lot = [a, b, divergente, etrangere]
+
+    reference = evalue(lot)
+    for permutation in (
+        [etrangere, divergente, b, a],
+        [b, etrangere, a, divergente],
+        [divergente, a, etrangere, b],
+    ):
+        autre = evalue(permutation)
+        assert autre.status is reference.status
+        assert autre.regards == reference.regards
+        assert autre.excluded == reference.excluded, (
+            "les diagnostics doivent sortir dans un ordre stable"
+        )
+
+
+def test_aucune_valeur_attendue_n_est_deduite_de_la_premiere_confirmation() -> None:
+    """Exigence 10 — le sujet attendu vient du paquet, et de lui seul.
+
+    Si la moindre valeur etait deduite des attestations, un lot ne contenant
+    QUE des attestations etrangeres se replierait sur leur sujet et les
+    declarerait concordantes.
+    """
+    attendu = paquet()
+    etrangeres = tuple(
+        confirmation(
+            verifier=n, cid=f"FICTIF-c{i}", cle=f"FICTIF-k{i}",
+            package=paquet(rule_id="be.ec2.s_t_max",
+                           spec=digest_of(payload_de_spec("be.ec2.s_t_max"))),
+        )
+        for i, n in enumerate(("alice", "bob"))
+    )
+    verdict = evalue(etrangeres, attendu=attendu)
+
+    assert verdict.status is ConfirmationStatus.UNCONFIRMED
+    assert verdict.subject == attendu.subject_key
+    assert verdict.regards == frozenset()
+    assert len(verdict.excluded) == 2
+    assert {e.cause for e in verdict.excluded} == {ExclusionCause.OTHER_SUBJECT}
+
+    # Et le sujet annonce est identique a celui d'une evaluation SANS aucune
+    # attestation: rien n'a ete emprunte au lot.
+    assert evalue((), attendu=attendu).subject == verdict.subject
+
+
+def test_une_confirmation_d_un_autre_pays_norme_ou_partie_n_est_jamais_comptee(
+) -> None:
+    """Exigence 3 de 6.3a2."""
+    for remplacements in (
+        {"country_code": "FR"},
+        {"standard_family": "EN 1993"},
+        {"part": "1-2"},
+    ):
+        etranger = paquet(**remplacements)
+        c = confirmation(package=etranger)
+        verdict = evalue((c,), politique=ConfirmationPolicy("test", 1))
+        assert verdict.status is ConfirmationStatus.UNCONFIRMED, remplacements
+        (exclue,) = verdict.excluded
+        assert exclue.cause is ExclusionCause.OTHER_SUBJECT
+
+
+def test_le_paquet_refuse_un_dossier_incomplet() -> None:
+    """Le defaut que 6.3a2 existe pour empecher.
+
+    Deux verificateurs peuvent tres bien s'accorder sur un dossier auquel il
+    manque une couche. Le paquet le refuse **avant** toute signature.
+    """
+    with pytest.raises(ConfirmationDomainError, match="INCOMPLET"):
+        paquet(items=(preuve(DOC_ANB),))          # l'annexe seule, sans la base
+    with pytest.raises(ConfirmationDomainError, match="INCOMPLET"):
+        paquet(items=(preuve(DOC_BASE),))         # la base seule, sans l'annexe
+
+
+def test_le_paquet_refuse_une_preuve_etrangere_a_la_specification() -> None:
+    """L'autre sens: une preuve tiree d'un document hors pile."""
+    with pytest.raises(ConfirmationDomainError, match="ne declare pas"):
+        paquet(items=(preuve(DOC_BASE), preuve(DOC_ANB),
+                      preuve(DOC_ETRANGER)))
+
+
+def test_le_paquet_recalcule_sa_cle_et_son_empreinte_de_preuve() -> None:
+    """Exigence 6 — ni l'une ni l'autre ne peut etre falsifiee."""
+    p = paquet()
+    assert p.evidence == evidence_digest(p.evidence_items)
+    assert p.subject_key.evidence_digest == p.evidence.digest
+    assert p.subject_key.stack_digest == p.stack.digest.digest
+
+    for champ in ("evidence", "subject_key"):
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            setattr(p, champ, digest_of({"faux": True}))
+
+    # Et l'appelant ne peut meme pas les FOURNIR — ni l'une, ni l'autre.
+    # Les deux sont verifiees separement: rendre `subject_key` fournissable
+    # tout en gardant `evidence` calculee laisserait passer une cle falsifiee.
+    faux_sujet = dataclasses.replace(p.subject_key, rule_id="be.ec2.autre")
+    for interdit in ({"evidence": digest_of({"faux": True})},
+                     {"subject_key": faux_sujet}):
+        with pytest.raises(TypeError):
+            NormativeReviewPackage(
+                package_version="esc-review-package/1", country_code="BE",
+                standard_family="EN 1992", part="1-1",
+                rule_id="be.ec2.nu_strength_reduction", stack=pile(),
+                normative_spec=SPEC, implementation=IMPL,
+                evidence_items=dossier_complet(), **interdit,
+            )
+
+
+def test_modifier_un_element_de_preuve_change_le_sujet_attendu() -> None:
+    """Exigence 7."""
+    base = paquet()
+    for modifie in (
+        (preuve(DOC_BASE, page=105), preuve(DOC_ANB)),
+        (preuve(DOC_BASE), preuve(DOC_ANB, citation="FICTIF — autre citation.")),
+    ):
+        assert paquet(items=modifie).subject_key != base.subject_key
+
+
+def test_le_paquet_refuse_une_regle_qui_n_est_pas_celle_de_la_specification(
+) -> None:
+    """Presenter une regle sous le nom d'une autre."""
+    with pytest.raises(ConfirmationDomainError, match="annonce la regle"):
+        paquet(rule_id="be.ec2.s_t_max")          # SPEC porte un autre rule_id
+
+
+def test_le_paquet_refuse_une_pile_d_une_autre_juridiction() -> None:
+    with pytest.raises(ConfirmationDomainError, match="deux referentiels"):
+        NormativeReviewPackage.of(
+            country_code="FR", standard_family="EN 1992", part="1-1",
+            rule_id="be.ec2.nu_strength_reduction", stack=pile(),
+            normative_spec=SPEC, implementation=IMPL,
+            evidence_items=dossier_complet(),
+        )
+
+
+def test_les_sources_requises_se_lisent_dans_le_payload_de_specification(
+) -> None:
+    """La verification du lien sources/preuves est AUTOMATISEE, pas reportee.
+
+    Elle est possible parce que ``normative_spec_digest`` conserve son payload
+    canonique et qu'il porte, pour chaque couche et pour l'autorite, la
+    reference ET l'empreinte du document.
+    """
+    sources = required_sources(SPEC)
+    assert {s.document_digest for s in sources} == {DOC_BASE, DOC_ANB}
+    assert {s.role for s in sources} == {"base", "autorite"}
+    assert all(isinstance(s, RequiredSource) for s in sources)
+    assert paquet().required_sources == sources
+
+
+def test_une_version_de_canonicalisation_inconnue_est_refusee() -> None:
+    """Plutot que d'interpreter au juge une structure qui a change."""
+    ancien = payload_de_spec()
+    ancien["canonicalization_version"] = "esc-canon/0"
+    with pytest.raises(ConfirmationDomainError, match="version"):
+        required_sources(digest_of(ancien))
+
+
+def test_revoquer_puis_evaluer_ne_modifie_jamais_le_paquet() -> None:
+    """Exigence 12 — le paquet est une entree, pas un accumulateur."""
+    p = paquet()
+    avant = (p.subject_key, p.evidence, dataclasses.astuple(p.subject_key))
+
+    a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
+                     package=p)
+    b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
+                     package=p)
+    for revs in ((), (revocation(a),), (revocation(a), revocation(b))):
+        evalue((a, b), revs, attendu=p)
+
+    assert (p.subject_key, p.evidence, dataclasses.astuple(p.subject_key)) == avant
+    assert p.evidence_items == dossier_complet()
 
 
 # ---------------------------------------------------------------------------
@@ -1008,7 +1257,8 @@ def test_le_provider_rend_confirmations_et_revocations_de_la_regle() -> None:
     a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
     autre = confirmation(
         verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
-        rule_id="be.ec2.s_t_max",
+        package=paquet(rule_id="be.ec2.s_t_max",
+                       spec=digest_of(payload_de_spec("be.ec2.s_t_max"))),
     )
     p = InMemoryConfirmationProvider(
         confirmations=(a, autre), revocations=(revocation(a),),
@@ -1032,14 +1282,116 @@ def test_plusieurs_confirmations_et_revocations_sans_postgresql() -> None:
     p = InMemoryConfirmationProvider(confirmations=cs).with_revocations(
         revocation(cs[3], revocation_id="FICTIF-rev-d"),
     )
-    verdict = assess_confirmations(
-        confirmations=p.confirmations_for(cs[0].rule_id),
-        revocations=p.revocations_for(cs[0].rule_id),
-        context=contexte(), normative_spec=SPEC, implementation=IMPL,
-        policy=ConfirmationPolicy.production(),
+    verdict = evalue(
+        p.confirmations_for(cs[0].rule_id),
+        p.revocations_for(cs[0].rule_id),
     )
     assert len(verdict.regards) == 3
     assert verdict.is_confirmed
+
+
+# ---------------------------------------------------------------------------
+# Concordance avec une VRAIE regle
+#
+# Le module de domaine ne doit pas dependre du registre des regles — un test
+# le verifie plus bas. Rien n'empeche en revanche CE fichier d'aller chercher
+# une vraie regle pour montrer que le mecanisme tient sur des donnees reelles.
+# Aucune confirmation n'y est creee: un paquet de revue n'est pas une
+# attestation, c'est ce qu'on presenterait a un relecteur.
+# ---------------------------------------------------------------------------
+def test_un_paquet_se_construit_sur_une_vraie_regle() -> None:
+    """« Les digests de specification et d'implementation sont ceux de la
+    regle courante » — verifie sur `be.ec2.rho_w_min`.
+
+    C'est la couche applicative qui construit le paquet, donc elle qui appelle
+    `normative_spec_digest` et `implementation_digest` sur la regle. Le domaine
+    ne peut pas le verifier lui-meme sans dependre du registre; ce test le
+    demontre a sa place.
+    """
+    from eurostruct_engine.ndp import rules_be_ec2 as RBE
+    from eurostruct_engine.ndp.canonical import (
+        implementation_digest,
+        normative_spec_digest,
+    )
+
+    regle = RBE.RHO_W_MIN
+    spec = normative_spec_digest(regle)
+    impl = implementation_digest(regle)
+
+    sources = required_sources(spec)
+    assert len(sources) == 4, "base, corrigendum, amendement, autorite"
+    documents = {s.document_digest for s in sources}
+    assert len(documents) == 3, "base et corrigendum partagent le meme PDF"
+
+    items = tuple(
+        EvidenceItem(
+            document_digest=d, document_role="annexe", reference="FICTIF",
+            edition="FICTIF", clause="§9.2.2(5)", page_printed=i + 1,
+            quote=f"FICTIF — page temoin {i + 1}, sans valeur normative.",
+        )
+        for i, d in enumerate(sorted(documents))
+    )
+
+    p = NormativeReviewPackage.of(
+        country_code="BE", standard_family="EN 1992", part="1-1",
+        rule_id=regle.rule_id,
+        stack=NormativeStack.of(
+            country_code="BE", standard_family="EN 1992", part="1-1",
+            components=tuple(
+                NormativeStackComponent(
+                    "base" if s.role == "corrigendum" else
+                    ("annexe" if s.role == "autorite" else s.role),
+                    s.reference, "2010", i + 1, s.document_digest,
+                )
+                for i, s in enumerate(sources)
+            ),
+        ),
+        normative_spec=spec, implementation=impl, evidence_items=items,
+    )
+    assert p.subject_key.rule_id == regle.rule_id
+    assert p.subject_key.normative_spec_digest == spec.digest
+    assert p.subject_key.implementation_digest == impl.digest
+
+
+def test_un_dossier_incomplet_est_refuse_sur_une_vraie_regle() -> None:
+    """Le meme controle, sur la pile documentaire belge reelle.
+
+    Il manque l'annexe nationale — exactement le genre d'omission sur laquelle
+    deux relecteurs pourraient s'accorder sans que rien ne le signale.
+    """
+    from eurostruct_engine.ndp import rules_be_ec2 as RBE
+    from eurostruct_engine.ndp.canonical import (
+        implementation_digest,
+        normative_spec_digest,
+    )
+
+    regle = RBE.RHO_W_MIN
+    spec = normative_spec_digest(regle)
+    sources = required_sources(spec)
+    anb = next(s for s in sources if s.role == "autorite")
+    sans_annexe = sorted({s.document_digest for s in sources} - {anb.document_digest})
+
+    items = tuple(
+        EvidenceItem(
+            document_digest=d, document_role="base", reference="FICTIF",
+            edition="FICTIF", clause="§9.2.2", page_printed=i + 1,
+            quote="FICTIF — sans valeur normative.",
+        )
+        for i, d in enumerate(sans_annexe)
+    )
+    with pytest.raises(ConfirmationDomainError, match="INCOMPLET"):
+        NormativeReviewPackage.of(
+            country_code="BE", standard_family="EN 1992", part="1-1",
+            rule_id=regle.rule_id,
+            stack=NormativeStack.of(
+                country_code="BE", standard_family="EN 1992", part="1-1",
+                components=(NormativeStackComponent(
+                    "base", "EN 1992-1-1", "2004", 1, sans_annexe[0],
+                ),),
+            ),
+            normative_spec=spec, implementation=implementation_digest(regle),
+            evidence_items=items,
+        )
 
 
 # ---------------------------------------------------------------------------
