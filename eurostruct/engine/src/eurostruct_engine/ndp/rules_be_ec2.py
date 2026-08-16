@@ -487,7 +487,11 @@ S_L_MAX = register(FormulaRule(
 
 @implementation("be.ec2.s_l_max")
 def _s_l_max(d: Quantity, alpha: Quantity) -> Quantity:
-    a = alpha.to("radian").magnitude if hasattr(alpha, "to") else float(alpha)
+    # Pas de garde `hasattr`: _validate_inputs a deja verifie la dimension de
+    # chaque entree, donc alpha EST une grandeur. Le garde etait une
+    # precaution inutile, et un builtin dynamique n'a rien a faire dans une
+    # regle normative — la liste blanche des symboles l'a signale.
+    a = alpha.to("radian").magnitude
     return (0.75 * d * (1.0 + 1.0 / math.tan(a))).to("mm")
 
 
