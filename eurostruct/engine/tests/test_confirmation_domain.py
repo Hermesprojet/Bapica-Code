@@ -30,12 +30,14 @@ from eurostruct_engine.ndp.confirmation import (
     ConfirmationPolicy,
     ConfirmationProvider,
     ConfirmationStatus,
+    ConfirmationSubjectKey,
     InMemoryConfirmationProvider,
     NormativeContext,
     NormativeRuleConfirmation,
     NormativeRuleConfirmationRevocation,
     NormativeStack,
     NormativeStackComponent,
+    ReviewerAttestationKey,
     assert_provider_is_usable_in_production,
     assess_confirmations,
     field_names,
@@ -350,9 +352,13 @@ def test_l_idempotence_technique_est_distincte_de_l_identite_normative() -> None
 
     # Clés d'idempotence différentes...
     assert a.idempotency_key != b.idempotency_key
-    # ... et pourtant la MEME identite normative.
-    assert a.normative_identity == b.normative_identity
-    assert "FICTIF-k1" not in a.normative_identity
+    # ... et pourtant la MEME clé d'attestation, donc le même regard.
+    assert a.reviewer_attestation_key == b.reviewer_attestation_key
+    assert a.confirmation_subject_key == b.confirmation_subject_key
+
+    # La clé d'idempotence n'entre dans AUCUNE des deux clés normatives.
+    assert "FICTIF-k1" not in dataclasses.astuple(a.reviewer_attestation_key)
+    assert "FICTIF-k1" not in str(dataclasses.astuple(a.confirmation_subject_key))
 
     # Donc un seul regard, malgre deux lignes acceptees par le stockage.
     assert independent_regards((a, b), ()) == {f"{FICTIONAL_PREFIX}alice"}
@@ -574,6 +580,350 @@ def test_une_regle_sans_confirmation_est_absente() -> None:
     )
     assert verdict.status is ConfirmationStatus.ABSENT
     assert verdict.regards == frozenset()
+
+
+# ---------------------------------------------------------------------------
+# 6.3a1 — identité exacte du sujet confirmé
+#
+# `normative_identity = (rule_id, spec_digest, verifier_id)` était incomplète
+# ET mal nommée: elle ne portait ni la pile, ni l'implémentation, ni la preuve,
+# tout en s'annonçant comme « l'identité normative ». Une clé incomplète dont
+# le nom promet la complétude finit par être utilisée comme telle.
+# ---------------------------------------------------------------------------
+def test_la_cle_de_sujet_porte_les_huit_composantes() -> None:
+    """Exigence 9, première moitié — la clé complète est complète."""
+    attendu = (
+        "country_code", "standard_family", "part", "rule_id", "stack_digest",
+        "normative_spec_digest", "implementation_digest", "evidence_digest",
+    )
+    assert field_names(ConfirmationSubjectKey) == attendu
+    assert ConfirmationSubjectKey.REQUIRED_COMPONENTS == attendu
+
+    c = confirmation()
+    k = c.confirmation_subject_key
+    assert k.stack_digest == c.stack.digest.digest
+    assert k.normative_spec_digest == c.normative_spec.digest
+    assert k.implementation_digest == c.implementation.digest
+    assert k.evidence_digest == c.evidence.digest
+
+
+def test_aucune_propriete_ne_s_appelle_identite_normative() -> None:
+    """Exigence 9, seconde moitié — le nom trompeur a disparu.
+
+    Le supprimer plutôt que le renommer: un nom qui promet une identité
+    normative complète et n'en porte qu'un fragment sera utilisé comme clé
+    complète tôt ou tard.
+    """
+    for objet in DOMAIN_OBJECTS + (NormativeRuleConfirmation,):
+        for nom in dir(objet):
+            assert "normative_identity" not in nom, (
+                f"{objet.__name__}.{nom} ressuscite une cle incomplete"
+            )
+
+    c = confirmation()
+    assert not hasattr(c, "normative_identity")
+
+
+def test_la_cle_d_attestation_est_le_sujet_plus_le_verificateur() -> None:
+    assert field_names(ReviewerAttestationKey) == ("subject", "verifier_id")
+    c = confirmation()
+    assert c.reviewer_attestation_key.subject == c.confirmation_subject_key
+    assert c.reviewer_attestation_key.verifier_id == c.verifier_id
+
+
+def test_les_cles_sont_immuables_et_deterministes() -> None:
+    """Exigence 10 — deux calculs donnent la même clé, et rien ne s'y réaffecte."""
+    c = confirmation()
+    a, b = c.confirmation_subject_key, c.confirmation_subject_key
+    assert a == b and hash(a) == hash(b)
+    assert a is not b, "la propriete reconstruit: l'egalite ne vient pas d'un cache"
+
+    ra, rb = c.reviewer_attestation_key, c.reviewer_attestation_key
+    assert ra == rb and hash(ra) == hash(rb)
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        a.rule_id = "autre"
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        ra.verifier_id = "autre"
+
+    # Deterministe: reconstruire la confirmation a l'identique redonne la cle.
+    assert confirmation().confirmation_subject_key == a
+
+
+@pytest.mark.parametrize(
+    ("champ", "valeur"),
+    [
+        ("country_code", "FR"),
+        ("standard_family", "EN 1993"),
+        ("part", "1-2"),
+        ("rule_id", "be.ec2.s_t_max"),
+    ],
+    ids=["pays", "norme", "partie", "regle"],
+)
+def test_chaque_composante_identitaire_change_la_cle_de_sujet(champ, valeur) -> None:
+    base = confirmation()
+    remplacements = {champ: valeur}
+    if champ == "country_code":
+        # La pile porte aussi le pays: l'invariant de coherence l'exige.
+        remplacements["stack"] = dataclasses.replace(base.stack, country_code="FR")
+    autre = dataclasses.replace(base, **remplacements)
+    assert autre.confirmation_subject_key != base.confirmation_subject_key
+
+
+def test_chaque_empreinte_change_la_cle_de_sujet() -> None:
+    """Pile, spécification, implémentation, preuve: les quatre comptent."""
+    base = confirmation()
+    autre_digest = digest_of({"autre": True})
+    for champ in ("normative_spec", "implementation", "evidence"):
+        autre = dataclasses.replace(base, **{champ: autre_digest})
+        assert autre.confirmation_subject_key != base.confirmation_subject_key, champ
+    sur_2018 = dataclasses.replace(base, stack=pile(edition_annexe="2018"))
+    assert sur_2018.confirmation_subject_key != base.confirmation_subject_key
+
+
+# --- le dossier de preuve, et ce qui n'en fait pas partie ------------------
+def test_deux_verificateurs_sur_le_meme_sujet_donnent_CONFIRMED() -> None:
+    """Exigence 1 — le cas nominal du contrôle à quatre yeux."""
+    a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
+    b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2")
+    assert a.confirmation_subject_key == b.confirmation_subject_key
+    assert a.reviewer_attestation_key != b.reviewer_attestation_key
+
+    verdict = assess_confirmations(
+        confirmations=(a, b), revocations=(), context=contexte(),
+        normative_spec=SPEC, implementation=IMPL,
+        policy=ConfirmationPolicy.production(),
+    )
+    assert verdict.status is ConfirmationStatus.VALID_FOR_CONTEXT
+    assert verdict.is_confirmed
+
+
+def test_une_declaration_personnelle_differente_reste_combinable() -> None:
+    """Exigence 6 — deux personnes n'écrivent jamais la même phrase.
+
+    Faire dépendre le sujet de leur formulation rendrait le double contrôle
+    inatteignable en pratique.
+    """
+    a = confirmation(
+        verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
+        statement="FICTIF — lu page 15, la formule correspond.",
+    )
+    b = confirmation(
+        verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
+        statement="FICTIF — verifie sur l'annexe, RAS. Note perso: relire 9.6N.",
+        verified_at=INSTANT + timedelta(days=2),
+    )
+    assert a.statement != b.statement
+    assert a.verified_at != b.verified_at
+    assert a.verifier_id != b.verifier_id
+    # ... et pourtant le MEME sujet.
+    assert a.confirmation_subject_key == b.confirmation_subject_key
+
+    verdict = assess_confirmations(
+        confirmations=(a, b), revocations=(), context=contexte(),
+        normative_spec=SPEC, implementation=IMPL,
+        policy=ConfirmationPolicy.production(),
+    )
+    assert verdict.is_confirmed
+
+
+def test_un_commentaire_personnel_ne_change_pas_l_empreinte_de_preuve() -> None:
+    """La déclaration appartient à l'attestation, jamais au dossier."""
+    base = confirmation()
+    bavard = dataclasses.replace(
+        base, statement="FICTIF — " + "commentaire tres long. " * 20,
+    )
+    assert bavard.evidence == base.evidence
+    assert bavard.confirmation_subject_key == base.confirmation_subject_key
+    # Et le champ n'entre dans aucune des deux cles.
+    assert "commentaire" not in str(
+        dataclasses.astuple(bavard.confirmation_subject_key)
+    )
+
+
+def test_deux_dossiers_de_preuve_differents_donnent_EVIDENCE_MISMATCH() -> None:
+    """Exigence 5 — même règle, même pile, même code, preuves différentes.
+
+    Deux relecteurs qui n'ont pas ouvert les mêmes pages n'ont pas exercé deux
+    regards sur la même chose.
+    """
+    a = confirmation(
+        verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
+        evidence=digest_of({"dossier": "pages 15-16"}),
+    )
+    b = confirmation(
+        verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
+        evidence=digest_of({"dossier": "page 104 seulement"}),
+    )
+    assert a.normative_spec == b.normative_spec
+    assert a.implementation == b.implementation
+    assert a.stack.digest == b.stack.digest
+    assert a.confirmation_subject_key != b.confirmation_subject_key
+
+    verdict = assess_confirmations(
+        confirmations=(a, b), revocations=(), context=contexte(),
+        normative_spec=SPEC, implementation=IMPL,
+        policy=ConfirmationPolicy.production(),
+    )
+    assert verdict.status is ConfirmationStatus.EVIDENCE_MISMATCH
+    assert not verdict.is_confirmed
+    assert "ne s'additionnent pas" in verdict.reason
+
+
+def test_les_attestations_aux_preuves_divergentes_restent_conservees() -> None:
+    """Elles ne sont pas additionnées; elles ne sont pas perdues non plus."""
+    a = confirmation(
+        verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
+        evidence=digest_of({"dossier": "A"}),
+    )
+    b = confirmation(
+        verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
+        evidence=digest_of({"dossier": "B"}),
+    )
+    p = InMemoryConfirmationProvider(confirmations=(a, b))
+    rendues = p.confirmations_for(a.rule_id)
+    assert len(rendues) == 2
+    assert set(rendues) == {a, b}
+
+
+def test_un_dossier_partage_par_deux_regards_confirme_malgre_un_dossier_tiers(
+) -> None:
+    """Un groupe qui satisfait à lui seul la politique est un double contrôle.
+
+    L'attestation isolée sur un autre dossier reste conservée; elle n'est
+    simplement pas additionnée.
+    """
+    a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
+    b = confirmation(verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2")
+    seul = confirmation(
+        verifier="chloe", cid="FICTIF-c3", cle="FICTIF-k3",
+        evidence=digest_of({"dossier": "autre"}),
+    )
+    verdict = assess_confirmations(
+        confirmations=(a, b, seul), revocations=(), context=contexte(),
+        normative_spec=SPEC, implementation=IMPL,
+        policy=ConfirmationPolicy.production(),
+    )
+    assert verdict.status is ConfirmationStatus.VALID_FOR_CONTEXT
+    assert verdict.regards == {
+        f"{FICTIONAL_PREFIX}alice", f"{FICTIONAL_PREFIX}bob",
+    }
+
+
+def test_une_attestation_revoquee_ne_cree_pas_de_desaccord_de_dossier() -> None:
+    """La révocation passe AVANT la preuve, et c'est ce cas qui l'exige.
+
+    Deux attestations aux preuves divergentes dont l'une est révoquée laissent
+    un regard, pas un désaccord de dossier qui n'existe plus.
+    """
+    a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
+    retiree = confirmation(
+        verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
+        evidence=digest_of({"dossier": "errone"}),
+    )
+    verdict = assess_confirmations(
+        confirmations=(a, retiree), revocations=(revocation(retiree),),
+        context=contexte(), normative_spec=SPEC, implementation=IMPL,
+        policy=ConfirmationPolicy.production(),
+    )
+    assert verdict.status is ConfirmationStatus.INSUFFICIENT_INDEPENDENT_CONFIRMATIONS
+    assert verdict.status is not ConfirmationStatus.EVIDENCE_MISMATCH
+    assert verdict.regards == {f"{FICTIONAL_PREFIX}alice"}
+
+
+# --- non-combinabilité par pile et par implémentation ----------------------
+def test_memes_regle_et_spec_mais_piles_differentes_ne_se_combinent_pas() -> None:
+    """Exigence 3."""
+    a = confirmation(
+        verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1",
+        stack=pile(edition_annexe="2010"),
+    )
+    b = confirmation(
+        verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2",
+        stack=pile(edition_annexe="2018"),
+    )
+    assert a.normative_spec == b.normative_spec
+    assert a.confirmation_subject_key != b.confirmation_subject_key
+
+    # Contre la pile de a: seul le regard de a compte.
+    verdict = assess_confirmations(
+        confirmations=(a, b), revocations=(),
+        context=contexte(edition_annexe="2010"),
+        normative_spec=SPEC, implementation=IMPL,
+        policy=ConfirmationPolicy.production(),
+    )
+    assert verdict.regards == {f"{FICTIONAL_PREFIX}alice"}
+    assert not verdict.is_confirmed
+
+    # Et l'addition brute est refusee a la racine.
+    with pytest.raises(ConfirmationDomainError, match="sujets distincts"):
+        independent_regards((a, b), ())
+
+
+def test_memes_pile_et_spec_mais_implementations_differentes_ne_se_combinent_pas(
+) -> None:
+    """Exigence 4."""
+    autre_impl = digest_of({"code": "modifie"})
+    a = confirmation(verifier="alice", cid="FICTIF-c1", cle="FICTIF-k1")
+    b = confirmation(
+        verifier="bob", cid="FICTIF-c2", cle="FICTIF-k2", impl=autre_impl,
+    )
+    assert a.stack.digest == b.stack.digest
+    assert a.normative_spec == b.normative_spec
+    assert a.confirmation_subject_key != b.confirmation_subject_key
+
+    verdict = assess_confirmations(
+        confirmations=(a, b), revocations=(), context=contexte(),
+        normative_spec=SPEC, implementation=IMPL,
+        policy=ConfirmationPolicy.production(),
+    )
+    assert verdict.regards == {f"{FICTIONAL_PREFIX}alice"}
+    assert not verdict.is_confirmed
+
+    with pytest.raises(ConfirmationDomainError, match="sujets distincts"):
+        independent_regards((a, b), ())
+
+
+def test_l_ordre_des_controles_est_celui_qui_est_documente() -> None:
+    """Pile, spec, implémentation, révocation, preuve, décompte.
+
+    Chaque étape est vérifiée en rendant fautives toutes celles qui suivent :
+    si l'ordre changeait, le diagnostic annoncé changerait aussi.
+    """
+    autre = digest_of({"tout": "autre"})
+    politique = ConfirmationPolicy.production()
+
+    # 1. pile fautive + spec fautive + impl fautive -> c'est la PILE qu'on
+    #    annonce, parce qu'une autre edition n'a aucune raison de porter les
+    #    memes empreintes.
+    sur_2018 = confirmation(stack=pile(edition_annexe="2018"), spec=autre, impl=autre)
+    assert assess_confirmations(
+        confirmations=(sur_2018,), revocations=(),
+        context=contexte(edition_annexe="2010"),
+        normative_spec=SPEC, implementation=IMPL, policy=politique,
+    ).status is ConfirmationStatus.STACK_MISMATCH
+
+    # 2. pile bonne, spec fautive + impl fautive -> SPEC.
+    assert assess_confirmations(
+        confirmations=(confirmation(spec=autre, impl=autre),), revocations=(),
+        context=contexte(), normative_spec=SPEC, implementation=IMPL,
+        policy=politique,
+    ).status is ConfirmationStatus.SPEC_MISMATCH
+
+    # 3. pile et spec bonnes, impl fautive -> IMPLEMENTATION.
+    assert assess_confirmations(
+        confirmations=(confirmation(impl=autre),), revocations=(),
+        context=contexte(), normative_spec=SPEC, implementation=IMPL,
+        policy=politique,
+    ).status is ConfirmationStatus.IMPLEMENTATION_MISMATCH
+
+    # 4. tout bon, mais tout revoque -> REVOKED (et non « pas assez de
+    #    regards », qui laisserait croire qu'il suffit d'en ajouter un).
+    c = confirmation()
+    assert assess_confirmations(
+        confirmations=(c,), revocations=(revocation(c),), context=contexte(),
+        normative_spec=SPEC, implementation=IMPL, policy=politique,
+    ).status is ConfirmationStatus.REVOKED
 
 
 # ---------------------------------------------------------------------------

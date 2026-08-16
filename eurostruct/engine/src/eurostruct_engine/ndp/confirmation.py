@@ -59,12 +59,14 @@ __all__ = [
     "ConfirmationPolicy",
     "ConfirmationProvider",
     "ConfirmationStatus",
+    "ConfirmationSubjectKey",
     "InMemoryConfirmationProvider",
     "NormativeContext",
     "NormativeRuleConfirmation",
     "NormativeRuleConfirmationRevocation",
     "NormativeStack",
     "NormativeStackComponent",
+    "ReviewerAttestationKey",
     "assert_provider_is_usable_in_production",
     "assess_confirmations",
     "independent_regards",
@@ -300,6 +302,71 @@ class NormativeContext:
 
 
 # ---------------------------------------------------------------------------
+# Les trois clés, et ce que chacune identifie
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class ConfirmationSubjectKey:
+    """**L'objet exact** que deux vérificateurs doivent confirmer ensemble.
+
+    Huit composantes, et aucune n'est décorative. Elles répondent chacune à une
+    façon différente pour deux confirmations de **ne pas porter sur la même
+    chose** :
+
+    ``country_code``, ``standard_family``, ``part``, ``rule_id``
+        de quelle règle on parle ;
+    ``stack_digest``
+        sous quelle pile — la même règle confirmée pour l'édition 2010 et pour
+        l'édition 2018 fait **deux sujets**, tous deux légitimes ;
+    ``normative_spec_digest``
+        ce que le pays prescrit ;
+    ``implementation_digest``
+        quel code l'exécute ;
+    ``evidence_digest``
+        **quel dossier de preuve** a été lu. Deux relecteurs qui n'ont pas
+        ouvert les mêmes pages n'ont pas exercé deux regards sur la même chose.
+
+    Un tuple nommé plutôt qu'un tuple positionnel : c'est la même raison qui
+    fait que :class:`NormativeStack` est structurée. Dans un tuple positionnel,
+    le sens d'une composante dépend de sa place, et personne ne s'en aperçoit
+    quand la place change.
+    """
+
+    country_code: str
+    standard_family: str
+    part: str
+    rule_id: str
+    stack_digest: str
+    normative_spec_digest: str
+    implementation_digest: str
+    evidence_digest: str
+
+    #: Ce que la clé DOIT contenir. Vérifié par un test : une clé de sujet à
+    #: qui il manque une composante est exactement le défaut que ce correctif
+    #: existe pour supprimer.
+    REQUIRED_COMPONENTS: ClassVar[tuple[str, ...]] = (
+        "country_code", "standard_family", "part", "rule_id", "stack_digest",
+        "normative_spec_digest", "implementation_digest", "evidence_digest",
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewerAttestationKey:
+    """**Le regard d'une personne** sur un sujet exact.
+
+    ``confirmation_subject_key + verifier_id``. C'est l'unité du décompte à
+    quatre yeux : deux lignes de même clé d'attestation sont **le même
+    regard**, quel que soit leur nombre.
+
+    La clé d'idempotence n'y entre pas, et c'est tout l'objet de la distinction
+    : deux envois distincts d'une même lecture — un rejeu réseau, un
+    double-clic — ne font pas deux relecteurs.
+    """
+
+    subject: ConfirmationSubjectKey
+    verifier_id: str
+
+
+# ---------------------------------------------------------------------------
 # La confirmation
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True, slots=True)
@@ -340,9 +407,23 @@ class NormativeRuleConfirmation:
     authorisations_at_signature: frozenset[str]
     authorisation_scope_at_signature: str
 
-    # --- ce qui a été lu --------------------------------------------------
+    # --- ce qui a été lu : le DOSSIER, partagé -----------------------------
+    #: Le dossier canonique de preuve. Pour satisfaire le contrôle à quatre
+    #: yeux, les deux vérificateurs doivent avoir reçu et confirmé **le même**
+    #: : mêmes documents, mêmes empreintes, mêmes rôles documentaires, mêmes
+    #: clauses, mêmes folios imprimés, mêmes citations normatives. C'est
+    #: exactement ce que scelle ``evidence`` — et ``page_pdf``, simple aide de
+    #: navigation, en est exclu.
     evidence_items: tuple[EvidenceItem, ...]
+
+    # --- ce qu'il en dit : la DÉCLARATION, personnelle ---------------------
     #: Sa phrase, pas un gabarit pré-rempli qu'il aurait suffi de cocher.
+    #:
+    #: **Elle n'entre dans aucune clé et ne modifie aucune empreinte.** Deux
+    #: relecteurs qui ont lu le même dossier et le commentent différemment ont
+    #: bien exercé deux regards sur la même chose : faire dépendre le sujet de
+    #: leur formulation rendrait le double contrôle inatteignable en pratique,
+    #: puisque deux personnes n'écrivent jamais la même phrase.
     statement: str
 
     #: Clé d'idempotence **technique**, distincte de l'identité normative.
@@ -393,18 +474,30 @@ class NormativeRuleConfirmation:
             )
 
     @property
-    def normative_identity(self) -> tuple[str, str, str]:
-        """*Qui a signé quoi* — l'identité **normative**, pas technique.
+    def confirmation_subject_key(self) -> ConfirmationSubjectKey:
+        """**L'objet exact** que deux vérificateurs doivent confirmer ensemble."""
+        return ConfirmationSubjectKey(
+            country_code=self.country_code,
+            standard_family=self.standard_family,
+            part=self.part,
+            rule_id=self.rule_id,
+            stack_digest=self.stack.digest.digest,
+            normative_spec_digest=self.normative_spec.digest,
+            implementation_digest=self.implementation.digest,
+            evidence_digest=self.evidence.digest,
+        )
 
-        ``(rule_id, empreinte de specification, verifier_id)``.
+    @property
+    def reviewer_attestation_key(self) -> ReviewerAttestationKey:
+        """**Le regard d'une personne** sur ce sujet exact.
 
-        Deux lignes de même identité normative sont **le même regard**, quel
-        que soit leur nombre. C'est ce qui rend le décompte à quatre yeux
-        insensible à un doublon technique, et c'est pourquoi
-        ``idempotency_key`` n'entre pas ici : deux envois distincts d'une même
-        lecture ne font pas deux relecteurs.
+        C'est la clé du décompte à quatre yeux : deux lignes de même clé
+        d'attestation sont le même regard, quel que soit leur nombre et quelles
+        que soient leurs clés d'idempotence.
         """
-        return (self.rule_id, self.normative_spec.digest, self.verifier_id)
+        return ReviewerAttestationKey(
+            subject=self.confirmation_subject_key, verifier_id=self.verifier_id,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -512,6 +605,11 @@ class ConfirmationStatus(str, Enum):
     #: La confirmation atteste une AUTRE pile. Elle reste valide en soi, pour
     #: les calculs qui demandent cette pile-là.
     STACK_MISMATCH = "stack_mismatch"
+    #: Des attestations concordent sur la règle, la pile, la prescription et le
+    #: code — mais **pas sur le dossier de preuve lu**. Elles restent conservées
+    #: individuellement et ne s'additionnent pas : deux relecteurs qui n'ont pas
+    #: ouvert les mêmes pages n'ont pas exercé deux regards sur la même chose.
+    EVIDENCE_MISMATCH = "evidence_mismatch"
     #: Toutes les confirmations concordantes ont été révoquées.
     REVOKED = "revoked"
     #: L'état intermédiaire: des confirmations valides, mais pas assez de
@@ -542,20 +640,31 @@ def independent_regards(
     confirmations: tuple[NormativeRuleConfirmation, ...],
     revocations: tuple[NormativeRuleConfirmationRevocation, ...],
 ) -> frozenset[str]:
-    """Les ``verifier_id`` distincts dont la confirmation est **active**.
+    """Les ``verifier_id`` distincts dont l'attestation est **active**.
 
     Un ensemble, pas un compte : deux lignes de la même personne s'y fondent
     d'elles-mêmes, sans qu'aucun appelant ait à y penser.
 
-    Une révocation retire **la confirmation ciblée** et elle seule. Si la même
-    personne avait signé deux fois — ce que le stockage empêchera par ailleurs
-    — révoquer l'une laisserait l'autre, et son regard compterait encore.
+    **Refuse un ensemble hétérogène.** Additionner des attestations qui ne
+    portent pas sur le même ``confirmation_subject_key`` est exactement ce que
+    ce modèle doit rendre impossible : deux regards sur deux sujets différents
+    ne font pas un double contrôle. Un appelant qui veut trier par sujet doit
+    le faire avant, et :func:`assess_confirmations` s'en charge.
+
+    Une révocation retire **l'attestation ciblée** et elle seule.
     """
     revoquees = {r.confirmation_id for r in revocations}
-    return frozenset(
-        c.verifier_id for c in confirmations
-        if c.confirmation_id not in revoquees
-    )
+    actives = [c for c in confirmations if c.confirmation_id not in revoquees]
+
+    sujets = {c.confirmation_subject_key for c in actives}
+    if len(sujets) > 1:
+        raise ConfirmationDomainError(
+            f"{len(sujets)} sujets distincts dans le meme decompte. Des "
+            "attestations qui ne portent pas sur le meme "
+            "confirmation_subject_key ne s'additionnent pas: deux regards sur "
+            "deux sujets differents ne font pas un double controle."
+        )
+    return frozenset(c.verifier_id for c in actives)
 
 
 def assess_confirmations(
@@ -567,17 +676,46 @@ def assess_confirmations(
     implementation: Digest,
     policy: ConfirmationPolicy,
 ) -> ConfirmationAssessment:
-    """Confronter des confirmations à un contexte et à des empreintes.
+    """Confronter des attestations a un contexte, a des empreintes, entre elles.
 
-    Fonction **pure**, sans base et sans effet de bord. Elle n'est branchée sur
+    Fonction **pure**, sans base et sans effet de bord. Elle n'est branchee sur
     rien : le mode strict la consommera plus tard. Les empreintes attendues
-    sont passées en arguments plutôt que déduites d'une règle, pour que ce
-    module ne dépende pas du registre des règles.
+    sont passees en arguments plutot que deduites d'une regle, pour que ce
+    module ne depende pas du registre des regles.
 
-    L'ordre des vérifications est significatif. La **pile** passe avant les
-    empreintes : une confirmation faite sur une autre édition n'a aucune raison
-    de porter les mêmes empreintes, et annoncer ``SPEC_MISMATCH`` enverrait
-    chercher un défaut de transcription là où il n'y a qu'un écart d'édition.
+    Il n'y a **pas** d'``evidence`` en argument, et ce n'est pas un oubli : le
+    dossier de preuve n'est pas quelque chose que l'appelant *demande*, c'est
+    ce que les verificateurs *attestent*. Il ne se compare donc pas a une
+    valeur attendue mais **entre attestations**.
+
+    Ordre des controles
+    -------------------
+    1. **pile** — une confirmation faite sur une autre edition n'a aucune
+       raison de porter les memes empreintes. Annoncer ``SPEC_MISMATCH``
+       enverrait chercher un defaut de transcription la ou il n'y a qu'un
+       ecart d'edition, et la confirmation reste pleinement valide pour les
+       calculs qui demandent *sa* pile.
+    2. **specification** — si le pays prescrit autre chose, l'ecart de code
+       n'en est que la consequence. Annoncer ``IMPLEMENTATION_MISMATCH``
+       enverrait lire un diff quand il faut ouvrir l'annexe.
+    3. **implementation** — si le code a change, le dossier de preuve porte
+       sur une regle qui n'existe plus sous cette forme ; comparer les
+       dossiers avant le code ferait discuter des pages lues alors que le
+       sujet lui-meme a bouge.
+    4. **revocation** — placee ici, et non apres la preuve : une attestation
+       retiree ne doit pas creer un desaccord de dossier qui n'existe plus.
+       Deux attestations aux preuves divergentes dont l'une est revoquee
+       laissent **un** regard, pas un ``EVIDENCE_MISMATCH``.
+    5. **dossier de preuve** — le premier controle qui compare les
+       attestations *entre elles* et non au contexte. Les trois premiers
+       disent « ceci ne concerne pas ce que vous demandez » ; celui-ci dit
+       « celles-ci concernent bien votre sujet, mais pas le meme dossier ».
+    6. **nombre de verificateurs distincts** — en dernier, parce qu'un
+       decompte n'a de sens qu'une fois etabli que l'on compte des regards sur
+       **le meme** ``confirmation_subject_key``.
+
+    L'ecart avec l'ordre suggere (preuve avant revocation) est delibere et
+    porte sur le point 4 ; sa justification est ci-dessus.
     """
     if not confirmations:
         return ConfirmationAssessment(
@@ -585,18 +723,13 @@ def assess_confirmations(
             "aucune confirmation pour cette regle.",
         )
 
-    revoquees = {r.confirmation_id for r in revocations}
-    actives = tuple(c for c in confirmations if c.confirmation_id not in revoquees)
-    if not actives:
-        return ConfirmationAssessment(
-            ConfirmationStatus.REVOKED, frozenset(), policy,
-            f"les {len(confirmations)} confirmation(s) ont ete revoquees.",
-        )
-
+    # --- 1. pile ----------------------------------------------------------
     attendu = context.stack.digest.digest
-    meme_pile = tuple(c for c in actives if c.stack.digest.digest == attendu)
+    meme_pile = tuple(
+        c for c in confirmations if c.stack.digest.digest == attendu
+    )
     if not meme_pile:
-        piles = sorted({c.stack.digest.digest[:16] for c in actives})
+        piles = sorted({c.stack.digest.digest[:16] for c in confirmations})
         return ConfirmationAssessment(
             ConfirmationStatus.STACK_MISMATCH, frozenset(), policy,
             f"confirmation(s) faite(s) sur une autre pile ({', '.join(piles)}) "
@@ -605,6 +738,7 @@ def assess_confirmations(
             "pour l'edition demandee, pas une correction de code.",
         )
 
+    # --- 2. specification normative ---------------------------------------
     meme_spec = tuple(c for c in meme_pile if c.normative_spec == normative_spec)
     if not meme_spec:
         return ConfirmationAssessment(
@@ -613,6 +747,7 @@ def assess_confirmations(
             "confirmation. Il faut rouvrir l'annexe.",
         )
 
+    # --- 3. implementation -------------------------------------------------
     meme_impl = tuple(c for c in meme_spec if c.implementation == implementation)
     if not meme_impl:
         return ConfirmationAssessment(
@@ -621,7 +756,47 @@ def assess_confirmations(
             "Il faut comprendre pourquoi avant de reconfirmer.",
         )
 
-    regards = frozenset(c.verifier_id for c in meme_impl)
+    # --- 4. revocation -----------------------------------------------------
+    revoquees = {r.confirmation_id for r in revocations}
+    actives = tuple(c for c in meme_impl if c.confirmation_id not in revoquees)
+    if not actives:
+        return ConfirmationAssessment(
+            ConfirmationStatus.REVOKED, frozenset(), policy,
+            f"les {len(meme_impl)} attestation(s) concordantes ont ete "
+            "revoquees.",
+        )
+
+    # --- 5. dossier de preuve ----------------------------------------------
+    # Regrouper par sujet COMPLET. A ce stade les sept premieres composantes de
+    # la cle sont deja communes; ne reste que le dossier de preuve pour les
+    # separer — et c'est bien lui qui decide si deux regards portent sur la
+    # meme chose.
+    par_sujet: dict[ConfirmationSubjectKey, set[str]] = {}
+    for c in actives:
+        par_sujet.setdefault(c.confirmation_subject_key, set()).add(c.verifier_id)
+
+    # Le meilleur groupe: celui qui reunit le plus de regards independants. Un
+    # groupe qui satisfait a lui seul la politique est un double controle
+    # complet sur un dossier partage; les autres attestations restent
+    # conservees, simplement non additionnees. Le second critere de tri rend
+    # le choix DETERMINISTE en cas d'egalite.
+    meilleur, ids = max(
+        par_sujet.items(), key=lambda kv: (len(kv[1]), kv[0].evidence_digest),
+    )
+    regards = frozenset(ids)
+
+    if not policy.is_satisfied_by(len(regards)) and len(par_sujet) > 1:
+        dossiers = sorted(k.evidence_digest[:16] for k in par_sujet)
+        return ConfirmationAssessment(
+            ConfirmationStatus.EVIDENCE_MISMATCH, regards, policy,
+            f"{len(par_sujet)} dossiers de preuve distincts "
+            f"({', '.join(dossiers)}) pour la meme regle, la meme pile et le "
+            "meme code. Deux relecteurs qui n'ont pas ouvert les memes pages "
+            "n'ont pas exerce deux regards sur la meme chose: ces attestations "
+            "sont conservees mais ne s'additionnent pas.",
+        )
+
+    # --- 6. nombre de regards independants ---------------------------------
     if not policy.is_satisfied_by(len(regards)):
         manquants = policy.minimum_independent_confirmations - len(regards)
         return ConfirmationAssessment(
@@ -635,8 +810,9 @@ def assess_confirmations(
 
     return ConfirmationAssessment(
         ConfirmationStatus.VALID_FOR_CONTEXT, regards, policy,
-        f"{len(regards)} regard(s) independant(s) concordant(s) avec la pile "
-        "et les deux empreintes.",
+        f"{len(regards)} regard(s) independant(s) sur le meme sujet: meme "
+        f"pile, memes empreintes, meme dossier de preuve "
+        f"({meilleur.evidence_digest[:16]}).",
     )
 
 
@@ -797,6 +973,8 @@ class InMemoryConfirmationProvider:
 #: un client. Énumérés ici pour que le test structurel les parcoure tous, et
 #: qu'un objet ajouté plus tard sans y figurer se voie.
 DOMAIN_OBJECTS: tuple[type, ...] = (
+    ConfirmationSubjectKey,
+    ReviewerAttestationKey,
     NormativeStackComponent,
     NormativeStack,
     NormativeContext,
