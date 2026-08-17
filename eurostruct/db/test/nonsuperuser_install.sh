@@ -88,6 +88,14 @@ fi
 KO=0
 echoue() { echo "      ECHEC: $*"; KO=1; }
 
+# Le migrateur se connecte avec SON mot de passe, jamais celui de
+# l'environnement. En CI, `PGPASSWORD` porte celui de l'administrateur: il
+# etait donc presente a l'authentification d'`esc_migrator` et refuse
+# (« password authentication failed »). En local l'authentification est
+# `trust`, si bien que la variable n'etait jamais lue et que le defaut restait
+# invisible — la meme asymetrie CI/local que ce fichier existe pour reduire.
+mig() { PGPASSWORD="$MDP" "${MIG[@]}" "$@"; }
+
 nettoyer() {
   "${ADMIN[@]}" -q -c "drop database if exists $DB;" >/dev/null 2>&1
   for r in $ROLES_SB; do
@@ -174,10 +182,22 @@ done
 # --------------------------------------------------------------------------
 # 3. Les migrations, appliquees PAR LE MIGRATEUR
 # --------------------------------------------------------------------------
+# La connexion du migrateur d'abord, et SEULE. Sans ce controle, un echec
+# d'authentification se presentait comme « 0001_init.sql refusee sous un role
+# non superutilisateur » — un diagnostic qui accuse la migration alors que le
+# probleme est le raccordement du test.
+if ! sonde=$(mig -X -q -tAc 'select current_user' 2>&1); then
+  echoue "le migrateur ne peut pas se connecter:"
+  sed 's/^/              /' <<<"$sonde" | head -2
+  exit 1
+fi
+echo "      ok: le migrateur se connecte ($sonde)"
+
+
 for f in "$DB_DIR"/migrations/*.sql; do
-  if ! out=$("${MIG[@]}" -v ON_ERROR_STOP=1 -q -f "$f" 2>&1); then
+  if ! out=$(mig -v ON_ERROR_STOP=1 -q -f "$f" 2>&1); then
     echoue "$(basename "$f") refusee sous un role non superutilisateur:"
-    grep -m2 -E "ERROR|DETAIL" <<<"$out" | sed 's/^/              /'
+    grep -m2 -E "ERROR|DETAIL|FATAL|psql: error" <<<"$out" | sed 's/^/              /'
     exit 1
   fi
 done
@@ -210,7 +230,7 @@ fi
 # --------------------------------------------------------------------------
 # D'ABORD le refus: sans rattachement au role de deploiement, le migrateur ne
 # peut pas amorcer. Sans cette moitie, l'ACL ne prouverait rien.
-REFUS=$("${MIG[@]}" -X -q -tAc "
+REFUS=$(mig -X -q -tAc "
   select bootstrap_normative_administrator(
     '11111111-1111-1111-1111-111111111111', 'FICTIF Racine',
     'FICTIF — amorcage sans rattachement.')" 2>&1)
@@ -223,7 +243,7 @@ fi
 
 "${ADMIN[@]}" -q -c "grant eurostruct_deployment to $MIGRATEUR;" >/dev/null 2>&1
 
-AMORCAGE=$("${MIG[@]}" -q -v ON_ERROR_STOP=1 2>&1 <<'SQL'
+AMORCAGE=$(mig -q -v ON_ERROR_STOP=1 2>&1 <<'SQL'
 insert into auth.users (id, email) values
   ('11111111-1111-1111-1111-111111111111', 'FICTIF-ns-admin@eurostruct.test'),
   ('22222222-2222-2222-2222-222222222222', 'FICTIF-ns-verif@eurostruct.test')
@@ -235,7 +255,7 @@ SQL
 )
 if grep -q "ERROR" <<<"$AMORCAGE"; then
   echoue "l'amorcage a echoue APRES rattachement au role de deploiement:"
-  grep -m2 -E "ERROR|DETAIL" <<<"$AMORCAGE" | sed 's/^/              /'
+  grep -m2 -E "ERROR|DETAIL|FATAL|psql: error" <<<"$AMORCAGE" | sed 's/^/              /'
 else
   echo "      ok: amorcage reussi via eurostruct_deployment"
 fi
@@ -271,7 +291,7 @@ fi
   "alter database $DB set eurostruct.approved_service_logins = '$MIGRATEUR';" \
   >/dev/null 2>&1
 
-PARCOURS=$("${MIG[@]}" -X -q -tAc "
+PARCOURS=$(mig -X -q -tAc "
 set role normative_backend;
 select set_config('request.jwt.claim.sub',
                   '11111111-1111-1111-1111-111111111111', true);
@@ -312,13 +332,13 @@ select count(*) from normative_rule_confirmations
 
 if [[ "$(tail -1 <<<"$PARCOURS")" != "1" ]]; then
   echoue "le parcours octroi -> confirmation a echoue:"
-  grep -m2 -E "ERROR|DETAIL" <<<"$PARCOURS" | sed 's/^/              /'
+  grep -m2 -E "ERROR|DETAIL|FATAL|psql: error" <<<"$PARCOURS" | sed 's/^/              /'
 else
   echo "      ok: octroi puis confirmation sous le role de service"
 fi
 
 # Revocation de la confirmation, par son auteur.
-REVOC=$("${MIG[@]}" -X -q -tAc "
+REVOC=$(mig -X -q -tAc "
 set role normative_backend;
 select set_config('request.jwt.claim.sub',
                   '22222222-2222-2222-2222-222222222222', true);
@@ -330,7 +350,7 @@ select count(*) from normative_rule_confirmation_revocations;" 2>&1)
 
 if [[ "$(tail -1 <<<"$REVOC")" != "1" ]]; then
   echoue "la revocation de confirmation a echoue:"
-  grep -m2 -E "ERROR|DETAIL" <<<"$REVOC" | sed 's/^/              /'
+  grep -m2 -E "ERROR|DETAIL|FATAL|psql: error" <<<"$REVOC" | sed 's/^/              /'
 else
   echo "      ok: revocation de la confirmation par son auteur"
 fi
@@ -338,7 +358,7 @@ fi
 # Et la RLS s'applique reellement: sans bypassrls, un porteur de jeton tiers
 # ne voit pas la confirmation d'autrui. Ce controle ne vaut QUE sous un role
 # non superutilisateur — c'est tout l'objet de ce fichier.
-VU=$("${MIG[@]}" -X -q -tAc "
+VU=$(mig -X -q -tAc "
 set role authenticated;
 select set_config('request.jwt.claim.sub',
                   '11111111-1111-1111-1111-111111111111', true);
