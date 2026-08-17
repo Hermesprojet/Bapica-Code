@@ -161,23 +161,61 @@ grant execute on function auth.uid() to $MIGRATEUR with grant option;
 grant create on database $DB to $MIGRATEUR;
 SQL
 
-# PREREQUIS DE DEPLOIEMENT, quand les roles d'autorite PREEXISTENT.
+# DECLARATION DE DEPLOIEMENT. Le migrateur cree `eurostruct_deployment` et en
+# devient donc detenteur; le controle de topologie l'exige declare. C'est une
+# action du deploiement, pas une deduction de la migration.
+"${ADMIN[@]}" -q -c   "alter database $DB set eurostruct.approved_deployment_roles = '$MIGRATEUR';"   >/dev/null 2>&1
+
+# CHEMIN GREENFIELD, celui d'un deploiement reel.
 #
-# Ici ils existent deja dans le cluster (les autres suites les ont crees), ce
-# qui est exactement la situation d'un environnement gere. Le migrateur n'en a
-# donc pas l'ADMIN OPTION et ne peut pas emprunter l'autorite le temps des
-# transferts de propriete: la migration s'arrete avec un diagnostic explicite.
+# Les roles d'autorite ne doivent PAS preexister: la migration les cree, et
+# PostgreSQL 16 donne alors au createur une appartenance dont IL est le
+# donneur — donc qu'il peut retirer lui-meme en fin de migration.
 #
-# Le deploiement le lui donne. C'est une action DELIBEREE, et la migration
-# rend l'appartenance a la fin — ce que ce test verifie ensuite.
-for r in eurostruct_normative_writer eurostruct_normative_bootstrap; do
-  "${ADMIN[@]}" -q -c     "do \$\$ begin
-       if not exists (select 1 from pg_roles where rolname = '\$r') then
-         execute format('create role %I nologin', '\$r');
-       end if;
-     end \$\$;" >/dev/null 2>&1
-  "${ADMIN[@]}" -q -c "grant $r to $MIGRATEUR with admin option;" >/dev/null 2>&1
+# VERIFIE: une appartenance accordee par un TIERS ne peut PAS etre retiree par
+# le migrateur, meme avec ADMIN OPTION. PostgreSQL emet « role X has not been
+# granted membership in role Y by role X », repond « REVOKE ROLE » — et
+# l'appartenance SURVIT. C'est pourquoi la migration REFUSE dans ce cas au
+# lieu d'avertir, ce que le scenario dedie plus bas exerce.
+liberer_autorites() {
+  local r
+  for r in eurostruct_normative_writer eurostruct_normative_bootstrap \
+           eurostruct_deployment; do
+    "${ADMIN[@]}" -q -c "drop role if exists $r;" >/dev/null 2>&1
+  done
+}
+liberer_autorites
+
+# Un role ne se detruit pas tant qu'un objet lui appartient. Les bases de la
+# SUITE en portent — elles sont jetables — mais « drop role » ne le dit qu'en
+# detail, et le script s'arreterait sur un diagnostic qui ne designe pas
+# l'action a faire. On libere donc les bases de test dependantes, et ELLES
+# SEULES: le prefixe est verifie deux fois, aucune base etrangere n'est
+# touchee.
+DEPS=$("${ADMIN[@]}" -X -q -tAc "
+  select distinct d.datname
+    from pg_shdepend sd
+    join pg_database d on d.oid = sd.dbid
+    join pg_roles r on r.oid = sd.refobjid
+   where r.rolname in ('eurostruct_normative_writer',
+                       'eurostruct_normative_bootstrap',
+                       'eurostruct_deployment')
+     and d.datname like 'eurostruct%'" 2>/dev/null)
+for base in $DEPS; do
+  [[ "$base" =~ ^eurostruct[a-zA-Z0-9_]*$ ]] || continue
+  "${ADMIN[@]}" -q -c "drop database if exists $base;" >/dev/null 2>&1
 done
+liberer_autorites
+
+RESTE=$("${ADMIN[@]}" -X -q -tAc "
+  select count(*) from pg_roles
+   where rolname in ('eurostruct_normative_writer',
+                     'eurostruct_normative_bootstrap')")
+if [[ "$RESTE" != "0" ]]; then
+  echoue "les roles d'autorite preexistent et n'ont pas pu etre detruits:"
+  echoue "  le chemin greenfield ne peut pas etre exerce"
+  exit 1
+fi
 
 # --------------------------------------------------------------------------
 # 3. Les migrations, appliquees PAR LE MIGRATEUR
@@ -203,14 +241,6 @@ for f in "$DB_DIR"/migrations/*.sql; do
 done
 echo "      ok: 0001 a 0010 appliquees par un role non superutilisateur"
 
-# Le deploiement retire l'appartenance QU'IL a accordee. La migration ne rend
-# que ce qu'elle a emprunte — elle ne peut pas deviner qu'une appartenance
-# preexistante etait temporaire — et sa derniere etape emet justement un
-# avertissement demandant ce retrait. On l'execute, puis on constate.
-for r in eurostruct_normative_writer eurostruct_normative_bootstrap; do
-  "${ADMIN[@]}" -q -c "revoke $r from $MIGRATEUR;" >/dev/null 2>&1
-done
-
 # L'emprunt d'autorite a bien ete RENDU. C'est la propriete que la migration
 # promet, et elle ne vaut que constatee apres coup.
 MEMBRES=$("${ADMIN[@]}" -X -q -tAc "
@@ -220,9 +250,11 @@ MEMBRES=$("${ADMIN[@]}" -X -q -tAc "
      and membre.oid <> autorite.oid and not membre.rolsuper
      and pg_has_role(membre.rolname, autorite.rolname, 'MEMBER')")
 if [[ "$MEMBRES" != "0" ]]; then
-  echoue "$MEMBRES membre(s) des roles d'autorite subsistent apres migration"
+  echoue "$MEMBRES membre(s) non superutilisateur(s) des roles d'autorite"
+  echoue "  subsistent APRES LA MIGRATION SEULE, avant tout nettoyage"
+  echoue "  administrateur. La migration doit revoquer elle-meme ou refuser."
 else
-  echo "      ok: l'emprunt d'autorite a ete rendu (0 membre restant)"
+  echo "      ok: 0 membre d'autorite apres la migration seule"
 fi
 
 # --------------------------------------------------------------------------

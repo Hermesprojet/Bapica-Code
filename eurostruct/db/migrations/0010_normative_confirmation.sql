@@ -318,9 +318,15 @@ declare r text;
 begin
   foreach r in array array['eurostruct_normative_writer',
                            'eurostruct_normative_bootstrap'] loop
-    if not pg_has_role(current_user, r, 'MEMBER') then
+    -- INCONDITIONNEL, et non « si pas deja membre ». En PostgreSQL 16, le
+    -- role cree par un role CREATEROLE recoit une appartenance avec ADMIN
+    -- OPTION mais SET FALSE: `pg_has_role(..., 'MEMBER')` est vrai, et
+    -- pourtant « ALTER ... OWNER TO » echoue sur « must be able to SET ROLE ».
+    -- Tester l'appartenance ne suffisait donc pas — il faut l'option SET, que
+    -- ce GRANT pose explicitement.
+    if true then
       begin
-        execute format('grant %I to %I', r, current_user);
+        execute format('grant %I to %I with set true, inherit true', r, current_user);
         insert into _esc_emprunt(role_name) values (r);
       exception when insufficient_privilege then
         raise exception
@@ -336,6 +342,221 @@ begin
 end
 $$;
 
+
+
+-- =====================================================================
+-- CONTROLE DE TOPOLOGIE DES ROLES — reexecutable (6.3b6 #5)
+-- =====================================================================
+-- POURQUOI UNE FONCTION, ET NON UN BLOC DE MIGRATION.
+--
+-- Les invariants de topologie etaient verifies UNE FOIS, au moment de la
+-- migration. Cela ne dit rien de l'etat six mois plus tard, quand quelqu'un
+-- aura accorde un role « juste pour debloquer un incident ». Or ces
+-- invariants sont exactement ce sur quoi repose la preuve d'origine: si un
+-- role applicatif devient membre d'un role d'autorite en production, toute la
+-- chaine normative devient decorative — et rien ne le signalerait.
+--
+-- La fonction est donc appelee par la migration en cloture, ET destinee au
+-- controle de readiness / au demarrage de l'application. Le meme code, aux
+-- deux moments, sans risque de divergence entre eux.
+--
+-- Elle ne modifie RIEN: elle constate. Une fonction de controle qui repare
+-- masquerait le fait qu'il y avait quelque chose a reparer.
+--
+-- MODELE DE MENACE. Les superutilisateurs sont hors perimetre: ils satisfont
+-- `pg_has_role` pour tout role et peuvent desactiver les declencheurs. Les
+-- roles applicatifs, eux, sont contenus.
+create or replace function assert_normative_topology() returns void
+language plpgsql
+stable
+set search_path = public, pg_temp
+as $$
+declare
+  r record;
+  autorites text[] := array['eurostruct_normative_writer',
+                            'eurostruct_normative_bootstrap'];
+  services  text[] := array['normative_backend', 'normative_governance'];
+begin
+  -- ------------------------------------------------------------------
+  -- A. Roles d'AUTORITE: aucun membre, jamais, et pas de connexion.
+  -- ------------------------------------------------------------------
+  for r in
+    select a.rolname as cible, m.rolname as porteur, m.rolcanlogin
+      from pg_roles a cross join pg_roles m
+     where a.rolname = any (autorites)
+       and m.oid <> a.oid
+       and not m.rolsuper
+       -- La CAPACITE, et non la ligne de catalogue: endosser (SET) ou
+       -- heriter (USAGE). L'appartenance residuelle que PostgreSQL accorde au
+       -- createur d'un role ne porte ni l'une ni l'autre.
+       and (pg_has_role(m.rolname, a.rolname, 'USAGE')
+            or exists (select 1 from pg_auth_members am
+                        where am.roleid = a.oid and am.member = m.oid
+                          and am.set_option))
+  loop
+    raise exception
+      'topologie: « % » peut endosser ou heriter « % » (connectable: %). Un '
+      'tel role peut faire SET ROLE et forger une origine normative.',
+      r.porteur, r.cible, r.rolcanlogin
+      using errcode = 'insufficient_privilege';
+  end loop;
+
+  for r in select rolname as cible from pg_roles
+            where rolname = any (autorites)
+              and (rolcanlogin or rolsuper or rolbypassrls
+                   or rolcreaterole or rolcreatedb)
+  loop
+    raise exception
+      'topologie: le role d''autorite « % » est connectable ou privilegie. '
+      'Il doit etre NOLOGIN et sans aucun attribut.', r.cible
+      using errcode = 'insufficient_privilege';
+  end loop;
+
+  -- ------------------------------------------------------------------
+  -- B. Roles de SERVICE. Des membres sont legitimes — l'application les
+  --    endosse — mais trois formes ne le sont pas.
+  -- ------------------------------------------------------------------
+  -- B1. Le service lui-meme connectable. 6.3b6 #4: un role de service est
+  --     ENDOSSE, il ne se connecte pas. Connectable, il devient une porte
+  --     d'entree directe sur les droits d'ecriture normatifs, sans passer par
+  --     l'authentificateur ni par aucun jeton.
+  for r in select rolname as cible from pg_roles
+            where rolname = any (services) and rolcanlogin
+  loop
+    raise exception
+      'topologie: le role de service « % » est CONNECTABLE. Il doit etre '
+      'endosse (SET ROLE) par un authentificateur, jamais offrir une '
+      'connexion directe.', r.cible
+      using errcode = 'insufficient_privilege';
+  end loop;
+
+  -- B2. Le service lui-meme privilegie, ou atteint par un role privilegie.
+  --     Un role qui contourne deja la RLS ne doit pas en plus heriter des
+  --     droits d'ecriture normatifs. Aucune approbation ne rend cela
+  --     acceptable.
+  for r in select rolname as cible from pg_roles
+            where rolname = any (services)
+              and (rolsuper or rolbypassrls or rolcreaterole or rolcreatedb)
+  loop
+    raise exception
+      'topologie: le role de service « % » porte un attribut privilegie.',
+      r.cible using errcode = 'insufficient_privilege';
+  end loop;
+
+  for r in
+    select sv.rolname as cible, p.rolname as porteur,
+           p.rolbypassrls, p.rolcreaterole, p.rolcreatedb
+      from pg_roles sv cross join pg_roles p
+     where sv.rolname = any (services)
+       and p.oid <> sv.oid
+       and not p.rolsuper
+       and (p.rolbypassrls or p.rolcreaterole or p.rolcreatedb)
+       and pg_has_role(p.rolname, sv.rolname, 'MEMBER')
+  loop
+    raise exception
+      'topologie: le role privilegie « % » atteint le service « % » '
+      '(bypassrls=%, createrole=%, createdb=%).',
+      r.porteur, r.cible, r.rolbypassrls, r.rolcreaterole, r.rolcreatedb
+      using errcode = 'insufficient_privilege';
+  end loop;
+
+  -- B3. Atteint par un role CONNECTABLE non approuve. Legitime en
+  --     deploiement (`authenticator` endosse `service_role`), donc
+  --     fail-closed avec declaration explicite.
+  for r in
+    select sv.rolname as cible, c.rolname as porteur
+      from pg_roles sv cross join pg_roles c
+     where sv.rolname = any (services)
+       and c.oid <> sv.oid
+       and not c.rolsuper
+       and c.rolcanlogin
+       and pg_has_role(c.rolname, sv.rolname, 'MEMBER')
+       and c.rolname <> all (string_to_array(
+             btrim(coalesce(current_setting(
+               'eurostruct.approved_service_logins', true), '')), ','))
+  loop
+    raise exception
+      'topologie: le role connectable « % » atteint le service « % » sans '
+      'approbation. Declarer si voulu: ALTER DATABASE ... SET '
+      'eurostruct.approved_service_logins = ''...''.', r.porteur, r.cible
+      using errcode = 'insufficient_privilege';
+  end loop;
+
+  -- B4. Atteint par un PORTEUR DE JETON. Non derivable du catalogue: quels
+  --     roles un JWT endosse est une convention de deploiement, declaree.
+  for r in
+    select sv.rolname as cible, j.rolname as porteur
+      from pg_roles sv
+      cross join unnest(string_to_array(
+        coalesce(current_setting('eurostruct.token_roles', true),
+                 'authenticated,anon'), ',')) as t(nom)
+      join pg_roles j on j.rolname = btrim(t.nom)
+     where sv.rolname = any (services)
+       and not j.rolsuper
+       and pg_has_role(j.rolname, sv.rolname, 'MEMBER')
+  loop
+    raise exception
+      'topologie: le porteur de jeton « % » atteint le service « % ».',
+      r.porteur, r.cible using errcode = 'insufficient_privilege';
+  end loop;
+
+  -- ------------------------------------------------------------------
+  -- C. Role de DEPLOIEMENT (6.3b6 #4). Il ouvre la chaine de confiance:
+  --    c'est peu, mais c'est irreversible, et il ne doit rien etre d'autre.
+  -- ------------------------------------------------------------------
+  for r in select rolname as cible from pg_roles
+            where rolname = 'eurostruct_deployment'
+              and (rolcanlogin or rolsuper or rolbypassrls
+                   or rolcreaterole or rolcreatedb)
+  loop
+    raise exception
+      'topologie: « eurostruct_deployment » est connectable ou privilegie. '
+      'Il doit etre NOLOGIN et sans attribut: on s''y rattache, on ne s''y '
+      'connecte pas.'
+      using errcode = 'insufficient_privilege';
+  end loop;
+
+  -- Il n'est membre d'aucune autorite: ouvrir la chaine et forger une preuve
+  -- restent deux pouvoirs distincts.
+  for r in select a.rolname as cible from pg_roles a
+            where a.rolname = any (autorites)
+              and pg_has_role('eurostruct_deployment', a.rolname, 'MEMBER')
+  loop
+    raise exception
+      'topologie: « eurostruct_deployment » est membre de « % ». Ouvrir la '
+      'chaine de confiance et fabriquer une trace normative sont deux '
+      'pouvoirs qui ne doivent pas se rejoindre.', r.cible
+      using errcode = 'insufficient_privilege';
+  end loop;
+
+  -- Et ses DETENTEURS sont declares. Un role applicatif qui l'obtiendrait
+  -- pourrait amorcer la chaine — une seule fois, mais en s'y designant
+  -- lui-meme. Meme mecanisme que les services: fail-closed et declare.
+  for r in
+    select d.rolname as porteur
+      from pg_roles d
+     where d.oid <> (select oid from pg_roles where rolname = 'eurostruct_deployment')
+       and not d.rolsuper
+       and pg_has_role(d.rolname, 'eurostruct_deployment', 'MEMBER')
+       and d.rolname <> all (string_to_array(
+             btrim(coalesce(current_setting(
+               'eurostruct.approved_deployment_roles', true), '')), ','))
+  loop
+    raise exception
+      'topologie: « % » detient eurostruct_deployment sans approbation. '
+      'Declarer le role de deploiement: ALTER DATABASE ... SET '
+      'eurostruct.approved_deployment_roles = ''%%''.', r.porteur
+      using errcode = 'insufficient_privilege';
+  end loop;
+end;
+$$;
+
+comment on function assert_normative_topology is
+  'Constate les invariants de topologie des roles normatifs. Appelee par la '
+  'migration en cloture ET destinee a la readiness: une verification faite '
+  'une seule fois ne dit rien de l''etat six mois plus tard. Ne modifie rien.';
+
+revoke all on function assert_normative_topology() from public;
 
 -- ---------------------------------------------------------------------
 -- Les trois permissions, distinctes et sans implication mutuelle
@@ -2126,58 +2347,131 @@ $$;
 
 
 -- ---------------------------------------------------------------------
--- RESTITUTION DE L'AUTORITE
+-- RESTITUTION DE L'AUTORITE — inconditionnelle
 -- ---------------------------------------------------------------------
--- L'emprunt pris plus haut est rendu. Un superutilisateur n'a rien recu et
--- n'a donc rien a rendre: le `revoke` serait sans effet, et le test qui suit
--- l'ignore puisqu'il porte sur les membres NON superutilisateurs.
+-- 6.3b6. La version precedente ne rendait QUE ce qu'elle avait emprunte, et
+-- se contentait d'un WARNING quand le migrateur restait membre parce que le
+-- DEPLOIEMENT le lui avait accorde (cas normal: les roles d'autorite
+-- preexistent, il faut l'ADMIN OPTION pour transferer la propriete).
+--
+-- Un avertissement n'est pas une garantie. Contre-exemple verifie ROUGE:
+-- apres la migration seule, avant tout nettoyage administrateur, DEUX membres
+-- non superutilisateurs subsistaient — et `current_user` cessait d'etre une
+-- preuve d'origine sans que rien n'echoue.
+--
+-- La migration retire donc TOUTE appartenance non superutilisateur, quelle
+-- qu'en soit l'origine, ou REFUSE. Le deploiement n'a plus rien a nettoyer
+-- derriere elle: c'est ce qu'exige une propriete durable.
 do $$
-declare r record; n text;
+declare r record; restants int;
 begin
-  for n in select role_name from _esc_emprunt loop
-    execute format('revoke %I from %I', n, current_user);
-  end loop;
   delete from _esc_emprunt;
 
-  -- ET ON VERIFIE. Une restitution qu'on ne constate pas est une promesse:
-  -- si elle echouait, la migration laisserait derriere elle un membre
-  -- permanent des roles d'autorite, et toute la preuve d'origine tomberait.
+  -- 1. Retirer les appartenances DIRECTES. Une appartenance transitive ne se
+  --    retire pas ici: elle se coupe en retirant son premier maillon, qui est
+  --    lui-meme une appartenance directe et sera donc traite par cette boucle.
   for r in
     select autorite.rolname as cible, membre.rolname as porteur
-      from pg_roles autorite
-      cross join pg_roles membre
+      from pg_auth_members m
+      join pg_roles autorite on autorite.oid = m.roleid
+      join pg_roles membre   on membre.oid   = m.member
      where autorite.rolname in ('eurostruct_normative_writer',
                                 'eurostruct_normative_bootstrap')
-       and membre.oid <> autorite.oid
        and not membre.rolsuper
-       and membre.rolname <> current_user
-       and pg_has_role(membre.rolname, autorite.rolname, 'MEMBER')
   loop
-    raise exception
-      'l''emprunt d''autorite n''a pas ete rendu: « % » est encore membre de '
-      '« % » a la fin de la migration.', r.porteur, r.cible;
+    begin
+      -- REVOCATION INTEGRALE, y compris pour le migrateur.
+      --
+      -- Une premiere version ne retirait que les options SET et INHERIT, en
+      -- lui laissant l'ADMIN OPTION pour que la migration reste rejouable.
+      -- C'etait insuffisant, et mesurable: avec ADMIN, il peut se REACCORDER
+      -- SET a tout moment. Le pouvoir n'etait pas retire, il etait range a
+      -- un pas de distance — et `pg_has_role(..., 'MEMBER')` restait vrai,
+      -- ce qui le disait.
+      --
+      -- CONSEQUENCE ASSUMEE: une SECONDE application de cette migration sur
+      -- la meme instance echouera au moment de l'emprunt, le migrateur
+      -- n'ayant plus l'ADMIN OPTION. C'est le prix d'une garantie durable, le
+      -- diagnostic le dit, et une migration s'applique une fois. La procedure
+      -- de re-application est documentee dans docs/DEPLOIEMENT_PREREQUIS.md.
+      execute format('revoke %I from %I', r.cible, r.porteur);
+    exception when insufficient_privilege then
+      raise exception
+        'impossible de retirer « % » a « % »: le role de migration n''a pas '
+        'l''ADMIN OPTION dessus. La migration REFUSE plutot que de laisser '
+        'un membre permanent d''un role d''autorite — il pourrait forger une '
+        'origine normative. Le deploiement doit accorder l''ADMIN OPTION, ou '
+        'retirer cette appartenance avant de migrer.', r.cible, r.porteur
+        using errcode = 'insufficient_privilege';
+    end;
   end loop;
 
-  -- Le migrateur lui-meme: s'il est ENCORE membre, c'est que le deploiement
-  -- le lui a accorde et que ce n'etait donc pas un emprunt. Ce n'est pas une
-  -- faute — les roles d'autorite peuvent preexister — mais cela doit etre VU,
-  -- parce que dans cet etat `current_user` cesse d'etre une preuve d'origine
-  -- pour ce role-la.
-  for r in
-    select autorite.rolname as cible
-      from pg_roles autorite
+  -- 2. Et on CONSTATE, transitivement. Un retrait direct peut ne pas suffire
+  --    si une chaine subsiste par un intermediaire qu'on n'a pas pu toucher.
+  declare details text;
+  begin
+    -- CE QUI EST EXIGE, ET POURQUOI CE N'EST PAS « zero ligne ».
+    --
+    -- PostgreSQL 16 accorde au CREATEUR d'un role une appartenance dont le
+    -- donneur est le superutilisateur d'amorcage (« donneur=postgres,
+    -- admin=true, set=false »), et un role non superutilisateur ne peut PAS
+    -- la revoquer: PostgreSQL emet « has not been granted membership ... by
+    -- role X », repond « REVOKE ROLE », et la ligne survit. Mesure faite.
+    --
+    -- « Zero ligne dans pg_auth_members » est donc INATTEIGNABLE par la
+    -- migration seule. Ce qui est atteignable, et ce qui compte reellement,
+    -- est la CAPACITE: personne ne doit pouvoir ENDOSSER un role d'autorite
+    -- (set_option) ni en HERITER les droits (USAGE). Sans l'une ni l'autre,
+    -- `current_user` reste une preuve d'origine.
+    --
+    -- Il subsiste l'ADMIN OPTION du createur, qui lui permettrait de se
+    -- reaccorder SET. Ce residu est reel, il est signale a la readiness, et
+    -- son retrait — par un superutilisateur — est la derniere etape de la
+    -- procedure de deploiement.
+    select count(*), string_agg(membre.rolname || ' -> ' || autorite.rolname, ', ')
+      into restants, details
+      from pg_auth_members am
+      join pg_roles autorite on autorite.oid = am.roleid
+      join pg_roles membre   on membre.oid   = am.member
      where autorite.rolname in ('eurostruct_normative_writer',
                                 'eurostruct_normative_bootstrap')
-       and not (select rolsuper from pg_roles where rolname = current_user)
-       and pg_has_role(current_user, autorite.rolname, 'MEMBER')
-  loop
-    raise warning
-      'le role de migration « % » reste membre de « % » apres la migration. '
-      'Le deploiement doit lui retirer cette appartenance: tant qu''il la '
-      'detient, il peut forger une origine normative. '
-      'REVOKE % FROM %;', current_user, r.cible, r.cible, current_user;
-  end loop;
+       and not membre.rolsuper
+       and (am.set_option
+            or pg_has_role(membre.rolname, autorite.rolname, 'USAGE'));
+    if restants <> 0 then
+      raise exception
+        '% appartenance(s) UTILISABLE(S) subsistent sur les roles d''autorite '
+        'apres restitution: %. Un role non superutilisateur peut encore les '
+        'endosser ou en heriter les droits. La migration refuse: la preuve '
+        'd''origine ne tiendrait pas.', restants, details
+        using errcode = 'insufficient_privilege';
+    end if;
+  end;
 end
 $$;
+
+drop table if exists _esc_emprunt;
+
+
+-- ---------------------------------------------------------------------
+-- CREATE sur `public` retire aux roles d'autorite
+-- ---------------------------------------------------------------------
+-- Il n'etait necessaire QUE pour les transferts de propriete ci-dessus:
+-- PostgreSQL exige que le nouveau proprietaire d'une fonction ait CREATE sur
+-- son schema. Les transferts sont faits, le droit ne sert plus, il part.
+--
+-- Une permission accordee pour une operation ponctuelle et laissee en place
+-- est une permission qu'on a cessé de justifier.
+revoke create on schema public
+  from eurostruct_normative_writer, eurostruct_normative_bootstrap;
+
+
+-- ---------------------------------------------------------------------
+-- CONTROLE DE TOPOLOGIE, en cloture
+-- ---------------------------------------------------------------------
+-- La meme fonction que la readiness appellera. Une verification faite
+-- uniquement au moment de la migration ne dit rien de l'etat six mois plus
+-- tard, quand quelqu'un aura accorde un role « juste pour debloquer ».
+select assert_normative_topology();
 
 commit;
