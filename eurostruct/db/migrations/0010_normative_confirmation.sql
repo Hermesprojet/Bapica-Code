@@ -401,11 +401,15 @@ $$;
 -- ---------------------------------------------------------------------
 -- Le snapshot d'audit, ecrit par le serveur et par lui seul
 -- ---------------------------------------------------------------------
+-- STABLE, et non IMMUTABLE: elle appelle now(). Une fonction declaree
+-- IMMUTABLE peut etre pre-evaluee et mise en cache par le planificateur; la
+-- declarer ainsi alors qu'elle lit l'horloge est un mensonge au planificateur,
+-- pas seulement une etiquette inexacte.
 create or replace function normative_authorisation_snapshot(
   g normative_authorisation_grants
 ) returns jsonb
 language sql
-immutable
+stable
 as $$
   select jsonb_build_object(
     'grant_id',        g.id,
@@ -472,11 +476,27 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
+  if p_action not like 'normative.%' then
+    raise exception
+      'action « % » hors du namespace normatif: cette fonction est le seul '
+      'producteur autorise de « normative.* ».', p_action
+      using errcode = 'check_violation';
+  end if;
+
+  -- Marqueur transactionnel: c'est lui qui distingue une trace produite ICI
+  -- d'une ligne inseree a la main. Sans marqueur, le namespace « normative.* »
+  -- ne serait qu'une convention de nommage, et n'importe qui pouvant ecrire
+  -- dans audit_log fabriquerait une preuve d'octroi ou de confirmation — que
+  -- le declencheur d'immuabilite rendrait ensuite ineffacable.
+  perform set_config('eurostruct.normative_audit', 'on', true);
+
   -- org_id et project_id restent NULL: un evenement normatif n'appartient a
   -- aucun client. C'est la raison pour laquelle audit_log les declare
   -- nullables.
   insert into audit_log (user_id, action, entity, entity_id, payload)
   values (p_user, p_action, p_entity, p_entity_id, p_payload);
+
+  perform set_config('eurostruct.normative_audit', 'off', true);
 end;
 $$;
 
@@ -488,34 +508,41 @@ $$;
 -- cree QUE de l'administration, jamais un droit de verification: sans quoi la
 -- premiere personne installee pourrait confirmer seule tout le referentiel
 -- d'une juridiction.
+-- SECURITY INVOKER, deliberement.
+--
+-- La version precedente etait SECURITY DEFINER et comparait `current_user` au
+-- proprietaire de la base. Le controle ne prouvait rien: dans une fonction
+-- SECURITY DEFINER, `current_user` EST le proprietaire de la fonction, quel
+-- que soit l'appelant. La comparaison etait donc toujours vraie pour le
+-- proprietaire et la restriction annoncee n'existait pas.
+--
+-- La racine de confiance repose desormais sur l'ACL, qui est verifiable:
+-- EXECUTE est retire a PUBLIC et n'est accorde a personne. Seuls le
+-- proprietaire de la fonction et un superutilisateur peuvent l'appeler. En
+-- SECURITY INVOKER, l'insertion s'execute en outre avec les droits de
+-- l'appelant, si bien qu'un role sans privilege sur la table echoue meme s'il
+-- obtenait EXECUTE.
+--
+-- Le choix DEFINITIF du role d'amorcage reste ouvert: il depend du role qui
+-- exerce les migrations et des roles de connexion en production, qui ne sont
+-- pas encore arretes. Rien n'est donc decide en silence ici — l'ACL actuelle
+-- est la position la plus restrictive possible en attendant.
 create or replace function bootstrap_normative_administrator(
   p_grantee      uuid,
   p_grantee_name text,
   p_reason       text
 ) returns uuid
 language plpgsql
-security definer
 set search_path = public, pg_temp
 as $$
 declare
   nouvel_id uuid;
-  proprietaire text;
 begin
   -- Deux appels concurrents doivent en voir un seul aboutir. Le verrou
   -- serialise le controle d'existence ci-dessous; l'index partiel
   -- normative_bootstrap_is_singular le garantit structurellement meme si le
   -- verrou etait contourne. Deux garde-fous, deux portees.
   perform pg_advisory_xact_lock(hashtext('eurostruct.normative.bootstrap'));
-
-  select pg_get_userbyid(datdba) into proprietaire
-    from pg_database where datname = current_database();
-
-  if current_user <> proprietaire then
-    raise exception
-      'l''amorcage normatif est reserve au proprietaire de la base (%). '
-      'Utilisateur courant: %.', proprietaire, current_user
-      using errcode = 'insufficient_privilege';
-  end if;
 
   if exists (
     select 1 from normative_authorisation_grants g
@@ -610,6 +637,7 @@ begin
       using errcode = 'insufficient_privilege';
   end if;
   new.granted_by := acteur;
+  new.granted_at := now();
 
   -- « L'administrateur initial ne peut pas s'accorder lui-meme le droit de
   -- verifier une regle. » Generalise a toute permission: quelqu'un qui
@@ -621,6 +649,20 @@ begin
       'normatif se recoit d''un tiers habilite.', acteur, new.permission
       using errcode = 'insufficient_privilege';
   end if;
+
+  -- CONCURRENCE. `IF EXISTS` puis `INSERT` ne protege de rien: deux
+  -- transactions concurrentes lisent chacune « aucun doublon » avant que
+  -- l'autre ne valide, et toutes deux inserent. On serialise donc sur la
+  -- PORTEE, par un verrou consultatif transactionnel: deux insertions de meme
+  -- (titulaire, permission) s'attendent, et la seconde voit la premiere.
+  --
+  -- Un verrou plutot qu'un index unique partiel: l'unicite devrait porter sur
+  -- « actif », qui se calcule depuis une autre table et ne peut donc pas
+  -- entrer dans un index. Et une colonne `is_active` est precisement ce que ce
+  -- modele refuse.
+  perform pg_advisory_xact_lock(
+    hashtext('eurostruct.normative.grant:' || new.grantee_id::text
+             || ':' || new.permission::text));
 
   -- Deux octrois ACTIFS de portee rigoureusement identique rendraient la
   -- resolution ambigue. On refuse a la source plutot que de laisser
@@ -703,8 +745,15 @@ begin
   new.revoked_by := acteur;
   new.revoked_at := now();
 
+  -- CONCURRENCE. On verrouille la LIGNE de l'octroi. Une confirmation en vol
+  -- prend un FOR SHARE sur cette meme ligne (voir check_normative_confirmation):
+  -- les deux ne peuvent donc pas s'ignorer, et le resultat correspond
+  -- toujours a un ordre seriel explicable — soit la confirmation passe puis
+  -- l'habilitation est retiree, soit elle est retiree puis la confirmation
+  -- est refusee. Jamais une confirmation autorisee par un etat intermediaire.
   select * into cible from normative_authorisation_grants
-   where id = new.grant_id;
+   where id = new.grant_id
+   for update;
   if not found then
     raise exception 'octroi % introuvable', new.grant_id
       using errcode = 'foreign_key_violation';
@@ -719,6 +768,30 @@ begin
       'revocation refusee: % ne detient pas « can_manage_normative_'
       'authorisations » couvrant la portee de l''octroi %.', acteur, cible.id
       using errcode = 'insufficient_privilege';
+  end if;
+
+  -- DERNIER ADMINISTRATEUR. Retirer le dernier octroi actif
+  -- « can_manage_normative_authorisations » laisserait la gouvernance sans
+  -- personne, et l'index qui interdit un second amorcage la rendrait
+  -- IRRECUPERABLE: plus aucun octroi possible, et pas de reouverture de la
+  -- chaine. Le contre-exemple a ete verifie avant d'ecrire cette garde.
+  --
+  -- On refuse donc. Une procedure « bris de glace », reservee au deploiement
+  -- et auditee, releve d'une decision distincte: elle sera proposee avant
+  -- d'etre implementee, plutot qu'introduite ici par commodite.
+  if cible.permission = 'can_manage_normative_authorisations' then
+    if (select count(*) from normative_authorisation_grants g
+         where g.permission = 'can_manage_normative_authorisations'
+           and g.id <> cible.id
+           and normative_grant_is_active(g.id)) = 0 then
+      raise exception
+        'revocation refusee: % est le dernier octroi actif de '
+        '« can_manage_normative_authorisations ». Le retirer laisserait la '
+        'gouvernance sans personne, et l''amorcage ne peut pas etre rejoue. '
+        'Octroyer d''abord l''administration a quelqu''un d''autre.',
+        cible.id
+        using errcode = 'restrict_violation';
+    end if;
   end if;
 
   perform log_normative_event(
@@ -751,6 +824,10 @@ declare
   acteur uuid := auth.uid();
   habilitation normative_authorisation_grants;
   edition_annexe text;
+  spec_json  jsonb;
+  impl_json  jsonb;
+  ev_json    jsonb;
+  stack_json jsonb;
 begin
   -- 1. L'identite vient du contexte authentifie, jamais de la charge utile.
   if acteur is null then
@@ -763,6 +840,7 @@ begin
 
   -- 2. L'horodatage est produit par le serveur.
   new.verified_at := now();
+  new.created_at := now();
 
   -- 3. Integrite des quatre empreintes. On ne recanonicalise rien: on verifie
   --    que le hash annonce est celui du payload deja canonique.
@@ -777,9 +855,100 @@ begin
   perform assert_digest_integrity('stack', new.digest_algorithm,
                                   new.stack_payload, new.stack_digest);
 
-  -- 4. L'edition de l'annexe est EXTRAITE du snapshot de pile par le serveur:
-  --    c'est elle que la portee de l'habilitation compare, elle ne peut donc
-  --    pas etre fournie par celui qu'on controle.
+  -- 4. COHERENCE ATOMIQUE du paquet.
+  --
+  --    Quatre empreintes individuellement justes ne font pas un sujet. Rien
+  --    n'obligeait `stack_snapshot` a correspondre a `stack_payload`, ni
+  --    `evidence_items` a `evidence_payload`, ni les colonnes de juridiction
+  --    au contenu signe. On pouvait donc hacher un paquet et en stocker un
+  --    autre: pile substituee, spec et implementation interverties, rule_id
+  --    de colonne different du rule_id signe — les trois etaient acceptes.
+  --
+  --    Le principe retenu: les PAYLOADS font foi, parce que ce sont eux qui
+  --    sont haches. Les colonnes jsonb en sont DERIVEES par le serveur, et
+  --    les colonnes de recherche sont VERIFIEES contre eux. Rien ne peut plus
+  --    diverger, faute d'avoir deux sources.
+  begin
+    spec_json  := new.normative_spec_payload::jsonb;
+    impl_json  := new.implementation_payload::jsonb;
+    ev_json    := new.evidence_payload::jsonb;
+    stack_json := new.stack_payload::jsonb;
+  exception when others then
+    raise exception
+      'un des quatre payloads canoniques n''est pas du JSON: %', sqlerrm
+      using errcode = 'check_violation';
+  end;
+
+  if spec_json  ->> 'kind' <> 'normative_spec'
+     or impl_json  ->> 'kind' <> 'implementation'
+     or ev_json    ->> 'kind' <> 'evidence'
+     or stack_json ->> 'kind' <> 'normative_stack' then
+    raise exception
+      'les payloads ne decrivent pas ce qu''ils pretendent: spec=%, impl=%, '
+      'preuve=%, pile=%. Intervertir specification et implementation laissait '
+      'deux empreintes justes decrire le mauvais objet.',
+      spec_json ->> 'kind', impl_json ->> 'kind', ev_json ->> 'kind',
+      stack_json ->> 'kind'
+      using errcode = 'check_violation';
+  end if;
+
+  -- Meme methode de canonicalisation pour les trois payloads qui la portent.
+  -- La pile n'en a pas: elle porte un `schema_version` qui lui est propre.
+  if spec_json ->> 'canonicalization_version' is distinct from
+       new.canonicalization_version
+     or impl_json ->> 'canonicalization_version' is distinct from
+       new.canonicalization_version
+     or ev_json ->> 'canonicalization_version' is distinct from
+       new.canonicalization_version then
+    raise exception
+      'les payloads n''ont pas tous ete produits par la methode annoncee (%): '
+      'spec=%, impl=%, preuve=%.',
+      new.canonicalization_version,
+      spec_json ->> 'canonicalization_version',
+      impl_json ->> 'canonicalization_version',
+      ev_json ->> 'canonicalization_version'
+      using errcode = 'check_violation';
+  end if;
+
+  -- La regle nommee par la colonne est celle que les deux payloads signent.
+  if spec_json ->> 'rule_id' is distinct from new.rule_id
+     or impl_json ->> 'rule_id' is distinct from new.rule_id then
+    raise exception
+      'la colonne rule_id dit « % » alors que les payloads signent « % » et '
+      '« % ». La recherche et la signature designeraient deux regles.',
+      new.rule_id, spec_json ->> 'rule_id', impl_json ->> 'rule_id'
+      using errcode = 'check_violation';
+  end if;
+
+  -- La juridiction nommee par les colonnes est celle de la pile signee.
+  if stack_json ->> 'country_code' is distinct from new.country_code::text
+     or stack_json ->> 'standard_family' is distinct from new.standard_family
+     or stack_json ->> 'part' is distinct from new.part then
+    raise exception
+      'les colonnes disent %/%/% et la pile signee %/%/%.',
+      new.country_code, new.standard_family, new.part,
+      stack_json ->> 'country_code', stack_json ->> 'standard_family',
+      stack_json ->> 'part'
+      using errcode = 'check_violation';
+  end if;
+
+  -- Les projections jsonb sont DERIVEES, jamais recues. Ce que l'appelant
+  -- avait mis dans ces colonnes est ecrase.
+  new.stack_snapshot := stack_json;
+  new.evidence_items := ev_json -> 'items';
+
+  if new.evidence_items is null
+     or jsonb_typeof(new.evidence_items) <> 'array'
+     or jsonb_array_length(new.evidence_items) = 0 then
+    raise exception
+      'le payload de preuve ne porte aucun element: confirmer sans dire ce '
+      'qu''on a lu n''est pas une lecture d''annexe.'
+      using errcode = 'check_violation';
+  end if;
+
+  -- 4b. L'edition de l'annexe est EXTRAITE de la pile SIGNEE par le serveur:
+  --     c'est elle que la portee de l'habilitation compare, elle ne peut donc
+  --     pas etre fournie par celui qu'on controle.
   select c ->> 'edition' into edition_annexe
     from jsonb_array_elements(new.stack_snapshot -> 'components') c
    where c ->> 'role' = 'annexe'
@@ -813,6 +982,22 @@ begin
   -- 6. Le snapshot d'autorisation est ECRIT ICI. Le client ne le fournit pas
   --    et ne peut pas le falsifier: quoi qu'il ait mis dans ces colonnes,
   --    elles sont ecrasees.
+  -- CONCURRENCE. Verrou partage sur l'octroi retenu, tenu jusqu'au commit:
+  -- une revocation concurrente de cette habilitation devra attendre. Sans
+  -- lui, une confirmation pouvait etre autorisee par un octroi qu'une autre
+  -- transaction etait en train de retirer.
+  perform 1 from normative_authorisation_grants
+   where id = habilitation.id for share;
+
+  -- Et on RE-verifie apres avoir obtenu le verrou: si la revocation nous a
+  -- precedes, elle est desormais visible.
+  if not normative_grant_is_active(habilitation.id) then
+    raise exception
+      'confirmation refusee: l''habilitation % a ete revoquee pendant '
+      'l''insertion.', habilitation.id
+      using errcode = 'insufficient_privilege';
+  end if;
+
   new.authorisation_grant_id := habilitation.id;
   new.authorisation_scope := normative_authorisation_snapshot(habilitation);
 
@@ -968,9 +1153,45 @@ begin
       'concernees par cette regle.', old.action, old.id
       using errcode = 'restrict_violation';
   end if;
+
+  -- L'autre sens, et il etait ouvert: faire BASCULER une ligne ordinaire vers
+  -- « normative.* » par un UPDATE fabriquait une trace normative, que le
+  -- controle ci-dessus rendait aussitot ineffacable. Empoisonnement a sens
+  -- unique.
+  if tg_op = 'UPDATE' and coalesce(new.action, '') like 'normative.%' then
+    raise exception
+      'une ligne de journal ordinaire ne peut pas devenir une trace '
+      'normative (« % »): ce namespace est produit par log_normative_event, '
+      'et par elle seule.', new.action
+      using errcode = 'restrict_violation';
+  end if;
   return coalesce(new, old);
 end;
 $$;
+
+-- Le namespace « normative.* » est RESERVE en insertion. La protection ne
+-- pouvait pas reposer sur l'absence de policy INSERT sur audit_log: c'est une
+-- protection de circonstance, qui disparaitrait le jour ou quelqu'un ouvrirait
+-- l'ecriture du journal pour une autre raison.
+create or replace function reserve_normative_audit_namespace() returns trigger
+language plpgsql as $$
+begin
+  if new.action like 'normative.%'
+     and coalesce(current_setting('eurostruct.normative_audit', true), 'off')
+         <> 'on' then
+    raise exception
+      'le namespace « normative.* » est reserve: la trace « % » doit etre '
+      'produite par log_normative_event(), sans quoi une preuve d''octroi ou '
+      'de confirmation se fabriquerait a la main.', new.action
+      using errcode = 'insufficient_privilege';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger audit_log_normative_namespace_is_reserved
+  before insert on audit_log
+  for each row execute function reserve_normative_audit_namespace();
 
 create trigger audit_log_normative_entries_are_immutable
   before update or delete on audit_log
@@ -1088,9 +1309,17 @@ create policy normative_confirmations_governance_read
 create policy normative_confirmations_insert on normative_rule_confirmations
   for insert to authenticated with check (true);
 
+-- L'auteur de la revocation, ET le signataire dont la confirmation est
+-- visee. Ne montrer une revocation qu'a son auteur laissait un relecteur
+-- ignorer qu'un tiers avait retire SA lecture — il l'aurait appris en voyant
+-- son regard disparaitre du decompte, sans savoir ni par qui ni pourquoi.
 create policy normative_confirmation_revocations_own_read
   on normative_rule_confirmation_revocations
-  for select to authenticated using (revoked_by = auth.uid());
+  for select to authenticated using (
+    revoked_by = auth.uid()
+    or exists (select 1 from normative_rule_confirmations c
+                where c.id = confirmation_id and c.verifier_id = auth.uid())
+  );
 create policy normative_confirmation_revocations_backend_read
   on normative_rule_confirmation_revocations
   for select to normative_backend using (true);
@@ -1163,6 +1392,7 @@ revoke all on function check_normative_grant_revocation() from public;
 revoke all on function check_normative_confirmation() from public;
 revoke all on function check_normative_confirmation_revocation() from public;
 revoke all on function forbid_normative_audit_mutation() from public;
+revoke all on function reserve_normative_audit_namespace() from public;
 
 -- Les auxiliaires ne sont pas SECURITY DEFINER, mais ils LISENT la
 -- gouvernance: `resolve_normative_authorisation` dirait a n'importe qui de

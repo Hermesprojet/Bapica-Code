@@ -126,6 +126,49 @@ insert into auth.users (id, email) values
 -- Les empreintes sont calculees depuis les payloads, si bien qu'un test qui
 -- reussit ne peut pas reussir grace a un hash faux. Les parametres p_faux_*
 -- servent uniquement aux tests negatifs.
+create or replace function t_paquet(
+  p_rule           text default 'test.regle.fictive',
+  p_country        country_code default 'BE',
+  p_family         text default 'EN 1992',
+  p_part           text default '1-1',
+  p_edition_annexe text default '2010'
+) returns jsonb
+language sql immutable as $$
+  -- Les QUATRE payloads canoniques d'un meme paquet de revue, de la forme
+  -- exacte que produit `eurostruct_engine.ndp.canonical` (verifiee cote
+  -- Python avant d'ecrire ces controles): chacun porte son `kind`, les trois
+  -- qui en ont une portent la meme `canonicalization_version`, spec et
+  -- implementation nomment la meme regle, et la pile nomme la juridiction.
+  select jsonb_build_object(
+    'spec', format(
+      '{"canonicalization_version":"esc-canon/1","kind":"normative_spec","rule_id":"%s"}',
+      p_rule),
+    'impl', format(
+      '{"canonicalization_version":"esc-canon/1","kind":"implementation","rule_id":"%s"}',
+      p_rule),
+    'ev', format(
+      '{"canonicalization_version":"esc-canon/1","items":[{"clause":"§9.2.2(5)",'
+      '"document_digest":"%s","document_role":"annexe","edition":"2010",'
+      '"page_printed":15,"quote":"FICTIF — citation de test.",'
+      '"quote_digest":"%s"}],"kind":"evidence"}',
+      repeat('b', 64), repeat('c', 64)),
+    'stack', format(
+      '{"components":[{"application_order":1,"document_digest":"%s",'
+      '"edition":"2004","reference":"FICTIF EN 1992-1-1","role":"base"},'
+      '{"application_order":2,"document_digest":"%s","edition":"%s",'
+      '"reference":"FICTIF ANB","role":"annexe"}],"country_code":"%s",'
+      '"kind":"normative_stack","part":"%s","schema_version":"esc-stack/1",'
+      '"standard_family":"%s"}',
+      repeat('a', 64), repeat('b', 64), p_edition_annexe, p_country, p_part,
+      p_family)
+  );
+$$;
+
+
+-- Fabrique de confirmations. Les empreintes sont calculees depuis les
+-- payloads, si bien qu'un test qui reussit ne peut pas reussir grace a un
+-- hash faux. Les parametres p_faux_* et p_pretend_* servent aux tests
+-- negatifs: le serveur doit les ecraser ou les refuser.
 create or replace function t_confirmer(
   p_rule           text default 'test.regle.fictive',
   p_country        country_code default 'BE',
@@ -138,32 +181,32 @@ create or replace function t_confirmer(
   p_pretend_verif  uuid default null,
   p_pretend_time   timestamptz default null,
   p_pretend_grant  uuid default null,
-  p_pretend_scope  jsonb default null
+  p_pretend_scope  jsonb default null,
+  -- Substitutions APRES calcul des empreintes: c'est ce que la coherence
+  -- atomique doit refuser.
+  p_sub_stack_json jsonb default null,
+  p_sub_items      jsonb default null,
+  p_sub_rule_col   text default null,
+  p_sub_country    country_code default null,
+  p_echanger       boolean default false
 ) returns uuid
 language plpgsql as $$
 declare
-  spec text; impl text; ev text; pile text;
-  snapshot jsonb;
-  nouvel_id uuid;
-  h text;
+  paq jsonb; spec text; impl text; ev text; pile text;
+  nouvel_id uuid; h text;
 begin
-  spec := format('{"kind":"normative_spec","rule_id":"%s"}', p_rule);
-  impl := format('{"kind":"implementation","rule_id":"%s"}', p_rule);
-  -- La cle d'idempotence n'entre PAS dans le dossier de preuve: deux envois
-  -- d'une meme lecture doivent produire le MEME sujet, sans quoi le test du
-  -- decompte a quatre yeux ne verifierait rien.
-  ev   := format('{"kind":"evidence","rule_id":"%s"}', p_rule);
-  snapshot := jsonb_build_object(
-    'schema_version', 'esc-stack/1',
-    'country_code', p_country, 'standard_family', p_family, 'part', p_part,
-    'components', jsonb_build_array(
-      jsonb_build_object('role', 'base', 'reference', 'FICTIF EN 1992-1-1',
-                         'edition', '2004', 'application_order', 1,
-                         'document_digest', repeat('a', 64)),
-      jsonb_build_object('role', 'annexe', 'reference', 'FICTIF ANB',
-                         'edition', p_edition_annexe, 'application_order', 2,
-                         'document_digest', repeat('b', 64))));
-  pile := snapshot::text;
+  paq  := t_paquet(p_rule, p_country, p_family, p_part, p_edition_annexe);
+  spec := paq ->> 'spec';
+  impl := paq ->> 'impl';
+  ev   := paq ->> 'ev';
+  pile := paq ->> 'stack';
+
+  if p_echanger then
+    -- Specification et implementation interverties: deux empreintes justes
+    -- decrivant le mauvais objet.
+    select impl, spec into spec, impl;
+  end if;
+
   h := encode(sha256(convert_to(spec, 'UTF8')), 'hex');
   if p_faux_digest then
     h := repeat('0', 64);
@@ -176,27 +219,27 @@ begin
     normative_spec_payload, implementation_payload, evidence_payload,
     stack_payload, stack_snapshot, annex_edition,
     evidence_items, statement,
-    verifier_id, verifier_name, verified_at,
+    verifier_id, verifier_name, verified_at, created_at,
     authorisation_grant_id, authorisation_scope, idempotency_key
   ) values (
-    p_country, p_family, p_part, p_rule,
+    coalesce(p_sub_country, p_country), p_family, p_part,
+    coalesce(p_sub_rule_col, p_rule),
     encode(sha256(convert_to(pile, 'UTF8')), 'hex'),
     h,
     encode(sha256(convert_to(impl, 'UTF8')), 'hex'),
     encode(sha256(convert_to(ev, 'UTF8')), 'hex'),
     p_algo, 'esc-canon/1',
-    spec, impl, ev, pile, snapshot,
-    -- Valeur volontairement fausse: le serveur doit l'ecraser depuis la pile.
+    spec, impl, ev, pile,
+    -- Projections jsonb VOLONTAIREMENT divergentes par defaut: le serveur
+    -- doit les recalculer depuis les payloads.
+    coalesce(p_sub_stack_json, '{"substitue": "par le client"}'::jsonb),
     'EDITION-FOURNIE-PAR-LE-CLIENT',
-    jsonb_build_array(jsonb_build_object(
-      'document_digest', repeat('b', 64), 'document_role', 'annexe',
-      'clause', '§9.2.2(5)', 'page_printed', 15,
-      'quote', 'FICTIF — citation de test, sans valeur normative.')),
+    coalesce(p_sub_items, '[{"substitue": "par le client"}]'::jsonb),
     'FICTIF — j''ai lu l''annexe a la page indiquee.',
-    -- Identite, horodatage et snapshot PRETENDUS: le serveur doit les ecraser.
     coalesce(p_pretend_verif, '88888888-8888-8888-8888-888888888888'),
     'FICTIF NOM USURPE PAR LE CLIENT',
     coalesce(p_pretend_time, timestamptz '1999-01-01 00:00:00+00'),
+    timestamptz '1999-01-01 00:00:00+00',
     p_pretend_grant,
     coalesce(p_pretend_scope, '{"falsifie": true}'::jsonb),
     coalesce(p_idem, gen_random_uuid()::text)
@@ -1337,10 +1380,121 @@ begin
     end if;
   end loop;
 
-  if n < 6 then
+  if n < 5 then
     raise exception
       'seulement % fonctions SECURITY DEFINER inspectees: le test ne couvre '
       'pas ce qu''il annonce', n;
+  end if;
+end
+$$;
+
+
+-- 6.3b2 #5 — l'amorcage n'est PAS SECURITY DEFINER, et c'est deliberе.
+-- `current_user` y designerait le proprietaire de la fonction, pas
+-- l'appelant: le controle « reserve au proprietaire de la base » etait donc
+-- toujours vrai et ne restreignait rien. La restriction repose desormais sur
+-- l'ACL, qui est verifiable.
+do $$
+declare r record;
+begin
+  select prosecdef into r from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'bootstrap_normative_administrator';
+  if r.prosecdef then
+    raise exception
+      'l''amorcage est SECURITY DEFINER: current_user y designe le '
+      'proprietaire de la fonction, et tout controle fonde dessus est vide';
+  end if;
+end
+$$;
+
+
+-- 6.3b2 #5 — EXECUTE refuse aux TROIS roles, pas seulement a PUBLIC.
+do $$
+declare f record; role_nom text;
+begin
+  for f in
+    select p.oid, p.proname from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and (p.proname like '%normative%' or p.proname = 'assert_digest_integrity')
+  loop
+    foreach role_nom in array array['authenticated', 'normative_backend',
+                                    'normative_governance'] loop
+      if has_function_privilege(role_nom, f.oid, 'EXECUTE') then
+        raise exception
+          'le role % detient EXECUTE sur %: une fonction sensible ne doit pas '
+          'etre appelable par les roles applicatifs', role_nom, f.proname;
+      end if;
+    end loop;
+  end loop;
+end
+$$;
+
+
+-- 6.3b2 #5 — le schema resolu avant pg_temp n'est pas inscriptible par un
+-- role non fiable. Sans cela, `search_path = public, pg_temp` ne protegerait
+-- rien: il suffirait de creer un objet dans `public` pour detourner une
+-- fonction SECURITY DEFINER.
+do $$
+declare role_nom text;
+begin
+  foreach role_nom in array array['authenticated', 'normative_backend',
+                                  'normative_governance', 'public'] loop
+    if has_schema_privilege(role_nom, 'public', 'CREATE') then
+      raise exception
+        'le role % peut creer des objets dans le schema public, qui precede '
+        'pg_temp dans le search_path des fonctions SECURITY DEFINER',
+        role_nom;
+    end if;
+  end loop;
+end
+$$;
+
+
+-- 6.3b2 #5 — attributs des deux roles de service, s'ils preexistent.
+do $$
+declare r record;
+begin
+  for r in select rolname, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb
+             from pg_roles
+            where rolname in ('normative_backend', 'normative_governance')
+  loop
+    if r.rolsuper or r.rolbypassrls or r.rolcreaterole or r.rolcreatedb then
+      raise exception
+        'le role de service % porte un attribut privilegie '
+        '(super=%, bypassrls=%, createrole=%, createdb=%): la RLS ne le '
+        'contiendrait pas', r.rolname, r.rolsuper, r.rolbypassrls,
+        r.rolcreaterole, r.rolcreatedb;
+    end if;
+    if exists (select 1 from pg_auth_members m
+                join pg_roles parent on parent.oid = m.roleid
+                join pg_roles enfant on enfant.oid = m.member
+               where enfant.rolname = r.rolname
+                 and (parent.rolsuper or parent.rolbypassrls)) then
+      raise exception
+        'le role de service % est membre d''un role privilegie', r.rolname;
+    end if;
+  end loop;
+end
+$$;
+
+
+-- 6.3b2 #2 — volatilite declaree conforme au comportement reel.
+do $$
+declare v "char";
+begin
+  select provolatile into v from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'normative_authorisation_snapshot';
+  if v = 'i' then
+    raise exception
+      'normative_authorisation_snapshot est declaree IMMUTABLE alors qu''elle '
+      'appelle now(): le planificateur peut pre-evaluer et mettre en cache '
+      'une valeur qui change';
+  end if;
+  if v not in ('s', 'v') then
+    raise exception 'volatilite inattendue: %', v;
   end if;
 end
 $$;
@@ -1392,8 +1546,350 @@ end
 $$;
 
 
+-- =====================================================================
+-- 6.3b2 — coherence atomique du paquet
+-- =====================================================================
+-- Quatre empreintes individuellement justes ne font pas un sujet. Chacun de
+-- ces cas a d'abord ete verifie ROUGE contre la version precedente: pile
+-- substituee, spec/implementation interverties, rule_id de colonne different
+-- du rule_id signe, et dossier de preuve sans rapport avec son payload.
+do $$
+declare ok boolean;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+
+  -- Les projections jsonb sont DERIVEES des payloads: ce que le client met
+  -- dans stack_snapshot et evidence_items est ecrase, pas cru.
+  perform t_confirmer(p_rule => 'test.coherence', p_idem => 'FICTIF-coh-1');
+  declare c record;
+  begin
+    select * into c from normative_rule_confirmations
+     where idempotency_key = 'FICTIF-coh-1';
+    if c.stack_snapshot ? 'substitue' then
+      raise exception
+        'la pile fournie par le client a survecu: elle pouvait differer de '
+        'celle qui est hachee';
+    end if;
+    if c.stack_snapshot is distinct from c.stack_payload::jsonb then
+      raise exception 'stack_snapshot ne derive pas de stack_payload';
+    end if;
+    if c.evidence_items is distinct from (c.evidence_payload::jsonb -> 'items') then
+      raise exception
+        'evidence_items ne derive pas de evidence_payload: le dossier stocke '
+        'n''est pas celui qui est scelle';
+    end if;
+    if c.annex_edition <> '2010' then
+      raise exception 'annex_edition non extraite de la pile signee: %',
+        c.annex_edition;
+    end if;
+  end;
+
+  -- Autre regle en colonne que celle signee par les payloads.
+  ok := false;
+  begin
+    perform t_confirmer(p_rule => 'test.coherence',
+                        p_sub_rule_col => 'test.REGLE.USURPEE',
+                        p_idem => 'FICTIF-coh-regle');
+  exception when check_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'rule_id de colonne different du rule_id signe: ACCEPTE. La recherche '
+      'et la signature designeraient deux regles';
+  end if;
+
+  -- Specification et implementation interverties.
+  ok := false;
+  begin
+    perform t_confirmer(p_rule => 'test.coherence', p_echanger => true,
+                        p_idem => 'FICTIF-coh-echange');
+  exception when check_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'spec et implementation interverties: ACCEPTEES. Deux empreintes justes '
+      'decriraient le mauvais objet';
+  end if;
+end
+$$;
+
+
+-- Autre juridiction en colonne que celle de la pile signee.
+do $$
+declare ok boolean := false;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+  begin
+    perform t_confirmer(p_rule => 'test.coherence', p_sub_country => 'FR',
+                        p_idem => 'FICTIF-coh-pays');
+  exception
+    when check_violation then ok := true;
+    when insufficient_privilege then ok := true;
+  end;
+  if not ok then
+    raise exception 'juridiction de colonne differente de la pile signee: ACCEPTEE';
+  end if;
+end
+$$;
+
+
+-- Payload qui n'est pas du JSON, ou dont le `kind` ment.
+do $$
+declare ok boolean;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+  ok := false;
+  begin
+    insert into normative_rule_confirmations (
+      country_code, standard_family, part, rule_id,
+      stack_digest, normative_spec_digest, implementation_digest, evidence_digest,
+      digest_algorithm, canonicalization_version,
+      normative_spec_payload, implementation_payload, evidence_payload,
+      stack_payload, stack_snapshot, annex_edition, evidence_items, statement,
+      verifier_id, verifier_name, verified_at, authorisation_grant_id,
+      authorisation_scope, idempotency_key)
+    select 'BE', 'EN 1992', '1-1', 'test.coherence',
+      c.stack_digest, c.normative_spec_digest, c.implementation_digest,
+      c.evidence_digest, 'sha256', 'esc-canon/1',
+      c.normative_spec_payload, c.implementation_payload, c.evidence_payload,
+      -- pile REMPLACEE par le payload de preuve: hash faux ET kind faux
+      c.evidence_payload, '{}'::jsonb, 'x', '[]'::jsonb, 'FICTIF',
+      c.verifier_id, 'FICTIF', now(), c.authorisation_grant_id,
+      '{}'::jsonb, 'FICTIF-coh-kind'
+    from normative_rule_confirmations c
+     where c.idempotency_key = 'FICTIF-coh-1';
+  exception when check_violation then ok := true;
+  end;
+  if not ok then
+    raise exception 'un payload de pile remplace par un payload de preuve: ACCEPTE';
+  end if;
+end
+$$;
+
+
+-- =====================================================================
+-- 6.3b2 — horodatages imposes par le serveur partout
+-- =====================================================================
+do $$
+declare c record; g record; r record;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+  perform t_confirmer(p_rule => 'test.horodatage', p_idem => 'FICTIF-hor-1');
+  select * into c from normative_rule_confirmations
+   where idempotency_key = 'FICTIF-hor-1';
+  if c.verified_at < timestamptz '2000-01-01' then
+    raise exception 'verified_at client (1999) a survecu: %', c.verified_at;
+  end if;
+  if c.created_at < timestamptz '2000-01-01' then
+    raise exception 'created_at client (1999) a survecu: %', c.created_at;
+  end if;
+
+  perform set_config('request.jwt.claim.sub',
+                     '44444444-4444-4444-4444-444444444444', true);
+  insert into normative_authorisation_grants
+    (id, grantee_id, grantee_name, permission, country_code, standard_family,
+     part, granted_at, reason)
+  values ('9a000000-0000-0000-0000-0000000000c1',
+          '66666666-6666-6666-6666-666666666666', 'FICTIF Relecteur Deux',
+          'can_validate_normative_reference', 'BE', 'EN 1993', '1-1',
+          timestamptz '1999-01-01', 'FICTIF — horodatage fourni par le client');
+  select * into g from normative_authorisation_grants
+   where id = '9a000000-0000-0000-0000-0000000000c1';
+  if g.granted_at < timestamptz '2000-01-01' then
+    raise exception 'granted_at client (1999) a survecu: %', g.granted_at;
+  end if;
+
+  insert into normative_authorisation_revocations
+    (grant_id, revoked_by, revoked_at, reason)
+  values ('9a000000-0000-0000-0000-0000000000c1',
+          '88888888-8888-8888-8888-888888888888', timestamptz '1999-01-01',
+          'FICTIF — horodatage et auteur fournis par le client');
+  select * into r from normative_authorisation_revocations
+   where grant_id = '9a000000-0000-0000-0000-0000000000c1';
+  if r.revoked_at < timestamptz '2000-01-01' then
+    raise exception 'revoked_at client (1999) a survecu: %', r.revoked_at;
+  end if;
+  if r.revoked_by <> '44444444-4444-4444-4444-444444444444' then
+    raise exception 'revoked_by client a survecu: %', r.revoked_by;
+  end if;
+end
+$$;
+
+
+-- =====================================================================
+-- 6.3b2 — le dernier administrateur ne peut pas etre retire
+-- =====================================================================
+-- Contre-exemple verifie ROUGE: on pouvait revoquer le dernier octroi actif
+-- « can_manage_normative_authorisations », et l'index interdisant un second
+-- amorcage rendait alors la gouvernance IRRECUPERABLE.
+do $$
+declare ok boolean := false; n bigint; dernier uuid;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '44444444-4444-4444-4444-444444444444', true);
+
+  -- Ne laisser qu'UN seul administrateur actif.
+  for dernier in
+    select g.id from normative_authorisation_grants g
+     where g.permission = 'can_manage_normative_authorisations'
+       and normative_grant_is_active(g.id)
+       and g.grantee_id <> '44444444-4444-4444-4444-444444444444'
+  loop
+    insert into normative_authorisation_revocations (grant_id, reason)
+    values (dernier, 'FICTIF — concentration de l''administration.');
+  end loop;
+
+  select count(*), min(g.id::text)::uuid into n, dernier
+    from normative_authorisation_grants g
+   where g.permission = 'can_manage_normative_authorisations'
+     and normative_grant_is_active(g.id);
+  if n <> 1 then
+    raise exception '% administrateurs actifs, 1 attendu pour ce test', n;
+  end if;
+
+  begin
+    insert into normative_authorisation_revocations (grant_id, reason)
+    values (dernier, 'FICTIF — retrait du dernier administrateur.');
+  exception when restrict_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'le dernier administrateur a pu etre retire: la gouvernance serait sans '
+      'personne et l''amorcage ne peut pas etre rejoue';
+  end if;
+
+  -- Et la voie normale reste ouverte: octroyer a un autre, PUIS retirer.
+  insert into normative_authorisation_grants
+    (id, grantee_id, grantee_name, permission, reason)
+  values ('9a000000-0000-0000-0000-0000000000d1',
+          '77777777-7777-7777-7777-777777777777', 'FICTIF Revocateur',
+          'can_manage_normative_authorisations',
+          'FICTIF — releve de l''administration.');
+  insert into normative_authorisation_revocations (grant_id, reason)
+  values (dernier, 'FICTIF — passation effectuee.');
+
+  select count(*) into n from normative_authorisation_grants g
+   where g.permission = 'can_manage_normative_authorisations'
+     and normative_grant_is_active(g.id);
+  if n <> 1 then
+    raise exception 'apres passation, % administrateurs actifs', n;
+  end if;
+end
+$$;
+
+
+-- =====================================================================
+-- 6.3b2 — le namespace « normative.* » du journal est reserve
+-- =====================================================================
+do $$
+declare ok boolean; i bigint;
+begin
+  -- Insertion directe, meme en tant que superutilisateur: refusee.
+  ok := false;
+  begin
+    insert into audit_log (action, entity, payload)
+    values ('normative.confirmation.created', 'normative_rule_confirmations',
+            '{"faux": true}'::jsonb);
+  exception when insufficient_privilege then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'une fausse trace normative a pu etre inseree directement: une preuve '
+      'd''octroi ou de confirmation se fabriquerait a la main';
+  end if;
+
+  -- Bascule d'une action ordinaire vers le namespace: refusee.
+  -- Contre-exemple verifie ROUGE: la ligne devenait normative, donc ensuite
+  -- ineffacable. Empoisonnement a sens unique.
+  insert into audit_log (action, entity, payload)
+  values ('project.exported', 'projects', '{}'::jsonb) returning id into i;
+  ok := false;
+  begin
+    update audit_log set action = 'normative.authorisation.granted' where id = i;
+  exception when restrict_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'une ligne ordinaire est devenue une trace normative, desormais '
+      'immuable';
+  end if;
+  delete from audit_log where id = i;
+
+  -- log_normative_event refuse une action hors namespace.
+  ok := false;
+  begin
+    perform log_normative_event('projet.exporte', 'projects', null,
+                                '{}'::jsonb, null);
+  exception when check_violation then ok := true;
+  end;
+  if not ok then
+    raise exception 'log_normative_event accepte une action hors namespace';
+  end if;
+end
+$$;
+
+
+-- =====================================================================
+-- 6.3b2 — RLS complementaire
+-- =====================================================================
+-- Le signataire doit voir qu'un TIERS a revoque sa confirmation. Ne montrer
+-- une revocation qu'a son auteur laissait un relecteur decouvrir la
+-- disparition de son regard sans savoir ni par qui ni pourquoi.
+do $$
+declare n bigint;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+  select count(*) into n
+    from normative_rule_confirmation_revocations r
+    join normative_rule_confirmations c on c.id = r.confirmation_id
+   where c.verifier_id = '55555555-5555-5555-5555-555555555555'
+     and r.revoked_by <> '55555555-5555-5555-5555-555555555555';
+  if n = 0 then
+    raise exception
+      'le signataire ne voit aucune revocation de SES confirmations par un '
+      'tiers: son regard disparaitrait du decompte sans explication';
+  end if;
+end
+$$;
+reset role;
+
+-- Aucun UPDATE ni DELETE, sur les QUATRE tables et pour TOUS les roles.
+do $$
+declare t text; role_nom text;
+begin
+  foreach t in array array['normative_authorisation_grants',
+                           'normative_authorisation_revocations',
+                           'normative_rule_confirmations',
+                           'normative_rule_confirmation_revocations'] loop
+    if exists (select 1 from pg_policies
+                where schemaname = 'public' and tablename = t
+                  and cmd in ('UPDATE', 'DELETE')) then
+      raise exception 'une policy UPDATE/DELETE existe sur %', t;
+    end if;
+    foreach role_nom in array array['authenticated', 'normative_backend',
+                                    'normative_governance', 'public'] loop
+      if has_table_privilege(role_nom, t, 'UPDATE')
+         or has_table_privilege(role_nom, t, 'DELETE')
+         or has_table_privilege(role_nom, t, 'TRUNCATE') then
+        raise exception '% detient UPDATE, DELETE ou TRUNCATE sur %',
+          role_nom, t;
+      end if;
+    end loop;
+  end loop;
+end
+$$;
+
+
 drop function t_confirmer(text, country_code, text, text, text, text, text,
-                          boolean, uuid, timestamptz, uuid, jsonb);
+                          boolean, uuid, timestamptz, uuid, jsonb,
+                          jsonb, jsonb, text, country_code, boolean);
+drop function t_paquet(text, country_code, text, text, text);
 
 \echo ''
 \echo '================================================='

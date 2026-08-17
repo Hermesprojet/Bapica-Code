@@ -97,3 +97,32 @@ done
 "${UP[@]}" -v ON_ERROR_STOP=1 -q -f "$DERNIERE"
 "${UP[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/upgrade_check.sql"
 "${ADMIN[@]}" -q -c "drop database if exists $UPGRADE_DB;" >/dev/null
+
+# --------------------------------------------------------------------------
+# Concurrence, sur DEUX CONNEXIONS REELLES.
+#
+# Les fichiers SQL ci-dessus tournent tous dans une seule session: ils ne
+# peuvent pas exhiber une course. Or `IF EXISTS` suivi d'`INSERT` passe tous
+# les tests monoconnexion et ne protege de rien.
+#
+# Base dediee et vierge: les scenarios courent la chaine de confiance depuis
+# son ouverture, ce que la base des autres suites ne permet plus.
+# --------------------------------------------------------------------------
+CONC_DB="${DB_NAME}_conc"
+echo "==> concurrence multi-connexion"
+"${ADMIN[@]}" -q -c "drop database if exists $CONC_DB;" >/dev/null
+"${ADMIN[@]}" -q -c "create database $CONC_DB;" >/dev/null
+
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  CONC=(psql "$(url_pour_base "$DATABASE_URL" "$CONC_DB")")
+else
+  CONC=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d "$CONC_DB")
+fi
+"${CONC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql"
+for f in "$DB_DIR"/migrations/*.sql; do
+  "${CONC[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
+done
+"$HERE/concurrency.sh" "$CONC_DB"
+CONC_CODE=$?
+"${ADMIN[@]}" -q -c "drop database if exists $CONC_DB;" >/dev/null
+[[ $CONC_CODE -eq 0 ]] || exit $CONC_CODE
