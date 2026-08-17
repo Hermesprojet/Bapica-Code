@@ -36,6 +36,90 @@
 begin;
 
 -- ---------------------------------------------------------------------
+-- Roles: deux roles de service, et DEUX ROLES D'AUTORITE non connectables
+-- ---------------------------------------------------------------------
+-- Les deux derniers ne servent qu'a POSSEDER une fonction SECURITY DEFINER.
+-- C'est le mecanisme d'origine non forgeable de cette migration: a
+-- l'interieur d'une fonction SECURITY DEFINER, `current_user` est le
+-- proprietaire de la fonction. Un declencheur qui exige
+-- `current_user = eurostruct_normative_writer` ne peut donc etre satisfait
+-- QUE par un appel passe par cette fonction — et personne ne peut prendre ce
+-- role, faute d'en etre membre.
+--
+-- Ce qui a ete essaye avant, et qui ne tenait pas: un parametre de session
+-- (`set_config('eurostruct.normative_audit','on')`) pose comme preuve
+-- d'origine. N'importe quel appelant peut le poser. Le contre-exemple a ete
+-- verifie: une fausse trace normative forgee en trois lignes, et rendue
+-- immuable dans la foulee.
+--
+-- MODELE DE MENACE. Ces garanties visent les ROLES APPLICATIFS. Un
+-- superutilisateur PostgreSQL peut desactiver un declencheur, changer un
+-- proprietaire ou modifier une fonction: il n'est pas un adversaire que la
+-- base puisse contenir, et aucun test ne pretend le contraire.
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'normative_backend') then
+    create role normative_backend;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'normative_governance') then
+    create role normative_governance;
+  end if;
+  if not exists (select 1 from pg_roles
+                  where rolname = 'eurostruct_normative_writer') then
+    create role eurostruct_normative_writer nologin;
+  end if;
+  if not exists (select 1 from pg_roles
+                  where rolname = 'eurostruct_normative_bootstrap') then
+    create role eurostruct_normative_bootstrap nologin;
+  end if;
+end
+$$;
+
+-- PREREQUIS DE DEPLOIEMENT, verifie ici et non seulement dans les tests: ces
+-- roles peuvent PREEXISTER dans un environnement gere, avec des attributs et
+-- des appartenances que cette migration n'a pas choisis. Si l'un d'eux est
+-- privilegie, ou si un role non fiable en est membre, toutes les garanties de
+-- moindre privilege ci-dessous sont vides — mieux vaut refuser la migration
+-- que l'appliquer sur une base ou elle ne protege rien.
+do $$
+declare r record;
+begin
+  for r in select rolname, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb
+             from pg_roles
+            where rolname in ('normative_backend', 'normative_governance',
+                              'eurostruct_normative_writer',
+                              'eurostruct_normative_bootstrap')
+  loop
+    if r.rolsuper or r.rolbypassrls or r.rolcreaterole or r.rolcreatedb then
+      raise exception
+        'prerequis non tenu: le role % porte un attribut privilegie '
+        '(super=%, bypassrls=%, createrole=%, createdb=%). La RLS ne le '
+        'contiendrait pas.', r.rolname, r.rolsuper, r.rolbypassrls,
+        r.rolcreaterole, r.rolcreatedb;
+    end if;
+  end loop;
+
+  -- Le sens INVERSE, celui qu'on oublie: un role non fiable membre d'un role
+  -- de service en heriterait tous les droits.
+  if exists (
+    select 1 from pg_auth_members m
+      join pg_roles parent on parent.oid = m.roleid
+      join pg_roles enfant on enfant.oid = m.member
+     where parent.rolname in ('normative_backend', 'normative_governance',
+                              'eurostruct_normative_writer',
+                              'eurostruct_normative_bootstrap')
+       and enfant.rolname in ('authenticated', 'anon', 'public')
+  ) then
+    raise exception
+      'prerequis non tenu: un role applicatif est membre d''un role de '
+      'service normatif. Il en heriterait les droits, et le cloisonnement '
+      'serait nominal.';
+  end if;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
 -- Les trois permissions, distinctes et sans implication mutuelle
 -- ---------------------------------------------------------------------
 -- Aucune n'entraine les autres. C'est la propriete centrale de ce modele:
@@ -483,22 +567,20 @@ begin
       using errcode = 'check_violation';
   end if;
 
-  -- Marqueur transactionnel: c'est lui qui distingue une trace produite ICI
-  -- d'une ligne inseree a la main. Sans marqueur, le namespace « normative.* »
-  -- ne serait qu'une convention de nommage, et n'importe qui pouvant ecrire
-  -- dans audit_log fabriquerait une preuve d'octroi ou de confirmation — que
-  -- le declencheur d'immuabilite rendrait ensuite ineffacable.
-  perform set_config('eurostruct.normative_audit', 'on', true);
-
+  -- Cette fonction est SECURITY DEFINER et appartient a
+  -- `eurostruct_normative_writer`. `current_user` vaut donc ce role ICI, et
+  -- nulle part ailleurs: c'est ce que le declencheur d'insertion verifie.
+  --
   -- org_id et project_id restent NULL: un evenement normatif n'appartient a
   -- aucun client. C'est la raison pour laquelle audit_log les declare
   -- nullables.
   insert into audit_log (user_id, action, entity, entity_id, payload)
   values (p_user, p_action, p_entity, p_entity_id, p_payload);
-
-  perform set_config('eurostruct.normative_audit', 'off', true);
 end;
 $$;
+
+alter function log_normative_event(text, text, uuid, jsonb, uuid)
+  owner to eurostruct_normative_writer;
 
 
 -- =====================================================================
@@ -533,6 +615,7 @@ create or replace function bootstrap_normative_administrator(
   p_reason       text
 ) returns uuid
 language plpgsql
+security definer
 set search_path = public, pg_temp
 as $$
 declare
@@ -542,7 +625,13 @@ begin
   -- serialise le controle d'existence ci-dessous; l'index partiel
   -- normative_bootstrap_is_singular le garantit structurellement meme si le
   -- verrou etait contourne. Deux garde-fous, deux portees.
-  perform pg_advisory_xact_lock(hashtext('eurostruct.normative.bootstrap'));
+  -- Verrou COMMUN a toute operation touchant l'ensemble actif des
+  -- administrateurs: amorcage, octroi d'une administration, revocation d'une
+  -- administration. Un verrou par ligne ne suffisait pas — deux revocations
+  -- visant deux octrois DIFFERENTS ne se croisent jamais, chacune voit
+  -- l'autre administrateur encore actif, et les deux passent. Contre-exemple
+  -- verifie: zero administrateur restant, gouvernance perdue.
+  perform pg_advisory_xact_lock(hashtext('eurostruct.normative.administration'));
 
   if exists (
     select 1 from normative_authorisation_grants g
@@ -587,6 +676,11 @@ begin
 end;
 $$;
 
+-- Possedee par le role d'autorite NOLOGIN: `current_user` vaut donc ce role
+-- a l'interieur, et c'est ce que le declencheur des octrois exige pour
+-- accepter `origin = 'bootstrap'`. Personne ne peut prendre ce role.
+alter function bootstrap_normative_administrator(uuid, text, text)
+  owner to eurostruct_normative_bootstrap;
 revoke all on function bootstrap_normative_administrator(uuid, text, text)
   from public;
 
@@ -603,6 +697,13 @@ comment on function bootstrap_normative_administrator is
 -- ---------------------------------------------------------------------
 -- Octroi d'autorisation
 -- ---------------------------------------------------------------------
+-- SECURITY DEFINER, possede par `eurostruct_normative_writer`.
+--
+-- Deux consequences voulues. D'abord le declencheur obtient les droits dont
+-- il a besoin — lire les octrois, journaliser — sans qu'aucun role applicatif
+-- ne recoive le moindre EXECUTE. Ensuite `current_user` y vaut le role
+-- d'autorite, ce qui est exactement ce que la reserve du namespace d'audit
+-- exige: seule une trace produite depuis ce chemin est acceptee.
 create or replace function check_normative_grant() returns trigger
 language plpgsql
 security definer
@@ -616,9 +717,16 @@ begin
   -- Toute autre insertion est une DELEGATION, et le trigger l'impose plutot
   -- que de faire confiance a la colonne recue.
   if new.origin = 'bootstrap' then
-    -- Seule la fonction d'amorcage, SECURITY DEFINER, arrive ici sans acteur
-    -- authentifie. Une insertion directe se declarant « bootstrap » depuis
-    -- une session authentifiee est un contournement.
+    -- Ce qui interdit REELLEMENT une insertion brute en « bootstrap », c'est
+    -- la policy RLS: seul `eurostruct_normative_bootstrap` a le droit
+    -- d'inserer une ligne dont l'origine est « bootstrap », et le backend a
+    -- un `with check (origin = 'delegated')`. Une policy s'evalue contre le
+    -- role reel: elle n'est pas contournable par un appelant.
+    --
+    -- Le controle ci-dessous est la seconde ligne. `auth.uid() IS NULL` seul
+    -- ne suffisait pas — contre-exemple verifie sur base vierge, avec
+    -- SET ROLE authenticated et aucun claim JWT: la branche etait empruntee
+    -- et la racine de confiance s'auto-proclamait.
     if acteur is not null then
       raise exception
         'origin « bootstrap » refuse depuis une session authentifiee: '
@@ -663,6 +771,15 @@ begin
   perform pg_advisory_xact_lock(
     hashtext('eurostruct.normative.grant:' || new.grantee_id::text
              || ':' || new.permission::text));
+
+  -- Et le verrou COMMUN des que l'ensemble des administrateurs est en jeu:
+  -- octroyer une administration doit se serialiser avec les revocations, sans
+  -- quoi « octroyer a B puis retirer a A » pourrait se croiser avec « retirer
+  -- a B ».
+  if new.permission = 'can_manage_normative_authorisations' then
+    perform pg_advisory_xact_lock(
+      hashtext('eurostruct.normative.administration'));
+  end if;
 
   -- Deux octrois ACTIFS de portee rigoureusement identique rendraient la
   -- resolution ambigue. On refuse a la source plutot que de laisser
@@ -728,6 +845,13 @@ create trigger normative_grants_are_checked
 -- ---------------------------------------------------------------------
 -- Revocation d'autorisation
 -- ---------------------------------------------------------------------
+-- SECURITY DEFINER, possede par `eurostruct_normative_writer`.
+--
+-- Deux consequences voulues. D'abord le declencheur obtient les droits dont
+-- il a besoin — lire les octrois, journaliser — sans qu'aucun role applicatif
+-- ne recoive le moindre EXECUTE. Ensuite `current_user` y vaut le role
+-- d'autorite, ce qui est exactement ce que la reserve du namespace d'audit
+-- exige: seule une trace produite depuis ce chemin est acceptee.
 create or replace function check_normative_grant_revocation() returns trigger
 language plpgsql
 security definer
@@ -745,15 +869,30 @@ begin
   new.revoked_by := acteur;
   new.revoked_at := now();
 
-  -- CONCURRENCE. On verrouille la LIGNE de l'octroi. Une confirmation en vol
+  -- CONCURRENCE, deux portees.
+  --
+  -- 1) Le verrou COMMUN de l'administration, pris AVANT de lire l'ensemble
+  --    actif. Sans lui, deux revocations concurrentes visant deux octrois
+  --    differents voient chacune l'autre administrateur actif et passent
+  --    toutes deux: contre-exemple verifie, zero administrateur restant.
+  perform pg_advisory_xact_lock(hashtext('eurostruct.normative.administration'));
+
+  -- 2) On verrouille la LIGNE de l'octroi. Une confirmation en vol
   -- prend un FOR SHARE sur cette meme ligne (voir check_normative_confirmation):
   -- les deux ne peuvent donc pas s'ignorer, et le resultat correspond
   -- toujours a un ordre seriel explicable — soit la confirmation passe puis
   -- l'habilitation est retiree, soit elle est retiree puis la confirmation
   -- est refusee. Jamais une confirmation autorisee par un etat intermediaire.
+  -- Verrou EXCLUSIF consultatif sur l'octroi vise, et non `FOR UPDATE`:
+  -- PostgreSQL exige le privilege UPDATE pour un verrou de ligne, et ces
+  -- tables n'accordent JAMAIS UPDATE — c'est le fondement de leur
+  -- immuabilite. La confirmation en vol tient le verrou partage
+  -- correspondant, si bien que les deux ne peuvent pas s'ignorer.
+  perform pg_advisory_xact_lock(
+    hashtext('eurostruct.normative.grantrow:' || new.grant_id::text));
+
   select * into cible from normative_authorisation_grants
-   where id = new.grant_id
-   for update;
+   where id = new.grant_id;
   if not found then
     raise exception 'octroi % introuvable', new.grant_id
       using errcode = 'foreign_key_violation';
@@ -815,6 +954,13 @@ create trigger normative_grant_revocations_are_checked
 -- ---------------------------------------------------------------------
 -- Confirmation normative
 -- ---------------------------------------------------------------------
+-- SECURITY DEFINER, possede par `eurostruct_normative_writer`.
+--
+-- Deux consequences voulues. D'abord le declencheur obtient les droits dont
+-- il a besoin — lire les octrois, journaliser — sans qu'aucun role applicatif
+-- ne recoive le moindre EXECUTE. Ensuite `current_user` y vaut le role
+-- d'autorite, ce qui est exactement ce que la reserve du namespace d'audit
+-- exige: seule une trace produite depuis ce chemin est acceptee.
 create or replace function check_normative_confirmation() returns trigger
 language plpgsql
 security definer
@@ -946,6 +1092,57 @@ begin
       using errcode = 'check_violation';
   end if;
 
+  -- Ce que SQL PEUT verifier d'un element de preuve. Il ne sait pas juger si
+  -- la citation est la bonne — c'est le travail du verificateur, et celui du
+  -- backend qui construit le paquet. Il sait en revanche refuser un element
+  -- qui n'est pas un element: `items: [1]` etait accepte.
+  if exists (
+    select 1 from jsonb_array_elements(new.evidence_items) e
+     where jsonb_typeof(e) <> 'object'
+        or e ->> 'document_digest' is null
+        or e ->> 'document_role'   is null
+        or e ->> 'reference'       is null
+        or e ->> 'clause'          is null
+        or e ->> 'quote'           is null
+        or e ->> 'quote_digest'    is null
+        or (e -> 'page_printed') is null
+  ) then
+    raise exception
+      'un element de preuve est incomplet ou n''est pas un objet. Un dossier '
+      'de revue nomme, pour chaque source, le document, son role, la clause, '
+      'le folio et la citation.'
+      using errcode = 'check_violation';
+  end if;
+
+  -- La citation est scellee par sa propre empreinte: retoucher le texte sans
+  -- recalculer l'empreinte est detectable, et c'est verifiable ici sans rien
+  -- recanonicaliser.
+  if exists (
+    select 1 from jsonb_array_elements(new.evidence_items) e
+     where e ->> 'quote_digest'
+           <> encode(sha256(convert_to(e ->> 'quote', 'UTF8')), 'hex')
+  ) then
+    raise exception
+      'le quote_digest d''un element de preuve ne resume pas sa citation.'
+      using errcode = 'check_violation';
+  end if;
+
+  -- Versions connues. Une pile en `schema_version` inconnue serait lue avec
+  -- une grille qui n'est pas la sienne — et c'est cette grille qui sert a
+  -- extraire l'edition d'annexe dont depend le controle de portee.
+  if stack_json ->> 'schema_version' <> 'esc-stack/1' then
+    raise exception
+      'schema_version de pile inconnu: %. La structure serait interpretee '
+      'avec une grille qui n''est pas la sienne.',
+      stack_json ->> 'schema_version'
+      using errcode = 'check_violation';
+  end if;
+  if new.canonicalization_version <> 'esc-canon/1' then
+    raise exception
+      'version de canonicalisation inconnue: %.', new.canonicalization_version
+      using errcode = 'check_violation';
+  end if;
+
   -- 4b. L'edition de l'annexe est EXTRAITE de la pile SIGNEE par le serveur:
   --     c'est elle que la portee de l'habilitation compare, elle ne peut donc
   --     pas etre fournie par celui qu'on controle.
@@ -982,12 +1179,17 @@ begin
   -- 6. Le snapshot d'autorisation est ECRIT ICI. Le client ne le fournit pas
   --    et ne peut pas le falsifier: quoi qu'il ait mis dans ces colonnes,
   --    elles sont ecrasees.
-  -- CONCURRENCE. Verrou partage sur l'octroi retenu, tenu jusqu'au commit:
+  -- CONCURRENCE. Verrou PARTAGE sur l'octroi retenu, tenu jusqu'au commit:
   -- une revocation concurrente de cette habilitation devra attendre. Sans
   -- lui, une confirmation pouvait etre autorisee par un octroi qu'une autre
   -- transaction etait en train de retirer.
-  perform 1 from normative_authorisation_grants
-   where id = habilitation.id for share;
+  --
+  -- Un verrou consultatif, et non `SELECT ... FOR SHARE`: PostgreSQL exige le
+  -- privilege UPDATE pour un verrou de ligne, et ces tables n'accordent
+  -- JAMAIS UPDATE — c'est le fondement de leur immuabilite. Le verrou de
+  -- ligne aurait donc oblige a ouvrir ce que la migration ferme.
+  perform pg_advisory_xact_lock_shared(
+    hashtext('eurostruct.normative.grantrow:' || habilitation.id::text));
 
   -- Et on RE-verifie apres avoir obtenu le verrou: si la revocation nous a
   -- precedes, elle est desormais visible.
@@ -1113,6 +1315,16 @@ create trigger normative_confirmation_revocations_are_checked
   for each row execute function check_normative_confirmation_revocation();
 
 
+-- Les quatre declencheurs appartiennent au role d'autorite. Place ICI, apres
+-- leur creation: un ALTER ne peut pas preceder le CREATE.
+alter function check_normative_grant() owner to eurostruct_normative_writer;
+alter function check_normative_grant_revocation()
+  owner to eurostruct_normative_writer;
+alter function check_normative_confirmation()
+  owner to eurostruct_normative_writer;
+alter function check_normative_confirmation_revocation()
+  owner to eurostruct_normative_writer;
+
 -- =====================================================================
 -- Immuabilite: le mecanisme de 0003, sans en inventer un second
 -- =====================================================================
@@ -1176,18 +1388,31 @@ $$;
 create or replace function reserve_normative_audit_namespace() returns trigger
 language plpgsql as $$
 begin
+  -- L'utilisateur EFFECTIF, et non un parametre de session. A l'interieur de
+  -- log_normative_event() — SECURITY DEFINER appartenant au role ci-dessous —
+  -- `current_user` vaut ce role; partout ailleurs il vaut l'appelant reel.
+  -- Personne ne peut prendre ce role: il est NOLOGIN et personne n'en est
+  -- membre.
+  --
+  -- La version precedente lisait un GUC pose par set_config(). Contre-exemple
+  -- verifie: n'importe quel role autorise a ecrire un evenement ordinaire
+  -- posait le marqueur lui-meme et fabriquait une trace normative, que le
+  -- declencheur d'immuabilite rendait ensuite ineffacable.
   if new.action like 'normative.%'
-     and coalesce(current_setting('eurostruct.normative_audit', true), 'off')
-         <> 'on' then
+     and current_user <> 'eurostruct_normative_writer' then
     raise exception
       'le namespace « normative.* » est reserve: la trace « % » doit etre '
       'produite par log_normative_event(), sans quoi une preuve d''octroi ou '
-      'de confirmation se fabriquerait a la main.', new.action
+      'de confirmation se fabriquerait a la main. Utilisateur effectif: %.',
+      new.action, current_user
       using errcode = 'insufficient_privilege';
   end if;
   return new;
 end;
 $$;
+
+create policy audit_normative_write on audit_log
+  for insert to eurostruct_normative_writer with check (action like 'normative.%');
 
 create trigger audit_log_normative_namespace_is_reserved
   before insert on audit_log
@@ -1232,19 +1457,6 @@ create trigger audit_log_normative_entries_are_immutable
 -- qu'il a le droit de faire, et le refus qu'il rencontrerait serait
 -- inexplicable pour lui.
 
--- Deux roles de service. Crees ici s'ils manquent, comme le stub local cree
--- `authenticated`: un deploiement gere les fournit deja.
-do $$
-begin
-  if not exists (select 1 from pg_roles where rolname = 'normative_backend') then
-    create role normative_backend;
-  end if;
-  if not exists (select 1 from pg_roles where rolname = 'normative_governance') then
-    create role normative_governance;
-  end if;
-end
-$$;
-
 comment on type normative_grant_origin is
   'bootstrap = ouverture de la chaine par l''autorite de deploiement; '
   'delegated = octroi consenti par un detenteur de '
@@ -1263,10 +1475,51 @@ revoke all on normative_authorisation_revocations     from public;
 revoke all on normative_rule_confirmations            from public;
 revoke all on normative_rule_confirmation_revocations from public;
 
-grant insert, select on normative_authorisation_grants          to authenticated;
-grant insert, select on normative_authorisation_revocations     to authenticated;
-grant insert, select on normative_rule_confirmations            to authenticated;
-grant insert, select on normative_rule_confirmation_revocations to authenticated;
+-- FRONTIERE D'ECRITURE, tranchee: `authenticated` ne peut plus INSERER.
+--
+-- SQL ne reproduit pas tous les invariants de NormativeReviewPackage — il ne
+-- sait pas verifier qu'un dossier couvre les sources declarees par la
+-- specification, ni qu'un `RequiredSource` correspond a un `EvidenceItem`.
+-- Tant que l'insertion brute restait ouverte, la phrase « la conformite est
+-- garantie cote moteur » etait fausse: le chemin SQL contournait precisement
+-- ce moteur. Contre-exemple verifie: `items: [1]`, `schema_version`
+-- inconnue et `quote_digest` absent, acceptes.
+--
+-- Toute ecriture passe donc par `normative_backend`, qui construit et valide
+-- le paquet en Python AVANT d'ecrire. Les controles SQL ci-dessous restent la
+-- seconde ligne — ils attrapent ce qu'un backend fautif laisserait passer,
+-- ils ne remplacent pas sa validation.
+grant select on normative_authorisation_grants          to authenticated;
+grant select on normative_authorisation_revocations     to authenticated;
+grant select on normative_rule_confirmations            to authenticated;
+grant select on normative_rule_confirmation_revocations to authenticated;
+
+grant insert on normative_authorisation_grants          to normative_backend;
+grant insert on normative_authorisation_revocations     to normative_backend;
+grant insert on normative_rule_confirmations            to normative_backend;
+grant insert on normative_rule_confirmation_revocations to normative_backend;
+
+-- Le backend NE LIT PAS la gouvernance des habilitations. Il n'en a pas
+-- besoin: la resolution se fait dans les declencheurs, qui s'executent sous
+-- le role d'autorite. Lui ouvrir les octrois lui apprendrait qui est habilite
+-- a quoi, sans qu'aucun de ses usages ne l'exige.
+
+-- Le role d'autorite, qui possede les declencheurs et la journalisation: il
+-- lit la gouvernance pour resoudre une habilitation, et ecrit le journal.
+grant select on normative_authorisation_grants          to eurostruct_normative_writer;
+grant select on normative_authorisation_revocations     to eurostruct_normative_writer;
+grant select on normative_rule_confirmations            to eurostruct_normative_writer;
+grant select on normative_rule_confirmation_revocations to eurostruct_normative_writer;
+grant insert on audit_log to eurostruct_normative_writer;
+-- `audit_log.id` est un bigserial: sans USAGE sur sa sequence, l'insertion
+-- echoue apres avoir passe tous les controles.
+grant usage on sequence audit_log_id_seq to eurostruct_normative_writer;
+
+-- Le role d'amorcage n'ecrit qu'un octroi, et une seule fois.
+grant select, insert on normative_authorisation_grants
+  to eurostruct_normative_bootstrap;
+grant select on normative_authorisation_revocations
+  to eurostruct_normative_bootstrap;
 
 grant select on normative_authorisation_grants          to normative_governance;
 grant select on normative_authorisation_revocations     to normative_governance;
@@ -1283,8 +1536,19 @@ create policy normative_grants_own_read on normative_authorisation_grants
   for select to authenticated using (grantee_id = auth.uid());
 create policy normative_grants_governance_read on normative_authorisation_grants
   for select to normative_governance using (true);
+create policy normative_grants_bootstrap_read on normative_authorisation_grants
+  for select to eurostruct_normative_bootstrap using (true);
+create policy normative_grants_writer_read on normative_authorisation_grants
+  for select to eurostruct_normative_writer using (true);
+-- L'origine est tranchee PAR LE ROLE, dans la policy: le backend ne peut
+-- ecrire que des octrois delegues, et seul le role d'amorcage peut ecrire une
+-- origine « bootstrap ». Un `WITH CHECK` s'evalue contre le role reel de la
+-- session; aucun appelant ne peut s'en affranchir.
 create policy normative_grants_insert on normative_authorisation_grants
-  for insert to authenticated with check (true);
+  for insert to normative_backend with check (origin = 'delegated');
+create policy normative_grants_bootstrap_insert on normative_authorisation_grants
+  for insert to eurostruct_normative_bootstrap
+  with check (origin = 'bootstrap');
 
 create policy normative_grant_revocations_own_read
   on normative_authorisation_revocations
@@ -1295,9 +1559,15 @@ create policy normative_grant_revocations_own_read
 create policy normative_grant_revocations_governance_read
   on normative_authorisation_revocations
   for select to normative_governance using (true);
+create policy normative_grant_revocations_bootstrap_read
+  on normative_authorisation_revocations
+  for select to eurostruct_normative_bootstrap using (true);
+create policy normative_grant_revocations_writer_read
+  on normative_authorisation_revocations
+  for select to eurostruct_normative_writer using (true);
 create policy normative_grant_revocations_insert
   on normative_authorisation_revocations
-  for insert to authenticated with check (true);
+  for insert to normative_backend with check (true);
 
 create policy normative_confirmations_own_read on normative_rule_confirmations
   for select to authenticated using (verifier_id = auth.uid());
@@ -1306,8 +1576,10 @@ create policy normative_confirmations_backend_read on normative_rule_confirmatio
 create policy normative_confirmations_governance_read
   on normative_rule_confirmations
   for select to normative_governance using (true);
+create policy normative_confirmations_writer_read on normative_rule_confirmations
+  for select to eurostruct_normative_writer using (true);
 create policy normative_confirmations_insert on normative_rule_confirmations
-  for insert to authenticated with check (true);
+  for insert to normative_backend with check (true);
 
 -- L'auteur de la revocation, ET le signataire dont la confirmation est
 -- visee. Ne montrer une revocation qu'a son auteur laissait un relecteur
@@ -1328,7 +1600,7 @@ create policy normative_confirmation_revocations_governance_read
   for select to normative_governance using (true);
 create policy normative_confirmation_revocations_insert
   on normative_rule_confirmation_revocations
-  for insert to authenticated with check (true);
+  for insert to normative_backend with check (true);
 
 
 -- ---------------------------------------------------------------------
@@ -1405,5 +1677,38 @@ revoke all on function normative_authorisation_snapshot(
   normative_authorisation_grants) from public;
 revoke all on function assert_digest_integrity(text, text, text, text)
   from public;
+
+-- Les deux roles d'autorite ont besoin des auxiliaires que les declencheurs
+-- et l'amorcage appellent. Ils sont NOLOGIN et personne n'en est membre: leur
+-- accorder EXECUTE n'ouvre rien a un role applicatif, et un test verifie que
+-- `authenticated`, `normative_backend` et `normative_governance` n'en ont
+-- aucun.
+grant execute on function normative_grant_is_active(uuid)
+  to eurostruct_normative_writer, eurostruct_normative_bootstrap;
+grant execute on function resolve_normative_authorisation(
+  uuid, normative_permission, country_code, text, text, text)
+  to eurostruct_normative_writer;
+grant execute on function normative_authorisation_snapshot(
+  normative_authorisation_grants) to eurostruct_normative_writer;
+grant execute on function assert_digest_integrity(text, text, text, text)
+  to eurostruct_normative_writer;
+grant execute on function log_normative_event(text, text, uuid, jsonb, uuid)
+  to eurostruct_normative_writer, eurostruct_normative_bootstrap;
+
+-- `auth.uid()` est lue par les declencheurs, qui s'executent desormais sous le
+-- role d'autorite. En deploiement Supabase le schema `auth` est deja lisible
+-- par les roles de service; en local il faut l'ouvrir explicitement.
+do $$
+begin
+  if exists (select 1 from pg_namespace where nspname = 'auth') then
+    execute 'grant usage on schema auth to eurostruct_normative_writer,
+             eurostruct_normative_bootstrap';
+    execute 'grant execute on function auth.uid() to
+             eurostruct_normative_writer, eurostruct_normative_bootstrap';
+    execute 'grant select on auth.users to eurostruct_normative_writer,
+             eurostruct_normative_bootstrap';
+  end if;
+end
+$$;
 
 commit;

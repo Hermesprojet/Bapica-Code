@@ -22,6 +22,27 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_NAME="${1:?base de travail attendue en premier argument}"
 
+# Repertoire propre a cette execution. Des noms fixes dans /tmp se
+# contaminent des que deux suites tournent en meme temps — et c'est
+# precisement ce qu'une suite de concurrence risque de faire.
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+# Verdict par CODE D'ERREUR attendu, jamais par duree.
+#
+# Une temporisation prouve mal: sur une machine chargee, un seuil de 800 ms
+# devient un faux vert ou un faux rouge selon l'humeur de l'ordonnanceur. On
+# donne donc a la transaction bloquee un `lock_timeout` court, et on exige
+# l'erreur 55P03 (lock_not_available). Le resultat est binaire: soit elle a
+# ete bloquee, soit elle ne l'a pas ete.
+ERR_VERROU='55P03'
+# Avec `\set VERBOSITY verbose`, psql imprime « ERROR:  55P03: ... ». C'est
+# de la que le code est lu — et non d'un champ « SQLSTATE: », qui n'apparait
+# pas dans ce format.
+code_sqlstate() {
+  sed -nE 's/^.*ERROR:[[:space:]]+([0-9A-Z]{5}):.*$/\1/p' "$1" | head -1
+}
+
 if [[ -n "${DATABASE_URL:-}" ]]; then
   SANS_QUERY="${DATABASE_URL%%\?*}"
   QUERY=""
@@ -58,8 +79,9 @@ begin
   ev   := format('{"canonicalization_version":"esc-canon/1","items":'
                  '[{"clause":"c","document_digest":"%s","document_role":"annexe",'
                  '"edition":"2010","page_printed":1,"quote":"FICTIF",'
-                 '"quote_digest":"%s"}],"kind":"evidence"}',
-                 repeat('b', 64), repeat('c', 64));
+                 '"reference":"FICTIF ANB","quote_digest":"%s"}],"kind":"evidence"}',
+                 repeat('b', 64),
+                 encode(sha256(convert_to('FICTIF', 'UTF8')), 'hex'));
   pile := format('{"components":[{"application_order":2,"document_digest":"%s",'
                  '"edition":"2010","reference":"FICTIF ANB","role":"annexe"}],'
                  '"country_code":"BE","kind":"normative_stack","part":"1-1",'
@@ -93,7 +115,7 @@ SQL
 echo "    scenario 1: deux amorcages concurrents"
 for n in 1 2; do
   eval "cible=\$R$n"
-  cat > "/tmp/conc_boot_$n.sql" <<SQL
+  cat > "$TMP/conc_boot_$n.sql" <<SQL
 begin;
 select pg_sleep(0.$n);
 select bootstrap_normative_administrator(
@@ -101,8 +123,8 @@ select bootstrap_normative_administrator(
 commit;
 SQL
 done
-"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f /tmp/conc_boot_1.sql >/tmp/boot1.log 2>&1 & B1=$!
-"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f /tmp/conc_boot_2.sql >/tmp/boot2.log 2>&1 & B2=$!
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f $TMP/conc_boot_1.sql >$TMP/boot1.log 2>&1 & B1=$!
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f $TMP/conc_boot_2.sql >$TMP/boot2.log 2>&1 & B2=$!
 wait $B1; CB1=$?
 wait $B2; CB2=$?
 BOOTS=$("${PSQL[@]}" -X -q -tAc \
@@ -135,9 +157,11 @@ echo "    scenario 2: deux octrois identiques concurrents"
 # l'ancienne passait.
 for lettre in A B; do
   delai=$([[ "$lettre" == "A" ]] && echo 1.5 || echo 0)
-  cat > "/tmp/conc_$lettre.sql" <<SQL
+  cat > "$TMP/conc_$lettre.sql" <<SQL
+\set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$ADMIN', true);
+set local lock_timeout = '$([[ "$lettre" == "B" ]] && echo 600ms || echo 30s)';
 insert into normative_authorisation_grants
   (grantee_id, grantee_name, permission, country_code, standard_family, part,
    reason)
@@ -147,11 +171,12 @@ select pg_sleep($delai);
 commit;
 SQL
 done
-"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f /tmp/conc_A.sql >/tmp/conc_a.log 2>&1 & PA=$!
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f "$TMP/conc_A.sql" >"$TMP/conc_a.log" 2>&1 & PA=$!
 sleep 0.3
-"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f /tmp/conc_B.sql >/tmp/conc_b.log 2>&1 & PB=$!
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f "$TMP/conc_B.sql" >"$TMP/conc_b.log" 2>&1 & PB=$!
 wait $PA; CA=$?
 wait $PB; CB=$?
+SQLSTATE_B="$(code_sqlstate "$TMP/conc_b.log")"
 ACTIFS=$("${PSQL[@]}" -X -q -tAc "
   select count(*) from normative_authorisation_grants g
    where g.grantee_id='$VERIF'
@@ -159,11 +184,14 @@ ACTIFS=$("${PSQL[@]}" -X -q -tAc "
      and normative_grant_is_active(g.id)")
 if [[ "$ACTIFS" != "1" ]]; then
   echoue "$ACTIFS octrois actifs identiques apres la course, 1 attendu"
-  grep -oE 'ERROR:.*' /tmp/conc_a.log /tmp/conc_b.log | head -2 | sed 's/^/        /'
+  grep -oE 'ERROR:.*' "$TMP/conc_a.log" "$TMP/conc_b.log" | head -2 | sed 's/^/        /'
 elif [[ $CA -eq 0 && $CB -eq 0 ]]; then
   echoue "les deux transactions ont reussi alors qu'une seule le devait"
+elif [[ "$SQLSTATE_B" != "$ERR_VERROU" ]]; then
+  echoue "B a echoue en $SQLSTATE_B et non $ERR_VERROU: elle n'a pas ete"
+  echoue "  bloquee par le verrou de portee, elle a echoue pour autre chose"
 else
-  echo "      ok: un octroi actif, l'autre transaction refusee"
+  echo "      ok: un octroi actif; B bloquee puis expiree ($ERR_VERROU)"
 fi
 
 # --------------------------------------------------------------------------
@@ -171,61 +199,94 @@ fi
 #
 # Les deux ordres seriels sont acceptables; l'etat intermediaire ne l'est pas.
 # --------------------------------------------------------------------------
-echo "    scenario 3: confirmation contre revocation concurrente"
+echo "    scenario 3a: revocation bloquee par une confirmation en vol"
 GRANT_ID=$("${PSQL[@]}" -X -q -tAc "
   select g.id from normative_authorisation_grants g
    where g.grantee_id='$VERIF'
      and g.permission='can_validate_normative_reference'
      and normative_grant_is_active(g.id) limit 1")
 
-# La confirmation insere D'ABORD puis retient sa transaction: c'est pendant
-# cette fenetre que la revocation arrive.
-cat > /tmp/conc_conf.sql <<SQL
+# La confirmation insere D'ABORD puis retient sa transaction: la revocation
+# qui arrive pendant cette fenetre doit se heurter au verrou et EXPIRER. Le
+# verdict est le code 55P03, pas une duree.
+cat > "$TMP/conc_conf.sql" <<SQL
+\set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$VERIF', true);
 select t_conc_confirmer('test.concurrence', 'FICTIF-conc-1');
-select pg_sleep(1.5);
+select pg_sleep(3);
 commit;
 SQL
-cat > /tmp/conc_revoc.sql <<SQL
+cat > "$TMP/conc_revoc.sql" <<SQL
+\set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$ADMIN', true);
+set local lock_timeout = '600ms';
 insert into normative_authorisation_revocations (grant_id, reason)
 values ('$GRANT_ID', 'FICTIF — retrait pendant une confirmation en vol.');
 commit;
 SQL
-"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f /tmp/conc_conf.sql >/tmp/conc_conf.log 2>&1 & PC=$!
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f "$TMP/conc_conf.sql" >"$TMP/conc_conf.log" 2>&1 & PC=$!
 sleep 0.3
-DEBUT_REVOC=$(date +%s%N)
-"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f /tmp/conc_revoc.sql >/tmp/conc_revoc.log 2>&1
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f "$TMP/conc_revoc.sql" >"$TMP/conc_revoc.log" 2>&1
 CR=$?
-ATTENTE_MS=$(( ($(date +%s%N) - DEBUT_REVOC) / 1000000 ))
+SQLSTATE_R="$(code_sqlstate "$TMP/conc_revoc.log")"
 wait $PC; CC=$?
 
 CONFIRMEE=$("${PSQL[@]}" -X -q -tAc "
   select count(*) from normative_rule_confirmations
    where idempotency_key='FICTIF-conc-1'")
-REVOQUE=$("${PSQL[@]}" -X -q -tAc "
-  select count(*) from normative_authorisation_revocations
-   where grant_id='$GRANT_ID'")
-
-# Ce que le verrou apporte reellement. L'etat final seul ne le montre PAS:
-# avec ou sans verrou, on observe une confirmation et une revocation, et
-# l'ordre des horodatages reste explicable dans les deux cas. Ce qui distingue
-# les deux, c'est que la revocation ATTEND la confirmation en vol au lieu de
-# s'intercaler. On mesure donc l'attente.
-if [[ "$REVOQUE" != "1" || "$CONFIRMEE" != "1" ]]; then
-  echoue "etat inattendu: confirmations=$CONFIRMEE (code $CC), revocations=$REVOQUE"
-  grep -oE 'ERROR:.*' /tmp/conc_conf.log | head -1 | sed 's/^/        /'
-elif [[ $ATTENTE_MS -lt 800 ]]; then
-  echoue "la revocation n'a attendu que ${ATTENTE_MS} ms: elle s'est intercalee"
-  echoue "  au lieu de se serialiser derriere la confirmation en vol"
+if [[ "$CONFIRMEE" != "1" || $CC -ne 0 ]]; then
+  echoue "la confirmation en vol n'a pas abouti (code $CC)"
+  grep -oE 'ERROR:.*' "$TMP/conc_conf.log" | head -1 | sed 's/^/        /'
+elif [[ "$SQLSTATE_R" != "$ERR_VERROU" ]]; then
+  echoue "la revocation a rendu « ${SQLSTATE_R:-succes} » et non $ERR_VERROU:"
+  echoue "  elle s'est intercalee au lieu d'attendre la confirmation en vol"
 else
-  echo "      ok: la revocation a attendu ${ATTENTE_MS} ms la confirmation en vol"
+  echo "      ok: la revocation a ete bloquee puis a expire ($ERR_VERROU)"
 fi
 
-# Invariant, quelle qu'ait ete l'issue: aucune confirmation ne peut avoir ete
-# autorisee par un octroi deja retire au moment ou elle a ete signee.
+# ------------------------------------------------------------------------
+# 3b. L'ordre INVERSE: la revocation tient le verrou, la confirmation suit.
+#     Apres attente, la confirmation doit etre REFUSEE — l'habilitation
+#     n'existe plus.
+# ------------------------------------------------------------------------
+echo "    scenario 3b: confirmation apres une revocation deja engagee"
+cat > "$TMP/conc_revoc2.sql" <<SQL
+\set VERBOSITY verbose
+begin;
+select set_config('request.jwt.claim.sub', '$ADMIN', true);
+insert into normative_authorisation_revocations (grant_id, reason)
+values ('$GRANT_ID', 'FICTIF — retrait engage avant la confirmation.');
+select pg_sleep(2);
+commit;
+SQL
+cat > "$TMP/conc_conf2.sql" <<SQL
+\set VERBOSITY verbose
+begin;
+select set_config('request.jwt.claim.sub', '$VERIF', true);
+select t_conc_confirmer('test.concurrence', 'FICTIF-conc-2');
+commit;
+SQL
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f "$TMP/conc_revoc2.sql" >"$TMP/r2.log" 2>&1 & PR2=$!
+sleep 0.3
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f "$TMP/conc_conf2.sql" >"$TMP/c2.log" 2>&1
+CC2=$?
+wait $PR2; CR2=$?
+
+APRES=$("${PSQL[@]}" -X -q -tAc "
+  select count(*) from normative_rule_confirmations
+   where idempotency_key='FICTIF-conc-2'")
+if [[ $CR2 -ne 0 ]]; then
+  echoue "la revocation n'a pas abouti (code $CR2)"
+elif [[ "$APRES" != "0" || $CC2 -eq 0 ]]; then
+  echoue "la confirmation a ete acceptee alors que l'habilitation etait"
+  echoue "  deja en cours de retrait: etat intermediaire"
+else
+  echo "      ok: apres attente, la confirmation est refusee"
+fi
+
+# Invariant, quelle qu'ait ete l'issue de chaque course.
 INCOHERENTES=$("${PSQL[@]}" -X -q -tAc "
   select count(*)
     from normative_rule_confirmations c
@@ -236,6 +297,67 @@ if [[ "$INCOHERENTES" != "0" ]]; then
   echoue "$INCOHERENTES confirmation(s) autorisee(s) par un octroi deja retire"
 else
   echo "      ok: aucune confirmation autorisee par un octroi deja retire"
+fi
+
+# ------------------------------------------------------------------------
+# 4. Le DERNIER administrateur, sous course croisee.
+#
+#    A revoque l'octroi de B pendant que B revoque celui de A. Chacune voit
+#    l'autre encore active. Contre-exemple verifie avant correction: les deux
+#    validaient et il ne restait ZERO administrateur, l'amorcage ne pouvant
+#    plus etre rejoue. Le verrou COMMUN de l'administration doit desormais les
+#    serialiser.
+# ------------------------------------------------------------------------
+echo "    scenario 4: A revoque B pendant que B revoque A"
+ADMIN_B='c0000000-0000-0000-0000-0000000000ab'
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
+insert into auth.users (id, email)
+values ('$ADMIN_B', 'FICTIF-conc-admin-b@eurostruct.test') on conflict do nothing;
+begin;
+select set_config('request.jwt.claim.sub', '$ADMIN', true);
+insert into normative_authorisation_grants
+  (id, grantee_id, grantee_name, permission, reason)
+values ('c0000000-0000-0000-0000-0000000000bb', '$ADMIN_B', 'FICTIF Admin B',
+        'can_manage_normative_authorisations', 'FICTIF — second administrateur');
+commit;
+SQL
+GRANT_A=$("${PSQL[@]}" -X -q -tAc "
+  select id from normative_authorisation_grants
+   where grantee_id='$ADMIN' and permission='can_manage_normative_authorisations'")
+GRANT_B='c0000000-0000-0000-0000-0000000000bb'
+
+for cote in A B; do
+  if [[ "$cote" == "A" ]]; then acteur="$ADMIN"; cible="$GRANT_B"; else acteur="$ADMIN_B"; cible="$GRANT_A"; fi
+  cat > "$TMP/dern_$cote.sql" <<SQL
+\set VERBOSITY verbose
+begin;
+select set_config('request.jwt.claim.sub', '$acteur', true);
+select pg_sleep(0.4);
+insert into normative_authorisation_revocations (grant_id, reason)
+values ('$cible', 'FICTIF — course croisee $cote');
+commit;
+SQL
+done
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f "$TMP/dern_A.sql" >"$TMP/dA.log" 2>&1 & DA=$!
+"${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f "$TMP/dern_B.sql" >"$TMP/dB.log" 2>&1 & DB=$!
+wait $DA; CDA=$?
+wait $DB; CDB=$?
+
+RESTANTS=$("${PSQL[@]}" -X -q -tAc "
+  select count(*) from normative_authorisation_grants g
+   where g.permission='can_manage_normative_authorisations'
+     and normative_grant_is_active(g.id)")
+REUSSIES=0
+[[ $CDA -eq 0 ]] && REUSSIES=$((REUSSIES + 1))
+[[ $CDB -eq 0 ]] && REUSSIES=$((REUSSIES + 1))
+
+if [[ "$RESTANTS" == "0" ]]; then
+  echoue "zero administrateur actif: la gouvernance est perdue et l'amorcage"
+  echoue "  ne peut plus etre rejoue"
+elif [[ "$REUSSIES" != "1" ]]; then
+  echoue "$REUSSIES revocations reussies, exactement 1 attendue"
+else
+  echo "      ok: une seule revocation, $RESTANTS administrateur(s) actif(s)"
 fi
 
 echo

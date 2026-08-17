@@ -146,12 +146,16 @@ language sql immutable as $$
     'impl', format(
       '{"canonicalization_version":"esc-canon/1","kind":"implementation","rule_id":"%s"}',
       p_rule),
+    -- Le quote_digest doit REELLEMENT resumer la citation: le serveur le
+    -- verifie, et une valeur inventee ferait passer le test pour une
+    -- mauvaise raison.
     'ev', format(
       '{"canonicalization_version":"esc-canon/1","items":[{"clause":"§9.2.2(5)",'
       '"document_digest":"%s","document_role":"annexe","edition":"2010",'
       '"page_printed":15,"quote":"FICTIF — citation de test.",'
-      '"quote_digest":"%s"}],"kind":"evidence"}',
-      repeat('b', 64), repeat('c', 64)),
+      '"reference":"FICTIF ANB","quote_digest":"%s"}],"kind":"evidence"}',
+      repeat('b', 64),
+      encode(sha256(convert_to('FICTIF — citation de test.', 'UTF8')), 'hex')),
     'stack', format(
       '{"components":[{"application_order":1,"document_digest":"%s",'
       '"edition":"2004","reference":"FICTIF EN 1992-1-1","role":"base"},'
@@ -188,7 +192,13 @@ create or replace function t_confirmer(
   p_sub_items      jsonb default null,
   p_sub_rule_col   text default null,
   p_sub_country    country_code default null,
-  p_echanger       boolean default false
+  p_echanger       boolean default false,
+  -- Payloads remplaces AVANT calcul des empreintes: l'empreinte reste donc
+  -- juste, et ce qui doit refuser est l'invariant STRUCTUREL, pas le controle
+  -- d'integrite. Substituer apres coup ferait echouer le test une ligne trop
+  -- tot, et l'invariant vise ne serait jamais atteint.
+  p_ev_payload     text default null,
+  p_stack_payload  text default null
 ) returns uuid
 language plpgsql as $$
 declare
@@ -198,8 +208,8 @@ begin
   paq  := t_paquet(p_rule, p_country, p_family, p_part, p_edition_annexe);
   spec := paq ->> 'spec';
   impl := paq ->> 'impl';
-  ev   := paq ->> 'ev';
-  pile := paq ->> 'stack';
+  ev   := coalesce(p_ev_payload, paq ->> 'ev');
+  pile := coalesce(p_stack_payload, paq ->> 'stack');
 
   if p_echanger then
     -- Specification et implementation interverties: deux empreintes justes
@@ -1180,14 +1190,24 @@ $$;
 -- seing du HARNAIS couvre aussi les tables normatives et masquerait
 -- exactement ce qu'on veut mesurer. On retablit donc ici les privileges que
 -- la migration installe reellement, avant de tester.
+--
+-- 6.3b3: SELECT SEUL. Cette liste portait encore `insert` — heritage de
+-- l'epoque ou la frontiere d'ecriture n'etait pas tranchee. Elle CONTREDISAIT
+-- desormais la migration, qui n'accorde que SELECT, et le harnais rendait
+-- donc au porteur de jeton un droit que le deploiement lui refuse. Un test
+-- qui se donne a lui-meme le privilege qu'il pretend mesurer ne mesure rien.
+--
+-- La verification hors harnais est dans `virgin_root.sql`, sur une base ou
+-- 01_guarantees n'a jamais tourne: c'est elle qui constate l'ACL REELLE de la
+-- migration, et elle seule peut attraper une derive entre les deux fichiers.
 revoke all on normative_authorisation_grants          from authenticated;
 revoke all on normative_authorisation_revocations     from authenticated;
 revoke all on normative_rule_confirmations            from authenticated;
 revoke all on normative_rule_confirmation_revocations from authenticated;
-grant insert, select on normative_authorisation_grants          to authenticated;
-grant insert, select on normative_authorisation_revocations     to authenticated;
-grant insert, select on normative_rule_confirmations            to authenticated;
-grant insert, select on normative_rule_confirmation_revocations to authenticated;
+grant select on normative_authorisation_grants          to authenticated;
+grant select on normative_authorisation_revocations     to authenticated;
+grant select on normative_rule_confirmations            to authenticated;
+grant select on normative_rule_confirmation_revocations to authenticated;
 
 do $$
 declare n bigint; total bigint;
@@ -1389,27 +1409,49 @@ end
 $$;
 
 
--- 6.3b2 #5 — l'amorcage n'est PAS SECURITY DEFINER, et c'est deliberе.
--- `current_user` y designerait le proprietaire de la fonction, pas
--- l'appelant: le controle « reserve au proprietaire de la base » etait donc
--- toujours vrai et ne restreignait rien. La restriction repose desormais sur
--- l'ACL, qui est verifiable.
+-- 6.3b3 #5 — les fonctions d'autorite appartiennent a des roles NOLOGIN
+-- DEDIES, et c'est ce qui rend `current_user` significatif.
+--
+-- Comparer `current_user` au proprietaire de la BASE ne prouvait rien: dans
+-- une fonction SECURITY DEFINER, current_user EST le proprietaire de la
+-- fonction, donc la comparaison etait toujours vraie. Comparer a un role
+-- dedie, NOLOGIN, dont personne n'est membre, prouve en revanche que l'appel
+-- est passe par cette fonction — et par elle seule.
 do $$
 declare r record;
 begin
-  select prosecdef into r from pg_proc p
-    join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'public' and p.proname = 'bootstrap_normative_administrator';
-  if r.prosecdef then
-    raise exception
-      'l''amorcage est SECURITY DEFINER: current_user y designe le '
-      'proprietaire de la fonction, et tout controle fonde dessus est vide';
-  end if;
+  for r in
+    select p.proname, p.prosecdef, pg_get_userbyid(p.proowner) as proprietaire
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.proname in ('bootstrap_normative_administrator',
+                         'log_normative_event', 'check_normative_grant',
+                         'check_normative_grant_revocation',
+                         'check_normative_confirmation',
+                         'check_normative_confirmation_revocation')
+  loop
+    if not r.prosecdef then
+      raise exception '% n''est pas SECURITY DEFINER', r.proname;
+    end if;
+    if r.proprietaire not in ('eurostruct_normative_writer',
+                              'eurostruct_normative_bootstrap') then
+      raise exception
+        '% appartient a « % »: son current_user ne prouve rien, car ce role '
+        'n''est pas dedie', r.proname, r.proprietaire;
+    end if;
+    if (select rolcanlogin from pg_roles where rolname = r.proprietaire) then
+      raise exception
+        'le role d''autorite % est connectable: quelqu''un pourrait s''y '
+        'authentifier et forger une origine', r.proprietaire;
+    end if;
+  end loop;
 end
 $$;
 
 
--- 6.3b2 #5 — EXECUTE refuse aux TROIS roles, pas seulement a PUBLIC.
+-- 6.3b3 #5 — EXECUTE refuse a TOUS les roles applicatifs, pas seulement a
+-- PUBLIC. Les deux roles d'autorite en ont, et c'est le point: ils sont
+-- NOLOGIN et personne n'en est membre.
 do $$
 declare f record; role_nom text;
 begin
@@ -1419,14 +1461,40 @@ begin
      where n.nspname = 'public'
        and (p.proname like '%normative%' or p.proname = 'assert_digest_integrity')
   loop
-    foreach role_nom in array array['authenticated', 'normative_backend',
+    foreach role_nom in array array['public', 'authenticated',
+                                    'normative_backend',
                                     'normative_governance'] loop
       if has_function_privilege(role_nom, f.oid, 'EXECUTE') then
         raise exception
           'le role % detient EXECUTE sur %: une fonction sensible ne doit pas '
-          'etre appelable par les roles applicatifs', role_nom, f.proname;
+          'etre appelable par un role applicatif', role_nom, f.proname;
       end if;
     end loop;
+  end loop;
+end
+$$;
+
+
+-- 6.3b3 #5 — le sens INVERSE des appartenances: aucun role applicatif ne doit
+-- etre membre d'un role de service ou d'autorite, sans quoi il en heriterait
+-- tous les droits et le cloisonnement serait nominal.
+do $$
+declare r record;
+begin
+  for r in
+    select parent.rolname as service, enfant.rolname as membre
+      from pg_auth_members m
+      join pg_roles parent on parent.oid = m.roleid
+      join pg_roles enfant on enfant.oid = m.member
+     where parent.rolname in ('normative_backend', 'normative_governance',
+                              'eurostruct_normative_writer',
+                              'eurostruct_normative_bootstrap')
+  loop
+    if r.membre in ('authenticated', 'anon', 'public') then
+      raise exception
+        'le role applicatif % est membre de %: il en herite les droits',
+        r.membre, r.service;
+    end if;
   end loop;
 end
 $$;
@@ -1834,6 +1902,342 @@ $$;
 
 
 -- =====================================================================
+-- 6.3b3 — le marqueur d'origine n'est pas forgeable
+-- =====================================================================
+-- CONTRE-EXEMPLE VERIFIE ROUGE contre 6.3b2: la reserve du namespace lisait
+-- un GUC pose par `set_config('eurostruct.normative_audit', 'on', true)`.
+-- N'importe quel role autorise a ecrire un evenement ORDINAIRE posait le
+-- marqueur lui-meme et fabriquait une trace « normative.* » — que le
+-- declencheur d'immuabilite rendait ensuite ineffacable. Un parametre de
+-- session est une declaration de l'appelant, jamais une preuve d'origine.
+--
+-- MODELE DE MENACE, explicite. Ces garanties visent les ROLES APPLICATIFS.
+-- Un superutilisateur PostgreSQL peut desactiver les declencheurs, changer le
+-- proprietaire d'une fonction ou ecrire directement dans les catalogues: il
+-- n'est pas un adversaire que la base peut contenir, et pretendre le contraire
+-- donnerait une fausse assurance. Ce qui est garanti ici: aucun role
+-- applicatif — y compris un role dote de droits d'ecriture sur le journal —
+-- ne peut fabriquer une trace normative.
+--
+-- Le role fictif ci-dessous EXISTE pour le test: il incarne le jour ou
+-- quelqu'un ouvrira l'ecriture du journal pour une raison legitime et sans
+-- rapport. La protection ne doit pas dependre du fait que ce jour n'est pas
+-- arrive.
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'fictif_journal_app') then
+    create role fictif_journal_app nologin;
+  end if;
+end
+$$;
+
+grant insert, select on audit_log to fictif_journal_app;
+grant usage on sequence audit_log_id_seq to fictif_journal_app;
+
+-- Policy DELIBEREMENT permissive: `with check (true)`. Une policy qui
+-- filtrerait elle-meme « normative.% » prouverait la policy, pas le
+-- declencheur — et c'est le declencheur qui doit tenir.
+create policy fictif_journal_ecriture_ordinaire on audit_log
+  for insert to fictif_journal_app with check (true);
+
+do $$
+declare ok boolean;
+begin
+  set local role fictif_journal_app;
+
+  -- 1. Le role ecrit REELLEMENT un evenement ordinaire. Sans cette moitie, le
+  --    refus ci-dessous pourrait n'etre qu'une absence de privilege, et le
+  --    test passerait pour une raison qui n'est pas celle qu'on croit.
+  --
+  --    Sans `returning`: la clause exige en plus la policy de LECTURE, et
+  --    `audit_read` demande un org_id dont ce role n'est pas membre. Le
+  --    constat que la ligne existe se fait donc apres `reset role`.
+  insert into audit_log (action, entity, payload)
+  values ('project.exported', 'projects', '{"FICTIF": "evenement ordinaire"}'::jsonb);
+
+  -- 2. Le marqueur de l'ancienne version, pose par l'appelant lui-meme.
+  perform set_config('eurostruct.normative_audit', 'on', true);
+  ok := false;
+  begin
+    insert into audit_log (action, entity, payload)
+    values ('normative.authorisation.granted', 'normative_authorisation_grants',
+            '{"FICTIF": "octroi fabrique a la main"}'::jsonb);
+  exception when insufficient_privilege then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'marqueur d''audit forge par set_config: ACCEPTE. Un role applicatif '
+      'fabriquerait la preuve d''un octroi qu''aucun administrateur n''a '
+      'consenti, et elle serait ensuite immuable';
+  end if;
+
+  -- 3. Meme refus pour les autres actions du namespace: la reserve porte sur
+  --    le prefixe, pas sur une liste d'actions qu'on oublierait d'etendre.
+  ok := false;
+  begin
+    insert into audit_log (action, entity, payload)
+    values ('normative.confirmation.created', 'normative_rule_confirmations',
+            '{"FICTIF": true}'::jsonb);
+  exception when insufficient_privilege then ok := true;
+  end;
+  if not ok then
+    raise exception 'trace « normative.confirmation.created » fabriquee';
+  end if;
+
+  -- 4. Et le role ne peut pas EMPRUNTER l'autorite: c'est ce qui rend
+  --    `current_user` non forgeable. Si l'appartenance existait, tout le
+  --    raisonnement tomberait.
+  if pg_has_role('fictif_journal_app', 'eurostruct_normative_writer', 'usage')
+  then
+    raise exception
+      'un role applicatif est membre de eurostruct_normative_writer: il '
+      'pourrait prendre l''autorite et le marqueur redeviendrait forgeable';
+  end if;
+end
+$$;
+reset role;
+
+-- La moitie positive du controle: l'evenement ORDINAIRE est bien passe, et
+-- aucune trace normative n'a ete fabriquee. Sans ce constat, les refus
+-- ci-dessus seraient satisfaits par un role qui ne peut rien ecrire du tout.
+do $$
+declare n bigint;
+begin
+  select count(*) into n from audit_log
+   where action = 'project.exported'
+     and payload = '{"FICTIF": "evenement ordinaire"}'::jsonb;
+  if n <> 1 then
+    raise exception
+      'le role applicatif fictif n''a ecrit aucun evenement ordinaire (% '
+      'ligne(s)): les refus obtenus ne prouvent alors qu''une absence de '
+      'privilege', n;
+  end if;
+
+  select count(*) into n from audit_log
+   where action like 'normative.%' and payload ? 'FICTIF';
+  if n <> 0 then
+    raise exception '% trace(s) normative(s) fabriquee(s) par un role applicatif', n;
+  end if;
+end
+$$;
+
+-- Nettoyage: le role est un objet de CLUSTER, pas de base. Le laisser
+-- derriere ferait echouer la creation a l'execution suivante — et un test
+-- non rejouable ne protege rien.
+delete from audit_log
+ where action = 'project.exported'
+   and payload = '{"FICTIF": "evenement ordinaire"}'::jsonb;
+drop policy fictif_journal_ecriture_ordinaire on audit_log;
+revoke all on audit_log from fictif_journal_app;
+revoke all on sequence audit_log_id_seq from fictif_journal_app;
+drop role fictif_journal_app;
+
+-- Aucun role applicatif ne detient l'autorite, et aucun n'en est membre.
+do $$
+declare r text;
+begin
+  foreach r in array array['authenticated', 'normative_backend',
+                           'normative_governance'] loop
+    if pg_has_role(r, 'eurostruct_normative_writer', 'usage')
+       or pg_has_role(r, 'eurostruct_normative_bootstrap', 'usage') then
+      raise exception '% est membre d''un role d''autorite normative', r;
+    end if;
+  end loop;
+
+  -- Les roles d'autorite sont NOLOGIN et sans droit de connexion: personne ne
+  -- s'y authentifie, personne ne les prend.
+  foreach r in array array['eurostruct_normative_writer',
+                           'eurostruct_normative_bootstrap'] loop
+    if exists (select 1 from pg_roles
+                where rolname = r and (rolcanlogin or rolsuper)) then
+      raise exception
+        '% peut se connecter ou est superutilisateur: current_user cesserait '
+        'd''etre une preuve d''origine', r;
+    end if;
+  end loop;
+end
+$$;
+
+
+-- =====================================================================
+-- 6.3b3 — invariants structurels du dossier de preuve
+-- =====================================================================
+-- CONTRE-EXEMPLE VERIFIE ROUGE contre 6.3b2: `items: [1]`, un
+-- `schema_version` de pile inconnu et un `quote_digest` absent etaient tous
+-- ACCEPTES. Une empreinte juste sur une structure absurde reste une empreinte
+-- juste: elle scelle le vide.
+--
+-- Les payloads sont substitues AVANT le calcul des empreintes, donc chaque
+-- refus ci-dessous vient de l'invariant vise et non du controle d'integrite.
+do $$
+declare ok boolean; cas record;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+
+  for cas in
+    select * from (values
+      -- `items: [1]`: un entier n'est pas un element de preuve.
+      ('element scalaire',
+       '{"canonicalization_version":"esc-canon/1","items":[1],"kind":"evidence"}'),
+      -- Element objet mais VIDE.
+      ('element sans aucune cle',
+       '{"canonicalization_version":"esc-canon/1","items":[{}],"kind":"evidence"}'),
+      -- Toutes les cles sauf `quote_digest`: la citation n'est plus scellee.
+      ('quote_digest absent',
+       '{"canonicalization_version":"esc-canon/1","items":[{"clause":"§9.2.2(5)",'
+       '"document_digest":"' || repeat('b', 64) || '","document_role":"annexe",'
+       '"edition":"2010","page_printed":15,"quote":"FICTIF — citation.",'
+       '"reference":"FICTIF ANB"}],"kind":"evidence"}'),
+      -- Folio absent: on ne saurait pas quelle page rouvrir.
+      ('page_printed absent',
+       '{"canonicalization_version":"esc-canon/1","items":[{"clause":"§9.2.2(5)",'
+       '"document_digest":"' || repeat('b', 64) || '","document_role":"annexe",'
+       '"edition":"2010","quote":"FICTIF — citation.","quote_digest":"'
+       || encode(sha256(convert_to('FICTIF — citation.', 'UTF8')), 'hex')
+       || '","reference":"FICTIF ANB"}],"kind":"evidence"}'),
+      -- quote_digest PRESENT mais faux: texte retouche sans recalcul.
+      ('quote_digest ne resume pas la citation',
+       '{"canonicalization_version":"esc-canon/1","items":[{"clause":"§9.2.2(5)",'
+       '"document_digest":"' || repeat('b', 64) || '","document_role":"annexe",'
+       '"edition":"2010","page_printed":15,"quote":"FICTIF — citation RETOUCHEE.",'
+       '"quote_digest":"'
+       || encode(sha256(convert_to('FICTIF — citation.', 'UTF8')), 'hex')
+       || '","reference":"FICTIF ANB"}],"kind":"evidence"}'),
+      -- Liste vide: confirmer sans rien avoir lu.
+      ('aucun element',
+       '{"canonicalization_version":"esc-canon/1","items":[],"kind":"evidence"}'),
+      -- `items` n'est meme pas un tableau.
+      ('items n''est pas un tableau',
+       '{"canonicalization_version":"esc-canon/1","items":{"a":1},"kind":"evidence"}')
+    ) as v(nom, payload)
+  loop
+    ok := false;
+    begin
+      perform t_confirmer(p_rule => 'test.structure',
+                          p_ev_payload => cas.payload,
+                          p_idem => 'FICTIF-struct-' || cas.nom);
+    exception when check_violation then ok := true;
+    end;
+    if not ok then
+      raise exception
+        'dossier de preuve accepte alors que: %. Une empreinte juste sur une '
+        'structure absurde scelle le vide.', cas.nom;
+    end if;
+  end loop;
+end
+$$;
+
+-- Version de schema de pile inconnue, et version de canonicalisation
+-- inconnue. La grille de lecture de la pile sert a extraire l'edition
+-- d'annexe dont depend le controle de portee: la lire avec la mauvaise
+-- grille donnerait une portee fausse sans rien signaler.
+do $$
+declare ok boolean; pile text;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+
+  pile := replace(t_paquet('test.structure') ->> 'stack',
+                  '"schema_version":"esc-stack/1"',
+                  '"schema_version":"esc-stack/999"');
+  if pile = (t_paquet('test.structure') ->> 'stack') then
+    raise exception 'la substitution de schema_version n''a rien remplace';
+  end if;
+
+  ok := false;
+  begin
+    perform t_confirmer(p_rule => 'test.structure', p_stack_payload => pile,
+                        p_idem => 'FICTIF-struct-schema');
+  exception when check_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'schema_version de pile inconnu: ACCEPTE. L''edition d''annexe serait '
+      'extraite avec une grille qui n''est pas la sienne';
+  end if;
+end
+$$;
+
+-- Le chemin NORMAL reste ouvert: sans ces substitutions, la meme regle passe.
+-- Sans cette moitie, les sept refus ci-dessus seraient satisfaits par un
+-- serveur qui refuse tout.
+do $$
+declare c record;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+  perform t_confirmer(p_rule => 'test.structure', p_idem => 'FICTIF-struct-ok');
+  select * into c from normative_rule_confirmations
+   where idempotency_key = 'FICTIF-struct-ok';
+  if c.id is null then
+    raise exception
+      'le dossier de preuve BIEN FORME est lui aussi refuse: les invariants '
+      'structurels ne discriminent rien';
+  end if;
+  if jsonb_array_length(c.evidence_items) <> 1 then
+    raise exception 'evidence_items derive: % element(s)',
+      jsonb_array_length(c.evidence_items);
+  end if;
+end
+$$;
+
+
+-- =====================================================================
+-- 6.3b3 — frontiere d'ecriture: l'insertion brute est revoquee
+-- =====================================================================
+-- La question restait indecise: un utilisateur authentifie pouvait-il inserer
+-- lui-meme dans les quatre tables, en s'en remettant aux declencheurs? La
+-- reponse retenue est NON. Les declencheurs restent la deuxieme ligne, mais
+-- la premiere est l'ACL: `authenticated` n'a aucun INSERT, et l'ecriture
+-- passe par le role de service.
+do $$
+declare t text; ok boolean;
+begin
+  foreach t in array array['normative_authorisation_grants',
+                           'normative_authorisation_revocations',
+                           'normative_rule_confirmations',
+                           'normative_rule_confirmation_revocations'] loop
+    if has_table_privilege('authenticated', t, 'INSERT') then
+      raise exception
+        'authenticated detient INSERT sur %: la frontiere d''ecriture passe '
+        'par le role de service, pas par le porteur de jeton', t;
+    end if;
+    -- Et il n'obtient pas ce droit par appartenance a un role qui l'a.
+    if pg_has_role('authenticated', 'normative_backend', 'usage') then
+      raise exception
+        'authenticated est membre de normative_backend: la revocation de '
+        'l''insertion brute serait contournee par heritage';
+    end if;
+  end loop;
+end
+$$;
+
+-- Et l'ACL est constatee A L'EXECUTION, pas seulement dans le catalogue.
+do $$
+declare ok boolean := false;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub',
+                     '44444444-4444-4444-4444-444444444444', true);
+  begin
+    insert into normative_authorisation_grants
+      (grantee_id, grantee_name, permission, reason)
+    values ('66666666-6666-6666-6666-666666666666', 'FICTIF Auto-octroi',
+            'can_validate_normative_reference',
+            'FICTIF — insertion brute par un porteur de jeton.');
+  exception when insufficient_privilege then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'un utilisateur authentifie a insere directement un octroi normatif';
+  end if;
+end
+$$;
+reset role;
+
+
+-- =====================================================================
 -- 6.3b2 — RLS complementaire
 -- =====================================================================
 -- Le signataire doit voir qu'un TIERS a revoque sa confirmation. Ne montrer
@@ -1888,7 +2292,8 @@ $$;
 
 drop function t_confirmer(text, country_code, text, text, text, text, text,
                           boolean, uuid, timestamptz, uuid, jsonb,
-                          jsonb, jsonb, text, country_code, boolean);
+                          jsonb, jsonb, text, country_code, boolean,
+                          text, text);
 drop function t_paquet(text, country_code, text, text, text);
 
 \echo ''

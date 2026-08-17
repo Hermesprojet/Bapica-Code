@@ -122,7 +122,51 @@ fi
 for f in "$DB_DIR"/migrations/*.sql; do
   "${CONC[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
 done
-"$HERE/concurrency.sh" "$CONC_DB"
-CONC_CODE=$?
+
+# `set -e` termine le script AVANT la ligne suivante des que concurrency.sh
+# sort non nul: `CONC_CODE` n'etait jamais lu, et la base de test restait
+# derriere. La forme `|| CONC_CODE=$?` est la seule qui capture le code sans
+# desarmer `set -e` pour le reste du fichier.
+CONC_CODE=0
+"$HERE/concurrency.sh" "$CONC_DB" || CONC_CODE=$?
 "${ADMIN[@]}" -q -c "drop database if exists $CONC_DB;" >/dev/null
 [[ $CONC_CODE -eq 0 ]] || exit $CONC_CODE
+
+# --------------------------------------------------------------------------
+# Base VIERGE: racine de confiance, puis contrat croise Python <-> SQL.
+#
+# Deux controles que la base des suites ci-dessus ne peut plus porter, pour la
+# meme raison: elle a deja un administrateur amorce.
+#
+#  * `virgin_root.sql` doit constater qu'une insertion brute en
+#    `origin='bootstrap'` est refusee PARCE QUE l'ecriture est fermee — pas
+#    parce qu'une racine existe deja. Joue apres 05, il passerait pour la
+#    mauvaise raison.
+#  * `cross_contract.sh` ouvre lui-meme la chaine de confiance, comme en
+#    deploiement, puis y pousse un vrai paquet produit par le moteur.
+#
+# `virgin_root.sql` ne cree rien — toutes ses insertions echouent, et il le
+# verifie. La base est donc encore vierge pour le contrat croise.
+# --------------------------------------------------------------------------
+XC_DB="${DB_NAME}_contract"
+echo "==> base vierge: racine de confiance et contrat croise"
+"${ADMIN[@]}" -q -c "drop database if exists $XC_DB;" >/dev/null
+"${ADMIN[@]}" -q -c "create database $XC_DB;" >/dev/null
+
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  XC=(psql "$(url_pour_base "$DATABASE_URL" "$XC_DB")")
+else
+  XC=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d "$XC_DB")
+fi
+"${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql"
+for f in "$DB_DIR"/migrations/*.sql; do
+  "${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
+done
+
+XC_CODE=0
+"${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/virgin_root.sql" || XC_CODE=$?
+if [[ $XC_CODE -eq 0 ]]; then
+  "$HERE/cross_contract.sh" "${XC[@]}" || XC_CODE=$?
+fi
+"${ADMIN[@]}" -q -c "drop database if exists $XC_DB;" >/dev/null
+[[ $XC_CODE -eq 0 ]] || exit $XC_CODE
