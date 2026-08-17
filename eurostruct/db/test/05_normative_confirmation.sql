@@ -195,7 +195,7 @@ begin
     'FICTIF — j''ai lu l''annexe a la page indiquee.',
     -- Identite, horodatage et snapshot PRETENDUS: le serveur doit les ecraser.
     coalesce(p_pretend_verif, '88888888-8888-8888-8888-888888888888'),
-    'FICTIF Relecteur',
+    'FICTIF NOM USURPE PAR LE CLIENT',
     coalesce(p_pretend_time, timestamptz '1999-01-01 00:00:00+00'),
     p_pretend_grant,
     coalesce(p_pretend_scope, '{"falsifie": true}'::jsonb),
@@ -214,6 +214,7 @@ declare g record; n bigint;
 begin
   perform bootstrap_normative_administrator(
     '44444444-4444-4444-4444-444444444444',
+    'FICTIF Administrateur Racine',
     'FICTIF — amorcage de la chaine de confiance normative.');
 
   select * into g from normative_authorisation_grants
@@ -232,7 +233,7 @@ begin
 
   -- 23a. Audit d'amorcage
   select count(*) into n from audit_log
-   where action = 'normative_authorisation.bootstrap' and entity_id = g.id;
+   where action = 'normative.authorisation.bootstrap' and entity_id = g.id;
   if n <> 1 then
     raise exception 'audit d''amorcage absent (% lignes)', n;
   end if;
@@ -248,7 +249,8 @@ declare ok boolean := false;
 begin
   begin
     perform bootstrap_normative_administrator(
-      '77777777-7777-7777-7777-777777777777', 'FICTIF — seconde tentative.');
+      '77777777-7777-7777-7777-777777777777', 'FICTIF Autre',
+      'FICTIF — seconde tentative.');
   exception when unique_violation then ok := true;
   end;
   if not ok then
@@ -316,31 +318,33 @@ begin
                      '44444444-4444-4444-4444-444444444444', true);
 
   insert into normative_authorisation_grants
-    (id, grantee_id, permission, country_code, standard_family, part, reason)
+    (id, grantee_id, grantee_name, permission, country_code, standard_family,
+     part, reason)
   values ('9a000000-0000-0000-0000-000000000001',
-          '55555555-5555-5555-5555-555555555555',
+          '55555555-5555-5555-5555-555555555555', 'FICTIF Relecteur Un',
           'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
           'FICTIF — relecture EC2 belge partie 1-1');
 
   -- Portee restreinte a UNE edition: sert au test 9.
   insert into normative_authorisation_grants
-    (id, grantee_id, permission, country_code, standard_family, part, edition,
-     reason)
+    (id, grantee_id, grantee_name, permission, country_code, standard_family,
+     part, edition, reason)
   values ('9a000000-0000-0000-0000-000000000002',
-          '66666666-6666-6666-6666-666666666666',
+          '66666666-6666-6666-6666-666666666666', 'FICTIF Relecteur Deux',
           'can_validate_normative_reference', 'BE', 'EN 1992', '1-1', '2010',
           'FICTIF — relecture EC2 belge, edition 2010 uniquement');
 
   insert into normative_authorisation_grants
-    (id, grantee_id, permission, country_code, standard_family, part, reason)
+    (id, grantee_id, grantee_name, permission, country_code, standard_family,
+     part, reason)
   values ('9a000000-0000-0000-0000-000000000003',
-          '77777777-7777-7777-7777-777777777777',
+          '77777777-7777-7777-7777-777777777777', 'FICTIF Revocateur',
           'can_revoke_normative_confirmation', 'BE', 'EN 1992', '1-1',
           'FICTIF — retrait de confirmations EC2 belge');
 
   -- 23b. Audit d'octroi
   select count(*) into n from audit_log
-   where action = 'normative_authorisation.granted';
+   where action = 'normative.authorisation.granted';
   if n <> 3 then
     raise exception 'audit d''octroi: 3 attendus, % trouves', n;
   end if;
@@ -355,8 +359,8 @@ begin
                      '44444444-4444-4444-4444-444444444444', true);
   begin
     insert into normative_authorisation_grants
-      (grantee_id, permission, reason)
-    values ('55555555-5555-5555-5555-555555555555',
+      (grantee_id, grantee_name, permission, reason)
+    values ('55555555-5555-5555-5555-555555555555', 'FICTIF Relecteur Un',
             'can_validate_normative_reference', 'FICTIF — portee absente');
   exception when check_violation then ok := true;
   end;
@@ -426,7 +430,7 @@ begin
 
   -- 23c. Audit de confirmation
   select count(*) into n from audit_log
-   where action = 'normative_confirmation.created' and entity_id = c.id;
+   where action = 'normative.confirmation.created' and entity_id = c.id;
   if n <> 1 then
     raise exception 'audit de confirmation absent (% lignes)', n;
   end if;
@@ -556,7 +560,7 @@ begin
 
   -- 23d. Audit de revocation d'octroi
   select count(*) into n from audit_log
-   where action = 'normative_authorisation.revoked';
+   where action = 'normative.authorisation.revoked';
   if n <> 1 then
     raise exception 'audit de revocation d''octroi absent (% lignes)', n;
   end if;
@@ -695,7 +699,7 @@ begin
   end if;
 
   select count(*) into n from audit_log
-   where action = 'normative_confirmation.revoked' and entity_id = r.id;
+   where action = 'normative.confirmation.revoked' and entity_id = r.id;
   if n <> 1 then
     raise exception 'audit de revocation de confirmation absent';
   end if;
@@ -793,26 +797,596 @@ $$;
 
 
 -- ---------------------------------------------------------------------
--- Le decompte a quatre yeux ne connait pas la cle d'idempotence
+-- 6.3b1 #1 — le nom lisible vient du SERVEUR, jamais du client
 -- ---------------------------------------------------------------------
--- Deux verificateurs DISTINCTS sur le meme sujet: deux regards. La cle
--- technique n'entre pas dans l'index d'unicite du sujet, et le meme
--- verificateur ne peut pas signer deux fois le meme sujet.
+-- `verifier_id` impose ne suffisait pas: une note de calcul n'affiche que le
+-- NOM. Un nom libre permettait de signer sous l'identite lisible d'un autre.
+do $$
+declare c record;
+begin
+  select * into c from normative_rule_confirmations
+   where idempotency_key = 'FICTIF-idem-1';
+
+  if c.verifier_name = 'FICTIF NOM USURPE PAR LE CLIENT' then
+    raise exception
+      'le nom fourni par le client a survecu: on pourrait signer sous '
+      'l''identite lisible d''un autre';
+  end if;
+  if c.verifier_name <> 'FICTIF Relecteur Un' then
+    raise exception
+      'nom serveur attendu « FICTIF Relecteur Un », obtenu « % »',
+      c.verifier_name;
+  end if;
+
+  -- Coherence: le nom vient de l'octroi RETENU, lui-meme lie au verifier_id.
+  if c.verifier_name <> (select grantee_name from normative_authorisation_grants
+                          where id = c.authorisation_grant_id) then
+    raise exception 'nom incoherent avec l''octroi resolu';
+  end if;
+  if c.verifier_id <> (select grantee_id from normative_authorisation_grants
+                        where id = c.authorisation_grant_id) then
+    raise exception 'l''octroi retenu n''est pas celui du signataire';
+  end if;
+end
+$$;
+
+
+-- Un changement de nom ulterieur n'altere aucune confirmation historique.
+do $$
+declare ancien text; apres text;
+begin
+  select verifier_name into ancien from normative_rule_confirmations
+   where idempotency_key = 'FICTIF-idem-1';
+
+  -- Le nom se corrige par un NOUVEL octroi: l'octroi est immuable.
+  perform set_config('request.jwt.claim.sub',
+                     '44444444-4444-4444-4444-444444444444', true);
+  insert into normative_authorisation_revocations (grant_id, reason)
+  values ('9a000000-0000-0000-0000-000000000001',
+          'FICTIF — correction du nom lisible.');
+  insert into normative_authorisation_grants
+    (id, grantee_id, grantee_name, permission, country_code, standard_family,
+     part, reason)
+  values ('9a000000-0000-0000-0000-000000000004',
+          '55555555-5555-5555-5555-555555555555',
+          'FICTIF Relecteur Un (nom corrige)',
+          'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
+          'FICTIF — nom corrige apres mariage.');
+
+  select verifier_name into apres from normative_rule_confirmations
+   where idempotency_key = 'FICTIF-idem-1';
+  if apres <> ancien then
+    raise exception
+      'une confirmation historique a change de nom: elle atteste ce qui a ete '
+      'signe a l''epoque, pas l''etat civil d''aujourd''hui';
+  end if;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 6.3b1 #7 — nouvel octroi apres revocation
+-- ---------------------------------------------------------------------
+-- Deja exerce ci-dessus (l'octroi ...0001 revoque puis ...0004 cree). On
+-- verifie que le nouvel octroi est bien celui qui sert desormais.
+do $$
+declare c record;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+  perform t_confirmer(p_rule => 'test.apres.nouvel.octroi',
+                      p_idem => 'FICTIF-idem-nouvel-octroi');
+  select * into c from normative_rule_confirmations
+   where idempotency_key = 'FICTIF-idem-nouvel-octroi';
+  if c.authorisation_grant_id <> '9a000000-0000-0000-0000-000000000004' then
+    raise exception
+      'le nouvel octroi n''a pas ete retenu: % utilise', c.authorisation_grant_id;
+  end if;
+  if c.verifier_name <> 'FICTIF Relecteur Un (nom corrige)' then
+    raise exception 'le nom du nouvel octroi n''a pas ete repris: %',
+      c.verifier_name;
+  end if;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 6.3b1 #6 — deux octrois actifs de meme specificite
+-- ---------------------------------------------------------------------
+do $$
+declare ok boolean := false;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '44444444-4444-4444-4444-444444444444', true);
+
+  -- Portee RIGOUREUSEMENT identique: refuse a la source.
+  begin
+    insert into normative_authorisation_grants
+      (grantee_id, grantee_name, permission, country_code, standard_family,
+       part, reason)
+    values ('55555555-5555-5555-5555-555555555555', 'FICTIF Relecteur Un',
+            'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
+            'FICTIF — doublon de portee identique');
+  exception when unique_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'deux octrois actifs de portee identique acceptes: le snapshot d''audit '
+      'deviendrait indeterminable';
+  end if;
+
+  -- Portees DIFFERENTES mais de meme specificite, toutes deux couvrantes:
+  -- (BE, EN 1992, *, *) et (BE, *, 1-1, *). Aucune contrainte ne peut les
+  -- refuser a l'insertion; c'est la resolution qui doit refuser.
+  insert into normative_authorisation_grants
+    (id, grantee_id, grantee_name, permission, country_code, standard_family,
+     reason)
+  values ('9a000000-0000-0000-0000-0000000000a1',
+          '77777777-7777-7777-7777-777777777777', 'FICTIF Revocateur',
+          'can_manage_normative_authorisations', 'BE', 'EN 1992',
+          'FICTIF — portee pays+norme');
+  insert into normative_authorisation_grants
+    (id, grantee_id, grantee_name, permission, country_code, part, reason)
+  values ('9a000000-0000-0000-0000-0000000000a2',
+          '77777777-7777-7777-7777-777777777777', 'FICTIF Revocateur',
+          'can_manage_normative_authorisations', 'BE', '1-1',
+          'FICTIF — portee pays+partie');
+
+  ok := false;
+  perform set_config('request.jwt.claim.sub',
+                     '77777777-7777-7777-7777-777777777777', true);
+  begin
+    insert into normative_authorisation_grants
+      (grantee_id, grantee_name, permission, country_code, standard_family,
+       part, reason)
+    values ('88888888-8888-8888-8888-888888888888', 'FICTIF Inconnu',
+            'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
+            'FICTIF — octroi sous habilitation ambigue');
+  exception when cardinality_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'une habilitation ambigue a ete tranchee en silence: le snapshot '
+      'd''audit ne dirait pas sous quel octroi l''acteur a agi';
+  end if;
+
+  -- Lever l'ambiguite en revoquant l'un des deux: la resolution redevient
+  -- possible, sans aucune colonne mutable.
+  perform set_config('request.jwt.claim.sub',
+                     '44444444-4444-4444-4444-444444444444', true);
+  insert into normative_authorisation_revocations (grant_id, reason)
+  values ('9a000000-0000-0000-0000-0000000000a2',
+          'FICTIF — portee redondante retiree.');
+
+  perform set_config('request.jwt.claim.sub',
+                     '77777777-7777-7777-7777-777777777777', true);
+  insert into normative_authorisation_grants
+    (id, grantee_id, grantee_name, permission, country_code, standard_family,
+     part, reason)
+  values ('9a000000-0000-0000-0000-0000000000a3',
+          '88888888-8888-8888-8888-888888888888', 'FICTIF Inconnu',
+          'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
+          'FICTIF — octroi apres levee de l''ambiguite');
+end
+$$;
+
+
+-- Octroi general et octroi plus specifique: le specifique l'emporte, et le
+-- snapshot nomme celui qui a REELLEMENT servi.
+do $$
+declare c record;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '44444444-4444-4444-4444-444444444444', true);
+  insert into normative_authorisation_grants
+    (id, grantee_id, grantee_name, permission, country_code, standard_family,
+     part, edition, reason)
+  values ('9a000000-0000-0000-0000-0000000000b1',
+          '88888888-8888-8888-8888-888888888888', 'FICTIF Inconnu Specifique',
+          'can_validate_normative_reference', 'BE', 'EN 1992', '1-1', '2010',
+          'FICTIF — portee plus etroite, edition 2010');
+
+  perform set_config('request.jwt.claim.sub',
+                     '88888888-8888-8888-8888-888888888888', true);
+  perform t_confirmer(p_rule => 'test.specificite', p_idem => 'FICTIF-spec');
+  select * into c from normative_rule_confirmations
+   where idempotency_key = 'FICTIF-spec';
+
+  if c.authorisation_grant_id <> '9a000000-0000-0000-0000-0000000000b1' then
+    raise exception
+      'l''octroi le plus specifique devait etre retenu, % utilise',
+      c.authorisation_grant_id;
+  end if;
+  if (c.authorisation_scope ->> 'edition') <> '2010' then
+    raise exception
+      'le snapshot ne decrit pas l''octroi reellement retenu: %',
+      c.authorisation_scope;
+  end if;
+  if c.verifier_name <> 'FICTIF Inconnu Specifique' then
+    raise exception 'le nom vient de l''octroi retenu, or: %', c.verifier_name;
+  end if;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 6.3b1 #2 — re-signature apres revocation
+-- ---------------------------------------------------------------------
+-- L'unicite semantique interdisait cela, et c'etait faux: une revocation
+-- motivee suivie d'une nouvelle revue est le parcours normal d'une
+-- correction.
+do $$
+declare premiere uuid; seconde uuid; actives bigint;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+
+  premiere := t_confirmer(p_rule => 'test.resignature', p_idem => 'FICTIF-rs-1');
+
+  -- 2. Nouvelle cle AVANT revocation: acceptee (plus aucune unicite
+  --    semantique), mais le domaine n'y verra toujours qu'UN regard.
+  perform t_confirmer(p_rule => 'test.resignature', p_idem => 'FICTIF-rs-2');
+  select count(distinct verifier_id) into actives
+    from normative_rule_confirmations where rule_id = 'test.resignature';
+  if actives <> 1 then
+    raise exception
+      'deux lignes du meme verificateur donnent % regards, 1 attendu', actives;
+  end if;
+
+  -- 3. Revocation de la premiere.
+  insert into normative_rule_confirmation_revocations
+    (confirmation_id, revoked_by, revoked_by_name, revoked_at,
+     authorisation_scope, reason)
+  values (premiere, '88888888-8888-8888-8888-888888888888', 'FICTIF Usurpe',
+          timestamptz '1999-01-01', '{}'::jsonb,
+          'FICTIF — clause mal lue, nouvelle revue engagee.');
+
+  -- 4. Nouvelle confirmation du MEME sujet par le MEME verificateur.
+  seconde := t_confirmer(p_rule => 'test.resignature', p_idem => 'FICTIF-rs-3');
+  if seconde is null then
+    raise exception 'la re-signature apres revocation a echoue';
+  end if;
+
+  -- 5. Seules les confirmations ACTIVES comptent.
+  select active_independent_regards into actives
+    from normative_rule_confirmation_status
+   where rule_id = 'test.resignature';
+  if actives <> 1 then
+    raise exception
+      'la vue de statut compte % regards actifs, 1 attendu', actives;
+  end if;
+  select count(*) into actives
+    from normative_rule_confirmations c
+   where c.rule_id = 'test.resignature'
+     and not exists (select 1 from normative_rule_confirmation_revocations r
+                      where r.confirmation_id = c.id);
+  if actives <> 2 then
+    raise exception
+      '% attestations actives, 2 attendues (rs-2 et rs-3)', actives;
+  end if;
+end
+$$;
+
+
+-- 1. Double envoi avec la MEME cle d'idempotence: refuse.
 do $$
 declare ok boolean := false;
 begin
   perform set_config('request.jwt.claim.sub',
                      '55555555-5555-5555-5555-555555555555', true);
-  perform t_confirmer(p_rule => 'test.quatre.yeux', p_idem => 'FICTIF-4y-a');
   begin
-    -- Meme personne, meme sujet, autre cle d'idempotence: refuse.
-    perform t_confirmer(p_rule => 'test.quatre.yeux', p_idem => 'FICTIF-4y-b');
+    perform t_confirmer(p_rule => 'test.resignature', p_idem => 'FICTIF-rs-3');
+  exception when unique_violation then ok := true;
+  end;
+  if not ok then
+    raise exception 'une cle d''idempotence rejouee a cree une seconde ligne';
+  end if;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 6.3b1 #3 — aucune immuabilite GLOBALE ajoutee a audit_log
+-- ---------------------------------------------------------------------
+-- La protection doit porter sur les seules lignes normatives. Rendre tout le
+-- journal immuable fermerait sans preavis la retention, l'anonymisation et la
+-- maintenance pour tous ses autres producteurs.
+do $$
+declare ordinaire bigint; normative bigint; ok boolean := false;
+begin
+  insert into audit_log (action, entity, entity_id, payload)
+  values ('project.exported', 'projects', null, '{"fictif": true}'::jsonb)
+  returning id into ordinaire;
+
+  -- Une ligne NON normative reste modifiable et supprimable.
+  update audit_log set payload = '{"fictif": true, "anonymise": true}'::jsonb
+   where id = ordinaire;
+  delete from audit_log where id = ordinaire;
+
+  -- Une ligne normative, elle, est scellee.
+  select id into normative from audit_log
+   where action like 'normative.%' limit 1;
+  if normative is null then
+    raise exception 'aucune trace normative: le test ne verifie rien';
+  end if;
+  begin
+    update audit_log set payload = '{}'::jsonb where id = normative;
+  exception when restrict_violation then ok := true;
+  end;
+  if not ok then
+    raise exception 'une trace normative a pu etre reecrite';
+  end if;
+
+  ok := false;
+  begin
+    delete from audit_log where id = normative;
+  exception when restrict_violation then ok := true;
+  end;
+  if not ok then
+    raise exception 'une trace normative a pu etre supprimee';
+  end if;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 6.3b1 #4 et #5 — moindre privilege sur les tables de gouvernance
+-- ---------------------------------------------------------------------
+-- 01_guarantees.sql accorde `select, insert, update, delete on all tables in
+-- schema public to authenticated` pour les suites plus anciennes. Ce blanc-
+-- seing du HARNAIS couvre aussi les tables normatives et masquerait
+-- exactement ce qu'on veut mesurer. On retablit donc ici les privileges que
+-- la migration installe reellement, avant de tester.
+revoke all on normative_authorisation_grants          from authenticated;
+revoke all on normative_authorisation_revocations     from authenticated;
+revoke all on normative_rule_confirmations            from authenticated;
+revoke all on normative_rule_confirmation_revocations from authenticated;
+grant insert, select on normative_authorisation_grants          to authenticated;
+grant insert, select on normative_authorisation_revocations     to authenticated;
+grant insert, select on normative_rule_confirmations            to authenticated;
+grant insert, select on normative_rule_confirmation_revocations to authenticated;
+
+do $$
+declare n bigint; total bigint;
+begin
+  select count(*) into total from normative_rule_confirmations;
+
+  set local role authenticated;
+  -- Un utilisateur ORDINAIRE, titulaire d'aucune habilitation.
+  perform set_config('request.jwt.claim.sub',
+                     '99999999-9999-9999-9999-999999999999', true);
+
+  select count(*) into n from normative_authorisation_grants;
+  if n <> 0 then
+    raise exception
+      'RLS PERCEE: un utilisateur ordinaire voit % octroi(s). Qui est '
+      'habilite a quoi est de la gouvernance, pas du referentiel.', n;
+  end if;
+  select count(*) into n from normative_rule_confirmations;
+  if n <> 0 then
+    raise exception
+      'RLS PERCEE: un utilisateur ordinaire voit % confirmation(s), avec '
+      'noms, declarations et pages lues.', n;
+  end if;
+  select count(*) into n from normative_rule_confirmation_revocations;
+  if n <> 0 then
+    raise exception 'RLS PERCEE: % revocation(s) visibles', n;
+  end if;
+
+  -- La vue minimale, elle, lui est ouverte: c'est ce dont un calcul a besoin.
+  select count(*) into n from normative_rule_confirmation_status;
+  if n = 0 then
+    raise exception
+      'la vue de statut est vide pour un utilisateur authentifie: le calcul '
+      'ne pourrait rien en tirer';
+  end if;
+end
+$$;
+reset role;
+
+-- Le signataire voit SES propres lignes, et elles seules.
+do $$
+declare n bigint;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub',
+                     '55555555-5555-5555-5555-555555555555', true);
+  select count(*) into n from normative_rule_confirmations;
+  if n = 0 then
+    raise exception 'un signataire ne voit meme pas ce qu''il a signe';
+  end if;
+  select count(*) into n from normative_rule_confirmations
+   where verifier_id <> '55555555-5555-5555-5555-555555555555';
+  if n <> 0 then
+    raise exception 'RLS PERCEE: le signataire voit % ligne(s) d''autrui', n;
+  end if;
+  select count(*) into n from normative_authorisation_grants
+   where grantee_id <> '55555555-5555-5555-5555-555555555555';
+  if n <> 0 then
+    raise exception 'RLS PERCEE: le signataire voit % octroi(s) d''autrui', n;
+  end if;
+end
+$$;
+reset role;
+
+-- Le provider backend charge les confirmations, et rien de la gouvernance.
+do $$
+declare n bigint; total bigint;
+begin
+  select count(*) into total from normative_rule_confirmations;
+  set local role normative_backend;
+  select count(*) into n from normative_rule_confirmations;
+  if n <> total then
+    raise exception
+      'le provider backend voit % confirmations sur %: il ne pourrait pas '
+      'evaluer une regle', n, total;
+  end if;
+  select count(*) into n from normative_rule_confirmation_revocations;
+  if n = 0 then
+    raise exception
+      'le provider backend ne voit aucune revocation: il compterait des '
+      'regards deja retires';
+  end if;
+end
+$$;
+reset role;
+
+do $$
+declare ok boolean := false;
+begin
+  set local role normative_backend;
+  begin
+    perform count(*) from normative_authorisation_grants;
+  exception when insufficient_privilege then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'le provider backend accede a la gouvernance des habilitations, dont '
+      'il n''a pas besoin';
+  end if;
+end
+$$;
+reset role;
+
+-- La gouvernance voit tout, et c'est son role.
+do $$
+declare n bigint;
+begin
+  set local role normative_governance;
+  select count(*) into n from normative_authorisation_grants;
+  if n = 0 then
+    raise exception 'la gouvernance ne voit aucun octroi';
+  end if;
+  select count(*) into n from normative_rule_confirmations;
+  if n = 0 then
+    raise exception 'la gouvernance ne voit aucune confirmation';
+  end if;
+end
+$$;
+reset role;
+
+-- Aucune policy UPDATE ni DELETE: l'operation est refusee meme a la
+-- gouvernance, qui n'a d'ailleurs pas le privilege de table.
+do $$
+declare
+  t text;
+  ok boolean;
+begin
+  foreach t in array array['normative_authorisation_grants',
+                           'normative_rule_confirmations'] loop
+    if exists (select 1 from pg_policies
+                where schemaname = 'public' and tablename = t
+                  and cmd in ('UPDATE', 'DELETE')) then
+      raise exception 'une policy UPDATE/DELETE existe sur %', t;
+    end if;
+    if has_table_privilege('authenticated', t, 'UPDATE')
+       or has_table_privilege('authenticated', t, 'DELETE') then
+      raise exception 'authenticated detient UPDATE ou DELETE sur %', t;
+    end if;
+  end loop;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 6.3b1 #8 et #9 — securite des fonctions SECURITY DEFINER
+-- ---------------------------------------------------------------------
+do $$
+declare f record; n bigint := 0;
+begin
+  for f in
+    select p.oid, p.proname, p.prosecdef, p.proconfig
+      from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+     where ns.nspname = 'public'
+       and (p.proname like '%normative%' or p.proname = 'assert_digest_integrity')
+  loop
+    if f.prosecdef then
+      n := n + 1;
+      -- search_path fixe explicitement: sans cela, l'appelant choisirait les
+      -- objets que la fonction resout, en s'executant avec les droits du
+      -- proprietaire.
+      if f.proconfig is null
+         or not exists (select 1 from unnest(f.proconfig) c
+                         where c like 'search_path=%') then
+        raise exception
+          'la fonction SECURITY DEFINER % n''a pas de search_path fixe',
+          f.proname;
+      end if;
+      -- pg_temp doit venir en DERNIER, sinon une table temporaire de
+      -- l'appelant masquerait une table de public.
+      if exists (select 1 from unnest(f.proconfig) c
+                  where c like 'search_path=%'
+                    and c not like '%public%') then
+        raise exception
+          'le search_path de % ne nomme pas public explicitement', f.proname;
+      end if;
+      if exists (select 1 from unnest(f.proconfig) c
+                  where c like 'search_path=pg_temp%') then
+        raise exception
+          'pg_temp precede public dans le search_path de %: une table '
+          'temporaire de l''appelant masquerait une table du schema',
+          f.proname;
+      end if;
+    end if;
+
+    if has_function_privilege('public', f.oid, 'EXECUTE') then
+      raise exception
+        'PUBLIC detient EXECUTE sur %: une fonction SECURITY DEFINER '
+        'offrirait alors les droits de son proprietaire a tout le monde',
+        f.proname;
+    end if;
+  end loop;
+
+  if n < 6 then
+    raise exception
+      'seulement % fonctions SECURITY DEFINER inspectees: le test ne couvre '
+      'pas ce qu''il annonce', n;
+  end if;
+end
+$$;
+
+-- L'amorcage est inaccessible a un utilisateur ordinaire.
+do $$
+declare ok boolean := false;
+begin
+  set local role authenticated;
+  begin
+    perform bootstrap_normative_administrator(
+      '99999999-9999-9999-9999-999999999999', 'FICTIF Intrus',
+      'FICTIF — tentative depuis un compte ordinaire.');
+  exception
+    when insufficient_privilege then ok := true;
+    when others then ok := true;   -- refus de droit d'execution
+  end;
+  if not ok then
+    raise exception 'un utilisateur ordinaire a pu appeler l''amorcage';
+  end if;
+end
+$$;
+reset role;
+
+
+-- ---------------------------------------------------------------------
+-- 6.3b1 #10 — un seul amorcage, structurellement
+-- ---------------------------------------------------------------------
+-- Le verrou consultatif serialise deux appels concurrents; l'index partiel le
+-- garantit meme si le verrou etait contourne. On teste la garantie
+-- STRUCTURELLE, la seule qui ne depende d'aucun ordonnancement.
+do $$
+declare ok boolean := false;
+begin
+  begin
+    insert into normative_authorisation_grants
+      (grantee_id, grantee_name, permission, granted_by, origin, reason)
+    values ('99999999-9999-9999-9999-999999999999', 'FICTIF Second Racine',
+            'can_manage_normative_authorisations', null, 'bootstrap',
+            'FICTIF — second amorcage insere directement');
   exception when unique_violation then ok := true;
   end;
   if not ok then
     raise exception
-      'le meme verificateur a signe deux fois le meme sujet: le controle a '
-      'quatre yeux serait contournable par un simple second envoi';
+      'une seconde racine de confiance a ete creee: deux administrateurs '
+      'initiaux non lies l''un a l''autre';
   end if;
 end
 $$;

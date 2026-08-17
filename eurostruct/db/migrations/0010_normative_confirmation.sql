@@ -67,6 +67,15 @@ create type normative_grant_origin as enum ('bootstrap', 'delegated');
 create table normative_authorisation_grants (
   id             uuid primary key default gen_random_uuid(),
   grantee_id     uuid not null references auth.users(id),
+  -- Le nom LISIBLE du titulaire, fige par celui qui octroie. C'est la source
+  -- d'autorite du `verifier_name` d'une confirmation: laisser le client le
+  -- fournir permettrait de signer sous l'identite lisible d'un autre, et
+  -- `verifier_id` impose par le serveur ne s'en apercevrait pas — la note de
+  -- calcul, elle, n'affiche que le nom.
+  --
+  -- Fige et immuable: un changement de nom se fait par un NOUVEL octroi, si
+  -- bien que les confirmations deja signees gardent le nom d'alors.
+  grantee_name   text not null,
   permission     normative_permission not null,
 
   -- Portee. NULL sur un axe = « toutes les valeurs de cet axe ». Autorise
@@ -86,6 +95,7 @@ create table normative_authorisation_grants (
   reason         text not null,
 
   constraint grant_is_motivated check (btrim(reason) <> ''),
+  constraint grant_names_a_person check (btrim(grantee_name) <> ''),
 
   constraint bootstrap_has_no_grantor check (
     (origin = 'bootstrap') = (granted_by is null)
@@ -110,6 +120,17 @@ create table normative_authorisation_grants (
     or permission = 'can_manage_normative_authorisations'
   )
 );
+
+-- Au plus UN octroi d'amorcage, jamais deux, quoi qu'il arrive ensuite. Un
+-- index partiel sur une constante: la garantie ne depend d'aucune fonction,
+-- d'aucun verrou et d'aucune revocation. Deux appels concurrents a
+-- bootstrap_normative_administrator() en verront donc un echouer, meme si le
+-- controle d'existence les laissait passer tous les deux.
+--
+-- Il n'empeche PAS un nouvel octroi apres revocation: ceux-la sont
+-- 'delegated'.
+create unique index normative_bootstrap_is_singular
+  on normative_authorisation_grants ((true)) where origin = 'bootstrap';
 
 create index on normative_authorisation_grants (grantee_id, permission);
 create index on normative_authorisation_grants
@@ -206,20 +227,20 @@ create table normative_rule_confirmations (
   constraint idempotency_key_is_unique unique (idempotency_key)
 );
 
--- La MEME personne ne signe pas deux fois le MEME sujet. Deux personnes le
--- peuvent: c'est tout l'objet du controle a quatre yeux, et c'est pourquoi
--- l'index porte sur le sujet ET le verificateur.
+-- AUCUN index d'unicite semantique sur (sujet, verificateur).
 --
--- L'index ne connait pas les revocations. Une confirmation retiree conserve
--- donc sa place, et le meme verificateur ne peut pas re-signer le meme sujet
--- apres retrait. C'est voulu: re-signer apres un retrait motive demanderait
--- une decision explicite, pas un simple re-envoi.
-create unique index normative_confirmation_one_per_verifier
-  on normative_rule_confirmations
-     (rule_id, country_code, standard_family, part, stack_digest,
-      normative_spec_digest, implementation_digest, evidence_digest,
-      verifier_id);
-
+-- Il en existait un, et il etait faux: il interdisait a un relecteur de
+-- re-signer un sujet apres que sa premiere attestation eut ete revoquee. Or
+-- une revocation motivee suivie d'une nouvelle revue est exactement le
+-- parcours normal d'une correction — l'interdire obligeait a changer de
+-- relecteur pour corriger une erreur.
+--
+-- Deux attestations actives d'un meme verificateur ne comptent de toute facon
+-- que pour UN regard: le decompte se fait en verifier_id distincts, dans le
+-- domaine (independent_regards). Une unicite technique n'a pas a trancher une
+-- question semantique.
+--
+-- Restent: la cle primaire, et l'unicite de la cle d'idempotence.
 create index on normative_rule_confirmations (rule_id, country_code);
 create index on normative_rule_confirmations (verifier_id);
 
@@ -296,6 +317,16 @@ comment on function normative_grant_is_active is
 -- renseigne doit correspondre exactement. La verification normative ne peut
 -- pas avoir country/family/part a NULL (contrainte de table), donc le
 -- caractere generique ne beneficie qu'a l'administration.
+--
+-- DETERMINISME. « Le plus specifique » ne suffit pas: deux octrois peuvent
+-- avoir la MEME specificite sans avoir la meme portee — par exemple
+-- (BE, EN 1992, *, *) et (BE, *, 1-1, *) face a une cible BE/EN 1992/1-1.
+-- Les departager par une date d'octroi ou un identifiant reviendrait a faire
+-- dependre le snapshot d'audit d'un detail que personne n'a decide.
+--
+-- On REFUSE donc l'ambiguite plutot que de la trancher en silence. Le message
+-- nomme les octrois en cause: la correction est de revoquer celui qui ne doit
+-- plus s'appliquer, pas de deviner.
 create or replace function resolve_normative_authorisation(
   p_user       uuid,
   p_permission normative_permission,
@@ -304,10 +335,51 @@ create or replace function resolve_normative_authorisation(
   p_part       text,
   p_edition    text
 ) returns normative_authorisation_grants
-language sql
+language plpgsql
 stable
 as $$
-  select g.*
+declare
+  retenu normative_authorisation_grants;
+  candidats bigint;
+  noms text;
+begin
+  with eligibles as (
+    select g.*,
+           (g.country_code    is not null)::int
+         + (g.standard_family is not null)::int
+         + (g.part            is not null)::int
+         + (g.edition         is not null)::int as specificite
+      from normative_authorisation_grants g
+     where g.grantee_id = p_user
+       and g.permission = p_permission
+       and (g.country_code    is null or g.country_code    = p_country)
+       and (g.standard_family is null or g.standard_family = p_family)
+       and (g.part            is null or g.part            = p_part)
+       and (g.edition         is null or g.edition         = p_edition)
+       and normative_grant_is_active(g.id)
+  ), meilleurs as (
+    select * from eligibles
+     where specificite = (select max(specificite) from eligibles)
+  )
+  select count(*), string_agg(id::text, ', ' order by id)
+    into candidats, noms
+    from meilleurs;
+
+  if candidats = 0 then
+    return null;
+  end if;
+
+  if candidats > 1 then
+    raise exception
+      'autorisation ambigue: % octrois actifs de meme specificite couvrent '
+      '%/%/% edition % pour %. Octrois en cause: %. Revoquer celui qui ne '
+      'doit plus s''appliquer plutot que de laisser le serveur choisir.',
+      candidats, p_country, p_family, p_part, coalesce(p_edition, '*'),
+      p_user, noms
+      using errcode = 'cardinality_violation';
+  end if;
+
+  select g.* into retenu
     from normative_authorisation_grants g
    where g.grantee_id = p_user
      and g.permission = p_permission
@@ -316,15 +388,13 @@ as $$
      and (g.part            is null or g.part            = p_part)
      and (g.edition         is null or g.edition         = p_edition)
      and normative_grant_is_active(g.id)
-   -- La plus SPECIFIQUE d'abord: si quelqu'un detient a la fois une portee
-   -- large et une portee etroite, c'est la etroite qui doit apparaitre au
-   -- snapshot d'audit — elle decrit mieux ce sur quoi il a agi.
    order by (g.country_code    is not null)::int
           + (g.standard_family is not null)::int
           + (g.part            is not null)::int
-          + (g.edition         is not null)::int desc,
-            g.granted_at desc
+          + (g.edition         is not null)::int desc
    limit 1;
+  return retenu;
+end;
 $$;
 
 
@@ -419,8 +489,9 @@ $$;
 -- premiere personne installee pourrait confirmer seule tout le referentiel
 -- d'une juridiction.
 create or replace function bootstrap_normative_administrator(
-  p_grantee uuid,
-  p_reason  text
+  p_grantee      uuid,
+  p_grantee_name text,
+  p_reason       text
 ) returns uuid
 language plpgsql
 security definer
@@ -430,6 +501,12 @@ declare
   nouvel_id uuid;
   proprietaire text;
 begin
+  -- Deux appels concurrents doivent en voir un seul aboutir. Le verrou
+  -- serialise le controle d'existence ci-dessous; l'index partiel
+  -- normative_bootstrap_is_singular le garantit structurellement meme si le
+  -- verrou etait contourne. Deux garde-fous, deux portees.
+  perform pg_advisory_xact_lock(hashtext('eurostruct.normative.bootstrap'));
+
   select pg_get_userbyid(datdba) into proprietaire
     from pg_database where datname = current_database();
 
@@ -455,16 +532,22 @@ begin
     raise exception 'l''amorcage doit etre motive.'
       using errcode = 'check_violation';
   end if;
+  if btrim(coalesce(p_grantee_name, '')) = '' then
+    raise exception
+      'l''amorcage doit nommer une personne: c''est de ce nom que toute la '
+      'chaine de delegation heritera sa lisibilite.'
+      using errcode = 'check_violation';
+  end if;
 
   insert into normative_authorisation_grants
-    (grantee_id, permission, granted_by, origin, reason)
+    (grantee_id, grantee_name, permission, granted_by, origin, reason)
   values
-    (p_grantee, 'can_manage_normative_authorisations', null, 'bootstrap',
-     p_reason)
+    (p_grantee, p_grantee_name, 'can_manage_normative_authorisations', null,
+     'bootstrap', p_reason)
   returning id into nouvel_id;
 
   perform log_normative_event(
-    'normative_authorisation.bootstrap',
+    'normative.authorisation.bootstrap',
     'normative_authorisation_grants',
     nouvel_id,
     jsonb_build_object('grantee_id', p_grantee, 'origin', 'bootstrap',
@@ -477,7 +560,8 @@ begin
 end;
 $$;
 
-revoke all on function bootstrap_normative_administrator(uuid, text) from public;
+revoke all on function bootstrap_normative_administrator(uuid, text, text)
+  from public;
 
 comment on function bootstrap_normative_administrator is
   'Ouvre la chaine de confiance UNE FOIS. Refuse si un administrateur actif '
@@ -538,6 +622,31 @@ begin
       using errcode = 'insufficient_privilege';
   end if;
 
+  -- Deux octrois ACTIFS de portee rigoureusement identique rendraient la
+  -- resolution ambigue. On refuse a la source plutot que de laisser
+  -- l'ambiguite apparaitre a la premiere confirmation, quand plus personne ne
+  -- fera le lien avec l'octroi de trop.
+  --
+  -- La comparaison passe par IS NOT DISTINCT FROM: deux NULL designent la
+  -- meme portee « tous », alors que `=` les dirait differents.
+  if exists (
+    select 1 from normative_authorisation_grants g
+     where g.grantee_id = new.grantee_id
+       and g.permission = new.permission
+       and g.country_code    is not distinct from new.country_code
+       and g.standard_family is not distinct from new.standard_family
+       and g.part            is not distinct from new.part
+       and g.edition         is not distinct from new.edition
+       and normative_grant_is_active(g.id)
+  ) then
+    raise exception
+      'un octroi actif de meme portee existe deja pour % (%). Le revoquer '
+      'd''abord si la portee doit changer: deux octrois identiques actifs '
+      'rendraient le snapshot d''audit indeterminable.',
+      new.grantee_id, new.permission
+      using errcode = 'unique_violation';
+  end if;
+
   habilitation := resolve_normative_authorisation(
     acteur, 'can_manage_normative_authorisations',
     new.country_code, new.standard_family, new.part, new.edition
@@ -554,7 +663,7 @@ begin
   end if;
 
   perform log_normative_event(
-    'normative_authorisation.granted',
+    'normative.authorisation.granted',
     'normative_authorisation_grants',
     new.id,
     jsonb_build_object(
@@ -613,7 +722,7 @@ begin
   end if;
 
   perform log_normative_event(
-    'normative_authorisation.revoked',
+    'normative.authorisation.revoked',
     'normative_authorisation_revocations',
     new.id,
     jsonb_build_object('grant_id', new.grant_id, 'reason', new.reason,
@@ -707,8 +816,15 @@ begin
   new.authorisation_grant_id := habilitation.id;
   new.authorisation_scope := normative_authorisation_snapshot(habilitation);
 
+  -- 7. Le NOM LISIBLE vient de l'octroi, pas du client. `verifier_id` impose
+  --    par le serveur ne suffisait pas: la note de calcul n'affiche que le
+  --    nom, et un nom libre permettait de signer sous l'identite lisible d'un
+  --    autre. L'octroi etant immuable, un changement de nom ulterieur
+  --    n'altere aucune confirmation deja signee.
+  new.verifier_name := habilitation.grantee_name;
+
   perform log_normative_event(
-    'normative_confirmation.created',
+    'normative.confirmation.created',
     'normative_rule_confirmations',
     new.id,
     jsonb_build_object(
@@ -768,6 +884,8 @@ begin
       'self_revocation', true, 'verifier_id', c.verifier_id,
       'resolved_at', now()
     );
+    -- Le nom deja fige sur la confirmation retiree: c'est la meme personne.
+    new.revoked_by_name := c.verifier_name;
   else
     -- Sur la lecture d'un AUTRE, il faut le droit dedie. « can_manage_
     -- normative_authorisations » ne le donne pas: distribuer des
@@ -789,10 +907,11 @@ begin
     end if;
     new.authorisation_grant_id := habilitation.id;
     new.authorisation_scope := normative_authorisation_snapshot(habilitation);
+    new.revoked_by_name := habilitation.grantee_name;
   end if;
 
   perform log_normative_event(
-    'normative_confirmation.revoked',
+    'normative.confirmation.revoked',
     'normative_rule_confirmation_revocations',
     new.id,
     jsonb_build_object('confirmation_id', new.confirmation_id,
@@ -828,52 +947,233 @@ create trigger normative_confirmation_revocations_are_immutable
   before update or delete on normative_rule_confirmation_revocations
   for each row execute function forbid_mutation();
 
--- Le journal d'audit lui-meme. Un journal reecrivable n'est pas un journal:
--- la trace d'amorcage et celle d'un octroi doivent survivre a celui qui les a
--- provoquees. Aucune migration n'ecrivait d'UPDATE ou de DELETE dessus.
-create trigger audit_log_is_immutable
+-- Le journal d'audit: protection LIMITEE aux evenements normatifs.
+--
+-- Une version precedente rendait `audit_log` immuable EN ENTIER. C'etait un
+-- changement transversal sur une table existante, non demande, et qui aurait
+-- ferme sans preavis la retention, l'anonymisation et la maintenance du
+-- journal pour tous ses autres producteurs.
+--
+-- Les quatre tables evenementielles ci-dessus constituent deja la preuve
+-- principale. Ce declencheur ne protege donc que les lignes normatives, et
+-- laisse le reste du journal exactement comme il etait. La politique globale
+-- du journal, si elle doit changer, releve d'un jalon qui lui est consacre.
+create or replace function forbid_normative_audit_mutation() returns trigger
+language plpgsql as $$
+begin
+  if coalesce(old.action, '') like 'normative.%' then
+    raise exception
+      'la trace normative % (%) est immuable: elle atteste qui a octroye, '
+      'confirme ou revoque. Les autres lignes du journal ne sont pas '
+      'concernees par cette regle.', old.action, old.id
+      using errcode = 'restrict_violation';
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+create trigger audit_log_normative_entries_are_immutable
   before update or delete on audit_log
-  for each row execute function forbid_mutation();
+  for each row execute function forbid_normative_audit_mutation();
 
 
 -- =====================================================================
--- RLS: referentiel global, comme national_annex_parameters (0002)
+-- RLS: moindre privilege, et une vue minimale pour le calcul
 -- =====================================================================
+-- Une version precedente ouvrait ces quatre tables en lecture a TOUT
+-- utilisateur authentifie, par analogie avec le referentiel global de 0002.
+-- L'analogie etait fausse: `national_annex_parameters` contient des valeurs
+-- normatives, ces tables-ci contiennent de la GOUVERNANCE — qui est habilite
+-- a quoi, qui a signe quoi, sous quel nom, avec quelle declaration
+-- personnelle et quelles pages lues.
+--
+-- Matrice appliquee:
+--
+--   ressource                        | ecriture                | lecture
+--   ---------------------------------+-------------------------+---------------------------
+--   octrois d'autorisation           | insert controle par     | gouvernance
+--                                    | trigger (detenteur de   | + le titulaire, sur SES
+--                                    | can_manage_...)         |   propres octrois
+--   revocations d'autorisation       | idem                    | idem
+--   confirmations completes          | insert controle par     | gouvernance + provider
+--                                    | trigger (detenteur de   | backend + le signataire,
+--                                    | can_validate_...)       |   sur SES propres lignes
+--   revocations de confirmation      | idem                    | idem
+--   statut normatif pour le calcul   | aucune ecriture directe | vue minimale, sans aucune
+--                                    | (vue)                   |   donnee personnelle
+--
+-- Par defaut: refus. Aucune policy UPDATE ni DELETE n'existe, et aucun droit
+-- UPDATE/DELETE n'est accorde: l'operation est refusee par la RLS pour les
+-- chemins qui la respectent, et par les declencheurs d'immuabilite pour ceux
+-- qui la contournent.
+--
+-- Le titulaire voit SES propres octrois: sans cela il ne peut pas savoir ce
+-- qu'il a le droit de faire, et le refus qu'il rencontrerait serait
+-- inexplicable pour lui.
+
+-- Deux roles de service. Crees ici s'ils manquent, comme le stub local cree
+-- `authenticated`: un deploiement gere les fournit deja.
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'normative_backend') then
+    create role normative_backend;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'normative_governance') then
+    create role normative_governance;
+  end if;
+end
+$$;
+
+comment on type normative_grant_origin is
+  'bootstrap = ouverture de la chaine par l''autorite de deploiement; '
+  'delegated = octroi consenti par un detenteur de '
+  'can_manage_normative_authorisations.';
+
 alter table normative_authorisation_grants        enable row level security;
 alter table normative_authorisation_revocations   enable row level security;
 alter table normative_rule_confirmations          enable row level security;
 alter table normative_rule_confirmation_revocations enable row level security;
 
--- Lecture pour tout utilisateur authentifie: qui a confirme quoi, et sous
--- quelle habilitation, doit etre verifiable par ceux qui s'appuient dessus.
-create policy normative_grants_read on normative_authorisation_grants
-  for select to authenticated using (true);
-create policy normative_grant_revocations_read
-  on normative_authorisation_revocations
-  for select to authenticated using (true);
-create policy normative_confirmations_read on normative_rule_confirmations
-  for select to authenticated using (true);
-create policy normative_confirmation_revocations_read
-  on normative_rule_confirmation_revocations
-  for select to authenticated using (true);
+-- --- privileges de table -----------------------------------------------
+-- Rien pour PUBLIC. `authenticated` peut inserer (les triggers gouvernent) et
+-- lire ses propres lignes; la lecture large appartient aux roles de service.
+revoke all on normative_authorisation_grants          from public;
+revoke all on normative_authorisation_revocations     from public;
+revoke all on normative_rule_confirmations            from public;
+revoke all on normative_rule_confirmation_revocations from public;
 
--- Ecriture: ouverte a l'utilisateur authentifie, et entierement gouvernee par
--- les triggers ci-dessus. Les triggers BEFORE INSERT s'executent quel que soit
--- le chemin d'acces — un acces direct a la table ne les contourne pas, la ou
--- une regle posee dans la seule couche applicative se contournerait.
+grant insert, select on normative_authorisation_grants          to authenticated;
+grant insert, select on normative_authorisation_revocations     to authenticated;
+grant insert, select on normative_rule_confirmations            to authenticated;
+grant insert, select on normative_rule_confirmation_revocations to authenticated;
+
+grant select on normative_authorisation_grants          to normative_governance;
+grant select on normative_authorisation_revocations     to normative_governance;
+grant select on normative_rule_confirmations            to normative_governance;
+grant select on normative_rule_confirmation_revocations to normative_governance;
+
+-- Le provider backend lit ce dont l'evaluation a besoin, et rien de la
+-- gouvernance des habilitations.
+grant select on normative_rule_confirmations            to normative_backend;
+grant select on normative_rule_confirmation_revocations to normative_backend;
+
+-- --- policies ------------------------------------------------------------
+create policy normative_grants_own_read on normative_authorisation_grants
+  for select to authenticated using (grantee_id = auth.uid());
+create policy normative_grants_governance_read on normative_authorisation_grants
+  for select to normative_governance using (true);
 create policy normative_grants_insert on normative_authorisation_grants
   for insert to authenticated with check (true);
+
+create policy normative_grant_revocations_own_read
+  on normative_authorisation_revocations
+  for select to authenticated using (
+    exists (select 1 from normative_authorisation_grants g
+             where g.id = grant_id and g.grantee_id = auth.uid())
+  );
+create policy normative_grant_revocations_governance_read
+  on normative_authorisation_revocations
+  for select to normative_governance using (true);
 create policy normative_grant_revocations_insert
   on normative_authorisation_revocations
   for insert to authenticated with check (true);
+
+create policy normative_confirmations_own_read on normative_rule_confirmations
+  for select to authenticated using (verifier_id = auth.uid());
+create policy normative_confirmations_backend_read on normative_rule_confirmations
+  for select to normative_backend using (true);
+create policy normative_confirmations_governance_read
+  on normative_rule_confirmations
+  for select to normative_governance using (true);
 create policy normative_confirmations_insert on normative_rule_confirmations
   for insert to authenticated with check (true);
+
+create policy normative_confirmation_revocations_own_read
+  on normative_rule_confirmation_revocations
+  for select to authenticated using (revoked_by = auth.uid());
+create policy normative_confirmation_revocations_backend_read
+  on normative_rule_confirmation_revocations
+  for select to normative_backend using (true);
+create policy normative_confirmation_revocations_governance_read
+  on normative_rule_confirmation_revocations
+  for select to normative_governance using (true);
 create policy normative_confirmation_revocations_insert
   on normative_rule_confirmation_revocations
   for insert to authenticated with check (true);
 
--- Aucune policy UPDATE ni DELETE n'est creee: absente, l'operation est
--- refusee par la RLS, et les declencheurs d'immuabilite la refusent aussi
--- pour les chemins qui contournent la RLS. Deux garde-fous, deux portees.
+
+-- ---------------------------------------------------------------------
+-- La vue minimale: ce dont un calcul a besoin, et rien de plus
+-- ---------------------------------------------------------------------
+-- Aucune donnee personnelle: ni nom, ni identifiant de verificateur, ni
+-- declaration, ni pages lues, ni portee d'habilitation. Seulement le sujet et
+-- le NOMBRE de regards independants actifs.
+--
+-- `security_invoker = false` (defaut en PG16) est ici DELIBERE: la vue
+-- s'execute avec les droits de son proprietaire et ne se heurte donc pas a la
+-- RLS des tables sous-jacentes. C'est ce qui permet d'ouvrir le strict
+-- necessaire sans ouvrir les tables completes.
+create view normative_rule_confirmation_status as
+  select c.country_code,
+         c.standard_family,
+         c.part,
+         c.rule_id,
+         c.stack_digest,
+         c.normative_spec_digest,
+         c.implementation_digest,
+         c.evidence_digest,
+         c.annex_edition,
+         count(distinct c.verifier_id) as active_independent_regards
+    from normative_rule_confirmations c
+   where not exists (
+           select 1 from normative_rule_confirmation_revocations r
+            where r.confirmation_id = c.id
+         )
+   group by c.country_code, c.standard_family, c.part, c.rule_id,
+            c.stack_digest, c.normative_spec_digest, c.implementation_digest,
+            c.evidence_digest, c.annex_edition;
+
+revoke all on normative_rule_confirmation_status from public;
+grant select on normative_rule_confirmation_status
+  to authenticated, normative_backend, normative_governance;
+
+comment on view normative_rule_confirmation_status is
+  'Statut normatif necessaire au calcul, sans aucune donnee personnelle. '
+  'Ouvrir les tables completes exposerait noms, declarations et pages lues; '
+  'la provenance detaillee, si elle doit etre affichee un jour, passera par '
+  'une vue dediee dont le contenu personnel aura ete decide explicitement.';
+
+
+-- =====================================================================
+-- Fonctions SECURITY DEFINER: aucun droit pour PUBLIC
+-- =====================================================================
+-- Une fonction SECURITY DEFINER s'execute avec les droits de son
+-- proprietaire. Laisser EXECUTE a PUBLIC reviendrait a offrir ces droits a
+-- tout le monde. Les fonctions de declencheur n'ont besoin d'aucun EXECUTE
+-- pour etre appelees par leur trigger: le revocation est donc sans effet de
+-- bord.
+--
+-- `search_path` est fixe explicitement sur chacune (public, pg_temp, dans cet
+-- ordre): pg_temp en DERNIER, si bien qu'une table temporaire creee par
+-- l'appelant ne peut pas masquer une table de `public`.
+revoke all on function log_normative_event(text, text, uuid, jsonb, uuid)
+  from public;
+revoke all on function check_normative_grant() from public;
+revoke all on function check_normative_grant_revocation() from public;
+revoke all on function check_normative_confirmation() from public;
+revoke all on function check_normative_confirmation_revocation() from public;
+revoke all on function forbid_normative_audit_mutation() from public;
+
+-- Les auxiliaires ne sont pas SECURITY DEFINER, mais ils LISENT la
+-- gouvernance: `resolve_normative_authorisation` dirait a n'importe qui de
+-- quelles habilitations dispose n'importe qui d'autre. La RLS ne protege pas
+-- une fonction, seulement une table.
+revoke all on function resolve_normative_authorisation(
+  uuid, normative_permission, country_code, text, text, text) from public;
+revoke all on function normative_grant_is_active(uuid) from public;
+revoke all on function normative_authorisation_snapshot(
+  normative_authorisation_grants) from public;
+revoke all on function assert_digest_integrity(text, text, text, text)
+  from public;
 
 commit;

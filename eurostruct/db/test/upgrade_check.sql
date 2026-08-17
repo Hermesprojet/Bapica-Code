@@ -50,13 +50,18 @@ begin
     end if;
   end loop;
 
+  -- La vue minimale de statut, seule surface ouverte au calcul.
+  if to_regclass('public.normative_rule_confirmation_status') is null then
+    raise exception 'la vue de statut est absente apres mise a niveau';
+  end if;
+
   -- Et les declencheurs d'immuabilite, qui sont la moitie de la garantie.
   foreach t in array array[
     'normative_grants_are_immutable',
     'normative_confirmations_are_immutable',
     'normative_confirmation_revocations_are_immutable',
     'normative_grant_revocations_are_immutable',
-    'audit_log_is_immutable'
+    'audit_log_normative_entries_are_immutable'
   ] loop
     if not exists (select 1 from pg_trigger where tgname = t) then
       raise exception 'declencheur % absent apres mise a niveau', t;
