@@ -151,6 +151,83 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# Coherence: les controles PROPRES au workflow EUROSTRUCT.
+#
+# POURQUOI CETTE SURFACE EXISTE.
+#
+# Ce script promettait qu'une surface non executee serait aussi visible qu'une
+# surface en echec. La promesse etait tenue pour les trois surfaces qu'il
+# CONNAISSAIT — et le workflow `EUROSTRUCT` en portait six autres qu'il ne
+# connaissait pas. Resultat: le seed NDP a diverge de son generateur pendant
+# six jalons, la CI etait rouge en continu, et ce script a repondu « COMPLET »
+# a chaque fois. La panne exacte que le fichier dit combattre, a l'etage
+# au-dessus.
+#
+# Ces controles ne dupliquent pas les suites pytest ci-dessus: ils comparent
+# des ARTEFACTS COMMITTES a ce que leur generateur produit aujourd'hui. Un
+# fichier genere qu'on oublie de regenerer est invisible pour un test unitaire
+# — c'est le depot qui ment, pas le code.
+# --------------------------------------------------------------------------
+echo "--> coherence des artefacts generes"
+COH_DETAIL=()
+COH_ROUGE=0
+
+coherence() {
+  local nom="$1"; shift
+  if sortie=$("$@" 2>&1); then
+    COH_DETAIL+=("$nom: ok")
+  else
+    COH_DETAIL+=("$nom: ECHEC")
+    echo "    $nom:"
+    echo "$sortie" | tail -6 | sed 's/^/      /'
+    COH_ROUGE=1
+  fi
+}
+
+# 1. Le seed NDP est-il celui que produit son generateur ?
+seed_a_jour() {
+  local tmp; tmp="$(mktemp)"
+  python "$HERE/db/seed/generate_ndp_seed.py" > "$tmp" 2>/dev/null || {
+    rm -f "$tmp"; echo "le generateur de seed a echoue"; return 1; }
+  if ! diff -q "$tmp" "$HERE/db/seed/0001_ndp.sql" >/dev/null; then
+    echo "db/seed/0001_ndp.sql diverge de generate_ndp_seed.py:"
+    diff "$HERE/db/seed/0001_ndp.sql" "$tmp" | head -4
+    rm -f "$tmp"; return 1
+  fi
+  rm -f "$tmp"
+}
+coherence "seed NDP" seed_a_jour
+
+# 2. Le contrat TypeScript est-il celui que produisent les modeles Pydantic ?
+contrat_a_jour() {
+  (cd "$HERE/engine" && python scripts/export_contracts.py >/dev/null 2>&1) || {
+    echo "export_contracts.py a echoue"; return 1; }
+  git -C "$HERE" diff --quiet -- packages/contracts || {
+    echo "packages/contracts diverge des modeles Pydantic"
+    git -C "$HERE" diff --stat -- packages/contracts; return 1; }
+}
+coherence "contrat TypeScript" contrat_a_jour
+
+# 3. L'arbre de dependances du moteur reste-t-il dans son allowlist ?
+coherence "dependances du moteur" \
+  bash -c "cd '$HERE/engine' && python scripts/audit_engine_dependencies.py"
+
+# 4. Un avertissement dans un moteur de calcul est un defaut, pas du bruit.
+coherence "moteur sans avertissement" \
+  bash -c "cd '$HERE/engine' && python -m pytest tests/ -q -W error"
+
+if [[ $COH_ROUGE -eq 0 ]]; then
+  NOMS+=("coherence"); ETATS+=("VERT")
+else
+  NOMS+=("coherence"); ETATS+=("ROUGE"); EXIT=1
+fi
+detail_coherence=""
+for d in "${COH_DETAIL[@]}"; do
+  detail_coherence+="${detail_coherence:+, }$d"
+done
+DETAILS+=("$detail_coherence")
+
+# --------------------------------------------------------------------------
 # Verdict
 # --------------------------------------------------------------------------
 echo
@@ -179,7 +256,10 @@ elif [[ $NON_EXEC -eq 1 ]]; then
   echo " VERDICT: PARTIEL — toutes les surfaces n'ont pas ete executees."
   echo "          Ne pas rapporter « tous verts » sur cette base."
 else
-  echo " VERDICT: COMPLET — les trois surfaces ont tourne, toutes vertes."
+  # Le compte est DERIVE, jamais ecrit en dur: « les trois surfaces » est
+  # reste affiche alors qu'il y en avait quatre, et un rapport qui se trompe
+  # sur ce qu'il a couvert est precisement ce que ce script combat.
+  echo " VERDICT: COMPLET — les ${#NOMS[@]} surfaces ont tourne, toutes vertes."
 fi
 echo
 

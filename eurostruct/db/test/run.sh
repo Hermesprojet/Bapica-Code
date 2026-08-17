@@ -148,6 +148,21 @@ CONC_CODE=0
 # `virgin_root.sql` ne cree rien — toutes ses insertions echouent, et il le
 # verifie. La base est donc encore vierge pour le contrat croise.
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Prerequis de deploiement sur les roles.
+#
+# S'evaluent PENDANT la migration: aucun fichier de db/test/ ne peut les
+# observer, puisqu'ils ne tournent que sur une base ou la migration a deja
+# reussi. Le script fabrique donc la configuration hostile AVANT d'appliquer
+# les migrations, et exige un refus.
+# --------------------------------------------------------------------------
+ROLE_DB="${DB_NAME}_roles"
+echo "==> prerequis de deploiement sur les roles"
+ROLE_CODE=0
+"$HERE/role_prerequisites.sh" "$ROLE_DB" || ROLE_CODE=$?
+"${ADMIN[@]}" -q -c "drop database if exists $ROLE_DB;" >/dev/null 2>&1
+[[ $ROLE_CODE -eq 0 ]] || exit $ROLE_CODE
+
 XC_DB="${DB_NAME}_contract"
 echo "==> base vierge: racine de confiance et contrat croise"
 "${ADMIN[@]}" -q -c "drop database if exists $XC_DB;" >/dev/null

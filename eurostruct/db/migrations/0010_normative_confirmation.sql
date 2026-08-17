@@ -101,20 +101,82 @@ begin
 
   -- Le sens INVERSE, celui qu'on oublie: un role non fiable membre d'un role
   -- de service en heriterait tous les droits.
-  if exists (
-    select 1 from pg_auth_members m
-      join pg_roles parent on parent.oid = m.roleid
-      join pg_roles enfant on enfant.oid = m.member
-     where parent.rolname in ('normative_backend', 'normative_governance',
-                              'eurostruct_normative_writer',
-                              'eurostruct_normative_bootstrap')
-       and enfant.rolname in ('authenticated', 'anon', 'public')
-  ) then
+  --
+  -- CE CONTROLE A ETE REECRIT EN 6.3b4, et la version precedente etait
+  -- doublement fausse. Elle joignait `pg_auth_members` UNE FOIS — donc
+  -- l'appartenance DIRECTE seulement — et comparait a une LISTE FERMEE DE
+  -- NOMS ('authenticated', 'anon', 'public'). Trois contre-exemples verifies
+  -- passaient: un role LOGIN arbitraire membre direct du writer, un role
+  -- membre direct du bootstrap, et une appartenance TRANSITIVE a deux sauts
+  -- via un relais. Aucun n'etait nomme dans la liste, et le troisieme aurait
+  -- echappe au controle meme s'il l'avait ete.
+  --
+  -- `pg_has_role(..., 'MEMBER')` regle les deux: il est transitif par
+  -- construction, et il ne demande le nom d'aucun role tiers. 'MEMBER' et non
+  -- 'USAGE': un membre NOINHERIT n'herite pas des droits, mais il peut
+  -- toujours faire SET ROLE et les obtenir. C'est la meme prise.
+  --
+  -- LES ROLES D'AUTORITE N'ONT AUCUN MEMBRE. Pas « aucun membre non fiable »:
+  -- aucun, jamais. Toute la reserve du namespace d'audit et toute la branche
+  -- d'amorcage reposent sur le fait que `current_user` ne peut valoir ces
+  -- noms que depuis l'interieur d'une fonction SECURITY DEFINER. Un seul
+  -- membre, et `current_user` cesse d'etre une preuve d'origine.
+  for r in
+    select autorite.rolname as cible, membre.rolname as porteur,
+           membre.rolcanlogin as connectable
+      from pg_roles autorite
+      cross join pg_roles membre
+     where autorite.rolname in ('eurostruct_normative_writer',
+                                'eurostruct_normative_bootstrap')
+       and membre.oid <> autorite.oid
+       -- Un superutilisateur satisfait pg_has_role pour tout role. Le modele
+       -- de menace l'exclut explicitement: il peut desactiver les
+       -- declencheurs, la base ne le contient pas. L'inclure ici ne
+       -- protegerait rien et rendrait la migration inapplicable partout.
+       and not membre.rolsuper
+       and pg_has_role(membre.rolname, autorite.rolname, 'MEMBER')
+  loop
     raise exception
-      'prerequis non tenu: un role applicatif est membre d''un role de '
-      'service normatif. Il en heriterait les droits, et le cloisonnement '
-      'serait nominal.';
-  end if;
+      'prerequis non tenu: le role « % » est membre de « % » (connectable: '
+      '%). Les roles d''autorite ne doivent avoir AUCUN membre: leur seul '
+      'role est de rendre `current_user` significatif a l''interieur des '
+      'fonctions SECURITY DEFINER. Un membre peut faire SET ROLE et forger '
+      'une origine normative.', r.porteur, r.cible, r.connectable;
+  end loop;
+
+  -- Les roles d'autorite ne se connectent pas non plus. Verifie ICI et pas
+  -- seulement dans les tests: la migration peut s'appliquer sur une base ou
+  -- ils preexistent avec LOGIN.
+  for r in
+    select rolname as porteur from pg_roles
+     where rolname in ('eurostruct_normative_writer',
+                       'eurostruct_normative_bootstrap')
+       and rolcanlogin
+  loop
+    raise exception
+      'prerequis non tenu: le role d''autorite « % » peut se connecter. '
+      'Quelqu''un s''y authentifierait directement et `current_user` '
+      'vaudrait ce nom hors de toute fonction controlee.', r.porteur;
+  end loop;
+
+  -- Roles de SERVICE: eux ont vocation a etre endosses par l'application, et
+  -- exiger qu'ils n'aient aucun membre rendrait le deploiement impossible. Ce
+  -- qu'on exige est plus etroit et suffisant: les roles porteurs d'un jeton
+  -- utilisateur ne doivent pas les atteindre. Transitivement, la aussi.
+  for r in
+    select service.rolname as cible, jeton.rolname as porteur
+      from pg_roles service
+      cross join pg_roles jeton
+     where service.rolname in ('normative_backend', 'normative_governance')
+       and jeton.rolname in ('authenticated', 'anon')
+       and not jeton.rolsuper
+       and pg_has_role(jeton.rolname, service.rolname, 'MEMBER')
+  loop
+    raise exception
+      'prerequis non tenu: « % » atteint le role de service « % ». Un '
+      'porteur de jeton en heriterait les droits d''ecriture, et le '
+      'cloisonnement serait nominal.', r.porteur, r.cible;
+  end loop;
 end
 $$;
 
@@ -483,6 +545,96 @@ $$;
 
 
 -- ---------------------------------------------------------------------
+-- CONSOMMER une habilitation: resoudre, verrouiller, revalider
+-- ---------------------------------------------------------------------
+-- 6.3b4 #3. Le motif « resoudre -> verrou partage -> revalider » n'existait
+-- qu'a UN seul des quatre endroits qui consomment une habilitation. Audit du
+-- code avant correction:
+--
+--   check_normative_grant                     verrou NON   revalidation NON
+--   check_normative_grant_revocation          verrou NON   revalidation NON
+--   check_normative_confirmation              verrou oui   revalidation oui
+--   check_normative_confirmation_revocation   verrou NON   revalidation NON
+--
+-- Trois operations pouvaient donc etre autorisees par un octroi qu'une autre
+-- transaction etait en train de retirer: octroyer une habilitation a un tiers,
+-- en revoquer une, et retirer la confirmation d'un relecteur — cette derniere
+-- etant precisement l'operation qu'on ne veut pas voir passer sur un pouvoir
+-- deja retire.
+--
+-- La regle est desormais UNE FONCTION, et non une discipline a re-appliquer:
+-- une consommation ecrite plus tard qui oublierait le verrou devrait pour cela
+-- contourner explicitement cet appel.
+--
+-- POURQUOI RENDRE LE TUPLE PLUTOT QUE LEVER. L'absence d'habilitation n'est
+-- pas une anomalie: c'est un refus ordinaire, et chaque operation le formule
+-- avec ses propres termes — ce qui est refuse, sur quelle portee, et pourquoi
+-- ce pouvoir-la ne se confond pas avec un autre. Fondre ces messages ici les
+-- aurait tous appauvris. En revanche la REVOCATION EN VOL leve: elle n'est
+-- pas un refus d'autorisation mais une course perdue, et le message doit le
+-- dire.
+create or replace function consume_normative_authorisation(
+  p_actor      uuid,
+  p_permission normative_permission,
+  p_country    country_code,
+  p_family     text,
+  p_part       text,
+  p_edition    text
+) returns normative_authorisation_grants
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  habilitation normative_authorisation_grants;
+begin
+  habilitation := resolve_normative_authorisation(
+    p_actor, p_permission, p_country, p_family, p_part, p_edition
+  );
+
+  if habilitation.id is null then
+    return habilitation;      -- l'appelant formule son refus
+  end if;
+
+  -- Verrou PARTAGE sur l'octroi retenu, tenu jusqu'au commit: une revocation
+  -- concurrente de cette habilitation devra attendre.
+  --
+  -- Un verrou consultatif, et non `SELECT ... FOR SHARE`: PostgreSQL exige le
+  -- privilege UPDATE pour un verrou de ligne, et ces tables n'accordent JAMAIS
+  -- UPDATE — c'est le fondement de leur immuabilite. Le verrou de ligne aurait
+  -- donc oblige a ouvrir ce que la migration ferme.
+  perform pg_advisory_xact_lock_shared(
+    hashtext('eurostruct.normative.grantrow:' || habilitation.id::text));
+
+  -- Et on RE-verifie apres avoir obtenu le verrou: si une revocation nous a
+  -- precedes, elle est desormais visible. Sans cette relecture, le verrou ne
+  -- servirait qu'a attendre, pas a decider.
+  if not normative_grant_is_active(habilitation.id) then
+    raise exception
+      'operation refusee: l''habilitation % a ete revoquee pendant '
+      'l''operation. Le pouvoir invoque n''existait plus au moment de '
+      's''en servir.', habilitation.id
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  return habilitation;
+end;
+$$;
+
+alter function consume_normative_authorisation(
+    uuid, normative_permission, country_code, text, text, text)
+  owner to eurostruct_normative_writer;
+revoke all on function consume_normative_authorisation(
+    uuid, normative_permission, country_code, text, text, text) from public;
+
+comment on function consume_normative_authorisation is
+  'Resout une habilitation, la verrouille en partage jusqu''au commit, et '
+  'revalide qu''elle est active. TOUTE operation consommant une habilitation '
+  'doit passer par ici: le verrou seul n''est pas une garantie, c''est la '
+  'relecture qui suit qui en fait une.';
+
+
+-- ---------------------------------------------------------------------
 -- Le snapshot d'audit, ecrit par le serveur et par lui seul
 -- ---------------------------------------------------------------------
 -- STABLE, et non IMMUTABLE: elle appelle now(). Une fonction declaree
@@ -586,29 +738,47 @@ alter function log_normative_event(text, text, uuid, jsonb, uuid)
 -- =====================================================================
 -- Amorcage: la racine de confiance
 -- =====================================================================
--- Reservee au proprietaire de la base ou a l'autorite de deploiement. Elle ne
--- cree QUE de l'administration, jamais un droit de verification: sans quoi la
--- premiere personne installee pourrait confirmer seule tout le referentiel
--- d'une juridiction.
--- SECURITY INVOKER, deliberement.
+-- Elle ne cree QUE de l'administration, jamais un droit de verification:
+-- sans quoi la premiere personne installee pourrait confirmer seule tout le
+-- referentiel d'une juridiction.
 --
--- La version precedente etait SECURITY DEFINER et comparait `current_user` au
--- proprietaire de la base. Le controle ne prouvait rien: dans une fonction
--- SECURITY DEFINER, `current_user` EST le proprietaire de la fonction, quel
--- que soit l'appelant. La comparaison etait donc toujours vraie pour le
--- proprietaire et la restriction annoncee n'existait pas.
+-- SECURITY DEFINER, possedee par `eurostruct_normative_bootstrap`.
 --
--- La racine de confiance repose desormais sur l'ACL, qui est verifiable:
--- EXECUTE est retire a PUBLIC et n'est accorde a personne. Seuls le
--- proprietaire de la fonction et un superutilisateur peuvent l'appeler. En
--- SECURITY INVOKER, l'insertion s'execute en outre avec les droits de
--- l'appelant, si bien qu'un role sans privilege sur la table echoue meme s'il
--- obtenait EXECUTE.
+-- Ce commentaire annoncait SECURITY INVOKER jusqu'en 6.3b4, alors que la
+-- fonction etait DEFINER depuis 6.3b2. Il decrivait donc un raisonnement de
+-- securite — « l'insertion s'execute avec les droits de l'appelant » — qui
+-- n'etait plus celui du code, et un lecteur s'y serait fie. Une documentation
+-- de securite fausse est une garantie fausse.
 --
--- Le choix DEFINITIF du role d'amorcage reste ouvert: il depend du role qui
--- exerce les migrations et des roles de connexion en production, qui ne sont
--- pas encore arretes. Rien n'est donc decide en silence ici — l'ACL actuelle
--- est la position la plus restrictive possible en attendant.
+-- POURQUOI DEFINER. Le declencheur des octrois n'accepte `origin =
+-- 'bootstrap'` que si `current_user` vaut le role d'autorite. Cela n'a de sens
+-- que si la fonction s'execute SOUS ce role, donc en DEFINER, et si personne
+-- ne peut prendre ce role — ce que les prerequis de deploiement verifient
+-- desormais par `pg_has_role`, transitivement.
+--
+-- ROLE DE DEPLOIEMENT AUTORISE, ARRETE ICI.
+--
+-- La question restait ouverte depuis 6.3b1 (« le choix DEFINITIF reste
+-- ouvert »). Elle est tranchee: l'amorcage est reserve au ROLE QUI EXERCE LES
+-- MIGRATIONS, c'est-a-dire le proprietaire de la fonction —
+-- `eurostruct_normative_bootstrap` — et aux superutilisateurs. EXECUTE est
+-- retire a PUBLIC et accorde a AUCUN role applicatif, ce que `virgin_root.sql`
+-- verifie.
+--
+-- Concretement, en deploiement: la migration est appliquee par le role
+-- d'administration de la base (`postgres` chez la plupart des hebergeurs
+-- geres, y compris Supabase), et c'est ce role qui appelle une fois
+-- `bootstrap_normative_administrator()`. Aucun role de connexion applicative
+-- ne le peut, ni ne doit le pouvoir.
+--
+-- L'appel est trace: `session_user` est inscrit dans l'audit d'amorcage a cote
+-- de `current_user`. Les deux sont necessaires et disent des choses
+-- differentes — `current_user` vaut toujours le role d'autorite a l'interieur
+-- d'une fonction DEFINER, et ne designe donc PAS qui a appele. `session_user`,
+-- lui, n'est pas modifie par SECURITY DEFINER et nomme le role reellement
+-- connecte. Sans lui, l'audit de l'evenement le plus sensible de toute la
+-- chaine — l'ouverture de la racine de confiance — ne disait pas qui l'avait
+-- ouverte.
 create or replace function bootstrap_normative_administrator(
   p_grantee      uuid,
   p_grantee_name text,
@@ -668,7 +838,15 @@ begin
     nouvel_id,
     jsonb_build_object('grantee_id', p_grantee, 'origin', 'bootstrap',
                        'reason', p_reason,
-                       'performed_by_db_user', current_user),
+                       -- Vaut TOUJOURS le role d'autorite proprietaire de
+                       -- cette fonction: utile pour prouver le chemin, inutile
+                       -- pour savoir qui a appele.
+                       'performed_by_db_user', current_user,
+                       -- Le role REELLEMENT CONNECTE. SECURITY DEFINER ne le
+                       -- modifie pas. C'est la seule trace de QUI a ouvert la
+                       -- racine de confiance — l'evenement le plus sensible de
+                       -- toute la chaine, et il etait jusqu'ici anonyme.
+                       'performed_by_session_user', session_user),
     null
   );
 
@@ -806,7 +984,7 @@ begin
       using errcode = 'unique_violation';
   end if;
 
-  habilitation := resolve_normative_authorisation(
+  habilitation := consume_normative_authorisation(
     acteur, 'can_manage_normative_authorisations',
     new.country_code, new.standard_family, new.part, new.edition
   );
@@ -898,7 +1076,7 @@ begin
       using errcode = 'foreign_key_violation';
   end if;
 
-  habilitation := resolve_normative_authorisation(
+  habilitation := consume_normative_authorisation(
     acteur, 'can_manage_normative_authorisations',
     cible.country_code, cible.standard_family, cible.part, cible.edition
   );
@@ -919,16 +1097,51 @@ begin
   -- et auditee, releve d'une decision distincte: elle sera proposee avant
   -- d'etre implementee, plutot qu'introduite ici par commodite.
   if cible.permission = 'can_manage_normative_authorisations' then
-    if (select count(*) from normative_authorisation_grants g
-         where g.permission = 'can_manage_normative_authorisations'
-           and g.id <> cible.id
-           and normative_grant_is_active(g.id)) = 0 then
+    -- 6.3b4 #4 — COUVERTURE DE PORTEE, et non plus simple decompte.
+    --
+    -- La garde comptait les administrateurs restants et se satisfaisait d'un
+    -- seul. Elle laissait donc passer le cas qui compte reellement:
+    --
+    --   A administre TOUTES les juridictions (portee entierement NULL)
+    --   B administre la seule Belgique      (country_code = 'BE')
+    --   -> retirer A laisse « un administrateur », et plus personne pour la
+    --      France, l'Espagne ni l'Allemagne.
+    --
+    -- Le decompte n'etait pas trop faible, il mesurait la mauvaise chose. Ce
+    -- qui doit rester apres un retrait, ce n'est pas UN administrateur, c'est
+    -- UNE COUVERTURE: un octroi actif dont la portee contient celle du retire.
+    --
+    -- Un NULL sur un axe signifie « toutes les valeurs de cet axe ». G couvre
+    -- H si, sur chacun des quatre axes, G est NULL (donc universel) ou egal a
+    -- H. La portee globale n'est donc couverte que par une autre portee
+    -- globale — ce qui est exactement le sens voulu.
+    --
+    -- La couverture n'est PAS exigee union-de-plusieurs-octrois: deux
+    -- administrateurs BE et FR ne remplacent pas un administrateur global,
+    -- parce qu'ils ne couvrent ni l'Espagne ni l'Allemagne, et parce qu'une
+    -- union de portees serait indecidable des qu'un axe est continu. Un seul
+    -- octroi doit contenir la portee retiree.
+    if not exists (
+      select 1 from normative_authorisation_grants g
+       where g.permission = 'can_manage_normative_authorisations'
+         and g.id <> cible.id
+         and normative_grant_is_active(g.id)
+         and (g.country_code    is null or g.country_code    = cible.country_code)
+         and (g.standard_family is null or g.standard_family = cible.standard_family)
+         and (g.part            is null or g.part            = cible.part)
+         and (g.edition         is null or g.edition         = cible.edition)
+    ) then
       raise exception
-        'revocation refusee: % est le dernier octroi actif de '
-        '« can_manage_normative_authorisations ». Le retirer laisserait la '
-        'gouvernance sans personne, et l''amorcage ne peut pas etre rejoue. '
-        'Octroyer d''abord l''administration a quelqu''un d''autre.',
-        cible.id
+        'revocation refusee: aucun autre octroi actif de '
+        '« can_manage_normative_authorisations » ne couvre la portee de % '
+        '(%/%/%/%). Le retirer laisserait cette portee sans administrateur, '
+        'et l''amorcage ne peut pas etre rejoue. Octroyer d''abord une '
+        'administration couvrant AU MOINS cette portee.',
+        cible.id,
+        coalesce(cible.country_code::text, '*'),
+        coalesce(cible.standard_family, '*'),
+        coalesce(cible.part, '*'),
+        coalesce(cible.edition, '*')
         using errcode = 'restrict_violation';
     end if;
   end if;
@@ -1162,7 +1375,7 @@ begin
   new.annex_edition := edition_annexe;
 
   -- 5. L'habilitation est RESOLUE cote serveur, sur la portee exacte.
-  habilitation := resolve_normative_authorisation(
+  habilitation := consume_normative_authorisation(
     acteur, 'can_validate_normative_reference',
     new.country_code, new.standard_family, new.part, edition_annexe
   );
@@ -1179,26 +1392,7 @@ begin
   -- 6. Le snapshot d'autorisation est ECRIT ICI. Le client ne le fournit pas
   --    et ne peut pas le falsifier: quoi qu'il ait mis dans ces colonnes,
   --    elles sont ecrasees.
-  -- CONCURRENCE. Verrou PARTAGE sur l'octroi retenu, tenu jusqu'au commit:
-  -- une revocation concurrente de cette habilitation devra attendre. Sans
-  -- lui, une confirmation pouvait etre autorisee par un octroi qu'une autre
-  -- transaction etait en train de retirer.
-  --
-  -- Un verrou consultatif, et non `SELECT ... FOR SHARE`: PostgreSQL exige le
-  -- privilege UPDATE pour un verrou de ligne, et ces tables n'accordent
-  -- JAMAIS UPDATE — c'est le fondement de leur immuabilite. Le verrou de
-  -- ligne aurait donc oblige a ouvrir ce que la migration ferme.
-  perform pg_advisory_xact_lock_shared(
-    hashtext('eurostruct.normative.grantrow:' || habilitation.id::text));
-
-  -- Et on RE-verifie apres avoir obtenu le verrou: si la revocation nous a
-  -- precedes, elle est desormais visible.
-  if not normative_grant_is_active(habilitation.id) then
-    raise exception
-      'confirmation refusee: l''habilitation % a ete revoquee pendant '
-      'l''insertion.', habilitation.id
-      using errcode = 'insufficient_privilege';
-  end if;
+  -- Verrou et revalidation: dans consume_normative_authorisation().
 
   new.authorisation_grant_id := habilitation.id;
   new.authorisation_scope := normative_authorisation_snapshot(habilitation);
@@ -1279,7 +1473,7 @@ begin
     -- habilitations et defaire le travail d'un relecteur sont deux pouvoirs
     -- differents, et les confondre ferait de l'administrateur l'arbitre du
     -- referentiel.
-    habilitation := resolve_normative_authorisation(
+    habilitation := consume_normative_authorisation(
       acteur, 'can_revoke_normative_confirmation',
       c.country_code, c.standard_family, c.part, c.annex_edition
     );

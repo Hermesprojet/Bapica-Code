@@ -47,6 +47,27 @@ fi
 echo "    contrat croise Python <-> PostgreSQL"
 
 # --------------------------------------------------------------------------
+# 0. Le moteur doit etre importable. ECHEC EXPLICITE, jamais un saut.
+#
+# Une surface non executee doit etre aussi visible qu'une surface en echec:
+# c'est la propriete que `run_tests.sh` existe pour garantir, et un `skip`
+# silencieux ici la trahirait a l'endroit precis ou elle compte. Le diagnostic
+# est nomme, parce que la panne reelle — un job CI sans etape Python — se lit
+# autrement comme un `ModuleNotFoundError` sans rapport apparent.
+# --------------------------------------------------------------------------
+if ! "$PY" -c 'import sys, pathlib
+sys.path.insert(0, str(pathlib.Path("'"$PROJET"'") / "engine" / "src"))
+import eurostruct_engine.ndp.canonical' 2>/dev/null; then
+  echo "      ECHEC: le moteur n'est pas importable par $PY." >&2
+  echo "      Le contrat croise fait PRODUIRE le paquet par le moteur: sans" >&2
+  echo "      lui il n'y a rien a inserer, et le sauter reviendrait a ne plus" >&2
+  echo "      verifier que la base accepte ce que le moteur produit." >&2
+  echo "      Installer le moteur (pip install -e engine) ou pointer" >&2
+  echo "      EUROSTRUCT_PYTHON sur un interpreteur qui l'a." >&2
+  exit 1
+fi
+
+# --------------------------------------------------------------------------
 # 1. Python produit le paquet. Aucun octet n'est retape ensuite.
 # --------------------------------------------------------------------------
 "$PY" "$HERE/cross_contract.py" emit > "$TMP/paquet.json"

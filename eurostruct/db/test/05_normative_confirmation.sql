@@ -290,6 +290,41 @@ begin
   if n <> 1 then
     raise exception 'audit d''amorcage absent (% lignes)', n;
   end if;
+
+  -- 6.3b4 #6 — QUI a ouvert la racine de confiance.
+  --
+  -- `current_user` vaut TOUJOURS le role d'autorite a l'interieur d'une
+  -- fonction SECURITY DEFINER: il prouve le chemin emprunte, il ne nomme
+  -- personne. L'audit de l'evenement le plus sensible de toute la chaine
+  -- etait donc anonyme. `session_user`, que SECURITY DEFINER ne modifie pas,
+  -- nomme le role reellement connecte.
+  declare charge jsonb;
+  begin
+    select payload into charge from audit_log
+     where action = 'normative.authorisation.bootstrap' and entity_id = g.id;
+
+    if charge ->> 'performed_by_session_user' is null then
+      raise exception
+        'l''audit d''amorcage ne porte pas session_user: on saurait que la '
+        'racine a ete ouverte, jamais par qui';
+    end if;
+    if charge ->> 'performed_by_session_user' <> session_user then
+      raise exception
+        'session_user inscrit « % » alors que la session est « % »',
+        charge ->> 'performed_by_session_user', session_user;
+    end if;
+
+    -- Et les deux doivent rester DISTINCTS dans leur role: current_user
+    -- designe l'autorite, session_user l'appelant. Les confondre reviendrait
+    -- a perdre l'un des deux.
+    if charge ->> 'performed_by_db_user' <> 'eurostruct_normative_bootstrap' then
+      raise exception
+        'current_user inscrit « % »: la fonction d''amorcage ne s''execute '
+        'pas sous le role d''autorite, et la branche bootstrap du '
+        'declencheur ne prouverait rien',
+        charge ->> 'performed_by_db_user';
+    end if;
+  end;
 end
 $$;
 
@@ -1845,6 +1880,157 @@ begin
      and normative_grant_is_active(g.id);
   if n <> 1 then
     raise exception 'apres passation, % administrateurs actifs', n;
+  end if;
+end
+$$;
+
+
+-- =====================================================================
+-- 6.3b4 — la couverture de portee, et non le simple decompte
+-- =====================================================================
+-- CONTRE-EXEMPLE VERIFIE ROUGE contre 6.3b3: la garde comptait les
+-- administrateurs actifs restants et se satisfaisait d'UN SEUL. Avec un
+-- administrateur GLOBAL A et un administrateur BELGE B, retirer A laissait
+-- « un administrateur » — et la France, l'Espagne et l'Allemagne sans
+-- personne. Le decompte ne mesurait pas la bonne chose.
+do $$
+declare ok boolean := false; a_id uuid; b_id uuid; autre uuid; n bigint;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '77777777-7777-7777-7777-777777777777', true);
+
+  -- A: administration GLOBALE (portee entierement NULL).
+  insert into normative_authorisation_grants
+    (id, grantee_id, grantee_name, permission, reason)
+  values ('9a000000-0000-0000-0000-0000000000e1',
+          '44444444-4444-4444-4444-444444444444', 'FICTIF Admin Global',
+          'can_manage_normative_authorisations',
+          'FICTIF — administration de toutes les juridictions.')
+  returning id into a_id;
+
+  -- B: administration BELGE uniquement.
+  insert into normative_authorisation_grants
+    (id, grantee_id, grantee_name, permission, country_code, reason)
+  values ('9a000000-0000-0000-0000-0000000000e2',
+          '55555555-5555-5555-5555-555555555555', 'FICTIF Admin Belge',
+          'can_manage_normative_authorisations', 'BE',
+          'FICTIF — administration de la seule Belgique.')
+  returning id into b_id;
+
+  -- Les sections precedentes ont laisse d'AUTRES administrateurs de portee
+  -- GLOBALE actifs. L'un d'eux couvrirait A a juste titre, la garde laisserait
+  -- passer, et le test conclurait a tort qu'elle ne protege rien. Verifie par
+  -- sonde: sans ce nettoyage, l'etat au moment de la tentative etait
+  -- « globaux=2, total=3 » et non « globaux=1, total=2 ».
+  --
+  -- A, de portee globale, les couvre tous: il peut donc les retirer.
+  loop
+    select g.id into autre from normative_authorisation_grants g
+     where g.permission = 'can_manage_normative_authorisations'
+       and g.id <> a_id and g.id <> b_id
+       and normative_grant_is_active(g.id)
+     limit 1;
+    exit when autre is null;
+    insert into normative_authorisation_revocations (grant_id, reason)
+    values (autre, 'FICTIF — concentration sur A et B pour le test de portee.');
+  end loop;
+
+  -- Precondition sur la FORME, et non sur le nombre: A doit etre le SEUL
+  -- administrateur de portee globale, et B doit exister a cote de lui.
+  select count(*) into n from normative_authorisation_grants g
+   where g.permission = 'can_manage_normative_authorisations'
+     and normative_grant_is_active(g.id)
+     and g.country_code is null and g.standard_family is null
+     and g.part is null and g.edition is null;
+  if n <> 1 then
+    raise exception
+      'precondition non tenue: % administrateur(s) de portee globale actifs, '
+      '1 attendu. Un autre global couvrirait A, et la garde passerait a '
+      'juste titre', n;
+  end if;
+
+  select count(*) into n from normative_authorisation_grants g
+   where g.permission = 'can_manage_normative_authorisations'
+     and normative_grant_is_active(g.id);
+  if n <> 2 then
+    raise exception
+      'precondition non tenue: % administrateur(s) actif(s), 2 attendus '
+      '(A global + B belge). Avec un seul, l''ancien decompte aurait refuse '
+      'et le test ne distinguerait rien', n;
+  end if;
+
+  -- LE TEST. Retirer A: refus, car B ne couvre que la Belgique.
+  --
+  -- C'est A qui revoque, et il le faut: le resolveur exige de l'auteur d'une
+  -- revocation une habilitation COUVRANT la portee visee. Le belge B ne
+  -- l'aurait donc pas, et son refus viendrait du resolveur — jamais de la
+  -- garde de couverture, qui ne serait alors jamais atteinte. Verifie: avec
+  -- B en revocateur, le test passait au vert sur un autre motif.
+  perform set_config('request.jwt.claim.sub',
+                     '44444444-4444-4444-4444-444444444444', true);
+  begin
+    insert into normative_authorisation_revocations (grant_id, reason)
+    values (a_id, 'FICTIF — retrait de l''administrateur global.');
+  exception when restrict_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'l''administrateur GLOBAL a pu etre retire alors que le seul restant '
+      'ne couvre que la Belgique: la France, l''Espagne et l''Allemagne '
+      'seraient sans administrateur, et l''amorcage ne peut pas etre rejoue';
+  end if;
+
+  -- La reciproque doit rester possible: B est COUVERT par A (global), donc
+  -- son retrait est legitime. Sans cette moitie, la garde serait satisfaite
+  -- par un systeme qui refuse toute revocation.
+  perform set_config('request.jwt.claim.sub',
+                     '44444444-4444-4444-4444-444444444444', true);
+  insert into normative_authorisation_revocations (grant_id, reason)
+  values (b_id, 'FICTIF — retrait du belge, couvert par le global.');
+
+  if normative_grant_is_active(b_id) then
+    raise exception 'la revocation de l''administrateur belge n''a pas pris';
+  end if;
+  if not normative_grant_is_active(a_id) then
+    raise exception 'l''administrateur global a disparu';
+  end if;
+end
+$$;
+
+-- Couverture PARTIELLE par plusieurs octrois: refusee elle aussi. Deux
+-- administrateurs BE et FR ne remplacent pas un administrateur global — ils
+-- ne couvrent ni l'Espagne ni l'Allemagne. La garde exige qu'UN SEUL octroi
+-- contienne la portee retiree.
+do $$
+declare ok boolean := false;
+begin
+  perform set_config('request.jwt.claim.sub',
+                     '44444444-4444-4444-4444-444444444444', true);
+  insert into normative_authorisation_grants
+    (id, grantee_id, grantee_name, permission, country_code, reason)
+  values ('9a000000-0000-0000-0000-0000000000e3',
+          '55555555-5555-5555-5555-555555555555', 'FICTIF Admin Belge 2',
+          'can_manage_normative_authorisations', 'BE',
+          'FICTIF — administration belge.'),
+         ('9a000000-0000-0000-0000-0000000000e4',
+          '66666666-6666-6666-6666-666666666666', 'FICTIF Admin Francais',
+          'can_manage_normative_authorisations', 'FR',
+          'FICTIF — administration francaise.');
+
+  -- La aussi, c'est le titulaire de la portee globale qui revoque: seul lui
+  -- est habilite sur cette portee, et le refus attendu doit venir de la
+  -- couverture, pas du resolveur.
+  begin
+    insert into normative_authorisation_revocations (grant_id, reason)
+    values ('9a000000-0000-0000-0000-0000000000e1',
+            'FICTIF — retrait du global avec BE et FR en place.');
+  exception when restrict_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'l''administrateur global a pu etre retire au motif que BE et FR '
+      'existent: l''Espagne et l''Allemagne resteraient sans administrateur. '
+      'Une union de portees ne couvre pas une portee globale';
   end if;
 end
 $$;

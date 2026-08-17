@@ -79,7 +79,19 @@ begin
 end
 $$;
 
--- L'insertion elle-meme, sous l'identite du verificateur habilite.
+-- L'insertion elle-meme, sous l'identite du verificateur habilite ET SOUS LE
+-- ROLE DE SERVICE.
+--
+-- 6.3b4 #5. Le contrat croise s'executait jusqu'ici sous le role de la
+-- migration — donc superutilisateur, qui contourne la RLS et detient tous les
+-- privileges. Il prouvait que la base accepte ce que le moteur produit, mais
+-- par un chemin QUE LE DEPLOIEMENT N'EMPRUNTE JAMAIS. Le chemin reel est
+-- `normative_backend`, et c'est lui qu'il faut exercer: sinon une policy
+-- manquante ou un privilege oublie resterait invisible ici et n'apparaitrait
+-- qu'en production.
+--
+-- Le payload est lu AVANT le changement de role: la table temporaire
+-- appartient a la session, et `normative_backend` n'y a pas acces.
 do $$
 declare
   p jsonb;
@@ -87,6 +99,7 @@ begin
   select xc_paquet.p into p from xc_paquet;
   perform set_config('request.jwt.claim.sub',
                      'a1000000-0000-0000-0000-000000000002', true);
+  set local role normative_backend;
 
   insert into normative_rule_confirmations (
     country_code, standard_family, part, rule_id,
@@ -125,6 +138,65 @@ begin
   );
 end
 $$;
+
+-- L'AUTRE MOITIE: le meme chemin, sous `authenticated`, doit ECHOUER.
+--
+-- Sans elle, le passage sous `normative_backend` ne prouverait que « ce role
+-- peut ecrire » — pas que la frontiere d'ecriture existe. Le paquet est le
+-- MEME, produit par le meme moteur, et seul le role change: c'est donc bien
+-- le role qui decide, et rien d'autre.
+do $$
+declare p jsonb; ok boolean := false; vu text;
+begin
+  select xc_paquet.p into p from xc_paquet;
+  perform set_config('request.jwt.claim.sub',
+                     'a1000000-0000-0000-0000-000000000002', true);
+  set local role authenticated;
+  begin
+    insert into normative_rule_confirmations (
+      country_code, standard_family, part, rule_id,
+      stack_digest, normative_spec_digest, implementation_digest, evidence_digest,
+      digest_algorithm, canonicalization_version,
+      normative_spec_payload, implementation_payload, evidence_payload,
+      stack_payload, stack_snapshot, annex_edition, evidence_items,
+      statement, verifier_id, verifier_name, verified_at,
+      authorisation_grant_id, authorisation_scope, idempotency_key
+    ) values (
+      (p ->> 'country_code')::country_code, p ->> 'standard_family',
+      p ->> 'part', p ->> 'rule_id', p ->> 'stack_digest',
+      p ->> 'normative_spec_digest', p ->> 'implementation_digest',
+      p ->> 'evidence_digest', p ->> 'digest_algorithm',
+      p ->> 'canonicalization_version', p ->> 'normative_spec_payload',
+      p ->> 'implementation_payload', p ->> 'evidence_payload',
+      p ->> 'stack_payload', '{}'::jsonb, 'x', '[]'::jsonb,
+      'FICTIF — meme paquet, mais par le porteur de jeton.',
+      '00000000-0000-0000-0000-000000000000', 'FICTIF',
+      timestamptz '1999-01-01 00:00:00+00', null, '{}'::jsonb,
+      'FICTIF-contrat-croise-authenticated'
+    );
+  exception when others then ok := true; vu := sqlstate;
+  end;
+  reset role;
+
+  if not ok then
+    raise exception
+      'un porteur de jeton a pu inserer une confirmation par le chemin '
+      'direct: la frontiere d''ecriture n''existe pas, et la validation du '
+      'paquet cote moteur serait contournable';
+  end if;
+  if vu <> '42501' then
+    raise exception
+      'refus obtenu en SQLSTATE % au lieu de 42501: la frontiere ne tient '
+      'pas par l''ACL mais par accident', vu;
+  end if;
+
+  if exists (select 1 from normative_rule_confirmations
+              where idempotency_key = 'FICTIF-contrat-croise-authenticated') then
+    raise exception 'la tentative refusee a tout de meme laisse une ligne';
+  end if;
+end
+$$;
+
 
 -- Le serveur a bien impose l'identite et l'horodatage: si ces colonnes
 -- avaient survecu, la relecture comparerait un paquet que personne n'a signe.

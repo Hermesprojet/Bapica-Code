@@ -67,15 +67,40 @@ begin
   end if;
 
   -- Aucun parametre ne pretend etre releve dans une annexe publiee.
-  -- 'not_representable' est admis: ce n'est pas une pretention de conformite,
-  -- c'est la declaration qu'aucun scalaire ne convient (cot_theta_max belge).
+  --
+  -- Le critere est la PRETENTION DE CONFORMITE, et 'confirmed' est le seul
+  -- statut qui en soit une: il affirme qu'un ingenieur nomme a ouvert
+  -- l'annexe publiee a une date donnee. Les trois autres ne pretendent rien —
+  -- 'pending_verification' attend, 'not_representable' declare qu'aucun
+  -- scalaire ne convient (cot_theta_max belge), 'deprecated' declare la
+  -- valeur remplacee ou fausse. Les deux derniers REFUSENT d'ailleurs dans
+  -- tous les modes, ce qui les rend plus stricts que l'attente, pas moins.
+  --
+  -- La liste enumerait 'pending_verification' et 'not_representable'. Elle
+  -- datait d'avant la deprecation des scalaires remplaces par des regles
+  -- typees, et le seed committe — perime depuis six jalons — la masquait.
+  -- Regenerer le seed a revele la contradiction, il ne l'a pas creee.
   select count(*) into unverified
     from national_annex_parameters
-   where validation_status not in ('pending_verification', 'not_representable');
+   where validation_status = 'confirmed';
   if unverified <> 0 then
     raise exception
-      '% parametre(s) ne sont pas en pending_verification alors qu''aucune '
-      'annexe n''a encore ete relevee', unverified;
+      '% parametre(s) se declarent « confirmed » alors qu''aucune annexe '
+      'publiee n''a encore ete relevee par un ingenieur nomme', unverified;
+  end if;
+
+  -- Fail-closed: le critere ci-dessus ne vaut que si l'on connait TOUS les
+  -- statuts possibles. Un statut ajoute a l'enum sans decision explicite ici
+  -- passerait sinon en silence, et c'est exactement ainsi que la liste
+  -- precedente est devenue fausse.
+  select count(*) into unverified
+    from national_annex_parameters
+   where validation_status not in ('pending_verification', 'not_representable',
+                                   'deprecated', 'confirmed');
+  if unverified <> 0 then
+    raise exception
+      '% parametre(s) portent un statut inconnu de ce controle: decider '
+      'explicitement s''il constitue une pretention de conformite', unverified;
   end if;
 end
 $$;

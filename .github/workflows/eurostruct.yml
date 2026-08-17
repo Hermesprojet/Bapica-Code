@@ -126,6 +126,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Le moteur est REQUIS par ce job depuis 6.3b3: `db/test/run.sh` execute
+      # le contrat croise, qui fait produire un vrai paquet de revue par
+      # `eurostruct_engine.ndp.canonical` avant de l'inserer. Sans lui, la
+      # suite echoue sur `ModuleNotFoundError: pint` — c'est exactement ce qui
+      # a rendu ce job rouge alors qu'il etait vert au jalon precedent.
+      #
+      # Ce job ne SKIPPE jamais le contrat croise faute d'interpreteur: une
+      # surface non executee doit etre aussi visible qu'une surface en echec,
+      # et `cross_contract.sh` echoue explicitement dans ce cas.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Moteur (requis par le contrat croise)
+        run: pip install -e engine
+
       - name: Migrations et garanties structurelles
         # RLS tenant isolation, the human validation gate, immutability of
         # signed records, the ten-year retention guard.

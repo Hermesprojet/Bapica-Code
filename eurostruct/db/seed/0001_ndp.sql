@@ -132,7 +132,12 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'alpha_cw', 1.0, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.3(3)', 'Coefficient alpha_cw tenant compte de l''etat de contrainte dans la membrure comprimee. 1,0 pour une structure non precontrainte', 1.0, false
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'alpha_cw', 1.0, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'deprecated'::ndp_validation_status, null, null, 'REMPLACE PAR LA REGLE TYPEE « be.ec2.alpha_cw ». Ce scalaire est DEPRECATED, donc refuse dans TOUS les modes — strict comme non strict. Ce n''est pas une precaution: tant qu''il restait lisible, il constituait un second chemin normatif pour la meme juridiction, et rien n''empechait un module de le lire au lieu de la regle. Un seul chemin par juridiction et par version.
+
+Pourquoi le scalaire etait faux, et pas seulement incomplet:
+1,0 n''est que la branche NON PRECONTRAINTE des quatre de 6.11aN-cN, portee sans sa condition.
+
+Ancienne note: Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.3(3)', 'Coefficient alpha_cw tenant compte de l''etat de contrainte dans la membrure comprimee. 1,0 pour une structure non precontrainte', 1.0, false
 from national_annexes a
 where a.country_code = 'BE'::country_code
   and a.standard_family = 'EN 1992'
@@ -140,7 +145,9 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'cot_theta_max', null, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'not_representable'::ndp_validation_status, null, null, 'SANS VALEUR EXPLOITABLE. §6.2.3(2) p.17: la Belgique NE retient PAS la borne 2,5. Elle fixe cot(theta)_max = (2 + k1 sigma_cp bw d s / (Asw z fywd)) <= 3, avec sigma_cp <= 0,2 fcd. C''est une FORMULE dependant de l''effort normal et du ferraillage, pas une constante. Le modele de parametre ne stocke qu''un scalaire: le representer par 2,5 ou par 3 serait faux dans les deux cas. Ce parametre reste sans valeur tant que le modele n''admet pas une expression.', '§6.2.3(2), eq. (6.7N)', 'Borne superieure de cot(theta), inclinaison des bielles', 2.5, false
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'cot_theta_max', null, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'not_representable'::ndp_validation_status, null, null, 'SANS VALEUR SCALAIRE, et desormais PORTE PAR LA REGLE TYPEE « be.ec2.cot_theta_max ». Le statut reste not_representable — et non deprecated — parce que c''est exact et parce que l''invariant du modele l''exige: une valeur absente doit dire pourquoi elle l''est. Les deux statuts refusent de toute facon dans TOUS les modes, donc aucun second chemin normatif ne subsiste.
+
+§6.2.3(2) p.15 de l''ANB: la Belgique NE retient PAS la borne 2,5 de l''EN. Elle fixe cot(theta)_max = (2 + k1 sigma_cp bw d s / (Asw z fywd)) <= 3, avec sigma_cp <= 0,2 fcd. Pour une poutre NON precontrainte cette borne vaut 2, donc PLUS SEVERE que la recommandation europeenne.', '§6.2.3(2), eq. (6.7N)', 'Borne superieure de cot(theta), inclinaison des bielles', 2.5, false
 from national_annexes a
 where a.country_code = 'BE'::country_code
   and a.standard_family = 'EN 1992'
@@ -268,7 +275,12 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'nu1_coeff', 0.6, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.2(6), eq. (6.6N)', 'Coefficient nu de la resistance du beton fissure a l''effort tranchant: nu = 0,6 [1 - fck/250]', 0.6, false
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'nu1_coeff', 0.6, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'deprecated'::ndp_validation_status, null, null, 'REMPLACE PAR LA REGLE TYPEE « be.ec2.nu_strength_reduction ». Ce scalaire est DEPRECATED, donc refuse dans TOUS les modes — strict comme non strict. Ce n''est pas une precaution: tant qu''il restait lisible, il constituait un second chemin normatif pour la meme juridiction, et rien n''empechait un module de le lire au lieu de la regle. Un seul chemin par juridiction et par version.
+
+Pourquoi le scalaire etait faux, et pas seulement incomplet:
+6.6N est UNE formule en f_ck, pas deux constantes independantes. Les separer autorisait des combinaisons qui n''existent dans aucun texte.
+
+Ancienne note: Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.2(6), eq. (6.6N)', 'Coefficient nu de la resistance du beton fissure a l''effort tranchant: nu = 0,6 [1 - fck/250]', 0.6, false
 from national_annexes a
 where a.country_code = 'BE'::country_code
   and a.standard_family = 'EN 1992'
@@ -276,7 +288,12 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'nu1_fck_divisor', 250.0, 'MPa', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.2(6), eq. (6.6N)', 'Diviseur de fck dans nu = 0,6 [1 - fck/250]', 250.0, false
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'nu1_fck_divisor', 250.0, 'MPa', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'deprecated'::ndp_validation_status, null, null, 'REMPLACE PAR LA REGLE TYPEE « be.ec2.nu_strength_reduction ». Ce scalaire est DEPRECATED, donc refuse dans TOUS les modes — strict comme non strict. Ce n''est pas une precaution: tant qu''il restait lisible, il constituait un second chemin normatif pour la meme juridiction, et rien n''empechait un module de le lire au lieu de la regle. Un seul chemin par juridiction et par version.
+
+Pourquoi le scalaire etait faux, et pas seulement incomplet:
+idem — le 250 n''a de sens que dans l''expression 0,6[1 - f_ck/250].
+
+Ancienne note: Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§6.2.2(6), eq. (6.6N)', 'Diviseur de fck dans nu = 0,6 [1 - fck/250]', 250.0, false
 from national_annexes a
 where a.country_code = 'BE'::country_code
   and a.standard_family = 'EN 1992'
@@ -284,7 +301,12 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'rho_w_min_coeff', 0.08, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(5), eq. (9.5N)', 'Coefficient du taux minimal d''armatures d''effort tranchant: rho_w,min = 0,08 sqrt(fck)/fyk', 0.08, false
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'rho_w_min_coeff', 0.08, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'deprecated'::ndp_validation_status, null, null, 'REMPLACE PAR LA REGLE TYPEE « be.ec2.rho_w_min ». Ce scalaire est DEPRECATED, donc refuse dans TOUS les modes — strict comme non strict. Ce n''est pas une precaution: tant qu''il restait lisible, il constituait un second chemin normatif pour la meme juridiction, et rien n''empechait un module de le lire au lieu de la regle. Un seul chemin par juridiction et par version.
+
+Pourquoi le scalaire etait faux, et pas seulement incomplet:
+0,08 seul perdait la substitution belge f_ywk <- f_yk, qui change le resultat des que les etriers ne sont pas de la meme nuance que les barres longitudinales.
+
+Ancienne note: Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(5), eq. (9.5N)', 'Coefficient du taux minimal d''armatures d''effort tranchant: rho_w,min = 0,08 sqrt(fck)/fyk', 0.08, false
 from national_annexes a
 where a.country_code = 'BE'::country_code
   and a.standard_family = 'EN 1992'
@@ -292,7 +314,12 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 's_l_max_coeff', 0.75, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(6), eq. (9.6N)', 'Coefficient de l''espacement longitudinal maximal des cadres: s_l,max = 0,75 d (1 + cot alpha)', 0.75, false
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 's_l_max_coeff', 0.75, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'deprecated'::ndp_validation_status, null, null, 'REMPLACE PAR LA REGLE TYPEE « be.ec2.s_l_max ». Ce scalaire est DEPRECATED, donc refuse dans TOUS les modes — strict comme non strict. Ce n''est pas une precaution: tant qu''il restait lisible, il constituait un second chemin normatif pour la meme juridiction, et rien n''empechait un module de le lire au lieu de la regle. Un seul chemin par juridiction et par version.
+
+Pourquoi le scalaire etait faux, et pas seulement incomplet:
+0,75 seul ne disait pas quoi multiplier et perdait le facteur (1 + cot alpha).
+
+Ancienne note: Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(6), eq. (9.6N)', 'Coefficient de l''espacement longitudinal maximal des cadres: s_l,max = 0,75 d (1 + cot alpha)', 0.75, false
 from national_annexes a
 where a.country_code = 'BE'::country_code
   and a.standard_family = 'EN 1992'
@@ -300,7 +327,12 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 's_t_max_coeff', 0.75, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(8), eq. (9.8N)', 'Coefficient de l''espacement transversal maximal des brins: s_t,max = 0,75 d <= 600 mm', 0.75, false
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 's_t_max_coeff', 0.75, 'dimensionless', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'en_recommended'::ndp_source_type, 'deprecated'::ndp_validation_status, null, null, 'REMPLACE PAR LA REGLE TYPEE « be.ec2.s_t_max ». Ce scalaire est DEPRECATED, donc refuse dans TOUS les modes — strict comme non strict. Ce n''est pas une precaution: tant qu''il restait lisible, il constituait un second chemin normatif pour la meme juridiction, et rien n''empechait un module de le lire au lieu de la regle. Un seul chemin par juridiction et par version.
+
+Pourquoi le scalaire etait faux, et pas seulement incomplet:
+0,75 seul perdait le plafond de 600 mm — et n''etait consomme par aucun module.
+
+Ancienne note: Valeur RECOMMANDEE par l''Eurocode, reportee comme point de depart. A relever dans l''Annexe Nationale publiee, puis passer validation_status a ''confirmed'' avec verified_by et verified_at.', '§9.2.2(8), eq. (9.8N)', 'Coefficient de l''espacement transversal maximal des brins: s_t,max = 0,75 d <= 600 mm', 0.75, false
 from national_annexes a
 where a.country_code = 'BE'::country_code
   and a.standard_family = 'EN 1992'
