@@ -21,8 +21,27 @@
 #
 # CONTRE-EXEMPLES VERIFIES ROUGES contre 6.3b3, dont la version precedente
 # joignait `pg_auth_members` une seule fois — appartenance DIRECTE — et
-# comparait a une LISTE FERMEE DE NOMS. Les cinq configurations ci-dessous
-# etaient toutes ACCEPTEES; elles sont toutes refusees depuis.
+# comparait a une LISTE FERMEE DE NOMS. Ces configurations etaient toutes
+# ACCEPTEES; elles sont toutes refusees depuis.
+#
+# CE QUI RESTE NOMME, ET POURQUOI CE N'EST PAS UNE LISTE FERMEE (6.3b5).
+#
+# L'en-tete precedent laissait croire que plus aucun nom n'intervenait. C'etait
+# faux pour les roles de SERVICE, dont le controle comparait encore a
+# ('authenticated', 'anon') — et la contradiction etait visible a l'oeil nu
+# entre deux blocs du meme fichier.
+#
+# La distinction est desormais explicite dans la migration, parce qu'elle est
+# reelle:
+#
+#   * ce que le CATALOGUE sait — attributs privilegies, capacite a se
+#     connecter, appartenance transitive — est verifie SANS nommer personne;
+#   * ce qu'il ne peut PAS savoir — quels roles un JWT endosse — est DECLARE
+#     par le deploiement (`eurostruct.token_roles`), avec la convention
+#     Supabase pour defaut seulement.
+#
+# Un defaut n'est pas une liste fermee: il se remplace sans toucher au code, et
+# la migration ne pretend pas deduire ce qu'elle ne peut pas deduire.
 #
 # MODELE DE MENACE. Les superutilisateurs sont exclus des controles: ils
 # satisfont `pg_has_role` pour tout role, peuvent desactiver les declencheurs
@@ -33,6 +52,15 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="$(dirname "$HERE")"
 DB="${1:?usage: role_prerequisites.sh <nom-de-base-jetable>}"
+
+# L'identifiant est interpole dans « create database $DB » sans guillemets:
+# il doit donc etre un identifiant SQL simple, et c'est verifie plutot que
+# suppose. Le nom vient de run.sh aujourd'hui, mais un script appele a la main
+# avec un nom fantaisiste executerait ce qu'il contient.
+if ! [[ "$DB" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,62}$ ]]; then
+  echo "      ECHEC: nom de base « $DB » invalide (identifiant SQL simple attendu)" >&2
+  exit 2
+fi
 
 ROLES_FICTIFS="fictif_login_a fictif_b fictif_c fictif_relais"
 
@@ -47,18 +75,39 @@ else
 fi
 
 nettoyer() {
+  # ORDRE. Defaire les GREFFES d'abord, detruire ensuite.
+  #
+  # La version precedente detruisait les roles fictifs PUIS tentait
+  # « revoke fictif_relais from authenticated » — sur un role qui n'existait
+  # deja plus. La revocation echouait donc silencieusement (2>&1 >/dev/null),
+  # et si un jour PostgreSQL refuse de detruire un role encore greffe, le
+  # nettoyage se serait bloque sans que rien ne le dise. Un nettoyage dont
+  # l'ordre est faux ne se voit qu'au moment ou il compte.
   "${PSQL_ADMIN[@]}" -q -c "drop database if exists $DB;" >/dev/null 2>&1
+
+  # 1. Les greffes sur des roles PERMANENTS, qui survivent a ce script.
+  "${PSQL_ADMIN[@]}" -q -c \
+    "revoke fictif_relais from authenticated;" >/dev/null 2>&1
+  # 2. L'attribut altere par le scenario D, rendu a son etat.
+  "${PSQL_ADMIN[@]}" -q -c \
+    "alter role eurostruct_normative_writer nologin;" >/dev/null 2>&1
+  # 3. Et seulement alors, les roles fictifs eux-memes.
   for r in $ROLES_FICTIFS; do
     "${PSQL_ADMIN[@]}" -q -c "drop role if exists $r;" >/dev/null 2>&1
   done
-  # Le scenario D altere un role d'autorite: le rendre a son etat.
-  "${PSQL_ADMIN[@]}" -q -c \
-    "alter role eurostruct_normative_writer nologin;" >/dev/null 2>&1
-  # Le scenario E greffe un relais sur `authenticated`.
-  "${PSQL_ADMIN[@]}" -q -c \
-    "revoke fictif_relais from authenticated;" >/dev/null 2>&1
 }
 trap nettoyer EXIT
+
+# Le serveur doit repondre AVANT tout. Sans ce controle, une base injoignable
+# faisait echouer chaque `psql`, `err` restait vide, et le script annoncait
+# « la migration ACCEPTE cette configuration » — un diagnostic faux qui
+# designe le mauvais coupable. Un test doit savoir distinguer « la garantie
+# est absente » de « je n'ai pas pu regarder ».
+if ! "${PSQL_ADMIN[@]}" -X -q -tAc 'select 1' >/dev/null 2>&1; then
+  echo "      ECHEC: serveur PostgreSQL injoignable — aucun prerequis verifie" >&2
+  exit 2
+fi
+
 nettoyer
 
 KO=0
@@ -141,21 +190,95 @@ scenario "chaine a deux sauts vers le writer, coupee au premier maillon" \
   "membre de « eurostruct_normative_writer »"
 
 # LA transitivite, prouvee la ou des membres sont LEGITIMES: un role de
-# service a vocation a etre endosse par l'application. Ici `authenticated`
-# n'est membre que de `fictif_relais`, qui n'est nomme dans aucune liste: une
-# jointure directe sur pg_auth_members ne verrait rien.
-scenario "transitive reelle: authenticated -> relais -> normative_backend" \
+# service a vocation a etre endosse par l'application. Ici le porteur de jeton
+# n'est membre que de `fictif_relais`, qui n'est nomme nulle part: une jointure
+# directe sur pg_auth_members ne verrait rien. Le porteur, lui, est DECLARE
+# (`eurostruct.token_roles`, defaut « authenticated,anon »), parce qu'aucune
+# requete sur le catalogue ne peut deviner quel role un JWT endosse.
+scenario "transitive reelle: porteur de jeton -> relais -> normative_backend" \
   "create role fictif_relais nologin;
    grant normative_backend to fictif_relais;
    grant fictif_relais to authenticated;" \
   "authenticated.*atteint le role de service"
 
+# ---------------------------------------------------------------------
+# 6.3b5 #3 — roles de service PREEXISTANTS, connectables ou privilegies
+# ---------------------------------------------------------------------
+# Un environnement gere peut livrer `normative_backend` deja peuple, deja
+# connectable, ou rattache a un role qui porte CREATEROLE. Rien dans la
+# migration ne l'avait envisage: elle ne regardait que les porteurs de jeton.
+#
+# FAIL-CLOSED. Un role connectable qui atteint un role de service est refuse
+# TANT QU'IL N'EST PAS APPROUVE. Un role PRIVILEGIE qui l'atteint est refuse
+# SANS RECOURS: il contourne deja la RLS, et lui ajouter les droits d'ecriture
+# normatifs rendrait le cloisonnement doublement nominal.
+scenario "role connectable atteignant normative_backend, non approuve" \
+  "create role fictif_login_a login password 'FICTIF';
+   grant normative_backend to fictif_login_a;" \
+  "fictif_login_a.*sans avoir ete approuve"
+
+scenario "connectable atteignant un service par TRANSITIVITE, non approuve" \
+  "create role fictif_relais nologin;
+   grant normative_governance to fictif_relais;
+   create role fictif_c login password 'FICTIF';
+   grant fictif_relais to fictif_c;" \
+  "fictif_c.*sans avoir ete approuve"
+
+scenario "role PRIVILEGIE (createrole) atteignant normative_backend" \
+  "create role fictif_b nologin createrole;
+   grant normative_backend to fictif_b;" \
+  "fictif_b.*atteint le role de service"
+
+scenario "role PRIVILEGIE (bypassrls) atteignant normative_backend" \
+  "create role fictif_b nologin bypassrls;
+   grant normative_backend to fictif_b;" \
+  "fictif_b.*atteint le role de service"
+
 scenario "role d'autorite rendu connectable" \
   "alter role eurostruct_normative_writer login password 'FICTIF';" \
   "peut se connecter"
 
+# LA MOITIE POSITIVE DE L'APPROBATION. Le meme role connectable, DECLARE
+# cette fois, doit passer — sinon « fail-closed » ne serait qu'un refus
+# systematique deguise, et le produit resterait indeployable.
+#
+# L'approbation est posee sur la BASE (ALTER DATABASE ... SET), donc lue par
+# la migration qui s'y connecte. C'est la declaration de celui qui exerce les
+# migrations, au moment ou il les exerce.
+nettoyer
+"${PSQL_ADMIN[@]}" -q -c "create database $DB;" >/dev/null
+"${PSQL_DB[@]}" -q >/dev/null 2>&1 <<'SQL'
+do $$
+declare r text;
+begin
+  foreach r in array array['eurostruct_normative_writer',
+                           'eurostruct_normative_bootstrap',
+                           'normative_backend', 'normative_governance',
+                           'authenticated', 'anon'] loop
+    if not exists (select 1 from pg_roles where rolname = r) then
+      execute format('create role %I nologin', r);
+    end if;
+  end loop;
+end $$;
+SQL
+"${PSQL_ADMIN[@]}" -q -c "create role fictif_login_a login password 'FICTIF';
+                          grant normative_backend to fictif_login_a;"   >/dev/null 2>&1
+"${PSQL_ADMIN[@]}" -q -c   "alter database $DB set eurostruct.approved_service_logins = 'fictif_login_a';"   >/dev/null 2>&1
+APPROUVE=0
+"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
+for f in "$DB_DIR"/migrations/*.sql; do
+  "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 || APPROUVE=1
+done
+if [[ $APPROUVE -ne 0 ]]; then
+  echo "      ECHEC   role connectable APPROUVE refuse malgre la declaration"
+  echo "              fail-closed degenererait en refus systematique"
+  KO=1
+else
+  echo "      ok: un role connectable explicitement approuve est accepte"
+fi
+
 # La moitie POSITIVE: sans configuration hostile, la migration passe. Sans
-# elle, les cinq refus ci-dessus seraient satisfaits par une migration qui
+# elle, les refus ci-dessus seraient satisfaits par une migration qui
 # refuse toujours.
 nettoyer
 "${PSQL_ADMIN[@]}" -q -c "create database $DB;" >/dev/null

@@ -148,6 +148,7 @@ CONC_CODE=0
 # `virgin_root.sql` ne cree rien — toutes ses insertions echouent, et il le
 # verifie. La base est donc encore vierge pour le contrat croise.
 # --------------------------------------------------------------------------
+
 # --------------------------------------------------------------------------
 # Prerequis de deploiement sur les roles.
 #
@@ -162,6 +163,21 @@ ROLE_CODE=0
 "$HERE/role_prerequisites.sh" "$ROLE_DB" || ROLE_CODE=$?
 "${ADMIN[@]}" -q -c "drop database if exists $ROLE_DB;" >/dev/null 2>&1
 [[ $ROLE_CODE -eq 0 ]] || exit $ROLE_CODE
+
+# --------------------------------------------------------------------------
+# Installation sous un role de migration NON SUPERUTILISATEUR.
+#
+# Tout ce qui precede tourne sous `postgres`, superutilisateur — qui transfere
+# la propriete d'une fonction sans etre membre de rien, contourne la RLS et
+# detient EXECUTE implicitement. Rien de cela n'est vrai de la cible de
+# production, et quatre obstacles reels n'apparaissaient qu'ici.
+# --------------------------------------------------------------------------
+NS_DB="${DB_NAME}_nonsuper"
+echo "==> installation sous un role de migration non superutilisateur"
+NS_CODE=0
+"$HERE/nonsuperuser_install.sh" "$NS_DB" || NS_CODE=$?
+"${ADMIN[@]}" -q -c "drop database if exists $NS_DB;" >/dev/null 2>&1
+[[ $NS_CODE -eq 0 ]] || exit $NS_CODE
 
 XC_DB="${DB_NAME}_contract"
 echo "==> base vierge: racine de confiance et contrat croise"

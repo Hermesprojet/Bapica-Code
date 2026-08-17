@@ -72,6 +72,13 @@ begin
                   where rolname = 'eurostruct_normative_bootstrap') then
     create role eurostruct_normative_bootstrap nologin;
   end if;
+  -- ROLE DE DEPLOIEMENT, 6.3b5. Identifiable et distinct des roles
+  -- d'autorite: c'est LUI qui recoit EXECUTE sur l'amorcage, et le
+  -- deploiement s'y rattache explicitement. Voir le bloc d'ACL plus bas.
+  if not exists (select 1 from pg_roles
+                  where rolname = 'eurostruct_deployment') then
+    create role eurostruct_deployment nologin;
+  end if;
 end
 $$;
 
@@ -134,6 +141,13 @@ begin
        -- declencheurs, la base ne le contient pas. L'inclure ici ne
        -- protegerait rien et rendrait la migration inapplicable partout.
        and not membre.rolsuper
+       -- Et le role qui EXERCE la migration, 6.3b5. Il doit etre membre le
+       -- temps des transferts de propriete — PostgreSQL l'exige — et il rend
+       -- cette appartenance avant la fin du fichier. L'exclure ici n'ouvre
+       -- rien: la restitution est VERIFIEE en fin de migration, et c'est cette
+       -- verification-la qui porte la garantie durable. Sans cette exception,
+       -- la migration se refusait elle-meme des le second passage.
+       and membre.rolname <> current_user
        and pg_has_role(membre.rolname, autorite.rolname, 'MEMBER')
   loop
     raise exception
@@ -159,23 +173,165 @@ begin
       'vaudrait ce nom hors de toute fonction controlee.', r.porteur;
   end loop;
 
-  -- Roles de SERVICE: eux ont vocation a etre endosses par l'application, et
-  -- exiger qu'ils n'aient aucun membre rendrait le deploiement impossible. Ce
-  -- qu'on exige est plus etroit et suffisant: les roles porteurs d'un jeton
-  -- utilisateur ne doivent pas les atteindre. Transitivement, la aussi.
+  -- ROLES DE SERVICE. Eux ont vocation a etre endosses par l'application:
+  -- exiger qu'ils n'aient aucun membre rendrait le deploiement impossible.
+  -- Deux dangers distincts, et un seul est derivable du catalogue.
+  --
+  -- 6.3b5. La version precedente comparait a la liste fermee
+  -- ('authenticated', 'anon') tout en pretendant, quelques lignes plus haut,
+  -- ne nommer aucun role tiers. La contradiction etait reelle et elle est
+  -- levee ici en separant ce que PostgreSQL SAIT de ce qu'il ne peut pas
+  -- savoir.
+
+  -- (a) ATTEINTE PRIVILEGIEE — entierement derivable du catalogue, donc
+  --     aucune liste. Un role privilegie contourne de toute facon la RLS: s'il
+  --     atteint en plus un role de service, le cloisonnement est doublement
+  --     nominal. Aucune approbation ne peut rendre cela acceptable.
+  for r in
+    select service.rolname as cible, porteur.rolname as porteur,
+           porteur.rolsuper, porteur.rolbypassrls,
+           porteur.rolcreaterole, porteur.rolcreatedb
+      from pg_roles service
+      cross join pg_roles porteur
+     where service.rolname in ('normative_backend', 'normative_governance')
+       and porteur.oid <> service.oid
+       and not porteur.rolsuper          -- hors modele de menace
+       and (porteur.rolbypassrls or porteur.rolcreaterole or porteur.rolcreatedb)
+       and pg_has_role(porteur.rolname, service.rolname, 'MEMBER')
+  loop
+    raise exception
+      'prerequis non tenu: le role privilegie « % » atteint le role de '
+      'service « % » (bypassrls=%, createrole=%, createdb=%). Un role qui '
+      'contourne deja la RLS ne doit pas en plus heriter des droits '
+      'd''ecriture normatifs.',
+      r.porteur, r.cible, r.rolbypassrls, r.rolcreaterole, r.rolcreatedb;
+  end loop;
+
+  -- (b) ATTEINTE PAR UN ROLE CONNECTABLE — derivable aussi, mais parfois
+  --     LEGITIME: dans un deploiement Supabase, `authenticator` se connecte et
+  --     endosse `service_role`, qui portera `normative_backend`. C'est le
+  --     chemin normal, et l'interdire rendrait le produit indeployable.
+  --
+  --     FAIL-CLOSED: on refuse par defaut, et le deploiement DECLARE les roles
+  --     connectables autorises. Une declaration absente refuse; elle n'est
+  --     jamais deduite.
+  --
+  --     Pourquoi un parametre est acceptable ICI alors qu'il etait refuse pour
+  --     le marqueur d'audit: celui-la etait lu A L'EXECUTION, par n'importe
+  --     quelle session, et n'importe qui pouvait le poser. Celui-ci est lu
+  --     PENDANT LA MIGRATION, et seul celui qui exerce les migrations peut la
+  --     lancer. C'est sa declaration, pas celle d'un appelant quelconque.
+  --
+  --       ALTER DATABASE ma_base SET eurostruct.approved_service_logins
+  --         = 'authenticator';
+  for r in
+    select service.rolname as cible, porteur.rolname as porteur
+      from pg_roles service
+      cross join pg_roles porteur
+     where service.rolname in ('normative_backend', 'normative_governance')
+       and porteur.oid <> service.oid
+       and not porteur.rolsuper
+       and porteur.rolcanlogin
+       and pg_has_role(porteur.rolname, service.rolname, 'MEMBER')
+       and porteur.rolname <> all (
+             string_to_array(
+               btrim(coalesce(
+                 current_setting('eurostruct.approved_service_logins', true), '')),
+               ','))
+  loop
+    raise exception
+      'prerequis non tenu: le role connectable « % » atteint le role de '
+      'service « % » sans avoir ete approuve. Si ce chemin est voulu, le '
+      'declarer explicitement: ALTER DATABASE ... SET '
+      'eurostruct.approved_service_logins = ''%%''. Une approbation absente '
+      'refuse — elle n''est jamais deduite.', r.porteur, r.cible;
+  end loop;
+
+  -- (c) ATTEINTE PAR UN PORTEUR DE JETON — NON derivable du catalogue.
+  --     Quels roles un JWT endosse est une convention de deploiement:
+  --     PostgreSQL ne peut pas la connaitre, et pretendre la deduire serait
+  --     une fausse garantie. Elle est donc DECLAREE, avec la convention
+  --     Supabase pour defaut, et non gravee dans la migration.
   for r in
     select service.rolname as cible, jeton.rolname as porteur
       from pg_roles service
-      cross join pg_roles jeton
+      cross join unnest(string_to_array(
+        coalesce(current_setting('eurostruct.token_roles', true),
+                 'authenticated,anon'), ',')) as t(nom)
+      join pg_roles jeton on jeton.rolname = btrim(t.nom)
      where service.rolname in ('normative_backend', 'normative_governance')
-       and jeton.rolname in ('authenticated', 'anon')
        and not jeton.rolsuper
        and pg_has_role(jeton.rolname, service.rolname, 'MEMBER')
   loop
     raise exception
-      'prerequis non tenu: « % » atteint le role de service « % ». Un '
-      'porteur de jeton en heriterait les droits d''ecriture, et le '
+      'prerequis non tenu: le porteur de jeton « % » atteint le role de '
+      'service « % ». Il en heriterait les droits d''ecriture, et le '
       'cloisonnement serait nominal.', r.porteur, r.cible;
+  end loop;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- EMPRUNT TEMPORAIRE DE L'AUTORITE, le temps des transferts de propriete
+-- ---------------------------------------------------------------------
+-- 6.3b5. Ce bloc n'existait pas, et son absence rendait la migration
+-- INAPPLICABLE par un role non superutilisateur — c'est-a-dire par la cible
+-- de production reelle.
+--
+-- PostgreSQL exige, pour « ALTER FUNCTION ... OWNER TO r », que le
+-- proprietaire courant soit MEMBRE de r. Un superutilisateur satisfait cette
+-- condition partout et ne rencontre jamais l'obstacle; un role de migration
+-- ordinaire s'y arrete net. La CI, superutilisateur, ne pouvait donc pas voir
+-- le probleme — et c'est exactement ce que le test d'installation
+-- non-superutilisateur existe pour attraper.
+--
+-- L'appartenance est prise ICI et RENDUE a la fin du fichier. Le prerequis
+-- « les roles d'autorite n'ont aucun membre » est evalue AVANT ce bloc et
+-- re-verifie APRES sa restitution, si bien que l'etat durable reste celui
+-- qu'on garantit. Pendant la migration, c'est le role de migration qui
+-- detient l'autorite — ce qui est vrai de toute facon: il vient d'ecrire les
+-- fonctions.
+-- PostgreSQL exige que le NOUVEAU PROPRIETAIRE d'une fonction ait CREATE sur
+-- le schema qui la contient. Depuis PostgreSQL 15, le schema `public`
+-- n'accorde plus CREATE a PUBLIC: les roles d'autorite ne l'ont donc pas, et
+-- « ALTER FUNCTION ... OWNER TO » echoue avec « permission denied for schema
+-- public ».
+--
+-- Un superutilisateur ne rencontre jamais ce controle. C'est le troisieme
+-- obstacle qu'a revele l'installation non superutilisateur, apres REFERENCES
+-- sur auth.users et l'ADMIN OPTION sur les roles d'autorite.
+--
+-- Le droit est sans portee pratique ici: ces roles sont NOLOGIN et n'ont aucun
+-- membre, personne ne peut donc s'en servir pour creer quoi que ce soit.
+grant usage, create on schema public
+  to eurostruct_normative_writer, eurostruct_normative_bootstrap;
+
+-- Ce qui a ete EMPRUNTE est note, pour ne rendre que cela. Un deploiement
+-- peut avoir accorde l'appartenance lui-meme, avec ADMIN OPTION, parce que
+-- les roles d'autorite preexistaient: la lui retirer sans l'avoir prise
+-- casserait le passage suivant.
+create temp table if not exists _esc_emprunt(role_name text) on commit preserve rows;
+
+do $$
+declare r text;
+begin
+  foreach r in array array['eurostruct_normative_writer',
+                           'eurostruct_normative_bootstrap'] loop
+    if not pg_has_role(current_user, r, 'MEMBER') then
+      begin
+        execute format('grant %I to %I', r, current_user);
+        insert into _esc_emprunt(role_name) values (r);
+      exception when insufficient_privilege then
+        raise exception
+          'le role de migration « % » ne peut pas emprunter « % ». Cela '
+          'arrive quand les roles d''autorite PREEXISTENT, crees par un '
+          'tiers: le migrateur n''en a alors pas l''ADMIN OPTION. Le '
+          'deploiement doit le lui donner: GRANT % TO % WITH ADMIN OPTION.',
+          current_user, r, r, current_user
+          using errcode = 'insufficient_privilege';
+      end;
+    end if;
   end loop;
 end
 $$;
@@ -861,6 +1017,46 @@ alter function bootstrap_normative_administrator(uuid, text, text)
   owner to eurostruct_normative_bootstrap;
 revoke all on function bootstrap_normative_administrator(uuid, text, text)
   from public;
+
+-- EXECUTE ACCORDE INTENTIONNELLEMENT, 6.3b5.
+--
+-- L'ACL precedente n'accordait EXECUTE a personne: seuls le proprietaire de
+-- la fonction et un superutilisateur pouvaient amorcer. C'etait presente
+-- comme « la position la plus restrictive possible », et c'en etait une —
+-- mais elle rendait le produit INDEPLOYABLE sur une cible ou le role de
+-- migration n'est pas superutilisateur, ce qui est le cas de toutes les
+-- offres gerees, Supabase compris. Une restriction qui interdit l'usage
+-- prevu n'est pas une garantie, c'est un defaut qui n'a pas encore ete
+-- rencontre.
+--
+-- Le droit est donc accorde a un role NOMME, `eurostruct_deployment`, auquel
+-- le deploiement rattache son role de migration:
+--
+--   GRANT eurostruct_deployment TO <role-de-migration>;
+--
+-- CE QUE CE ROLE N'EST PAS. Il n'est membre d'AUCUN role d'autorite, et les
+-- prerequis ci-dessus le refuseraient s'il l'etait. Il peut donc OUVRIR la
+-- chaine de confiance — une fois, l'index d'unicite y veille — sans pouvoir
+-- pour autant fabriquer une trace normative ni emprunter la branche
+-- « bootstrap » d'une insertion brute. Ouvrir la chaine et forger une preuve
+-- restent deux pouvoirs distincts.
+grant execute on function bootstrap_normative_administrator(uuid, text, text)
+  to eurostruct_deployment;
+
+-- `eurostruct_deployment`, en un paragraphe:
+--
+--   Role de deploiement. Recoit EXECUTE sur l'amorcage normatif, et rien
+--   d'autre. A rattacher au role qui exerce les migrations:
+--       GRANT eurostruct_deployment TO <role-de-migration>;
+--   N'est membre d'aucun role d'autorite et ne doit jamais le devenir — les
+--   prerequis ci-dessus refusent la migration si cela arrivait.
+--
+-- Ecrit ICI et non par « COMMENT ON ROLE »: commenter un role exige l'ADMIN
+-- OPTION dessus, qu'un role de migration n'a pas quand les roles preexistent.
+-- La migration echouait donc sur une ligne de DOCUMENTATION — quatrieme
+-- obstacle revele par l'installation non superutilisateur. Un role est de
+-- toute facon un objet de CLUSTER: le commenter depuis une migration de base
+-- ecrirait dans un espace partage par toutes les bases de l'instance.
 
 comment on function bootstrap_normative_administrator is
   'Ouvre la chaine de confiance UNE FOIS. Refuse si un administrateur actif '
@@ -1901,7 +2097,86 @@ begin
              eurostruct_normative_writer, eurostruct_normative_bootstrap';
     execute 'grant select on auth.users to eurostruct_normative_writer,
              eurostruct_normative_bootstrap';
+
+    -- ET ON VERIFIE QUE C'EST PASSE.
+    --
+    -- « GRANT » n'echoue pas quand celui qui l'execute n'a pas le GRANT
+    -- OPTION: il emet un WARNING et n'accorde RIEN. Sous superutilisateur la
+    -- question ne se pose pas; sous un role de migration ordinaire, les trois
+    -- lignes ci-dessus peuvent donc ne rien faire du tout — sans erreur, sans
+    -- echec de migration, et la chaine normative se casse plus tard, a la
+    -- premiere confirmation, sur un « permission denied for schema auth » que
+    -- rien ne relie a sa cause. Verifie: c'est exactement ce qui se produisait.
+    if not has_schema_privilege('eurostruct_normative_writer', 'auth', 'USAGE')
+       or not has_table_privilege('eurostruct_normative_writer', 'auth.users',
+                                  'SELECT') then
+      raise exception
+        'les roles d''autorite n''ont pas obtenu l''acces au schema « auth ». '
+        'Le role de migration « % » ne detient pas le GRANT OPTION dessus, et '
+        'PostgreSQL a emis un simple avertissement. Le deploiement doit '
+        'accorder ces droits lui-meme, ou donner le GRANT OPTION: '
+        'GRANT USAGE ON SCHEMA auth TO % WITH GRANT OPTION; '
+        'GRANT SELECT ON auth.users TO % WITH GRANT OPTION;',
+        current_user, current_user, current_user
+        using errcode = 'insufficient_privilege';
+    end if;
   end if;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- RESTITUTION DE L'AUTORITE
+-- ---------------------------------------------------------------------
+-- L'emprunt pris plus haut est rendu. Un superutilisateur n'a rien recu et
+-- n'a donc rien a rendre: le `revoke` serait sans effet, et le test qui suit
+-- l'ignore puisqu'il porte sur les membres NON superutilisateurs.
+do $$
+declare r record; n text;
+begin
+  for n in select role_name from _esc_emprunt loop
+    execute format('revoke %I from %I', n, current_user);
+  end loop;
+  delete from _esc_emprunt;
+
+  -- ET ON VERIFIE. Une restitution qu'on ne constate pas est une promesse:
+  -- si elle echouait, la migration laisserait derriere elle un membre
+  -- permanent des roles d'autorite, et toute la preuve d'origine tomberait.
+  for r in
+    select autorite.rolname as cible, membre.rolname as porteur
+      from pg_roles autorite
+      cross join pg_roles membre
+     where autorite.rolname in ('eurostruct_normative_writer',
+                                'eurostruct_normative_bootstrap')
+       and membre.oid <> autorite.oid
+       and not membre.rolsuper
+       and membre.rolname <> current_user
+       and pg_has_role(membre.rolname, autorite.rolname, 'MEMBER')
+  loop
+    raise exception
+      'l''emprunt d''autorite n''a pas ete rendu: « % » est encore membre de '
+      '« % » a la fin de la migration.', r.porteur, r.cible;
+  end loop;
+
+  -- Le migrateur lui-meme: s'il est ENCORE membre, c'est que le deploiement
+  -- le lui a accorde et que ce n'etait donc pas un emprunt. Ce n'est pas une
+  -- faute — les roles d'autorite peuvent preexister — mais cela doit etre VU,
+  -- parce que dans cet etat `current_user` cesse d'etre une preuve d'origine
+  -- pour ce role-la.
+  for r in
+    select autorite.rolname as cible
+      from pg_roles autorite
+     where autorite.rolname in ('eurostruct_normative_writer',
+                                'eurostruct_normative_bootstrap')
+       and not (select rolsuper from pg_roles where rolname = current_user)
+       and pg_has_role(current_user, autorite.rolname, 'MEMBER')
+  loop
+    raise warning
+      'le role de migration « % » reste membre de « % » apres la migration. '
+      'Le deploiement doit lui retirer cette appartenance: tant qu''il la '
+      'detient, il peut forger une origine normative. '
+      'REVOKE % FROM %;', current_user, r.cible, r.cible, current_user;
+  end loop;
 end
 $$;
 
