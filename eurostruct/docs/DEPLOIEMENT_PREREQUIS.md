@@ -1,11 +1,60 @@
 # EUROSTRUCT — prérequis de déploiement de la chaîne normative
 
 > **État de la vérification.** Ce document décrit ce qu'un déploiement doit
-> fournir pour que les migrations `0001` à `0010` s'appliquent et que la chaîne
+> fournir pour que les migrations `0000` à `0010` s'appliquent et que la chaîne
 > de confiance normative fonctionne. Les prérequis listés ne sont pas déduits
 > d'une lecture du code : chacun a été **rencontré** par
 > `db/test/nonsuperuser_install.sh`, qui applique les migrations sous un rôle
 > de migration non superutilisateur.
+
+## 0. Trois phases, et **deux acteurs distincts** (6.3b6c)
+
+Le déploiement n'est plus « appliquer les migrations ». Il a **trois phases**,
+et les deux premières sont exercées par **deux rôles différents** :
+
+| Phase | Fichier | Exercée par | Ce qu'elle fait |
+|---|---|---|---|
+| **0** | `db/migrations/0000_sceau_normatif.sql` | **plan de contrôle** | crée les six rôles canoniques et la **racine de confiance** — les quatre tables de confiance et les fonctions qui les écrivent, possédées par `eurostruct_normative_activator` |
+| **1** | `0001` … `0010` | **migrateur** | applique le schéma applicatif ; termine en `PENDING` |
+| **2** | `select normative_finalize_deployment(<manifeste>)` | **plan de contrôle** | compare le manifeste, restitue les emprunts, inscrit l'activation → `ACTIVE` |
+
+### Pourquoi deux rôles, et pas un
+
+PostgreSQL n'accepte `ALTER FUNCTION … OWNER TO r` que si le rôle courant peut
+faire `SET ROLE r`. La phase 1 doit donc pouvoir **endosser** les rôles dont
+elle rend ses fonctions propriétaires. Tant que la racine de confiance
+appartenait à un rôle emprunté par le migrateur, elle était **à sa portée** :
+un `SET ROLE` puis un `insert` suffisaient à rendre l'état `ACTIVE` sans
+finalisation. C'est mesuré, et c'est la raison d'être de la phase 0.
+
+Un déploiement où **un seul** rôle privilégié existe s'installe (phase 1) mais
+**ne se finalise pas** : la phase 2 refuse en nommant la séparation manquante.
+Ce n'est pas une dégradation silencieuse, c'est un refus.
+
+Voir `docs/schema/MODELE_DE_MENACE_NORMATIF.md`.
+
+### Ce que le plan de contrôle doit détenir
+
+En plus d'être un rôle **distinct** du migrateur et **non superutilisateur** :
+
+| Droit | Pourquoi |
+|---|---|
+| `CREATE` sur la base | il y crée les tables de confiance |
+| `CREATE` sur le schéma `public` **`WITH GRANT OPTION`** | il doit **retransmettre** ce droit à `eurostruct_normative_activator`, qui devient propriétaire de ces objets — PostgreSQL l'exige du nouveau propriétaire |
+| `USAGE` sur le schéma `auth` | les fonctions scellées le référencent |
+| `CREATEROLE` | il crée les six rôles canoniques |
+| `eurostruct_deployment` (accordé **après** la phase 0) | c'est ce rôle qui porte `EXECUTE` sur la finalisation |
+
+Il conserve, après la phase 0, un **ADMIN résiduel** irrévocable sur les rôles
+qu'il a créés — fait `F1` de PostgreSQL 16. C'est la seule exemption du modèle,
+et elle est figée à l'installation par **OID et par nom**.
+
+### Si le plan de contrôle est un superutilisateur
+
+C'est légitime — forme auto-hébergée — mais la phase 0 émet alors un `notice`
+explicite : le sceau est posé, il ne contient pas celui qui l'a posé, et aucun
+sceau ne le peut. `pg_has_role(superutilisateur, …, 'SET')` rend `true` quoi
+qu'il arrive. Le superutilisateur est **hors modèle de menace**.
 
 ## 1. Ce qui est vérifié, et ce qui ne l'est pas
 
