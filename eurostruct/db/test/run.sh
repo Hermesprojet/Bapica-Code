@@ -70,14 +70,22 @@ harnais_verrou_prendre "db/test/run.sh" || exit $?   # 2 = parametre invalide, 3
 exiger_cluster_jetable "db/test/run.sh" || exit 2
 
 
+# LES SIX ROLES CANONIQUES — `eurostruct_normative_activator` COMPRIS.
+#
+# Il est cree par 0010 depuis 6.3b6b, il est GLOBAL au cluster comme les
+# autres, et il survit a la destruction de la base. Absent de cette liste, il
+# n'etait ni exige absent au demarrage ni detruit en sortie: mesure sur le
+# cluster de test, il tranait en residu d'une execution anterieure sans
+# qu'aucune postcondition ne l'ait signale.
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
+            eurostruct_normative_activator
             normative_backend normative_governance eurostruct_deployment)
 
 # BLOQUANT, et place ICI: avant l'oracle, avant les migrations, avant tout
 # test. Le rouge d'une sous-surface ne suffirait pas — `etape()` continue
 # volontairement, et la suite irait creer puis detruire des roles qui ne lui
 # appartiennent pas. C'est toute la commande qui doit s'arreter.
-exiger_roles_absents "db/test/run.sh" "${CANONIQUES[@]}" || exit 2
+exiger_roles_absents "db/test/run.sh" "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" || exit 2
 
 # La base RECREEE, et non celle nommee dans la connexion. Les deux etaient
 # confondues: le script effacait `eurostruct_test` puis appliquait les
@@ -143,15 +151,23 @@ etape() {
 # residu » etait une observation du rapport; c'est desormais une propriete
 # controlee, base par base et role par role, par nom exact.
 NETTOYAGE_KO=0
+# Nommes AVANT le trap: `set -u` ferait echouer le nettoyage si la suite
+# s'arretait avant leur affectation, et le decor resterait derriere.
+PLAN_R=""; MIG_R=""
 rendre_le_decor() {
   local r
-  for r in "${CANONIQUES[@]}"; do registre_role "$r"; done
+  for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}"; do registre_role "$r"; done
   detruire_roles_crees || NETTOYAGE_KO=1
-  harnais_postcondition_nettoyage "db/test/run.sh" "${CANONIQUES[@]}" || NETTOYAGE_KO=1
+  harnais_postcondition_nettoyage "db/test/run.sh" \
+    "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" \
+    ${PLAN_R:+"$PLAN_R"} ${MIG_R:+"$MIG_R"} || NETTOYAGE_KO=1
   harnais_verrou_rendre
   [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
 }
 trap rendre_le_decor EXIT
+# ET SUR SIGNAL: sans cela, TERM ou Ctrl-C tuent bash avant le piege ci-dessus
+# et le decor global reste derriere (voir harnais_piege_signaux).
+harnais_piege_signaux
 
 echo "==> oracle comportemental des primitives de portee"
 etape "oracle de portee des roles" \
@@ -160,6 +176,17 @@ etape "oracle de portee des roles" \
 echo "==> deploiement en deux phases"
 etape "deploiement en deux phases" \
   "$HERE/two_phase_deployment.sh" "${DB_NAME}_2p"
+
+# --------------------------------------------------------------------------
+# LE CONTRAT DE FINALISATION — huit tentatives de contournement
+# --------------------------------------------------------------------------
+# `two_phase_deployment.sh` verifie que la finalisation MARCHE. Celui-ci
+# verifie qu'elle ne peut pas etre CONTOURNEE, et il le fait en essayant. Il
+# exige lui aussi un jeu canonique vierge — chacun de ses six decors le pose et
+# le rend — et passe donc ici, avant la base principale.
+echo "==> contrat de finalisation"
+etape "contrat de finalisation" \
+  "$HERE/finalisation_contract.sh" "${DB_NAME:0:20}fc"
 
 # --------------------------------------------------------------------------
 # LES ETAPES QUI EXIGENT UN JEU CANONIQUE VIERGE PASSENT AVANT LA BASE
@@ -207,18 +234,115 @@ adm -c "drop database if exists $NS_DB;" >/dev/null 2>&1
 # ces primitives DISENT est ici confronte a ce qui se PASSE — vrai `SET ROLE`,
 # vrai heritage, vrai `GRANT` a un tiers — sur six formes de graphe.
 
+# --------------------------------------------------------------------------
+# LA BASE PRINCIPALE EST DEPLOYEE COMME UNE PRODUCTION, EN DEUX PHASES
+# --------------------------------------------------------------------------
+# Elle etait creee et migree par `postgres`. Depuis 6.3b6b, cette forme n'est
+# pas finalisable — et elle ne le doit pas: qui migre et qui approuve seraient
+# le meme role, la separation serait nominale. La consequence n'etait pas
+# theorique: les ecritures normatives de `05_normative_confirmation.sql` sont
+# refusees tant que le deploiement est en PENDING, et elles doivent l'etre.
+#
+# Deux roles NON SUPERUTILISATEURS sont donc introduits, une fois pour toutes
+# les bases de cette suite:
+#
+#   <db>_plan  provisionne les six roles canoniques, prete les trois roles
+#              d'autorite au migrateur, et exerce la phase 2 (fait F3: seul le
+#              donneur peut revoquer);
+#   <db>_mig   proprietaire de la base, applique les migrations.
+#
+# Les roles d'autorite sont GLOBAUX au cluster: un seul plan de controle les
+# provisionne, et chaque base est finalisee separement — ce qui est exactement
+# la forme reelle d'un cluster portant plusieurs bases. Les emprunts sont donc
+# repretes avant chaque deploiement et rendus par la finalisation.
+#
+# Les tests de garanties, eux, continuent de tourner sous `postgres`: ils
+# verifient la RLS et les declencheurs, pas le deploiement.
+PLAN_R="${DB_NAME}_plan"; PLAN_MDP="FICTIF-run-plan"
+MIG_R="${DB_NAME}_mig";   MIG_MDP="FICTIF-run-mig"
+# shellcheck disable=SC2034
+harnais_valider_identifiant "PLAN_R" "$PLAN_R" || exit 2
+harnais_valider_identifiant "MIG_R"  "$MIG_R"  || exit 2
+creer_role "$PLAN_R" "login password '$PLAN_MDP' createrole" \
+  || { echo "ECHEC: creation du plan de controle impossible" >&2; exit 1; }
+creer_role "$MIG_R" "login password '$MIG_MDP' createrole createdb" \
+  || { echo "ECHEC: creation du migrateur impossible" >&2; exit 1; }
+adm -c "grant \"$PLAN_R\" to ${PGUSER:-postgres};" >/dev/null 2>&1
+
+plan_pg() { PGUSER="$PLAN_R" PGPASSWORD="$PLAN_MDP" psql -X -q -d postgres "$@"; }
+plan_db() { local b="$1"; shift
+            PGUSER="$PLAN_R" PGPASSWORD="$PLAN_MDP" psql -X -q -d "$b" "$@"; }
+mig_db()  { local b="$1"; shift
+            PGUSER="$MIG_R" PGPASSWORD="$MIG_MDP" psql -X -q -d "$b" "$@"; }
+
+# LE PROVISIONNEMENT, UNE SEULE FOIS.
+plan_pg -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
+create role eurostruct_normative_writer nologin;
+create role eurostruct_normative_bootstrap nologin;
+create role eurostruct_normative_activator nologin;
+create role normative_backend nologin;
+create role normative_governance nologin;
+create role eurostruct_deployment nologin;
+SQL
+adm -c "grant eurostruct_deployment to \"$PLAN_R\" with inherit true;" >/dev/null 2>&1
+
+# `preter_les_emprunts` — a refaire avant CHAQUE deploiement: la finalisation
+# precedente les a rendus, et c'est le but.
+preter_les_emprunts() {
+  plan_pg -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
+grant eurostruct_normative_writer    to "$MIG_R" with admin option;
+grant eurostruct_normative_bootstrap to "$MIG_R" with admin option;
+grant eurostruct_normative_activator to "$MIG_R" with admin option;
+SQL
+}
+
+# `deployer <base> <fichier-de-migration>...` — phase 1 puis phase 2.
+# Rend 1 et imprime le motif si l'une des deux echoue.
+deployer() {
+  local b="$1"; shift
+  local f out etat manif
+  adm -v ON_ERROR_STOP=1 -c "create database \"$b\" owner \"$MIG_R\";" >/dev/null || return 1
+  psql -X -q -d "$b" -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
+  psql -X -q -d "$b" >/dev/null 2>&1 <<SQL
+grant usage on schema auth to "$MIG_R" with grant option;
+grant select, insert, references on auth.users to "$MIG_R" with grant option;
+grant execute on function auth.uid() to "$MIG_R" with grant option;
+grant create on database "$b" to "$MIG_R";
+SQL
+  adm -c "alter database \"$b\"
+            set eurostruct.approved_deployment_roles = '$MIG_R,$PLAN_R';" >/dev/null 2>&1
+  preter_les_emprunts
+  for f in "$@"; do
+    echo "    $(basename "$f")"
+    if ! out=$(mig_db "$b" -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
+      echo "ECHEC: $(basename "$f") refusee:" >&2
+      grep -m2 -E "ERROR|FATAL" <<<"$out" | sed 's/^/       /' >&2
+      return 1
+    fi
+  done
+  etat=$(plan_db "$b" -tAc 'select normative_activation_state()' 2>&1)
+  if [[ "$etat" != "PENDING" ]]; then
+    echo "ECHEC: $b ne se termine pas en PENDING (obtenu: $etat)" >&2; return 1
+  fi
+  manif=$(plan_db "$b" -tAc 'select normative_settings_manifest()' 2>&1)
+  out=$(plan_db "$b" -tAc "select normative_finalize_deployment('$manif')" 2>&1)
+  etat=$(plan_db "$b" -tAc 'select normative_activation_state()' 2>&1)
+  if [[ "$etat" != "ACTIVE" ]]; then
+    echo "ECHEC: phase 2 refusee sur $b (etat $etat):" >&2
+    grep -m2 -E "ERROR|FATAL" <<<"$out" | sed 's/^/       /' >&2
+    return 1
+  fi
+  echo "    phase 2: $b PENDING -> ACTIVE par « $PLAN_R »"
+  return 0
+}
+
 echo "==> recreating $DB_NAME"
 adm -c "drop database if exists $DB_NAME;" >/dev/null
-creer_base "$DB_NAME" >/dev/null
+registre_base "$DB_NAME"
 
-echo "==> applying schema"
-for f in \
-  "$HERE/00_supabase_stub.sql" \
-  "$DB_DIR"/migrations/*.sql
-do
-  echo "    $(basename "$f")"
-  base -v ON_ERROR_STOP=1 -f "$f"
-done
+echo "==> applying schema (deploiement en deux phases)"
+deployer "$DB_NAME" "$DB_DIR"/migrations/*.sql \
+  || { echo "ECHEC: la base principale n'a pas pu etre deployee" >&2; exit 1; }
 
 echo "==> seeding national annexes"
 base -v ON_ERROR_STOP=1 -f "$DB_DIR/seed/0001_ndp.sql"
@@ -248,16 +372,13 @@ unset 'PRECEDENTES[${#PRECEDENTES[@]}-1]'
 
 echo "==> upgrade path: $(basename "$DERNIERE") sur une base en 0009"
 adm -c "drop database if exists $UPGRADE_DB;" >/dev/null
-creer_base "$UPGRADE_DB" >/dev/null
-
-UP=(psql -X -q -d "$UPGRADE_DB")
-
-"${UP[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql"
-for f in "${PRECEDENTES[@]}"; do
-  "${UP[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
-done
-"${UP[@]}" -v ON_ERROR_STOP=1 -q -f "$DERNIERE"
-"${UP[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/upgrade_check.sql"
+registre_base "$UPGRADE_DB"
+# MEME DEPLOIEMENT EN DEUX PHASES: `deployer` applique la liste dans l'ordre
+# donne — 0001..0009 puis la derniere — et finalise. Le chemin de mise a niveau
+# doit franchir la phase 2 comme le chemin d'installation complete.
+deployer "$UPGRADE_DB" "${PRECEDENTES[@]}" "$DERNIERE" \
+  || { echo "ECHEC: le chemin de mise a niveau n'a pas pu etre deploye" >&2; exit 1; }
+psql -X -q -d "$UPGRADE_DB" -v ON_ERROR_STOP=1 -f "$HERE/upgrade_check.sql"
 adm -c "drop database if exists $UPGRADE_DB;" >/dev/null
 
 # --------------------------------------------------------------------------
@@ -273,13 +394,9 @@ adm -c "drop database if exists $UPGRADE_DB;" >/dev/null
 CONC_DB="${DB_NAME}_conc"
 echo "==> concurrence multi-connexion"
 adm -c "drop database if exists $CONC_DB;" >/dev/null
-creer_base "$CONC_DB" >/dev/null
-
-CONC=(psql -X -q -d "$CONC_DB")
-"${CONC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql"
-for f in "$DB_DIR"/migrations/*.sql; do
-  "${CONC[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
-done
+registre_base "$CONC_DB"
+deployer "$CONC_DB" "$DB_DIR"/migrations/*.sql \
+  || { echo "ECHEC: la base de concurrence n'a pas pu etre deployee" >&2; exit 1; }
 
 # `set -e` termine le script AVANT la ligne suivante des que concurrency.sh
 # sort non nul: `CONC_CODE` n'etait jamais lu, et la base de test restait
@@ -317,13 +434,11 @@ adm -c "drop database if exists $CONC_DB;" >/dev/null
 XC_DB="${DB_NAME}_contract"
 echo "==> base vierge: racine de confiance et contrat croise"
 adm -c "drop database if exists $XC_DB;" >/dev/null
-creer_base "$XC_DB" >/dev/null
+registre_base "$XC_DB"
+deployer "$XC_DB" "$DB_DIR"/migrations/*.sql \
+  || { echo "ECHEC: la base vierge n'a pas pu etre deployee" >&2; exit 1; }
 
 XC=(psql -X -q -d "$XC_DB")
-"${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql"
-for f in "$DB_DIR"/migrations/*.sql; do
-  "${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
-done
 
 etape "base vierge: racine de confiance" \
   "${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/virgin_root.sql"

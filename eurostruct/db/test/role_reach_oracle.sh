@@ -104,6 +104,9 @@ nettoyer() {
   detruire_roles_crees
 }
 trap nettoyer EXIT
+# ET SUR SIGNAL: sans cela, TERM ou Ctrl-C tuent bash avant le piege ci-dessus
+# et le decor global reste derriere (voir harnais_piege_signaux).
+harnais_piege_signaux
 
 adm -v ON_ERROR_STOP=1 -c "create database \"$DB\";" >/dev/null || {
   echoue "creation de la base impossible"; exit 1; }

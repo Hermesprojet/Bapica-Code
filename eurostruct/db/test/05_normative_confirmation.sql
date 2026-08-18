@@ -2211,28 +2211,86 @@ $$;
 
 
 -- =====================================================================
--- 6.3b6a — l'etat d'activation, et ce que son ABSENCE signifie
+-- 6.3b6a/6.3b6b — l'activation, et ce qu'elle doit porter
 -- =====================================================================
--- La propriete centrale: une table VIDE vaut PENDING. Un etat qu'il faudrait
--- POSER pour bloquer se trahirait au premier oubli — restauration partielle,
--- migration interrompue, base clonee sans ses donnees. Ici il n'y a rien a
--- poser: tout ce qui n'a pas ete explicitement active est en attente.
+-- CE CONTROLE A CHANGE DE SUJET, PARCE QUE LA BASE A CHANGE D'ETAT.
+--
+-- Il exigeait « aucune ligne d'activation », au motif que l'activation n'est
+-- jamais un effet de bord d'installation. C'etait vrai d'une base migree et
+-- rien de plus — ce qu'etait la base principale jusqu'a 6.3b6b. Elle est
+-- desormais DEPLOYEE EN DEUX PHASES par `run.sh`, comme une production: la
+-- phase 2 a eu lieu, et exiger PENDING ici reviendrait a exiger que le
+-- deploiement soit incomplet.
+--
+-- La propriete « la migration seule n'active pas » n'est pas perdue: elle est
+-- constatee la ou elle se mesure, c'est-a-dire entre les deux phases —
+-- `two_phase_deployment.sh` (configurations A, B, C) et
+-- `finalisation_contract.sh` (six decors) exigent tous PENDING a la fin de la
+-- phase 1, et l'un d'eux exige en outre que la finalisation soit REFUSEE quand
+-- un seul role privilegie existe.
+--
+-- Ce qui est verifie ici, c'est ce qu'une activation doit PORTER.
 do $$
-declare n bigint;
+declare
+  n bigint;
+  plan_nom text;
+  plan_oid oid;
+  mig_nom text;
 begin
   select count(*) into n from normative_activation;
-  if n <> 0 then
+  if n <> 1 then
     raise exception
-      'la migration a active le sous-systeme (% ligne): l''activation est une '
-      'decision de deploiement, jamais un effet de bord d''installation', n;
+      'la base principale porte % ligne(s) d''activation, il en faut '
+      'exactement 1: elle est deployee en deux phases par run.sh', n;
   end if;
-  if normative_activation_state() <> 'PENDING' then
+  if normative_activation_state() <> 'ACTIVE' then
     raise exception
-      'table vide et etat « % »: l''absence de ligne doit valoir PENDING',
-      normative_activation_state();
+      'ligne presente et etat « % »: la presence de la ligne doit valoir '
+      'ACTIVE', normative_activation_state();
   end if;
 
-  -- Et l'ecriture n'est ouverte a personne: l'activation passera par la
+  -- L'IDENTITE DU PLAN DE CONTROLE EST COMPLETE, et elle designe le role
+  -- qu'elle nomme. Un nom seul se libere et se reprend (6.3b6b, point 3).
+  plan_nom := normative_control_plane();
+  plan_oid := normative_control_plane_oid();
+  if plan_nom is null or plan_oid is null then
+    raise exception
+      'le plan de controle est fige de facon incomplete (nom %, oid %)',
+      coalesce(plan_nom, 'NULL'), coalesce(plan_oid::text, 'NULL');
+  end if;
+  if not exists (select 1 from pg_roles
+                  where oid = plan_oid and rolname = plan_nom) then
+    raise exception
+      'le plan de controle fige (oid %, « % ») ne designe plus un role '
+      'portant ce nom', plan_oid, plan_nom;
+  end if;
+
+  -- ET LE MIGRATEUR NE DETIENT PLUS RIEN. C'est ce que la phase 2 achete, et
+  -- c'est la seule raison pour laquelle les ecritures normatives sont
+  -- desormais ouvertes sur cette base.
+  select migrateur_nom into mig_nom from normative_finalization_intent;
+  if mig_nom is null then
+    raise exception 'aucune intention de finalisation: l''activation ne dit '
+                    'pas qui a migre';
+  end if;
+  if mig_nom = plan_nom then
+    raise exception
+      'le migrateur et le plan de controle sont le meme role (« % »): la '
+      'separation serait nominale', mig_nom;
+  end if;
+  select count(*) into n from unnest(array['eurostruct_normative_writer',
+                                           'eurostruct_normative_bootstrap',
+                                           'eurostruct_normative_activator']) a(r)
+   where pg_has_role(mig_nom, a.r, 'SET')
+      or pg_has_role(mig_nom, a.r, 'USAGE')
+      or pg_has_role(mig_nom, a.r, 'MEMBER WITH ADMIN OPTION');
+  if n <> 0 then
+    raise exception
+      'le migrateur « % » conserve % capacite(s) sur les roles d''autorite '
+      'APRES activation', mig_nom, n;
+  end if;
+
+  -- Et l'ecriture n'est ouverte a personne: l'activation ne passe que par la
   -- finalisation, qui verifie la topologie AVANT d'ecrire. Une activation
   -- posee a la main serait une activation non verifiee.
   declare r text;
@@ -2248,6 +2306,26 @@ begin
       end if;
     end loop;
   end;
+
+  -- APPEND-ONLY, ET MEME POUR LE PROPRIETAIRE (6.3b6b, point 6): ni UPDATE ni
+  -- DELETE, quel que soit le chemin. Le declencheur s'applique la ou l'ACL et
+  -- les policies pourraient etre defaites par le proprietaire de la table.
+  if not exists (select 1 from pg_trigger t
+                   join pg_class c on c.oid = t.tgrelid
+                  where c.relname = 'normative_activation'
+                    and not t.tgisinternal
+                    and t.tgtype & 28 <> 0) then
+    raise exception
+      'normative_activation ne porte aucun declencheur UPDATE/DELETE: '
+      'detruire la ligne ramenerait le sous-systeme en PENDING sans trace, '
+      'et une seconde activation reecrirait l''audit';
+  end if;
+  if exists (select 1 from pg_policy p join pg_class c on c.oid = p.polrelid
+              where c.relname = 'normative_activation' and p.polcmd = '*') then
+    raise exception
+      'une policy FOR ALL couvre normative_activation: elle autorise UPDATE '
+      'et DELETE au meme titre qu''INSERT';
+  end if;
 end
 $$;
 
@@ -2281,13 +2359,16 @@ begin
   -- cette moitie, le refus ci-dessus serait satisfait par un sous-systeme
   -- devenu muet, et un client afficherait des resultats pre-activation sans
   -- pouvoir le savoir.
+  -- ACTIVE, parce que `run.sh` deploie cette base en deux phases. Ce qui
+  -- compte ici n'est pas la valeur mais le fait qu'elle FRANCHISSE la
+  -- frontiere alors que la ligne, elle, vient d'etre refusee.
   select state into etat from normative_activation_status;
-  if etat is distinct from 'PENDING' then
+  if etat is distinct from 'ACTIVE' then
     raise exception
-      'la vue rend « % » alors que la table est vide: PENDING attendu', etat;
+      'la vue rend « % » alors que la base est finalisee: ACTIVE attendu', etat;
   end if;
-  if normative_activation_state() is distinct from 'PENDING' then
-    raise exception 'normative_activation_state() ne rend pas PENDING';
+  if normative_activation_state() is distinct from 'ACTIVE' then
+    raise exception 'normative_activation_state() ne rend pas ACTIVE';
   end if;
 end
 $$;
@@ -2388,15 +2469,23 @@ reset role;
 do $$
 declare r text; ok boolean;
 begin
-  -- Rien n'est fige tant que rien n'a ete constate, et NULL n'exempte
-  -- personne: c'est le comportement fail-closed. Sans cette verification,
-  -- l'exemption pourrait viser « tout le monde » sans que rien ne le dise —
-  -- defaut mesure: ecrite sans `coalesce`, la clause d'exemption valait NULL
-  -- et excluait TOUTES les lignes du controle.
-  if normative_control_plane() is not null then
+  -- FIGE PAR LA PHASE 2, ET SEULEMENT PAR ELLE.
+  --
+  -- Ce controle exigeait l'inverse — « aucun plan de controle apres la seule
+  -- migration » — parce que la base principale n'etait alors que migree. Elle
+  -- est desormais deployee en deux phases par `run.sh`. La propriete « la
+  -- migration seule ne fige rien » se mesure entre les deux phases, et
+  -- `two_phase_deployment.sh` comme `finalisation_contract.sh` l'exigent.
+  --
+  -- Ce qui est verifie ici: l'identite figee est COMPLETE et designe le role
+  -- qu'elle nomme. NULL n'exempterait personne — comportement fail-closed —
+  -- mais un nom sans OID exempterait quiconque reprendrait ce nom.
+  if normative_control_plane() is null or normative_control_plane_oid() is null then
     raise exception
-      'un plan de controle est deja fige apres la seule migration: son '
-      'identite doit etre CONSTATEE au deploiement, jamais installee';
+      'le plan de controle n''est pas fige apres la phase 2 (nom %, oid %): '
+      'l''exemption d''ADMIN residuel ne designerait aucun role',
+      coalesce(normative_control_plane(), 'NULL'),
+      coalesce(normative_control_plane_oid()::text, 'NULL');
   end if;
 
   -- Aucun role applicatif ne lit ni n'ecrit le singleton.
@@ -2416,14 +2505,21 @@ begin
 end
 $$;
 
--- IMMUABLE, et verifie en agissant — pas seulement en lisant des ACL. Le
+-- IMMUABLE, et verifie EN AGISSANT — pas seulement en lisant des ACL. Le
 -- superutilisateur du harnais tient ici le role du pire cas: meme lui ne
 -- reecrit pas la ligne.
+--
+-- LES TENTATIVES PORTENT SUR LA VRAIE LIGNE, celle que la phase 2 a figee.
+-- La version precedente inserait un TEMOIN puis, pour le retirer, DESACTIVAIT
+-- le declencheur d'immuabilite d'une table de confiance et vidait la table —
+-- c'est-a-dire qu'elle executait, dans la suite de tests, exactement le geste
+-- contre lequel cette table existe. Sur une base finalisee, elle aurait
+-- efface le plan de controle approuve. Rien n'est plus insere, donc rien n'est
+-- a retirer, et le declencheur n'est jamais desarme.
 do $$
-declare ok boolean;
+declare ok boolean; avant text; apres text;
 begin
-  insert into normative_control_plane (role_name, recorded_by)
-  values ('FICTIF_plan_temoin', session_user);
+  select role_oid::text || '/' || role_name into avant from normative_control_plane;
 
   ok := false;
   begin
@@ -2452,8 +2548,8 @@ begin
   -- cle primaire, pas par convention.
   ok := false;
   begin
-    insert into normative_control_plane (role_name, recorded_by)
-    values ('FICTIF_second_plan', session_user);
+    insert into normative_control_plane (role_oid, role_name, recorded_by)
+    values (0, 'FICTIF_second_plan', session_user);
   exception when unique_violation then ok := true;
   end;
   if not ok then
@@ -2462,23 +2558,14 @@ begin
       'designerait plus un role unique';
   end if;
 
-  -- Le decor est rendu: la ligne temoin ne doit pas survivre a ce fichier,
-  -- sans quoi les controles suivants porteraient sur un etat fabrique ici.
-  -- Elle ne s'efface que par une desactivation explicite du declencheur, ce
-  -- que seul le proprietaire de la table peut faire — et c'est precisement ce
-  -- que le controle ci-dessus vient d'etablir.
-  alter table normative_control_plane disable trigger normative_control_plane_is_immutable;
-  delete from normative_control_plane;
-  alter table normative_control_plane enable trigger normative_control_plane_is_immutable;
-end
-$$;
-
-do $$
-begin
-  if normative_control_plane() is not null then
+  -- ET LA LIGNE APPROUVEE EST INTACTE. Les trois tentatives ci-dessus ont ete
+  -- refusees; il reste a constater qu'aucune n'a laisse de trace, sans quoi
+  -- « refuse » pourrait signifier « refuse apres avoir ecrit ».
+  select role_oid::text || '/' || role_name into apres from normative_control_plane;
+  if apres is distinct from avant then
     raise exception
-      'le temoin du controle precedent survit: l''etat de la base a ete '
-      'modifie par un test qui devait le rendre intact';
+      'le plan de controle a change pendant les tentatives: « % » -> « % »',
+      avant, apres;
   end if;
 end
 $$;

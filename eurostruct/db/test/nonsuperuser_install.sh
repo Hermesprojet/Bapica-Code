@@ -60,8 +60,22 @@ fi
 # `postgres` chez Supabase: proprietaire du schema, CREATEROLE et CREATEDB,
 # mais PAS superutilisateur et PAS bypassrls.
 MIGRATEUR=esc_migrator
-ROLES_SB="$MIGRATEUR esc_authenticator esc_service_role"
-CANONIQUES="eurostruct_normative_writer eurostruct_normative_bootstrap eurostruct_deployment"
+# LE PLAN DE CONTROLE, NON SUPERUTILISATEUR LUI AUSSI (6.3b6b).
+#
+# Ce fichier laissait la migration creer elle-meme les roles d'AUTORITE, sous
+# le migrateur. Depuis la phase 2, cette forme n'est plus finalisable: par F1
+# le migrateur serait son propre plan de controle, garderait l'ADMIN residuel
+# par exemption, et pourrait donc se reaccorder SET quand il veut — la
+# separation entre « qui migre » et « qui approuve » serait nominale.
+#
+# Le provisionnement passe donc a un SECOND role non superutilisateur. Ce
+# n'est pas un recul sur le sujet du fichier: aucun des deux acteurs n'est
+# superutilisateur, ce qui est exactement la forme Supabase. Le chemin
+# greenfield, lui, reste exerce par `two_phase_deployment.sh` (configuration
+# A), qui en fait son sujet au lieu d'en dependre.
+PLAN=esc_control_plane
+ROLES_SB="$MIGRATEUR $PLAN esc_authenticator esc_service_role"
+CANONIQUES="eurostruct_normative_writer eurostruct_normative_bootstrap eurostruct_normative_activator eurostruct_deployment"
 SERVICES="normative_backend normative_governance"
 MDP='FICTIF-nonsuperuser'
 
@@ -110,7 +124,8 @@ exiger_cluster_jetable "nonsuperuser_install.sh" || exit 2
 # On exige donc leur absence au demarrage. Tout role de ces listes present
 # ensuite a ete cree par CETTE execution, et lui seul peut etre detruit.
 # shellcheck disable=SC2086
-exiger_roles_absents "nonsuperuser_install.sh" $ROLES_SB $CANONIQUES $SERVICES || exit 2
+exiger_roles_absents "nonsuperuser_install.sh" $ROLES_SB $CANONIQUES $SERVICES \
+  "${HARNAIS_ROLES_STUB[@]}" || exit 2
 
 
 ADMIN=(psql -X -q -d postgres)
@@ -144,14 +159,21 @@ nettoyer() {
     "${ADMIN[@]}" -q -c "drop role if exists $r;" >/dev/null 2>&1
   done
   liberer_autorites
+  for r in "${HARNAIS_ROLES_STUB[@]}"; do
+    "${ADMIN[@]}" -q -c "drop owned by \"$r\";"      >/dev/null 2>&1
+    "${ADMIN[@]}" -q -c "drop role if exists \"$r\";" >/dev/null 2>&1
+  done
   # shellcheck disable=SC2086
   harnais_postcondition_nettoyage "nonsuperuser_install.sh" $ROLES_SB $CANONIQUES $SERVICES \
-    || NETTOYAGE_KO=1
+    "${HARNAIS_ROLES_STUB[@]}" || NETTOYAGE_KO=1
   harnais_verrou_rendre
   [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
 }
 registre_base "$DB"
 trap nettoyer EXIT
+# ET SUR SIGNAL: sans cela, TERM ou Ctrl-C tuent bash avant le piege ci-dessus
+# et le decor global reste derriere (voir harnais_piege_signaux).
+harnais_piege_signaux
 
 echo "    installation sous un role de migration non superutilisateur"
 
@@ -160,6 +182,10 @@ echo "    installation sous un role de migration non superutilisateur"
 # --------------------------------------------------------------------------
 "${ADMIN[@]}" -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
 create role $MIGRATEUR login password '$MDP' createrole createdb;
+-- LE PLAN DE CONTROLE: non superutilisateur lui aussi, CREATEROLE seulement.
+-- Il provisionne les roles d'autorite et exercera la phase 2; il n'a besoin
+-- ni de CREATEDB ni d'aucun autre attribut.
+create role $PLAN login password '$MDP' createrole;
 create role esc_service_role nologin;
 create role esc_authenticator login password '$MDP';
 grant esc_service_role to esc_authenticator;
@@ -178,6 +204,17 @@ if [[ "$ATTRS" != "false/false/true/true" ]]; then
   exit 1
 fi
 echo "      ok: migrateur non superutilisateur, sans bypassrls (createrole+createdb)"
+
+# ET LE PLAN DE CONTROLE NON PLUS. Si l'un des deux acteurs etait
+# superutilisateur, ce fichier ne prouverait plus ce que son nom annonce.
+ATTRS_PLAN=$("${ADMIN[@]}" -X -q -tAc "
+  select rolsuper::text || '/' || rolbypassrls::text || '/' || rolcreaterole::text
+    from pg_roles where rolname = '$PLAN'")
+if [[ "$ATTRS_PLAN" != "false/false/true" ]]; then
+  echoue "le plan de controle n'a pas le profil attendu (super/bypassrls/createrole = $ATTRS_PLAN)"
+  exit 1
+fi
+echo "      ok: plan de controle non superutilisateur (createrole)"
 
 # --------------------------------------------------------------------------
 # 2. La base appartient au migrateur, comme en deploiement gere
@@ -207,10 +244,20 @@ grant execute on function auth.uid() to $MIGRATEUR with grant option;
 grant create on database $DB to $MIGRATEUR;
 SQL
 
-# DECLARATION DE DEPLOIEMENT. Le migrateur cree `eurostruct_deployment` et en
-# devient donc detenteur; le controle de topologie l'exige declare. C'est une
-# action du deploiement, pas une deduction de la migration.
-"${ADMIN[@]}" -q -c   "alter database $DB set eurostruct.approved_deployment_roles = '$MIGRATEUR';"   >/dev/null 2>&1
+# LES DECLARATIONS DE DEPLOIEMENT, POSEES AVANT LA FINALISATION.
+#
+# La phase 2 les FIGE (`normative_approved_settings`), et la topologie les lit
+# ensuite la et non plus dans le catalogue. Une declaration posee APRES
+# l'activation n'a donc plus aucun effet — c'est le but, et c'est pourquoi
+# `approved_service_logins` remonte ici depuis la section 5: le migrateur y
+# recoit `normative_backend`, et sans declaration figee la topologie le
+# refuserait a juste titre.
+"${ADMIN[@]}" -q -c \
+  "alter database $DB set eurostruct.approved_deployment_roles = '$MIGRATEUR,$PLAN';" \
+  >/dev/null 2>&1
+"${ADMIN[@]}" -q -c \
+  "alter database $DB set eurostruct.approved_service_logins = '$MIGRATEUR';" \
+  >/dev/null 2>&1
 
 # PRECONDITION DE CE FICHIER, DESORMAIS DITE (6.3b6a).
 #
@@ -286,9 +333,41 @@ RESTE=$("${ADMIN[@]}" -X -q -tAc "
                      'eurostruct_normative_bootstrap')")
 if [[ "$RESTE" != "0" ]]; then
   echoue "les roles d'autorite preexistent et n'ont pas pu etre detruits:"
-  echoue "  le chemin greenfield ne peut pas etre exerce"
+  echoue "  le decor de provisionnement ne peut pas etre pose"
   exit 1
 fi
+
+# LE PLAN DE CONTROLE PROVISIONNE LES ROLES D'AUTORITE.
+#
+# C'est lui, et lui seul, qui pourra revoquer les emprunts (fait F3): le
+# donneur est inscrit par PostgreSQL dans `pg_auth_members` et personne ne
+# peut le reecrire. Il conserve en echange un ADMIN residuel irrevocable
+# (fait F1) — le seul que le modele tolere, et seulement une fois fige.
+"${ADMIN[@]}" -q -v ON_ERROR_STOP=1 -c \
+  "grant $PLAN to ${PGUSER:-postgres};" >/dev/null 2>&1
+PLAN_PSQL=(env PGUSER="$PLAN" PGPASSWORD="$MDP" psql -X -q -d postgres)
+"${PLAN_PSQL[@]}" -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
+create role eurostruct_normative_writer nologin;
+create role eurostruct_normative_bootstrap nologin;
+create role eurostruct_normative_activator nologin;
+create role eurostruct_deployment nologin;
+grant eurostruct_normative_writer    to $MIGRATEUR with admin option;
+grant eurostruct_normative_bootstrap to $MIGRATEUR with admin option;
+grant eurostruct_normative_activator to $MIGRATEUR with admin option;
+SQL
+PROVISION=$("${ADMIN[@]}" -X -q -tAc "
+  select count(*) from pg_roles where rolname in ('eurostruct_normative_writer',
+    'eurostruct_normative_bootstrap','eurostruct_normative_activator',
+    'eurostruct_deployment')")
+if [[ "$PROVISION" != "4" ]]; then
+  echoue "le plan de controle n'a pu creer que $PROVISION role(s) d'autorite sur 4"
+  exit 1
+fi
+# Il exercera la phase 2: il lui faut le role de deploiement, et il est
+# declare ci-dessus dans `approved_deployment_roles`.
+"${ADMIN[@]}" -q -c "grant eurostruct_deployment to $PLAN with inherit true;" \
+  >/dev/null 2>&1
+echo "      ok: decor — roles d'autorite provisionnes par « $PLAN »"
 
 # --------------------------------------------------------------------------
 # 3. Les migrations, appliquees PAR LE MIGRATEUR
@@ -314,20 +393,52 @@ for f in "$DB_DIR"/migrations/*.sql; do
 done
 echo "      ok: 0001 a 0010 appliquees par un role non superutilisateur"
 
-# L'emprunt d'autorite a bien ete RENDU. C'est la propriete que la migration
-# promet, et elle ne vaut que constatee apres coup.
+# --------------------------------------------------------------------------
+# 3bis. LA PHASE 2, exercee par le plan de controle
+# --------------------------------------------------------------------------
+# LA MIGRATION NE REND PLUS L'EMPRUNT, ET C'EST LE SUJET DE 6.3b6b.
+#
+# Ce bloc exigeait « 0 membre d'autorite apres la migration seule ». C'etait
+# exiger l'impossible: par le fait F2 — mesure — un role ne peut PAS revoquer
+# une appartenance qu'un autre lui a donnee, ni directement ni par
+# « GRANTED BY ». La migration se refusait donc elle-meme, ou mentait.
+#
+# La restitution appartient au DONNEUR. Elle a lieu ici, en phase 2, et
+# l'invariant est verifie APRES — la ou il peut etre vrai.
+ETAT=$(mig -X -q -tAc 'select normative_activation_state()' 2>&1)
+if [[ "$ETAT" != "PENDING" ]]; then
+  echoue "la phase 1 ne se termine pas en PENDING (obtenu: $ETAT)"
+  exit 1
+fi
+echo "      ok: phase 1 terminee, etat PENDING"
+
+PLAN_DB=(env PGUSER="$PLAN" PGPASSWORD="$MDP" psql -X -q -d "$DB")
+MANIF=$("${PLAN_DB[@]}" -tAc 'select normative_settings_manifest()' 2>&1)
+FIN=$("${PLAN_DB[@]}" -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
+ETAT=$("${PLAN_DB[@]}" -tAc 'select normative_activation_state()' 2>&1)
+if [[ "$ETAT" != "ACTIVE" ]]; then
+  echoue "la finalisation par « $PLAN » a echoue (etat $ETAT):"
+  grep -m2 -E "ERROR|DETAIL|FATAL" <<<"$FIN" | sed 's/^/              /'
+  exit 1
+fi
+echo "      ok: phase 2 par « $PLAN » — etat ACTIVE"
+
+# L'EMPRUNT A BIEN ETE RENDU. La propriete que la phase 2 achete, constatee
+# apres coup et non supposee. Les trois capacites, pas seulement MEMBER: un
+# ADMIN residuel se reaccorde SET quand il veut.
 MEMBRES=$("${ADMIN[@]}" -X -q -tAc "
-  select count(*) from pg_roles autorite cross join pg_roles membre
+  select count(*) from pg_roles autorite
    where autorite.rolname in ('eurostruct_normative_writer',
-                              'eurostruct_normative_bootstrap')
-     and membre.oid <> autorite.oid and not membre.rolsuper
-     and pg_has_role(membre.rolname, autorite.rolname, 'MEMBER')")
+                              'eurostruct_normative_bootstrap',
+                              'eurostruct_normative_activator')
+     and (pg_has_role('$MIGRATEUR', autorite.rolname, 'SET')
+          or pg_has_role('$MIGRATEUR', autorite.rolname, 'USAGE')
+          or pg_has_role('$MIGRATEUR', autorite.rolname, 'MEMBER WITH ADMIN OPTION'))")
 if [[ "$MEMBRES" != "0" ]]; then
-  echoue "$MEMBRES membre(s) non superutilisateur(s) des roles d'autorite"
-  echoue "  subsistent APRES LA MIGRATION SEULE, avant tout nettoyage"
-  echoue "  administrateur. La migration doit revoquer elle-meme ou refuser."
+  echoue "le migrateur conserve $MEMBRES capacite(s) sur les roles d'autorite"
+  echoue "  APRES la finalisation: il peut encore forger une origine normative."
 else
-  echo "      ok: 0 membre d'autorite apres la migration seule"
+  echo "      ok: 0 capacite du migrateur sur les roles d'autorite apres phase 2"
 fi
 
 # --------------------------------------------------------------------------
@@ -392,9 +503,8 @@ fi
 # schema, meme si le declencheur normatif, lui, est SECURITY DEFINER.
 "${ADMIN_DB[@]}" -q -c   "grant usage on schema auth to normative_backend, authenticated;
    grant select on auth.users to normative_backend, authenticated;"   >/dev/null 2>&1
-"${ADMIN[@]}" -q -c \
-  "alter database $DB set eurostruct.approved_service_logins = '$MIGRATEUR';" \
-  >/dev/null 2>&1
+# `approved_service_logins` est declare AVANT la finalisation (section 2): pose
+# ici, il serait sans effet — la topologie lit desormais la valeur FIGEE.
 
 PARCOURS=$(mig -X -q -tAc "
 set role normative_backend;

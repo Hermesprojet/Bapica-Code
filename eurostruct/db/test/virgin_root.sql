@@ -289,18 +289,42 @@ begin
       'normative_activation_status n''expose plus exactement la colonne '
       '« state »: la vue minimale a cesse d''etre minimale';
   end if;
-  -- `security_invoker` doit rester DESACTIVE: active, la vue lirait au nom de
-  -- l'appelant, et il faudrait de nouveau lui donner un droit sur la table.
+  -- LA FRONTIERE EST PORTEE PAR LA FONCTION, PAS PAR LA VUE (6.3b6b).
+  --
+  -- Ce controle exigeait `security_invoker = false`, c'est-a-dire une lecture
+  -- au nom du PROPRIETAIRE DE LA VUE. Depuis que `normative_activation` est en
+  -- FORCE ROW LEVEL SECURITY et appartient a l'activateur, ce proprietaire est
+  -- le role qui a exerce la migration — un role dont le nom n'est pas connu a
+  -- l'ecriture et qui n'a plus aucun droit sur la table apres la phase 2. La
+  -- vue est donc MINCE et invoker; c'est `normative_activation_state()`,
+  -- SECURITY DEFINER possedee par l'activateur, qui franchit la frontiere, et
+  -- elle ne rend que deux valeurs possibles.
+  --
+  -- Les deux moities sont exigees ensemble: une vue invoker SANS fonction
+  -- definer derriere ne serait lisible par personne.
   if (select coalesce(
                 (select option_value from pg_options_to_table(c.reloptions)
                   where option_name = 'security_invoker'), 'false')
         from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where n.nspname = 'public'
-         and c.relname = 'normative_activation_status') not in ('false', 'off',
-                                                                '0') then
+         and c.relname = 'normative_activation_status') not in ('true', 'on',
+                                                                '1') then
     raise exception
-      'normative_activation_status est en security_invoker: la lecture se '
-      'ferait au nom de l''appelant, qui n''a aucun droit sur la table';
+      'normative_activation_status n''est pas en security_invoker: la lecture '
+      'se ferait au nom du proprietaire de la VUE — le role de migration —, '
+      'alors que la frontiere doit etre portee par normative_activation_state()';
+  end if;
+  if not exists (select 1 from pg_proc p
+                   join pg_namespace n on n.oid = p.pronamespace
+                   join pg_roles o on o.oid = p.proowner
+                  where n.nspname = 'public'
+                    and p.proname = 'normative_activation_state'
+                    and p.prosecdef
+                    and o.rolname = 'eurostruct_normative_activator') then
+    raise exception
+      'normative_activation_state() n''est pas SECURITY DEFINER possedee par '
+      'eurostruct_normative_activator: rien ne franchit alors la RLS forcee, '
+      'et la vue minimale ne serait lisible par personne';
   end if;
 
   -- Le role de service, lui, ecrit: sans cela plus rien ne serait insérable

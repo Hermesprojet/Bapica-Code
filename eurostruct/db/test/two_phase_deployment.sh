@@ -131,12 +131,13 @@ JETON="$(harnais_jeton)"
 MIGRATEUR="${PREFIXE}_mig_${JETON}"; MIG_MDP="FICTIF-2p-mig-$JETON"
 PLAN="${PREFIXE}_ctl_${JETON}";      PLAN_MDP="FICTIF-2p-ctl-$JETON"
 
-AUTORITES=(eurostruct_normative_writer eurostruct_normative_bootstrap)
+AUTORITES=(eurostruct_normative_writer eurostruct_normative_bootstrap
+           eurostruct_normative_activator)
 SERVICES=(normative_backend normative_governance)
 DEPLOIEMENT=eurostruct_deployment
 CANONIQUES=("${AUTORITES[@]}" "${SERVICES[@]}" "$DEPLOIEMENT")
 
-exiger_roles_absents "two_phase_deployment.sh" "${CANONIQUES[@]}" || exit 2
+exiger_roles_absents "two_phase_deployment.sh" "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" || exit 2
 
 PROPRIETAIRE="${PGUSER:-postgres}"
 BASE_A="${PREFIXE}_a_${JETON}"
@@ -161,9 +162,14 @@ registre_base "$BASE_A"; registre_base "$BASE_B"; registre_base "$BASE_C"
 F1="${PREFIXE}_f1_${JETON}"
 F3="${PREFIXE}_f3_${JETON}"
 
-ECHECS=0; ROUGES_ATTENDUS=0
+# PLUS DE « ATTENDU-ROUGE ». Les configurations B et C etaient declarees
+# rouges-par-construction en 6.3b6a: la restitution des emprunts etait
+# impossible (fait F2) et rien ne figeait le plan de controle. La phase 2
+# existe depuis 6.3b6b, et les deux configurations doivent donc aller
+# JUSQU'A ACTIVE. Un verdict qui tolere un rouge nomme ne peut pas distinguer
+# « la fonctionnalite manque » de « la fonctionnalite est cassee ».
+ECHECS=0
 echoue() { echo "      ECHEC: $*" >&2; ECHECS=$((ECHECS + 1)); }
-attendu_rouge() { echo "      ATTENDU-ROUGE (6.3b6b): $*"; }
 
 # Toutes les connexions viennent de l'ENVIRONNEMENT: ni URL, ni mot de passe
 # dans argv. Seule la base change, par `-d`.
@@ -203,7 +209,7 @@ raz() {
   # `exiger_roles_absents` a constate au demarrage qu'AUCUN d'eux n'existait.
   # Tout role canonique present maintenant a donc ete cree par cette execution.
   # C'est la seule justification acceptable pour toucher a un nom global.
-  for r in "${CANONIQUES[@]}"; do
+  for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}"; do
     adm -c "drop owned by \"$r\";"      >/dev/null 2>&1
     adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
   done
@@ -218,14 +224,18 @@ NETTOYAGE_KO=0
 sortie_propre() {
   raz
   local r
-  for r in "${CANONIQUES[@]}"; do registre_role "$r"; done
+  for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}"; do registre_role "$r"; done
   detruire_roles_crees || NETTOYAGE_KO=1
   harnais_postcondition_nettoyage "two_phase_deployment.sh" \
-    "${CANONIQUES[@]}" "$MIGRATEUR" "$PLAN" "$F1" "$F3" || NETTOYAGE_KO=1
+    "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" \
+    "$MIGRATEUR" "$PLAN" "$F1" "$F3" || NETTOYAGE_KO=1
   harnais_verrou_rendre
   [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
 }
 trap sortie_propre EXIT
+# ET SUR SIGNAL: sans cela, TERM ou Ctrl-C tuent bash avant le piege ci-dessus
+# et le decor global reste derriere (voir harnais_piege_signaux).
+harnais_piege_signaux
 
 # Les deux roles jetables, recrees a chaque configuration.
 creer_acteurs() {
@@ -306,10 +316,20 @@ fi
 # diagnostic, tronque: on veut le motif, pas le fichier entier.
 # --------------------------------------------------------------------------
 DIAG=""
+# `appliquer <base> [roles-de-deploiement-approuves]`
+#
+# LA DECLARATION EST POSEE ICI, APRES LA CREATION DE LA BASE. Elle l'etait
+# avant l'appel, donc avant que la base existe: l'`ALTER DATABASE` echouait en
+# silence et la configuration C se refusait sur « detient eurostruct_deployment
+# sans approbation » — un motif exact, mais provoque par le harnais.
 appliquer() {
-  local base="$1" out f
+  local base="$1" approuves="${2:-}" out f
   adm -v ON_ERROR_STOP=1 \
     -c "create database \"$base\" owner \"$MIGRATEUR\";" >/dev/null || return 2
+  if [[ -n "$approuves" ]]; then
+    adm -v ON_ERROR_STOP=1 -c "alter database \"$base\"
+      set eurostruct.approved_deployment_roles = '$approuves';" >/dev/null || return 2
+  fi
   admin_db "$base" -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
   admin_db "$base" >/dev/null 2>&1 <<SQL
 grant usage on schema auth to "$MIGRATEUR" with grant option;
@@ -329,15 +349,43 @@ SQL
 # ==========================================================================
 # A — GREENFIELD, LE MIGRATEUR SEUL
 # ==========================================================================
-if appliquer "$BASE_A"; then
-  echoue "A: la migration s'est INSTALLEE alors que le migrateur, privilegie,"
-  echoue "  est membre des roles de service qu'il vient de creer (F1). Il"
-  echoue "  contourne la RLS et herite en plus des droits d'ecriture normatifs."
-elif grep -qE "prerequis non tenu: le role privilegie .* atteint le role de service" <<<"$DIAG"; then
-  echo "      ok: A refusee — le migrateur privilegie atteint un role de service"
-else
-  echoue "A refusee, mais pas sur le motif attendu:"
+# CE QUI EST ATTENDU DE A A CHANGE AVEC 6.3b6b, ET LE MOTIF EST LE SUJET.
+#
+# La phase 1 S'INSTALLE desormais: depuis que les prerequis portent sur SET et
+# USAGE et non sur MEMBER, l'ADMIN residuel que PostgreSQL donne au createur
+# (F1: admin=t, set=f, inherit=f) ne suffit plus a refuser — et il ne le doit
+# pas, puisqu'en PENDING aucune ecriture normative n'est possible.
+#
+# C'est la FINALISATION qui refuse, et pour le seul motif qui vaille ici: le
+# migrateur serait son propre plan de controle. Un deploiement greenfield reste
+# donc inexploitable, mais il est refuse au moment ou le refus protege quelque
+# chose, avec un diagnostic qui dit quoi faire.
+if ! appliquer "$BASE_A" "$MIGRATEUR"; then
+  echoue "A: la phase 1 doit s'installer (aucune ecriture normative n'est"
+  echoue "  possible en PENDING). Refus obtenu:"
   echo "              $DIAG" >&2
+else
+  ETAT=$(admin_db "$BASE_A" -tAc 'select normative_activation_state()' 2>&1)
+  # Le migrateur a l'ADMIN sur le role de deploiement qu'il vient de creer: il
+  # peut donc se l'accorder pour de bon, ce qu'un installeur greenfield ferait.
+  mig postgres -q -c "grant $DEPLOIEMENT to \"$MIGRATEUR\" with inherit true;" \
+    >/dev/null 2>&1
+  MANIF=$(mig "$BASE_A" -q -tAc 'select normative_settings_manifest()' 2>&1)
+  FIN=$(mig "$BASE_A" -q -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
+  APRES=$(admin_db "$BASE_A" -tAc 'select normative_activation_state()' 2>&1)
+  if [[ "$ETAT" != "PENDING" ]]; then
+    echoue "A: la phase 1 ne se termine pas en PENDING (obtenu: $ETAT)."
+  elif [[ "$APRES" == "ACTIVE" ]]; then
+    echoue "A: UN SEUL ROLE A PU FINALISER. Le migrateur est son propre plan de"
+    echoue "  controle, garde l'ADMIN residuel par exemption, et peut donc se"
+    echoue "  reaccorder SET quand il veut: la separation est nominale."
+  elif grep -qE "deux roles DISTINCTS|plan de controle derive est le migrateur" <<<"$FIN"; then
+    echo "      ok: A phase 1 installee (PENDING), finalisation REFUSEE — le"
+    echo "             migrateur serait son propre plan de controle"
+  else
+    echoue "A: la finalisation refuse, mais pas au motif de la separation:"
+    echoue "  $(grep -m1 -iE 'ERROR|ERREUR' <<<"$FIN" | cut -c1-200)"
+  fi
 fi
 raz; creer_acteurs || { echoue "recreation des acteurs impossible"; exit 1; }
 
@@ -356,39 +404,49 @@ done
 adm -v ON_ERROR_STOP=1 >/dev/null <<SQL
 grant ${AUTORITES[0]} to "$MIGRATEUR" with admin option;
 grant ${AUTORITES[1]} to "$MIGRATEUR" with admin option;
+grant ${AUTORITES[2]} to "$MIGRATEUR" with admin option;
 SQL
-
-if appliquer "$BASE_B"; then
-  if TOPO=$(mig "$BASE_B" -q -tAc 'select assert_normative_topology()' 2>&1); then
+if appliquer "$BASE_B" "$MIGRATEUR,$PROPRIETAIRE"; then
+  # PHASE 1 TERMINEE: l'etat doit etre PENDING, et rien ne doit encore engager.
+  ETAT=$(admin_db "$BASE_B" -tAc 'select normative_activation_state()' 2>&1)
+  if [[ "$ETAT" != "PENDING" ]]; then
+    echoue "B: la phase 1 ne se termine pas en PENDING (obtenu: $ETAT)."
+  else
+    # PHASE 2, exercee par le DONNEUR — ici le superutilisateur qui a
+    # provisionne. Il presente le MANIFESTE des declarations qu'il a revues.
+    MANIF=$(admin_db "$BASE_B" -tAc 'select normative_settings_manifest()' 2>&1)
+    FIN=$(admin_db "$BASE_B" -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
+    ETAT=$(admin_db "$BASE_B" -tAc 'select normative_activation_state()' 2>&1)
     CAP=$(adm -tAc "
       select count(*) from pg_roles a
-       where a.rolname in ('${AUTORITES[0]}','${AUTORITES[1]}')
+       where a.rolname = any (array['${AUTORITES[0]}','${AUTORITES[1]}','${AUTORITES[2]}'])
          and (pg_has_role('$MIGRATEUR', a.rolname, 'SET')
               or pg_has_role('$MIGRATEUR', a.rolname, 'USAGE')
               or pg_has_role('$MIGRATEUR', a.rolname, 'MEMBER WITH ADMIN OPTION'))")
-    if [[ "$CAP" == "0" ]]; then
-      echo "      ok: B installee, topologie acceptee, migrateur sans capacite"
-    else
-      echoue "B installee mais le migrateur conserve $CAP capacite(s) sur les"
+    if [[ "$ETAT" != "ACTIVE" ]]; then
+      echoue "B: la finalisation n'a pas abouti (etat $ETAT):"
+      echoue "  $(grep -m1 -iE 'ERROR|ERREUR' <<<"$FIN" | cut -c1-200)"
+    elif [[ "$CAP" != "0" ]]; then
+      echoue "B activee mais le migrateur conserve $CAP capacite(s) sur les"
       echoue "  roles d'autorite: il peut encore forger une origine normative."
+    # PAR LE DONNEUR, PAS PAR LE MIGRATEUR. Apres la finalisation le migrateur
+    # n'a plus aucun droit sur les fonctions de confiance — c'est le but — et
+    # la verification echouerait sur « permission denied », un faux rouge.
+    elif ! TOPO=$(admin_db "$BASE_B" -tAc 'select assert_normative_topology()' 2>&1); then
+      echoue "B activee mais topologie refusee: $(head -1 <<<"$TOPO")"
+    else
+      # IDEMPOTENCE: une seconde finalisation constate, elle ne reecrit pas.
+      FIN2=$(admin_db "$BASE_B" -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
+      if grep -q 'deja finalise' <<<"$FIN2"; then
+        echo "      ok: B PENDING -> ACTIVE par le donneur, migrateur sans capacite,"
+        echo "             seconde finalisation idempotente"
+      else
+        echoue "B: la seconde finalisation ne constate pas l'etat: $(head -1 <<<"$FIN2")"
+      fi
     fi
-  else
-    echoue "B installee mais topologie refusee: $(head -1 <<<"$TOPO")"
   fi
-# Le refus doit porter sur le SUJET: le migrateur, et un role d'autorite. Un
-# motif fige ("appartenances UTILISABLES") designait un seul des blocs qui
-# peuvent legitimement refuser, et le scenario passait au rouge imprevu des
-# que l'autre parlait le premier.
-elif grep -q "$MIGRATEUR" <<<"$DIAG" \
-     && grep -qE "${AUTORITES[0]}|${AUTORITES[1]}" <<<"$DIAG"; then
-  attendu_rouge "B refusee a la RESTITUTION, conformement a F2."
-  attendu_rouge "  Le migrateur ne peut pas rendre une appartenance qu'il n'a"
-  attendu_rouge "  pas donnee. La restitution appartient a la FINALISATION,"
-  attendu_rouge "  exercee par le donneur — objet de 6.3b6b."
-  attendu_rouge "  Diagnostic: $(cut -c1-150 <<<"$DIAG")"
-  ROUGES_ATTENDUS=$((ROUGES_ATTENDUS + 1))
 else
-  echoue "B refusee pour un motif imprevu:"
+  echoue "B refusee, alors que la phase 1 doit s'installer:"
   echo "              $DIAG" >&2
 fi
 raz; creer_acteurs || { echoue "recreation des acteurs impossible"; exit 1; }
@@ -409,11 +467,16 @@ create role ${SERVICES[0]} nologin;
 create role ${SERVICES[1]} nologin;
 create role ${AUTORITES[0]} nologin;
 create role ${AUTORITES[1]} nologin;
+create role ${AUTORITES[2]} nologin;
 create role $DEPLOIEMENT nologin;
 grant ${AUTORITES[0]} to "$MIGRATEUR" with admin option;
 grant ${AUTORITES[1]} to "$MIGRATEUR" with admin option;
+grant ${AUTORITES[2]} to "$MIGRATEUR" with admin option;
 SQL
 for r in "${CANONIQUES[@]}"; do registre_role "$r"; done
+# LE PLAN DE CONTROLE EXERCE LA PHASE 2: il lui faut le role de deploiement.
+adm -c "grant $DEPLOIEMENT to \"$PLAN\" with inherit true;" >/dev/null 2>&1
+# La declaration est posee par `appliquer`, apres la creation de la base.
 
 DONNEUR=$(adm -tAc "
   select g.rolname from pg_auth_members m
@@ -427,40 +490,68 @@ else
   echoue "  configuration ne differe pas de B comme annonce."
 fi
 
-if appliquer "$BASE_C"; then
-  if TOPO=$(mig "$BASE_C" -q -tAc 'select assert_normative_topology()' 2>&1); then
-    FIGE=$(mig "$BASE_C" -q -tAc 'select normative_control_plane()' 2>&1)
-    if [[ "$FIGE" == "$PLAN" ]]; then
-      echo "      ok: C installee, plan de controle fige sur « $PLAN »"
-    else
-      echoue "C installee, topologie acceptee, mais le plan de controle fige"
-      echoue "  est « ${FIGE:-NULL} » et non « $PLAN »: l'exemption d'ADMIN"
-      echoue "  residuel ne designe pas le role qui le detient reellement."
-    fi
+if appliquer "$BASE_C" "$MIGRATEUR,$PLAN"; then
+  ETAT=$(admin_db "$BASE_C" -tAc 'select normative_activation_state()' 2>&1)
+  if [[ "$ETAT" != "PENDING" ]]; then
+    echoue "C: la phase 1 ne se termine pas en PENDING (obtenu: $ETAT)."
   else
-    echoue "C installee mais topologie refusee: $(head -1 <<<"$TOPO")"
+    # PHASE 2 PAR LE PLAN DE CONTROLE, qui est le donneur (F3) — et le seul a
+    # pouvoir revoquer. Il presente le manifeste des declarations revues.
+    MANIF=$(plan "$BASE_C" -q -tAc 'select normative_settings_manifest()' 2>&1)
+    FIN=$(plan "$BASE_C" -q -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
+    ETAT=$(plan "$BASE_C" -q -tAc 'select normative_activation_state()' 2>&1)
+    FIGE=$(plan "$BASE_C" -q -tAc 'select normative_control_plane()' 2>&1)
+    FIGE_OID=$(plan "$BASE_C" -q -tAc 'select normative_control_plane_oid()' 2>&1)
+    OID_PLAN=$(adm -tAc "select oid from pg_roles where rolname = '$PLAN'")
+    CAP=$(adm -tAc "
+      select count(*) from pg_roles a
+       where a.rolname = any (array['${AUTORITES[0]}','${AUTORITES[1]}','${AUTORITES[2]}'])
+         and (pg_has_role('$MIGRATEUR', a.rolname, 'SET')
+              or pg_has_role('$MIGRATEUR', a.rolname, 'USAGE')
+              or pg_has_role('$MIGRATEUR', a.rolname, 'MEMBER WITH ADMIN OPTION'))")
+    if [[ "$ETAT" != "ACTIVE" ]]; then
+      echoue "C: la finalisation par « $PLAN » n'a pas abouti (etat $ETAT):"
+      echoue "  $(grep -m1 -iE 'ERROR|ERREUR' <<<"$FIN" | cut -c1-200)"
+    elif [[ "$CAP" != "0" ]]; then
+      echoue "C activee mais le migrateur conserve $CAP capacite(s)."
+    elif [[ "$FIGE" != "$PLAN" || "$FIGE_OID" != "$OID_PLAN" ]]; then
+      echoue "C activee, mais le plan de controle fige est « ${FIGE:-NULL} »"
+      echoue "  (oid ${FIGE_OID:-NULL}) et non « $PLAN » (oid $OID_PLAN):"
+      echoue "  l'exemption d'ADMIN residuel ne designe pas le role qui le"
+      echoue "  detient reellement."
+    elif ! TOPO=$(plan "$BASE_C" -q -tAc 'select assert_normative_topology()' 2>&1); then
+      echoue "C activee mais topologie refusee: $(head -1 <<<"$TOPO")"
+    else
+      # L'ADMIN RESIDUEL DU PLAN EST BIEN LA, et c'est lui qui est exempte:
+      # sans ce constat, « topologie acceptee » pourrait signifier « le plan
+      # ne detient plus rien », c'est-a-dire un autre scenario.
+      RES=$(adm -tAc "
+        select count(*) from pg_roles a
+         where a.rolname = any (array['${AUTORITES[0]}','${AUTORITES[1]}','${AUTORITES[2]}'])
+           and pg_has_role('$PLAN', a.rolname, 'MEMBER WITH ADMIN OPTION')")
+      if [[ "$RES" == "3" ]]; then
+        echo "      ok: C PENDING -> ACTIVE par « $PLAN » (oid $OID_PLAN), ADMIN"
+        echo "             residuel conserve sur 3 roles et exempte, migrateur nu"
+      else
+        echoue "C: le plan de controle ne detient l'ADMIN residuel que sur $RES"
+        echoue "  role(s) d'autorite sur 3: la configuration Supabase n'est pas"
+        echoue "  celle qui est testee."
+      fi
+    fi
   fi
-elif grep -q "$PLAN" <<<"$DIAG" \
-     && grep -qE "${AUTORITES[0]}|${AUTORITES[1]}" <<<"$DIAG"; then
-  attendu_rouge "C refusee: rien n'inscrit encore le donneur « $PLAN » dans"
-  attendu_rouge "  normative_control_plane, donc aucun ADMIN residuel n'est"
-  attendu_rouge "  exempte. Le gel depuis le grantor est l'objet de 6.3b6b."
-  attendu_rouge "  Diagnostic: $(cut -c1-150 <<<"$DIAG")"
-  ROUGES_ATTENDUS=$((ROUGES_ATTENDUS + 1))
 else
-  echoue "C refusee pour un motif imprevu:"
+  echoue "C refusee, alors que la phase 1 doit s'installer:"
   echo "              $DIAG" >&2
 fi
 
 echo ""
 echo "================================================="
-if [[ $ECHECS -eq 0 && $ROUGES_ATTENDUS -eq 0 ]]; then
-  echo " Deploiement en deux phases verifie."
+if [[ $ECHECS -eq 0 ]]; then
+  echo " Deploiement en deux phases verifie: A refusee, B et C menees"
+  echo " jusqu'a ACTIVE."
   echo "================================================="
   exit 0
 fi
-echo " Deploiement en deux phases:"
-echo "   $ECHECS ecart(s) non prevu(s)"
-echo "   $ROUGES_ATTENDUS rouge(s) ATTENDU(S), cible de 6.3b6b"
+echo " Deploiement en deux phases: $ECHECS ecart(s)"
 echo "================================================="
 exit 1

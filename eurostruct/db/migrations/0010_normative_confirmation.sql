@@ -850,6 +850,16 @@ comment on function forbid_normative_write_while_pending is
   'pour n''etre dur qu''en ACTIVE: sans lui, l''assouplissement ne reposait '
   'sur rien.';
 
+-- PUBLIC N'A PAS EXECUTE DESSUS. Une fonction SECURITY DEFINER laissee
+-- executable par PUBLIC offre les droits de son proprietaire — ici
+-- l''activateur, seul role autorise a ecrire dans les tables de confiance — a
+-- n'importe qui. Un declencheur n'a pas besoin de ce droit pour se declencher:
+-- PostgreSQL ne verifie pas EXECUTE a l'appel d'une fonction de declencheur.
+--
+-- Defaut mesure par `05_normative_confirmation.sql`, qui porte deja cette
+-- garantie et l'a refusee des la premiere execution.
+revoke all on function forbid_normative_write_while_pending() from public;
+
 -- AUCUNE policy d'ecriture, et aucun privilege INSERT/UPDATE/DELETE accorde:
 -- l'activation ne passe que par la fonction de finalisation (6.3b6b), qui
 -- verifie la topologie AVANT d'ecrire. Une activation posee a la main serait
@@ -1429,8 +1439,13 @@ comment on function normative_settings_manifest is
 revoke all on function normative_settings_manifest() from public;
 grant execute on function normative_settings_manifest()
   to eurostruct_normative_activator;
+-- ET RIEN DE PLUS. `normative_governance` en avait recu EXECUTE, au motif que
+-- l'audit peut vouloir recalculer le manifeste. La garantie de
+-- `05_normative_confirmation.sql` l'a refuse, et elle a raison: la gouvernance
+-- est un role APPLICATIF, et le manifeste est l'entree du chemin de
+-- finalisation. Elle lit `normative_approved_settings`, ce qui lui suffit pour
+-- savoir ce qui a ete approuve.
 grant execute on function normative_settings_manifest() to eurostruct_deployment;
-grant execute on function normative_settings_manifest() to normative_governance;
 
 
 -- ---------------------------------------------------------------------
@@ -1606,21 +1621,35 @@ begin
   -- LE DONNEUR ET LE MIGRATEUR, DERIVES — par OID et par nom, et les memes
   -- pour les trois roles d'autorite.
   -- ------------------------------------------------------------------
-  -- `not g.rolsuper` isole L'EMPRUNT de la phase 1. PostgreSQL accorde au
-  -- CREATEUR d'un role une appartenance dont le grantor est `postgres` (fait
-  -- F1, mesure): sans ce filtre, chaque role d'autorite aurait deux membres et
-  -- la derivation serait ambigue a chaque deploiement sain.
+  -- L'EMPRUNT SE RECONNAIT A SES OPTIONS, PAS A SON DONNEUR.
+  --
+  -- PostgreSQL accorde au CREATEUR d'un role une appartenance dont le grantor
+  -- est `postgres` — fait F1, remesure ici: `admin=t, inherit=f, set=f`.
+  -- L'emprunt de phase 1, lui, doit porter SET (ou INHERIT): sans lui le
+  -- migrateur ne pourrait pas transferer la propriete des fonctions.
+  --
+  -- Une premiere version filtrait sur `not g.rolsuper`, c'est-a-dire sur
+  -- l'identite du donneur. C'etait confondre deux choses: dans un
+  -- provisionnement par superutilisateur — forme legitime en auto-heberge —
+  -- l'octroi explicite vient AUSSI de `postgres`, et la derivation ne trouvait
+  -- plus rien. Le deploiement devenait infinalisable pour une raison qui
+  -- n'avait aucun rapport avec la securite.
+  --
+  -- `m.set_option or m.inherit_option`, lu sur la LIGNE DU CATALOGUE et non
+  -- par `pg_has_role` — qui est transitif et compterait des roles atteints par
+  -- une chaine, alors qu'on cherche l'octroi direct.
   foreach r in array autorites loop
     select count(*) into n
       from pg_auth_members m
       join pg_roles a on a.oid = m.roleid
       join pg_roles p on p.oid = m.member
-      join pg_roles g on g.oid = m.grantor
-     where a.rolname = r and not g.rolsuper;
+     where a.rolname = r and not p.rolsuper
+       and (m.set_option or m.inherit_option);
     if n <> 1 then
       raise exception
-        'le role d''autorite « % » porte % emprunt(s) non superutilisateur, '
-        'il en faut exactement 1. Soit la phase 1 n''est pas terminee, soit '
+        'le role d''autorite « % » porte % emprunt(s) utilisable(s) par un '
+        'role non superutilisateur, il en faut exactement 1. Soit la phase 1 '
+        'n''est pas terminee, soit les emprunts ont deja ete restitues, soit '
         'plusieurs roles ont emprunte — et une seule operation ne pourrait '
         'pas tous les restituer.', r, n
         using errcode = 'invalid_parameter_value';
@@ -1631,7 +1660,8 @@ begin
       join pg_roles a on a.oid = m.roleid
       join pg_roles p on p.oid = m.member
       join pg_roles g on g.oid = m.grantor
-     where a.rolname = r and not g.rolsuper;
+     where a.rolname = r and not p.rolsuper
+       and (m.set_option or m.inherit_option);
 
     if d_oid is null then
       d_oid := o; d_nom := nm; m_oid := mo; m_nom := mn;

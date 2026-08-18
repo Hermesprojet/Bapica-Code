@@ -340,6 +340,43 @@ EOF
 # meme nom, et un harnais detruit les objets de l'autre en croyant nettoyer les
 # siens. La borne est donc calculee, pas choisie: 63 - 20 = 43, arrondi a 40
 # pour garder une marge si un suffixe s'allonge.
+# --------------------------------------------------------------------------
+# LES ROLES DU STUB SUPABASE SONT GLOBAUX, EUX AUSSI
+# --------------------------------------------------------------------------
+# `00_supabase_stub.sql` cree `anon` et `authenticated` — des ROLES, donc des
+# objets de CLUSTER, qui survivent a la destruction de la base. Aucun harnais
+# ne les rendait: mesure sur le cluster de test, ils subsistaient apres chaque
+# execution de la commande canonique, et « aucun role residuel » etait faux.
+#
+# Ils sont traites exactement comme les roles canoniques: exiges absents au
+# demarrage — un harnais ne detruit jamais ce qu'il n'a pas cree — et rendus en
+# sortie.
+HARNAIS_ROLES_STUB=(anon authenticated)
+
+# --------------------------------------------------------------------------
+# LE PIEGE DE SORTIE NE SUFFIT PAS: BASH NE L'EXECUTE PAS SUR UN SIGNAL
+# --------------------------------------------------------------------------
+# `trap ... EXIT` couvre la fin normale et `exit`. Il NE COUVRE PAS SIGTERM ni
+# SIGINT: sans gestionnaire pour ces signaux, bash meurt sur-le-champ et le
+# piege de sortie n'est jamais execute. Un harnais interrompu — Ctrl-C d'un
+# operateur, timeout de CI, `kill` — laissait donc derriere lui ses roles
+# GLOBAUX et sa base.
+#
+# MESURE: `harness_safety_selftest.sh` scenario 14 interrompt volontairement
+# `two_phase_deployment.sh` et exige zero residu. Il annoncait « zero residu »
+# alors que le cluster gardait `interr_mig_*`, `interr_ctl_*` et jusqu'a six
+# roles canoniques — assez pour faire refuser les executions suivantes, ce qui
+# s'est produit deux fois de suite.
+#
+# Les gestionnaires ci-dessous se contentent d'`exit`, ce qui DECLENCHE le
+# piege de sortie. Les codes sont les codes conventionnels 128+signal, pour que
+# « interrompu » reste distinguable de « refuse » (2) et de « non execute » (3).
+harnais_piege_signaux() {
+  trap 'exit 143' TERM
+  trap 'exit 130' INT
+  trap 'exit 129' HUP
+}
+
 HARNAIS_IDENT_MAX=40
 
 harnais_valider_identifiant() {

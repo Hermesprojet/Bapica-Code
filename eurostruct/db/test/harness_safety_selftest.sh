@@ -81,19 +81,25 @@ exiger_cluster_jetable "harness_safety_selftest.sh" || exit 2
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
 
+# SIX, et non cinq: `eurostruct_normative_activator` est canonique depuis
+# 6.3b6b. Le nombre de temoins attendus intacts suit (voir `temoins_intacts`).
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
+            eurostruct_normative_activator
             normative_backend normative_governance eurostruct_deployment)
 
 adm() { psql -X -q -d postgres "$@"; }
 
 # Le cluster doit etre PROPRE avant de commencer: si les roles canoniques
 # existaient deja, les temoins seraient indistinguables d'un residu et les
-# cinq controles passeraient sans rien prouver.
-PRESENTS=$(adm -tAc "
-  select count(*) from pg_roles
-   where rolname = any (array['${CANONIQUES[0]}','${CANONIQUES[1]}',
-                              '${CANONIQUES[2]}','${CANONIQUES[3]}',
-                              '${CANONIQUES[4]}'])")
+# controles passeraient sans rien prouver.
+#
+# DERIVE DU TABLEAU, comme `temoins_intacts` et pour la meme raison: la liste
+# enumeree a la main s'arretait a cinq indices et ignorait donc le sixieme role
+# canonique — c'est-a-dire exactement le residu qu'elle existe pour detecter.
+LISTE_CANONIQUES=""
+for r in "${CANONIQUES[@]}"; do LISTE_CANONIQUES+="${LISTE_CANONIQUES:+,}'$r'"; done
+PRESENTS=$(adm -tAc "select count(*) from pg_roles
+                      where rolname in ($LISTE_CANONIQUES)")
 if [[ "$PRESENTS" != "0" ]]; then
   echo "      NON EXECUTE: $PRESENTS role(s) canonique(s) preexistent. Les" >&2
   echo "              temoins ne seraient pas distinguables d'un residu, et" >&2
@@ -123,14 +129,18 @@ retirer_temoins() {
     detruire_temoin_nomme role "$r" || true
   done
 }
+# LA LISTE EST DERIVEE DU TABLEAU, ET LE COMPTE AUSSI.
+#
+# Cette fonction enumerait cinq indices a la main et comparait a un nombre
+# ecrit en dur. Quand `eurostruct_normative_activator` a rejoint le jeu
+# canonique, elle a continue a n'interroger que cinq noms tout en en attendant
+# six: les QUINZE barrieres sont passees au rouge d'un coup, alors qu'aucune
+# n'avait cede. Deriver les deux du meme tableau rend cette derive impossible.
 temoins_intacts() {
-  local n
-  n=$(adm -tAc "
-    select count(*) from pg_roles
-     where rolname = any (array['${CANONIQUES[0]}','${CANONIQUES[1]}',
-                                '${CANONIQUES[2]}','${CANONIQUES[3]}',
-                                '${CANONIQUES[4]}'])")
-  [[ "$n" == "5" ]]
+  local n liste="" r
+  for r in "${CANONIQUES[@]}"; do liste+="${liste:+,}'$r'"; done
+  n=$(adm -tAc "select count(*) from pg_roles where rolname in ($liste)")
+  [[ "$n" == "${#CANONIQUES[@]}" ]]
 }
 
 # NE DETRUIRE QUE CE DONT LA CREATION A REUSSI (correctif #1).
@@ -182,6 +192,9 @@ nettoyer() {
   harnais_verrou_rendre
 }
 trap nettoyer EXIT
+# ET SUR SIGNAL: sans cela, TERM ou Ctrl-C tuent bash avant le piege ci-dessus
+# et le decor global reste derriere (voir harnais_piege_signaux).
+harnais_piege_signaux
 
 echo "    securite des harnais: la commande canonique ne detruit rien"
 
@@ -202,7 +215,7 @@ poser_temoins || { echoue "pose des temoins impossible"; exit 1; }
 if [[ "$CODE" == "0" ]]; then
   echoue "la commande canonique s'est executee SANS consentement declare"
 elif temoins_intacts; then
-  echo "      ok: 1. sans consentement — refus (code $CODE), 5 temoins intacts"
+  echo "      ok: 1. sans consentement — refus (code $CODE), ${#CANONIQUES[@]} temoins intacts"
 else
   echoue "1. sans consentement: le refus a quand meme detruit des temoins"
 fi
@@ -219,7 +232,7 @@ fi
 if [[ "$CODE" == "0" ]]; then
   echoue "la commande canonique a accepte un hote non local"
 elif temoins_intacts; then
-  echo "      ok: 2. hote non local — refus (code $CODE), 5 temoins intacts"
+  echo "      ok: 2. hote non local — refus (code $CODE), ${#CANONIQUES[@]} temoins intacts"
 else
   echoue "2. hote non local: des temoins ont ete detruits"
 fi
@@ -237,7 +250,7 @@ if [[ "$CODE" == "0" ]]; then
   echoue "la commande canonique s'est executee sur un cluster portant"
   echoue "  « supabase_admin »: elle aurait tourne sur Supabase"
 elif temoins_intacts; then
-  echo "      ok: 3. marqueur Supabase — refus (code $CODE), 5 temoins intacts"
+  echo "      ok: 3. marqueur Supabase — refus (code $CODE), ${#CANONIQUES[@]} temoins intacts"
 else
   echoue "3. marqueur Supabase: des temoins ont ete detruits"
 fi
@@ -256,7 +269,7 @@ if [[ "$CODE" == "0" ]]; then
   echoue "la commande canonique s'est executee sur un cluster portant une"
   echoue "  base etrangere: il sert a autre chose qu'a ces tests"
 elif temoins_intacts; then
-  echo "      ok: 4. base etrangere — refus (code $CODE), 5 temoins intacts"
+  echo "      ok: 4. base etrangere — refus (code $CODE), ${#CANONIQUES[@]} temoins intacts"
 else
   echoue "4. base etrangere: des temoins ont ete detruits"
 fi
@@ -337,14 +350,17 @@ CODE_B="$(cat "$SORTIE_B.code" 2>/dev/null || echo 99)"
 # aurait produit le meme comptage, et le scenario serait passe au vert en
 # n'ayant rien exerce du tout.
 #
-# ETAT ATTENDU DU GAGNANT, dans la phase rouge 6.3b6b: code 1, et sa sortie
-# doit porter le marqueur `ATTENDU-ROUGE (6.3b6b)` — preuve qu'il est alle
-# jusqu'aux configurations B et C, et n'a pas echoue en chemin.
+# ETAT ATTENDU DU GAGNANT: code 0, et sa sortie doit montrer qu'il est alle
+# JUSQU'AU BOUT — configuration C menee de PENDING a ACTIVE. Le code seul ne
+# suffirait pas: une execution qui sortirait 0 sans avoir rien exerce le
+# donnerait aussi.
 #
-# QUAND 6.3b6b SERA VERT: remplacer `GAGNANT_ATTENDU=1` par `0` et retirer
-# l'exigence du marqueur. C'est ecrit ici pour que le changement soit un geste,
-# pas une enquete.
-GAGNANT_ATTENDU=1
+# 6.3b6b etant vert, `GAGNANT_ATTENDU` passe de 1 a 0 et le marqueur
+# `ATTENDU-ROUGE (6.3b6b)` — qui prouvait l'inverse, a savoir que le gagnant
+# avait bien atteint le rouge annonce — cede la place a la preuve positive.
+# Le changement etait annonce ici comme un geste: il l'a ete.
+GAGNANT_ATTENDU=0
+PREUVE_GAGNANT="C PENDING -> ACTIVE"
 
 CODES=("$CODE_A" "$CODE_B"); SORTIES=("$SORTIE_A" "$SORTIE_B")
 IDX_PERDANT=-1; IDX_GAGNANT=-1
@@ -366,12 +382,13 @@ elif [[ "${CODES[$IDX_GAGNANT]}" != "$GAGNANT_ATTENDU" ]]; then
   echoue "  il n'a pas atteint l'etat attendu de la phase rouge 6.3b6b, et le"
   echoue "  scenario n'a donc rien exerce de ce qu'il annonce."
   grep -m2 -iE 'ECHEC|ERROR' "${SORTIES[$IDX_GAGNANT]}" | sed 's/^/              /' >&2
-elif ! grep -q "ATTENDU-ROUGE (6.3b6b)" "${SORTIES[$IDX_GAGNANT]}"; then
-  echoue "7. le gagnant a rendu $GAGNANT_ATTENDU mais sans atteindre"
-  echoue "  « ATTENDU-ROUGE (6.3b6b) »: il a echoue avant les configurations"
-  echoue "  B et C, et le code attendu a ete obtenu pour une autre raison."
+elif ! grep -qF "$PREUVE_GAGNANT" "${SORTIES[$IDX_GAGNANT]}"; then
+  echoue "7. le gagnant a rendu $GAGNANT_ATTENDU mais sa sortie ne montre pas"
+  echoue "  « $PREUVE_GAGNANT »: il n'a pas mene la configuration C jusqu'a"
+  echoue "  l'activation, et le code attendu a ete obtenu pour une autre raison."
 else
-  echo "      ok: 7. concurrence — perdant 3 (verrou), gagnant $GAGNANT_ATTENDU (ATTENDU-ROUGE atteint)"
+  echo "      ok: 7. concurrence — perdant 3 (verrou), gagnant $GAGNANT_ATTENDU"
+  echo "             (« $PREUVE_GAGNANT » atteint)"
 fi
 # AUCUN RESIDU, apres une concurrence reelle. Le nettoyage du gagnant et
 # l'abstention du perdant doivent laisser le cluster tel qu'il etait.
@@ -516,7 +533,7 @@ elif ! temoins_intacts; then
   echoue "11. LE PERDANT A NETTOYE: des temoins ont disparu. Un nettoyage par"
   echoue "  l'execution refusee emporte les objets de celle qui travaille."
 else
-  echo "      ok: 11. vraie cle — refus (code 3), 5 temoins intacts, aucun nettoyage"
+  echo "      ok: 11. vraie cle — refus (code 3), ${#CANONIQUES[@]} temoins intacts, aucun nettoyage"
 fi
 retirer_temoins
 
@@ -641,10 +658,27 @@ rm -f "$SORTIE_13B"
 #   * le processus est encore vivant;
 #   * F1 ET F3 existent — c'est-a-dire qu'on interrompt bien DANS la fenetre
 #     entre creation et nettoyage.
-(export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
- unset EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
- export EUROSTRUCT_HARNAIS_VERROU_CLE=$(( 7314159 + 2 + RANDOM ))
- "$HERE/two_phase_deployment.sh" interr >/dev/null 2>&1) &
+# LE SIGNAL DOIT ATTEINDRE LE SCRIPT, PAS UN INTERMEDIAIRE.
+#
+# La forme `( export ...; "$HERE/two_phase_deployment.sh" ... ) &` mettait un
+# SOUS-SHELL entre `$!` et le script. `kill -TERM $PID_INT` tuait le
+# sous-shell; le script, devenu orphelin, CONTINUAIT. Le scenario constatait
+# alors « zero residu » — parce que le script n'avait pas encore cree ses roles
+# — puis ceux-ci apparaissaient apres coup et faisaient refuser les executions
+# suivantes. Mesure: `interr_mig_*`, `interr_ctl_*` et jusqu'a six roles
+# canoniques restaient sur le cluster, et deux auto-tests consecutifs
+# echouaient sur un decor qu'ils croyaient propre.
+#
+# `env` REMPLACE son propre processus par le script: `$!` est donc le PID du
+# script lui-meme, et le signal l'atteint.
+# `-u` AVANT les affectations: des qu'`env` rencontre un `NAME=VALUE`, tout ce
+# qui suit est la COMMANDE. Ecrit apres, `-u` etait pris pour le programme a
+# lancer, le processus mourait aussitot, et la fenetre n'etait jamais atteinte
+# — un rouge « le scenario n'a rien exerce », honnete mais du au lanceur.
+env -u EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE \
+    EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole \
+    EUROSTRUCT_HARNAIS_VERROU_CLE=$(( 7314159 + 2 + RANDOM )) \
+    "$HERE/two_phase_deployment.sh" interr >/dev/null 2>&1 &
 PID_INT=$!
 
 # Attente ACTIVE et bornee: on scrute l'apparition de F1 et F3.
@@ -675,18 +709,38 @@ else
   wait "$PID_INT" 2>/dev/null
   # Le piege de sortie s'execute dans le processus interrompu; on lui laisse le
   # temps de rendre la main, en scrutant plutot qu'en dormant au hasard.
+  # LES ROLES CANONIQUES COMPTENT AUSSI, ET CE SONT EUX QUI FONT MAL.
+  #
+  # Ce constat ne regardait que `interr%`, c'est-a-dire le decor jetable. Or
+  # `two_phase_deployment.sh` cree AUSSI les six roles canoniques — des noms
+  # imposes, globaux au cluster —, et ce sont ceux-la qui font refuser toute
+  # execution ulterieure. Les chercher est le seul moyen de distinguer « le
+  # piege a tourne » de « le piege a tourne a moitie ».
   APRES="?"
   for _ in $(seq 1 50); do
-    APRES=$(adm -tAc "select coalesce(string_agg(rolname, ', '), '')
-                        from pg_roles where rolname like 'interr%'")
+    APRES=$(adm -tAc "select coalesce(string_agg(rolname, ', ' order by rolname), '')
+                        from pg_roles
+                       where rolname like 'interr%'
+                          or rolname in ($LISTE_CANONIQUES)")
     [[ -z "$APRES" ]] && break
     sleep 0.2
   done
-  if [[ -n "$APRES" ]]; then
-    echoue "14. APRES INTERRUPTION, des roles subsistent: $APRES"
-    for r in ${APRES//,/ }; do adm -c "drop role if exists \"${r// /}\";" >/dev/null 2>&1; done
+  # ET LA BASE, pour la meme raison: une base residuelle n'est pas moins un
+  # residu qu'un role, et elle retient les roles qui la possedent.
+  BASES_APRES=$(adm -tAc "select coalesce(string_agg(datname, ', '), '')
+                            from pg_database where datname like 'interr%'")
+  if [[ -n "$APRES" || -n "$BASES_APRES" ]]; then
+    echoue "14. APRES INTERRUPTION, le decor subsiste:"
+    [[ -n "$APRES" ]]       && echoue "  roles: $APRES"
+    [[ -n "$BASES_APRES" ]] && echoue "  bases: $BASES_APRES"
+    for b in ${BASES_APRES//,/ }; do adm -c "drop database if exists \"${b// /}\";" >/dev/null 2>&1; done
+    for r in ${APRES//,/ }; do
+      adm -c "drop owned by \"${r// /}\";" >/dev/null 2>&1
+      adm -c "drop role if exists \"${r// /}\";" >/dev/null 2>&1
+    done
   else
-    echo "      ok: 14. interruption DANS la fenetre (F1+F3 vus, processus vivant) — zero residu"
+    echo "      ok: 14. interruption DANS la fenetre (F1+F3 vus, processus vivant) —"
+    echo "             ni role jetable, ni role canonique, ni base residuels"
   fi
 fi
 

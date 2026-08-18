@@ -78,6 +78,7 @@ ROLES_FICTIFS="fictif_login_a fictif_b fictif_c fictif_relais"
 # detruit. C'est la meme discipline que pour les roles canoniques, dont le nom
 # est impose et ne peut pas etre suffixe d'un jeton.
 CANONIQUES="eurostruct_normative_writer eurostruct_normative_bootstrap
+            eurostruct_normative_activator
             normative_backend normative_governance eurostruct_deployment"
 
 # La connexion vient de l'ENVIRONNEMENT, jamais d'argv (6.3b6a, securite des
@@ -114,7 +115,8 @@ harnais_valider_identifiant "nom de base" "$DB" || exit 2
 harnais_verrou_prendre  "role_prerequisites.sh" || exit $?   # 2 = parametre invalide, 3 = verrou detenu
 exiger_cluster_jetable  "role_prerequisites.sh" || exit 2
 # shellcheck disable=SC2086
-exiger_roles_absents "role_prerequisites.sh" $ROLES_FICTIFS $CANONIQUES || exit 2
+exiger_roles_absents "role_prerequisites.sh" $ROLES_FICTIFS $CANONIQUES \
+  "${HARNAIS_ROLES_STUB[@]}" || exit 2
 
 # LA GARDE S'APPLIQUE ICI AUSSI (correctif #5).
 #
@@ -164,21 +166,24 @@ nettoyer() {
     select pg_terminate_backend(pid) from pg_stat_activity
      where datname = '$DB' and pid <> pg_backend_pid();" >/dev/null 2>&1
   "${PSQL_ADMIN[@]}" -q -c "drop database if exists $DB;" >/dev/null 2>&1
-  for r in $ROLES_FICTIFS $CANONIQUES; do
-    "${PSQL_ADMIN[@]}" -q -c "drop owned by $r;" >/dev/null 2>&1
-    "${PSQL_ADMIN[@]}" -q -c "drop role if exists $r;" >/dev/null 2>&1
+  for r in $ROLES_FICTIFS $CANONIQUES "${HARNAIS_ROLES_STUB[@]}"; do
+    "${PSQL_ADMIN[@]}" -q -c "drop owned by \"$r\";" >/dev/null 2>&1
+    "${PSQL_ADMIN[@]}" -q -c "drop role if exists \"$r\";" >/dev/null 2>&1
   done
   # La restitution est VERIFIEE, base et roles, par noms exacts. Sans cela,
   # « sans residu » resterait une affirmation.
   # shellcheck disable=SC2086
   harnais_postcondition_nettoyage "role_prerequisites.sh" $ROLES_FICTIFS $CANONIQUES \
-    || NETTOYAGE_KO=1
+    "${HARNAIS_ROLES_STUB[@]}" || NETTOYAGE_KO=1
   harnais_verrou_rendre
   [[ "${NETTOYAGE_KO:-0}" -eq 0 ]] || exit 3
 }
 NETTOYAGE_KO=0
 registre_base "$DB"
 trap nettoyer EXIT
+# ET SUR SIGNAL: sans cela, TERM ou Ctrl-C tuent bash avant le piege ci-dessus
+# et le decor global reste derriere (voir harnais_piege_signaux).
+harnais_piege_signaux
 
 # Le serveur doit repondre AVANT tout. Sans ce controle, une base injoignable
 # faisait echouer chaque `psql`, `err` restait vide, et le script annoncait
@@ -237,7 +242,11 @@ SQL
     printf '              la migration ACCEPTE cette configuration\n'
     KO=1; return
   fi
-  if ! grep -q "$attendu" <<<"$err"; then
+  # `grep -E`: les motifs portent des alternatives. En expression rationnelle
+  # BASIQUE — le defaut de `grep` — « (a|b) » ne designe pas une alternative
+  # mais la chaine litterale, si bien qu'un refus correct etait annonce « hors
+  # sujet ». Le motif dit ce qu'il a l'air de dire.
+  if ! grep -qE "$attendu" <<<"$err"; then
     printf '      ECHEC   %s\n' "$nom"
     printf '              refus obtenu, mais hors sujet\n'
     printf '              attendu ~ /%s/\n' "$attendu"
@@ -252,12 +261,12 @@ echo "    prerequis de deploiement sur les roles"
 scenario "role LOGIN arbitraire, membre direct du writer" \
   "create role fictif_login_a login password 'FICTIF';
    grant eurostruct_normative_writer to fictif_login_a;" \
-  "fictif_login_a.*membre de"
+  "fictif_login_a.*(membre de|peut endosser ou heriter de)"
 
 scenario "role NOLOGIN, membre direct du bootstrap" \
   "create role fictif_b nologin;
    grant eurostruct_normative_bootstrap to fictif_b;" \
-  "fictif_b.*membre de"
+  "fictif_b.*(membre de|peut endosser ou heriter de)"
 
 # Sur les roles d'AUTORITE, aucune violation PUREMENT transitive n'existe: la
 # regle interdit TOUT membre, donc la chaine est coupee a son premier maillon.
@@ -269,7 +278,7 @@ scenario "chaine a deux sauts vers le writer, coupee au premier maillon" \
    grant eurostruct_normative_writer to fictif_relais;
    create role fictif_c login password 'FICTIF';
    grant fictif_relais to fictif_c;" \
-  "membre de « eurostruct_normative_writer »"
+  "(membre de|peut endosser ou heriter de) « eurostruct_normative_writer »"
 
 # LA transitivite, prouvee la ou des membres sont LEGITIMES: un role de
 # service a vocation a etre endosse par l'application. Ici le porteur de jeton
@@ -376,8 +385,17 @@ else
   echo "      ok: une configuration saine reste acceptee"
 fi
 
+# LE VERDICT DOIT DIRE CE QUE LE CODE DE SORTIE DIT.
+#
+# Ce bloc annoncait « verifies » sans condition, y compris en sortant avec 1.
+# Un compte rendu lu sans le code de sortie — c'est-a-dire la plupart du
+# temps — annoncait donc vert une surface rouge.
 echo ''
 echo '================================================='
-echo ' Prerequis de deploiement sur les roles verifies.'
+if [[ $KO -eq 0 ]]; then
+  echo ' Prerequis de deploiement sur les roles verifies.'
+else
+  echo ' Prerequis de deploiement sur les roles: AU MOINS UN ECART.'
+fi
 echo '================================================='
 exit $KO

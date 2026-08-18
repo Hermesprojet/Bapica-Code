@@ -207,6 +207,9 @@ sortie_propre() {
   [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
 }
 trap sortie_propre EXIT
+# ET SUR SIGNAL: sans cela, TERM ou Ctrl-C tuent bash avant le piege ci-dessus
+# et le decor global reste derriere (voir harnais_piege_signaux).
+harnais_piege_signaux
 
 # Chaque decor pose ajoute ses deux roles a la liste des noms dont l'absence
 # sera exigee en sortie — par NOM EXACT, jamais par motif.
