@@ -629,25 +629,65 @@ rm -f "$SORTIE_13B"
 # On interrompt donc POUR DE VRAI, a un instant ou F1 et F3 existent, et on
 # exige qu'il ne reste rien. Le piege de sortie est le seul filet: c'est
 # exactement ce qu'on teste.
-AVANT=$(adm -tAc "select count(*) from pg_roles where rolname like 'interr%'")
+# DETERMINISTE, ET NON « on attend six secondes ».
+#
+# La premiere ecriture faisait `sleep 6` puis `kill`, puis constatait l'absence
+# de residu. Elle serait passee au VERT si le processus s'etait deja termine de
+# lui-meme avant le `kill`: on aurait alors constate un nettoyage NORMAL, pas
+# un nettoyage APRES INTERRUPTION, et le scenario aurait prouve le contraire de
+# ce qu'il annonce. Un test dont le sujet depend d'une course n'est pas un test.
+#
+# On exige donc, AVANT d'envoyer TERM, deux faits constates:
+#   * le processus est encore vivant;
+#   * F1 ET F3 existent — c'est-a-dire qu'on interrompt bien DANS la fenetre
+#     entre creation et nettoyage.
 (export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
  unset EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
  export EUROSTRUCT_HARNAIS_VERROU_CLE=$(( 7314159 + 2 + RANDOM ))
  "$HERE/two_phase_deployment.sh" interr >/dev/null 2>&1) &
 PID_INT=$!
-# Le temps que les oracles F1/F3 soient joues, puis on coupe.
-sleep 6
-kill -TERM "$PID_INT" 2>/dev/null
-wait "$PID_INT" 2>/dev/null
-sleep 1
-APRES=$(adm -tAc "
-  select coalesce(string_agg(rolname, ', '), '') from pg_roles
-   where rolname like 'interr%'")
-if [[ -n "$APRES" ]]; then
-  echoue "14. APRES INTERRUPTION, des roles subsistent: $APRES"
-  for r in ${APRES//,/ }; do adm -c "drop role if exists \"${r// /}\";" >/dev/null 2>&1; done
+
+# Attente ACTIVE et bornee: on scrute l'apparition de F1 et F3.
+FENETRE=0
+for _ in $(seq 1 200); do
+  kill -0 "$PID_INT" 2>/dev/null || break     # le processus est mort: fenetre ratee
+  if [[ "$(adm -tAc "select count(*) from pg_roles
+                      where rolname like 'interr%_f1_%'
+                         or rolname like 'interr%_f3_%'")" == "2" ]]; then
+    FENETRE=1; break
+  fi
+  sleep 0.2
+done
+
+if [[ "$FENETRE" != "1" ]]; then
+  # NON CONCLUANT, et dit comme tel: ni vert ni rouge de securite. Le scenario
+  # n'a pas pu se placer dans la fenetre qu'il vise.
+  echoue "14. la fenetre entre creation et nettoyage n'a pas ete atteinte:"
+  echoue "  F1 et F3 n'ont pas ete observes ensemble pendant que le processus"
+  echoue "  vivait. Le scenario n'a rien exerce."
+  kill -TERM "$PID_INT" 2>/dev/null; wait "$PID_INT" 2>/dev/null
+elif ! kill -0 "$PID_INT" 2>/dev/null; then
+  echoue "14. le processus s'est termine avant l'interruption: ce qui suivrait"
+  echoue "  constaterait un nettoyage NORMAL, pas un nettoyage apres coupure."
 else
-  echo "      ok: 14. interruption entre creation et nettoyage — zero role residuel"
+  # Les deux faits sont etablis: on coupe.
+  kill -TERM "$PID_INT" 2>/dev/null
+  wait "$PID_INT" 2>/dev/null
+  # Le piege de sortie s'execute dans le processus interrompu; on lui laisse le
+  # temps de rendre la main, en scrutant plutot qu'en dormant au hasard.
+  APRES="?"
+  for _ in $(seq 1 50); do
+    APRES=$(adm -tAc "select coalesce(string_agg(rolname, ', '), '')
+                        from pg_roles where rolname like 'interr%'")
+    [[ -z "$APRES" ]] && break
+    sleep 0.2
+  done
+  if [[ -n "$APRES" ]]; then
+    echoue "14. APRES INTERRUPTION, des roles subsistent: $APRES"
+    for r in ${APRES//,/ }; do adm -c "drop role if exists \"${r// /}\";" >/dev/null 2>&1; done
+  else
+    echo "      ok: 14. interruption DANS la fenetre (F1+F3 vus, processus vivant) — zero residu"
+  fi
 fi
 
 # --------------------------------------------------------------------------
