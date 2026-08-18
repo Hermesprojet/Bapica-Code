@@ -116,21 +116,29 @@ grant usage on schema auth to "$MIG" with grant option;
 grant select, insert, references on auth.users to "$MIG" with grant option;
 grant execute on function auth.uid() to "$MIG" with grant option;
 grant create on database "$BASE" to "$MIG";
+-- LE PLAN DE CONTROLE CREE LES OBJETS DE LA PHASE 0. Il lui faut donc CREATE
+-- sur `public`, et l'option de le retransmettre a l'activateur qui deviendra
+-- proprietaire de ces objets. C'est un prerequis de deploiement, pose par la
+-- plateforme — voir docs/DEPLOIEMENT_PREREQUIS.md.
+grant create on schema public to "$CTL" with grant option;
+grant usage on schema auth to "$CTL";
 SQL
 
-  # LE PLAN DE CONTROLE PROVISIONNE: c'est lui le donneur (fait F3).
+  # PHASE 0 — LE SCEAU, POSE PAR LE PLAN DE CONTROLE.
+  # C'est elle qui cree les six roles canoniques ET la racine de confiance.
+  # Le migrateur n'y participe pas: c'est tout l'objet de 6.3b6c.
+  if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$DB_DIR/migrations/0000_sceau_normatif.sql" 2>&1); then
+    echoue "decor $s: phase 0 refusee:"
+    grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
+    return 1
+  fi
+  adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
+  # L'EMPRUNT: DEUX ROLES, jamais l'activateur. Accorde par le plan de
+  # controle, qui est donc le donneur (fait F3) et le seul a pouvoir revoquer.
   ctlp -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
-create role eurostruct_normative_writer nologin;
-create role eurostruct_normative_bootstrap nologin;
-create role eurostruct_normative_activator nologin;
-create role normative_backend nologin;
-create role normative_governance nologin;
-create role eurostruct_deployment nologin;
 grant eurostruct_normative_writer    to "$MIG" with admin option;
 grant eurostruct_normative_bootstrap to "$MIG" with admin option;
-grant eurostruct_normative_activator to "$MIG" with admin option;
 SQL
-  adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
   # LES TROIS DECLARATIONS, POSEES AVANT LA FINALISATION qui les fige.
   adm -c "alter database \"$BASE\"
             set eurostruct.approved_deployment_roles = '$MIG,$CTL';" >/dev/null 2>&1
@@ -138,7 +146,9 @@ SQL
   adm -c "alter database \"$BASE\"
             set eurostruct.approved_service_logins = '$SVC';" >/dev/null 2>&1
 
+  # PHASE 1 — par le migrateur, et sans 0000 qui appartient a la phase 0.
   for f in "$DB_DIR"/migrations/*.sql; do
+    [[ "$(basename "$f")" == 0000_* ]] && continue
     if ! sortie=$(mig -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
       echoue "decor $s: phase 1 refusee sur $(basename "$f"):"
       grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
@@ -412,13 +422,22 @@ if [[ "$LEGIT" != "1" ]]; then
   echoue "B: la confirmation legitime n'a pas pu etre creee ($LEGIT): le scenario"
   echoue "   ne prouverait rien — il n'y aurait aucune preuve a detruire."
 else
-  # --- B2. avec declencheurs actifs, le refus a lieu ----------------------
+  # --- B2. la preuve resiste a une suppression directe --------------------
+  # DEUX REFUS SONT ACCEPTABLES, ET LEUR ORDRE DIT LA FORCE DU MODELE:
+  #   * « permission denied » — le migrateur n'atteint meme plus la table.
+  #     C'est le refus FORT, celui que la propriete transferee procure;
+  #   * « immuable » — il l'atteint, mais le declencheur de conservation
+  #     decennale refuse. C'est le refus qui existait avant 6.3b6c.
+  # Ce qui serait rouge, c'est l'ABSENCE de refus.
   REFUS=$(mig -c "delete from normative_rule_confirmations
                    where rule_id = 'test.fermeture';" 2>&1)
-  if ! grep -qi "immuable" <<<"$REFUS"; then
-    echoue "B2. le refus attendu (immuabilite) n'a pas eu lieu:"
-    echoue "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$REFUS" | cut -c1-140)"
+  if ! grep -qiE "immuable|permission denied|droit refuse" <<<"$REFUS"; then
+    echoue "B2. la suppression directe n'a ete refusee par rien:"
+    echoue "    $(head -1 <<<"$REFUS" | cut -c1-140)"
   else
+    grep -qi "permission denied" <<<"$REFUS" \
+      && echo "      ok: B2. le migrateur n'atteint plus la table (permission denied)" \
+      || echo "      ok: B2. la suppression directe est refusee (immuabilite)"
     # --- B3. le proprietaire desactive les declencheurs -------------------
     DESACT=$(mig -c "alter table normative_rule_confirmations
                        disable trigger user;" 2>&1)
@@ -429,7 +448,7 @@ else
                            and c.relname = 'normative_rule_confirmations'" 2>&1)
     if grep -qiE "ERROR|ERREUR" <<<"$DESACT"; then
       echo "      ok: B3. le migrateur ne peut pas desactiver les declencheurs"
-      echo "             ($(grep -m1 -iE 'ERROR|ERREUR' <<<"$DESACT" | cut -c1-90))"
+      echo "             ($(grep -m1 -iE 'ERROR|ERREUR' <<<"$DESACT" | cut -c1-90 | sed 's/^ERROR:  //'))"
     else
       rouge "B3. LE MIGRATEUR A DESACTIVE LES DECLENCHEURS (actifs: $ACTIFS)."
       rouge "    Ses capacites normatives valent pourtant $RESTE: la revocation"
@@ -585,8 +604,14 @@ fi
 # de coherence du plan attrape aujourd'hui une substitution — mais une
 # exemption qui n'est sure que grace a un AUTRE controle n'est pas sure.
 # Verification statique: c'est une propriete du texte, pas d'une base.
+# LES DEUX FICHIERS DE MIGRATION SONT LUS. La racine de confiance a demenage
+# en phase 0 (6.3b6c): un motif qui ne regardait que 0010 est passe au VERT du
+# jour au lendemain sans que rien ne soit corrige — le controle avait perdu son
+# sujet, pas trouve sa reponse.
+MIGRATIONS=("$DB_DIR/migrations/0000_sceau_normatif.sql"
+            "$DB_DIR/migrations/0010_normative_confirmation.sql")
 NOM_SEUL=$(grep -nE "^\s+(p|c)\.rolname = normative_control_plane\(\)" \
-             "$DB_DIR/migrations/0010_normative_confirmation.sql" | cut -d: -f1 | tr '\n' ' ')
+             "${MIGRATIONS[@]}" | sed 's#.*/##' | tr '\n' ' ')
 if [[ -z "$NOM_SEUL" ]]; then
   echo "      ok: E. toutes les exemptions comparent l'oid ET le nom"
 else
@@ -602,9 +627,9 @@ fi
 # le COMPARE ensuite. Il est donc une photographie, pas un detecteur de
 # derive — et il faut que le depot le dise, parce que ce qui bloque certaines
 # derives sont les invariants de `assert_normative_topology()`, pas lui.
-RELECTURE=$(grep -cE "topology_digest" "$DB_DIR/migrations/0010_normative_confirmation.sql")
-COMPARE=$(grep -cE "topology_digest\s*(<>|=|is distinct from)" \
-            "$DB_DIR/migrations/0010_normative_confirmation.sql")
+RELECTURE=$(grep -ch "topology_digest" "${MIGRATIONS[@]}" | paste -sd+ | bc)
+COMPARE=$(grep -chE "topology_digest\s*(<>|=|is distinct from)" \
+            "${MIGRATIONS[@]}" | paste -sd+ | bc)
 if [[ "$COMPARE" != "0" ]]; then
   echo "      ok: F. le digest est relu et compare ($COMPARE comparaison(s))"
 else
@@ -628,7 +653,7 @@ fi
 # « restauration » dans un document d'empreintes. Un controle qu'un mot de
 # vocabulaire suffit a satisfaire ne controle rien.
 MARQUEUR="RESTAURATION INTER-CLUSTER"
-DIAG_SQL=$(grep -lF "$MARQUEUR" "$DB_DIR/migrations/0010_normative_confirmation.sql" 2>/dev/null)
+DIAG_SQL=$(grep -lF "$MARQUEUR" "${MIGRATIONS[@]}" 2>/dev/null | sed 's#.*/##' | tr '\n' ' ')
 DOC_MD=$(grep -rlF "$MARQUEUR" "$DB_DIR/../docs" 2>/dev/null | head -1)
 if [[ -n "$DIAG_SQL" && -n "$DOC_MD" ]]; then
   echo "      ok: G. la restauration inter-cluster a un diagnostic et une"
