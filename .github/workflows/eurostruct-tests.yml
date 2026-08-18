@@ -55,4 +55,12 @@ jobs:
 
       # LA commande canonique. Rien d'autre ne doit lancer de tests ici.
       - name: suite canonique
+        env:
+          # Le conteneur `services:` de ce job est cree pour lui et detruit
+          # avec lui. La suite cree et detruit des ROLES GLOBAUX; sans cette
+          # declaration elle refuse de demarrer, ce qui est le comportement
+          # voulu partout ailleurs. La declaration est faite ICI et jamais
+          # dans les scripts: un harnais qui se donnerait a lui-meme son
+          # consentement ne serait plus une barriere.
+          EUROSTRUCT_CLUSTER_JETABLE: oui-cluster-jetable-et-isole
         run: ./eurostruct/run_tests.sh --require-db

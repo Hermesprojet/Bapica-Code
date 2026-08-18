@@ -47,6 +47,8 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="$(dirname "$HERE")"
+# shellcheck source=lib_harnais.sh
+source "$HERE/lib_harnais.sh"
 DB="${1:?usage: nonsuperuser_install.sh <nom-de-base-jetable>}"
 
 if ! [[ "$DB" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,62}$ ]]; then
@@ -61,29 +63,21 @@ MIGRATEUR=esc_migrator
 ROLES_SB="$MIGRATEUR esc_authenticator esc_service_role"
 MDP='FICTIF-nonsuperuser'
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  SANS_QUERY="${DATABASE_URL%%\?*}"; QUERY=""
-  [[ "$DATABASE_URL" == *\?* ]] && QUERY="?${DATABASE_URL#*\?}"
-  BASE_URL="${SANS_QUERY%/*}"
-  ADMIN=(psql "$DATABASE_URL")
-  # Le migrateur se connecte AVEC SON PROPRE ROLE, et non via SET ROLE: c'est
-  # la seule facon d'exercer reellement une ACL. `SET ROLE` depuis une session
-  # superutilisateur conserve `rolsuper` pour certains controles internes, et
-  # aurait redonne au test le pouvoir qu'il cherche justement a retirer.
-  HOTE="$(sed -E 's|^[^:]+://||; s|^[^@]*@||; s|/.*$||' <<<"$BASE_URL")"
-  MIG=(psql "postgresql://$MIGRATEUR:$MDP@$HOTE/$DB?sslmode=disable")
-  # L'admin, mais SUR LA BASE DE TRAVAIL. « ${ADMIN[@]} -d $DB » ne convient
-  # pas: avec une URL en argument positionnel, un « -d » ulterieur remplace le
-  # nom de base ET fait perdre l'hote et les identifiants de l'URL. La
-  # connexion retombait alors sur une socket locale inexistante, et l'echec
-  # « stub auth impossible » ne designait pas sa cause.
-  ADMIN_DB=(psql "${BASE_URL}/${DB}${QUERY}")
-else
-  PGH="${PGHOST:-/tmp}"
-  ADMIN=(psql -h "$PGH" -U "${PGUSER:-postgres}" -d postgres)
-  ADMIN_DB=(psql -h "$PGH" -U "${PGUSER:-postgres}" -d "$DB")
-  MIG=(psql -h "$PGH" -U "$MIGRATEUR" -d "$DB")
-fi
+# La connexion vient de l'ENVIRONNEMENT, jamais d'argv (6.3b6a, securite des
+# harnais). La version precedente construisait
+#
+#     psql "postgresql://$MIGRATEUR:$MDP@$HOTE/$DB?sslmode=disable"
+#
+# — le mot de passe du migrateur, en clair, dans `argv`, donc lisible par tout
+# processus de la machine. Elle reecrivait aussi `$DATABASE_URL` a la main pour
+# changer de base, ce qui avait deja fait perdre l'hote et les identifiants une
+# fois. Seule la base change desormais, par `-d`; le role et son mot de passe
+# passent par l'environnement du seul appel concerne.
+harnais_connexion || exit 2
+
+ADMIN=(psql -X -q -d postgres)
+ADMIN_DB=(psql -X -q -d "$DB")
+MIG=(psql -X -d "$DB")
 
 KO=0
 echoue() { echo "      ECHEC: $*"; KO=1; }
@@ -94,7 +88,7 @@ echoue() { echo "      ECHEC: $*"; KO=1; }
 # (« password authentication failed »). En local l'authentification est
 # `trust`, si bien que la variable n'etait jamais lue et que le defaut restait
 # invisible — la meme asymetrie CI/local que ce fichier existe pour reduire.
-mig() { PGPASSWORD="$MDP" "${MIG[@]}" "$@"; }
+mig() { PGUSER="$MIGRATEUR" PGPASSWORD="$MDP" "${MIG[@]}" "$@"; }
 
 nettoyer() {
   "${ADMIN[@]}" -q -c "drop database if exists $DB;" >/dev/null 2>&1

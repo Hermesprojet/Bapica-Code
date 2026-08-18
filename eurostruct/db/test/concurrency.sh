@@ -21,6 +21,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib_harnais.sh
+source "$HERE/lib_harnais.sh"
 DB_NAME="${1:?base de travail attendue en premier argument}"
 
 # Repertoire propre a cette execution. Des noms fixes dans /tmp se
@@ -47,14 +49,12 @@ code_sqlstate() {
   sed -nE 's/^.*ERROR:[[:space:]]+([0-9A-Z]{5}):.*$/\1/p' "$1" | head -1
 }
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  SANS_QUERY="${DATABASE_URL%%\?*}"
-  QUERY=""
-  [[ "$DATABASE_URL" == *\?* ]] && QUERY="?${DATABASE_URL#*\?}"
-  PSQL=(psql "${SANS_QUERY%/*}/$DB_NAME$QUERY")
-else
-  PSQL=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d "$DB_NAME")
-fi
+# La connexion vient de l'ENVIRONNEMENT, jamais d'argv (6.3b6a, securite des
+# harnais). La version precedente reecrivait `$DATABASE_URL` a la main pour
+# changer de base: le mot de passe se retrouvait dans `ps`, lisible par tout
+# processus de la machine. Seule la base change desormais, par `-d`.
+harnais_connexion || exit 2
+PSQL=(psql -X -q -d "$DB_NAME")
 
 R1='c0000000-0000-0000-0000-000000000001'   # candidat racine 1
 R2='c0000000-0000-0000-0000-000000000002'   # candidat racine 2

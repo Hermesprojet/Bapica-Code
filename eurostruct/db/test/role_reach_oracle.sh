@@ -45,28 +45,38 @@
 # Toutes les identites sont FICTIVES.
 set -uo pipefail
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib_harnais.sh
+source "$HERE/lib_harnais.sh"
+
 DB="${1:?usage: role_reach_oracle.sh <nom-de-base-jetable>}"
 if ! [[ "$DB" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,62}$ ]]; then
   echo "      ECHEC: nom de base « $DB » invalide" >&2
   exit 2
 fi
 
-MDP='FICTIF-oracle'
-PREFIXE=oracle_
+# La connexion vient de l'ENVIRONNEMENT, jamais d'argv. Avant ce commit, ce
+# fichier faisait `psql "$DATABASE_URL"`: le mot de passe etait lisible dans
+# `ps` par tout processus de la machine.
+harnais_connexion || exit 2
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  SANS_QUERY="${DATABASE_URL%%\?*}"
-  BASE_URL="${SANS_QUERY%/*}"
-  ADMIN=(psql "$DATABASE_URL")
-  ADMIN_DB=(psql "${BASE_URL}/${DB}")
-  HOTE="$(sed -E 's|^[^:]+://||; s|^[^@]*@||; s|/.*$||' <<<"$BASE_URL")"
-else
-  # Une socket unix ne permet pas l'authentification par mot de passe telle
-  # qu'elle est configuree ici; les porteurs se connectent donc par TCP.
-  ADMIN=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d postgres)
-  ADMIN_DB=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d "$DB")
-  HOTE=127.0.0.1
-fi
+# JETON ALEATOIRE, un par execution (6.3b6a, securite des harnais).
+#
+# Le prefixe etait fixe (`oracle_`), et le nettoyage se faisait par
+# `where rolname like 'oracle_%'` suivi d'un DROP par ligne. Deux consequences,
+# toutes deux reelles: deux executions concurrentes se detruisaient l'une
+# l'autre, et n'importe quel role tiers portant ce prefixe — un projet voisin,
+# un role d'un collegue — etait emporte sans que rien ne le signale.
+#
+# Desormais: un jeton par execution, et un nettoyage par NOMS EXACTS tenus au
+# registre. Aucun motif, nulle part.
+JETON="$(harnais_jeton)"
+PREFIXE="oracle_${JETON}_"
+
+# Ce mot de passe ne sert qu'aux roles jetables de CETTE execution, sur ce
+# cluster de test. Il ne transite jamais par argv: `sous()` le pose dans
+# l'environnement du seul `psql` concerne.
+MDP="FICTIF-oracle-$JETON"
 
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
@@ -75,28 +85,27 @@ echoue() { echo "      ECHEC: $*" >&2; KO=1; }
 # superutilisateur: c'est la seule facon d'exercer reellement la portee. Une
 # session superutilisateur qui prend un role conserve des pouvoirs internes et
 # aurait rendu tous les oracles vrais.
+#
+# `PGUSER`/`PGPASSWORD` dans l'ENVIRONNEMENT du seul appel concerne: ni l'un ni
+# l'autre n'apparait dans argv.
 sous() {
   local role="$1"; shift
-  PGPASSWORD="$MDP" psql -X -q -h "$HOTE" -U "$role" -d "$DB" "$@"
+  PGUSER="$role" PGPASSWORD="$MDP" psql -X -q -d "$DB" "$@"
 }
 
-ROLES=()
+# L'administrateur du cluster de test: la connexion vient de l'environnement,
+# seule la base change.
+adm()    { psql -X -q -d postgres "$@"; }
+adm_db() { psql -X -q -d "$DB" "$@"; }
+
 nettoyer() {
-  "${ADMIN[@]}" -X -q -c "drop database if exists $DB;" >/dev/null 2>&1
-  local r
-  for r in $("${ADMIN[@]}" -X -q -tAc \
-      "select rolname from pg_roles where rolname like '${PREFIXE}%'" 2>/dev/null); do
-    # Forme verifiee AVANT toute destruction: le motif vient du catalogue, mais
-    # il ne doit pouvoir designer que des roles de ce fichier.
-    [[ "$r" =~ ^oracle_[a-z0-9_]{1,40}$ ]] || continue
-    "${ADMIN[@]}" -X -q -c "drop owned by \"$r\";" >/dev/null 2>&1
-    "${ADMIN[@]}" -X -q -c "drop role if exists \"$r\";" >/dev/null 2>&1
-  done
+  adm -c "drop database if exists \"$DB\";" >/dev/null 2>&1
+  # NOMS EXACTS, tenus au registre par `creer_role`. Aucun `LIKE`.
+  detruire_roles_crees
 }
 trap nettoyer EXIT
-nettoyer
 
-"${ADMIN[@]}" -X -q -v ON_ERROR_STOP=1 -c "create database $DB;" >/dev/null || {
+adm -v ON_ERROR_STOP=1 -c "create database \"$DB\";" >/dev/null || {
   echoue "creation de la base impossible"; exit 1; }
 
 echo "    oracle comportemental des primitives de portee"
@@ -107,7 +116,7 @@ echo "    oracle comportemental des primitives de portee"
 # Un privilege que SEULE la cible detient. S'il devient utilisable par le
 # porteur sans `SET ROLE`, c'est qu'il a herite — et rien d'autre ne peut
 # l'expliquer.
-"${ADMIN_DB[@]}" -X -q -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+adm_db -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
 create table t_oracle_prive (n int);
 insert into t_oracle_prive values (1);
 revoke all on t_oracle_prive from public;
@@ -170,26 +179,25 @@ for entree in "${CAS[@]}"; do
   # Les roles de la forme: le porteur se connecte, les autres non. Les relais
   # sont deduits du SQL de construction — aucune liste a tenir a jour.
   RELAIS=$(grep -oE "${PREFIXE}[a-z0-9_]+" <<<"$sql" | sort -u)
-  "${ADMIN[@]}" -X -q -v ON_ERROR_STOP=1 -c \
-    "create role \"${PREFIXE}${porteur}\" login password '$MDP';" >/dev/null
-  "${ADMIN[@]}" -X -q -v ON_ERROR_STOP=1 -c \
-    "create role \"${PREFIXE}tiers_${porteur}\" nologin;" >/dev/null
+  creer_role "${PREFIXE}${porteur}" "login password '$MDP'" \
+    || { echoue "$forme: creation du porteur impossible"; continue; }
+  creer_role "${PREFIXE}tiers_${porteur}" nologin \
+    || { echoue "$forme: creation du tiers impossible"; continue; }
   for r in $RELAIS; do
     [[ "$r" == "${PREFIXE}${porteur}" ]] && continue
-    "${ADMIN[@]}" -X -q -c "create role \"$r\" nologin;" >/dev/null 2>&1
+    [[ "$r" == "${PREFIXE}${cible}" ]] && continue
+    creer_role "$r" nologin >/dev/null 2>&1 || true
   done
-  "${ADMIN[@]}" -X -q -c "create role \"${PREFIXE}${cible}\" nologin;" >/dev/null 2>&1
-  "${ADMIN_DB[@]}" -X -q -c \
-    "grant select on t_oracle_prive to \"${PREFIXE}${cible}\";" >/dev/null
-  "${ADMIN[@]}" -X -q -v ON_ERROR_STOP=1 -c "$sql" >/dev/null || {
+  creer_role "${PREFIXE}${cible}" nologin >/dev/null 2>&1 || true
+  adm_db -c "grant select on t_oracle_prive to \"${PREFIXE}${cible}\";" >/dev/null
+  adm -v ON_ERROR_STOP=1 -c "$sql" >/dev/null || {
     echoue "$forme: construction du graphe impossible"; continue; }
   # Le porteur doit pouvoir se connecter A LA BASE, sinon les trois oracles
   # echoueraient tous pour la meme raison etrangere au sujet.
-  "${ADMIN[@]}" -X -q -c \
-    "grant connect on database $DB to \"${PREFIXE}${porteur}\";" >/dev/null
+  adm -c "grant connect on database \"$DB\" to \"${PREFIXE}${porteur}\";" >/dev/null
 
   # --- LE DIAGNOSTIC, tel que la migration le calcule ---------------------
-  DIAG=$("${ADMIN_DB[@]}" -X -q -tAc "
+  DIAG=$(adm_db -tAc "
     select pg_has_role('${PREFIXE}${porteur}', '${PREFIXE}${cible}', 'SET')::text
         || '|' ||
            pg_has_role('${PREFIXE}${porteur}', '${PREFIXE}${cible}', 'USAGE')::text
@@ -222,7 +230,7 @@ for entree in "${CAS[@]}"; do
   # ligne existe.
   sous "${PREFIXE}${porteur}" -c \
     "grant \"${PREFIXE}${cible}\" to \"${PREFIXE}tiers_${porteur}\"" >/dev/null 2>&1
-  LIGNE=$("${ADMIN[@]}" -X -q -tAc "
+  LIGNE=$(adm -tAc "
     select count(*) from pg_auth_members m
       join pg_roles a on a.oid = m.roleid
       join pg_roles p on p.oid = m.member

@@ -77,70 +77,110 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="$(dirname "$HERE")"
-PREFIXE="${1:?usage: two_phase_deployment.sh <prefixe-de-base-jetable>}"
+# shellcheck source=lib_harnais.sh
+source "$HERE/lib_harnais.sh"
 
+PREFIXE="${1:?usage: two_phase_deployment.sh <prefixe-de-base-jetable>}"
 if ! [[ "$PREFIXE" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,40}$ ]]; then
   echo "      ECHEC: prefixe « $PREFIXE » invalide" >&2
   exit 2
 fi
 
-# Ces mots de passe ne servent qu'a des roles jetables, sur cette instance de
-# test, et n'ouvrent rien d'autre. Ils ne transitent jamais par argv.
-MIGRATEUR="${PREFIXE}_mig"; MIG_MDP='FICTIF-2p-mig'
-PLAN="${PREFIXE}_ctl";      PLAN_MDP='FICTIF-2p-ctl'
+# --------------------------------------------------------------------------
+# SECURITE DU HARNAIS — avant toute connexion, avant tout DROP
+# --------------------------------------------------------------------------
+# CE FICHIER CREE ET DETRUIT DES ROLES GLOBAUX. Les roles ne sont pas confines
+# a une base: `eurostruct_normative_writer`, `normative_backend` et les autres
+# appartiennent au CLUSTER. La version precedente les detruisait par
+# `drop owned by ... cascade` puis `drop role`, sans aucune precondition, en se
+# connectant a `$DATABASE_URL` si elle etait posee.
+#
+# Lance par inadvertance avec l'URL d'un staging — ou d'une production — ce
+# script aurait donc detruit les vrais roles normatifs et, par CASCADE, les
+# objets qui en dependent. Rien ne s'y opposait.
+#
+# Trois barrieres, cumulatives:
+#   1. la connexion ne prend plus de secret en argv;
+#   2. le cluster doit etre PROUVE jetable et isole — declaration explicite ET
+#      constats (boucle locale, aucun marqueur de plateforme geree, aucune base
+#      etrangere, superutilisateur);
+#   3. les roles canoniques doivent etre ABSENTS: ce script ne detruit jamais
+#      ce qu'il n'a pas cree.
+harnais_connexion || exit 2
+exiger_cluster_jetable "two_phase_deployment.sh" || exit 2
+
+# Un jeton par execution pour les roles JETABLES. Les roles canoniques, eux,
+# portent des noms imposes par la migration: ils ne peuvent pas etre suffixes,
+# et c'est precisement pourquoi les barrieres ci-dessus existent.
+JETON="$(harnais_jeton)"
+MIGRATEUR="${PREFIXE}_mig_${JETON}"; MIG_MDP="FICTIF-2p-mig-$JETON"
+PLAN="${PREFIXE}_ctl_${JETON}";      PLAN_MDP="FICTIF-2p-ctl-$JETON"
 
 AUTORITES=(eurostruct_normative_writer eurostruct_normative_bootstrap)
 SERVICES=(normative_backend normative_governance)
 DEPLOIEMENT=eurostruct_deployment
+CANONIQUES=("${AUTORITES[@]}" "${SERVICES[@]}" "$DEPLOIEMENT")
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  SANS_QUERY="${DATABASE_URL%%\?*}"; BASE_URL="${SANS_QUERY%/*}"
-  ADMIN=(psql "$DATABASE_URL")
-  HOTE="$(sed -E 's|^[^:]+://||; s|^[^@]*@||; s|/.*$||' <<<"$BASE_URL")"
-  admin_db() { local b="$1"; shift; psql "${BASE_URL}/${b}" "$@"; }
-else
-  ADMIN=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d postgres)
-  HOTE=127.0.0.1
-  admin_db() { local b="$1"; shift
-    psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d "$b" "$@"; }
-fi
+exiger_roles_absents "two_phase_deployment.sh" "${CANONIQUES[@]}" || exit 2
+
 PROPRIETAIRE="${PGUSER:-postgres}"
+BASE_A="${PREFIXE}_a_${JETON}"
+BASE_B="${PREFIXE}_b_${JETON}"
+BASE_C="${PREFIXE}_c_${JETON}"
 
 ECHECS=0; ROUGES_ATTENDUS=0
 echoue() { echo "      ECHEC: $*" >&2; ECHECS=$((ECHECS + 1)); }
 attendu_rouge() { echo "      ATTENDU-ROUGE (6.3b6b): $*"; }
 
-mig()  { local b="$1"; shift; PGPASSWORD="$MIG_MDP"  psql -X -h "$HOTE" -U "$MIGRATEUR" -d "$b" "$@"; }
-plan() { local b="$1"; shift; PGPASSWORD="$PLAN_MDP" psql -X -h "$HOTE" -U "$PLAN"      -d "$b" "$@"; }
+# Toutes les connexions viennent de l'ENVIRONNEMENT: ni URL, ni mot de passe
+# dans argv. Seule la base change, par `-d`.
+adm()      { psql -X -q -d postgres "$@"; }
+admin_db() { local b="$1"; shift; psql -X -q -d "$b" "$@"; }
+mig()  { local b="$1"; shift; PGUSER="$MIGRATEUR" PGPASSWORD="$MIG_MDP"  psql -X -d "$b" "$@"; }
+plan() { local b="$1"; shift; PGUSER="$PLAN"      PGPASSWORD="$PLAN_MDP" psql -X -d "$b" "$@"; }
 
 # --------------------------------------------------------------------------
-# Remise a zero. Les roles sont GLOBAUX a l'instance et survivent aux bases:
-# sans ce nettoyage, une configuration heriterait des roles de la precedente et
-# ne testerait plus la variable qu'elle isole.
+# Remise a zero ENTRE CONFIGURATIONS — par noms exacts, jamais par motif
 # --------------------------------------------------------------------------
+# Les roles sont globaux et survivent aux bases: sans cette remise a zero, une
+# configuration heriterait des roles de la precedente et ne testerait plus la
+# variable qu'elle isole. Ne sont detruits que les roles inscrits au registre,
+# c'est-a-dire ceux que CETTE execution a crees.
 raz() {
   local b r
-  for b in "${PREFIXE}_a" "${PREFIXE}_b" "${PREFIXE}_c"; do
-    "${ADMIN[@]}" -X -q -c "drop database if exists $b;" >/dev/null 2>&1
+  for b in "$BASE_A" "$BASE_B" "$BASE_C"; do
+    adm -c "drop database if exists \"$b\";" >/dev/null 2>&1
   done
-  for r in "${AUTORITES[@]}" "${SERVICES[@]}" "$DEPLOIEMENT" "$MIGRATEUR" "$PLAN"; do
-    "${ADMIN[@]}" -X -q -c "drop owned by \"$r\" cascade;" >/dev/null 2>&1
-    "${ADMIN[@]}" -X -q -c "drop role if exists \"$r\";" >/dev/null 2>&1
+
+  # LES ROLES CANONIQUES CREES PAR LA MIGRATION ELLE-MEME.
+  #
+  # En configuration A, personne ne les pre-cree: c'est `0010` qui les cree,
+  # sous le migrateur. Ils n'etaient donc inscrits a aucun registre, et
+  # survivaient a `raz` — apres quoi `drop role` sur le migrateur ECHOUAIT,
+  # PostgreSQL refusant de detruire un role dont d'autres octrois dependent.
+  # La configuration suivante retrouvait alors le migrateur en place et
+  # s'ouvrait sur « role already exists ».
+  #
+  # Les detruire ici est legitime, et la legitimite est PROUVEE, pas supposee:
+  # `exiger_roles_absents` a constate au demarrage qu'AUCUN d'eux n'existait.
+  # Tout role canonique present maintenant a donc ete cree par cette execution.
+  # C'est la seule justification acceptable pour toucher a un nom global.
+  for r in "${CANONIQUES[@]}"; do
+    adm -c "drop owned by \"$r\";"      >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
   done
+
+  detruire_roles_crees
 }
 trap raz EXIT
-raz
 
-RESTE=$("${ADMIN[@]}" -X -q -tAc "
-  select count(*) from pg_roles
-   where rolname in ('${AUTORITES[0]}','${AUTORITES[1]}',
-                     '${SERVICES[0]}','${SERVICES[1]}','$DEPLOIEMENT')")
-if [[ "$RESTE" != "0" ]]; then
-  echo "      ECHEC: $RESTE role(s) normatif(s) preexistent et n'ont pas pu" >&2
-  echo "              etre detruits: aucune configuration n'isolerait sa" >&2
-  echo "              variable, et ce fichier ne prouverait rien." >&2
-  exit 1
-fi
+# Les deux roles jetables, recrees a chaque configuration.
+creer_acteurs() {
+  creer_role "$MIGRATEUR" "login password '$MIG_MDP' createrole createdb" || return 1
+  creer_role "$PLAN"      "login password '$PLAN_MDP' createrole"         || return 1
+  return 0
+}
+creer_acteurs || { echoue "creation des acteurs impossible"; exit 1; }
 
 echo "    deploiement en deux phases: qui cree, qui accorde, qui revoque"
 
@@ -150,19 +190,14 @@ echo "    deploiement en deux phases: qui cree, qui accorde, qui revoque"
 # Toute l'architecture en depend. S'ils changent — nouvelle version majeure,
 # fournisseur qui patche — ce n'est pas une bonne nouvelle a ignorer: c'est un
 # reexamen a ouvrir, et il vaut mieux l'apprendre ici qu'en production.
-"${ADMIN[@]}" -X -q -v ON_ERROR_STOP=1 >/dev/null <<SQL
-create role "$MIGRATEUR" login password '$MIG_MDP' createrole createdb;
-create role "$PLAN"      login password '$PLAN_MDP' createrole;
-SQL
-
 # F1 — le createur recoit une appartenance donnee par le superutilisateur.
-mig postgres -q -c "create role ${PREFIXE}_f1 nologin;" >/dev/null 2>&1
-LU=$("${ADMIN[@]}" -X -q -tAc "
+mig postgres -q -c "create role ${PREFIXE}_f1_${JETON} nologin;" >/dev/null 2>&1
+LU=$(adm -tAc "
   select g.rolname || '/' || m.admin_option || '/' || m.set_option
     from pg_auth_members m
     join pg_roles a on a.oid = m.roleid join pg_roles p on p.oid = m.member
     join pg_roles g on g.oid = m.grantor
-   where a.rolname = '${PREFIXE}_f1' and p.rolname = '$MIGRATEUR'")
+   where a.rolname = '${PREFIXE}_f1_${JETON}' and p.rolname = '$MIGRATEUR'")
 # `boolean || text` rend « true »/« false », et non « t »/« f » — ce que
 # l'affichage tabulaire de psql donne. La premiere ecriture attendait la forme
 # tabulaire et rapportait un changement de F1 qui n'avait pas eu lieu.
@@ -175,12 +210,12 @@ fi
 
 # F2 — nul ne revoque sa propre appartenance donnee par un autre. Ni
 # directement, ni par « GRANTED BY »: les deux sont exerces.
-mig postgres -q -c "revoke ${PREFIXE}_f1 from \"$MIGRATEUR\";" >/dev/null 2>&1
-mig postgres -q -c "revoke ${PREFIXE}_f1 from \"$MIGRATEUR\" granted by $PROPRIETAIRE;" >/dev/null 2>&1
-SURVIT=$("${ADMIN[@]}" -X -q -tAc "
+mig postgres -q -c "revoke ${PREFIXE}_f1_${JETON} from \"$MIGRATEUR\";" >/dev/null 2>&1
+mig postgres -q -c "revoke ${PREFIXE}_f1_${JETON} from \"$MIGRATEUR\" granted by $PROPRIETAIRE;" >/dev/null 2>&1
+SURVIT=$(adm -tAc "
   select count(*) from pg_auth_members m
     join pg_roles a on a.oid = m.roleid join pg_roles p on p.oid = m.member
-   where a.rolname = '${PREFIXE}_f1' and p.rolname = '$MIGRATEUR'")
+   where a.rolname = '${PREFIXE}_f1_${JETON}' and p.rolname = '$MIGRATEUR'")
 if [[ "$SURVIT" == "1" ]]; then
   echo "      ok: F2 — l'appartenance survit aux deux tentatives de revocation"
 else
@@ -190,19 +225,19 @@ else
 fi
 
 # F3 — le donneur revoque ce qu'il a donne.
-"${ADMIN[@]}" -X -q -c "create role ${PREFIXE}_f3 nologin;" >/dev/null 2>&1
-"${ADMIN[@]}" -X -q -c "grant ${PREFIXE}_f3 to \"$MIGRATEUR\";" >/dev/null 2>&1
-"${ADMIN[@]}" -X -q -c "revoke ${PREFIXE}_f3 from \"$MIGRATEUR\";" >/dev/null 2>&1
-if [[ "$("${ADMIN[@]}" -X -q -tAc "
+adm -c "create role ${PREFIXE}_f3_${JETON} nologin;" >/dev/null 2>&1
+adm -c "grant ${PREFIXE}_f3_${JETON} to \"$MIGRATEUR\";" >/dev/null 2>&1
+adm -c "revoke ${PREFIXE}_f3_${JETON} from \"$MIGRATEUR\";" >/dev/null 2>&1
+if [[ "$(adm -tAc "
       select count(*) from pg_auth_members m
         join pg_roles a on a.oid = m.roleid join pg_roles p on p.oid = m.member
-       where a.rolname = '${PREFIXE}_f3' and p.rolname = '$MIGRATEUR'")" == "0" ]]; then
+       where a.rolname = '${PREFIXE}_f3_${JETON}' and p.rolname = '$MIGRATEUR'")" == "0" ]]; then
   echo "      ok: F3 — le donneur revoque ce qu'il a donne"
 else
   echoue "F3 a change: le donneur ne peut plus revoquer son propre octroi."
 fi
-"${ADMIN[@]}" -X -q -c "drop role if exists ${PREFIXE}_f1;" >/dev/null 2>&1
-"${ADMIN[@]}" -X -q -c "drop role if exists ${PREFIXE}_f3;" >/dev/null 2>&1
+adm -c "drop role if exists ${PREFIXE}_f1_${JETON};" >/dev/null 2>&1
+adm -c "drop role if exists ${PREFIXE}_f3_${JETON};" >/dev/null 2>&1
 
 # --------------------------------------------------------------------------
 # Application des migrations sous le migrateur. DIAG porte le premier
@@ -211,10 +246,10 @@ fi
 DIAG=""
 appliquer() {
   local base="$1" out f
-  "${ADMIN[@]}" -X -q -v ON_ERROR_STOP=1 \
-    -c "create database $base owner \"$MIGRATEUR\";" >/dev/null || return 2
-  admin_db "$base" -X -q -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
-  admin_db "$base" -X -q >/dev/null 2>&1 <<SQL
+  adm -v ON_ERROR_STOP=1 \
+    -c "create database \"$base\" owner \"$MIGRATEUR\";" >/dev/null || return 2
+  admin_db "$base" -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
+  admin_db "$base" >/dev/null 2>&1 <<SQL
 grant usage on schema auth to "$MIGRATEUR" with grant option;
 grant select, insert, references on auth.users to "$MIGRATEUR" with grant option;
 grant execute on function auth.uid() to "$MIGRATEUR" with grant option;
@@ -232,7 +267,7 @@ SQL
 # ==========================================================================
 # A — GREENFIELD, LE MIGRATEUR SEUL
 # ==========================================================================
-if appliquer "${PREFIXE}_a"; then
+if appliquer "$BASE_A"; then
   echoue "A: la migration s'est INSTALLEE alors que le migrateur, privilegie,"
   echoue "  est membre des roles de service qu'il vient de creer (F1). Il"
   echoue "  contourne la RLS et herite en plus des droits d'ecriture normatifs."
@@ -242,10 +277,7 @@ else
   echoue "A refusee, mais pas sur le motif attendu:"
   echo "              $DIAG" >&2
 fi
-raz; "${ADMIN[@]}" -X -q -v ON_ERROR_STOP=1 >/dev/null <<SQL
-create role "$MIGRATEUR" login password '$MIG_MDP' createrole createdb;
-create role "$PLAN"      login password '$PLAN_MDP' createrole;
-SQL
+raz; creer_acteurs || { echoue "recreation des acteurs impossible"; exit 1; }
 
 # ==========================================================================
 # B — PROVISIONNEMENT PAR UN SUPERUTILISATEUR
@@ -253,22 +285,20 @@ SQL
 # Le superutilisateur cree TOUS les roles: par F1 c'est LUI qui garde l'ADMIN
 # residuel, et le controle de topologie l'ignore — les superutilisateurs sont
 # hors modele de menace, explicitement et depuis l'origine.
-"${ADMIN[@]}" -X -q -v ON_ERROR_STOP=1 >/dev/null <<SQL
-create role ${SERVICES[0]} nologin;
-create role ${SERVICES[1]} nologin;
-create role ${AUTORITES[0]} nologin;
-create role ${AUTORITES[1]} nologin;
-create role $DEPLOIEMENT nologin;
--- Le migrateur doit pouvoir transferer la propriete des fonctions: PostgreSQL
--- l'exige membre des roles d'autorite. ADMIN OPTION pour que la migration
--- puisse tenter la restitution — c'est precisement ce que F2 lui refuse.
+for r in "${CANONIQUES[@]}"; do
+  creer_role "$r" nologin || { echoue "B: creation de $r impossible"; exit 1; }
+done
+# Le migrateur doit pouvoir transferer la propriete des fonctions: PostgreSQL
+# l'exige membre des roles d'autorite. ADMIN OPTION pour que la migration
+# puisse tenter la restitution — c'est precisement ce que F2 lui refuse.
+adm -v ON_ERROR_STOP=1 >/dev/null <<SQL
 grant ${AUTORITES[0]} to "$MIGRATEUR" with admin option;
 grant ${AUTORITES[1]} to "$MIGRATEUR" with admin option;
 SQL
 
-if appliquer "${PREFIXE}_b"; then
-  if TOPO=$(mig "${PREFIXE}_b" -q -tAc 'select assert_normative_topology()' 2>&1); then
-    CAP=$("${ADMIN[@]}" -X -q -tAc "
+if appliquer "$BASE_B"; then
+  if TOPO=$(mig "$BASE_B" -q -tAc 'select assert_normative_topology()' 2>&1); then
+    CAP=$(adm -tAc "
       select count(*) from pg_roles a
        where a.rolname in ('${AUTORITES[0]}','${AUTORITES[1]}')
          and (pg_has_role('$MIGRATEUR', a.rolname, 'SET')
@@ -299,10 +329,7 @@ else
   echoue "B refusee pour un motif imprevu:"
   echo "              $DIAG" >&2
 fi
-raz; "${ADMIN[@]}" -X -q -v ON_ERROR_STOP=1 >/dev/null <<SQL
-create role "$MIGRATEUR" login password '$MIG_MDP' createrole createdb;
-create role "$PLAN"      login password '$PLAN_MDP' createrole;
-SQL
+raz; creer_acteurs || { echoue "recreation des acteurs impossible"; exit 1; }
 
 # ==========================================================================
 # C — PROVISIONNEMENT PAR UN PLAN DE CONTROLE NON SUPERUTILISATEUR
@@ -311,7 +338,10 @@ SQL
 # plan de controle garde un ADMIN residuel IRREVOCABLE sur tout ce qu'il cree.
 # C'est la configuration que `normative_control_plane` existe pour rendre
 # admissible — un seul ADMIN residuel, nomme, fige a l'installation.
-"${ADMIN[@]}" -X -q -c "grant \"$PLAN\" to $PROPRIETAIRE;" >/dev/null 2>&1
+adm -c "grant \"$PLAN\" to $PROPRIETAIRE;" >/dev/null 2>&1
+# Ils sont crees PAR LE PLAN DE CONTROLE — c'est la variable de cette
+# configuration — et non par l'administrateur. Ils sont donc inscrits au
+# registre a la main: un role cree sans etre inscrit ne serait jamais nettoye.
 plan postgres -q -v ON_ERROR_STOP=1 >/dev/null <<SQL
 create role ${SERVICES[0]} nologin;
 create role ${SERVICES[1]} nologin;
@@ -321,8 +351,9 @@ create role $DEPLOIEMENT nologin;
 grant ${AUTORITES[0]} to "$MIGRATEUR" with admin option;
 grant ${AUTORITES[1]} to "$MIGRATEUR" with admin option;
 SQL
+for r in "${CANONIQUES[@]}"; do registre_role "$r"; done
 
-DONNEUR=$("${ADMIN[@]}" -X -q -tAc "
+DONNEUR=$(adm -tAc "
   select g.rolname from pg_auth_members m
     join pg_roles a on a.oid = m.roleid join pg_roles p on p.oid = m.member
     join pg_roles g on g.oid = m.grantor
@@ -334,9 +365,9 @@ else
   echoue "  configuration ne differe pas de B comme annonce."
 fi
 
-if appliquer "${PREFIXE}_c"; then
-  if TOPO=$(mig "${PREFIXE}_c" -q -tAc 'select assert_normative_topology()' 2>&1); then
-    FIGE=$(mig "${PREFIXE}_c" -q -tAc 'select normative_control_plane()' 2>&1)
+if appliquer "$BASE_C"; then
+  if TOPO=$(mig "$BASE_C" -q -tAc 'select assert_normative_topology()' 2>&1); then
+    FIGE=$(mig "$BASE_C" -q -tAc 'select normative_control_plane()' 2>&1)
     if [[ "$FIGE" == "$PLAN" ]]; then
       echo "      ok: C installee, plan de controle fige sur « $PLAN »"
     else

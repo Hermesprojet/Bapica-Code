@@ -119,13 +119,59 @@ run_pytest "importeur" "$HERE/tools/ndp_import"
 # — jamais passee sous silence. C'est la moitie du travail de ce script.
 # --------------------------------------------------------------------------
 echo "--> garanties SQL"
-db_joignable() {
-  if [[ -n "${DATABASE_URL:-}" ]]; then
-    psql "$DATABASE_URL" -c 'select 1' >/dev/null 2>&1
+# La joignabilite se constate SANS mettre l'URL en argv: `harnais_connexion`
+# la decoupe en variables libpq dans un sous-shell, et `psql` n'y prend aucun
+# argument de connexion.
+db_joignable() (
+  # shellcheck source=db/test/lib_harnais.sh
+  source "$HERE/db/test/lib_harnais.sh"
+  harnais_connexion >/dev/null 2>&1 || return 1
+  psql -X -q -c 'select 1' >/dev/null 2>&1
+)
+
+# --------------------------------------------------------------------------
+# SECURITE DES HARNAIS — surface a part, et evaluee AVANT les garanties SQL.
+#
+# Les harnais creent et detruisent des ROLES GLOBAUX. Avant de leur laisser
+# toucher un cluster, on exige la preuve que leurs barrieres refusent: sans
+# consentement, hors boucle locale, sur une plateforme geree, sur un cluster
+# partage, et devant des roles canoniques qu'ils n'ont pas crees.
+#
+# Elle est evaluee ICI et non depuis `db/test/run.sh`: l'auto-test INVOQUE la
+# commande canonique pour la mettre en echec, et l'appeler depuis elle
+# creerait une recursion dont la terminaison dependrait justement des
+# barrieres qu'il teste.
+if ! command -v psql >/dev/null 2>&1; then
+  NOMS+=("securite des harnais"); ETATS+=("NON EXECUTEE"); DETAILS+=("psql absent")
+  [[ $REQUIRE_DB -eq 1 ]] && EXIT=1
+elif ! db_joignable; then
+  NOMS+=("securite des harnais"); ETATS+=("NON EXECUTEE")
+  DETAILS+=("aucun PostgreSQL joignable")
+  [[ $REQUIRE_DB -eq 1 ]] && EXIT=1
+else
+  code_sec=0
+  sortie_sec=$("$HERE/db/test/harness_safety_selftest.sh" 2>&1) || code_sec=$?
+  if [[ $code_sec -eq 0 ]]; then
+    barrieres=$(echo "$sortie_sec" | grep -cE '^      ok: [0-9]+\.')
+    NOMS+=("securite des harnais"); ETATS+=("VERT")
+    DETAILS+=("$barrieres barriere(s) mise(s) en echec, toutes ont refuse")
+  elif [[ $code_sec -eq 3 ]]; then
+    # Le decor manque: la securite n'a pas ete JUGEE. NON EXECUTEE, jamais
+    # VERT — une surface qu'on n'a pas pu evaluer ne doit pas ressembler a une
+    # surface qui a passe. Et distincte du ROUGE: « une barriere cede » et
+    # « il reste des roles d'une execution precedente » sont deux nouvelles
+    # differentes, que confondre ferait chercher une faille inexistante.
+    NOMS+=("securite des harnais"); ETATS+=("NON EXECUTEE")
+    DETAILS+=("roles canoniques residuels: nettoyer le cluster puis relancer")
+    echo "$sortie_sec" | tail -6 | sed 's/^/    /'
+    EXIT=1
   else
-    pg_isready -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" >/dev/null 2>&1
+    NOMS+=("securite des harnais"); ETATS+=("ROUGE")
+    DETAILS+=("une barriere cede: voir sortie ci-dessus")
+    echo "$sortie_sec" | tail -20 | sed 's/^/    /'
+    EXIT=1
   fi
-}
+fi
 
 if ! command -v psql >/dev/null 2>&1; then
   NOMS+=("garanties SQL"); ETATS+=("NON EXECUTEE"); DETAILS+=("psql absent")
@@ -232,11 +278,15 @@ DETAILS+=("$detail_coherence")
 # --------------------------------------------------------------------------
 echo
 echo "=============================================================="
-printf " %-16s %-14s %s\n" "SURFACE" "ETAT" "DETAIL"
+LARGEUR=0
+for i in "${!NOMS[@]}"; do
+  [[ ${#NOMS[$i]} -gt $LARGEUR ]] && LARGEUR=${#NOMS[$i]}
+done
+printf " %-*s %-14s %s\n" "$LARGEUR" "SURFACE" "ETAT" "DETAIL"
 echo "--------------------------------------------------------------"
 NON_EXEC=0
 for i in "${!NOMS[@]}"; do
-  printf " %-16s %-14s %s\n" "${NOMS[$i]}" "${ETATS[$i]}" "${DETAILS[$i]}"
+  printf " %-*s %-14s %s\n" "$LARGEUR" "${NOMS[$i]}" "${ETATS[$i]}" "${DETAILS[$i]}"
   [[ "${ETATS[$i]}" == "NON EXECUTEE" || "${ETATS[$i]}" == "ABSENT" ]] && NON_EXEC=1
 done
 echo "=============================================================="

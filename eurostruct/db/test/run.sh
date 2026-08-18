@@ -3,8 +3,11 @@
 # Apply the migrations to a scratch database and run the guarantee tests.
 #
 # Usage:
-#   ./db/test/run.sh                     # uses $DATABASE_URL, or a local socket
-#   DATABASE_URL=postgres://... ./run.sh
+#   EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole ./db/test/run.sh
+#
+# La connexion vient de l'environnement (PG* ou DATABASE_URL, decoupee en
+# variables libpq et jamais passee en argument). Le cluster doit etre JETABLE:
+# cette suite cree et detruit des roles GLOBAUX.
 #
 # The tests assert the properties the cahier des charges makes blocking: RLS
 # tenant isolation, the human validation gate, immutability of signed records,
@@ -15,35 +18,108 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="$(dirname "$HERE")"
 DB_NAME="${DB_NAME:-eurostruct_test}"
+# shellcheck source=lib_harnais.sh
+source "$HERE/lib_harnais.sh"
 
-# Remplacer la base nommee dans une URL, en preservant une eventuelle chaine
-# de requete (`?sslmode=require` est courant en deploiement gere).
-url_pour_base() {
-  local url="$1" base="$2" sans query=""
-  sans="${url%%\?*}"
-  [[ "$url" == *\?* ]] && query="?${url#*\?}"
-  printf '%s/%s%s' "${sans%/*}" "$base" "$query"
+# --------------------------------------------------------------------------
+# SECURITE DU HARNAIS (6.3b6a)
+# --------------------------------------------------------------------------
+# LE SECRET NE PASSE PLUS PAR argv. Ce fichier faisait `psql "$DATABASE_URL"`,
+# et reecrivait l'URL a la main pour chaque base (`url_pour_base`). Deux
+# defauts dans le meme geste:
+#
+#   * le mot de passe etait lisible dans `ps` par tout processus de la machine;
+#   * chaque reecriture d'URL etait une occasion de perdre l'hote ou les
+#     identifiants — ce qui s'etait deja produit.
+#
+# Desormais la connexion vient de l'environnement et SEULE LA BASE change, par
+# `-d`. Il n'y a plus d'URL a reecrire, donc plus rien a perdre.
+harnais_connexion || exit 2
+
+# CETTE SUITE CREE ET DETRUIT DES ROLES GLOBAUX (`normative_backend`,
+# `eurostruct_normative_writer`, ...). Les roles appartiennent au CLUSTER, pas
+# a une base: lancee sur un cluster partage, de staging ou de production, elle
+# detruirait les vrais roles normatifs.
+#
+# Elle exige donc un cluster ENTIEREMENT JETABLE, prouve tel — declaration
+# explicite ET constats. Sans preuve: refus, avant la premiere connexion utile.
+exiger_cluster_jetable "db/test/run.sh" || exit 2
+
+# La base RECREEE, et non celle nommee dans la connexion. Les deux etaient
+# confondues: le script effacait `eurostruct_test` puis appliquait les
+# migrations dans la base de l'URL, qui n'etait jamais remise a zero. Une
+# seconde execution echouait donc sur « type org_role already exists ».
+adm()  { psql -X -q -d postgres "$@"; }
+base() { psql -X -q -d "$DB_NAME" "$@"; }
+
+# --------------------------------------------------------------------------
+# UN ROUGE N'ARRETE PLUS LA SUITE.
+#
+# Jusqu'ici chaque etape sortait au premier echec. Consequence mesuree: le
+# rouge de l'installation non superutilisateur empechait les etapes SUIVANTES
+# — base vierge, contrat croise — de s'executer du tout, et le rapport ne
+# disait pas si elles auraient passe. On ne peut pas distinguer « non
+# executee » de « verte » si l'une se presente comme l'autre.
+SURFACES_ROUGES=()
+etape() {
+  local nom="$1"; shift
+  local code=0
+  "$@" || code=$?
+  [[ $code -eq 0 ]] || SURFACES_ROUGES+=("$nom")
+  return 0
 }
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  ADMIN=(psql "$DATABASE_URL")
-  # La base RECREEE, et non celle nommee dans l'URL. Les deux etaient
-  # confondues: le script effacait `eurostruct_test` puis appliquait les
-  # migrations dans la base de l'URL, qui n'etait jamais remise a zero. Une
-  # seconde execution echouait donc sur « type org_role already exists ».
-  # Invisible en CI, ou chaque execution part d'un conteneur neuf, et
-  # bloquant partout ailleurs.
-  PSQL_BASE=(psql "$(url_pour_base "$DATABASE_URL" "$DB_NAME")")
-else
-  HOST="${PGHOST:-/tmp}"
-  USER="${PGUSER:-postgres}"
-  PSQL_BASE=(psql -h "$HOST" -U "$USER" -d "$DB_NAME")
-  ADMIN=(psql -h "$HOST" -U "$USER" -d postgres)
-fi
+# --------------------------------------------------------------------------
+# LES SURFACES QUI EXIGENT UN CLUSTER SANS ROLES NORMATIFS PASSENT EN PREMIER
+# --------------------------------------------------------------------------
+# `two_phase_deployment.sh` refuse si les roles canoniques preexistent — il ne
+# detruit jamais ce qu'il n'a pas cree. Or la premiere migration appliquee plus
+# bas les CREE, et ils survivent a la destruction de la base. Place apres, il
+# refuserait systematiquement.
+#
+# L'ordre n'est donc pas cosmetique: il est impose par le fait que les roles
+# sont globaux. Les deux surfaces nettoient derriere elles, par noms exacts.
+# --------------------------------------------------------------------------
+# LES ROLES CANONIQUES SONT RENDUS AU CLUSTER EN FIN DE SUITE
+# --------------------------------------------------------------------------
+# Les migrations les CREENT, et ils survivent a la destruction des bases: une
+# seconde execution locale les retrouvait en place. Consequence mesuree:
+# `two_phase_deployment.sh` et l'auto-test de securite refusaient — a juste
+# titre, puisqu'ils exigent de ne rien detruire qu'ils n'aient cree — et la
+# suite se declarait rouge pour une raison etrangere a ce qu'elle teste.
+#
+# On CONSTATE donc ici s'ils etaient absents avant de commencer. S'ils
+# l'etaient, tout role canonique present a la fin a ete cree par cette
+# execution, et elle le retire. Sinon on n'y touche pas: ils appartiennent a
+# quelqu'un d'autre.
+CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
+            normative_backend normative_governance eurostruct_deployment)
+CANONIQUES_ABSENTS=$(adm -tAc "
+  select count(*) = 0 from pg_roles
+   where rolname = any (array['${CANONIQUES[0]}','${CANONIQUES[1]}',
+                              '${CANONIQUES[2]}','${CANONIQUES[3]}',
+                              '${CANONIQUES[4]}'])")
+rendre_les_roles() {
+  [[ "$CANONIQUES_ABSENTS" == "t" ]] || return 0
+  local r
+  for r in "${CANONIQUES[@]}"; do
+    adm -c "drop owned by \"$r\";"      >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+  done
+}
+trap rendre_les_roles EXIT
+
+echo "==> oracle comportemental des primitives de portee"
+etape "oracle de portee des roles" \
+  "$HERE/role_reach_oracle.sh" "${DB_NAME}_oracle"
+
+echo "==> deploiement en deux phases"
+etape "deploiement en deux phases" \
+  "$HERE/two_phase_deployment.sh" "${DB_NAME}_2p"
 
 echo "==> recreating $DB_NAME"
-"${ADMIN[@]}" -q -c "drop database if exists $DB_NAME;" >/dev/null
-"${ADMIN[@]}" -q -c "create database $DB_NAME;" >/dev/null
+adm -c "drop database if exists $DB_NAME;" >/dev/null
+adm -c "create database $DB_NAME;" >/dev/null
 
 echo "==> applying schema"
 for f in \
@@ -51,16 +127,16 @@ for f in \
   "$DB_DIR"/migrations/*.sql
 do
   echo "    $(basename "$f")"
-  "${PSQL_BASE[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
+  base -v ON_ERROR_STOP=1 -f "$f"
 done
 
 echo "==> seeding national annexes"
-"${PSQL_BASE[@]}" -v ON_ERROR_STOP=1 -q -f "$DB_DIR/seed/0001_ndp.sql"
+base -v ON_ERROR_STOP=1 -f "$DB_DIR/seed/0001_ndp.sql"
 
 echo "==> running guarantee tests"
 for t in "$HERE"/0[1-9]_*.sql; do
   echo "    $(basename "$t")"
-  "${PSQL_BASE[@]}" -v ON_ERROR_STOP=1 -q -f "$t"
+  base -v ON_ERROR_STOP=1 -f "$t"
 done
 
 # --------------------------------------------------------------------------
@@ -81,14 +157,10 @@ PRECEDENTES=("$DB_DIR"/migrations/*.sql)
 unset 'PRECEDENTES[${#PRECEDENTES[@]}-1]'
 
 echo "==> upgrade path: $(basename "$DERNIERE") sur une base en 0009"
-"${ADMIN[@]}" -q -c "drop database if exists $UPGRADE_DB;" >/dev/null
-"${ADMIN[@]}" -q -c "create database $UPGRADE_DB;" >/dev/null
+adm -c "drop database if exists $UPGRADE_DB;" >/dev/null
+adm -c "create database $UPGRADE_DB;" >/dev/null
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  UP=(psql "$(url_pour_base "$DATABASE_URL" "$UPGRADE_DB")")
-else
-  UP=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d "$UPGRADE_DB")
-fi
+UP=(psql -X -q -d "$UPGRADE_DB")
 
 "${UP[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql"
 for f in "${PRECEDENTES[@]}"; do
@@ -96,7 +168,7 @@ for f in "${PRECEDENTES[@]}"; do
 done
 "${UP[@]}" -v ON_ERROR_STOP=1 -q -f "$DERNIERE"
 "${UP[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/upgrade_check.sql"
-"${ADMIN[@]}" -q -c "drop database if exists $UPGRADE_DB;" >/dev/null
+adm -c "drop database if exists $UPGRADE_DB;" >/dev/null
 
 # --------------------------------------------------------------------------
 # Concurrence, sur DEUX CONNEXIONS REELLES.
@@ -110,14 +182,10 @@ done
 # --------------------------------------------------------------------------
 CONC_DB="${DB_NAME}_conc"
 echo "==> concurrence multi-connexion"
-"${ADMIN[@]}" -q -c "drop database if exists $CONC_DB;" >/dev/null
-"${ADMIN[@]}" -q -c "create database $CONC_DB;" >/dev/null
+adm -c "drop database if exists $CONC_DB;" >/dev/null
+adm -c "create database $CONC_DB;" >/dev/null
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  CONC=(psql "$(url_pour_base "$DATABASE_URL" "$CONC_DB")")
-else
-  CONC=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d "$CONC_DB")
-fi
+CONC=(psql -X -q -d "$CONC_DB")
 "${CONC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql"
 for f in "$DB_DIR"/migrations/*.sql; do
   "${CONC[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
@@ -129,7 +197,7 @@ done
 # desarmer `set -e` pour le reste du fichier.
 CONC_CODE=0
 "$HERE/concurrency.sh" "$CONC_DB" || CONC_CODE=$?
-"${ADMIN[@]}" -q -c "drop database if exists $CONC_DB;" >/dev/null
+adm -c "drop database if exists $CONC_DB;" >/dev/null
 [[ $CONC_CODE -eq 0 ]] || exit $CONC_CODE
 
 # --------------------------------------------------------------------------
@@ -157,31 +225,11 @@ CONC_CODE=0
 # reussi. Le script fabrique donc la configuration hostile AVANT d'appliquer
 # les migrations, et exige un refus.
 # --------------------------------------------------------------------------
-# --------------------------------------------------------------------------
-# UN ROUGE N'ARRETE PLUS LA SUITE.
-#
-# Jusqu'ici chaque etape sortait au premier echec. Consequence mesuree: le
-# rouge de l'installation non superutilisateur empechait les etapes SUIVANTES
-# — base vierge, contrat croise — de s'executer du tout, et le rapport ne
-# disait pas si elles auraient passe. On ne peut pas distinguer « non
-# executee » de « verte » si l'une se presente comme l'autre.
-#
-# Les etapes s'executent donc toutes, chacune est comptee, et le code de sortie
-# reste non nul des qu'une seule est rouge.
-SURFACES_ROUGES=()
-etape() {
-  local nom="$1"; shift
-  local code=0
-  "$@" || code=$?
-  [[ $code -eq 0 ]] || SURFACES_ROUGES+=("$nom")
-  return 0
-}
-
 ROLE_DB="${DB_NAME}_roles"
 echo "==> prerequis de deploiement sur les roles"
 etape "prerequis de deploiement sur les roles" \
   "$HERE/role_prerequisites.sh" "$ROLE_DB"
-"${ADMIN[@]}" -q -c "drop database if exists $ROLE_DB;" >/dev/null 2>&1
+adm -c "drop database if exists $ROLE_DB;" >/dev/null 2>&1
 
 # --------------------------------------------------------------------------
 # Installation sous un role de migration NON SUPERUTILISATEUR.
@@ -195,7 +243,7 @@ NS_DB="${DB_NAME}_nonsuper"
 echo "==> installation sous un role de migration non superutilisateur"
 etape "installation non superutilisateur" \
   "$HERE/nonsuperuser_install.sh" "$NS_DB"
-"${ADMIN[@]}" -q -c "drop database if exists $NS_DB;" >/dev/null 2>&1
+adm -c "drop database if exists $NS_DB;" >/dev/null 2>&1
 
 # --------------------------------------------------------------------------
 # Oracle comportemental des primitives de portee (6.3b6a #3).
@@ -204,32 +252,12 @@ etape "installation non superutilisateur" \
 # de `pg_has_role(..., 'SET' / 'USAGE' / 'MEMBER WITH ADMIN OPTION')`. Ce que
 # ces primitives DISENT est ici confronte a ce qui se PASSE — vrai `SET ROLE`,
 # vrai heritage, vrai `GRANT` a un tiers — sur six formes de graphe.
-# --------------------------------------------------------------------------
-echo "==> oracle comportemental des primitives de portee"
-etape "oracle de portee des roles" \
-  "$HERE/role_reach_oracle.sh" "${DB_NAME}_oracle"
-
-# --------------------------------------------------------------------------
-# Deploiement en deux phases (6.3b6a #8).
-#
-# Ce que l'installation non superutilisateur ne pouvait montrer qu'indirectement:
-# QUI cree les roles et QUI accorde les appartenances decide de tout. Trois
-# configurations, une variable a la fois.
-# --------------------------------------------------------------------------
-echo "==> deploiement en deux phases"
-etape "deploiement en deux phases" \
-  "$HERE/two_phase_deployment.sh" "${DB_NAME}_2p"
-
 XC_DB="${DB_NAME}_contract"
 echo "==> base vierge: racine de confiance et contrat croise"
-"${ADMIN[@]}" -q -c "drop database if exists $XC_DB;" >/dev/null
-"${ADMIN[@]}" -q -c "create database $XC_DB;" >/dev/null
+adm -c "drop database if exists $XC_DB;" >/dev/null
+adm -c "create database $XC_DB;" >/dev/null
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  XC=(psql "$(url_pour_base "$DATABASE_URL" "$XC_DB")")
-else
-  XC=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d "$XC_DB")
-fi
+XC=(psql -X -q -d "$XC_DB")
 "${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql"
 for f in "$DB_DIR"/migrations/*.sql; do
   "${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
@@ -239,7 +267,7 @@ etape "base vierge: racine de confiance" \
   "${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/virgin_root.sql"
 etape "contrat croise moteur/base" \
   "$HERE/cross_contract.sh" "${XC[@]}"
-"${ADMIN[@]}" -q -c "drop database if exists $XC_DB;" >/dev/null
+adm -c "drop database if exists $XC_DB;" >/dev/null
 
 echo ""
 if [[ ${#SURFACES_ROUGES[@]} -eq 0 ]]; then

@@ -50,6 +50,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib_harnais.sh
+source "$HERE/lib_harnais.sh"
 DB_DIR="$(dirname "$HERE")"
 DB="${1:?usage: role_prerequisites.sh <nom-de-base-jetable>}"
 
@@ -64,15 +66,13 @@ fi
 
 ROLES_FICTIFS="fictif_login_a fictif_b fictif_c fictif_relais"
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  SANS_QUERY="${DATABASE_URL%%\?*}"; QUERY=""
-  [[ "$DATABASE_URL" == *\?* ]] && QUERY="?${DATABASE_URL#*\?}"
-  PSQL_DB=(psql "${SANS_QUERY%/*}/$DB$QUERY")
-  PSQL_ADMIN=(psql "$DATABASE_URL")
-else
-  PSQL_DB=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d "$DB")
-  PSQL_ADMIN=(psql -h "${PGHOST:-/tmp}" -U "${PGUSER:-postgres}" -d postgres)
-fi
+# La connexion vient de l'ENVIRONNEMENT, jamais d'argv (6.3b6a, securite des
+# harnais). La version precedente reecrivait `$DATABASE_URL` a la main pour
+# changer de base: le mot de passe se retrouvait dans `ps`, lisible par tout
+# processus de la machine. Seule la base change desormais, par `-d`.
+harnais_connexion || exit 2
+PSQL_DB=(psql -X -q -d "$DB")
+PSQL_ADMIN=(psql -X -q -d postgres)
 
 nettoyer() {
   # ORDRE. Defaire les GREFFES d'abord, detruire ensuite.
