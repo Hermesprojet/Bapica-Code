@@ -2327,6 +2327,19 @@ alter table normative_authorisation_revocations     owner to eurostruct_normativ
 alter table normative_rule_confirmations            owner to eurostruct_normative_writer;
 alter table normative_rule_confirmation_revocations owner to eurostruct_normative_writer;
 
+-- LA VUE SUIT SES TABLES, et ce n'est pas une coquetterie de coherence.
+--
+-- `normative_rule_confirmation_status` est en `security_invoker = false`: la
+-- lecture des tables sous-jacentes est controlee au nom de SON PROPRIETAIRE,
+-- ce qui est exactement ce qui dispense `authenticated` d'avoir des droits
+-- dessus. Laissee au migrateur, elle perdait ses droits en meme temps que lui
+-- — defaut mesure: « permission denied for table normative_rule_confirmations »
+-- depuis la vue, alors que l'appelant etait superutilisateur.
+--
+-- Rendue au writer, elle lit par les policies `*_writer_read`, et la frontiere
+-- qu'elle porte reste la meme.
+alter view normative_rule_confirmation_status owner to eurostruct_normative_writer;
+
 
 -- ---------------------------------------------------------------------
 -- CREATE sur `public` retire aux roles d'autorite

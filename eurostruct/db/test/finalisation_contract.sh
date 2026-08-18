@@ -132,22 +132,33 @@ grant usage on schema auth to "$MIG" with grant option;
 grant select, insert, references on auth.users to "$MIG" with grant option;
 grant execute on function auth.uid() to "$MIG" with grant option;
 grant create on database "$BASE" to "$MIG";
+-- LE PROVISIONNEUR APPLIQUE LA PHASE 0: il cree des tables et des fonctions
+-- dans `public`, et les transfere a l'activateur. D'ou CREATE avec GRANT
+-- OPTION. Prerequis de deploiement — voir docs/DEPLOIEMENT_PREREQUIS.md.
+grant create on schema public to "$CTL" with grant option;
+grant usage on schema auth to "$CTL";
 SQL
 
-  # LE PROVISIONNEMENT. Le role qui cree les roles d'autorite en devient le
-  # donneur (fait F1), et c'est lui — et lui seul — qui pourra revoquer (F3).
+  # PHASE 0 — LE SCEAU (6.3b6c). C'est elle qui cree les six roles canoniques
+  # ET la racine de confiance, sous le PROVISIONNEUR. En mode « separe » c'est
+  # le plan de controle; en greenfield, le migrateur lui-meme — et c'est
+  # precisement ce que le point 8b existe pour voir refuser a la finalisation.
+  local phase0
+  case "$provisionneur" in
+    ctl_pg) phase0=ctl ;;
+    *)      phase0=mig ;;
+  esac
+  if ! sortie=$($phase0 -v ON_ERROR_STOP=1 -f "$DB_DIR/migrations/0000_sceau_normatif.sql" 2>&1); then
+    echoue "decor $suffixe: phase 0 refusee:"
+    grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
+    return 1
+  fi
+  adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
+  # L'EMPRUNT: DEUX ROLES. L'activateur n'est plus jamais prete.
   $provisionneur -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
-create role eurostruct_normative_writer nologin;
-create role eurostruct_normative_bootstrap nologin;
-create role eurostruct_normative_activator nologin;
-create role normative_backend nologin;
-create role normative_governance nologin;
-create role eurostruct_deployment nologin;
 grant eurostruct_normative_writer    to "$MIG" with admin option;
 grant eurostruct_normative_bootstrap to "$MIG" with admin option;
-grant eurostruct_normative_activator to "$MIG" with admin option;
 SQL
-  adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
   adm -c "alter database \"$BASE\"
             set eurostruct.approved_deployment_roles = '$MIG,$CTL';" >/dev/null 2>&1
   # DECLARATION LEGITIME, posee par le deploiement. Elle sert de valeur « revue
@@ -157,7 +168,9 @@ SQL
   adm -c "alter database \"$BASE\"
             set eurostruct.token_roles = 'authenticated';" >/dev/null 2>&1
 
+  # PHASE 1 — par le migrateur, sans 0000 qui appartient a la phase 0.
   for f in "$DB_DIR"/migrations/*.sql; do
+    [[ "$(basename "$f")" == 0000_* ]] && continue
     if ! sortie=$(mig -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
       echoue "decor $suffixe: phase 1 refusee sur $(basename "$f"):"
       grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
@@ -370,8 +383,13 @@ SURCHARGE=$(admb -tAc "select count(*) from pg_proc
 # 2b. SANS PREPARATION, RIEN. Appelee directement, sans que la phase 2 ait
 #     derive quoi que ce soit du catalogue, l'ecriture de confiance doit
 #     refuser — et le dire.
+# Depuis 6.3b6c, le refus arrive encore plus tot: l'ecriture de confiance exige
+# que le VERROU de finalisation soit detenu par la transaction courante, et
+# seul `normative_finalize_deployment()` le prend. « Pas de preparation » et
+# « pas de verrou » sont deux refus du meme contrat, et le second est le plus
+# fort — il ferme la composition, pas seulement l'ordre des etapes.
 SANS_PREP=$(ctl -tAc "select normative_record_activation()" 2>&1)
-grep -qiE "intention|preparation|prepar" <<<"$SANS_PREP" \
+grep -qiE "intention|preparation|prepar|verrou de finalisation" <<<"$SANS_PREP" \
   || { rouge "2b. l'appel direct sans preparation n'est pas refuse pour ce motif:"
        rouge "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SANS_PREP" | cut -c1-140)"; DEUX=1; }
 
@@ -381,12 +399,19 @@ grep -qiE "intention|preparation|prepar" <<<"$SANS_PREP" \
 #     verifie: on prepare pour de bon, puis on saute la revocation.
 MANIFESTE=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
 PREP=$(ctl -tAc "select normative_prepare_activation('$MANIFESTE')" 2>&1)
-if ! grep -qE '^[0-9a-f]{64}$' <<<"$PREP"; then
-  echoue "2c. la preparation legitime a echoue, le scenario ne prouverait rien:"
+if grep -qiE "verrou de finalisation|n'est pas une operation autonome" <<<"$PREP"; then
+  # LA PREPARATION ISOLEE N'EXISTE PLUS (6.3b6c). Elle exige le verrou de
+  # finalisation, que seul le finaliseur prend: il n'y a plus d'etat
+  # intermediaire a laisser trainer, et donc plus de saut d'etape possible.
+  # C'est une fermeture plus forte que celle que ce point cherchait.
+  echo "      ok: 2c. la preparation isolee est refusee — pas de verrou, donc"
+  echo "             pas d'etat intermediaire a exploiter"
+elif ! grep -qE '^[0-9a-f]{64}$' <<<"$PREP"; then
+  echoue "2c. la preparation isolee est refusee, mais pas au motif du verrou:"
   echoue "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$PREP" | cut -c1-140)"
 else
   SAUT=$(ctl -tAc "select normative_record_activation()" 2>&1)
-  grep -qiE "detient encore|n'ont pas ete restitues" <<<"$SAUT" \
+  grep -qiE "detient encore|n'ont pas ete restitues|verrou de finalisation" <<<"$SAUT" \
     || { rouge "2c. l'ecriture de confiance accepte alors que le migrateur detient"
          rouge "    encore ses emprunts: $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SAUT" | cut -c1-120)"
          DEUX=1; }

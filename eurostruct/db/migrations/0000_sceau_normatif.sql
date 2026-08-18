@@ -1750,8 +1750,13 @@ revoke all on function normative_topology_digest(oid, text, oid, text, text)
   from public;
 grant execute on function normative_topology_digest(oid, text, oid, text, text)
   to eurostruct_normative_activator;
+-- AU DEPLOIEMENT SEUL. `normative_governance` l'avait recu, au motif que
+-- l'audit peut vouloir refaire la photo — et la garantie generale de
+-- `05_normative_confirmation.sql` l'a refuse: c'est un role APPLICATIF, et
+-- aucune fonction sensible ne doit lui etre appelable. La gouvernance lit
+-- `normative_activation`, ou le digest inscrit figure deja.
 grant execute on function normative_topology_digest(oid, text, oid, text, text)
-  to eurostruct_deployment, normative_governance;
+  to eurostruct_deployment;
 
 
 -- ---------------------------------------------------------------------
@@ -2114,6 +2119,26 @@ do $$
 declare n int;
 begin
   execute format('revoke eurostruct_normative_activator from %I', current_user);
+
+  -- UN SUPERUTILISATEUR N'EST PAS CONTENU PAR CE SCEAU, ET ON LE DIT.
+  --
+  -- `pg_has_role(superutilisateur, ..., 'SET')` rend TRUE quoi qu'il arrive:
+  -- il n'y a aucun octroi a revoquer, et le constat ci-dessous ne pourrait
+  -- jamais reussir. Un deploiement ou l'administrateur pose lui-meme le sceau
+  -- est legitime — c'est la forme auto-hebergee — mais il n'obtient pas la
+  -- garantie que la forme Supabase obtient. Le modele de menace l'ecrit:
+  -- le superutilisateur est hors modele.
+  --
+  -- EXEMPTER SANS LE DIRE aurait ete pire que ne pas verifier: le fichier
+  -- aurait annonce un sceau ferme la ou il ne l'est pas.
+  if (select rolsuper from pg_roles where rolname = current_user) then
+    raise notice
+      'phase 0 appliquee par un SUPERUTILISATEUR (%): le sceau est pose, mais '
+      'il ne contient pas celui qui l''a pose — aucun sceau ne le peut. Voir '
+      'docs/schema/MODELE_DE_MENACE_NORMATIF.md.', current_user;
+    return;
+  end if;
+
   select count(*) into n
     from pg_roles a
    where a.rolname = 'eurostruct_normative_activator'

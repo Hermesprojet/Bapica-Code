@@ -345,29 +345,40 @@ fi
 # (fait F1) — le seul que le modele tolere, et seulement une fois fige.
 "${ADMIN[@]}" -q -v ON_ERROR_STOP=1 -c \
   "grant $PLAN to ${PGUSER:-postgres};" >/dev/null 2>&1
+# LA PHASE 0 — LE SCEAU (6.3b6c). Ce n'est plus un `create role` a la main:
+# c'est `0000_sceau_normatif.sql`, applique PAR LE PLAN DE CONTROLE, qui cree
+# les six roles canoniques ET la racine de confiance — les quatre tables que
+# le migrateur ne doit jamais posseder ni pouvoir endosser.
+"${ADMIN_DB[@]}" -q >/dev/null 2>&1 <<SQL
+grant create on schema public to $PLAN with grant option;
+grant usage on schema auth to $PLAN;
+SQL
+PLAN_DB0=(env PGUSER="$PLAN" PGPASSWORD="$MDP" psql -X -q -d "$DB")
+if ! sortie=$("${PLAN_DB0[@]}" -v ON_ERROR_STOP=1 \
+                -f "$DB_DIR/migrations/0000_sceau_normatif.sql" 2>&1); then
+  echoue "la phase 0 a echoue sous « $PLAN »:"
+  grep -m2 -E "ERROR|FATAL" <<<"$sortie" | sed 's/^/              /'
+  exit 1
+fi
+# L'EMPRUNT: DEUX ROLES, jamais l'activateur.
 PLAN_PSQL=(env PGUSER="$PLAN" PGPASSWORD="$MDP" psql -X -q -d postgres)
 "${PLAN_PSQL[@]}" -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
-create role eurostruct_normative_writer nologin;
-create role eurostruct_normative_bootstrap nologin;
-create role eurostruct_normative_activator nologin;
-create role eurostruct_deployment nologin;
 grant eurostruct_normative_writer    to $MIGRATEUR with admin option;
 grant eurostruct_normative_bootstrap to $MIGRATEUR with admin option;
-grant eurostruct_normative_activator to $MIGRATEUR with admin option;
 SQL
-PROVISION=$("${ADMIN[@]}" -X -q -tAc "
-  select count(*) from pg_roles where rolname in ('eurostruct_normative_writer',
-    'eurostruct_normative_bootstrap','eurostruct_normative_activator',
-    'eurostruct_deployment')")
+PROVISION=$("${ADMIN_DB[@]}" -X -q -tAc "
+  select count(*) from pg_class c join pg_roles o on o.oid = c.relowner
+   where o.rolname = 'eurostruct_normative_activator'
+     and c.relrowsecurity and c.relforcerowsecurity")
 if [[ "$PROVISION" != "4" ]]; then
-  echoue "le plan de controle n'a pu creer que $PROVISION role(s) d'autorite sur 4"
+  echoue "le sceau est incomplet: $PROVISION table(s) de confiance sur 4"
   exit 1
 fi
 # Il exercera la phase 2: il lui faut le role de deploiement, et il est
 # declare ci-dessus dans `approved_deployment_roles`.
 "${ADMIN[@]}" -q -c "grant eurostruct_deployment to $PLAN with inherit true;" \
   >/dev/null 2>&1
-echo "      ok: decor — roles d'autorite provisionnes par « $PLAN »"
+echo "      ok: phase 0 — sceau pose par « $PLAN », 4 tables de confiance"
 
 # --------------------------------------------------------------------------
 # 3. Les migrations, appliquees PAR LE MIGRATEUR
@@ -385,6 +396,7 @@ echo "      ok: le migrateur se connecte ($sonde)"
 
 
 for f in "$DB_DIR"/migrations/*.sql; do
+  [[ "$(basename "$f")" == 0000_* ]] && continue
   if ! out=$(mig -v ON_ERROR_STOP=1 -q -f "$f" 2>&1); then
     echoue "$(basename "$f") refusee sous un role non superutilisateur:"
     grep -m2 -E "ERROR|DETAIL|FATAL|psql: error" <<<"$out" | sed 's/^/              /'

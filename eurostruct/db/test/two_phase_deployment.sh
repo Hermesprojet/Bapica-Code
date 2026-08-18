@@ -322,8 +322,18 @@ DIAG=""
 # avant l'appel, donc avant que la base existe: l'`ALTER DATABASE` echouait en
 # silence et la configuration C se refusait sur « detient eurostruct_deployment
 # sans approbation » — un motif exact, mais provoque par le harnais.
+# `appliquer <base> <acteur-phase-0> [roles-de-deploiement-approuves]`
+#
+# L'ACTEUR DE LA PHASE 0 EST UN PARAMETRE (6.3b6c), et c'est la variable de ces
+# trois configurations. La phase 0 pose la RACINE DE CONFIANCE: qui l'applique
+# devient le seul a pouvoir approuver, et le migrateur ne doit jamais etre ce
+# role-la — sauf en A, ou l'on veut precisement voir la finalisation refuser.
+#
+#   A  greenfield          le migrateur applique tout: phase 0 et phase 1
+#   B  superutilisateur    l'administrateur pose le sceau
+#   C  plan non superuser  la forme Supabase
 appliquer() {
-  local base="$1" approuves="${2:-}" out f
+  local base="$1" acteur="$2" approuves="${3:-}" out f
   adm -v ON_ERROR_STOP=1 \
     -c "create database \"$base\" owner \"$MIGRATEUR\";" >/dev/null || return 2
   if [[ -n "$approuves" ]]; then
@@ -336,8 +346,31 @@ grant usage on schema auth to "$MIGRATEUR" with grant option;
 grant select, insert, references on auth.users to "$MIGRATEUR" with grant option;
 grant execute on function auth.uid() to "$MIGRATEUR" with grant option;
 grant create on database $base to "$MIGRATEUR";
+-- L'acteur de la phase 0 cree des objets dans `public` et les transfere a
+-- l'activateur: CREATE avec GRANT OPTION. Les deux acteurs possibles le
+-- recoivent, l'administrateur l'a deja.
+grant create on schema public to "$MIGRATEUR", "$PLAN" with grant option;
+grant usage on schema auth to "$PLAN";
 SQL
+  # PHASE 0 — LE SCEAU.
+  if ! out=$($acteur "$base" -q -v ON_ERROR_STOP=1 \
+               -f "$DB_DIR/migrations/0000_sceau_normatif.sql" 2>&1); then
+    DIAG="phase 0: $(grep -m1 -E 'ERROR|FATAL' <<<"$out" | cut -c1-300)"
+    return 1
+  fi
+  # L'EMPRUNT EST ACCORDE PAR L'ACTEUR DE LA PHASE 0, et donc apres elle: les
+  # roles d'autorite n'existaient pas avant. C'est lui le DONNEUR (fait F3), et
+  # c'est ce que la finalisation derivera du catalogue.
+  $acteur "$base" -q >/dev/null 2>&1 <<SQL
+grant ${AUTORITES[0]} to "$MIGRATEUR" with admin option;
+grant ${AUTORITES[1]} to "$MIGRATEUR" with admin option;
+SQL
+  local r
+  for r in "${CANONIQUES[@]}"; do registre_role "$r"; done
+
+  # PHASE 1 — par le migrateur, 0000 exclu.
   for f in "$DB_DIR"/migrations/*.sql; do
+    [[ "$(basename "$f")" == 0000_* ]] && continue
     if ! out=$(mig "$base" -q -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
       DIAG="$(grep -m1 -E 'ERROR|FATAL' <<<"$out" | cut -c1-320)"
       return 1
@@ -360,7 +393,7 @@ SQL
 # migrateur serait son propre plan de controle. Un deploiement greenfield reste
 # donc inexploitable, mais il est refuse au moment ou le refus protege quelque
 # chose, avec un diagnostic qui dit quoi faire.
-if ! appliquer "$BASE_A" "$MIGRATEUR"; then
+if ! appliquer "$BASE_A" mig "$MIGRATEUR"; then
   echoue "A: la phase 1 doit s'installer (aucune ecriture normative n'est"
   echoue "  possible en PENDING). Refus obtenu:"
   echo "              $DIAG" >&2
@@ -395,18 +428,12 @@ raz; creer_acteurs || { echoue "recreation des acteurs impossible"; exit 1; }
 # Le superutilisateur cree TOUS les roles: par F1 c'est LUI qui garde l'ADMIN
 # residuel, et le controle de topologie l'ignore — les superutilisateurs sont
 # hors modele de menace, explicitement et depuis l'origine.
-for r in "${CANONIQUES[@]}"; do
-  creer_role "$r" nologin || { echoue "B: creation de $r impossible"; exit 1; }
-done
-# Le migrateur doit pouvoir transferer la propriete des fonctions: PostgreSQL
-# l'exige membre des roles d'autorite. ADMIN OPTION pour que la migration
-# puisse tenter la restitution — c'est precisement ce que F2 lui refuse.
-adm -v ON_ERROR_STOP=1 >/dev/null <<SQL
-grant ${AUTORITES[0]} to "$MIGRATEUR" with admin option;
-grant ${AUTORITES[1]} to "$MIGRATEUR" with admin option;
-grant ${AUTORITES[2]} to "$MIGRATEUR" with admin option;
-SQL
-if appliquer "$BASE_B" "$MIGRATEUR,$PROPRIETAIRE"; then
+# LES ROLES CANONIQUES SONT CREES PAR LA PHASE 0 (6.3b6c), sous l'acteur qui
+# pose le sceau — ici l'administrateur. Ils sont inscrits au registre apres
+# coup: un role cree sans etre inscrit ne serait jamais nettoye.
+# L'emprunt est accorde par `appliquer`, juste apres la phase 0: les roles
+# d'autorite n'existent pas avant elle.
+if appliquer "$BASE_B" admin_db "$MIGRATEUR,$PROPRIETAIRE"; then
   # PHASE 1 TERMINEE: l'etat doit etre PENDING, et rien ne doit encore engager.
   ETAT=$(admin_db "$BASE_B" -tAc 'select normative_activation_state()' 2>&1)
   if [[ "$ETAT" != "PENDING" ]]; then
@@ -462,35 +489,27 @@ adm -c "grant \"$PLAN\" to $PROPRIETAIRE;" >/dev/null 2>&1
 # Ils sont crees PAR LE PLAN DE CONTROLE — c'est la variable de cette
 # configuration — et non par l'administrateur. Ils sont donc inscrits au
 # registre a la main: un role cree sans etre inscrit ne serait jamais nettoye.
-plan postgres -q -v ON_ERROR_STOP=1 >/dev/null <<SQL
-create role ${SERVICES[0]} nologin;
-create role ${SERVICES[1]} nologin;
-create role ${AUTORITES[0]} nologin;
-create role ${AUTORITES[1]} nologin;
-create role ${AUTORITES[2]} nologin;
-create role $DEPLOIEMENT nologin;
-grant ${AUTORITES[0]} to "$MIGRATEUR" with admin option;
-grant ${AUTORITES[1]} to "$MIGRATEUR" with admin option;
-grant ${AUTORITES[2]} to "$MIGRATEUR" with admin option;
-SQL
-for r in "${CANONIQUES[@]}"; do registre_role "$r"; done
-# LE PLAN DE CONTROLE EXERCE LA PHASE 2: il lui faut le role de deploiement.
-adm -c "grant $DEPLOIEMENT to \"$PLAN\" with inherit true;" >/dev/null 2>&1
+# LES ROLES SONT CREES PAR LA PHASE 0, sous le PLAN DE CONTROLE — c'est la
+# variable de cette configuration, et c'est `appliquer` qui l'exerce.
+# Le role de deploiement lui est accorde APRES, puisqu'il n'existe pas avant.
 # La declaration est posee par `appliquer`, apres la creation de la base.
 
-DONNEUR=$(adm -tAc "
-  select g.rolname from pg_auth_members m
-    join pg_roles a on a.oid = m.roleid join pg_roles p on p.oid = m.member
-    join pg_roles g on g.oid = m.grantor
-   where a.rolname = '${AUTORITES[0]}' and p.rolname = '$MIGRATEUR' limit 1")
-if [[ "$DONNEUR" == "$PLAN" ]]; then
-  echo "      ok: C — le donneur de l'appartenance est le plan de controle"
-else
-  echoue "C: donneur attendu « $PLAN », obtenu « ${DONNEUR:-aucun} »: la"
-  echoue "  configuration ne differe pas de B comme annonce."
-fi
-
-if appliquer "$BASE_C" "$MIGRATEUR,$PLAN"; then
+if appliquer "$BASE_C" plan "$MIGRATEUR,$PLAN"; then
+  adm -c "grant $DEPLOIEMENT to \"$PLAN\" with inherit true;" >/dev/null 2>&1
+  # LE DONNEUR EST CONSTATE APRES LA PHASE 0: l'emprunt n'existe pas avant
+  # elle, et le lire trop tot rendait « aucun » — un ecart imputable au
+  # harnais, pas a la configuration.
+  DONNEUR=$(adm -tAc "
+    select g.rolname from pg_auth_members m
+      join pg_roles a on a.oid = m.roleid join pg_roles p on p.oid = m.member
+      join pg_roles g on g.oid = m.grantor
+     where a.rolname = '${AUTORITES[0]}' and p.rolname = '$MIGRATEUR' limit 1")
+  if [[ "$DONNEUR" == "$PLAN" ]]; then
+    echo "      ok: C — le donneur de l'appartenance est le plan de controle"
+  else
+    echoue "C: donneur attendu « $PLAN », obtenu « ${DONNEUR:-aucun} »: la"
+    echoue "  configuration ne differe pas de B comme annonce."
+  fi
   ETAT=$(admin_db "$BASE_C" -tAc 'select normative_activation_state()' 2>&1)
   if [[ "$ETAT" != "PENDING" ]]; then
     echoue "C: la phase 1 ne se termine pas en PENDING (obtenu: $ETAT)."

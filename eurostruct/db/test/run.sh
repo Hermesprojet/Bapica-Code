@@ -189,6 +189,17 @@ etape "contrat de finalisation" \
   "$HERE/finalisation_contract.sh" "${DB_NAME:0:20}fc"
 
 # --------------------------------------------------------------------------
+# LA FERMETURE DE L'AUTORITE — le migrateur est-il contenu ?
+# --------------------------------------------------------------------------
+# `finalisation_contract.sh` verifie que la phase 2 ne peut pas etre
+# contournee. Celui-ci verifie ce qui se passe A COTE d'elle: pendant la phase
+# 1, et apres l'activation, par un chemin qui ne passe jamais par la
+# finalisation. Il exige lui aussi un jeu canonique vierge.
+echo "==> fermeture de l'autorite"
+etape "fermeture de l'autorite" \
+  "$HERE/authority_closure.sh" "${DB_NAME:0:20}ac"
+
+# --------------------------------------------------------------------------
 # LES ETAPES QUI EXIGENT UN JEU CANONIQUE VIERGE PASSENT AVANT LA BASE
 # PRINCIPALE
 # --------------------------------------------------------------------------
@@ -275,24 +286,17 @@ plan_db() { local b="$1"; shift
 mig_db()  { local b="$1"; shift
             PGUSER="$MIG_R" PGPASSWORD="$MIG_MDP" psql -X -q -d "$b" "$@"; }
 
-# LE PROVISIONNEMENT, UNE SEULE FOIS.
-plan_pg -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
-create role eurostruct_normative_writer nologin;
-create role eurostruct_normative_bootstrap nologin;
-create role eurostruct_normative_activator nologin;
-create role normative_backend nologin;
-create role normative_governance nologin;
-create role eurostruct_deployment nologin;
-SQL
-adm -c "grant eurostruct_deployment to \"$PLAN_R\" with inherit true;" >/dev/null 2>&1
-
+# LE PROVISIONNEMENT EST FAIT PAR LA PHASE 0 (6.3b6c), base par base: elle
+# cree les six roles canoniques — globaux, donc une seule fois en pratique — ET
+# les quatre tables de confiance, qui sont propres a chaque base.
+#
 # `preter_les_emprunts` — a refaire avant CHAQUE deploiement: la finalisation
-# precedente les a rendus, et c'est le but.
+# precedente les a rendus, et c'est le but. DEUX ROLES: l'activateur n'est
+# jamais prete, c'est lui qui possede la racine.
 preter_les_emprunts() {
   plan_pg -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
 grant eurostruct_normative_writer    to "$MIG_R" with admin option;
 grant eurostruct_normative_bootstrap to "$MIG_R" with admin option;
-grant eurostruct_normative_activator to "$MIG_R" with admin option;
 SQL
 }
 
@@ -308,11 +312,23 @@ grant usage on schema auth to "$MIG_R" with grant option;
 grant select, insert, references on auth.users to "$MIG_R" with grant option;
 grant execute on function auth.uid() to "$MIG_R" with grant option;
 grant create on database "$b" to "$MIG_R";
+grant create on schema public to "$PLAN_R" with grant option;
+grant usage on schema auth to "$PLAN_R";
 SQL
   adm -c "alter database \"$b\"
             set eurostruct.approved_deployment_roles = '$MIG_R,$PLAN_R';" >/dev/null 2>&1
+  # PHASE 0 — LE SCEAU, par le plan de controle.
+  echo "    0000_sceau_normatif.sql (phase 0)"
+  if ! out=$(plan_db "$b" -v ON_ERROR_STOP=1 \
+               -f "$DB_DIR/migrations/0000_sceau_normatif.sql" 2>&1); then
+    echo "ECHEC: phase 0 refusee sur $b:" >&2
+    grep -m2 -E "ERROR|FATAL" <<<"$out" | sed 's/^/       /' >&2
+    return 1
+  fi
+  adm -c "grant eurostruct_deployment to \"$PLAN_R\" with inherit true;" >/dev/null 2>&1
   preter_les_emprunts
   for f in "$@"; do
+    [[ "$(basename "$f")" == 0000_* ]] && continue
     echo "    $(basename "$f")"
     if ! out=$(mig_db "$b" -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
       echo "ECHEC: $(basename "$f") refusee:" >&2
@@ -367,6 +383,9 @@ done
 # --------------------------------------------------------------------------
 UPGRADE_DB="${DB_NAME}_upgrade"
 DERNIERE="$(ls "$DB_DIR"/migrations/*.sql | tail -1)"
+# `deployer` ignore 0000 — c'est la phase 0, qu'il applique lui-meme sous le
+# plan de controle. La liste peut donc le contenir sans dommage; ce qui compte
+# est que la DERNIERE migration soit appliquee apres les autres.
 PRECEDENTES=("$DB_DIR"/migrations/*.sql)
 unset 'PRECEDENTES[${#PRECEDENTES[@]}-1]'
 
