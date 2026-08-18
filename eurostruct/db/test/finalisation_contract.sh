@@ -1,0 +1,755 @@
+#!/usr/bin/env bash
+#
+# EUROSTRUCT — 6.3b6b: LE CONTRAT DE FINALISATION
+#
+#   finalisation_contract.sh <prefixe-de-base-jetable>
+#
+# CE QUE CE FICHIER EXISTE POUR ETABLIR
+# --------------------------------------
+# La phase 2 fait passer le sous-systeme de PENDING a ACTIVE. C'est le moment
+# ou tout devient engageant: apres elle, des confirmations normatives peuvent
+# etre ecrites, et elles engagent toutes les etudes d'une juridiction.
+#
+# Ce fichier ne verifie pas que la finalisation MARCHE — `two_phase_deployment.sh`
+# s'en charge. Il verifie qu'elle ne peut pas etre CONTOURNEE, et il le fait en
+# essayant de la contourner, huit fois.
+#
+# LES HUIT
+# ---------
+#   1. Approbation des parametres   le migrateur change une declaration APRES
+#                                   la revue; la finalisation la fige quand meme
+#   2. Appel direct                 `normative_record_activation` appelee sans
+#                                   passer par la finalisation, avec un faux
+#                                   nom de migrateur
+#   3. Identite du plan de controle  seul le NOM est fige; un role substitue
+#                                   sous ce nom herite de l'exemption
+#   4. Finalisations concurrentes   deux connexions reelles; le perdant doit
+#                                   obtenir ACTIVE, pas une erreur
+#   5. Ecritures en PENDING         les quatre ecritures normatives doivent
+#                                   etre refusees AU MOTIF DE L'ETAT
+#   6. Immuabilite de l'activation  append-only: ni UPDATE ni DELETE
+#   7. Activator dans les harnais   le jeu canonique passe de cinq a six
+#   8. Separation plan/migrateur    sur decor VIERGE: deux roles -> accepte,
+#                                   un seul role -> refuse pour ce motif
+#
+# CHAQUE SCENARIO POSE SON PROPRE DECOR, ET LE DEPOSE.
+# Les roles d'autorite sont GLOBAUX au cluster: deux decors ne peuvent pas
+# coexister. Chaque scenario cree donc ses roles et sa base, puis les detruit —
+# ce qui rend chaque contre-exemple independant de l'ordre, et un rouge
+# imputable a lui seul.
+#
+# Toutes les identites sont FICTIVES. Aucune confirmation normative reelle
+# n'est creee: les seules ecritures tentees le sont pour PROUVER qu'elles sont
+# refusees.
+set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DB_DIR="$(dirname "$HERE")"
+# shellcheck source=lib_harnais.sh
+source "$HERE/lib_harnais.sh"
+
+PREFIXE="${1:?usage: finalisation_contract.sh <prefixe-de-base-jetable>}"
+
+harnais_connexion || exit 2
+exiger_precontrole_local "finalisation_contract.sh" || exit 2
+harnais_verrou_prendre  "finalisation_contract.sh" || exit $?
+exiger_cluster_jetable  "finalisation_contract.sh" || exit 2
+harnais_valider_identifiant "prefixe" "$PREFIXE" || exit 2
+
+JETON="$(harnais_jeton)"
+
+# LES SIX ROLES CANONIQUES — activator COMPRIS.
+#
+# C'est le point 7 lui-meme, applique a ce fichier: un jeu de cinq laissait
+# `eurostruct_normative_activator` derriere lui a chaque execution. Mesure sur
+# ce cluster avant d'ecrire ce commentaire: le role etait present, residu d'une
+# execution anterieure, et aucune postcondition ne l'avait vu.
+CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
+            eurostruct_normative_activator normative_backend
+            normative_governance eurostruct_deployment)
+
+# `anon` et `authenticated` sont crees par `00_supabase_stub.sql`, qui est
+# applique dans chaque decor. Ils sont GLOBAUX comme les autres et doivent donc
+# etre rendus eux aussi — sans quoi la postcondition « aucun role residuel »
+# est fausse. Mesure: ils survivaient a chaque execution.
+STUB_ROLES=(anon authenticated)
+
+exiger_roles_absents "finalisation_contract.sh" "${CANONIQUES[@]}" || exit 2
+
+KO=0; ROUGES=0
+echoue() { echo "      ECHEC: $*" >&2; KO=1; }
+rouge()  { echo "      ROUGE ATTENDU (a fermer): $*"; ROUGES=$((ROUGES + 1)); }
+
+adm() { psql -X -q -d postgres "$@"; }
+
+# --------------------------------------------------------------------------
+# LE DECOR, POSE ET DEPOSE PAR SCENARIO
+# --------------------------------------------------------------------------
+# `decor_poser <suffixe> <mode>`
+#   mode = separe      le plan de controle provisionne les roles d'autorite,
+#                      le migrateur applique les migrations. C'est le modele
+#                      de deploiement documente.
+#   mode = greenfield  un seul role privilegie existe: il provisionne ET
+#                      migre. C'est le cas que le point 8 doit voir refuser.
+#
+# Rend 0 si la phase 1 s'est terminee en PENDING; 1 sinon (et le motif est
+# imprime). Positionne MIG, CTL, BASE.
+MIG=""; CTL=""; BASE=""; MIG_MDP=""; CTL_MDP=""
+mig()    { PGUSER="$MIG" PGPASSWORD="$MIG_MDP" psql -X -q -d "$BASE" "$@"; }
+ctl()    { PGUSER="$CTL" PGPASSWORD="$CTL_MDP" psql -X -q -d "$BASE" "$@"; }
+ctl_pg() { PGUSER="$CTL" PGPASSWORD="$CTL_MDP" psql -X -q -d postgres "$@"; }
+admb()   { psql -X -q -d "$BASE" "$@"; }
+
+decor_poser() {
+  local suffixe="$1" mode="$2" f sortie provisionneur
+  MIG="${PREFIXE}_m${suffixe}_${JETON}"; MIG_MDP="FICTIF-fc-mig-$suffixe-$JETON"
+  CTL="${PREFIXE}_c${suffixe}_${JETON}"; CTL_MDP="FICTIF-fc-ctl-$suffixe-$JETON"
+  BASE="${PREFIXE}_d${suffixe}_${JETON}"
+
+  creer_role "$MIG" "login password '$MIG_MDP' createrole createdb" \
+    || { echoue "decor $suffixe: creation du migrateur impossible"; return 1; }
+  if [[ "$mode" == "separe" ]]; then
+    creer_role "$CTL" "login password '$CTL_MDP' createrole" \
+      || { echoue "decor $suffixe: creation du plan de controle impossible"; return 1; }
+    provisionneur=ctl_pg
+    # L'administrateur doit pouvoir rendre la main sur les roles que le plan de
+    # controle aura crees, pour le nettoyage.
+    adm -c "grant \"$CTL\" to ${PGUSER:-postgres};" >/dev/null 2>&1
+  else
+    # GREENFIELD: le migrateur est seul. Il n'y a pas de plan de controle.
+    CTL="$MIG"; CTL_MDP="$MIG_MDP"
+    provisionneur=mig_pg
+    adm -c "grant \"$MIG\" to ${PGUSER:-postgres};" >/dev/null 2>&1
+  fi
+
+  creer_base "$BASE" "owner \"$MIG\"" \
+    || { echoue "decor $suffixe: creation de la base impossible"; return 1; }
+  registre_base "$BASE"
+
+  admb -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
+  admb >/dev/null 2>&1 <<SQL
+grant usage on schema auth to "$MIG" with grant option;
+grant select, insert, references on auth.users to "$MIG" with grant option;
+grant execute on function auth.uid() to "$MIG" with grant option;
+grant create on database "$BASE" to "$MIG";
+SQL
+
+  # LE PROVISIONNEMENT. Le role qui cree les roles d'autorite en devient le
+  # donneur (fait F1), et c'est lui — et lui seul — qui pourra revoquer (F3).
+  $provisionneur -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
+create role eurostruct_normative_writer nologin;
+create role eurostruct_normative_bootstrap nologin;
+create role eurostruct_normative_activator nologin;
+create role normative_backend nologin;
+create role normative_governance nologin;
+create role eurostruct_deployment nologin;
+grant eurostruct_normative_writer    to "$MIG" with admin option;
+grant eurostruct_normative_bootstrap to "$MIG" with admin option;
+grant eurostruct_normative_activator to "$MIG" with admin option;
+SQL
+  adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
+  adm -c "alter database \"$BASE\"
+            set eurostruct.approved_deployment_roles = '$MIG,$CTL';" >/dev/null 2>&1
+  # DECLARATION LEGITIME, posee par le deploiement. Elle sert de valeur « revue
+  # par le plan de controle » au point 1: sans elle, la comparaison opposerait
+  # une valeur vide a une valeur injectee, ce qui montrerait le meme defaut
+  # mais moins clairement.
+  adm -c "alter database \"$BASE\"
+            set eurostruct.token_roles = 'authenticated';" >/dev/null 2>&1
+
+  for f in "$DB_DIR"/migrations/*.sql; do
+    if ! sortie=$(mig -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
+      echoue "decor $suffixe: phase 1 refusee sur $(basename "$f"):"
+      grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
+      return 1
+    fi
+  done
+
+  local etat
+  etat=$(ctl -tAc "select normative_activation_state()" 2>&1)
+  if [[ "$etat" != "PENDING" ]]; then
+    echoue "decor $suffixe: phase 1 ne se termine pas en PENDING (obtenu: $etat)"
+    return 1
+  fi
+  return 0
+}
+mig_pg() { PGUSER="$MIG" PGPASSWORD="$MIG_MDP" psql -X -q -d postgres "$@"; }
+
+# `decor_deposer` rend le jeu canonique au cluster. Les roles d'autorite sont
+# globaux: sans cela, le scenario suivant se refuserait sur `exiger_roles_absents`.
+decor_deposer() {
+  local r
+  adm -c "select pg_terminate_backend(pid) from pg_stat_activity
+           where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
+  detruire_bases_creees || NETTOYAGE_KO=1
+  for r in "${CANONIQUES[@]}" "${STUB_ROLES[@]}"; do
+    adm -c "drop owned by \"$r\";"      >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+  done
+  for r in "$MIG" "$CTL"; do
+    [[ -n "$r" ]] || continue
+    adm -c "drop owned by \"$r\";"      >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+  done
+}
+
+NETTOYAGE_KO=0
+TOUS_ROLES=()
+sortie_propre() {
+  local r
+  decor_deposer
+  for r in "${CANONIQUES[@]}" "${STUB_ROLES[@]}"; do registre_role "$r"; done
+  for r in "${TOUS_ROLES[@]}"; do registre_role "$r"; done
+  detruire_roles_crees || NETTOYAGE_KO=1
+  harnais_postcondition_nettoyage "finalisation_contract.sh" \
+    "${CANONIQUES[@]}" "${STUB_ROLES[@]}" "${TOUS_ROLES[@]}" || NETTOYAGE_KO=1
+  harnais_verrou_rendre
+  [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
+}
+trap sortie_propre EXIT
+
+# Chaque decor pose ajoute ses deux roles a la liste des noms dont l'absence
+# sera exigee en sortie — par NOM EXACT, jamais par motif.
+suivre_decor() { TOUS_ROLES+=("$MIG"); [[ "$CTL" != "$MIG" ]] && TOUS_ROLES+=("$CTL"); return 0; }
+
+echo "    contrat de finalisation: huit tentatives de contournement"
+
+# ==========================================================================
+# DECOR 1 — reste en PENDING.  Points 5 et 6.
+# ==========================================================================
+if ! decor_poser 1 separe; then
+  echoue "le decor 1 n'a pas pu etre pose: les points 5 et 6 ne sont pas evalues"
+else
+suivre_decor
+echo "      ok: decor 1 — phase 1 appliquee par « $MIG », etat PENDING"
+
+# --------------------------------------------------------------------------
+# 5. AUCUNE ECRITURE NORMATIVE EN PENDING
+# --------------------------------------------------------------------------
+# Tant que le deploiement n'est pas finalise, RIEN ne doit pouvoir engager une
+# juridiction. C'est ce que 0010 AFFIRME deja, en toutes lettres, a l'appui de
+# l'assouplissement du bloc A de la topologie:
+#
+#   « En PENDING, AUCUNE confirmation normative n'est possible — les
+#     declencheurs la refusent — donc rien n'est engage. »
+#
+# Les cinq ecritures sont donc tentees, par les chemins qui existent
+# reellement, pour verifier que cette phrase est vraie.
+admb >/dev/null 2>&1 <<'SQL'
+insert into auth.users (id, email) values
+  ('a0000000-0000-0000-0000-000000000001', 'FICTIF-fc-1@eurostruct.test'),
+  ('a0000000-0000-0000-0000-000000000002', 'FICTIF-fc-2@eurostruct.test')
+on conflict do nothing;
+SQL
+
+PENDING_OUVERT=0
+DETAIL_A="refus sans mention de l etat"
+# a) l'amorcage, qui est la porte d'entree de toute la chaine
+SORTIE=$(ctl -tAc "select bootstrap_normative_administrator(
+           'a0000000-0000-0000-0000-000000000001', 'FICTIF Racine',
+           'FICTIF — amorcage tente en PENDING.')" 2>&1)
+if ! grep -qiE "PENDING|pas actif|non active" <<<"$SORTIE"; then
+  PENDING_OUVERT=$((PENDING_OUVERT + 1))
+  DETAIL_A="$(head -1 <<<"$SORTIE" | cut -c1-120)"
+fi
+
+# b), c), d), e) les ecritures directes sur les quatre tables append-only.
+#
+# Un refus de FORME (colonne obligatoire, droit manquant) ne prouve rien: il
+# tomberait aussi bien en ACTIVE. On veut un refus qui NOMME l'etat — c'est la
+# seule preuve que l'ecriture est refusee PARCE QUE le deploiement n'est pas
+# finalise. Tout autre refus est compte comme « non prouve ».
+for t in normative_authorisation_grants normative_authorisation_revocations \
+         normative_rule_confirmations normative_rule_confirmation_revocations; do
+  S=$(admb -c "insert into $t default values;" 2>&1)
+  grep -qiE "PENDING|pas actif|non active" <<<"$S" || PENDING_OUVERT=$((PENDING_OUVERT + 1))
+done
+
+if [[ "$PENDING_OUVERT" != "0" ]]; then
+  rouge "5. $PENDING_OUVERT ecriture(s) normative(s) sur 5 ne sont pas refusees"
+  rouge "   AU MOTIF DE L'ETAT PENDING. Or 0010 affirme que « les declencheurs"
+  rouge "   la refusent » — et s'appuie sur cette phrase pour n'exiger le bloc A"
+  rouge "   de la topologie qu'en ACTIVE. Amorcage: $DETAIL_A"
+else
+  echo "      ok: 5. les cinq ecritures normatives sont refusees en PENDING"
+fi
+
+# --------------------------------------------------------------------------
+# 6. L'ACTIVATION EST APPEND-ONLY
+# --------------------------------------------------------------------------
+# `normative_control_plane` et `normative_approved_settings` portent chacune un
+# declencheur `before update or delete` qui refuse. `normative_activation` n'en
+# a pas — alors qu'elle porte le fait le plus engageant des trois: l'existence
+# de la ligne EST l'etat ACTIVE.
+#
+# Consequence: qui peut ecrire au nom de l'activateur peut DETRUIRE la ligne,
+# ce qui ramene le sous-systeme en PENDING sans aucune trace, puis le
+# reactiver — `normative_record_activation` ne refuse que si la ligne EXISTE.
+# L'audit de deploiement devient reecriturable.
+#
+# La verification porte sur le CATALOGUE: c'est la structure qui manque, et un
+# refus obtenu par manque de droits ne prouverait pas qu'elle est la.
+TRIG_ACT=$(admb -tAc "select count(*) from pg_trigger t
+                       join pg_class c on c.oid = t.tgrelid
+                      where c.relname = 'normative_activation'
+                        and not t.tgisinternal" 2>&1)
+TRIG_PLAN=$(admb -tAc "select count(*) from pg_trigger t
+                        join pg_class c on c.oid = t.tgrelid
+                       where c.relname = 'normative_control_plane'
+                         and not t.tgisinternal" 2>&1)
+POL_ACT=$(admb -tAc "select string_agg(polcmd::text, ',' order by polcmd::text)
+                       from pg_policy p join pg_class c on c.oid = p.polrelid
+                      where c.relname = 'normative_activation'" 2>&1)
+APPEND_OUVERT=0
+[[ "$TRIG_ACT" == "0" ]] && APPEND_OUVERT=1
+# `polcmd = '*'` signifie FOR ALL: la policy de l'activateur autorise UPDATE et
+# DELETE au meme titre que INSERT.
+grep -q '\*' <<<"$POL_ACT" && APPEND_OUVERT=$((APPEND_OUVERT + 1))
+
+if [[ "$APPEND_OUVERT" != "0" ]]; then
+  rouge "6. « normative_activation » n'est PAS append-only:"
+  rouge "   declencheurs non internes: $TRIG_ACT (le plan de controle en a $TRIG_PLAN)"
+  rouge "   commandes couvertes par les policies: $POL_ACT (« * » = FOR ALL)"
+  rouge "   Detruire la ligne ramene en PENDING sans trace, et la reactivation"
+  rouge "   redevient possible: l'audit de deploiement est reecriturable."
+else
+  echo "      ok: 6. l'activation est append-only (declencheur + policies)"
+fi
+
+decor_deposer
+fi
+
+# ==========================================================================
+# DECOR 2 — point 2: l'appel direct de l'ecriture de confiance.
+# ==========================================================================
+# `normative_record_activation` est SECURITY DEFINER, possedee par
+# l'activateur, et `execute` est accorde a `eurostruct_deployment` — que le
+# plan de controle detient. Elle prend le nom du migrateur EN ARGUMENT.
+#
+# Si elle aboutit avec un nom qui n'est pas celui du vrai migrateur, alors la
+# finalisation entiere devient facultative: revocations, verification du
+# donneur, separation des roles, tout est saute — et le vrai migrateur
+# conserve ses emprunts pendant que le sous-systeme passe ACTIVE.
+#
+# LE FAUX NOM EST UN ROLE QUI EXISTE ET NE DETIENT RIEN. Un nom inexistant
+# ferait echouer `pg_has_role` sur « role does not exist », ce qui ne prouverait
+# rien: le refus viendrait du catalogue, pas du contrat.
+#
+# LES EMPRUNTS SONT D'ABORD RENDUS A LA MAIN, PAR LE DONNEUR. Ce n'est pas une
+# facilite de test: c'est exactement ce que la phase 2 execute (fait F3, seul le
+# donneur peut revoquer), et un operateur peut l'ecrire lui-meme. Sans cela le
+# refus viendrait de la topologie — c'est-a-dire de l'ETAT DU CLUSTER, pas
+# d'une regle — et ne prouverait rien sur le contrat. Mesure sur ce meme
+# fichier avant correction: le refus obtenu etait « topologie: le migrateur
+# atteint eurostruct_normative_writer », un accident de decor.
+if ! decor_poser 2 separe; then
+  echoue "le decor 2 n'a pas pu etre pose: le point 2 n'est pas evalue"
+else
+suivre_decor
+ctl_pg -c "revoke eurostruct_normative_writer, eurostruct_normative_bootstrap,
+                  eurostruct_normative_activator from \"$MIG\";" >/dev/null 2>&1
+RESTE=$(adm -tAc "select count(*) from unnest(array['eurostruct_normative_writer',
+                    'eurostruct_normative_bootstrap','eurostruct_normative_activator']) a(r)
+                   where pg_has_role('$MIG', a.r, 'SET')
+                      or pg_has_role('$MIG', a.r, 'USAGE')
+                      or pg_has_role('$MIG', a.r, 'MEMBER WITH ADMIN OPTION')" 2>&1)
+if [[ "$RESTE" != "0" ]]; then
+  echoue "2. les emprunts n'ont pas pu etre rendus par le donneur ($RESTE restants):"
+  echoue "   le refus attendu viendrait de la topologie et non du contrat."
+else
+  SORTIE=$(ctl -tAc "select normative_record_activation('$CTL', 'normative_governance')" 2>&1)
+  ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
+  if [[ "$ETAT" == "ACTIVE" ]]; then
+    AUDIT=$(admb -tAc "select activated_by || ' | ' || left(topology_digest, 12)
+                         from normative_activation" 2>&1)
+    rouge "2. L'APPEL DIRECT A ACTIVE LE SOUS-SYSTEME en sautant la finalisation."
+    rouge "   Le nom du migrateur a ete FOURNI par l'appelant"
+    rouge "   (« normative_governance », qui n'a jamais migre quoi que ce soit)."
+    rouge "   Rien n'a derive le donneur, rien n'a verifie que l'appelant EST"
+    rouge "   le donneur, rien n'a revoque: l'appelant a simplement declare"
+    rouge "   l'etat final qu'il voulait voir constate."
+    rouge "   audit inscrit: $AUDIT"
+  elif grep -qiE "permission denied|droit refuse" <<<"$SORTIE"; then
+    echo "      ok: 2. l'ecriture de confiance n'est pas appelable directement"
+  else
+    rouge "2. l'appel direct n'a pas active, mais pas par refus d'ACCES:"
+    rouge "   $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-140)"
+    rouge "   L'identite de l'installateur reste fournie par l'appelant."
+  fi
+fi
+decor_deposer
+fi
+
+# ==========================================================================
+# DECOR 3 — point 1: figer n'est pas approuver.
+# ==========================================================================
+# La finalisation fige la valeur COURANTE des trois `ALTER DATABASE ... SET`.
+# Or ces valeurs sont posees par le proprietaire de la base — le migrateur. Il
+# peut donc les changer ENTRE la revue du plan de controle et la finalisation,
+# et la finalisation gravera la valeur changee comme « approuvee ».
+#
+# Le plan de controle ne presente RIEN: il ne dit pas ce qu'il a revu. Rien
+# n'est donc compare, et « approuve » ne veut dire que « courant a l'instant
+# ou la fonction a tourne ».
+#
+# QUI PEUT POSER CES DECLARATIONS — mesure, PostgreSQL 16:
+#   * proprietaire non superutilisateur de la base, sans autre droit
+#         -> ERROR: permission denied to set parameter "eurostruct.token_roles"
+#   * apres `GRANT SET ON PARAMETER ... TO <role>`   -> accepte
+#   * `SET` de session, par n'importe qui           -> accepte, mais invisible
+#     de `pg_db_role_setting`, donc sans effet ici (deja ferme en 6.3b6a)
+#
+# Le decor accorde donc explicitement `SET ON PARAMETER` au migrateur. Ce n'est
+# pas une facilite: un installeur qui pose lui-meme ses trois declarations —
+# la forme la plus naturelle d'un script de deploiement — doit le detenir. Le
+# modele ne l'interdit nulle part, et la finalisation ne le regarde pas.
+#
+# Le defaut ne depend d'ailleurs pas de QUI change la valeur: le plan de
+# controle ne presente aucun manifeste, donc AUCUN changement survenu entre la
+# revue et la finalisation ne peut etre detecte, par qui que ce soit.
+if ! decor_poser 3 separe; then
+  echoue "le decor 3 n'a pas pu etre pose: le point 1 n'est pas evalue"
+else
+suivre_decor
+adm -c "grant set on parameter \"eurostruct.token_roles\" to \"$MIG\";" >/dev/null 2>&1
+# LA DECLARATION EST LUE DANS LE CATALOGUE, PAS PAR LA FONCTION.
+# `normative_declared_setting()` n'est executable que par l'activateur: la lire
+# sous le plan de controle rendrait « permission denied » AVANT et APRES, donc
+# deux valeurs egales — et le scenario se serait cru non reproductible alors
+# que le changement avait bien eu lieu (mesure).
+lire_declaration() {
+  adm -tAc "select coalesce((select split_part(o, '=', 2)
+              from pg_db_role_setting s cross join unnest(s.setconfig) as o
+             where s.setdatabase = (select oid from pg_database where datname = '$BASE')
+               and s.setrole = 0
+               and split_part(o, '=', 1) = 'eurostruct.token_roles' limit 1), '')" 2>&1
+}
+AVANT_REVUE=$(lire_declaration)
+# LE MIGRATEUR CHANGE LA DECLARATION APRES LA REVUE.
+CHANGEMENT=$(mig_pg -c "alter database \"$BASE\"
+                          set eurostruct.token_roles =
+                              'authenticated,anon,FICTIF_ajoute_apres_revue';" 2>&1)
+APRES=$(lire_declaration)
+
+if [[ "$AVANT_REVUE" == "$APRES" ]]; then
+  echoue "1. la declaration n'a pas pu etre modifiee par le migrateur:"
+  echoue "   $(head -1 <<<"$CHANGEMENT" | cut -c1-140)"
+  echoue "   Le scenario ne reproduit pas le contre-exemple vise."
+else
+  SORTIE=$(ctl -tAc "select normative_finalize_deployment('$MIG')" 2>&1)
+  ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
+  # La valeur FIGEE est lue dans la table, sous un role qui contourne la RLS.
+  FIGE=$(admb -tAc "select valeur from normative_approved_settings
+                     where nom = 'eurostruct.token_roles'" 2>&1)
+  if grep -qiE "manifeste|approbation|digest attendu|ne correspond|non approuve" <<<"$SORTIE"; then
+    echo "      ok: 1. finalisation refusee — declaration modifiee apres revue"
+  elif [[ "$ETAT" == "ACTIVE" ]]; then
+    rouge "1. LA FINALISATION A FIGE UNE DECLARATION MODIFIEE APRES REVUE."
+    rouge "   revu par le plan de controle : « $AVANT_REVUE »"
+    rouge "   fige comme approuve          : « $FIGE »"
+    rouge "   Le plan de controle n'a rien presente, donc rien n'a ete compare:"
+    rouge "   « approuve » ne signifie que « courant au moment de l'appel »."
+  else
+    rouge "1. finalisation refusee, mais pas au motif de l'approbation:"
+    rouge "   $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-140)"
+  fi
+fi
+decor_deposer
+fi
+
+# ==========================================================================
+# DECOR 4 — point 4 (finalisations concurrentes) puis point 3 (identite).
+# ==========================================================================
+# Le point 4 laisse le sous-systeme ACTIVE: le point 3, qui porte sur ce qui a
+# ete FIGE, s'exerce ensuite sur ce meme decor.
+if ! decor_poser 4 separe; then
+  echoue "le decor 4 n'a pas pu etre pose: les points 4 et 3 ne sont pas evalues"
+else
+suivre_decor
+
+# --------------------------------------------------------------------------
+# 4. DEUX FINALISATIONS CONCURRENTES, PAR DEUX CONNEXIONS REELLES
+# --------------------------------------------------------------------------
+# `normative_finalize_deployment` ne prend aucun verrou. Deux appels simultanes
+# lisent tous deux PENDING, revoquent tous deux, et tentent tous deux
+# d'inserer. Ce que le contrat exige: UNE SEULE transition, et pour l'autre un
+# resultat IDEMPOTENT — « ACTIVE » — et non une erreur brute.
+#
+# Deux vraies connexions, et un recouvrement force: A tient sa transaction
+# ouverte pendant que B entre. Pas de sequence deguisee en concurrence.
+SORTIE_A="$(mktemp -p "${TMPDIR:-/tmp}" fc4a.XXXXXX)"
+SORTIE_B="$(mktemp -p "${TMPDIR:-/tmp}" fc4b.XXXXXX)"
+(
+  PGUSER="$CTL" PGPASSWORD="$CTL_MDP" psql -X -q -d "$BASE" -tA >"$SORTIE_A" 2>&1 <<SQL
+begin;
+select 'A:' || normative_finalize_deployment('$MIG');
+select pg_sleep(3);
+commit;
+SQL
+) &
+PID_A=$!
+# A DOIT ETRE ENTREE DANS LA FINALISATION AVANT QUE B COMMENCE.
+#
+# Attendre `xact_start is not null` ne suffit pas: c'est vrai des le `begin`,
+# et B pouvait alors entrer avant que A ait rien fait. On attend donc que A
+# soit dans son `pg_sleep` — c'est-a-dire APRES avoir execute la finalisation
+# et AVANT d'avoir valide. C'est la seule fenetre ou la concurrence porte sur
+# quelque chose.
+DANS_LA_FENETRE=0
+for _ in $(seq 1 200); do
+  if [[ "$(adm -tAc "select count(*) from pg_stat_activity
+                      where datname = '$BASE' and usename = '$CTL'
+                        and xact_start is not null
+                        and query like '%pg_sleep%'")" == "1" ]]; then
+    DANS_LA_FENETRE=1; break
+  fi
+  kill -0 "$PID_A" 2>/dev/null || break
+  sleep 0.05
+done
+(
+  PGUSER="$CTL" PGPASSWORD="$CTL_MDP" psql -X -q -d "$BASE" -tA >"$SORTIE_B" 2>&1 <<SQL
+begin;
+select 'B:' || normative_finalize_deployment('$MIG');
+commit;
+SQL
+) &
+PID_B=$!
+# ET LES DEUX TRANSACTIONS DOIVENT AVOIR ETE OUVERTES EN MEME TEMPS. Sans ce
+# constat, une execution SEQUENTIELLE — B apres le commit de A — passerait pour
+# une concurrence et rendrait un vert qui ne prouve rien.
+RECOUVREMENT=0
+for _ in $(seq 1 200); do
+  if [[ "$(adm -tAc "select count(*) from pg_stat_activity
+                      where datname = '$BASE' and usename = '$CTL'
+                        and xact_start is not null")" -ge 2 ]]; then
+    RECOUVREMENT=1; break
+  fi
+  kill -0 "$PID_B" 2>/dev/null || break
+  sleep 0.05
+done
+wait $PID_A; wait $PID_B
+# LA LIGNE QUI COMPTE EST L'ERREUR, pas les avertissements qui la precedent.
+# Un `REVOKE` sans effet emet un WARNING par role, et ces trois lignes
+# occupaient tout l'extrait — masquant le diagnostic reel.
+resume() {
+  local f="$1" r
+  r=$(grep -m1 -E '^(ERROR|ERREUR|FATAL)' "$f")
+  [[ -n "$r" ]] || r=$(grep -m1 -E '^[AB]:' "$f")
+  [[ -n "$r" ]] || r=$(tr '\n' ' ' <"$f")
+  cut -c1-170 <<<"$r"
+}
+RES_A="$(resume "$SORTIE_A")"
+RES_B="$(resume "$SORTIE_B")"
+B_BRUT="$(tr '\n' ' ' <"$SORTIE_B")"
+rm -f "$SORTIE_A" "$SORTIE_B"
+ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
+
+if [[ "$DANS_LA_FENETRE" != "1" || "$RECOUVREMENT" != "1" ]]; then
+  echoue "4. le recouvrement n'est pas etabli (A dans la fenetre: $DANS_LA_FENETRE,"
+  echoue "   deux transactions ouvertes ensemble: $RECOUVREMENT). Une execution"
+  echoue "   sequentielle passerait pour une concurrence: le scenario ne"
+  echoue "   prouverait rien. A: $RES_A | B: $RES_B"
+elif [[ "$ETAT" != "ACTIVE" ]]; then
+  rouge "4. apres deux finalisations concurrentes, l'etat n'est pas ACTIVE:"
+  rouge "   etat = $ETAT | A: $RES_A | B: $RES_B"
+elif grep -qE "B:ACTIVE" <<<"$B_BRUT"; then
+  echo "      ok: 4. recouvrement constate; une seule transition, l'autre obtient"
+  echo "             un resultat idempotent — A: $RES_A / B: $RES_B"
+else
+  rouge "4. LE PERDANT N'OBTIENT PAS UN RESULTAT IDEMPOTENT."
+  rouge "   gagnant : $RES_A"
+  rouge "   perdant : $RES_B"
+  rouge "   Le contrat exige que le second attende puis constate ACTIVE."
+  rouge "   Aucun verrou ne serialise la transition: les deux appels lisent"
+  rouge "   PENDING, revoquent, et se disputent l'insertion."
+fi
+
+# --------------------------------------------------------------------------
+# 3. L'IDENTITE DU PLAN DE CONTROLE N'EST QU'UN NOM
+# --------------------------------------------------------------------------
+# `normative_control_plane` ne stocke que `role_name`. Le digest d'audit ne
+# contient ni ce nom ni l'OID. Or l'exemption d'ADMIN residuel — la seule
+# exemption du modele — est accordee PAR NOM.
+#
+# Un nom n'est pas une identite: il se libere et se reprend. Apres substitution,
+# `normative_control_plane()` designe un role qui n'a jamais rien approuve, et
+# la topologie l'accepte parce qu'il porte le bon libelle.
+if [[ "$(ctl -tAc "select normative_activation_state()" 2>&1)" != "ACTIVE" ]]; then
+  echoue "3. le sous-systeme n'est pas ACTIVE: le point 3 porte sur ce qui a"
+  echoue "   ete fige, il n'est pas evaluable ici."
+else
+  COL=$(admb -tAc "select count(*) from information_schema.columns
+                    where table_name = 'normative_control_plane'
+                      and column_name = 'role_oid'" 2>&1)
+  PLAN_AVANT=$(ctl -tAc "select normative_control_plane()" 2>&1)
+  OID_AVANT=$(adm -tAc "select oid from pg_roles where rolname = '$PLAN_AVANT'" 2>&1)
+
+  # LA SUBSTITUTION — mise en scene d'un DECOMMISSIONNEMENT, la forme la plus
+  # banale du probleme: le role qui a approuve est retire du service, et son
+  # nom — un nom d'exploitation, pas un secret — est repris plus tard.
+  #
+  #   1. le plan approuve est renomme et perd toutes ses appartenances: il
+  #      n'exerce plus rien, comme un role reellement retire;
+  #   2. un role NEUF est cree sous le nom approuve et recoit l'ADMIN residuel
+  #      exactement dans sa forme canonique (admin=t, set=f, usage=f — mesure
+  #      PostgreSQL 16 de `with admin option, set false, inherit false`).
+  #
+  # L'operation demande un administrateur. C'est le point, et non une faiblesse
+  # du scenario: l'enregistrement de confiance doit permettre de CONSTATER la
+  # substitution apres coup, quel que soit celui qui l'opere. Il ne le permet
+  # pas — il ne contient qu'un nom.
+  SUBST="${PREFIXE}_x4_${JETON}"
+  SUBST_MDP="FICTIF-substitut-$JETON"
+  TOUS_ROLES+=("$SUBST")
+  adm -c "alter role \"$PLAN_AVANT\" rename to \"$SUBST\";" >/dev/null 2>&1
+  # RETIRE DU SERVICE, ENTIEREMENT. Les six appartenances ET les attributs
+  # privileges: sans cela, l'ancien plan reste CREATEROLE et garde l'ADMIN
+  # residuel sur les roles de SERVICE qu'il a crees (fait F1), et le bloc B de
+  # la topologie refuserait a cause de LUI — un refus qui ne dirait rien de la
+  # substitution (mesure: « le role privilegie « ..._x4_... » atteint le
+  # service « normative_backend » »).
+  adm -c "revoke ${CANONIQUES[0]}, ${CANONIQUES[1]}, ${CANONIQUES[2]},
+                 ${CANONIQUES[3]}, ${CANONIQUES[4]}, ${CANONIQUES[5]}
+          from \"$SUBST\";" >/dev/null 2>&1
+  adm -c "alter role \"$SUBST\" nologin nocreaterole nocreatedb;" >/dev/null 2>&1
+  adm -c "create role \"$PLAN_AVANT\" login password '$SUBST_MDP';" >/dev/null 2>&1
+  TOUS_ROLES+=("$PLAN_AVANT")
+  adm -c "grant eurostruct_normative_writer, eurostruct_normative_bootstrap,
+                eurostruct_normative_activator to \"$PLAN_AVANT\"
+          with admin option, set false, inherit false;" >/dev/null 2>&1
+  adm -c "grant eurostruct_deployment to \"$PLAN_AVANT\";" >/dev/null 2>&1
+  OID_APRES=$(adm -tAc "select oid from pg_roles where rolname = '$PLAN_AVANT'" 2>&1)
+  ANCIEN_TIENT=$(adm -tAc "select count(*) from unnest(array[
+                      '${CANONIQUES[0]}','${CANONIQUES[1]}','${CANONIQUES[2]}',
+                      '${CANONIQUES[3]}','${CANONIQUES[4]}','${CANONIQUES[5]}']) a(r)
+                   where pg_has_role('$SUBST', a.r, 'SET')
+                      or pg_has_role('$SUBST', a.r, 'USAGE')
+                      or pg_has_role('$SUBST', a.r, 'MEMBER WITH ADMIN OPTION')" 2>&1)
+  TOPO=$(PGUSER="$PLAN_AVANT" PGPASSWORD="$SUBST_MDP" \
+         psql -X -q -d "$BASE" -tAc "select assert_normative_topology()" 2>&1)
+
+  if [[ "$ANCIEN_TIENT" != "0" ]]; then
+    echoue "3. le plan approuve conserve $ANCIEN_TIENT capacite(s) apres retrait:"
+    echoue "   un refus de topologie viendrait de LUI et non de la substitution."
+  elif [[ "$COL" != "0" ]] && grep -qiE "oid|substitu|identite" <<<"$TOPO"; then
+    echo "      ok: 3. le plan de controle est identifie par oid ET par nom"
+  elif grep -qiE "ERROR|ERREUR" <<<"$TOPO"; then
+    rouge "3. la topologie refuse, mais pas au motif de l'identite substituee:"
+    rouge "   $(grep -m1 -iE 'ERROR|ERREUR' <<<"$TOPO" | cut -c1-140)"
+    rouge "   colonne role_oid dans normative_control_plane : $COL"
+  else
+    rouge "3. LE PLAN DE CONTROLE N'EST IDENTIFIE QUE PAR SON NOM."
+    rouge "   colonne role_oid dans normative_control_plane : $COL"
+    rouge "   oid approuve a la finalisation                : $OID_AVANT"
+    rouge "   oid portant ce nom maintenant                 : $OID_APRES"
+    rouge "   LA TOPOLOGIE ACCEPTE le role substitue: un role cree APRES"
+    rouge "   l'activation herite de l'exemption d'ADMIN residuel — la seule du"
+    rouge "   modele — sans avoir jamais rien approuve."
+    rouge "   Le digest d'audit ne porte ni le nom ni l'oid du plan: rien ne"
+    rouge "   permet de constater la substitution apres coup."
+  fi
+fi
+decor_deposer
+fi
+
+# ==========================================================================
+# DECOR 5 — point 8a: deux roles distincts, sur decor ENTIEREMENT VIERGE.
+# ==========================================================================
+# Le scenario normal doit ABOUTIR, et le prouver sur un decor qui ne doit rien
+# a l'ordre d'execution: roles canoniques absents au depart, base neuve,
+# provisionnement par le plan de controle, migration par le migrateur.
+if ! decor_poser 5 separe; then
+  echoue "le decor 5 n'a pas pu etre pose: le point 8a n'est pas evalue"
+else
+suivre_decor
+SORTIE=$(ctl -tAc "select normative_finalize_deployment('$MIG')" 2>&1)
+ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
+RESTE=$(adm -tAc "select count(*) from unnest(array['eurostruct_normative_writer',
+                    'eurostruct_normative_bootstrap','eurostruct_normative_activator']) a(r)
+                   where pg_has_role('$MIG', a.r, 'SET')
+                      or pg_has_role('$MIG', a.r, 'USAGE')
+                      or pg_has_role('$MIG', a.r, 'MEMBER WITH ADMIN OPTION')" 2>&1)
+if [[ "$ETAT" == "ACTIVE" && "$RESTE" == "0" ]]; then
+  echo "      ok: 8a. decor vierge, deux roles distincts — finalisation acceptee"
+else
+  rouge "8a. sur decor VIERGE, la finalisation par deux roles distincts n'aboutit"
+  rouge "    pas: etat = $ETAT, capacites residuelles du migrateur = $RESTE"
+  rouge "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-140)"
+fi
+decor_deposer
+fi
+
+# ==========================================================================
+# DECOR 6 — point 8b: un seul role, sur decor ENTIEREMENT VIERGE.
+# ==========================================================================
+# Greenfield: le migrateur cree lui-meme les roles d'autorite, PostgreSQL lui
+# en donne l'ADMIN residuel (fait F1), et il serait donc son propre plan de
+# controle. La finalisation doit refuser POUR CE MOTIF — nomme —, pas pour un
+# autre.
+if ! decor_poser 6 greenfield; then
+  echoue "le decor 6 n'a pas pu etre pose: le point 8b n'est pas evalue"
+else
+suivre_decor
+SORTIE=$(mig -tAc "select normative_finalize_deployment('$MIG')" 2>&1)
+ETAT=$(mig -tAc "select normative_activation_state()" 2>&1)
+if [[ "$ETAT" == "ACTIVE" ]]; then
+  rouge "8b. UN SEUL ROLE A PU FINALISER: le migrateur est son propre plan de"
+  rouge "    controle, garde l'ADMIN residuel par exemption, et peut se"
+  rouge "    reaccorder SET quand il veut. La separation est nominale."
+elif grep -qiE "deux roles DISTINCTS|le meme role|plan de controle derive" <<<"$SORTIE"; then
+  echo "      ok: 8b. decor vierge, role unique — refus au motif de la separation"
+else
+  rouge "8b. le refus n'est pas motive par la separation plan/migrateur:"
+  rouge "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-160)"
+fi
+decor_deposer
+fi
+
+# ==========================================================================
+# 7. LE ROLE ACTIVATOR DANS LES HARNAIS — cinq temoins doivent devenir six
+# ==========================================================================
+# `eurostruct_normative_activator` est un role canonique depuis 6.3b6b: les
+# migrations le CREENT, il est GLOBAL au cluster, et il survit a la destruction
+# de la base. Les listes canoniques des harnais en comptent cinq.
+#
+# Consequence mesuree sur ce cluster avant l'ecriture de ce fichier: le role
+# etait present en residu d'une execution anterieure, et aucune postcondition
+# ne l'avait signale. Un jeu canonique incomplet rend « aucun role residuel »
+# faux, et rend `exiger_roles_absents` aveugle a un decor deja pollue.
+#
+# Cette verification porte sur le DEPOT: elle ne depend d'aucune base.
+MANQUANTS=()
+for f in run.sh harness_safety_selftest.sh nonsuperuser_install.sh \
+         role_prerequisites.sh two_phase_deployment.sh; do
+  awk '/^(CANONIQUES|AUTORITES)=/,/\)|"$/' "$HERE/$f" \
+    | grep -q 'eurostruct_normative_activator' || MANQUANTS+=("$f")
+done
+# `harness_safety_selftest.sh` compte ses temoins: cinq roles canoniques poses,
+# cinq attendus intacts. Avec six roles, le compte doit etre six.
+TEMOINS_CINQ=0
+grep -qE '\[\[ "\$n" == "5" \]\]' "$HERE/harness_safety_selftest.sh" && TEMOINS_CINQ=1
+
+if [[ ${#MANQUANTS[@]} -eq 0 && $TEMOINS_CINQ -eq 0 ]]; then
+  echo "      ok: 7. les six roles canoniques sont declares dans les harnais"
+else
+  rouge "7. LE JEU CANONIQUE DES HARNAIS EST INCOMPLET."
+  [[ ${#MANQUANTS[@]} -gt 0 ]] && \
+    rouge "   « eurostruct_normative_activator » absent de: ${MANQUANTS[*]}"
+  [[ $TEMOINS_CINQ -eq 1 ]] && \
+    rouge "   harness_safety_selftest.sh attend encore 5 temoins, pas 6"
+  rouge "   Un role canonique non declare survit a chaque execution sans etre"
+  rouge "   vu par aucune postcondition, et rend « aucun role residuel » faux."
+fi
+
+echo ""
+echo "================================================="
+if [[ $KO -eq 0 && $ROUGES -eq 0 ]]; then
+  echo " Contrat de finalisation: aucun contournement."
+  echo "================================================="
+  exit 0
+fi
+echo " Contrat de finalisation:"
+echo "   $KO ecart(s) de decor"
+echo "   $ROUGES contournement(s) ouvert(s), a fermer"
+echo "================================================="
+exit 1
