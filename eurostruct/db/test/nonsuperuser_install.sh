@@ -97,7 +97,7 @@ harnais_connexion || exit 2
 #   3. LA PORTE CATALOGUE — marqueurs de plateforme geree, bases etrangeres,
 #      superutilisateur.
 exiger_precontrole_local "nonsuperuser_install.sh" || exit 2
-harnais_verrou_prendre "nonsuperuser_install.sh" || exit 3
+harnais_verrou_prendre "nonsuperuser_install.sh" || exit $?   # 2 = parametre invalide, 3 = verrou detenu
 exiger_cluster_jetable "nonsuperuser_install.sh" || exit 2
 
 # DETRUIRE PAR NOM N'EST LEGITIME QU'APRES AVOIR PROUVE L'ABSENCE.

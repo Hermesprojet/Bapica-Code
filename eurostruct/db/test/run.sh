@@ -36,6 +36,16 @@ source "$HERE/lib_harnais.sh"
 # `-d`. Il n'y a plus d'URL a reecrire, donc plus rien a perdre.
 harnais_connexion || exit 2
 
+# LE NOM DE BASE EST VALIDE AVANT TOUTE CONNEXION ET TOUTE REQUETE.
+#
+# `DB_NAME` vient de l'environnement et etait interpole tel quel dans
+# `create database`, `drop database` et les predicats `datname = '...'`. Seuls
+# les sous-scripts validaient le leur: le refus n'arrivait donc qu'apres coup,
+# par accident d'ordre. La validation porte aussi sur la LONGUEUR, parce que
+# les harnais derivent des noms jusqu'a 20 caracteres plus longs et que
+# PostgreSQL tronque a 63 — deux bases distinctes pourraient devenir la meme.
+harnais_valider_identifiant "DB_NAME" "$DB_NAME" || exit 2
+
 # CETTE SUITE CREE ET DETRUIT DES ROLES GLOBAUX (`normative_backend`,
 # `eurostruct_normative_writer`, ...). Les roles appartiennent au CLUSTER, pas
 # a une base: lancee sur un cluster partage, de staging ou de production, elle
@@ -56,7 +66,7 @@ harnais_connexion || exit 2
 #   3. LA PORTE CATALOGUE — marqueurs de plateforme geree, bases etrangeres,
 #      superutilisateur.
 exiger_precontrole_local "db/test/run.sh" || exit 2
-harnais_verrou_prendre "db/test/run.sh" || exit 3
+harnais_verrou_prendre "db/test/run.sh" || exit $?   # 2 = parametre invalide, 3 = verrou detenu
 exiger_cluster_jetable "db/test/run.sh" || exit 2
 
 

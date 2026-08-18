@@ -79,10 +79,6 @@ ROLES_FICTIFS="fictif_login_a fictif_b fictif_c fictif_relais"
 # est impose et ne peut pas etre suffixe d'un jeton.
 CANONIQUES="eurostruct_normative_writer eurostruct_normative_bootstrap
             normative_backend normative_governance eurostruct_deployment"
-# Ce fichier APPLIQUE LES MIGRATIONS: il cree donc aussi les roles canoniques,
-# qui survivent a la destruction de sa base. Meme exigence, meme preuve.
-# shellcheck disable=SC2086
-exiger_roles_absents "role_prerequisites.sh" $ROLES_FICTIFS $CANONIQUES || exit 2
 
 # La connexion vient de l'ENVIRONNEMENT, jamais d'argv (6.3b6a, securite des
 # harnais). La version precedente reecrivait `$DATABASE_URL` a la main pour
@@ -99,9 +95,26 @@ harnais_connexion || exit 2
 # precedente se connectait avant tout controle: avec une `DATABASE_URL`
 # distante, une connexion partait — et des identifiants avec elle — avant le
 # moindre refus.
+# UN SEUL CHEMIN, ET L'ORDRE EST LA GARANTIE.
+#
+# Ce fichier en avait deux: `exiger_roles_absents` s'executait AVANT meme
+# `harnais_connexion` — donc avant tout precontrole — et deux blocs successifs
+# prenaient le verrou puis la porte. Un ordre qui existe en double n'est plus
+# un ordre: le lecteur ne sait pas lequel fait foi, et le premier appel decide.
+#
+#   1. decodage local de la connexion, sans reseau
+#   2. precontrole du consentement et de l'hote, sans reseau
+#   3. validation des parametres et des noms
+#   4. prise ou verification du verrou
+#   5. controle du catalogue
+#   6. verification de l'absence des roles
+#   7. seulement ensuite, creation ou destruction
 exiger_precontrole_local "role_prerequisites.sh" || exit 2
-harnais_verrou_prendre  "role_prerequisites.sh" || exit 3
+harnais_valider_identifiant "nom de base" "$DB" || exit 2
+harnais_verrou_prendre  "role_prerequisites.sh" || exit $?   # 2 = parametre invalide, 3 = verrou detenu
 exiger_cluster_jetable  "role_prerequisites.sh" || exit 2
+# shellcheck disable=SC2086
+exiger_roles_absents "role_prerequisites.sh" $ROLES_FICTIFS $CANONIQUES || exit 2
 
 # LA GARDE S'APPLIQUE ICI AUSSI (correctif #5).
 #
@@ -122,8 +135,6 @@ exiger_cluster_jetable  "role_prerequisites.sh" || exit 2
 #      motif faux (« ce cluster porte supabase_admin », mesure).
 #   3. LA PORTE CATALOGUE — marqueurs de plateforme geree, bases etrangeres,
 #      superutilisateur.
-harnais_verrou_prendre "role_prerequisites.sh" || exit 3
-exiger_cluster_jetable "role_prerequisites.sh" || exit 2
 
 PSQL_DB=(psql -X -q -d "$DB")
 PSQL_ADMIN=(psql -X -q -d postgres)

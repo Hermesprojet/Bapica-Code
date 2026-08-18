@@ -120,7 +120,7 @@ harnais_connexion || exit 2
 #   3. LA PORTE CATALOGUE — marqueurs de plateforme geree, bases etrangeres,
 #      superutilisateur.
 exiger_precontrole_local "two_phase_deployment.sh" || exit 2
-harnais_verrou_prendre "two_phase_deployment.sh" || exit 3
+harnais_verrou_prendre "two_phase_deployment.sh" || exit $?   # 2 = parametre invalide, 3 = verrou detenu
 exiger_cluster_jetable "two_phase_deployment.sh" || exit 2
 
 
@@ -145,6 +145,21 @@ BASE_C="${PREFIXE}_c_${JETON}"
 # Inscrites des maintenant: la postcondition doit les couvrir meme si l'une
 # n'a pas pu etre creee — c'est justement le cas ou l'on veut le constater.
 registre_base "$BASE_A"; registre_base "$BASE_B"; registre_base "$BASE_C"
+# Nommes des maintenant: le trap de sortie et la postcondition y font
+# reference, et ils doivent etre definis meme si la creation echoue.
+# LES IDENTIFIANTS SONT TOUJOURS QUOTES DANS LE SQL.
+#
+# CONTRE-EXEMPLE MESURE, et il ne se voyait qu'avec un prefixe MAJUSCULE:
+# `create role $F1` sans guillemets fait replier le nom par PostgreSQL, si bien
+# que `ccA_f1_...` etait cree sous le nom `cca_f1_...`. Le registre et les
+# oracles, eux, cherchaient la casse d'origine: la membership n'etait pas
+# trouvee (« F1 a change: aucune ligne »), et le nettoyage par nom exact ne
+# supprimait rien — deux roles residuels apres chaque concurrence.
+#
+# Le scenario 7 emploie `concA`/`concB`; c'est lui qui l'a fait apparaitre,
+# alors que toutes les executions en minuscules restaient vertes.
+F1="${PREFIXE}_f1_${JETON}"
+F3="${PREFIXE}_f3_${JETON}"
 
 ECHECS=0; ROUGES_ATTENDUS=0
 echoue() { echo "      ECHEC: $*" >&2; ECHECS=$((ECHECS + 1)); }
@@ -206,7 +221,7 @@ sortie_propre() {
   for r in "${CANONIQUES[@]}"; do registre_role "$r"; done
   detruire_roles_crees || NETTOYAGE_KO=1
   harnais_postcondition_nettoyage "two_phase_deployment.sh" \
-    "${CANONIQUES[@]}" "$MIGRATEUR" "$PLAN" || NETTOYAGE_KO=1
+    "${CANONIQUES[@]}" "$MIGRATEUR" "$PLAN" "$F1" "$F3" || NETTOYAGE_KO=1
   harnais_verrou_rendre
   [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
 }
@@ -229,13 +244,22 @@ echo "    deploiement en deux phases: qui cree, qui accorde, qui revoque"
 # fournisseur qui patche — ce n'est pas une bonne nouvelle a ignorer: c'est un
 # reexamen a ouvrir, et il vaut mieux l'apprendre ici qu'en production.
 # F1 — le createur recoit une appartenance donnee par le superutilisateur.
-mig postgres -q -c "create role ${PREFIXE}_f1_${JETON} nologin;" >/dev/null 2>&1
+# INSCRITS DES LA CREATION, ET NON A LA SUPPRESSION.
+#
+# F1 et F3 etaient crees ici et detruits une trentaine de lignes plus bas, hors
+# de tout registre. Toute interruption entre les deux — `kill`, timeout,
+# `set -e` sur un appel intermediaire, plantage du cluster — les laissait
+# derriere, et la postcondition ne les couvrait pas: elle ne connaissait que le
+# registre. L'inscription suit donc IMMEDIATEMENT la creation reussie.
+if mig postgres -q -v ON_ERROR_STOP=1 -c "create role \"$F1\" nologin;" >/dev/null 2>&1; then
+  registre_role "$F1"
+fi
 LU=$(adm -tAc "
   select g.rolname || '/' || m.admin_option || '/' || m.set_option
     from pg_auth_members m
     join pg_roles a on a.oid = m.roleid join pg_roles p on p.oid = m.member
     join pg_roles g on g.oid = m.grantor
-   where a.rolname = '${PREFIXE}_f1_${JETON}' and p.rolname = '$MIGRATEUR'")
+   where a.rolname = '$F1' and p.rolname = '$MIGRATEUR'")
 # `boolean || text` rend « true »/« false », et non « t »/« f » — ce que
 # l'affichage tabulaire de psql donne. La premiere ecriture attendait la forme
 # tabulaire et rapportait un changement de F1 qui n'avait pas eu lieu.
@@ -248,12 +272,12 @@ fi
 
 # F2 — nul ne revoque sa propre appartenance donnee par un autre. Ni
 # directement, ni par « GRANTED BY »: les deux sont exerces.
-mig postgres -q -c "revoke ${PREFIXE}_f1_${JETON} from \"$MIGRATEUR\";" >/dev/null 2>&1
-mig postgres -q -c "revoke ${PREFIXE}_f1_${JETON} from \"$MIGRATEUR\" granted by $PROPRIETAIRE;" >/dev/null 2>&1
+mig postgres -q -c "revoke \"$F1\" from \"$MIGRATEUR\";" >/dev/null 2>&1
+mig postgres -q -c "revoke \"$F1\" from \"$MIGRATEUR\" granted by \"$PROPRIETAIRE\";" >/dev/null 2>&1
 SURVIT=$(adm -tAc "
   select count(*) from pg_auth_members m
     join pg_roles a on a.oid = m.roleid join pg_roles p on p.oid = m.member
-   where a.rolname = '${PREFIXE}_f1_${JETON}' and p.rolname = '$MIGRATEUR'")
+   where a.rolname = '$F1' and p.rolname = '$MIGRATEUR'")
 if [[ "$SURVIT" == "1" ]]; then
   echo "      ok: F2 — l'appartenance survit aux deux tentatives de revocation"
 else
@@ -263,19 +287,19 @@ else
 fi
 
 # F3 — le donneur revoque ce qu'il a donne.
-adm -c "create role ${PREFIXE}_f3_${JETON} nologin;" >/dev/null 2>&1
-adm -c "grant ${PREFIXE}_f3_${JETON} to \"$MIGRATEUR\";" >/dev/null 2>&1
-adm -c "revoke ${PREFIXE}_f3_${JETON} from \"$MIGRATEUR\";" >/dev/null 2>&1
+if adm -v ON_ERROR_STOP=1 -c "create role \"$F3\" nologin;" >/dev/null 2>&1; then
+  registre_role "$F3"
+fi
+adm -c "grant \"$F3\" to \"$MIGRATEUR\";" >/dev/null 2>&1
+adm -c "revoke \"$F3\" from \"$MIGRATEUR\";" >/dev/null 2>&1
 if [[ "$(adm -tAc "
       select count(*) from pg_auth_members m
         join pg_roles a on a.oid = m.roleid join pg_roles p on p.oid = m.member
-       where a.rolname = '${PREFIXE}_f3_${JETON}' and p.rolname = '$MIGRATEUR'")" == "0" ]]; then
+       where a.rolname = '$F3' and p.rolname = '$MIGRATEUR'")" == "0" ]]; then
   echo "      ok: F3 — le donneur revoque ce qu'il a donne"
 else
   echoue "F3 a change: le donneur ne peut plus revoquer son propre octroi."
 fi
-adm -c "drop role if exists ${PREFIXE}_f1_${JETON};" >/dev/null 2>&1
-adm -c "drop role if exists ${PREFIXE}_f3_${JETON};" >/dev/null 2>&1
 
 # --------------------------------------------------------------------------
 # Application des migrations sous le migrateur. DIAG porte le premier

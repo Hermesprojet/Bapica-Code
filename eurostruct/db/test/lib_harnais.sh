@@ -321,6 +321,46 @@ EOF
 }
 
 # --------------------------------------------------------------------------
+# IDENTIFIANTS POSTGRESQL — valides une fois, au meme endroit
+# --------------------------------------------------------------------------
+# Les noms de bases sont interpoles dans `create database`, `drop database` et
+# dans des predicats `datname = '...'`. `run.sh` prenait `DB_NAME` de
+# l'environnement et l'utilisait tel quel; seuls les sous-scripts validaient le
+# leur, et le refus n'arrivait donc qu'apres coup — par accident d'ordre, pas
+# par construction.
+#
+# LA LONGUEUR COMPTE AUTANT QUE LA FORME. PostgreSQL TRONQUE silencieusement
+# les identifiants a 63 octets. Or les harnais derivent des noms:
+#
+#   DB_NAME + "_2p"        prefixe de two_phase_deployment.sh
+#           + "_ctl_"      role du plan de controle
+#           + 12           jeton hexadecimal
+#
+# soit 20 caracteres au-dela de `DB_NAME`. Deux bases distinctes tronquees au
+# meme nom, et un harnais detruit les objets de l'autre en croyant nettoyer les
+# siens. La borne est donc calculee, pas choisie: 63 - 20 = 43, arrondi a 40
+# pour garder une marge si un suffixe s'allonge.
+HARNAIS_IDENT_MAX=40
+
+harnais_valider_identifiant() {
+  local quoi="$1" valeur="$2"
+  if ! [[ "$valeur" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+    echo "REFUS: $quoi « $valeur » n'est pas un identifiant PostgreSQL simple." >&2
+    echo "       Attendu: une lettre ou « _ », puis lettres, chiffres et « _ »." >&2
+    echo "       Il serait interpole dans du SQL." >&2
+    return 2
+  fi
+  if [[ "${#valeur}" -gt "$HARNAIS_IDENT_MAX" ]]; then
+    echo "REFUS: $quoi « $valeur » fait ${#valeur} caracteres, au-dela de" >&2
+    echo "       $HARNAIS_IDENT_MAX. Les harnais en derivent des noms jusqu'a" >&2
+    echo "       20 caracteres plus longs, et PostgreSQL TRONQUE a 63: deux" >&2
+    echo "       noms distincts pourraient devenir le meme." >&2
+    return 2
+  fi
+  return 0
+}
+
+# --------------------------------------------------------------------------
 # VERROU EXCLUSIF AU NIVEAU DU CLUSTER
 # --------------------------------------------------------------------------
 # LA COURSE QU'IL FERME. `exiger_roles_absents` constate que les roles
@@ -380,6 +420,32 @@ HARNAIS_VERROU_TENU=0
 harnais_verrou_prendre() {
   local qui="${1:-ce harnais}" pris
 
+  # VALIDER AVANT LA PREMIERE REQUETE, ET NON APRES.
+  #
+  # CONTRE-EXEMPLE MESURE: `harnais_valider_cle` etait appelee APRES le bloc de
+  # reentrance, qui interpole pourtant la cle. Avec
+  #
+  #   EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE=1
+  #   EUROSTRUCT_HARNAIS_VERROU_CLE="0 ; create role a1_injecte nologin ; select 0"
+  #
+  # le `create role` s'executait dans la requete de reentrance — verifie, le
+  # role existait — et le refus « cle de verrou invalide » tombait ENSUITE.
+  # Valider apres avoir tire, c'est valider pour la forme.
+  harnais_valider_cle || return 2
+
+  # LE MARQUEUR EST REFUSE, PAS NETTOYE.
+  #
+  # `${VAR//[^0-9]/}` retirait les caracteres non numeriques: « 99abc9 »
+  # devenait « 999 », c'est-a-dire qu'une valeur invalide etait TRANSFORMEE en
+  # valeur valide, puis utilisee. Un assainissement qui fabrique une entree
+  # acceptable a partir d'une entree refusable ne protege pas: il devine.
+  if [[ -n "${EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE:-}" ]] \
+     && ! [[ "$EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE" =~ ^[0-9]{1,10}$ ]]; then
+    echo "REFUS: marqueur de reentrance invalide. Un PID decimal est attendu;" >&2
+    echo "       toute autre valeur serait interpolee dans du SQL." >&2
+    return 2
+  fi
+
   # RE-ENTRANCE. L'auto-test de securite INVOQUE la commande canonique pour la
   # mettre en echec: si l'enfant redemandait le verrou que son parent detient,
   # il refuserait pour une raison etrangere au scenario, et la preuve ne
@@ -413,19 +479,17 @@ harnais_verrou_prendre() {
       select count(*) from pg_locks
        where locktype = 'advisory' and granted
          and objsubid = 1
-         and pid = ${EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE//[^0-9]/}
+         and pid = $EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
          and ((classid::bigint << 32) | objid::bigint) = $HARNAIS_VERROU_CLE" 2>/dev/null)"
     if [[ "$reel" == "1" ]]; then
       HARNAIS_VERROU_TENU=0
       return 0
     fi
     echo "      NOTE: marqueur de reentrance present mais AUCUN verrou reel ne" >&2
-    echo "            correspond (pid ${EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE//[^0-9]/})." >&2
+    echo "            correspond (pid $EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE)." >&2
     echo "            Il est ignore, et le verrou est demande normalement." >&2
     unset EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
   fi
-
-  harnais_valider_cle || return 2
 
   coproc HARNAIS_VERROU { psql -X -q -At -d postgres 2>&1; }
   if [[ -z "${HARNAIS_VERROU_PID:-}" ]]; then

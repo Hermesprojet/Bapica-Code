@@ -34,6 +34,10 @@
 #   9. marqueur de reentrance forge             -> refus, pas de contournement
 #  10. hote distant sans consentement           -> refus SANS aucune connexion
 #  11. VRAIE cle detenue + commande canonique   -> code 3, temoins intacts
+#  12. cle empoisonnee AVEC marqueur            -> refus, aucune injection
+#  13. nom de base malveillant ou trop long     -> refus avant tout psql
+#  14. interruption entre creation et nettoyage -> zero role residuel
+#  15. faux psql, sans consentement / hote refuse -> 0 appel a psql
 #
 # CE QUE CE FICHIER NE PROUVE PAS
 # --------------------------------
@@ -70,7 +74,7 @@ harnais_connexion || exit 2
 #   3. LA PORTE CATALOGUE — marqueurs de plateforme geree, bases etrangeres,
 #      superutilisateur.
 exiger_precontrole_local "harness_safety_selftest.sh" || exit 2
-harnais_verrou_prendre "harness_safety_selftest.sh" || exit 3
+harnais_verrou_prendre "harness_safety_selftest.sh" || exit $?   # 2 = parametre invalide, 3 = verrou detenu
 exiger_cluster_jetable "harness_safety_selftest.sh" || exit 2
 
 
@@ -326,24 +330,59 @@ CODE_B="$(cat "$SORTIE_B.code" 2>/dev/null || echo 99)"
 
 # EXACTEMENT UNE des deux doit avoir ete admise. L'autre doit rendre 3 —
 # NON EXECUTE — et n'avoir rien nettoye.
-BLOQUEES=0
-[[ "$CODE_A" == "3" ]] && BLOQUEES=$((BLOQUEES + 1))
-[[ "$CODE_B" == "3" ]] && BLOQUEES=$((BLOQUEES + 1))
-if [[ "$BLOQUEES" == "1" ]]; then
-  # Et pour la BONNE raison: le diagnostic doit nommer le verrou, pas un autre
-  # refus qui rendrait le meme code.
-  if grep -qi "verrou de harnais est deja detenu" "$SORTIE_A" "$SORTIE_B"; then
-    echo "      ok: 7. deux executions concurrentes — une admise, une NON EXECUTEE (3)"
-  else
-    echoue "7. une execution a rendu 3, mais sans nommer le verrou:"
-    grep -m2 -iE 'REFUS|NON EXECUTE' "$SORTIE_A" "$SORTIE_B" | sed 's/^/              /' >&2
-  fi
-elif [[ "$BLOQUEES" == "0" ]]; then
+# CE QU'ON EXIGE DU GAGNANT, ET PAS SEULEMENT DU PERDANT.
+#
+# La version precedente comptait « exactement une bloquee » et s'arretait la.
+# Elle ne disait rien de l'autre: une execution qui aurait plante au demarrage
+# aurait produit le meme comptage, et le scenario serait passe au vert en
+# n'ayant rien exerce du tout.
+#
+# ETAT ATTENDU DU GAGNANT, dans la phase rouge 6.3b6b: code 1, et sa sortie
+# doit porter le marqueur `ATTENDU-ROUGE (6.3b6b)` — preuve qu'il est alle
+# jusqu'aux configurations B et C, et n'a pas echoue en chemin.
+#
+# QUAND 6.3b6b SERA VERT: remplacer `GAGNANT_ATTENDU=1` par `0` et retirer
+# l'exigence du marqueur. C'est ecrit ici pour que le changement soit un geste,
+# pas une enquete.
+GAGNANT_ATTENDU=1
+
+CODES=("$CODE_A" "$CODE_B"); SORTIES=("$SORTIE_A" "$SORTIE_B")
+IDX_PERDANT=-1; IDX_GAGNANT=-1
+for i in 0 1; do
+  if [[ "${CODES[$i]}" == "3" ]]; then IDX_PERDANT=$i; else IDX_GAGNANT=$i; fi
+done
+
+if [[ "$IDX_PERDANT" -lt 0 ]]; then
   echoue "7. LES DEUX EXECUTIONS CONCURRENTES ONT ETE ADMISES (codes $CODE_A/$CODE_B):"
   echoue "  chacune peut detruire les roles globaux que l'autre vient de creer."
-else
+elif [[ "$IDX_GAGNANT" -lt 0 ]]; then
   echoue "7. les deux executions ont ete bloquees (codes $CODE_A/$CODE_B):"
   echoue "  le verrou n'a ete pris par personne, ou n'a pas ete rendu."
+elif ! grep -qi "verrou de harnais est deja detenu" "${SORTIES[$IDX_PERDANT]}"; then
+  echoue "7. le perdant a rendu 3, mais sans nommer le verrou:"
+  grep -m2 -iE 'REFUS|NON EXECUTE' "${SORTIES[$IDX_PERDANT]}" | sed 's/^/              /' >&2
+elif [[ "${CODES[$IDX_GAGNANT]}" != "$GAGNANT_ATTENDU" ]]; then
+  echoue "7. le gagnant a rendu ${CODES[$IDX_GAGNANT]} au lieu de $GAGNANT_ATTENDU:"
+  echoue "  il n'a pas atteint l'etat attendu de la phase rouge 6.3b6b, et le"
+  echoue "  scenario n'a donc rien exerce de ce qu'il annonce."
+  grep -m2 -iE 'ECHEC|ERROR' "${SORTIES[$IDX_GAGNANT]}" | sed 's/^/              /' >&2
+elif ! grep -q "ATTENDU-ROUGE (6.3b6b)" "${SORTIES[$IDX_GAGNANT]}"; then
+  echoue "7. le gagnant a rendu $GAGNANT_ATTENDU mais sans atteindre"
+  echoue "  « ATTENDU-ROUGE (6.3b6b) »: il a echoue avant les configurations"
+  echoue "  B et C, et le code attendu a ete obtenu pour une autre raison."
+else
+  echo "      ok: 7. concurrence — perdant 3 (verrou), gagnant $GAGNANT_ATTENDU (ATTENDU-ROUGE atteint)"
+fi
+# AUCUN RESIDU, apres une concurrence reelle. Le nettoyage du gagnant et
+# l'abstention du perdant doivent laisser le cluster tel qu'il etait.
+RESIDU=$(adm -tAc "
+  select coalesce(string_agg(x, ', '), '') from (
+    select datname as x from pg_database where datname like 'conc%'
+    union all
+    select rolname from pg_roles where rolname like 'conc%'
+  ) t")
+if [[ -n "$RESIDU" ]]; then
+  echoue "7. residus apres concurrence: $RESIDU"
 fi
 rm -f "$SORTIE_A" "$SORTIE_B" "$SORTIE_A.code" "$SORTIE_B.code"
 
@@ -481,6 +520,182 @@ else
 fi
 retirer_temoins
 
+
+# --------------------------------------------------------------------------
+# 12. LA CLE EST VALIDEE AVANT LA PREMIERE REQUETE, MARQUEUR PRESENT
+# --------------------------------------------------------------------------
+# Le scenario 8 empoisonne la cle sans marqueur de reentrance: le refus tombe
+# alors avant la requete de reentrance, qui n'est pas atteinte. AVEC un
+# marqueur, cette requete-la interpole la cle — et c'est par elle que
+# l'injection passait.
+#
+# CONTRE-EXEMPLE MESURE: `harnais_valider_cle` etait appelee APRES le bloc de
+# reentrance. Le `create role` injecte s'executait, et le refus « cle de verrou
+# invalide » tombait ensuite. Valider apres avoir tire, c'est valider pour la
+# forme.
+TEMOIN_INJ2="temoin_reentrance_$(harnais_jeton)"
+(export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
+ export EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE=1
+ export EUROSTRUCT_HARNAIS_VERROU_CLE="0 ; create role $TEMOIN_INJ2 nologin ; select 0"
+ deux_phases) && CODE=0 || CODE=$?
+INJ2=$(adm -tAc "select count(*) from pg_roles where rolname = '$TEMOIN_INJ2'")
+if [[ "$INJ2" != "0" ]]; then
+  echoue "12. LA REQUETE DE REENTRANCE EST UN CANAL D'INJECTION: le role"
+  echoue "  « $TEMOIN_INJ2 » a ete cree avant toute validation."
+  adm -c "drop role if exists \"$TEMOIN_INJ2\";" >/dev/null 2>&1
+elif [[ "$CODE" == "0" ]]; then
+  echoue "12. la cle empoisonnee a ete acceptee malgre le marqueur"
+else
+  echo "      ok: 12. cle empoisonnee + marqueur — refus (code $CODE), aucune injection"
+fi
+
+# Et le marqueur invalide est REFUSE, pas assaini. « 99abc9 » ne doit pas
+# devenir « 999 »: transformer une entree refusable en entree acceptable, c'est
+# deviner l'intention plutot que la verifier.
+(export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
+ export EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE="99abc9"
+ deux_phases) && CODE=0 || CODE=$?
+if [[ "$CODE" == "2" ]]; then
+  echo "      ok: 12b. marqueur non numerique — refuse (code 2), non assaini"
+else
+  echoue "12b. un marqueur non numerique n'a pas ete refuse (code $CODE):"
+  echoue "  il a ete assaini, donc devine."
+fi
+
+# --------------------------------------------------------------------------
+# 13. UN NOM DE BASE MALVEILLANT EST REFUSE AVANT TOUT psql
+# --------------------------------------------------------------------------
+# `DB_NAME` vient de l'environnement et etait interpole tel quel. La longueur
+# compte autant que la forme: les harnais derivent des noms jusqu'a 20
+# caracteres plus longs, et PostgreSQL TRONQUE a 63 — deux bases distinctes
+# pourraient devenir la meme, et un harnais detruire les objets de l'autre.
+TEMOIN_DB="temoin_dbname_$(harnais_jeton)"
+SORTIE_13="$(mktemp)"
+(export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
+ export DB_NAME="x\"; create role $TEMOIN_DB nologin; --"
+ timeout 120 "$HERE/run.sh" >"$SORTIE_13" 2>&1) && CODE=0 || CODE=$?
+INJ3=$(adm -tAc "select count(*) from pg_roles where rolname = '$TEMOIN_DB'")
+# LE REFUS DOIT VENIR DE `run.sh` LUI-MEME.
+#
+# Verifie par mutation: en retirant `harnais_valider_identifiant` de `run.sh`,
+# ce controle restait VERT — parce que les SOUS-SCRIPTS refusaient ensuite, avec
+# les codes 3 et 1. Il constatait « quelqu'un a refuse », pas « la commande
+# canonique valide son propre parametre ». Un refus obtenu par ricochet
+# disparait des qu'on reordonne les etapes.
+#
+# On exige donc le code 2 ET un diagnostic qui nomme `DB_NAME` — celui que
+# seul `run.sh` produit; les sous-scripts, eux, parlent de « nom de base » avec
+# leur suffixe (`_oracle`, `_2p`).
+if [[ "$INJ3" != "0" ]]; then
+  echoue "13. UN NOM DE BASE A INJECTE DU SQL: « $TEMOIN_DB » a ete cree."
+  adm -c "drop role if exists \"$TEMOIN_DB\";" >/dev/null 2>&1
+elif [[ "$CODE" != "2" ]]; then
+  echoue "13. refus obtenu avec le code $CODE au lieu de 2: la commande"
+  echoue "  canonique n'a pas valide son propre parametre, un sous-script a"
+  echoue "  refuse par ricochet."
+elif ! grep -q "DB_NAME" "$SORTIE_13"; then
+  echoue "13. code 2 obtenu, mais le diagnostic ne nomme pas DB_NAME:"
+  grep -m2 -i "REFUS" "$SORTIE_13" | sed 's/^/              /' >&2
+else
+  echo "      ok: 13. nom de base malveillant — run.sh refuse (code 2), aucune injection"
+fi
+rm -f "$SORTIE_13"
+
+# La longueur, separement: un nom conforme mais trop long doit etre refuse.
+SORTIE_13B="$(mktemp)"
+(export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
+ export DB_NAME="b$(printf 'a%.0s' $(seq 1 60))"
+ timeout 120 "$HERE/run.sh" >"$SORTIE_13B" 2>&1) && CODE=0 || CODE=$?
+if [[ "$CODE" != "2" ]]; then
+  echoue "13b. refus obtenu avec le code $CODE au lieu de 2: la longueur n'est"
+  echoue "  pas controlee par la commande canonique. Les noms derives"
+  echoue "  depasseraient 63 et PostgreSQL les tronquerait en silence."
+elif ! grep -q "au-dela de" "$SORTIE_13B"; then
+  echoue "13b. code 2 obtenu, mais pas sur le motif de longueur:"
+  grep -m2 -i "REFUS" "$SORTIE_13B" | sed 's/^/              /' >&2
+else
+  echo "      ok: 13b. nom de base trop long — run.sh refuse (code 2)"
+fi
+rm -f "$SORTIE_13B"
+
+# --------------------------------------------------------------------------
+# 14. INTERRUPTION ENTRE CREATION ET NETTOYAGE — zero role residuel
+# --------------------------------------------------------------------------
+# Les roles temporaires F1 et F3 de `two_phase_deployment.sh` etaient crees
+# puis detruits une trentaine de lignes plus bas, hors de tout registre. Toute
+# interruption entre les deux les laissait derriere, et la postcondition ne les
+# couvrait pas — elle ne connaissait que le registre.
+#
+# On interrompt donc POUR DE VRAI, a un instant ou F1 et F3 existent, et on
+# exige qu'il ne reste rien. Le piege de sortie est le seul filet: c'est
+# exactement ce qu'on teste.
+AVANT=$(adm -tAc "select count(*) from pg_roles where rolname like 'interr%'")
+(export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
+ unset EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
+ export EUROSTRUCT_HARNAIS_VERROU_CLE=$(( 7314159 + 2 + RANDOM ))
+ "$HERE/two_phase_deployment.sh" interr >/dev/null 2>&1) &
+PID_INT=$!
+# Le temps que les oracles F1/F3 soient joues, puis on coupe.
+sleep 6
+kill -TERM "$PID_INT" 2>/dev/null
+wait "$PID_INT" 2>/dev/null
+sleep 1
+APRES=$(adm -tAc "
+  select coalesce(string_agg(rolname, ', '), '') from pg_roles
+   where rolname like 'interr%'")
+if [[ -n "$APRES" ]]; then
+  echoue "14. APRES INTERRUPTION, des roles subsistent: $APRES"
+  for r in ${APRES//,/ }; do adm -c "drop role if exists \"${r// /}\";" >/dev/null 2>&1; done
+else
+  echo "      ok: 14. interruption entre creation et nettoyage — zero role residuel"
+fi
+
+# --------------------------------------------------------------------------
+# 15. FAUX psql — LE COMPTEUR D'APPELS DOIT RESTER STRICTEMENT A ZERO
+# --------------------------------------------------------------------------
+# Les scenarios 2 et 10 constatent qu'aucune CONNEXION n'aboutit. Ils ne
+# disent rien d'un `psql` qui serait lance et echouerait: le processus aurait
+# quand meme ete cree, avec `PGPASSWORD` dans son environnement.
+#
+# On substitue donc un faux `psql` qui ne fait qu'INCREMENTER UN COMPTEUR. Sans
+# consentement, ou avec un hote refuse, il ne doit jamais etre appele — pas une
+# fois. C'est la formulation la plus stricte de « aucun octet ne part », et la
+# seule qui ne depende pas de la reussite d'une connexion.
+FAUX="$(mktemp -d)"
+cat > "$FAUX/psql" <<'FINFAUX'
+#!/usr/bin/env bash
+echo "appel" >> "$COMPTEUR_PSQL"
+exit 0
+FINFAUX
+chmod +x "$FAUX/psql"
+
+for cas in "sans consentement" "hote refuse"; do
+  COMPTEUR="$(mktemp)"; : > "$COMPTEUR"
+  if [[ "$cas" == "sans consentement" ]]; then
+    (unset EUROSTRUCT_CLUSTER_JETABLE EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
+     export COMPTEUR_PSQL="$COMPTEUR" PATH="$FAUX:$PATH"
+     timeout 60 "$HERE/role_prerequisites.sh" temoin_faux_psql >/dev/null 2>&1) \
+      && CODE=0 || CODE=$?
+  else
+    (unset EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
+     export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
+     export PGHOST=192.0.2.1
+     export COMPTEUR_PSQL="$COMPTEUR" PATH="$FAUX:$PATH"
+     timeout 60 "$HERE/role_prerequisites.sh" temoin_faux_psql >/dev/null 2>&1) \
+      && CODE=0 || CODE=$?
+  fi
+  APPELS=$(wc -l < "$COMPTEUR" | tr -d ' ')
+  rm -f "$COMPTEUR"
+  if [[ "$CODE" == "0" ]]; then
+    echoue "15. « $cas »: le harnais s'est execute au lieu de refuser"
+  elif [[ "$APPELS" != "0" ]]; then
+    echoue "15. « $cas »: $APPELS appel(s) a psql AVANT le refus. Un processus"
+    echoue "  a ete cree, avec PGPASSWORD dans son environnement."
+  else
+    echo "      ok: 15. « $cas » — refus (code $CODE), 0 appel a psql"
+  fi
+done
+rm -rf "$FAUX"
 
 # --------------------------------------------------------------------------
 # 6. AUCUN SECRET DANS argv — controle statique
