@@ -2279,6 +2279,56 @@ drop table if exists _esc_emprunt;
 
 
 -- ---------------------------------------------------------------------
+-- LES QUATRE TABLES DE PREUVE QUITTENT LE MIGRATEUR (6.3b6c)
+-- ---------------------------------------------------------------------
+-- CONTRE-EXEMPLE MESURE (db/test/authority_closure.sh, scenario B). Apres la
+-- phase 2, sur une base ACTIVE ou le migrateur avait ZERO capacite sur les
+-- roles d'autorite:
+--
+--     alter table normative_rule_confirmations disable trigger user;
+--     -- 0/3 declencheurs actifs
+--     update normative_rule_confirmations set evidence_digest = repeat('0',64);
+--     -- d750927cef58 -> 000000000000
+--     delete from normative_rule_confirmations where ...;
+--     -- ligne supprimee, audit normatif inchange
+--
+-- La revocation des emprunts n'achete RIEN contre le PROPRIETAIRE: c'est un
+-- pouvoir attache a la propriete, pas a une appartenance. Avec les
+-- declencheurs desactives, la conservation decennale ne tient plus, et rien
+-- n'en garde trace.
+--
+-- DEUX GESTES, DANS CET ORDRE, ET L'ORDRE EST LE SUJET.
+--
+--   1. `FORCE ROW LEVEL SECURITY` pendant qu'on est encore proprietaire. Sans
+--      elle, le proprietaire — quel qu'il soit — contourne les policies.
+--   2. `OWNER TO eurostruct_normative_writer`, qui est un role d'autorite:
+--      NOLOGIN, sans membre, et que la phase 2 reprend au migrateur. Apres
+--      elle, plus personne ne peut desactiver ces declencheurs.
+--
+-- POURQUOI LE WRITER ET NON L'ACTIVATEUR. Le transfert doit etre fait PAR le
+-- migrateur — PostgreSQL exige que le proprietaire courant soit membre du
+-- nouveau proprietaire — et le migrateur n'est jamais membre de l'activateur:
+-- c'est precisement l'invariant que la phase 0 etablit. Le writer, lui, est
+-- emprunte le temps de la phase 1 et rendu par la phase 2.
+--
+-- CONSEQUENCE ASSUMEE: une migration ULTERIEURE qui modifierait ces tables
+-- devra emprunter le writer, comme celle-ci le fait. C'est le prix de ne plus
+-- laisser au migrateur un pouvoir qu'il ne rend jamais.
+--
+-- Le writer conserve la lecture par ses policies `*_writer_read`, dont les
+-- fonctions de controle SECURITY DEFINER qu'il possede ont besoin.
+alter table normative_authorisation_grants          force row level security;
+alter table normative_authorisation_revocations     force row level security;
+alter table normative_rule_confirmations            force row level security;
+alter table normative_rule_confirmation_revocations force row level security;
+
+alter table normative_authorisation_grants          owner to eurostruct_normative_writer;
+alter table normative_authorisation_revocations     owner to eurostruct_normative_writer;
+alter table normative_rule_confirmations            owner to eurostruct_normative_writer;
+alter table normative_rule_confirmation_revocations owner to eurostruct_normative_writer;
+
+
+-- ---------------------------------------------------------------------
 -- CREATE sur `public` retire aux roles d'autorite
 -- ---------------------------------------------------------------------
 -- Il n'etait necessaire QUE pour les transferts de propriete ci-dessus:
