@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# EUROSTRUCT — sonde de compatibilite du plan de controle, NON DESTRUCTIVE
+# EUROSTRUCT — sonde de compatibilite du plan de controle
+#              INTRUSIVE MAIS REVERSIBLE — STAGING UNIQUEMENT
 #
 #   DATABASE_URL=postgres://... ./supabase_probe.sh
 #
@@ -33,57 +34,114 @@
 # jamais — les octrois partaient du role connecte — et le compte rendu
 # laissait croire le contraire.
 #
-# NON DESTRUCTIVE, et verifiable
-# -------------------------------
-# Elle ne touche NI au schema, NI aux donnees, NI a un role preexistant. Les
-# deux roles qu'elle cree portent un suffixe ALEATOIRE propre a l'execution:
-# deux sondes simultanees ne se croisent pas, et aucune ne peut detruire les
-# roles d'une autre. Elle ne supprime JAMAIS un nom fixe — une version
-# precedente commencait par « drop role escprobe_* », ce qui aurait efface
-# les roles d'une sonde concurrente, voire d'un tiers homonyme.
+# INTRUSIVE MAIS REVERSIBLE — a n'executer que sur un STAGING
+# ------------------------------------------------------------
+# La formulation precedente, « non destructive », etait trop confortable:
+# cette sonde CREE et DETRUIT des roles. Elle ne touche ni au schema, ni aux
+# donnees, ni a un role preexistant, et tout ce qu'elle cree elle le retire —
+# mais elle ecrit dans le catalogue partage de l'instance. C'est intrusif, et
+# ce doit etre dit ainsi.
 #
-# Si le nettoyage laisse quoi que ce soit, la sonde ECHOUE: un residu sur une
-# instance cliente n'est pas un detail cosmetique.
+# Les roles portent un suffixe ALEATOIRE propre a l'execution: deux sondes
+# simultanees ne se croisent pas, et aucune ne peut detruire les roles d'une
+# autre. Elle ne supprime JAMAIS un nom fixe. Si le nettoyage laisse quoi que
+# ce soit, elle ECHOUE (code 3).
+#
+# CONSENTEMENT EXPLICITE REQUIS: sans EUROSTRUCT_PROBE_TARGET=staging, elle
+# n'ouvre aucune connexion.
 #
 # CODES DE SORTIE
 #   0  les quatre capacites sont confirmees
 #   1  au moins une capacite manque
-#   2  INCONCLUSIVE — rien n'a pu etre etabli (superutilisateur, connexion)
+#   2  INCONCLUSIVE — rien n'a pu etre etabli (consentement, URL, connexion,
+#      superutilisateur)
 #   3  residu: des roles de sonde subsistent
 set -euo pipefail
 
 # --------------------------------------------------------------------------
-# Connexion SANS SECRET DANS LES ARGUMENTS DE PROCESSUS.
+# 0. CONSENTEMENT, avant tout acces reseau.
+# --------------------------------------------------------------------------
+if [[ "${EUROSTRUCT_PROBE_TARGET:-}" != "staging" ]]; then
+  echo "REFUS: cette sonde cree et detruit des roles sur l'instance cible." >&2
+  echo "       Elle n'est pas destinee a une base de production." >&2
+  echo "       Pour l'autoriser: EUROSTRUCT_PROBE_TARGET=staging" >&2
+  exit 2
+fi
+
+: "${DATABASE_URL:?DATABASE_URL doit etre fournie par la configuration}"
+
+# --------------------------------------------------------------------------
+# 1. Connexion SANS SECRET DANS LES ARGUMENTS DE PROCESSUS.
 #
 # `psql "$DATABASE_URL"` place le mot de passe dans argv, donc dans `ps` pour
 # tout utilisateur de la machine. L'URL est donc decomposee en variables
-# d'environnement liblibpq, et psql est invoque sans aucun argument de
-# connexion. Le decoupage se fait en Python, qui lit l'URL depuis
-# l'ENVIRONNEMENT et non depuis sa ligne de commande.
+# d'environnement libpq, et psql est invoque sans aucun argument de connexion.
+#
+# La sortie est CAPTUREE ET VERIFIEE avant tout `eval`. La version precedente
+# faisait `eval "$(python ...)"` directement: une URL invalide produisait une
+# sortie VIDE, `eval` ne faisait rien, aucune variable n'etait posee — et psql
+# se rabattait sur les PG* ambiantes, donc potentiellement sur une AUTRE BASE
+# que celle qu'on croyait sonder. Un echec de parsing doit arreter le script
+# avant le premier appel a psql, pas le rediriger en silence.
 # --------------------------------------------------------------------------
-: "${DATABASE_URL:?DATABASE_URL doit etre fournie par la configuration}"
-
-eval "$(DATABASE_URL="$DATABASE_URL" python3 - <<'PY'
+ERRPY="$(mktemp)"
+if ! CONN="$(DATABASE_URL="$DATABASE_URL" python3 - 2>"$ERRPY" <<'FINPARSE'
 import os, sys, shlex
 from urllib.parse import urlsplit, unquote, parse_qs
 u = urlsplit(os.environ["DATABASE_URL"])
 if u.scheme not in ("postgres", "postgresql"):
-    sys.stderr.write("DATABASE_URL: schema attendu postgres://\n"); sys.exit(2)
-champs = {
-    "PGHOST": u.hostname or "",
-    "PGPORT": str(u.port or 5432),
-    "PGUSER": unquote(u.username or ""),
-    "PGPASSWORD": unquote(u.password or ""),
-    "PGDATABASE": unquote(u.path.lstrip("/")) or "postgres",
-}
+    sys.stderr.write("schema attendu postgres:// ou postgresql://\n"); sys.exit(2)
+if not u.hostname:
+    sys.stderr.write("hote absent de l'URL\n"); sys.exit(2)
+if not u.username:
+    sys.stderr.write("utilisateur absent de l'URL\n"); sys.exit(2)
+base = unquote(u.path.lstrip("/"))
+if not base:
+    sys.stderr.write("nom de base absent de l'URL\n"); sys.exit(2)
 q = parse_qs(u.query)
-if "sslmode" in q:
-    champs["PGSSLMODE"] = q["sslmode"][0]
+champs = {
+    "PGHOST": u.hostname,
+    "PGPORT": str(u.port or 5432),
+    "PGUSER": unquote(u.username),
+    "PGPASSWORD": unquote(u.password or ""),
+    "PGDATABASE": base,
+    "PGSSLMODE": q.get("sslmode", ["prefer"])[0],
+}
 for k, v in champs.items():
-    if v != "":
-        print(f"export {k}={shlex.quote(v)}")
-PY
-)"
+    print(f"export {k}={shlex.quote(v)}")
+FINPARSE
+)"; then
+  echo "INCONCLUSIVE: DATABASE_URL inexploitable." >&2
+  sed 's/^/   /' "$ERRPY" >&2
+  rm -f "$ERRPY"
+  exit 2
+fi
+rm -f "$ERRPY"
+
+# La sortie doit avoir EXACTEMENT la forme attendue: on n'evalue pas du texte
+# dont on n'a pas verifie la nature.
+while IFS= read -r ligne; do
+  [[ -n "$ligne" ]] || continue
+  if ! [[ "$ligne" =~ ^export\ PG(HOST|PORT|USER|PASSWORD|DATABASE|SSLMODE)= ]]; then
+    echo "INCONCLUSIVE: sortie de decoupage inattendue, evaluation refusee." >&2
+    exit 2
+  fi
+done <<<"$CONN"
+
+# AUCUN REPLI POSSIBLE. Les PG* ambiantes — et les redirections par service ou
+# fichier de mots de passe — sont effacees AVANT d'appliquer celles de l'URL.
+# Sans cela, une variable heritee de l'environnement pouvait designer une base
+# differente de celle qu'on croit sonder.
+unset PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PGSSLMODE \
+      PGSERVICE PGSERVICEFILE PGPASSFILE PGREQUIRESSL PGCHANNELBINDING
+eval "$CONN"
+
+for v in PGHOST PGUSER PGDATABASE; do
+  if [[ -z "${!v:-}" ]]; then
+    echo "INCONCLUSIVE: $v vide apres decoupage de l'URL." >&2
+    exit 2
+  fi
+done
 
 # Delais: une sonde ne doit jamais rester pendue sur une instance distante.
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-10}"
@@ -98,7 +156,11 @@ PSQL=(psql -X -q -tA -v ON_ERROR_STOP=1)
 if command -v openssl >/dev/null 2>&1; then
   JETON="$(openssl rand -hex 6)"
 else
-  JETON="$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  # SIX octets pour DOUZE caracteres hexadecimaux. La version precedente en
+  # lisait douze, produisait vingt-quatre caracteres, et la validation qui
+  # suit refusait systematiquement: le repli sans openssl n'aurait jamais
+  # fonctionne.
+  JETON="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 fi
 [[ "$JETON" =~ ^[0-9a-f]{12}$ ]] || { echo "aleatoire indisponible" >&2; exit 2; }
 
@@ -113,6 +175,15 @@ non() { printf '  NON   %s\n' "$1"; [[ -n "${2:-}" ]] && printf '        %s\n' "
 RESIDU=0
 nettoyer() {
   local r
+  # HOOK DE TEST, et rien d'autre. `supabase_probe_selftest.sh` s'en sert pour
+  # exercer le chemin « nettoyage en echec -> code 3 », qu'aucune manipulation
+  # externe ne peut declencher de facon deterministe: les noms sont aleatoires
+  # et connus de la seule execution en cours. Sans valeur en production.
+  if [[ "${EUROSTRUCT_PROBE_SKIP_CLEANUP:-}" == "1" ]]; then
+    echo "  (nettoyage volontairement saute: hook de test)" >&2
+    RESIDU=1
+    return
+  fi
   # L'octroi d'abord, les roles ensuite — et UNIQUEMENT ceux de cette
   # execution. Aucun nom fixe n'est jamais detruit.
   "${PSQL[@]}" -c "revoke \"$AUT\" from \"$MIG\";" >/dev/null 2>&1 || true
@@ -161,8 +232,20 @@ if ! INFO=$("${PSQL[@]}" -c "
   exit 2
 fi
 IFS='|' read -r U SUPER CREATEROLE VERSION <<<"$INFO"
-echo " plan de controle: $U    PostgreSQL: $VERSION"
-echo " superutilisateur: $SUPER    createrole: $CREATEROLE"
+
+# Rien de ce qui identifie precisement la cible ou son operateur n'est
+# imprime: ni l'URL, ni le secret, ni l'utilisateur complet. Le compte rendu
+# d'une sonde finit dans un journal de CI, un ticket, une capture d'ecran.
+# Seuls l'hote et la base — assainis — suffisent a savoir OU l'on a sonde.
+masquer() {
+  local v="$1"
+  if [[ ${#v} -le 2 ]]; then printf '%s' '***'
+  else printf '%s***' "${v:0:2}"; fi
+}
+HOTE_SUR="$(masquer "$PGHOST")"
+BASE_SURE="$(masquer "$PGDATABASE")"
+echo " cible: hote $HOTE_SUR   base $BASE_SURE   PostgreSQL: $VERSION"
+echo " plan de controle: $(masquer "$U")   superutilisateur: $SUPER   createrole: $CREATEROLE"
 echo
 
 if [[ "$SUPER" == "true" ]]; then
@@ -204,9 +287,9 @@ if "${PSQL[@]}" -c "create role \"$MIG\" nologin;" >/dev/null 2>&1; then
   fi
 fi
 if [[ "$DONNEUR" == "$U/"* ]]; then
-  oui "3. octroi au migrateur, donneur = $U ($DONNEUR)"
+  oui "3. octroi au migrateur, donneur = le plan de controle (admin/set: ${DONNEUR#*/})"
 else
-  non "3. donneur inattendu: ${DONNEUR:-aucun octroi}" \
+  non "3. donneur inattendu: ${DONNEUR:+$(masquer "${DONNEUR%%/*}")/${DONNEUR#*/}}${DONNEUR:-aucun octroi}" \
       "la finalisation ne pourrait pas revoquer cet octroi"
 fi
 
