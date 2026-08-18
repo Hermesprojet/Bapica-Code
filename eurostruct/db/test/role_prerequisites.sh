@@ -66,11 +66,42 @@ fi
 
 ROLES_FICTIFS="fictif_login_a fictif_b fictif_c fictif_relais"
 
+# DETRUIRE PAR NOM N'EST LEGITIME QU'APRES AVOIR PROUVE L'ABSENCE.
+#
+# Cette liste servait aussi de liste de destruction: le nettoyage faisait
+# `drop role if exists` sur chacun, qu'ils aient ete crees ici ou non. Sur un
+# cluster ou un `fictif_b` appartenait a quelqu'un d'autre, il partait — et
+# rien ne le signalait.
+#
+# On exige donc qu'aucun n'existe au demarrage. Tout role de cette liste
+# present a la fin a alors ete cree par CETTE execution, et lui seul peut etre
+# detruit. C'est la meme discipline que pour les roles canoniques, dont le nom
+# est impose et ne peut pas etre suffixe d'un jeton.
+CANONIQUES="eurostruct_normative_writer eurostruct_normative_bootstrap
+            normative_backend normative_governance eurostruct_deployment"
+# Ce fichier APPLIQUE LES MIGRATIONS: il cree donc aussi les roles canoniques,
+# qui survivent a la destruction de sa base. Meme exigence, meme preuve.
+# shellcheck disable=SC2086
+exiger_roles_absents "role_prerequisites.sh" $ROLES_FICTIFS $CANONIQUES || exit 2
+
 # La connexion vient de l'ENVIRONNEMENT, jamais d'argv (6.3b6a, securite des
 # harnais). La version precedente reecrivait `$DATABASE_URL` a la main pour
 # changer de base: le mot de passe se retrouvait dans `ps`, lisible par tout
 # processus de la machine. Seule la base change desormais, par `-d`.
 harnais_connexion || exit 2
+
+# LA GARDE S'APPLIQUE ICI AUSSI. Ce script cree et supprime des roles GLOBAUX a
+# noms fixes; il est appelable seul, et le fait que `run.sh` ait deja verifie
+# le cluster ne le protege pas.
+#
+# ORDRE: precontrole SANS RESEAU d'abord (intention + boucle locale, lus dans
+# l'environnement), verrou ensuite, porte catalogue enfin. Une version
+# precedente se connectait avant tout controle: avec une `DATABASE_URL`
+# distante, une connexion partait — et des identifiants avec elle — avant le
+# moindre refus.
+exiger_precontrole_local "role_prerequisites.sh" || exit 2
+harnais_verrou_prendre  "role_prerequisites.sh" || exit 3
+exiger_cluster_jetable  "role_prerequisites.sh" || exit 2
 
 # LA GARDE S'APPLIQUE ICI AUSSI (correctif #5).
 #
@@ -108,11 +139,28 @@ nettoyer() {
   # 2. L'attribut altere par le scenario D, rendu a son etat.
   "${PSQL_ADMIN[@]}" -q -c \
     "alter role eurostruct_normative_writer nologin;" >/dev/null 2>&1
-  # 3. Et seulement alors, les roles fictifs eux-memes.
-  for r in $ROLES_FICTIFS; do
+  # 3. Et seulement alors, les roles fictifs eux-memes — dont l'absence
+  #    prealable a ete PROUVEE, si bien que ceux presents ici sont les notres.
+  # La base D'ABORD: les roles canoniques y possedent des fonctions, et
+  # `DROP OWNED BY` ne voit que la base courante.
+  "${PSQL_ADMIN[@]}" -q -c "
+    select pg_terminate_backend(pid) from pg_stat_activity
+     where datname = '$DB' and pid <> pg_backend_pid();" >/dev/null 2>&1
+  "${PSQL_ADMIN[@]}" -q -c "drop database if exists $DB;" >/dev/null 2>&1
+  for r in $ROLES_FICTIFS $CANONIQUES; do
+    "${PSQL_ADMIN[@]}" -q -c "drop owned by $r;" >/dev/null 2>&1
     "${PSQL_ADMIN[@]}" -q -c "drop role if exists $r;" >/dev/null 2>&1
   done
+  # La restitution est VERIFIEE, base et roles, par noms exacts. Sans cela,
+  # « sans residu » resterait une affirmation.
+  # shellcheck disable=SC2086
+  harnais_postcondition_nettoyage "role_prerequisites.sh" $ROLES_FICTIFS $CANONIQUES \
+    || NETTOYAGE_KO=1
+  harnais_verrou_rendre
+  [[ "${NETTOYAGE_KO:-0}" -eq 0 ]] || exit 3
 }
+NETTOYAGE_KO=0
+registre_base "$DB"
 trap nettoyer EXIT
 
 # Le serveur doit repondre AVANT tout. Sans ce controle, une base injoignable

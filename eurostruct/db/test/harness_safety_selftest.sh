@@ -30,6 +30,10 @@
 #   5. roles canoniques PREEXISTANTS            -> refus, temoins intacts
 #   6. aucun secret dans argv                   -> controle statique
 #   7. DEUX EXECUTIONS CONCURRENTES             -> une admise, une NON EXECUTEE
+#   8. cle de verrou non numerique              -> refus, aucune injection SQL
+#   9. marqueur de reentrance forge             -> refus, pas de contournement
+#  10. hote distant sans consentement           -> refus SANS aucune connexion
+#  11. VRAIE cle detenue + commande canonique   -> code 3, temoins intacts
 #
 # CE QUE CE FICHIER NE PROUVE PAS
 # --------------------------------
@@ -59,6 +63,7 @@ harnais_connexion || exit 2
 # mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
 # alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
 # detruit rien; le prendre d'abord rend la porte deterministe.
+exiger_precontrole_local "harness_safety_selftest.sh" || exit 2
 harnais_verrou_prendre "harness_safety_selftest.sh" || exit 3
 exiger_cluster_jetable "harness_safety_selftest.sh" || exit 2
 
@@ -339,6 +344,141 @@ else
   echoue "  le verrou n'a ete pris par personne, ou n'a pas ete rendu."
 fi
 rm -f "$SORTIE_A" "$SORTIE_B" "$SORTIE_A.code" "$SORTIE_B.code"
+
+# --------------------------------------------------------------------------
+# 8. LA CLE DE VERROU EST INTERPOLEE DANS DU SQL — elle doit etre validee
+# --------------------------------------------------------------------------
+# CONTRE-EXEMPLE MESURE sur la version precedente: avec
+#
+#   EUROSTRUCT_HARNAIS_VERROU_CLE="1); create role X nologin; \
+#                                   select pg_try_advisory_lock(1"
+#
+# le co-processus EXECUTAIT le `create role` — verifie, le role existait apres
+# coup — et le harnais annoncait par-dessus « verrou deja detenu », donc un
+# etat de verrou faux. Une variable d'environnement devenait un canal
+# d'execution SQL arbitraire sous le role administrateur du cluster.
+TEMOIN_INJ="temoin_injection_$(harnais_jeton)"
+(export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
+ export EUROSTRUCT_HARNAIS_VERROU_CLE="1); create role $TEMOIN_INJ nologin; select pg_try_advisory_lock(1"
+ unset EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
+ canonique) && CODE=0 || CODE=$?
+INJECTE=$(adm -tAc "select count(*) from pg_roles where rolname = '$TEMOIN_INJ'")
+if [[ "$INJECTE" != "0" ]]; then
+  echoue "8. LA CLE DE VERROU EST UN CANAL D'EXECUTION SQL: le role"
+  echoue "  « $TEMOIN_INJ » a ete cree par interpolation."
+  # Cree par l'injection, donc a nous: on le retire pour ne pas laisser
+  # derriere nous l'objet meme qu'on vient de declarer inacceptable.
+  adm -c "drop role if exists \"$TEMOIN_INJ\";" >/dev/null 2>&1
+elif [[ "$CODE" == "0" ]]; then
+  echoue "8. la commande canonique a accepte une cle de verrou non numerique"
+else
+  echo "      ok: 8. cle de verrou non numerique — refus (code $CODE), aucune injection"
+fi
+
+# --------------------------------------------------------------------------
+# 9. LE MARQUEUR DE REENTRANCE NE DOIT PAS SUFFIRE A CONTOURNER LE VERROU
+# --------------------------------------------------------------------------
+# CONTRE-EXEMPLE MESURE: pendant que le parent detient le verrou,
+#
+#   EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE=999999 ./two_phase_deployment.sh x
+#
+# etait ADMIS — « tenu=0 » — et repartait detruire des roles globaux en
+# parallele. Une variable d'environnement desactivait le verrou.
+#
+# Le parent detient ICI le verrou reel. Un enfant qui presente un marqueur
+# ARBITRAIRE ne doit pas passer: le marqueur porte desormais le PID du backend
+# detenteur, et ce PID est confronte a `pg_locks`.
+# LE CODE EXIGE EST 3, ET LUI SEUL.
+#
+# Une premiere ecriture se contentait de « code non nul ». Verifie par
+# mutation: en remettant la version qui croit le marqueur sur parole, l'enfant
+# etait ADMIS et rendait 1 — le verdict normal de `two_phase_deployment.sh`,
+# rouges attendus compris — et le controle passait au vert en annoncant
+# « refus (code 1) ». Il constatait un echec quelconque, pas le refus du
+# verrou. Un test qui accepte n'importe quel rouge ne distingue plus l'echec
+# qu'il vise de celui qu'il ignore.
+SORTIE_9="$(mktemp)"
+(export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
+ export EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE=999999
+ timeout 120 "$HERE/two_phase_deployment.sh" forge >"$SORTIE_9" 2>&1) && CODE=0 || CODE=$?
+if [[ "$CODE" != "3" ]]; then
+  echoue "9. UN MARQUEUR DE REENTRANCE FORGE A CONTOURNE LE VERROU"
+  echoue "  (code $CODE au lieu de 3): l'enfant a travaille en parallele du"
+  echoue "  parent, et peut detruire les roles globaux que celui-ci utilise."
+elif ! grep -qi "verrou de harnais est deja detenu" "$SORTIE_9"; then
+  echoue "9. code 3 obtenu, mais le diagnostic ne nomme pas le verrou:"
+  grep -m2 -iE 'REFUS|NON EXECUTE' "$SORTIE_9" | sed 's/^/              /' >&2
+else
+  echo "      ok: 9. marqueur de reentrance forge — refus du verrou (code 3)"
+fi
+rm -f "$SORTIE_9"
+
+# --------------------------------------------------------------------------
+# 10. AUCUNE CONNEXION AVANT LE PRECONTROLE
+# --------------------------------------------------------------------------
+# CONTRE-EXEMPLE MESURE: avec une `DATABASE_URL` pointant un hote quelconque et
+# AUCUN consentement pose, un ecouteur local recevait « CONNEXION RECUE ». Le
+# verrou et la porte se connectent tous deux, et precedaient tout controle
+# d'intention et d'hote. Presenter des identifiants a une machine qu'on va
+# refuser est deja un defaut: le secret a quitte le processus.
+PORT_TEMOIN=$(( 5600 + RANDOM % 300 ))
+ECOUTE="$(mktemp)"
+python3 - "$PORT_TEMOIN" >"$ECOUTE" 2>&1 <<'PYECOUTE' &
+import socket, sys
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(1); s.settimeout(12)
+    c, a = s.accept(); print("CONNEXION"); c.close()
+except Exception:
+    print("AUCUNE")
+PYECOUTE
+PID_ECOUTE=$!
+sleep 1
+# Ni consentement, ni jeton de proprietaire: le refus doit tomber sur
+# l'intention, avant le moindre paquet.
+(unset EUROSTRUCT_CLUSTER_JETABLE EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
+ export DATABASE_URL="postgres://u:FICTIF-motdepasse@127.0.0.1:$PORT_TEMOIN/db"
+ canonique) && CODE=0 || CODE=$?
+kill "$PID_ECOUTE" 2>/dev/null; wait "$PID_ECOUTE" 2>/dev/null
+VU="$(cat "$ECOUTE" 2>/dev/null)"; rm -f "$ECOUTE"
+if [[ "$CODE" == "0" ]]; then
+  echoue "10. la commande canonique s'est executee sans consentement"
+elif [[ "$VU" == "CONNEXION" ]]; then
+  echoue "10. UNE CONNEXION A ETE OUVERTE avant tout precontrole: des"
+  echoue "  identifiants ont ete presentes a un hote que l'on refuse ensuite."
+else
+  echo "      ok: 10. refus (code $CODE) SANS aucune connexion ouverte"
+fi
+
+# --------------------------------------------------------------------------
+# 11. LA VRAIE CLE EXCLUT, ET LE PERDANT NE NETTOIE RIEN
+# --------------------------------------------------------------------------
+# Le scenario 7 fait s'affronter deux enfants sur une cle PROPRE: il prouve
+# qu'une cle exclut, pas que LA cle du harnais exclut. Et il ne dit rien de ce
+# que fait le perdant — or « refuser » et « refuser sans rien detruire » sont
+# deux proprietes distinctes, et c'est la seconde qui protege.
+#
+# Ici: le parent detient la VRAIE cle, l'enfant est la COMMANDE CANONIQUE sans
+# marqueur, et des temoins portant les noms canoniques sont poses avant.
+poser_temoins || echoue "11. pose des temoins impossible"
+(unset EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
+ export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
+ canonique) && CODE=0 || CODE=$?
+if [[ "$CODE" == "0" ]]; then
+  echoue "11. LA COMMANDE CANONIQUE S'EST EXECUTEE alors que le verrou reel"
+  echoue "  etait detenu: deux executions peuvent se croiser."
+elif [[ "$CODE" != "3" ]]; then
+  echoue "11. refus obtenu avec le code $CODE au lieu de 3 (NON EXECUTE):"
+  echoue "  un verrou detenu n'est pas une regression, et ne doit pas en"
+  echoue "  prendre l'apparence."
+elif ! temoins_intacts; then
+  echoue "11. LE PERDANT A NETTOYE: des temoins ont disparu. Un nettoyage par"
+  echoue "  l'execution refusee emporte les objets de celle qui travaille."
+else
+  echo "      ok: 11. vraie cle — refus (code 3), 5 temoins intacts, aucun nettoyage"
+fi
+retirer_temoins
+
 
 # --------------------------------------------------------------------------
 # 6. AUCUN SECRET DANS argv — controle statique

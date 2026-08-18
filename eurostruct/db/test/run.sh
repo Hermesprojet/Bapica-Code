@@ -49,6 +49,7 @@ harnais_connexion || exit 2
 # mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
 # alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
 # detruit rien; le prendre d'abord rend la porte deterministe.
+exiger_precontrole_local "db/test/run.sh" || exit 2
 harnais_verrou_prendre "db/test/run.sh" || exit 3
 exiger_cluster_jetable "db/test/run.sh" || exit 2
 
@@ -147,6 +148,52 @@ etape "oracle de portee des roles" \
 echo "==> deploiement en deux phases"
 etape "deploiement en deux phases" \
   "$HERE/two_phase_deployment.sh" "${DB_NAME}_2p"
+
+# --------------------------------------------------------------------------
+# LES ETAPES QUI EXIGENT UN JEU CANONIQUE VIERGE PASSENT AVANT LA BASE
+# PRINCIPALE
+# --------------------------------------------------------------------------
+# `role_prerequisites.sh` et `nonsuperuser_install.sh` exigent desormais, comme
+# `two_phase_deployment.sh`, que les roles canoniques soient ABSENTS: c'est la
+# seule facon pour eux de prouver que ce qu'ils detruisent leur appartient.
+#
+# Or la creation de la base principale APPLIQUE LES MIGRATIONS, donc cree ces
+# roles, et ils survivent a la destruction de la base. Places apres, les deux
+# etapes refuseraient systematiquement.
+#
+# L'ordre n'est donc pas cosmetique: il est impose par le fait que les roles
+# sont globaux. Chacune de ces etapes rend le jeu canonique en sortant, et sa
+# postcondition le verifie.
+# --------------------------------------------------------------------------
+ROLE_DB="${DB_NAME}_roles"
+echo "==> prerequis de deploiement sur les roles"
+registre_base "$ROLE_DB"
+etape "prerequis de deploiement sur les roles" \
+  "$HERE/role_prerequisites.sh" "$ROLE_DB"
+adm -c "drop database if exists $ROLE_DB;" >/dev/null 2>&1
+
+# --------------------------------------------------------------------------
+# Installation sous un role de migration NON SUPERUTILISATEUR.
+#
+# Tout ce qui precede tourne sous `postgres`, superutilisateur — qui transfere
+# la propriete d'une fonction sans etre membre de rien, contourne la RLS et
+# detient EXECUTE implicitement. Rien de cela n'est vrai de la cible de
+# production, et quatre obstacles reels n'apparaissaient qu'ici.
+# --------------------------------------------------------------------------
+NS_DB="${DB_NAME}_nonsuper"
+echo "==> installation sous un role de migration non superutilisateur"
+registre_base "$NS_DB"
+etape "installation non superutilisateur" \
+  "$HERE/nonsuperuser_install.sh" "$NS_DB"
+adm -c "drop database if exists $NS_DB;" >/dev/null 2>&1
+
+# --------------------------------------------------------------------------
+# Oracle comportemental des primitives de portee (6.3b6a #3).
+#
+# `assert_normative_topology()` decide qui atteint un role d'autorite au moyen
+# de `pg_has_role(..., 'SET' / 'USAGE' / 'MEMBER WITH ADMIN OPTION')`. Ce que
+# ces primitives DISENT est ici confronte a ce qui se PASSE — vrai `SET ROLE`,
+# vrai heritage, vrai `GRANT` a un tiers — sur six formes de graphe.
 
 echo "==> recreating $DB_NAME"
 adm -c "drop database if exists $DB_NAME;" >/dev/null
@@ -255,36 +302,6 @@ adm -c "drop database if exists $CONC_DB;" >/dev/null
 # observer, puisqu'ils ne tournent que sur une base ou la migration a deja
 # reussi. Le script fabrique donc la configuration hostile AVANT d'appliquer
 # les migrations, et exige un refus.
-# --------------------------------------------------------------------------
-ROLE_DB="${DB_NAME}_roles"
-echo "==> prerequis de deploiement sur les roles"
-registre_base "$ROLE_DB"
-etape "prerequis de deploiement sur les roles" \
-  "$HERE/role_prerequisites.sh" "$ROLE_DB"
-adm -c "drop database if exists $ROLE_DB;" >/dev/null 2>&1
-
-# --------------------------------------------------------------------------
-# Installation sous un role de migration NON SUPERUTILISATEUR.
-#
-# Tout ce qui precede tourne sous `postgres`, superutilisateur — qui transfere
-# la propriete d'une fonction sans etre membre de rien, contourne la RLS et
-# detient EXECUTE implicitement. Rien de cela n'est vrai de la cible de
-# production, et quatre obstacles reels n'apparaissaient qu'ici.
-# --------------------------------------------------------------------------
-NS_DB="${DB_NAME}_nonsuper"
-echo "==> installation sous un role de migration non superutilisateur"
-registre_base "$NS_DB"
-etape "installation non superutilisateur" \
-  "$HERE/nonsuperuser_install.sh" "$NS_DB"
-adm -c "drop database if exists $NS_DB;" >/dev/null 2>&1
-
-# --------------------------------------------------------------------------
-# Oracle comportemental des primitives de portee (6.3b6a #3).
-#
-# `assert_normative_topology()` decide qui atteint un role d'autorite au moyen
-# de `pg_has_role(..., 'SET' / 'USAGE' / 'MEMBER WITH ADMIN OPTION')`. Ce que
-# ces primitives DISENT est ici confronte a ce qui se PASSE — vrai `SET ROLE`,
-# vrai heritage, vrai `GRANT` a un tiers — sur six formes de graphe.
 XC_DB="${DB_NAME}_contract"
 echo "==> base vierge: racine de confiance et contrat croise"
 adm -c "drop database if exists $XC_DB;" >/dev/null

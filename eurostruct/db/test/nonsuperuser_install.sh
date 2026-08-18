@@ -61,6 +61,8 @@ fi
 # mais PAS superutilisateur et PAS bypassrls.
 MIGRATEUR=esc_migrator
 ROLES_SB="$MIGRATEUR esc_authenticator esc_service_role"
+CANONIQUES="eurostruct_normative_writer eurostruct_normative_bootstrap eurostruct_deployment"
+SERVICES="normative_backend normative_governance"
 MDP='FICTIF-nonsuperuser'
 
 # La connexion vient de l'ENVIRONNEMENT, jamais d'argv (6.3b6a, securite des
@@ -88,8 +90,21 @@ harnais_connexion || exit 2
 # mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
 # alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
 # detruit rien; le prendre d'abord rend la porte deterministe.
+exiger_precontrole_local "nonsuperuser_install.sh" || exit 2
 harnais_verrou_prendre "nonsuperuser_install.sh" || exit 3
 exiger_cluster_jetable "nonsuperuser_install.sh" || exit 2
+
+# DETRUIRE PAR NOM N'EST LEGITIME QU'APRES AVOIR PROUVE L'ABSENCE.
+#
+# `nettoyer()` faisait `drop owned by` puis `drop role if exists` sur trois
+# noms FIXES du modele Supabase, et `liberer_autorites()` sur les trois roles
+# canoniques — sans jamais verifier qu'ils venaient d'ici. Sur un cluster ou un
+# `esc_service_role` appartenait a quelqu'un d'autre, il partait.
+#
+# On exige donc leur absence au demarrage. Tout role de ces listes present
+# ensuite a ete cree par CETTE execution, et lui seul peut etre detruit.
+# shellcheck disable=SC2086
+exiger_roles_absents "nonsuperuser_install.sh" $ROLES_SB $CANONIQUES $SERVICES || exit 2
 
 
 ADMIN=(psql -X -q -d postgres)
@@ -107,16 +122,30 @@ echoue() { echo "      ECHEC: $*"; KO=1; }
 # invisible — la meme asymetrie CI/local que ce fichier existe pour reduire.
 mig() { PGUSER="$MIGRATEUR" PGPASSWORD="$MDP" "${MIG[@]}" "$@"; }
 
+NETTOYAGE_KO=0
 nettoyer() {
+  # LA BASE D'ABORD: `DROP OWNED BY` ne voit que la base courante, et les roles
+  # d'autorite possedent des fonctions dans celle-ci. L'ordre inverse echouait,
+  # et l'echec etait masque.
+  "${ADMIN[@]}" -q -c "
+    select pg_terminate_backend(pid) from pg_stat_activity
+     where datname = '$DB' and pid <> pg_backend_pid();" >/dev/null 2>&1
   "${ADMIN[@]}" -q -c "drop database if exists $DB;" >/dev/null 2>&1
-  for r in $ROLES_SB; do
+  local r
+  for r in $ROLES_SB $SERVICES; do
     "${ADMIN[@]}" -q -c "reassign owned by $r to ${PGUSER:-postgres};" >/dev/null 2>&1
     "${ADMIN[@]}" -q -c "drop owned by $r;" >/dev/null 2>&1
     "${ADMIN[@]}" -q -c "drop role if exists $r;" >/dev/null 2>&1
   done
+  liberer_autorites
+  # shellcheck disable=SC2086
+  harnais_postcondition_nettoyage "nonsuperuser_install.sh" $ROLES_SB $CANONIQUES $SERVICES \
+    || NETTOYAGE_KO=1
+  harnais_verrou_rendre
+  [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
 }
+registre_base "$DB"
 trap nettoyer EXIT
-nettoyer
 
 echo "    installation sous un role de migration non superutilisateur"
 
@@ -205,55 +234,45 @@ SQL
 # la phase de finalisation.
 liberer_autorites() {
   local r
-  for r in eurostruct_normative_writer eurostruct_normative_bootstrap \
-           eurostruct_deployment; do
+  # Legitime parce que `exiger_roles_absents` a PROUVE leur absence au
+  # demarrage: ceux qui existent maintenant viennent de cette execution.
+  for r in $CANONIQUES; do
+    "${ADMIN[@]}" -q -c "drop owned by $r;" >/dev/null 2>&1
     "${ADMIN[@]}" -q -c "drop role if exists $r;" >/dev/null 2>&1
   done
 }
-liberer_autorites
 
-# La precondition, CONSTATEE. Sans elle, un echec en cascade se presenterait
-# comme « la migration est refusee sous un role non superutilisateur » — un
-# diagnostic qui accuse la migration alors que c'est le decor qui manque.
-for r in normative_backend normative_governance; do
-  CREATEUR=$("${ADMIN[@]}" -X -q -tAc "
-    select coalesce(
-      (select g.rolname from pg_auth_members m
-         join pg_roles a on a.oid = m.roleid
-         join pg_roles g on g.oid = m.grantor
-        where a.rolname = '$r' limit 1),
-      case when exists (select 1 from pg_roles where rolname = '$r')
-           then 'sans membre' else 'ABSENT' end)")
-  if [[ "$CREATEUR" == "ABSENT" ]]; then
-    echoue "precondition absente: le role de service « $r » n'existe pas."
-    echoue "  Ce fichier suppose les roles de service deja crees par un"
-    echoue "  superutilisateur. Le chemin greenfield complet est exerce par"
-    echoue "  two_phase_deployment.sh, configuration A."
-    exit 1
-  fi
+# LE DECOR EST CONSTRUIT ICI, PLUS SUBI.
+#
+# Ce fichier supposait les ROLES DE SERVICE deja crees par un superutilisateur,
+# et la supposition etait satisfaite par accident: `run.sh` creait la base
+# principale — donc ces roles — a une etape anterieure. « Installation non
+# superutilisateur verifiee » etait vrai DANS L'ORDRE DE LA SUITE, et faux hors
+# de lui; execute seul sur une instance vierge, ce fichier echouait des la
+# premiere migration.
+#
+# Depuis que les etapes exigeant un jeu canonique vierge passent en premier, la
+# supposition n'est meme plus satisfaite par accident. Le decor est donc POSE
+# ICI, par l'administrateur — ce qui est exactement le modele documente:
+# provisionnement par un superutilisateur, migration par un non
+# superutilisateur.
+for r in $SERVICES; do
+  "${ADMIN[@]}" -q -v ON_ERROR_STOP=1 -c "create role $r nologin;" >/dev/null 2>&1 \
+    || { echoue "creation du role de service « $r » impossible"; exit 1; }
 done
-echo "      ok: precondition — les roles de service preexistent"
+echo "      ok: decor — roles de service crees par l'administrateur"
 
-# Un role ne se detruit pas tant qu'un objet lui appartient. Les bases de la
-# SUITE en portent — elles sont jetables — mais « drop role » ne le dit qu'en
-# detail, et le script s'arreterait sur un diagnostic qui ne designe pas
-# l'action a faire. On libere donc les bases de test dependantes, et ELLES
-# SEULES: le prefixe est verifie deux fois, aucune base etrangere n'est
-# touchee.
-DEPS=$("${ADMIN[@]}" -X -q -tAc "
-  select distinct d.datname
-    from pg_shdepend sd
-    join pg_database d on d.oid = sd.dbid
-    join pg_roles r on r.oid = sd.refobjid
-   where r.rolname in ('eurostruct_normative_writer',
-                       'eurostruct_normative_bootstrap',
-                       'eurostruct_deployment')
-     and d.datname like 'eurostruct%'" 2>/dev/null)
-for base in $DEPS; do
-  [[ "$base" =~ ^eurostruct[a-zA-Z0-9_]*$ ]] || continue
-  "${ADMIN[@]}" -q -c "drop database if exists $base;" >/dev/null 2>&1
-done
-liberer_autorites
+# LE BLOC DE DESTRUCTION PAR MOTIF A ETE RETIRE.
+#
+# Il cherchait, via `pg_shdepend`, les bases dont les roles canoniques
+# dependaient, filtrait sur `datname like 'eurostruct%'` et les DETRUISAIT.
+# Un motif ne designe pas ce que cette execution a cree: il designe tout ce
+# qui porte le prefixe — une base d'un collegue, d'un projet voisin, d'une
+# execution concurrente.
+#
+# Il n'est plus necessaire: `exiger_roles_absents` ci-dessus garantit que les
+# roles canoniques n'existent pas au demarrage, donc qu'aucune base ne depend
+# d'eux, donc qu'il n'y a rien a liberer.
 
 RESTE=$("${ADMIN[@]}" -X -q -tAc "
   select count(*) from pg_roles

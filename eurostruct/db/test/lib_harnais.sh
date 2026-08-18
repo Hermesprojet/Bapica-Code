@@ -153,13 +153,68 @@ harnais_jeton() {
 # suivants constatent les FAITS. Il faut les deux.
 #
 # A n'appeler QUE depuis un script qui cree et detruit des roles GLOBAUX.
+# --------------------------------------------------------------------------
+# PRECONTROLE SANS RESEAU — avant la premiere connexion
+# --------------------------------------------------------------------------
+# CE QUI L'A RENDU NECESSAIRE, mesure. La porte complete lit le CATALOGUE: elle
+# doit donc se connecter. Le verrou aussi. Les deux precedaient tout controle
+# d'intention et d'hote, si bien que:
+#
+#   DATABASE_URL="postgres://u:motdepasse@hote-distant/db" ./run.sh
+#
+# OUVRAIT UNE CONNEXION vers l'hote distant — verifie avec un ecouteur local:
+# « CONNEXION RECUE » — alors qu'aucun consentement n'etait pose et que l'hote
+# n'etait pas la boucle locale. Le refus arrivait apres, et sur un motif faux
+# (« verrou deja detenu »), le co-processus ayant simplement echoue.
+#
+# Presenter des identifiants a une machine qu'on va refuser est deja un defaut,
+# meme si le refus suit: le secret a quitte le processus.
+#
+# Ces deux controles ne lisent QUE l'environnement. Aucun octet ne part.
+exiger_precontrole_local() {
+  local qui="${1:-ce harnais}"
+  local attendu='oui-cluster-jetable-et-isole'
+
+  if [[ "${EUROSTRUCT_CLUSTER_JETABLE:-}" != "$attendu" ]]; then
+    cat >&2 <<EOF
+REFUS: $qui cree et detruit des ROLES GLOBAUX du cluster
+       (eurostruct_normative_writer, normative_backend, ...). Les roles ne sont
+       pas confines a une base: sur un cluster partage, de staging ou de
+       production, cette execution detruirait les vrais roles normatifs.
+
+       Ce script exige un cluster PostgreSQL ENTIEREMENT JETABLE, dedie a ces
+       tests, dont la perte n'a aucune consequence.
+
+       Ne le lancez JAMAIS sur Supabase ni sur un cluster partage.
+
+       Si — et seulement si — le cluster vise est jetable:
+           export EUROSTRUCT_CLUSTER_JETABLE=$attendu
+
+       (Aucune connexion n'a ete ouverte.)
+EOF
+    return 2
+  fi
+
+  case "${PGHOST:-}" in
+    /*|localhost|127.0.0.1|::1) : ;;
+    *)
+      echo "REFUS: $qui exige un hote de boucle locale (socket, localhost," >&2
+      echo "       127.0.0.1 ou ::1). L'hote fourni ne l'est pas." >&2
+      echo "       Aucune connexion n'a ete ouverte, aucun identifiant" >&2
+      echo "       n'a ete presente." >&2
+      return 2 ;;
+  esac
+  return 0
+}
+
 exiger_cluster_jetable() {
   local qui="${1:-ce harnais}"
   local attendu='oui-cluster-jetable-et-isole'
   local n
 
-  # 1. L'INTENTION, declaree, avec un jeton exact. Pas « 1 », pas « true »: une
-  #    valeur qu'on ne pose pas par reflexe ni par copie d'un autre projet.
+  # 1+2. L'intention et l'hote sont deja etablis SANS RESEAU par
+  #      `exiger_precontrole_local`. Ils sont re-verifies ici — appeler la
+  #      porte complete sans le precontrole resterait sur.
   if [[ "${EUROSTRUCT_CLUSTER_JETABLE:-}" != "$attendu" ]]; then
     cat >&2 <<EOF
 REFUS: $qui cree et detruit des ROLES GLOBAUX du cluster
@@ -178,8 +233,7 @@ EOF
     return 2
   fi
 
-  # 2. LA BOUCLE LOCALE. Un cluster jetable est local au conteneur de test. Une
-  #    declaration ne doit pas pouvoir emporter le script sur un hote distant.
+  # 2. LA BOUCLE LOCALE, redite du precontrole.
   case "${PGHOST:-}" in
     /*|localhost|127.0.0.1|::1) : ;;
     *)
@@ -296,6 +350,31 @@ EOF
 # meme qu'il verifie. Defaut mesure: une seconde execution passait alors la
 # porte et voyait les temoins transitoires de la premiere.
 HARNAIS_VERROU_CLE="${EUROSTRUCT_HARNAIS_VERROU_CLE:-7314159}"
+
+# LA CLE EST VALIDEE, PARCE QU'ELLE EST INTERPOLEE DANS DU SQL.
+#
+# CONTRE-EXEMPLE MESURE sur la version precedente:
+#
+#   EUROSTRUCT_HARNAIS_VERROU_CLE="1); create role injecte_temoin nologin; \
+#                                   select pg_try_advisory_lock(1"
+#
+# le co-processus executait le `create role` — verifie, le role existait apres
+# coup — et le harnais annoncait par-dessus « verrou deja detenu », donc un
+# etat de verrou faux. Une variable d'environnement devenait un canal
+# d'execution SQL arbitraire, sous le role administrateur du cluster.
+#
+# Un entier decimal, et rien d'autre. Pas de guillemets a echapper, pas de
+# forme « presque valide » a interpreter: ce qui n'est pas un entier est
+# refuse, et le refus est fatal.
+harnais_valider_cle() {
+  if ! [[ "$HARNAIS_VERROU_CLE" =~ ^[0-9]{1,18}$ ]]; then
+    echo "REFUS: cle de verrou invalide. Un entier decimal est attendu;" >&2
+    echo "       toute autre valeur serait interpolee dans du SQL execute" >&2
+    echo "       sous le role administrateur du cluster." >&2
+    return 2
+  fi
+  return 0
+}
 HARNAIS_VERROU_TENU=0
 
 harnais_verrou_prendre() {
@@ -310,9 +389,43 @@ harnais_verrou_prendre() {
   # relache aucune exclusion vis-a-vis des AUTRES arbres d'execution: ceux-la
   # n'ont pas le jeton, et se heurtent au verrou.
   if [[ -n "${EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE:-}" ]]; then
-    HARNAIS_VERROU_TENU=0
-    return 0
+    # LE MARQUEUR NE SUFFIT PAS: IL EST FORGEABLE.
+    #
+    # CONTRE-EXEMPLE MESURE sur la version precedente: pendant qu'une
+    # execution A detenait le verrou,
+    #
+    #   EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE=999999 ./two_phase_deployment.sh x
+    #
+    # etait ADMIS — « tenu=0 » — et repartait detruire des roles globaux en
+    # parallele de A. Une variable d'environnement suffisait a desactiver le
+    # verrou.
+    #
+    # Le marqueur porte donc le PID DU BACKEND qui detient reellement le
+    # verrou, et on VERIFIE dans `pg_locks` que ce backend le detient encore,
+    # sur CETTE cle. Forger le marqueur exige alors de nommer une session qui
+    # detient veritablement le verrou — c'est-a-dire une execution de harnais
+    # authentique, ce qui est exactement l'invariant recherche.
+    #
+    # `pg_try_advisory_lock(bigint)` decompose la cle en `classid` (32 bits de
+    # poids fort) et `objid` (32 bits de poids faible), avec `objsubid = 1`.
+    local reel
+    reel="$(psql -X -q -tA -d postgres -c "
+      select count(*) from pg_locks
+       where locktype = 'advisory' and granted
+         and objsubid = 1
+         and pid = ${EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE//[^0-9]/}
+         and ((classid::bigint << 32) | objid::bigint) = $HARNAIS_VERROU_CLE" 2>/dev/null)"
+    if [[ "$reel" == "1" ]]; then
+      HARNAIS_VERROU_TENU=0
+      return 0
+    fi
+    echo "      NOTE: marqueur de reentrance present mais AUCUN verrou reel ne" >&2
+    echo "            correspond (pid ${EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE//[^0-9]/})." >&2
+    echo "            Il est ignore, et le verrou est demande normalement." >&2
+    unset EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE
   fi
+
+  harnais_valider_cle || return 2
 
   coproc HARNAIS_VERROU { psql -X -q -At -d postgres 2>&1; }
   if [[ -z "${HARNAIS_VERROU_PID:-}" ]]; then
@@ -340,8 +453,19 @@ EOF
   fi
 
   HARNAIS_VERROU_TENU=1
-  # Transmis aux enfants: eux savent que l'arbre detient deja le verrou.
-  export EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE="$$"
+
+  # Le PID DU BACKEND, et non celui du shell: c'est lui qui figure dans
+  # `pg_locks`, donc le seul que l'enfant puisse verifier. Exporter `$$` — le
+  # shell — ne prouvait rien et rendait le marqueur purement declaratif.
+  local backend
+  echo "select pg_backend_pid();" >&"${HARNAIS_VERROU[1]}"
+  if ! read -r -t 15 -u "${HARNAIS_VERROU[0]}" backend || ! [[ "$backend" =~ ^[0-9]+$ ]]; then
+    echo "NON EXECUTE: $qui n'a pas pu identifier le backend du verrou." >&2
+    harnais_verrou_rendre
+    return 3
+  fi
+  export EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE="$backend"
+  export EUROSTRUCT_HARNAIS_VERROU_CLE="$HARNAIS_VERROU_CLE"
   return 0
 }
 

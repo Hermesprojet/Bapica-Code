@@ -113,6 +113,7 @@ harnais_connexion || exit 2
 # mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
 # alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
 # detruit rien; le prendre d'abord rend la porte deterministe.
+exiger_precontrole_local "two_phase_deployment.sh" || exit 2
 harnais_verrou_prendre "two_phase_deployment.sh" || exit 3
 exiger_cluster_jetable "two_phase_deployment.sh" || exit 2
 
