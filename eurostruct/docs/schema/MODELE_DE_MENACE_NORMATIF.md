@@ -103,11 +103,20 @@ tous deux non superutilisateurs.
 * **Le vol d'identifiants du plan de contrôle.** Qui se connecte comme lui
   approuve ; c'est le sens même du rôle.
 * **La restauration inter-cluster.** L'identité du plan porte un OID
-  PostgreSQL, qu'un `pg_dump`/restore vers un autre cluster ne préserve pas. Le
-  comportement attendu est un refus qui se lit — voir *RESTAURATION
-  INTER-CLUSTER* dans `0000_sceau_normatif.sql`. L'OID n'est délibérément pas
-  réinscriptible : le rendre modifiable rouvrirait la substitution.
+  PostgreSQL, qu'un `pg_dump`/restore vers un autre cluster ne préserve pas.
+  Le comportement attendu est un refus qui se lit : la topologie diagnostique
+  alors `RESTAURATION INTER-CLUSTER` et dit quoi faire — refinaliser la base
+  sur place, par son propre plan de contrôle.
+  L'OID n'est délibérément **pas** réinscriptible : le rendre modifiable
+  « pour réparer une restauration » rouvrirait exactement la substitution que
+  6.3b6b a fermée, puisqu'il suffirait de déclarer que le bon OID est celui
+  qu'on veut.
 * **Le `topology_digest`.** C'est une **photographie d'audit**, pas un
-  détecteur de dérive : rien ne le recalcule ni ne le compare. Ce qui bloque
-  certaines dérives, ce sont les invariants de `assert_normative_topology()`.
-  Voir *CONTRAT DU topology_digest* dans `0000_sceau_normatif.sql`.
+  détecteur de dérive : rien ne le recalcule pour le comparer, et rien ne le
+  fera — une dérive qui reste dans les règles doit pouvoir avoir lieu sans
+  qu'un digest figé la refuse. Ce qui bloque les dérives interdites, ce sont
+  les invariants de `assert_normative_topology()`.
+  `normative_topology_digest(...)` permet de **refaire la photo** et de la
+  comparer à celle qui a été inscrite : c'est une information d'audit, jamais
+  un verdict. Le contrat est écrit sous le titre `CONTRAT DU topology_digest`
+  dans `0000_sceau_normatif.sql`.

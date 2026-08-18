@@ -520,8 +520,20 @@ DECLARE=$(adm -tAc "select split_part(o, '=', 2)
                      where s.setdatabase = (select oid from pg_database where datname = '$BASE')
                        and s.setrole = 0
                        and split_part(o, '=', 1) = 'eurostruct.token_roles'" 2>&1)
-if ! grep -qE '^[0-9a-f]{64}$' <<<"$PREP"; then
-  echoue "C1. la preparation legitime a echoue: le scenario ne prouve rien"
+# LA COMPOSITION EST FERMEE DES SA PREMIERE ETAPE, et c'est plus fort que ce
+# que ce scenario cherchait. Une preparation isolee est refusee: elle exige le
+# verrou de finalisation, que seul `normative_finalize_deployment()` prend. Il
+# n'y a donc plus de preparation validee a laisser perimer.
+#
+# Le refus doit NOMMER son motif. Un refus accidentel — droit manquant, table
+# absente — laisserait croire la porte fermee alors qu'elle aurait seulement
+# change de serrure.
+if grep -qiE "verrou de finalisation|n'est pas une operation autonome" <<<"$PREP"; then
+  echo "      ok: C1. la preparation isolee est refusee — le verrou de"
+  echo "             finalisation n'est pas detenu, donc rien ne peut perimer"
+elif ! grep -qE '^[0-9a-f]{64}$' <<<"$PREP"; then
+  echoue "C1. la preparation isolee est refusee, mais pas au motif du verrou:"
+  echoue "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$PREP" | cut -c1-150)"
 elif [[ "$M1" == "$M2" ]]; then
   echoue "C1. la declaration n'a pas change: le scenario ne reproduit rien"
 elif [[ "$ETAT" != "ACTIVE" ]]; then
@@ -621,22 +633,73 @@ else
 fi
 
 # ==========================================================================
-# F. LE CONTRAT DU `topology_digest` N'EST PAS TRANCHE
+# F. LE CONTRAT DU `topology_digest`
 # ==========================================================================
-# Le digest est calcule et inscrit a l'activation. Rien ne le RECALCULE ni ne
-# le COMPARE ensuite. Il est donc une photographie, pas un detecteur de
-# derive — et il faut que le depot le dise, parce que ce qui bloque certaines
-# derives sont les invariants de `assert_normative_topology()`, pas lui.
-RELECTURE=$(grep -ch "topology_digest" "${MIGRATIONS[@]}" | paste -sd+ | bc)
-COMPARE=$(grep -chE "topology_digest\s*(<>|=|is distinct from)" \
-            "${MIGRATIONS[@]}" | paste -sd+ | bc)
-if [[ "$COMPARE" != "0" ]]; then
-  echo "      ok: F. le digest est relu et compare ($COMPARE comparaison(s))"
+# Le digest est calcule et inscrit a l'activation. Rien ne le recalcule pour le
+# comparer — et c'est un CHOIX, qui doit etre ecrit: une derive qui reste dans
+# les regles doit pouvoir avoir lieu sans qu'un digest fige la refuse.
+#
+# Ce qui est exige ici n'est donc pas une comparaison, mais que le contrat soit
+# TRANCHE ET LISIBLE aux deux endroits ou on le cherchera, et que la
+# distinction entre « photographie » et « controle » soit OBSERVABLE.
+MARQUEUR_F="CONTRAT DU topology_digest"
+F_SQL=$(grep -lF "$MARQUEUR_F" "${MIGRATIONS[@]}" 2>/dev/null | sed 's#.*/##' | tr '\n' ' ')
+F_DOC=$(grep -rlF "$MARQUEUR_F" "$DB_DIR/../docs" 2>/dev/null | head -1)
+F_OUVERT=0
+if [[ -z "$F_SQL" || -z "$F_DOC" ]]; then
+  rouge "F. le contrat du topology_digest n'est pas ecrit"
+  rouge "   (migration: ${F_SQL:-ABSENT}; documentation: ${F_DOC:-ABSENTE})."
+  rouge "   Tant qu'il ne l'est pas, « il bloque la derive » et « il documente"
+  rouge "   l'activation » restent tous deux defendables — et l'un des deux est"
+  rouge "   faux."
+  F_OUVERT=1
+fi
+
+# LA DISTINCTION, RENDUE OBSERVABLE. Une modification de topologie AUTORISEE —
+# accorder un role de service a un login declare approuve — doit:
+#   * changer la PHOTOGRAPHIE (sinon elle ne photographie rien);
+#   * ne PAS faire refuser `assert_normative_topology()` (sinon ce n'est pas
+#     une derive autorisee).
+if ! decor_poser g; then
+  echoue "le decor F n'a pas pu etre pose"
+elif ! decor_finaliser; then
+  echoue "le decor F n'a pas pu etre finalise"
+  suivre_decor; decor_deposer
 else
-  rouge "F. le digest est ecrit ($RELECTURE mention(s)) mais JAMAIS compare."
-  rouge "   Le contrat doit etre tranche et ecrit: photographie d'audit, ou"
-  rouge "   detecteur de derive. Aujourd'hui il est presente comme le second et"
-  rouge "   se comporte comme le premier."
+suivre_decor
+INSCRIT=$(admb -tAc "select topology_digest from normative_activation" 2>&1)
+photo() {
+  admb -tAc "select normative_topology_digest(
+               (select role_oid from normative_control_plane),
+               (select role_name from normative_control_plane),
+               (select migrateur_oid from normative_finalization_intent),
+               (select migrateur_nom from normative_finalization_intent),
+               (select manifeste from normative_finalization_intent))" 2>&1
+}
+AVANT_F=$(photo)
+# Modification AUTORISEE: `$SVC` est declare dans `approved_service_logins`,
+# fige a la finalisation. Lui accorder le role de service est exactement ce
+# qu'un deploiement fait.
+adm -c "grant normative_backend to \"$SVC\";" >/dev/null 2>&1
+APRES_F=$(photo)
+TOPO_F=$(ctl -tAc "select assert_normative_topology()" 2>&1)
+if [[ "$INSCRIT" != "$AVANT_F" ]]; then
+  echoue "F. la photo refaite ne retrouve pas celle inscrite a l'activation:"
+  echoue "   inscrite $(cut -c1-12 <<<"$INSCRIT") / refaite $(cut -c1-12 <<<"$AVANT_F")"
+elif [[ "$AVANT_F" == "$APRES_F" ]]; then
+  rouge "F. une modification de topologie ne change pas la photographie:"
+  rouge "   elle ne photographie donc pas la topologie."
+  F_OUVERT=1
+elif grep -qiE "ERROR|ERREUR" <<<"$TOPO_F"; then
+  rouge "F. une modification AUTORISEE fait refuser la topologie:"
+  rouge "   $(grep -m1 -iE 'ERROR|ERREUR' <<<"$TOPO_F" | cut -c1-140)"
+  F_OUVERT=1
+elif [[ $F_OUVERT -eq 0 ]]; then
+  echo "      ok: F. photographie d'audit, contrat ecrit ($(basename "$F_DOC")):"
+  echo "             une derive autorisee change la photo ($(cut -c1-12 <<<"$AVANT_F")"
+  echo "             -> $(cut -c1-12 <<<"$APRES_F")) sans faire refuser la topologie"
+fi
+decor_deposer
 fi
 
 # ==========================================================================

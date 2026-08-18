@@ -788,11 +788,32 @@ begin
       -- L'OID D'ABORD: c'est lui l'identite. Un role detruit emporte son OID,
       -- et son nom redevient libre.
       if not exists (select 1 from pg_roles where oid = plan_oid) then
+        -- RESTAURATION INTER-CLUSTER — le cas le plus probable de ce refus.
+        --
+        -- L'identite du plan de controle porte un OID PostgreSQL. Un
+        -- `pg_dump`/restore vers un AUTRE cluster ne le preserve pas: les
+        -- roles y sont recrees avec de nouveaux OID, et la ligne figee designe
+        -- alors un role qui n'existe plus.
+        --
+        -- LE REFUS EST LE COMPORTEMENT ATTENDU, et il est fail-closed: une
+        -- base restauree ailleurs n'a pas herite de l'approbation qui avait
+        -- eu lieu sur le cluster d'origine. Elle doit etre refinalisee la, par
+        -- son propre plan de controle.
+        --
+        -- L'OID N'EST DELIBEREMENT PAS REINSCRIPTIBLE. Le rendre modifiable
+        -- « pour reparer une restauration » rouvrirait exactement la
+        -- substitution que 6.3b6b a fermee: il suffirait de dire que le bon
+        -- OID est celui qu'on veut. Voir
+        -- docs/schema/MODELE_DE_MENACE_NORMATIF.md.
         raise exception
           'topologie: le plan de controle approuve (oid %, « % ») n''existe '
           'plus dans le catalogue. Si un role porte encore ce nom, ce n''est '
           'pas celui qui a ete approuve: l''exemption d''ADMIN residuel ne '
-          'peut pas lui etre transmise avec l''etiquette.',
+          'peut pas lui etre transmise avec l''etiquette. '
+          'CAS COURANT: RESTAURATION INTER-CLUSTER — les OID ne survivent pas '
+          'a un pg_dump/restore vers un autre cluster. Cette base doit etre '
+          'refinalisee sur place par son propre plan de controle; l''OID fige '
+          'n''est pas reinscriptible, et ne doit pas l''etre.',
           plan_oid, plan_nom using errcode = 'insufficient_privilege';
       end if;
       -- PUIS LE NOM, AU MEME OID. Un renommage laisserait l'audit designer un
@@ -893,8 +914,13 @@ begin
        -- mesuree: le plan de controle qui a PROVISIONNE les roles de service
        -- en detient un ADMIN residuel irrevocable (fait F1). Il est tolere
        -- pour LUI SEUL, et jamais avec SET ni USAGE.
+       -- PAR OID **ET** PAR NOM (6.3b6c). Cette exemption ne comparait que le
+       -- nom. Le controle global de coherence du plan attrape aujourd'hui une
+       -- substitution — mais une exemption qui n'est sure que grace a un AUTRE
+       -- controle n'est pas sure: elle le devient le jour ou l'autre bouge.
        and not coalesce(
-         p.rolname = normative_control_plane()
+         p.oid = normative_control_plane_oid()
+         and p.rolname = normative_control_plane()
          and not pg_has_role(p.rolname, sv.rolname, 'SET')
          and not pg_has_role(p.rolname, sv.rolname, 'USAGE'),
          false)
@@ -925,8 +951,10 @@ begin
        -- jamais SET ni USAGE. Sans cette exemption, la forme Supabase etait
        -- refusee a la finalisation meme: le provisionneur y est connectable
        -- par construction.
+       -- PAR OID **ET** PAR NOM (6.3b6c), comme ci-dessus.
        and not coalesce(
-         c.rolname = normative_control_plane()
+         c.oid = normative_control_plane_oid()
+         and c.rolname = normative_control_plane()
          and not pg_has_role(c.rolname, sv.rolname, 'SET')
          and not pg_has_role(c.rolname, sv.rolname, 'USAGE'),
          false)
@@ -1191,6 +1219,45 @@ comment on function normative_settings_manifest is
   'de controle le lit a la revue et le represente a la finalisation: tout '
   'changement intervenu entre les deux fait refuser, avant toute ecriture.';
 
+-- LE MANIFESTE **APPROUVE**, calcule sur ce qui a ete FIGE (6.3b6c).
+--
+-- `normative_settings_manifest()` digere les valeurs DECLAREES; celle-ci
+-- digere les valeurs GELEES. Les deux coincident sur une base saine, et
+-- divergent des qu'une declaration a change apres l'activation — ce qui est
+-- precisement ce qu'on veut pouvoir constater.
+--
+-- Elle sert a l'idempotence: une seconde finalisation n'est acceptee que si
+-- l'appelant presente le manifeste qui a ete approuve. CONTRE-EXEMPLE MESURE:
+-- en etat ACTIVE, un manifeste autre, vide ou mal forme rendait
+-- « ACTIVE (deja finalise) ». Un script de deploiement pointe sur la mauvaise
+-- base, ou portant une configuration ancienne, recevait un succes.
+--
+-- L'ORDRE CANONIQUE EST LE MEME que celui du manifeste declare — tri par nom —
+-- sans quoi les deux digests ne seraient pas comparables.
+create or replace function normative_approved_manifest() returns text
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select encode(sha256(convert_to(
+           string_agg(nom || '=' || valeur, E'\n' order by nom), 'UTF8')), 'hex')
+    from normative_approved_settings;
+$$;
+alter function normative_approved_manifest()
+  owner to eurostruct_normative_activator;
+
+comment on function normative_approved_manifest is
+  'Digest des trois declarations FIGEES a la finalisation. Une seconde '
+  'finalisation doit presenter exactement celui-ci: sinon le script vise une '
+  'autre base, ou porte une configuration qui n''est pas celle qui a ete '
+  'approuvee.';
+
+revoke all on function normative_approved_manifest() from public;
+grant execute on function normative_approved_manifest()
+  to eurostruct_normative_activator;
+grant execute on function normative_approved_manifest() to eurostruct_deployment;
+
 revoke all on function normative_settings_manifest() from public;
 grant execute on function normative_settings_manifest()
   to eurostruct_normative_activator;
@@ -1232,8 +1299,26 @@ create table normative_finalization_intent (
   donneur_oid   oid  not null,
   donneur_nom   text not null,
   manifeste     text not null,
+  -- LA TRANSACTION QUI A PREPARE (6.3b6c). C'est elle qui rend les helpers
+  -- non composables: `normative_record_activation()` exige la MEME. Un
+  -- appelant ne peut pas forger un identifiant de transaction — le serveur
+  -- l'attribue —, et ce n'est ni un GUC ni un marqueur de session.
+  --
+  -- CONTRE-EXEMPLE MESURE (parcours B): preparer, revoquer a la main, puis
+  -- appeler l'ecriture de confiance suffisait a obtenir ACTIVE en trois
+  -- transactions distinctes, sans le finaliseur, sans le verrou, sans
+  -- atomicite.
+  prepare_txid  bigint not null default txid_current(),
+  -- LES TROIS VALEURS CONSTATEES, portees jusqu'a l'ecriture. Elles sont lues
+  -- UNE FOIS, digerees, et figees telles quelles: relire les declarations
+  -- entre la comparaison et le gel rouvrirait la fenetre que le manifeste
+  -- existe pour fermer.
+  valeurs       text[] not null,
   prepare_par   text not null,
   prepare_le    timestamptz not null default now(),
+
+  constraint finalization_intent_has_three_values
+    check (array_length(valeurs, 1) = 3),
 
   constraint finalization_intent_names_a_migrator
     check (btrim(migrateur_nom) <> ''),
@@ -1249,13 +1334,30 @@ comment on table normative_finalization_intent is
   'inscrire: sans cette ligne, l''identite du migrateur devrait etre fournie '
   'par l''appelant — et l''etait, ce qui rendait l''activation forgeable.';
 
+-- REECRITURE INTERDITE, RAMASSAGE AUTORISE (6.3b6c).
+--
+-- Une intention preparee puis VALIDEE seule ne peut plus servir: l'ecriture de
+-- confiance exige la meme transaction, et celle-la est close. La laisser
+-- bloquer a jamais le deploiement serait un fail-closed qui ne protege rien —
+-- personne ne peut s'en servir. Elle est donc SUPPRIMABLE, et seulement elle:
+--
+--   * UPDATE: toujours refuse. Reecrire reviendrait a designer apres coup un
+--     autre migrateur ou un autre donneur que ceux derives du catalogue.
+--   * DELETE d'une intention de la transaction COURANTE: refuse aussi — c'est
+--     la seule qui pourrait encore servir.
+--   * DELETE d'une intention d'une AUTRE transaction: accepte. C'est du
+--     ramassage, pas une reecriture.
 create or replace function forbid_finalization_intent_mutation() returns trigger
 language plpgsql as $$
 begin
+  if tg_op = 'DELETE' and old.prepare_txid <> txid_current() then
+    return old;
+  end if;
   raise exception
     'l''intention de finalisation est figee: la reecrire reviendrait a '
     'designer apres coup un autre migrateur ou un autre donneur que ceux '
-    'derives du catalogue. Operation: %.', tg_op
+    'derives du catalogue. Seule une intention d''une transaction close — '
+    'donc inutilisable — peut etre ramassee. Operation: %.', tg_op
     using errcode = 'restrict_violation';
 end;
 $$;
@@ -1266,7 +1368,10 @@ create trigger normative_finalization_intent_is_immutable
 
 alter table normative_finalization_intent
   owner to eurostruct_normative_activator;
-grant select, insert on normative_finalization_intent
+-- DELETE COMPRIS: le ramassage d'une intention de transaction close en a
+-- besoin. Le declencheur ci-dessus refuse tout le reste — c'est lui qui
+-- distingue « ramasser » de « reecrire », pas l'ACL.
+grant select, insert, delete on normative_finalization_intent
   to eurostruct_normative_activator;
 alter table normative_finalization_intent enable row level security;
 alter table normative_finalization_intent force row level security;
@@ -1281,6 +1386,9 @@ create policy normative_finalization_intent_lecture
 create policy normative_finalization_intent_ecriture
   on normative_finalization_intent
   for insert to eurostruct_normative_activator with check (true);
+create policy normative_finalization_intent_ramassage
+  on normative_finalization_intent
+  for delete to eurostruct_normative_activator using (true);
 
 -- LE NOM DU MIGRATEUR, RELU. La revocation doit etre executee par le DONNEUR
 -- (fait F2/F3: `REVOKE` par un autre role emet un avertissement et ne retire
@@ -1355,26 +1463,57 @@ begin
       using errcode = 'restrict_violation';
   end if;
 
-  -- IDEMPOTENCE. Une preparation validee dans une transaction anterieure a
-  -- deja consomme les emprunts du catalogue: les rederiver echouerait. On
-  -- reverifie donc ce qui reste verifiable — le manifeste et l'appelant — et
-  -- on rend la ligne existante.
+  -- LE VERROU DE FINALISATION DOIT DEJA ETRE DETENU (6.3b6c).
+  --
+  -- Il est pris par `normative_finalize_deployment()`, et par lui seul. Exiger
+  -- ici qu'il soit DETENU PAR LA TRANSACTION COURANTE ferme l'appel direct:
+  -- un appelant qui le prendrait lui-meme puis composerait les etapes ferait,
+  -- par construction, ce que fait le finaliseur — dans UNE transaction, sous
+  -- le meme verrou. Ce qui est ferme, c'est la composition EN PLUSIEURS
+  -- transactions, qui contournait a la fois le verrou et l'atomicite.
+  --
+  -- `pg_locks` est lu par le serveur, pas declare par l'appelant.
+  if not exists (
+    select 1 from pg_locks
+     where locktype = 'advisory'
+       and pid = pg_backend_pid()
+       and granted
+       and ((classid::bigint << 32) | objid::bigint)
+           = hashtext('eurostruct.normative_finalisation')::bigint
+  ) then
+    raise exception
+      'le verrou de finalisation n''est pas detenu par cette transaction. La '
+      'preparation n''est pas une operation autonome: elle fait partie de '
+      'normative_finalize_deployment(), qui prend ce verrou et enchaine '
+      'preparation, revocations et activation sans relacher la transaction.'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  -- UNE INTENTION D'UNE AUTRE TRANSACTION EST MORTE: elle est ramassee.
+  --
+  -- L'ecriture de confiance exige la MEME transaction que la preparation. Une
+  -- intention validee seule ne peut donc plus servir a rien — mais elle
+  -- bloquerait le singleton a jamais. La ramasser n'est pas la reecrire: le
+  -- declencheur d'immuabilite refuse toujours l'UPDATE, et refuse le DELETE
+  -- d'une intention de la transaction courante.
+  --
+  -- CONTRE-EXEMPLE FERME (parcours A): la version precedente comparait le
+  -- manifeste presente a celui DEJA ENREGISTRE, sans jamais relire les
+  -- declarations. Une preparation validee, un `ALTER DATABASE`, puis une
+  -- finalisation avec le manifeste d'origine: tout concordait, sauf la
+  -- realite — fige « authenticated », declare
+  -- « authenticated,anon,FICTIF_apres_prepare ». On ne compare plus le
+  -- manifeste a lui-meme: on rederive tout, a chaque fois.
+  delete from normative_finalization_intent
+   where prepare_txid <> txid_current();
+
   select * into deja from normative_finalization_intent;
   if found then
+    -- Meme transaction: la preparation a deja eu lieu dans ce finaliseur.
     if deja.manifeste <> p_manifeste then
       raise exception
-        'le manifeste presente ne correspond pas a celui de la preparation '
-        'deja enregistree. Les declarations ont change entre les deux '
-        'presentations, ou ce n''est pas la meme approbation.'
+        'deux manifestes differents dans la meme finalisation.'
         using errcode = 'invalid_parameter_value';
-    end if;
-    if session_user <> deja.donneur_nom
-       and not pg_has_role(session_user, deja.donneur_nom, 'SET') then
-      raise exception
-        'la preparation enregistree designe « % » comme donneur; elle est '
-        'reprise par « % », qui ne peut pas l''endosser.',
-        deja.donneur_nom, session_user
-        using errcode = 'insufficient_privilege';
     end if;
     return deja.manifeste;
   end if;
@@ -1504,19 +1643,22 @@ begin
       using errcode = 'invalid_parameter_value';
   end if;
 
-  -- LE PLAN DE CONTROLE EST FIGE ICI, avec son OID.
-  insert into normative_control_plane (role_oid, role_name, recorded_by)
-  values (d_oid, d_nom, session_user);
-
-  for n in 1 .. array_length(noms, 1) loop
-    insert into normative_approved_settings (nom, valeur, fige_par)
-    values (noms[n], valeurs[n], session_user);
-  end loop;
-
+  -- LA PREPARATION N'ECRIT PLUS QUE L'INTENTION (6.3b6c).
+  --
+  -- Elle figeait ici le plan de controle et les trois declarations. Ces deux
+  -- tables sont des singletons append-only: une preparation validee SEULE les
+  -- consommait, et le deploiement devenait definitivement infinalisable — un
+  -- fail-closed qui ne protegeait rien, puisque l'intention correspondante
+  -- etait de toute facon inutilisable.
+  --
+  -- Le gel a donc migre dans `normative_record_activation()`, qui s'execute
+  -- dans la MEME transaction et juste avant l'activation. Les valeurs
+  -- constatees ici voyagent avec l'intention: c'est le meme tableau qui a ete
+  -- digere et qui sera fige.
   insert into normative_finalization_intent
     (migrateur_oid, migrateur_nom, donneur_oid, donneur_nom, manifeste,
-     prepare_par)
-  values (m_oid, m_nom, d_oid, d_nom, courant, session_user);
+     valeurs, prepare_par)
+  values (m_oid, m_nom, d_oid, d_nom, courant, valeurs, session_user);
 
   return courant;
 end;
@@ -1533,6 +1675,83 @@ comment on function normative_prepare_activation is
 revoke all on function normative_prepare_activation(text) from public;
 grant execute on function normative_prepare_activation(text)
   to eurostruct_deployment;
+
+
+-- ---------------------------------------------------------------------
+-- CONTRAT DU topology_digest — UNE PHOTOGRAPHIE, PAS UN CONTROLE
+-- ---------------------------------------------------------------------
+-- LE CONTRAT EST TRANCHE ICI, parce qu'il ne l'etait pas et que les deux
+-- lectures possibles ne demandent pas le meme travail.
+--
+--   * CE QU'IL EST: une PHOTOGRAPHIE d'audit. Il fige, au moment de
+--     l'activation, qui atteignait quoi parmi les six roles canoniques, avec
+--     l'identite du plan de controle, celle du migrateur et le manifeste
+--     approuve. Il repond a « sur quoi l'activation a-t-elle porte ? ».
+--
+--   * CE QU'IL N'EST PAS: un detecteur de derive. Rien ne le recalcule pour le
+--     comparer, et rien ne le fera: une dérive qui reste dans les regles doit
+--     pouvoir avoir lieu — accorder `normative_backend` a un role de service
+--     nouvellement declare, par exemple — sans qu'un digest fige la refuse.
+--
+-- CE QUI BLOQUE LES DERIVES INTERDITES, ce sont les invariants de
+-- `assert_normative_topology()`, appelee par la readiness. Le digest et elle
+-- ne font pas le meme travail, et confondre les deux ferait croire a une
+-- protection qui n'existe pas.
+--
+-- La fonction ci-dessous existe pour rendre la distinction OBSERVABLE: un
+-- auditeur refait la photo et la compare a celle qui a ete inscrite. Si elles
+-- different, la topologie a change depuis l'activation — ce qui est une
+-- information, pas un verdict.
+create or replace function normative_topology_digest(
+  p_plan_oid oid, p_plan_nom text,
+  p_migrateur_oid oid, p_migrateur_nom text,
+  p_manifeste text
+) returns text
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select encode(sha256(convert_to(
+           'plan=' || p_plan_oid::text || ':' || p_plan_nom || E'\n'
+           || 'migrateur=' || p_migrateur_oid::text || ':' || p_migrateur_nom || E'\n'
+           || 'manifeste=' || p_manifeste || E'\n'
+           || coalesce(string_agg(ligne, E'\n' order by ligne), ''), 'UTF8')),
+         'hex')
+    from (
+      select a.rolname || '|' || m.rolname || '|'
+             || pg_has_role(m.rolname, a.rolname, 'SET')::text || '|'
+             || pg_has_role(m.rolname, a.rolname, 'USAGE')::text || '|'
+             || pg_has_role(m.rolname, a.rolname, 'MEMBER WITH ADMIN OPTION')::text
+             as ligne
+        from pg_roles a
+        cross join pg_roles m
+       where a.rolname in ('eurostruct_normative_writer',
+                           'eurostruct_normative_bootstrap',
+                           'eurostruct_normative_activator',
+                           'normative_backend', 'normative_governance',
+                           'eurostruct_deployment')
+         and m.oid <> a.oid
+         and not m.rolsuper
+         and (pg_has_role(m.rolname, a.rolname, 'SET')
+              or pg_has_role(m.rolname, a.rolname, 'USAGE')
+              or pg_has_role(m.rolname, a.rolname, 'MEMBER WITH ADMIN OPTION'))
+    ) t;
+$$;
+alter function normative_topology_digest(oid, text, oid, text, text)
+  owner to eurostruct_normative_activator;
+
+comment on function normative_topology_digest is
+  'Refait la PHOTOGRAPHIE de topologie inscrite a l''activation. Sert a '
+  'l''audit — comparer avec normative_activation.topology_digest — jamais a '
+  'refuser: les refus appartiennent a assert_normative_topology().';
+
+revoke all on function normative_topology_digest(oid, text, oid, text, text)
+  from public;
+grant execute on function normative_topology_digest(oid, text, oid, text, text)
+  to eurostruct_normative_activator;
+grant execute on function normative_topology_digest(oid, text, oid, text, text)
+  to eurostruct_deployment, normative_governance;
 
 
 -- ---------------------------------------------------------------------
@@ -1578,6 +1797,22 @@ begin
       using errcode = 'restrict_violation';
   end if;
 
+  -- LE VERROU DE FINALISATION, DETENU PAR CETTE TRANSACTION (6.3b6c).
+  -- Meme exigence que la preparation, et pour la meme raison.
+  if not exists (
+    select 1 from pg_locks
+     where locktype = 'advisory'
+       and pid = pg_backend_pid()
+       and granted
+       and ((classid::bigint << 32) | objid::bigint)
+           = hashtext('eurostruct.normative_finalisation')::bigint
+  ) then
+    raise exception
+      'le verrou de finalisation n''est pas detenu par cette transaction: '
+      'l''activation ne s''inscrit que depuis normative_finalize_deployment().'
+      using errcode = 'insufficient_privilege';
+  end if;
+
   select * into intention from normative_finalization_intent;
   if not found then
     raise exception
@@ -1588,21 +1823,44 @@ begin
       using errcode = 'insufficient_privilege';
   end if;
 
-  -- LE PLAN DE CONTROLE, RELU DE CE QUI A ETE FIGE — pas d'un argument.
-  plan_oid := normative_control_plane_oid();
-  plan_nom := normative_control_plane();
-  if plan_oid is null or plan_nom is null then
+  -- LA MEME TRANSACTION QUE LA PREPARATION (6.3b6c).
+  --
+  -- C'est ce qui rend les trois fonctions non composables. CONTRE-EXEMPLE
+  -- MESURE (parcours B): preparer, valider, revoquer les emprunts a la main
+  -- comme le ferait le finaliseur, puis appeler cette fonction — le
+  -- sous-systeme passait ACTIVE en trois transactions, sans le verrou et sans
+  -- qu'aucune etape ne puisse annuler les autres.
+  --
+  -- L'identifiant de transaction est attribue par le serveur. Ce n'est ni un
+  -- GUC, ni un marqueur fourni par la session: l'appelant ne peut pas le
+  -- choisir, et il change des qu'il valide.
+  if intention.prepare_txid <> txid_current() then
     raise exception
-      'aucun plan de controle fige: la preparation n''a pas eu lieu ou a ete '
-      'annulee.' using errcode = 'insufficient_privilege';
-  end if;
-  if plan_oid <> intention.donneur_oid or plan_nom <> intention.donneur_nom then
-    raise exception
-      'le plan de controle fige (oid %, « % ») n''est pas le donneur derive '
-      '(oid %, « % »).', plan_oid, plan_nom,
-      intention.donneur_oid, intention.donneur_nom
+      'l''intention de finalisation a ete preparee dans une AUTRE transaction '
+      '(% au lieu de %). Preparation, revocations et activation doivent tenir '
+      'dans une seule transaction: sinon aucune ne peut annuler les autres, '
+      'et l''etat intermediaire — emprunts rendus sans activation, ou '
+      'l''inverse — devient atteignable.',
+      intention.prepare_txid, txid_current()
       using errcode = 'insufficient_privilege';
   end if;
+
+  -- LE PLAN DE CONTROLE ET LES DECLARATIONS SONT FIGES ICI, dans la meme
+  -- transaction que l'activation, a partir de ce que la preparation a derive
+  -- et constate. Les figer plus tot rendait une preparation validee seule
+  -- definitivement bloquante.
+  plan_oid := intention.donneur_oid;
+  plan_nom := intention.donneur_nom;
+  insert into normative_control_plane (role_oid, role_name, recorded_by)
+  values (plan_oid, plan_nom, session_user);
+
+  for n in 1 .. 3 loop
+    insert into normative_approved_settings (nom, valeur, fige_par)
+    values ((array['eurostruct.approved_deployment_roles',
+                   'eurostruct.approved_service_logins',
+                   'eurostruct.token_roles'])[n],
+            intention.valeurs[n], session_user);
+  end loop;
   if not exists (select 1 from pg_roles
                   where oid = plan_oid and rolname = plan_nom) then
     raise exception
@@ -1639,33 +1897,15 @@ begin
   -- L'IDENTITE DU PLAN DE CONTROLE (6.3b6b, point 3). Sans elle, l'audit ne
   -- permettait pas de constater apres coup qu'un autre role avait pris le nom
   -- approuve — la substitution etait indetectable.
-  select encode(sha256(convert_to(
-           'plan=' || plan_oid::text || ':' || plan_nom || E'\n'
-           || 'migrateur=' || intention.migrateur_oid::text || ':'
-                           || intention.migrateur_nom || E'\n'
-           || 'manifeste=' || intention.manifeste || E'\n'
-           || coalesce(string_agg(ligne, E'\n' order by ligne), ''), 'UTF8')),
-         'hex')
-    into digest
-    from (
-      select a.rolname || '|' || m.rolname || '|'
-             || pg_has_role(m.rolname, a.rolname, 'SET')::text || '|'
-             || pg_has_role(m.rolname, a.rolname, 'USAGE')::text || '|'
-             || pg_has_role(m.rolname, a.rolname, 'MEMBER WITH ADMIN OPTION')::text
-             as ligne
-        from pg_roles a
-        cross join pg_roles m
-       where a.rolname in ('eurostruct_normative_writer',
-                           'eurostruct_normative_bootstrap',
-                           'eurostruct_normative_activator',
-                           'normative_backend', 'normative_governance',
-                           'eurostruct_deployment')
-         and m.oid <> a.oid
-         and not m.rolsuper
-         and (pg_has_role(m.rolname, a.rolname, 'SET')
-              or pg_has_role(m.rolname, a.rolname, 'USAGE')
-              or pg_has_role(m.rolname, a.rolname, 'MEMBER WITH ADMIN OPTION'))
-    ) t;
+  --
+  -- LE CALCUL EST DANS `normative_topology_digest()`, pour qu'un auditeur
+  -- puisse REFAIRE LA PHOTO et la comparer a celle qui a ete inscrite. Voir
+  -- « CONTRAT DU topology_digest » plus haut: c'est une photographie, pas un
+  -- controle — le refus, lui, vient de `assert_normative_topology()`.
+  digest := normative_topology_digest(plan_oid, plan_nom,
+                                      intention.migrateur_oid,
+                                      intention.migrateur_nom,
+                                      intention.manifeste);
 
   insert into normative_activation (activated_by, topology_digest)
   values (session_user, digest);
@@ -1689,6 +1929,56 @@ comment on function normative_record_activation is
 
 revoke all on function normative_record_activation() from public;
 grant execute on function normative_record_activation()
+  to eurostruct_deployment;
+
+
+-- ---------------------------------------------------------------------
+-- L'IDEMPOTENCE N'EST PAS UN BLANC-SEING (6.3b6c)
+-- ---------------------------------------------------------------------
+-- En etat ACTIVE, la finalisation rendait « ACTIVE (deja finalise) » SANS
+-- regarder le manifeste presente. Mesure: un manifeste autre, vide ou mal
+-- forme recevait le meme succes. Un script de deploiement pointe sur la
+-- mauvaise base, ou portant une configuration ancienne, ne pouvait pas s'en
+-- apercevoir.
+--
+-- LES DEUX BRANCHES ACTIVE l'appellent — celle d'avant le verrou et celle
+-- d'apres. Une seule des deux protegee laisserait passer exactement le cas
+-- qu'on veut fermer: deux deploiements concurrents dont l'un porte la mauvaise
+-- configuration.
+create or replace function normative_exiger_manifeste_approuve(p_manifeste text)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare approuve text;
+begin
+  approuve := normative_approved_manifest();
+  if p_manifeste is null or btrim(p_manifeste) = '' then
+    raise exception
+      'MANIFEST_MISMATCH: aucun manifeste presente alors que le sous-systeme '
+      'est deja ACTIF. Le manifeste approuve est « % ».', approuve
+      using errcode = 'invalid_parameter_value';
+  end if;
+  if p_manifeste is distinct from approuve then
+    raise exception
+      'MANIFEST_MISMATCH: le manifeste presente « % » n''est pas celui qui a '
+      'ete approuve sur cette base (« % »). Soit ce script vise une autre '
+      'base, soit il porte une configuration qui n''a jamais ete approuvee '
+      'ici. L''activation deja faite n''est pas une raison de repondre '
+      'succes.', p_manifeste, approuve
+      using errcode = 'invalid_parameter_value';
+  end if;
+end;
+$$;
+alter function normative_exiger_manifeste_approuve(text)
+  owner to eurostruct_normative_activator;
+
+revoke all on function normative_exiger_manifeste_approuve(text) from public;
+grant execute on function normative_exiger_manifeste_approuve(text)
+  to eurostruct_normative_activator;
+grant execute on function normative_exiger_manifeste_approuve(text)
   to eurostruct_deployment;
 
 
@@ -1724,6 +2014,7 @@ begin
   -- IDEMPOTENCE, avant meme le verrou: une finalisation deja faite ne doit ni
   -- attendre ni echouer bruyamment.
   if normative_activation_state() = 'ACTIVE' then
+    perform normative_exiger_manifeste_approuve(p_manifeste);
     perform assert_normative_topology();
     return 'ACTIVE (deja finalise)';
   end if;
@@ -1745,6 +2036,7 @@ begin
   -- instantane: le perdant voit donc ici ce que le gagnant a valide pendant
   -- qu'il attendait, et rend le meme resultat que s'il etait arrive apres.
   if normative_activation_state() = 'ACTIVE' then
+    perform normative_exiger_manifeste_approuve(p_manifeste);
     perform assert_normative_topology();
     return 'ACTIVE (deja finalise)';
   end if;
