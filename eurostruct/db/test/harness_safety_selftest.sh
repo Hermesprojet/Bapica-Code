@@ -57,20 +57,22 @@ harnais_connexion || exit 2
 # GLOBAUX portant les noms canoniques. Le fichier qui PROUVE que les harnais
 # refusent un cluster tiers etait donc lui-meme le seul a ne pas le verifier.
 # Un garde-fou exempte de son propre garde-fou n'en est pas un.
-# LE VERROU AVANT LA PORTE. La porte lit le CATALOGUE — roles de plateforme
-# geree, bases etrangeres. Deux executions simultanees y voient les objets
-# TRANSITOIRES l'une de l'autre et se refusent mutuellement pour un motif faux:
-# mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
-# alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
-# detruit rien; le prendre d'abord rend la porte deterministe.
+# TROIS ETAPES, DANS CET ORDRE, ET L'ORDRE EST LE SUJET.
+#
+#   1. PRECONTROLE SANS RESEAU — intention declaree et hote de boucle locale,
+#      lus dans l'environnement. Aucun octet ne part. Mesure: sans lui, une
+#      `DATABASE_URL` distante faisait PARTIR une connexion — et des
+#      identifiants avec elle — avant le moindre refus.
+#   2. LE VERROU. Il se connecte, mais ne detruit rien. Le prendre avant la
+#      porte rend celle-ci deterministe: sinon deux executions simultanees
+#      voient les objets TRANSITOIRES l'une de l'autre et se refusent sur un
+#      motif faux (« ce cluster porte supabase_admin », mesure).
+#   3. LA PORTE CATALOGUE — marqueurs de plateforme geree, bases etrangeres,
+#      superutilisateur.
 exiger_precontrole_local "harness_safety_selftest.sh" || exit 2
 harnais_verrou_prendre "harness_safety_selftest.sh" || exit 3
 exiger_cluster_jetable "harness_safety_selftest.sh" || exit 2
 
-# Le verrou, comme les autres. Il est pris ICI et transmis aux enfants par
-# `EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE`: sans quoi la commande canonique
-# invoquee plus bas refuserait sur le verrou, et les scenarios prouveraient
-# le mauvais refus.
 
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }

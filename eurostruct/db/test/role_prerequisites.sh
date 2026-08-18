@@ -110,12 +110,18 @@ exiger_cluster_jetable  "role_prerequisites.sh" || exit 2
 # sur dans un seul ordre d'appel n'est pas intrinsequement sur. La garde et le
 # verrou sont donc pris ici, independamment de l'appelant — et sans cout quand
 # l'appelant les detient deja (jeton de proprietaire transmis).
-# LE VERROU AVANT LA PORTE. La porte lit le CATALOGUE — roles de plateforme
-# geree, bases etrangeres. Deux executions simultanees y voient les objets
-# TRANSITOIRES l'une de l'autre et se refusent mutuellement pour un motif faux:
-# mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
-# alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
-# detruit rien; le prendre d'abord rend la porte deterministe.
+# TROIS ETAPES, DANS CET ORDRE, ET L'ORDRE EST LE SUJET.
+#
+#   1. PRECONTROLE SANS RESEAU — intention declaree et hote de boucle locale,
+#      lus dans l'environnement. Aucun octet ne part. Mesure: sans lui, une
+#      `DATABASE_URL` distante faisait PARTIR une connexion — et des
+#      identifiants avec elle — avant le moindre refus.
+#   2. LE VERROU. Il se connecte, mais ne detruit rien. Le prendre avant la
+#      porte rend celle-ci deterministe: sinon deux executions simultanees
+#      voient les objets TRANSITOIRES l'une de l'autre et se refusent sur un
+#      motif faux (« ce cluster porte supabase_admin », mesure).
+#   3. LA PORTE CATALOGUE — marqueurs de plateforme geree, bases etrangeres,
+#      superutilisateur.
 harnais_verrou_prendre "role_prerequisites.sh" || exit 3
 exiger_cluster_jetable "role_prerequisites.sh" || exit 2
 

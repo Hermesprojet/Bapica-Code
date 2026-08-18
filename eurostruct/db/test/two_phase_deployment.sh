@@ -107,20 +107,22 @@ fi
 #   3. les roles canoniques doivent etre ABSENTS: ce script ne detruit jamais
 #      ce qu'il n'a pas cree.
 harnais_connexion || exit 2
-# LE VERROU AVANT LA PORTE. La porte lit le CATALOGUE — roles de plateforme
-# geree, bases etrangeres. Deux executions simultanees y voient les objets
-# TRANSITOIRES l'une de l'autre et se refusent mutuellement pour un motif faux:
-# mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
-# alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
-# detruit rien; le prendre d'abord rend la porte deterministe.
+# TROIS ETAPES, DANS CET ORDRE, ET L'ORDRE EST LE SUJET.
+#
+#   1. PRECONTROLE SANS RESEAU — intention declaree et hote de boucle locale,
+#      lus dans l'environnement. Aucun octet ne part. Mesure: sans lui, une
+#      `DATABASE_URL` distante faisait PARTIR une connexion — et des
+#      identifiants avec elle — avant le moindre refus.
+#   2. LE VERROU. Il se connecte, mais ne detruit rien. Le prendre avant la
+#      porte rend celle-ci deterministe: sinon deux executions simultanees
+#      voient les objets TRANSITOIRES l'une de l'autre et se refusent sur un
+#      motif faux (« ce cluster porte supabase_admin », mesure).
+#   3. LA PORTE CATALOGUE — marqueurs de plateforme geree, bases etrangeres,
+#      superutilisateur.
 exiger_precontrole_local "two_phase_deployment.sh" || exit 2
 harnais_verrou_prendre "two_phase_deployment.sh" || exit 3
 exiger_cluster_jetable "two_phase_deployment.sh" || exit 2
 
-# LE VERROU. Sans lui, deux executions simultanees constatent toutes deux les
-# roles canoniques absents, puis l'une detruit ceux que l'autre vient de creer.
-# Verrou deja detenu -> code 3, et AUCUN nettoyage: nettoyer ici emporterait
-# les objets de l'execution en cours.
 
 # Un jeton par execution pour les roles JETABLES. Les roles canoniques, eux,
 # portent des noms imposes par la migration: ils ne peuvent pas etre suffixes,

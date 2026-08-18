@@ -43,20 +43,22 @@ harnais_connexion || exit 2
 #
 # Elle exige donc un cluster ENTIEREMENT JETABLE, prouve tel — declaration
 # explicite ET constats. Sans preuve: refus, avant la premiere connexion utile.
-# LE VERROU AVANT LA PORTE. La porte lit le CATALOGUE — roles de plateforme
-# geree, bases etrangeres. Deux executions simultanees y voient les objets
-# TRANSITOIRES l'une de l'autre et se refusent mutuellement pour un motif faux:
-# mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
-# alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
-# detruit rien; le prendre d'abord rend la porte deterministe.
+# TROIS ETAPES, DANS CET ORDRE, ET L'ORDRE EST LE SUJET.
+#
+#   1. PRECONTROLE SANS RESEAU — intention declaree et hote de boucle locale,
+#      lus dans l'environnement. Aucun octet ne part. Mesure: sans lui, une
+#      `DATABASE_URL` distante faisait PARTIR une connexion — et des
+#      identifiants avec elle — avant le moindre refus.
+#   2. LE VERROU. Il se connecte, mais ne detruit rien. Le prendre avant la
+#      porte rend celle-ci deterministe: sinon deux executions simultanees
+#      voient les objets TRANSITOIRES l'une de l'autre et se refusent sur un
+#      motif faux (« ce cluster porte supabase_admin », mesure).
+#   3. LA PORTE CATALOGUE — marqueurs de plateforme geree, bases etrangeres,
+#      superutilisateur.
 exiger_precontrole_local "db/test/run.sh" || exit 2
 harnais_verrou_prendre "db/test/run.sh" || exit 3
 exiger_cluster_jetable "db/test/run.sh" || exit 2
 
-# LE VERROU, pour toute la duree de la suite. Deux executions simultanees
-# constateraient toutes deux les roles canoniques absents, puis l'une
-# detruirait ceux que l'autre vient de creer. Verrou deja detenu -> code 3, et
-# AUCUN nettoyage: nettoyer ici emporterait les objets de l'autre execution.
 
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             normative_backend normative_governance eurostruct_deployment)
