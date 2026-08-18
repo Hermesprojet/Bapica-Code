@@ -71,6 +71,23 @@ ROLES_FICTIFS="fictif_login_a fictif_b fictif_c fictif_relais"
 # changer de base: le mot de passe se retrouvait dans `ps`, lisible par tout
 # processus de la machine. Seule la base change desormais, par `-d`.
 harnais_connexion || exit 2
+
+# LA GARDE S'APPLIQUE ICI AUSSI (correctif #5).
+#
+# Ce script cree et supprime des roles GLOBAUX a noms FIXES. Il est appelable
+# seul, et `run.sh` ayant deja verifie le cluster ne le protege pas: un script
+# sur dans un seul ordre d'appel n'est pas intrinsequement sur. La garde et le
+# verrou sont donc pris ici, independamment de l'appelant — et sans cout quand
+# l'appelant les detient deja (jeton de proprietaire transmis).
+# LE VERROU AVANT LA PORTE. La porte lit le CATALOGUE — roles de plateforme
+# geree, bases etrangeres. Deux executions simultanees y voient les objets
+# TRANSITOIRES l'une de l'autre et se refusent mutuellement pour un motif faux:
+# mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
+# alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
+# detruit rien; le prendre d'abord rend la porte deterministe.
+harnais_verrou_prendre "role_prerequisites.sh" || exit 3
+exiger_cluster_jetable "role_prerequisites.sh" || exit 2
+
 PSQL_DB=(psql -X -q -d "$DB")
 PSQL_ADMIN=(psql -X -q -d postgres)
 

@@ -43,7 +43,28 @@ harnais_connexion || exit 2
 #
 # Elle exige donc un cluster ENTIEREMENT JETABLE, prouve tel — declaration
 # explicite ET constats. Sans preuve: refus, avant la premiere connexion utile.
+# LE VERROU AVANT LA PORTE. La porte lit le CATALOGUE — roles de plateforme
+# geree, bases etrangeres. Deux executions simultanees y voient les objets
+# TRANSITOIRES l'une de l'autre et se refusent mutuellement pour un motif faux:
+# mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
+# alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
+# detruit rien; le prendre d'abord rend la porte deterministe.
+harnais_verrou_prendre "db/test/run.sh" || exit 3
 exiger_cluster_jetable "db/test/run.sh" || exit 2
+
+# LE VERROU, pour toute la duree de la suite. Deux executions simultanees
+# constateraient toutes deux les roles canoniques absents, puis l'une
+# detruirait ceux que l'autre vient de creer. Verrou deja detenu -> code 3, et
+# AUCUN nettoyage: nettoyer ici emporterait les objets de l'autre execution.
+
+CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
+            normative_backend normative_governance eurostruct_deployment)
+
+# BLOQUANT, et place ICI: avant l'oracle, avant les migrations, avant tout
+# test. Le rouge d'une sous-surface ne suffirait pas — `etape()` continue
+# volontairement, et la suite irait creer puis detruire des roles qui ne lui
+# appartiennent pas. C'est toute la commande qui doit s'arreter.
+exiger_roles_absents "db/test/run.sh" "${CANONIQUES[@]}" || exit 2
 
 # La base RECREEE, et non celle nommee dans la connexion. Les deux etaient
 # confondues: le script effacait `eurostruct_test` puis appliquait les
@@ -92,22 +113,32 @@ etape() {
 # l'etaient, tout role canonique present a la fin a ete cree par cette
 # execution, et elle le retire. Sinon on n'y touche pas: ils appartiennent a
 # quelqu'un d'autre.
-CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
-            normative_backend normative_governance eurostruct_deployment)
-CANONIQUES_ABSENTS=$(adm -tAc "
-  select count(*) = 0 from pg_roles
-   where rolname = any (array['${CANONIQUES[0]}','${CANONIQUES[1]}',
-                              '${CANONIQUES[2]}','${CANONIQUES[3]}',
-                              '${CANONIQUES[4]}'])")
-rendre_les_roles() {
-  [[ "$CANONIQUES_ABSENTS" == "t" ]] || return 0
+# --------------------------------------------------------------------------
+# LE DECOR EST RENDU, ET LA RESTITUTION EST VERIFIEE
+# --------------------------------------------------------------------------
+# Les migrations CREENT les roles canoniques, et ils survivent a la destruction
+# des bases. `exiger_roles_absents` vient d'etablir qu'aucun n'existait: tout
+# role canonique present a la fin a donc ete cree par cette execution, et elle
+# le retire.
+#
+# L'ordre compte. `DROP OWNED BY` ne voit que la base courante, et les roles
+# d'autorite possedent des fonctions dans les bases de test: les bases partent
+# d'abord, ce qui emporte ces objets, et les roles ensuite. L'ordre inverse
+# echouait — et l'echec etait masque.
+#
+# CODE 3 SI LA POSTCONDITION ECHOUE. « Deux executions consecutives sans
+# residu » etait une observation du rapport; c'est desormais une propriete
+# controlee, base par base et role par role, par nom exact.
+NETTOYAGE_KO=0
+rendre_le_decor() {
   local r
-  for r in "${CANONIQUES[@]}"; do
-    adm -c "drop owned by \"$r\";"      >/dev/null 2>&1
-    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
-  done
+  for r in "${CANONIQUES[@]}"; do registre_role "$r"; done
+  detruire_roles_crees || NETTOYAGE_KO=1
+  harnais_postcondition_nettoyage "db/test/run.sh" "${CANONIQUES[@]}" || NETTOYAGE_KO=1
+  harnais_verrou_rendre
+  [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
 }
-trap rendre_les_roles EXIT
+trap rendre_le_decor EXIT
 
 echo "==> oracle comportemental des primitives de portee"
 etape "oracle de portee des roles" \
@@ -119,7 +150,7 @@ etape "deploiement en deux phases" \
 
 echo "==> recreating $DB_NAME"
 adm -c "drop database if exists $DB_NAME;" >/dev/null
-adm -c "create database $DB_NAME;" >/dev/null
+creer_base "$DB_NAME" >/dev/null
 
 echo "==> applying schema"
 for f in \
@@ -158,7 +189,7 @@ unset 'PRECEDENTES[${#PRECEDENTES[@]}-1]'
 
 echo "==> upgrade path: $(basename "$DERNIERE") sur une base en 0009"
 adm -c "drop database if exists $UPGRADE_DB;" >/dev/null
-adm -c "create database $UPGRADE_DB;" >/dev/null
+creer_base "$UPGRADE_DB" >/dev/null
 
 UP=(psql -X -q -d "$UPGRADE_DB")
 
@@ -183,7 +214,7 @@ adm -c "drop database if exists $UPGRADE_DB;" >/dev/null
 CONC_DB="${DB_NAME}_conc"
 echo "==> concurrence multi-connexion"
 adm -c "drop database if exists $CONC_DB;" >/dev/null
-adm -c "create database $CONC_DB;" >/dev/null
+creer_base "$CONC_DB" >/dev/null
 
 CONC=(psql -X -q -d "$CONC_DB")
 "${CONC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql"
@@ -227,6 +258,7 @@ adm -c "drop database if exists $CONC_DB;" >/dev/null
 # --------------------------------------------------------------------------
 ROLE_DB="${DB_NAME}_roles"
 echo "==> prerequis de deploiement sur les roles"
+registre_base "$ROLE_DB"
 etape "prerequis de deploiement sur les roles" \
   "$HERE/role_prerequisites.sh" "$ROLE_DB"
 adm -c "drop database if exists $ROLE_DB;" >/dev/null 2>&1
@@ -241,6 +273,7 @@ adm -c "drop database if exists $ROLE_DB;" >/dev/null 2>&1
 # --------------------------------------------------------------------------
 NS_DB="${DB_NAME}_nonsuper"
 echo "==> installation sous un role de migration non superutilisateur"
+registre_base "$NS_DB"
 etape "installation non superutilisateur" \
   "$HERE/nonsuperuser_install.sh" "$NS_DB"
 adm -c "drop database if exists $NS_DB;" >/dev/null 2>&1
@@ -255,7 +288,7 @@ adm -c "drop database if exists $NS_DB;" >/dev/null 2>&1
 XC_DB="${DB_NAME}_contract"
 echo "==> base vierge: racine de confiance et contrat croise"
 adm -c "drop database if exists $XC_DB;" >/dev/null
-adm -c "create database $XC_DB;" >/dev/null
+creer_base "$XC_DB" >/dev/null
 
 XC=(psql -X -q -d "$XC_DB")
 "${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql"

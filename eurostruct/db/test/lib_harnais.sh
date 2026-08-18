@@ -267,6 +267,175 @@ EOF
 }
 
 # --------------------------------------------------------------------------
+# VERROU EXCLUSIF AU NIVEAU DU CLUSTER
+# --------------------------------------------------------------------------
+# LA COURSE QU'IL FERME. `exiger_roles_absents` constate que les roles
+# canoniques n'existent pas, et le harnais en deduit que tout role canonique
+# present a la fin est a lui. Deux executions simultanees peuvent faire ce
+# constat TOUTES LES DEUX, puis l'une detruire les roles que l'autre vient de
+# creer — pendant qu'elle s'en sert. La deduction devient fausse, et le
+# nettoyage devient une destruction.
+#
+# POURQUOI UN VERROU CONSULTATIF DE SESSION, ET PAS UNE TABLE NI UN FICHIER.
+#
+#   * un fichier de verrou est local a la machine; deux machines visant le
+#     meme cluster ne se verraient pas;
+#   * une ligne dans une table SURVIT a un processus tue, et wedge la CI
+#     jusqu'a une intervention manuelle;
+#   * un verrou consultatif de SESSION est libere par PostgreSQL lui-meme des
+#     que la connexion tombe — plantage, `kill -9`, coupure reseau. Il n'y a
+#     donc aucun etat rance possible.
+#
+# La session est tenue ouverte par un co-processus `psql`: tant que le script
+# vit, la connexion vit et le verrou tient. Quand le script meurt, de quelque
+# facon que ce soit, la connexion meurt avec lui.
+# La cle est surchargeable par l'environnement, et cela sert a UNE chose: le
+# scenario de concurrence de l'auto-test fait s'affronter deux enfants sur une
+# cle qui leur est propre, pendant que le parent garde la vraie. Sans cela il
+# devrait relacher le verrou reel — et ouvrir, le temps du scenario, la fenetre
+# meme qu'il verifie. Defaut mesure: une seconde execution passait alors la
+# porte et voyait les temoins transitoires de la premiere.
+HARNAIS_VERROU_CLE="${EUROSTRUCT_HARNAIS_VERROU_CLE:-7314159}"
+HARNAIS_VERROU_TENU=0
+
+harnais_verrou_prendre() {
+  local qui="${1:-ce harnais}" pris
+
+  # RE-ENTRANCE. L'auto-test de securite INVOQUE la commande canonique pour la
+  # mettre en echec: si l'enfant redemandait le verrou que son parent detient,
+  # il refuserait pour une raison etrangere au scenario, et la preuve ne
+  # porterait plus sur ce qu'elle annonce.
+  #
+  # Le jeton est pose par le parent et transmis par l'environnement. Il ne
+  # relache aucune exclusion vis-a-vis des AUTRES arbres d'execution: ceux-la
+  # n'ont pas le jeton, et se heurtent au verrou.
+  if [[ -n "${EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE:-}" ]]; then
+    HARNAIS_VERROU_TENU=0
+    return 0
+  fi
+
+  coproc HARNAIS_VERROU { psql -X -q -At -d postgres 2>&1; }
+  if [[ -z "${HARNAIS_VERROU_PID:-}" ]]; then
+    echo "NON EXECUTE: $qui n'a pas pu ouvrir la session du verrou." >&2
+    return 3
+  fi
+  echo "select pg_try_advisory_lock($HARNAIS_VERROU_CLE)::text;" >&"${HARNAIS_VERROU[1]}"
+  if ! read -r -t 15 -u "${HARNAIS_VERROU[0]}" pris; then
+    echo "NON EXECUTE: $qui n'a obtenu aucune reponse du verrou en 15 s." >&2
+    harnais_verrou_rendre
+    return 3
+  fi
+  if [[ "$pris" != "true" ]]; then
+    cat >&2 <<EOF
+NON EXECUTE: le verrou de harnais est deja detenu par une autre execution.
+
+       Deux executions simultanees se detruiraient mutuellement leurs roles
+       globaux. Celle-ci s'arrete SANS RIEN NETTOYER — un nettoyage ici
+       emporterait les objets de l'execution en cours.
+
+       Relancez quand l'autre execution est terminee.
+EOF
+    harnais_verrou_rendre
+    return 3
+  fi
+
+  HARNAIS_VERROU_TENU=1
+  # Transmis aux enfants: eux savent que l'arbre detient deja le verrou.
+  export EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE="$$"
+  return 0
+}
+
+harnais_verrou_rendre() {
+  [[ -n "${HARNAIS_VERROU_PID:-}" ]] || return 0
+  # Fermer l'entree du co-processus termine `psql`, donc la session, donc le
+  # verrou. Aucun `pg_advisory_unlock` explicite: on veut que la liberation
+  # tienne aussi quand le script meurt sans passer par ici.
+  #
+  # `exec {TABLEAU[1]}>&-` N'EST PAS la syntaxe de fermeture par variable: bash
+  # n'accepte la forme `{nom}` qu'avec un nom simple. Avec un indice de
+  # tableau, le mot est pris pour un NOM DE COMMANDE — et `exec` remplace alors
+  # le shell, qui meurt sur-le-champ. Defaut mesure: le scenario de concurrence
+  # ne s'executait pas du tout, sans un mot d'erreur, et le fichier se
+  # declarait rouge sans dire lequel de ses controles avait echoue.
+  #
+  # On ferme donc le descripteur par son NUMERO, via `eval`.
+  eval "exec ${HARNAIS_VERROU[1]}>&-" 2>/dev/null || true
+  wait "$HARNAIS_VERROU_PID" 2>/dev/null || true
+  unset HARNAIS_VERROU_PID
+  HARNAIS_VERROU_TENU=0
+}
+
+# --------------------------------------------------------------------------
+# REGISTRE DES BASES CREEES
+# --------------------------------------------------------------------------
+# `DROP OWNED BY` ne traite QUE la base courante. Le nettoyage s'executait dans
+# `postgres` alors que les roles d'autorite possedent des fonctions dans les
+# bases de test: le DROP echouait, l'echec etait masque par `2>/dev/null`, et
+# le role survivait.
+#
+# Les bases sont donc inscrites, detruites AVANT les roles — ce qui emporte
+# d'un coup tout ce que les roles y possedent — et la destruction est VERIFIEE.
+HARNAIS_BASES_CREEES=()
+
+creer_base() {
+  local nom="$1"; shift
+  psql -X -q -d postgres -v ON_ERROR_STOP=1 \
+    -c "create database \"$nom\" $*" >/dev/null || return 1
+  HARNAIS_BASES_CREEES+=("$nom")
+  return 0
+}
+registre_base() { HARNAIS_BASES_CREEES+=("$1"); }
+
+detruire_bases_creees() {
+  local b echecs=0
+  for b in "${HARNAIS_BASES_CREEES[@]:-}"; do
+    [[ -n "$b" ]] || continue
+    # Les connexions restantes empechent le DROP. On les termine d'abord, et
+    # seulement sur CETTE base, nommee exactement.
+    psql -X -q -d postgres -c \
+      "select pg_terminate_backend(pid) from pg_stat_activity
+        where datname = '$b' and pid <> pg_backend_pid();" >/dev/null 2>&1
+    if ! psql -X -q -d postgres -c "drop database if exists \"$b\";" >/dev/null 2>&1; then
+      echo "      ECHEC NETTOYAGE: la base « $b » n'a pas pu etre detruite" >&2
+      echecs=$((echecs + 1))
+    fi
+  done
+  return $(( echecs > 0 ))
+}
+
+# --------------------------------------------------------------------------
+# POSTCONDITION DE NETTOYAGE — verifiee, jamais affirmee
+# --------------------------------------------------------------------------
+# « Deux executions consecutives sans residu » etait une observation du rapport
+# final, pas une propriete controlee. Elle l'est ici: chaque base et chaque
+# role, par son NOM EXACT, doit avoir disparu. Sinon code 3 — le decor n'est
+# pas rendu, et l'execution suivante partirait d'un etat qu'on croit propre.
+harnais_postcondition_nettoyage() {
+  local qui="${1:-ce harnais}"; shift
+  local restants=() b r
+  for b in "${HARNAIS_BASES_CREEES[@]:-}"; do
+    [[ -n "$b" ]] || continue
+    [[ "$(psql -X -q -tA -d postgres -c \
+        "select count(*) from pg_database where datname = '$b'" 2>/dev/null)" == "0" ]] \
+      || restants+=("base $b")
+  done
+  for r in "${HARNAIS_ROLES_CREES[@]:-}" "$@"; do
+    [[ -n "$r" ]] || continue
+    [[ "$(psql -X -q -tA -d postgres -c \
+        "select count(*) from pg_roles where rolname = '$r'" 2>/dev/null)" == "0" ]] \
+      || restants+=("role $r")
+  done
+  if [[ ${#restants[@]} -gt 0 ]]; then
+    echo "      NON EXECUTE: le nettoyage de $qui a laisse ${#restants[@]} objet(s):" >&2
+    printf '              %s\n' "${restants[@]}" >&2
+    echo "              L'execution suivante partirait d'un etat qu'elle" >&2
+    echo "              croirait propre. Nettoyez a la main puis relancez." >&2
+    return 3
+  fi
+  return 0
+}
+
+# --------------------------------------------------------------------------
 # REGISTRE DES ROLES CREES — le seul nettoyage autorise
 # --------------------------------------------------------------------------
 # Aucun nettoyage par motif. `drop role ... like 'oracle_%'` emporte tout ce
@@ -288,8 +457,16 @@ creer_role() {
   return 0
 }
 
+# Les bases d'abord: `DROP OWNED BY` ne voit que la base courante, et un role
+# qui possede une fonction dans une base de test ne peut pas etre detruit tant
+# que cette base existe. L'ordre inverse echouait, et l'echec etait masque.
+#
+# Les echecs ne sont PLUS masques: `2>/dev/null` sur un DROP transformait
+# « je n'ai pas pu nettoyer » en « rien a signaler », et le role survivait
+# jusqu'a l'execution suivante — qui le prenait pour un residu etranger.
 detruire_roles_crees() {
-  local r
+  local r echecs=0 sortie
+  detruire_bases_creees || echecs=$((echecs + 1))
   # A l'envers: les roles crees en dernier peuvent dependre des precedents.
   for (( idx=${#HARNAIS_ROLES_CREES[@]}-1 ; idx>=0 ; idx-- )); do
     r="${HARNAIS_ROLES_CREES[idx]}"
@@ -298,7 +475,12 @@ detruire_roles_crees() {
     # cascade, un objet dependant fait echouer le DROP — et c'est ce qu'on
     # veut: un diagnostic, pas une destruction silencieuse.
     psql -X -q -d postgres -c "drop owned by \"$r\";" >/dev/null 2>&1
-    psql -X -q -d postgres -c "drop role if exists \"$r\";" >/dev/null 2>&1
+    if ! sortie=$(psql -X -q -d postgres -c "drop role if exists \"$r\";" 2>&1); then
+      echo "      ECHEC NETTOYAGE: le role « $r » n'a pas pu etre detruit" >&2
+      sed 's/^/              /' <<<"$sortie" | head -3 >&2
+      echecs=$((echecs + 1))
+    fi
   done
   HARNAIS_ROLES_CREES=()
+  return $(( echecs > 0 ))
 }

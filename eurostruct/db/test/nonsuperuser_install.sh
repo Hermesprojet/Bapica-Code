@@ -75,6 +75,23 @@ MDP='FICTIF-nonsuperuser'
 # passent par l'environnement du seul appel concerne.
 harnais_connexion || exit 2
 
+# LA GARDE S'APPLIQUE ICI AUSSI (correctif #5).
+#
+# Ce script cree et supprime des roles GLOBAUX a noms FIXES. Il est appelable
+# seul, et `run.sh` ayant deja verifie le cluster ne le protege pas: un script
+# sur dans un seul ordre d'appel n'est pas intrinsequement sur. La garde et le
+# verrou sont donc pris ici, independamment de l'appelant — et sans cout quand
+# l'appelant les detient deja (jeton de proprietaire transmis).
+# LE VERROU AVANT LA PORTE. La porte lit le CATALOGUE — roles de plateforme
+# geree, bases etrangeres. Deux executions simultanees y voient les objets
+# TRANSITOIRES l'une de l'autre et se refusent mutuellement pour un motif faux:
+# mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
+# alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
+# detruit rien; le prendre d'abord rend la porte deterministe.
+harnais_verrou_prendre "nonsuperuser_install.sh" || exit 3
+exiger_cluster_jetable "nonsuperuser_install.sh" || exit 2
+
+
 ADMIN=(psql -X -q -d postgres)
 ADMIN_DB=(psql -X -q -d "$DB")
 MIG=(psql -X -d "$DB")

@@ -107,7 +107,19 @@ fi
 #   3. les roles canoniques doivent etre ABSENTS: ce script ne detruit jamais
 #      ce qu'il n'a pas cree.
 harnais_connexion || exit 2
+# LE VERROU AVANT LA PORTE. La porte lit le CATALOGUE — roles de plateforme
+# geree, bases etrangeres. Deux executions simultanees y voient les objets
+# TRANSITOIRES l'une de l'autre et se refusent mutuellement pour un motif faux:
+# mesure, une seconde execution rapportait « ce cluster porte supabase_admin »
+# alors qu'il s'agissait du temoin momentane de la premiere. Le verrou, lui, ne
+# detruit rien; le prendre d'abord rend la porte deterministe.
+harnais_verrou_prendre "two_phase_deployment.sh" || exit 3
 exiger_cluster_jetable "two_phase_deployment.sh" || exit 2
+
+# LE VERROU. Sans lui, deux executions simultanees constatent toutes deux les
+# roles canoniques absents, puis l'une detruit ceux que l'autre vient de creer.
+# Verrou deja detenu -> code 3, et AUCUN nettoyage: nettoyer ici emporterait
+# les objets de l'execution en cours.
 
 # Un jeton par execution pour les roles JETABLES. Les roles canoniques, eux,
 # portent des noms imposes par la migration: ils ne peuvent pas etre suffixes,
@@ -127,6 +139,9 @@ PROPRIETAIRE="${PGUSER:-postgres}"
 BASE_A="${PREFIXE}_a_${JETON}"
 BASE_B="${PREFIXE}_b_${JETON}"
 BASE_C="${PREFIXE}_c_${JETON}"
+# Inscrites des maintenant: la postcondition doit les couvrir meme si l'une
+# n'a pas pu etre creee — c'est justement le cas ou l'on veut le constater.
+registre_base "$BASE_A"; registre_base "$BASE_B"; registre_base "$BASE_C"
 
 ECHECS=0; ROUGES_ATTENDUS=0
 echoue() { echo "      ECHEC: $*" >&2; ECHECS=$((ECHECS + 1)); }
@@ -148,7 +163,12 @@ plan() { local b="$1"; shift; PGUSER="$PLAN"      PGPASSWORD="$PLAN_MDP" psql -X
 # c'est-a-dire ceux que CETTE execution a crees.
 raz() {
   local b r
+  # Les bases D'ABORD: `DROP OWNED BY` ne voit que la base courante, et les
+  # roles d'autorite possedent des fonctions dans ces bases. Les detruire
+  # ensuite echouait, et l'echec etait masque.
   for b in "$BASE_A" "$BASE_B" "$BASE_C"; do
+    adm -c "select pg_terminate_backend(pid) from pg_stat_activity
+             where datname = '$b' and pid <> pg_backend_pid();" >/dev/null 2>&1
     adm -c "drop database if exists \"$b\";" >/dev/null 2>&1
   done
 
@@ -172,7 +192,22 @@ raz() {
 
   detruire_roles_crees
 }
-trap raz EXIT
+# POSTCONDITION VERIFIEE, et le verrou rendu. « Sans residu » cesse d'etre une
+# observation pour devenir une propriete controlee, base par base et role par
+# role, par nom exact. Code 3 si elle echoue: l'execution suivante partirait
+# d'un etat qu'elle croirait propre.
+NETTOYAGE_KO=0
+sortie_propre() {
+  raz
+  local r
+  for r in "${CANONIQUES[@]}"; do registre_role "$r"; done
+  detruire_roles_crees || NETTOYAGE_KO=1
+  harnais_postcondition_nettoyage "two_phase_deployment.sh" \
+    "${CANONIQUES[@]}" "$MIGRATEUR" "$PLAN" || NETTOYAGE_KO=1
+  harnais_verrou_rendre
+  [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
+}
+trap sortie_propre EXIT
 
 # Les deux roles jetables, recrees a chaque configuration.
 creer_acteurs() {

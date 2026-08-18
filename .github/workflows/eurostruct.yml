@@ -152,6 +152,11 @@ jobs:
           PGPASSWORD: postgres
           PGHOST: localhost
           PGUSER: postgres
+          # L'auto-test est soumis aux memes gardes que ce qu'il teste: il cree
+          # et detruit lui aussi des roles globaux portant les noms canoniques.
+          # Le consentement lui est donc donne EXPLICITEMENT ici, comme aux
+          # autres — jamais par une exemption interne au script.
+          EUROSTRUCT_CLUSTER_JETABLE: oui-cluster-jetable-et-isole
         run: ./db/test/harness_safety_selftest.sh
 
       - name: Migrations et garanties structurelles

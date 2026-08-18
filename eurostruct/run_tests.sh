@@ -156,13 +156,22 @@ else
     NOMS+=("securite des harnais"); ETATS+=("VERT")
     DETAILS+=("$barrieres barriere(s) mise(s) en echec, toutes ont refuse")
   elif [[ $code_sec -eq 3 ]]; then
-    # Le decor manque: la securite n'a pas ete JUGEE. NON EXECUTEE, jamais
-    # VERT — une surface qu'on n'a pas pu evaluer ne doit pas ressembler a une
-    # surface qui a passe. Et distincte du ROUGE: « une barriere cede » et
-    # « il reste des roles d'une execution precedente » sont deux nouvelles
-    # differentes, que confondre ferait chercher une faille inexistante.
+    # La securite n'a pas ete JUGEE. NON EXECUTEE, jamais VERT — une surface
+    # qu'on n'a pas pu evaluer ne doit pas ressembler a une surface qui a
+    # passe. Et distincte du ROUGE: « une barriere cede » et « le decor
+    # manque » sont deux nouvelles differentes, que confondre ferait chercher
+    # une faille inexistante.
+    #
+    # LE MOTIF EST LU DANS LA SORTIE, et non deduit du seul code. Les deux
+    # causes rendent 3, et annoncer « roles residuels » quand c'est le verrou
+    # enverrait nettoyer un cluster qui n'a rien a se reprocher — mesure faite
+    # sur deux executions concurrentes.
     NOMS+=("securite des harnais"); ETATS+=("NON EXECUTEE")
-    DETAILS+=("roles canoniques residuels: nettoyer le cluster puis relancer")
+    if grep -qi "verrou de harnais est deja detenu" <<<"$sortie_sec"; then
+      DETAILS+=("verrou detenu par une autre execution: relancer ensuite")
+    else
+      DETAILS+=("roles canoniques residuels: nettoyer le cluster puis relancer")
+    fi
     echo "$sortie_sec" | tail -6 | sed 's/^/    /'
     EXIT=1
   else
@@ -181,7 +190,21 @@ elif ! db_joignable; then
   DETAILS+=("aucun PostgreSQL joignable (DATABASE_URL ou PGHOST)")
   [[ $REQUIRE_DB -eq 1 ]] && EXIT=1
 else
-  if sortie=$("$HERE/db/test/run.sh" 2>&1); then
+  code_sql=0
+  sortie=$("$HERE/db/test/run.sh" 2>&1) || code_sql=$?
+  if [[ $code_sql -eq 3 ]]; then
+    # Verrou detenu, ou decor non rendu: la surface n'a pas ete JUGEE. La
+    # declarer ROUGE ferait chercher une regression la ou il n'y a qu'une
+    # execution concurrente.
+    NOMS+=("garanties SQL"); ETATS+=("NON EXECUTEE")
+    if grep -qi "verrou de harnais est deja detenu" <<<"$sortie"; then
+      DETAILS+=("verrou detenu par une autre execution: relancer ensuite")
+    else
+      DETAILS+=("decor non rendu: voir sortie ci-dessus")
+    fi
+    echo "$sortie" | tail -12 | sed 's/^/    /'
+    EXIT=1
+  elif [[ $code_sql -eq 0 ]]; then
     # Chaque fichier SQL termine par un encadre « ... verifie(es) ». Compter
     # ces lignes plutot qu'un motif « ok/pass » que ce runner n'imprime pas:
     # un « 0 controles » a cote d'un VERT est le genre de detail qui ruine la
