@@ -259,10 +259,14 @@ fi
 # tomberait aussi bien en ACTIVE. On veut un refus qui NOMME l'etat — c'est la
 # seule preuve que l'ecriture est refusee PARCE QUE le deploiement n'est pas
 # finalise. Tout autre refus est compte comme « non prouve ».
+DETAIL_T=""
 for t in normative_authorisation_grants normative_authorisation_revocations \
          normative_rule_confirmations normative_rule_confirmation_revocations; do
   S=$(admb -c "insert into $t default values;" 2>&1)
-  grep -qiE "PENDING|pas actif|non active" <<<"$S" || PENDING_OUVERT=$((PENDING_OUVERT + 1))
+  if ! grep -qiE "PENDING|pas actif|non active" <<<"$S"; then
+    PENDING_OUVERT=$((PENDING_OUVERT + 1))
+    [[ -n "$DETAIL_T" ]] || DETAIL_T="$t: $(grep -m1 -iE 'ERROR|ERREUR' <<<"$S" | cut -c1-110)"
+  fi
 done
 
 if [[ "$PENDING_OUVERT" != "0" ]]; then
@@ -270,6 +274,7 @@ if [[ "$PENDING_OUVERT" != "0" ]]; then
   rouge "   AU MOTIF DE L'ETAT PENDING. Or 0010 affirme que « les declencheurs"
   rouge "   la refusent » — et s'appuie sur cette phrase pour n'exiger le bloc A"
   rouge "   de la topologie qu'en ACTIVE. Amorcage: $DETAIL_A"
+  [[ -n "$DETAIL_T" ]] && rouge "   $DETAIL_T"
 else
   echo "      ok: 5. les cinq ecritures normatives sont refusees en PENDING"
 fi
@@ -346,36 +351,53 @@ if ! decor_poser 2 separe; then
   echoue "le decor 2 n'a pas pu etre pose: le point 2 n'est pas evalue"
 else
 suivre_decor
-ctl_pg -c "revoke eurostruct_normative_writer, eurostruct_normative_bootstrap,
-                  eurostruct_normative_activator from \"$MIG\";" >/dev/null 2>&1
-RESTE=$(adm -tAc "select count(*) from unnest(array['eurostruct_normative_writer',
-                    'eurostruct_normative_bootstrap','eurostruct_normative_activator']) a(r)
-                   where pg_has_role('$MIG', a.r, 'SET')
-                      or pg_has_role('$MIG', a.r, 'USAGE')
-                      or pg_has_role('$MIG', a.r, 'MEMBER WITH ADMIN OPTION')" 2>&1)
-if [[ "$RESTE" != "0" ]]; then
-  echoue "2. les emprunts n'ont pas pu etre rendus par le donneur ($RESTE restants):"
-  echoue "   le refus attendu viendrait de la topologie et non du contrat."
+DEUX=0
+# 2a. AUCUNE IDENTITE A FOURNIR. L'ancienne signature `(text, text)` prenait le
+#     plan de controle et le migrateur en arguments. Elle ne doit plus exister:
+#     `create or replace` en aurait fait une surcharge vivante a cote de la
+#     nouvelle, et la porte serait restee ouverte.
+SURCHARGE=$(admb -tAc "select count(*) from pg_proc
+                        where proname = 'normative_record_activation'
+                          and pronargs > 0" 2>&1)
+[[ "$SURCHARGE" == "0" ]] || { rouge "2a. l'ecriture de confiance accepte encore"
+                               rouge "    $SURCHARGE signature(s) a arguments: l'identite"
+                               rouge "    de l'installateur reste fournie par l'appelant."
+                               DEUX=1; }
+
+# 2b. SANS PREPARATION, RIEN. Appelee directement, sans que la phase 2 ait
+#     derive quoi que ce soit du catalogue, l'ecriture de confiance doit
+#     refuser — et le dire.
+SANS_PREP=$(ctl -tAc "select normative_record_activation()" 2>&1)
+grep -qiE "intention|preparation|prepar" <<<"$SANS_PREP" \
+  || { rouge "2b. l'appel direct sans preparation n'est pas refuse pour ce motif:"
+       rouge "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SANS_PREP" | cut -c1-140)"; DEUX=1; }
+
+# 2c. AVEC PREPARATION MAIS SANS RESTITUTION, RIEN NON PLUS. C'est la propriete
+#     que 0010 revendiquait deja — « ce qui la protege n'est pas le chemin
+#     d'appel, c'est l'ETAT qu'elle exige » — et qui etait fausse. On la
+#     verifie: on prepare pour de bon, puis on saute la revocation.
+MANIFESTE=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
+PREP=$(ctl -tAc "select normative_prepare_activation('$MANIFESTE')" 2>&1)
+if ! grep -qE '^[0-9a-f]{64}$' <<<"$PREP"; then
+  echoue "2c. la preparation legitime a echoue, le scenario ne prouverait rien:"
+  echoue "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$PREP" | cut -c1-140)"
 else
-  SORTIE=$(ctl -tAc "select normative_record_activation('$CTL', 'normative_governance')" 2>&1)
-  ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
-  if [[ "$ETAT" == "ACTIVE" ]]; then
-    AUDIT=$(admb -tAc "select activated_by || ' | ' || left(topology_digest, 12)
-                         from normative_activation" 2>&1)
-    rouge "2. L'APPEL DIRECT A ACTIVE LE SOUS-SYSTEME en sautant la finalisation."
-    rouge "   Le nom du migrateur a ete FOURNI par l'appelant"
-    rouge "   (« normative_governance », qui n'a jamais migre quoi que ce soit)."
-    rouge "   Rien n'a derive le donneur, rien n'a verifie que l'appelant EST"
-    rouge "   le donneur, rien n'a revoque: l'appelant a simplement declare"
-    rouge "   l'etat final qu'il voulait voir constate."
-    rouge "   audit inscrit: $AUDIT"
-  elif grep -qiE "permission denied|droit refuse" <<<"$SORTIE"; then
-    echo "      ok: 2. l'ecriture de confiance n'est pas appelable directement"
-  else
-    rouge "2. l'appel direct n'a pas active, mais pas par refus d'ACCES:"
-    rouge "   $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-140)"
-    rouge "   L'identite de l'installateur reste fournie par l'appelant."
-  fi
+  SAUT=$(ctl -tAc "select normative_record_activation()" 2>&1)
+  grep -qiE "detient encore|n'ont pas ete restitues" <<<"$SAUT" \
+    || { rouge "2c. l'ecriture de confiance accepte alors que le migrateur detient"
+         rouge "    encore ses emprunts: $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SAUT" | cut -c1-120)"
+         DEUX=1; }
+fi
+
+ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
+if [[ "$ETAT" == "ACTIVE" ]]; then
+  AUDIT=$(admb -tAc "select activated_by || ' | ' || left(topology_digest, 12)
+                       from normative_activation" 2>&1)
+  rouge "2. L'APPEL DIRECT A ACTIVE LE SOUS-SYSTEME en sautant la finalisation."
+  rouge "   audit inscrit: $AUDIT"
+elif [[ $DEUX -eq 0 ]]; then
+  echo "      ok: 2. l'ecriture de confiance ne recoit aucune identite, refuse"
+  echo "             sans preparation, et refuse sans restitution"
 fi
 decor_deposer
 fi
@@ -425,6 +447,8 @@ lire_declaration() {
                and split_part(o, '=', 1) = 'eurostruct.token_roles' limit 1), '')" 2>&1
 }
 AVANT_REVUE=$(lire_declaration)
+# LA REVUE. Le plan de controle lit le manifeste des declarations et le note.
+MANIFESTE_REVU=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
 # LE MIGRATEUR CHANGE LA DECLARATION APRES LA REVUE.
 CHANGEMENT=$(mig_pg -c "alter database \"$BASE\"
                           set eurostruct.token_roles =
@@ -436,13 +460,28 @@ if [[ "$AVANT_REVUE" == "$APRES" ]]; then
   echoue "   $(head -1 <<<"$CHANGEMENT" | cut -c1-140)"
   echoue "   Le scenario ne reproduit pas le contre-exemple vise."
 else
-  SORTIE=$(ctl -tAc "select normative_finalize_deployment('$MIG')" 2>&1)
+  # LA FINALISATION EST DEMANDEE AVEC LE MANIFESTE REVU, et non avec l'etat
+  # courant: c'est exactement ce qu'un plan de controle honnete presente.
+  SORTIE=$(ctl -tAc "select normative_finalize_deployment('$MANIFESTE_REVU')" 2>&1)
   ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
   # La valeur FIGEE est lue dans la table, sous un role qui contourne la RLS.
   FIGE=$(admb -tAc "select valeur from normative_approved_settings
                      where nom = 'eurostruct.token_roles'" 2>&1)
   if grep -qiE "manifeste|approbation|digest attendu|ne correspond|non approuve" <<<"$SORTIE"; then
-    echo "      ok: 1. finalisation refusee — declaration modifiee apres revue"
+    # ET RIEN N'A ETE ECRIT: un refus qui laisserait le plan de controle ou les
+    # declarations figes aurait consomme le singleton, et la finalisation
+    # correcte serait devenue impossible.
+    ECRIT=$(admb -tAc "select (select count(*) from normative_control_plane)
+                            + (select count(*) from normative_approved_settings)
+                            + (select count(*) from normative_finalization_intent)" 2>&1)
+    if [[ "$ECRIT" == "0" ]]; then
+      echo "      ok: 1. finalisation refusee — declaration modifiee apres revue,"
+      echo "             et rien n'a ete fige"
+    else
+      rouge "1. la finalisation refuse, mais a deja fige $ECRIT ligne(s) de"
+      rouge "   confiance: le singleton est consomme et une finalisation"
+      rouge "   correcte deviendrait impossible."
+    fi
   elif [[ "$ETAT" == "ACTIVE" ]]; then
     rouge "1. LA FINALISATION A FIGE UNE DECLARATION MODIFIEE APRES REVUE."
     rouge "   revu par le plan de controle : « $AVANT_REVUE »"
@@ -477,12 +516,13 @@ suivre_decor
 #
 # Deux vraies connexions, et un recouvrement force: A tient sa transaction
 # ouverte pendant que B entre. Pas de sequence deguisee en concurrence.
+MANIFESTE=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
 SORTIE_A="$(mktemp -p "${TMPDIR:-/tmp}" fc4a.XXXXXX)"
 SORTIE_B="$(mktemp -p "${TMPDIR:-/tmp}" fc4b.XXXXXX)"
 (
   PGUSER="$CTL" PGPASSWORD="$CTL_MDP" psql -X -q -d "$BASE" -tA >"$SORTIE_A" 2>&1 <<SQL
 begin;
-select 'A:' || normative_finalize_deployment('$MIG');
+select 'A:' || normative_finalize_deployment('$MANIFESTE');
 select pg_sleep(3);
 commit;
 SQL
@@ -509,7 +549,7 @@ done
 (
   PGUSER="$CTL" PGPASSWORD="$CTL_MDP" psql -X -q -d "$BASE" -tA >"$SORTIE_B" 2>&1 <<SQL
 begin;
-select 'B:' || normative_finalize_deployment('$MIG');
+select 'B:' || normative_finalize_deployment('$MANIFESTE');
 commit;
 SQL
 ) &
@@ -662,7 +702,8 @@ if ! decor_poser 5 separe; then
   echoue "le decor 5 n'a pas pu etre pose: le point 8a n'est pas evalue"
 else
 suivre_decor
-SORTIE=$(ctl -tAc "select normative_finalize_deployment('$MIG')" 2>&1)
+MANIFESTE=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
+SORTIE=$(ctl -tAc "select normative_finalize_deployment('$MANIFESTE')" 2>&1)
 ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
 RESTE=$(adm -tAc "select count(*) from unnest(array['eurostruct_normative_writer',
                     'eurostruct_normative_bootstrap','eurostruct_normative_activator']) a(r)
@@ -690,7 +731,8 @@ if ! decor_poser 6 greenfield; then
   echoue "le decor 6 n'a pas pu etre pose: le point 8b n'est pas evalue"
 else
 suivre_decor
-SORTIE=$(mig -tAc "select normative_finalize_deployment('$MIG')" 2>&1)
+MANIFESTE=$(mig -tAc "select normative_settings_manifest()" 2>&1)
+SORTIE=$(mig -tAc "select normative_finalize_deployment('$MANIFESTE')" 2>&1)
 ETAT=$(mig -tAc "select normative_activation_state()" 2>&1)
 if [[ "$ETAT" == "ACTIVE" ]]; then
   rouge "8b. UN SEUL ROLE A PU FINALISER: le migrateur est son propre plan de"
