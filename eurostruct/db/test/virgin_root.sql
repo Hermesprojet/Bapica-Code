@@ -226,6 +226,24 @@ begin
     end loop;
   end loop;
 
+  -- La table d'activation, telle que la MIGRATION l'installe (6.3b6a):
+  -- lecture ouverte, ecriture fermee a tous. Constate ici, hors harnais.
+  if not has_table_privilege('authenticated', 'normative_activation', 'SELECT') then
+    raise exception
+      'authenticated ne peut pas lire l''etat d''activation: un client '
+      'afficherait des resultats pre-activation sans le savoir';
+  end if;
+  foreach r in array array['authenticated', 'normative_backend',
+                           'normative_governance', 'public'] loop
+    if has_table_privilege(r, 'normative_activation', 'INSERT')
+       or has_table_privilege(r, 'normative_activation', 'UPDATE')
+       or has_table_privilege(r, 'normative_activation', 'DELETE') then
+      raise exception
+        '% peut ecrire dans normative_activation: le sous-systeme '
+        's''activerait sans verification de topologie', r;
+    end if;
+  end loop;
+
   -- Le role de service, lui, ecrit: sans cela plus rien ne serait insérable
   -- et les refus ci-dessus seraient satisfaits par une base morte.
   foreach t in array array['normative_authorisation_grants',

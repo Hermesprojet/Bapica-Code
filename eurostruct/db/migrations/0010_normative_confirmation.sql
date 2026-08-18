@@ -345,6 +345,139 @@ $$;
 
 
 -- =====================================================================
+-- ETAT D'ACTIVATION DU SOUS-SYSTEME NORMATIF (6.3b6a)
+-- =====================================================================
+-- Le deploiement se fait en DEUX PHASES: installation, puis finalisation.
+-- Entre les deux, le sous-systeme existe mais n'engage RIEN — aucune
+-- confirmation normative, aucun mode strict, aucun etat « strict-ready ».
+--
+-- ABSENCE DE LIGNE = PENDING. C'est la propriete la plus importante de cette
+-- table, et la raison de sa forme: un etat qui devrait etre POSE pour bloquer
+-- se trahit au premier oubli — table vide apres restauration, migration
+-- interrompue, base clonee sans ses donnees. Ici, tout ce qui n'a pas ete
+-- explicitement active est PENDING.
+--
+-- On ne stocke donc jamais « PENDING »: la table ne contient QUE l'activation.
+create table normative_activation (
+  -- Une seule ligne possible, jamais deux etats concurrents.
+  singleton boolean primary key default true
+            constraint activation_is_singular check (singleton),
+
+  activated_at   timestamptz not null default now(),
+  -- QUI a active. `session_user`: `current_user` vaut le role d'autorite a
+  -- l'interieur d'une fonction SECURITY DEFINER et ne nomme personne.
+  activated_by   text not null,
+  -- La topologie constatee au moment de l'activation, pour l'audit: on doit
+  -- pouvoir dire plus tard SUR QUOI l'activation a porte.
+  topology_digest text not null,
+
+  constraint activation_names_someone check (btrim(activated_by) <> '')
+);
+
+comment on table normative_activation is
+  'Activation du sous-systeme normatif. L''ABSENCE de ligne vaut PENDING: '
+  'aucun etat a poser pour bloquer, donc aucun oubli possible. Ne contient '
+  'jamais l''etat PENDING lui-meme.';
+
+-- L'etat, LU et jamais fourni. Aucun booleen client n'entre ici.
+create or replace function normative_activation_state() returns text
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  select case when exists (select 1 from normative_activation)
+              then 'ACTIVE' else 'PENDING' end;
+$$;
+
+comment on function normative_activation_state is
+  'ACTIVE si et seulement si la table porte sa ligne; PENDING sinon. '
+  'L''appelant ne fournit rien: l''etat est constate, jamais declare.';
+
+revoke all on function normative_activation_state() from public;
+grant execute on function normative_activation_state()
+  to normative_backend, normative_governance, authenticated;
+
+-- Lecture ouverte: savoir que le sous-systeme n'est pas actif n'est pas un
+-- secret, et un client qui l'ignore afficherait des resultats trompeurs.
+alter table normative_activation enable row level security;
+revoke all on normative_activation from public;
+grant select on normative_activation
+  to authenticated, normative_backend, normative_governance;
+create policy normative_activation_read on normative_activation
+  for select using (true);
+
+-- AUCUNE policy d'ecriture, et aucun privilege INSERT/UPDATE/DELETE accorde:
+-- l'activation ne passe que par la fonction de finalisation (6.3b6b), qui
+-- verifie la topologie AVANT d'ecrire. Une activation posee a la main serait
+-- une activation non verifiee.
+
+
+-- =====================================================================
+-- PORTEE EFFECTIVE VERS UN ROLE — SET, USAGE/INHERIT et ADMIN OPTION
+-- =====================================================================
+-- 6.3b6a. `pg_has_role` couvre deux des trois capacites et pas la troisieme:
+--
+--   'USAGE'   -> heritage des droits, transitif           (couvert)
+--   'MEMBER'  -> droit de SET ROLE, transitif             (couvert)
+--   ADMIN     -> droit de RE-ACCORDER le role             (NON couvert)
+--
+-- Or l'ADMIN OPTION est une capacite residuelle suffisante a tout defaire:
+-- son detenteur se reaccorde SET quand il veut. Le controle qui s'arretait a
+-- SET et USAGE laissait donc au migrateur le pouvoir qu'il pretendait lui
+-- retirer, range a un pas de distance.
+--
+-- `pg_auth_members.admin_option` n'est renseigne que pour les octrois
+-- DIRECTS. La transitivite se calcule donc ici: pour se servir de l'ADMIN que
+-- detient un role M, il faut pouvoir agir comme M — c'est-a-dire l'endosser
+-- (set_option) ou en heriter (inherit_option). La fermeture ci-dessous
+-- propage exactement cela.
+--
+-- Le graphe des appartenances est acyclique — PostgreSQL refuse les cycles —
+-- donc la recursion termine.
+create or replace function normative_role_reach(p_cible text)
+returns table(porteur text, par_set boolean, par_usage boolean, par_admin boolean)
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  with recursive chaine(source, courant, set_o, inh_o, adm_o) as (
+    -- Octrois DIRECTS.
+    select am.member, am.roleid,
+           am.set_option, am.inherit_option, am.admin_option
+      from pg_auth_members am
+    union all
+    -- Un saut de plus: on ne peut se servir des droits de `courant` que si
+    -- l'on peut agir comme lui.
+    select c.source, am.roleid,
+           c.set_o and am.set_option,
+           c.inh_o and am.inherit_option,
+           (c.set_o or c.inh_o) and am.admin_option
+      from chaine c
+      join pg_auth_members am on am.member = c.courant
+     where c.set_o or c.inh_o
+  )
+  select m.rolname,
+         bool_or(c.set_o),
+         bool_or(c.inh_o),
+         bool_or(c.adm_o)
+    from chaine c
+    join pg_roles a on a.oid = c.courant
+    join pg_roles m on m.oid = c.source
+   where a.rolname = p_cible
+     and not m.rolsuper
+   group by m.rolname
+  having bool_or(c.set_o) or bool_or(c.inh_o) or bool_or(c.adm_o);
+$$;
+
+comment on function normative_role_reach is
+  'Portee EFFECTIVE des roles non superutilisateurs vers un role donne: '
+  'endossement (SET), heritage (USAGE/INHERIT) et ADMIN OPTION, directs et '
+  'transitifs. L''ADMIN n''est pas couvert par pg_has_role et se calcule ici.';
+
+revoke all on function normative_role_reach(text) from public;
+
+
+-- =====================================================================
 -- CONTROLE DE TOPOLOGIE DES ROLES — reexecutable (6.3b6 #5)
 -- =====================================================================
 -- POURQUOI UNE FONCTION, ET NON UN BLOC DE MIGRATION.
@@ -380,24 +513,42 @@ begin
   -- ------------------------------------------------------------------
   -- A. Roles d'AUTORITE: aucun membre, jamais, et pas de connexion.
   -- ------------------------------------------------------------------
+  -- LES TROIS CAPACITES, directes ET transitives (6.3b6a).
+  --
+  -- Une version precedente s'arretait a SET et USAGE, au motif que l'ADMIN
+  -- residuel « ne permet pas d'agir ». C'etait faux: son detenteur se
+  -- reaccorde SET quand il veut. Le pouvoir n'etait pas retire, il etait
+  -- range a un pas de distance — et `pg_has_role` ne le montrait meme pas
+  -- (MEMBER=true, USAGE=false, mesure).
+  --
+  -- SEUL LE PLAN DE CONTROLE peut conserver l'ADMIN residuel, et il doit
+  -- etre DECLARE. PostgreSQL accorde cet ADMIN au createur du role: il existe
+  -- forcement quelque part, et le nier rendrait la topologie irrealisable.
+  -- Ce qu'on exige est qu'il soit chez UN SEUL role, nomme, et hors de portee
+  -- des roles applicatifs.
   for r in
-    select a.rolname as cible, m.rolname as porteur, m.rolcanlogin
-      from pg_roles a cross join pg_roles m
+    select a.rolname as cible, x.porteur, x.par_set, x.par_usage, x.par_admin,
+           (select rolcanlogin from pg_roles pr where pr.rolname = x.porteur)
+             as connectable
+      from pg_roles a
+      cross join lateral normative_role_reach(a.rolname) x
      where a.rolname = any (autorites)
-       and m.oid <> a.oid
-       and not m.rolsuper
-       -- La CAPACITE, et non la ligne de catalogue: endosser (SET) ou
-       -- heriter (USAGE). L'appartenance residuelle que PostgreSQL accorde au
-       -- createur d'un role ne porte ni l'une ni l'autre.
-       and (pg_has_role(m.rolname, a.rolname, 'USAGE')
-            or exists (select 1 from pg_auth_members am
-                        where am.roleid = a.oid and am.member = m.oid
-                          and am.set_option))
+       and x.porteur <> a.rolname
+       and not (
+         -- Le plan de controle declare, et LUI SEUL, peut garder l'ADMIN —
+         -- mais jamais SET ni USAGE.
+         x.porteur = any (string_to_array(btrim(coalesce(current_setting(
+                            'eurostruct.control_plane', true), '')), ','))
+         and x.par_admin and not x.par_set and not x.par_usage
+       )
   loop
     raise exception
-      'topologie: « % » peut endosser ou heriter « % » (connectable: %). Un '
-      'tel role peut faire SET ROLE et forger une origine normative.',
-      r.porteur, r.cible, r.rolcanlogin
+      'topologie: « % » atteint « % » (set=%, usage=%, admin=%; connectable: '
+      '%). Aucun role applicatif ne doit pouvoir endosser, heriter NI '
+      'readministrer un role d''autorite — l''ADMIN suffit a se reaccorder '
+      'le reste. Seul le plan de controle declare '
+      '(eurostruct.control_plane) peut conserver un ADMIN residuel.',
+      r.porteur, r.cible, r.par_set, r.par_usage, r.par_admin, r.connectable
       using errcode = 'insufficient_privilege';
   end loop;
 

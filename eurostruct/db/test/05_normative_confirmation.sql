@@ -1244,6 +1244,13 @@ grant select on normative_authorisation_revocations     to authenticated;
 grant select on normative_rule_confirmations            to authenticated;
 grant select on normative_rule_confirmation_revocations to authenticated;
 
+-- 6.3b6a. La table d'activation subit le meme blanc-seing du harnais: sans
+-- ce retablissement, `authenticated` pourrait ecrire dedans et le controle
+-- ci-dessous echouerait sur une permission que la MIGRATION n'accorde pas.
+-- Lecture ouverte, ecriture fermee — c'est ce qu'installe le deploiement.
+revoke all on normative_activation from authenticated;
+grant select on normative_activation to authenticated;
+
 do $$
 declare n bigint; total bigint;
 begin
@@ -1496,6 +1503,24 @@ begin
      where n.nspname = 'public'
        and (p.proname like '%normative%' or p.proname = 'assert_digest_integrity')
   loop
+    -- EXEMPTION NOMMEE, et une seule (6.3b6a).
+    --
+    -- `normative_activation_state()` rend « PENDING » ou « ACTIVE » et rien
+    -- d'autre. Ce n'est pas une fonction sensible: c'est l'inverse. Un client
+    -- qui ignore que le sous-systeme n'est pas active afficherait des
+    -- resultats pre-activation sans le savoir — exactement le genre de
+    -- silence que ce projet refuse. La lecture de l'etat est donc ouverte,
+    -- l'ECRITURE ne l'est pas: aucune policy d'ecriture n'existe sur
+    -- `normative_activation`, et l'activation ne passe que par la
+    -- finalisation, qui verifie la topologie avant d'ecrire.
+    --
+    -- L'exemption est ecrite ICI, nommement, plutot que par un motif large:
+    -- une exception qui s'elargirait toute seule ne serait plus une
+    -- exception.
+    if f.proname = 'normative_activation_state' then
+      continue;
+    end if;
+
     foreach role_nom in array array['public', 'authenticated',
                                     'normative_backend',
                                     'normative_governance'] loop
@@ -2083,6 +2108,48 @@ begin
   if not ok then
     raise exception 'log_normative_event accepte une action hors namespace';
   end if;
+end
+$$;
+
+
+-- =====================================================================
+-- 6.3b6a — l'etat d'activation, et ce que son ABSENCE signifie
+-- =====================================================================
+-- La propriete centrale: une table VIDE vaut PENDING. Un etat qu'il faudrait
+-- POSER pour bloquer se trahirait au premier oubli — restauration partielle,
+-- migration interrompue, base clonee sans ses donnees. Ici il n'y a rien a
+-- poser: tout ce qui n'a pas ete explicitement active est en attente.
+do $$
+declare n bigint;
+begin
+  select count(*) into n from normative_activation;
+  if n <> 0 then
+    raise exception
+      'la migration a active le sous-systeme (% ligne): l''activation est une '
+      'decision de deploiement, jamais un effet de bord d''installation', n;
+  end if;
+  if normative_activation_state() <> 'PENDING' then
+    raise exception
+      'table vide et etat « % »: l''absence de ligne doit valoir PENDING',
+      normative_activation_state();
+  end if;
+
+  -- Et l'ecriture n'est ouverte a personne: l'activation passera par la
+  -- finalisation, qui verifie la topologie AVANT d'ecrire. Une activation
+  -- posee a la main serait une activation non verifiee.
+  declare r text;
+  begin
+    foreach r in array array['authenticated', 'normative_backend',
+                             'normative_governance', 'public'] loop
+      if has_table_privilege(r, 'normative_activation', 'INSERT')
+         or has_table_privilege(r, 'normative_activation', 'UPDATE')
+         or has_table_privilege(r, 'normative_activation', 'DELETE') then
+        raise exception
+          '% peut ecrire dans normative_activation: le sous-systeme '
+          's''activerait sans qu''aucune topologie ne soit verifiee', r;
+      end if;
+    end loop;
+  end;
 end
 $$;
 
