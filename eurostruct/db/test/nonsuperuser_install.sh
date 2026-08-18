@@ -166,17 +166,32 @@ SQL
 # action du deploiement, pas une deduction de la migration.
 "${ADMIN[@]}" -q -c   "alter database $DB set eurostruct.approved_deployment_roles = '$MIGRATEUR';"   >/dev/null 2>&1
 
-# CHEMIN GREENFIELD, celui d'un deploiement reel.
+# PRECONDITION DE CE FICHIER, DESORMAIS DITE (6.3b6a).
 #
-# Les roles d'autorite ne doivent PAS preexister: la migration les cree, et
-# PostgreSQL 16 donne alors au createur une appartenance dont IL est le
-# donneur — donc qu'il peut retirer lui-meme en fin de migration.
+# Ce test suppose que les ROLES DE SERVICE preexistent, crees par un
+# superutilisateur. Il ne le declarait pas, et cette dependance etait
+# satisfaite par accident: `run.sh` cree la base principale sous `postgres`
+# AVANT d'arriver ici, ce qui cree `normative_backend` et
+# `normative_governance` avec `postgres` pour createur.
 #
-# VERIFIE: une appartenance accordee par un TIERS ne peut PAS etre retiree par
-# le migrateur, meme avec ADMIN OPTION. PostgreSQL emet « role X has not been
-# granted membership in role Y by role X », repond « REVOKE ROLE » — et
-# l'appartenance SURVIT. C'est pourquoi la migration REFUSE dans ce cas au
-# lieu d'avertir, ce que le scenario dedie plus bas exerce.
+# MESURE: execute seul sur une instance ou ces roles n'existent pas, ce fichier
+# echoue des la premiere migration — le migrateur, CREATEROLE, devient membre
+# des roles de service qu'il cree, et le prerequis « un role privilegie ne doit
+# pas atteindre un role de service » refuse. « Installation non
+# superutilisateur verifiee » etait donc vrai DANS L'ORDRE DE LA SUITE, et
+# faux hors de lui. Une precondition tacite est une garantie qui n'en est pas
+# une.
+#
+# Elle est donc CONSTATEE ici, et le chemin greenfield complet — celui ou rien
+# ne preexiste — est exerce par `two_phase_deployment.sh`, qui en fait son
+# sujet au lieu d'en dependre.
+#
+# Les roles d'AUTORITE, eux, ne doivent PAS preexister: la migration les cree.
+# PostgreSQL 16 donne alors au createur une appartenance dont le donneur est le
+# superutilisateur d'amorcage — appartenance que le migrateur ne peut PAS
+# retirer lui-meme (« role X has not been granted membership in role Y by role
+# X », reponse « REVOKE ROLE », et la ligne survit). C'est la raison d'etre de
+# la phase de finalisation.
 liberer_autorites() {
   local r
   for r in eurostruct_normative_writer eurostruct_normative_bootstrap \
@@ -185,6 +200,28 @@ liberer_autorites() {
   done
 }
 liberer_autorites
+
+# La precondition, CONSTATEE. Sans elle, un echec en cascade se presenterait
+# comme « la migration est refusee sous un role non superutilisateur » — un
+# diagnostic qui accuse la migration alors que c'est le decor qui manque.
+for r in normative_backend normative_governance; do
+  CREATEUR=$("${ADMIN[@]}" -X -q -tAc "
+    select coalesce(
+      (select g.rolname from pg_auth_members m
+         join pg_roles a on a.oid = m.roleid
+         join pg_roles g on g.oid = m.grantor
+        where a.rolname = '$r' limit 1),
+      case when exists (select 1 from pg_roles where rolname = '$r')
+           then 'sans membre' else 'ABSENT' end)")
+  if [[ "$CREATEUR" == "ABSENT" ]]; then
+    echoue "precondition absente: le role de service « $r » n'existe pas."
+    echoue "  Ce fichier suppose les roles de service deja crees par un"
+    echoue "  superutilisateur. Le chemin greenfield complet est exerce par"
+    echoue "  two_phase_deployment.sh, configuration A."
+    exit 1
+  fi
+done
+echo "      ok: precondition — les roles de service preexistent"
 
 # Un role ne se detruit pas tant qu'un objet lui appartient. Les bases de la
 # SUITE en portent — elles sont jetables — mais « drop role » ne le dit qu'en

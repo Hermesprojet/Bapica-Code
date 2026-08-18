@@ -157,12 +157,31 @@ CONC_CODE=0
 # reussi. Le script fabrique donc la configuration hostile AVANT d'appliquer
 # les migrations, et exige un refus.
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# UN ROUGE N'ARRETE PLUS LA SUITE.
+#
+# Jusqu'ici chaque etape sortait au premier echec. Consequence mesuree: le
+# rouge de l'installation non superutilisateur empechait les etapes SUIVANTES
+# — base vierge, contrat croise — de s'executer du tout, et le rapport ne
+# disait pas si elles auraient passe. On ne peut pas distinguer « non
+# executee » de « verte » si l'une se presente comme l'autre.
+#
+# Les etapes s'executent donc toutes, chacune est comptee, et le code de sortie
+# reste non nul des qu'une seule est rouge.
+SURFACES_ROUGES=()
+etape() {
+  local nom="$1"; shift
+  local code=0
+  "$@" || code=$?
+  [[ $code -eq 0 ]] || SURFACES_ROUGES+=("$nom")
+  return 0
+}
+
 ROLE_DB="${DB_NAME}_roles"
 echo "==> prerequis de deploiement sur les roles"
-ROLE_CODE=0
-"$HERE/role_prerequisites.sh" "$ROLE_DB" || ROLE_CODE=$?
+etape "prerequis de deploiement sur les roles" \
+  "$HERE/role_prerequisites.sh" "$ROLE_DB"
 "${ADMIN[@]}" -q -c "drop database if exists $ROLE_DB;" >/dev/null 2>&1
-[[ $ROLE_CODE -eq 0 ]] || exit $ROLE_CODE
 
 # --------------------------------------------------------------------------
 # Installation sous un role de migration NON SUPERUTILISATEUR.
@@ -174,10 +193,32 @@ ROLE_CODE=0
 # --------------------------------------------------------------------------
 NS_DB="${DB_NAME}_nonsuper"
 echo "==> installation sous un role de migration non superutilisateur"
-NS_CODE=0
-"$HERE/nonsuperuser_install.sh" "$NS_DB" || NS_CODE=$?
+etape "installation non superutilisateur" \
+  "$HERE/nonsuperuser_install.sh" "$NS_DB"
 "${ADMIN[@]}" -q -c "drop database if exists $NS_DB;" >/dev/null 2>&1
-[[ $NS_CODE -eq 0 ]] || exit $NS_CODE
+
+# --------------------------------------------------------------------------
+# Oracle comportemental des primitives de portee (6.3b6a #3).
+#
+# `assert_normative_topology()` decide qui atteint un role d'autorite au moyen
+# de `pg_has_role(..., 'SET' / 'USAGE' / 'MEMBER WITH ADMIN OPTION')`. Ce que
+# ces primitives DISENT est ici confronte a ce qui se PASSE — vrai `SET ROLE`,
+# vrai heritage, vrai `GRANT` a un tiers — sur six formes de graphe.
+# --------------------------------------------------------------------------
+echo "==> oracle comportemental des primitives de portee"
+etape "oracle de portee des roles" \
+  "$HERE/role_reach_oracle.sh" "${DB_NAME}_oracle"
+
+# --------------------------------------------------------------------------
+# Deploiement en deux phases (6.3b6a #8).
+#
+# Ce que l'installation non superutilisateur ne pouvait montrer qu'indirectement:
+# QUI cree les roles et QUI accorde les appartenances decide de tout. Trois
+# configurations, une variable a la fois.
+# --------------------------------------------------------------------------
+echo "==> deploiement en deux phases"
+etape "deploiement en deux phases" \
+  "$HERE/two_phase_deployment.sh" "${DB_NAME}_2p"
 
 XC_DB="${DB_NAME}_contract"
 echo "==> base vierge: racine de confiance et contrat croise"
@@ -194,10 +235,21 @@ for f in "$DB_DIR"/migrations/*.sql; do
   "${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$f"
 done
 
-XC_CODE=0
-"${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/virgin_root.sql" || XC_CODE=$?
-if [[ $XC_CODE -eq 0 ]]; then
-  "$HERE/cross_contract.sh" "${XC[@]}" || XC_CODE=$?
-fi
+etape "base vierge: racine de confiance" \
+  "${XC[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/virgin_root.sql"
+etape "contrat croise moteur/base" \
+  "$HERE/cross_contract.sh" "${XC[@]}"
 "${ADMIN[@]}" -q -c "drop database if exists $XC_DB;" >/dev/null
-[[ $XC_CODE -eq 0 ]] || exit $XC_CODE
+
+echo ""
+if [[ ${#SURFACES_ROUGES[@]} -eq 0 ]]; then
+  echo "================================================="
+  echo " Toutes les surfaces de db/test sont vertes."
+  echo "================================================="
+  exit 0
+fi
+echo "================================================="
+echo " ${#SURFACES_ROUGES[@]} surface(s) ROUGE(S):"
+for s_rouge in "${SURFACES_ROUGES[@]}"; do echo "   - $s_rouge"; done
+echo "================================================="
+exit 1

@@ -82,6 +82,50 @@ begin
 end
 $$;
 
+-- =====================================================================
+-- PARAMETRES DE DEPLOIEMENT — LUS DANS LE CATALOGUE, PAS DANS LA SESSION
+-- =====================================================================
+-- 6.3b6a. `current_setting('eurostruct.x', true)` rend la valeur EFFECTIVE de
+-- la session: n'importe quel role peut la remplacer par un simple
+--
+--     SET eurostruct.approved_service_logins = 'moi';
+--
+-- et faire ainsi passer au vert un controle de readiness qui devait le
+-- refuser. Trois declarations etaient dans ce cas — approved_service_logins,
+-- token_roles, approved_deployment_roles — et elles decident toutes de
+-- refus de topologie.
+--
+-- La valeur est donc lue dans `pg_db_role_setting`, c'est-a-dire ce que le
+-- DEPLOIEMENT a pose par `ALTER DATABASE ... SET`. Un `SET` de session n'y
+-- figure pas et ne peut donc plus rien changer. `setrole = 0` exclut en outre
+-- les reglages poses pour un role particulier, qui rouvriraient la meme porte
+-- par un autre chemin.
+create or replace function normative_declared_setting(p_nom text)
+returns text
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  select coalesce(
+    (select split_part(o, '=', 2)
+       from pg_db_role_setting s
+       cross join unnest(s.setconfig) as o
+      where s.setdatabase = (select oid from pg_database
+                              where datname = current_database())
+        and s.setrole = 0
+        and split_part(o, '=', 1) = p_nom
+      limit 1),
+    '');
+$$;
+
+comment on function normative_declared_setting is
+  'Valeur DECLAREE par le deploiement (ALTER DATABASE ... SET), lue dans '
+  'pg_db_role_setting. N''utilise jamais current_setting(), qu''un simple '
+  'SET de session suffirait a forger.';
+
+revoke all on function normative_declared_setting(text) from public;
+
+
 -- PREREQUIS DE DEPLOIEMENT, verifie ici et non seulement dans les tests: ces
 -- roles peuvent PREEXISTER dans un environnement gere, avec des attributs et
 -- des appartenances que cette migration n'a pas choisis. Si l'un d'eux est
@@ -236,7 +280,8 @@ begin
        and porteur.rolname <> all (
              string_to_array(
                btrim(coalesce(
-                 current_setting('eurostruct.approved_service_logins', true), '')),
+                 normative_declared_setting('eurostruct.approved_service_logins'),
+                 '')),
                ','))
   loop
     raise exception
@@ -256,7 +301,7 @@ begin
     select service.rolname as cible, jeton.rolname as porteur
       from pg_roles service
       cross join unnest(string_to_array(
-        coalesce(current_setting('eurostruct.token_roles', true),
+        coalesce(nullif(normative_declared_setting('eurostruct.token_roles'), ''),
                  'authenticated,anon'), ',')) as t(nom)
       join pg_roles jeton on jeton.rolname = btrim(t.nom)
      where service.rolname in ('normative_backend', 'normative_governance')
@@ -344,6 +389,83 @@ $$;
 
 
 
+
+
+-- =====================================================================
+-- PLAN DE CONTROLE — singleton immuable, derive du GRANTOR
+-- =====================================================================
+-- Le plan de controle est le seul role autorise a conserver l'ADMIN residuel
+-- sur les roles d'autorite. Son identite ne peut donc pas venir d'un
+-- parametre: elle serait declarable par celui-la meme qu'on controle.
+--
+-- Elle est DERIVEE d'un fait de catalogue: le GRANTOR de l'octroi temporaire
+-- que le migrateur recoit pour transferer la propriete des fonctions. Ce
+-- grantor est, par construction, le role qui a precree les roles d'autorite —
+-- c'est-a-dire le plan de controle. Personne ne peut le reecrire: PostgreSQL
+-- l'inscrit lui-meme dans `pg_auth_members`.
+--
+-- Il est ensuite FIGE dans ce singleton, parce que le grantor disparait avec
+-- l'octroi: la finalisation revoque l'appartenance temporaire, et la trace
+-- s'efface. Ce qui est fige ici est ce qui a ete constate au moment ou c'etait
+-- observable.
+create table normative_control_plane (
+  singleton boolean primary key default true
+            constraint control_plane_is_singular check (singleton),
+  role_name text not null,
+  -- QUI a installe, et QUAND. `session_user`: `current_user` vaut le role
+  -- d'autorite dans une fonction SECURITY DEFINER et ne nomme personne.
+  recorded_by text not null,
+  recorded_at timestamptz not null default now(),
+
+  constraint control_plane_names_a_role check (btrim(role_name) <> ''),
+  constraint control_plane_names_an_installer check (btrim(recorded_by) <> '')
+);
+
+comment on table normative_control_plane is
+  'Identite du plan de controle, DERIVEE du grantor de l''octroi temporaire '
+  'et figee ici — le grantor disparait avec l''octroi. Exactement une ligne, '
+  'immuable: la reecrire reviendrait a se designer soi-meme.';
+
+-- IMMUABLE. Sans cela, le detenteur de l'ADMIN residuel n'aurait qu'a se
+-- reecrire dans cette table pour devenir « le plan de controle approuve ».
+create or replace function forbid_control_plane_mutation() returns trigger
+language plpgsql as $$
+begin
+  raise exception
+    'le plan de controle est fige a l''installation: le reecrire reviendrait '
+    'a se designer soi-meme comme approuve. Operation: %.', tg_op
+    using errcode = 'restrict_violation';
+end;
+$$;
+
+create trigger normative_control_plane_is_immutable
+  before update or delete on normative_control_plane
+  for each row execute function forbid_control_plane_mutation();
+
+alter table normative_control_plane enable row level security;
+revoke all on normative_control_plane from public;
+-- Aucune lecture applicative directe, aucune ecriture pour personne.
+grant select on normative_control_plane to normative_governance;
+create policy normative_control_plane_gov_read on normative_control_plane
+  for select to normative_governance using (true);
+
+-- L'identite, LUE. Rend NULL si rien n'a ete fige: aucun role n'est alors
+-- exempte, ce qui est le comportement fail-closed voulu.
+create or replace function normative_control_plane() returns text
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  select role_name from normative_control_plane limit 1;
+$$;
+
+comment on function normative_control_plane is
+  'Le plan de controle fige a l''installation, ou NULL. NULL n''exempte '
+  'personne: sans plan de controle constate, tout ADMIN residuel est refuse.';
+
+revoke all on function normative_control_plane() from public;
+
+
 -- =====================================================================
 -- ETAT D'ACTIVATION DU SOUS-SYSTEME NORMATIF (6.3b6a)
 -- =====================================================================
@@ -379,14 +501,51 @@ comment on table normative_activation is
   'aucun etat a poser pour bloquer, donc aucun oubli possible. Ne contient '
   'jamais l''etat PENDING lui-meme.';
 
--- L'etat, LU et jamais fourni. Aucun booleen client n'entre ici.
+-- LA TABLE N'EST LUE PAR AUCUN ROLE APPLICATIF (6.3b6a, correctif #6).
+--
+-- La version precedente accordait `select` sur `normative_activation` a
+-- `authenticated`. C'etait plus que l'etat: la ligne porte QUI a active, QUAND,
+-- et le digest de la topologie constatee — c'est-a-dire de l'audit de
+-- deploiement, expose a tout porteur de jeton. « Savoir que le sous-systeme
+-- n'est pas actif n'est pas un secret » justifiait l'etat, pas la ligne.
+--
+-- Ce qui est expose est donc UNE SEULE COLONNE CALCULEE, par une vue minimale.
+-- La vue est `security_invoker = false` — ecrit explicitement, et non laisse au
+-- defaut: la lecture de la table sous-jacente est alors controlee au nom du
+-- PROPRIETAIRE de la vue, si bien que l'appelant n'a besoin d'aucun droit sur
+-- la table. Rien d'autre ne franchit la frontiere.
+alter table normative_activation enable row level security;
+revoke all on normative_activation from public;
+-- La gouvernance, elle, lit la ligne entiere: c'est son objet meme (audit du
+-- deploiement). Aucun autre role, applicatif ou de service, ne l'atteint.
+grant select on normative_activation to normative_governance;
+create policy normative_activation_gov_read on normative_activation
+  for select to normative_governance using (true);
+
+create view normative_activation_status
+  with (security_invoker = false)
+  as select case when exists (select 1 from normative_activation)
+                 then 'ACTIVE' else 'PENDING' end as state;
+
+comment on view normative_activation_status is
+  'Etat d''activation, et rien d''autre. security_invoker = false: la lecture '
+  'de normative_activation se fait au nom du proprietaire de la vue, aucun '
+  'role applicatif n''a besoin — ni ne recoit — de droit sur la table.';
+
+revoke all on normative_activation_status from public;
+grant select on normative_activation_status
+  to authenticated, normative_backend, normative_governance;
+
+-- L'etat, LU et jamais fourni. Aucun booleen client n'entre ici. Passe par la
+-- vue, et non par la table: une fonction SQL ordinaire lit au nom de son
+-- APPELANT, si bien qu'un acces direct a `normative_activation` echouerait
+-- pour `authenticated` — et l'y autoriser reviendrait a defaire ce qui precede.
 create or replace function normative_activation_state() returns text
 language sql
 stable
 set search_path = public, pg_temp
 as $$
-  select case when exists (select 1 from normative_activation)
-              then 'ACTIVE' else 'PENDING' end;
+  select state from normative_activation_status;
 $$;
 
 comment on function normative_activation_state is
@@ -397,84 +556,10 @@ revoke all on function normative_activation_state() from public;
 grant execute on function normative_activation_state()
   to normative_backend, normative_governance, authenticated;
 
--- Lecture ouverte: savoir que le sous-systeme n'est pas actif n'est pas un
--- secret, et un client qui l'ignore afficherait des resultats trompeurs.
-alter table normative_activation enable row level security;
-revoke all on normative_activation from public;
-grant select on normative_activation
-  to authenticated, normative_backend, normative_governance;
-create policy normative_activation_read on normative_activation
-  for select using (true);
-
 -- AUCUNE policy d'ecriture, et aucun privilege INSERT/UPDATE/DELETE accorde:
 -- l'activation ne passe que par la fonction de finalisation (6.3b6b), qui
 -- verifie la topologie AVANT d'ecrire. Une activation posee a la main serait
 -- une activation non verifiee.
-
-
--- =====================================================================
--- PORTEE EFFECTIVE VERS UN ROLE — SET, USAGE/INHERIT et ADMIN OPTION
--- =====================================================================
--- 6.3b6a. `pg_has_role` couvre deux des trois capacites et pas la troisieme:
---
---   'USAGE'   -> heritage des droits, transitif           (couvert)
---   'MEMBER'  -> droit de SET ROLE, transitif             (couvert)
---   ADMIN     -> droit de RE-ACCORDER le role             (NON couvert)
---
--- Or l'ADMIN OPTION est une capacite residuelle suffisante a tout defaire:
--- son detenteur se reaccorde SET quand il veut. Le controle qui s'arretait a
--- SET et USAGE laissait donc au migrateur le pouvoir qu'il pretendait lui
--- retirer, range a un pas de distance.
---
--- `pg_auth_members.admin_option` n'est renseigne que pour les octrois
--- DIRECTS. La transitivite se calcule donc ici: pour se servir de l'ADMIN que
--- detient un role M, il faut pouvoir agir comme M — c'est-a-dire l'endosser
--- (set_option) ou en heriter (inherit_option). La fermeture ci-dessous
--- propage exactement cela.
---
--- Le graphe des appartenances est acyclique — PostgreSQL refuse les cycles —
--- donc la recursion termine.
-create or replace function normative_role_reach(p_cible text)
-returns table(porteur text, par_set boolean, par_usage boolean, par_admin boolean)
-language sql
-stable
-set search_path = public, pg_temp
-as $$
-  with recursive chaine(source, courant, set_o, inh_o, adm_o) as (
-    -- Octrois DIRECTS.
-    select am.member, am.roleid,
-           am.set_option, am.inherit_option, am.admin_option
-      from pg_auth_members am
-    union all
-    -- Un saut de plus: on ne peut se servir des droits de `courant` que si
-    -- l'on peut agir comme lui.
-    select c.source, am.roleid,
-           c.set_o and am.set_option,
-           c.inh_o and am.inherit_option,
-           (c.set_o or c.inh_o) and am.admin_option
-      from chaine c
-      join pg_auth_members am on am.member = c.courant
-     where c.set_o or c.inh_o
-  )
-  select m.rolname,
-         bool_or(c.set_o),
-         bool_or(c.inh_o),
-         bool_or(c.adm_o)
-    from chaine c
-    join pg_roles a on a.oid = c.courant
-    join pg_roles m on m.oid = c.source
-   where a.rolname = p_cible
-     and not m.rolsuper
-   group by m.rolname
-  having bool_or(c.set_o) or bool_or(c.inh_o) or bool_or(c.adm_o);
-$$;
-
-comment on function normative_role_reach is
-  'Portee EFFECTIVE des roles non superutilisateurs vers un role donne: '
-  'endossement (SET), heritage (USAGE/INHERIT) et ADMIN OPTION, directs et '
-  'transitifs. L''ADMIN n''est pas couvert par pg_has_role et se calcule ici.';
-
-revoke all on function normative_role_reach(text) from public;
 
 
 -- =====================================================================
@@ -526,31 +611,96 @@ begin
   -- forcement quelque part, et le nier rendrait la topologie irrealisable.
   -- Ce qu'on exige est qu'il soit chez UN SEUL role, nomme, et hors de portee
   -- des roles applicatifs.
+  -- LES PRIMITIVES DE POSTGRESQL 16, et non une recursion maison.
+  --
+  -- Une version precedente calculait la portee par fermeture recursive sur
+  -- `pg_auth_members`. C'etait reinventer ce que le moteur expose deja, avec
+  -- le risque propre a toute reimplementation: diverger en silence de la
+  -- semantique de reference. Verifie sur six formes de graphe — direct, deux
+  -- sauts, ADMIN seul, INHERIT seul, ADMIN detenu par un intermediaire, et
+  -- diamant — les trois primitives donnent le meme resultat que la recursion,
+  -- et elles font autorite.
+  --
+  --   'SET'                       droit d'endosser (SET ROLE)
+  --   'USAGE'                     heritage des droits
+  --   'MEMBER WITH ADMIN OPTION'  droit de re-accorder le role
+  --
+  -- Les trois sont TRANSITIVES par construction.
   for r in
-    select a.rolname as cible, x.porteur, x.par_set, x.par_usage, x.par_admin,
-           (select rolcanlogin from pg_roles pr where pr.rolname = x.porteur)
-             as connectable
+    select a.rolname as cible, m.rolname as porteur, m.rolcanlogin as connectable,
+           pg_has_role(m.rolname, a.rolname, 'SET') as par_set,
+           pg_has_role(m.rolname, a.rolname, 'USAGE') as par_usage,
+           pg_has_role(m.rolname, a.rolname, 'MEMBER WITH ADMIN OPTION') as par_admin
       from pg_roles a
-      cross join lateral normative_role_reach(a.rolname) x
+      cross join pg_roles m
      where a.rolname = any (autorites)
-       and x.porteur <> a.rolname
-       and not (
-         -- Le plan de controle declare, et LUI SEUL, peut garder l'ADMIN —
-         -- mais jamais SET ni USAGE.
-         x.porteur = any (string_to_array(btrim(coalesce(current_setting(
-                            'eurostruct.control_plane', true), '')), ','))
-         and x.par_admin and not x.par_set and not x.par_usage
-       )
+       and m.oid <> a.oid
+       and not m.rolsuper
+       and (pg_has_role(m.rolname, a.rolname, 'SET')
+            or pg_has_role(m.rolname, a.rolname, 'USAGE')
+            or pg_has_role(m.rolname, a.rolname, 'MEMBER WITH ADMIN OPTION'))
+       -- `coalesce(..., false)` N'EST PAS DECORATIF.
+       --
+       -- `normative_control_plane()` rend NULL tant qu'aucun plan n'a ete fige.
+       -- Sans coalesce, `m.rolname = NULL` vaut NULL, la conjonction vaut NULL,
+       -- `not NULL` vaut NULL — et une clause WHERE qui vaut NULL EXCLUT la
+       -- ligne. L'absence de plan de controle aurait donc exempte TOUT LE
+       -- MONDE, exactement l'inverse du fail-closed annonce. Defaut mesure:
+       -- sous un migrateur non superutilisateur, la migration passait au vert
+       -- avec deux ADMIN residuels non declares.
+       and not coalesce(
+         -- Le plan de controle, et LUI SEUL, peut garder l'ADMIN residuel —
+         -- mais jamais SET ni USAGE. Son identite ne vient PAS d'un parametre
+         -- de session: voir `normative_control_plane()`.
+         m.rolname = normative_control_plane()
+         and pg_has_role(m.rolname, a.rolname, 'MEMBER WITH ADMIN OPTION')
+         and not pg_has_role(m.rolname, a.rolname, 'SET')
+         and not pg_has_role(m.rolname, a.rolname, 'USAGE'),
+         false)
   loop
     raise exception
       'topologie: « % » atteint « % » (set=%, usage=%, admin=%; connectable: '
       '%). Aucun role applicatif ne doit pouvoir endosser, heriter NI '
       'readministrer un role d''autorite — l''ADMIN suffit a se reaccorder '
-      'le reste. Seul le plan de controle declare '
-      '(eurostruct.control_plane) peut conserver un ADMIN residuel.',
-      r.porteur, r.cible, r.par_set, r.par_usage, r.par_admin, r.connectable
+      'le reste. Seul le plan de controle fige a l''installation (ici: %) '
+      'peut conserver un ADMIN residuel.',
+      r.porteur, r.cible, r.par_set, r.par_usage, r.par_admin, r.connectable,
+      coalesce(normative_control_plane(), 'AUCUN')
       using errcode = 'insufficient_privilege';
   end loop;
+
+  -- EXACTEMENT UN PLAN DE CONTROLE (6.3b6a, correctif #4).
+  --
+  -- Le singleton garantit qu'une seule ligne est ENREGISTRABLE; il ne garantit
+  -- pas qu'une seule soit EFFECTIVE. Si deux roles distincts detiennent
+  -- l'ADMIN residuel et que l'un d'eux est le plan de controle, la boucle
+  -- ci-dessus refuse bien l'autre — mais si le plan fige a disparu du
+  -- catalogue, ou n'a jamais rien detenu, la table designe un role qui
+  -- n'exerce rien et l'exemption ne correspond a aucun fait.
+  if exists (select 1 from normative_control_plane) then
+    declare
+      plan_nom text := normative_control_plane();
+      porte int;
+    begin
+      if not exists (select 1 from pg_roles where rolname = plan_nom) then
+        raise exception
+          'topologie: le plan de controle fige « % » n''existe plus dans le '
+          'catalogue. L''exemption d''ADMIN residuel designe un role absent, '
+          'et ce qui detient reellement l''ADMIN n''est plus identifie.',
+          plan_nom using errcode = 'insufficient_privilege';
+      end if;
+      select count(*) into porte from pg_roles a
+       where a.rolname = any (autorites)
+         and pg_has_role(plan_nom, a.rolname, 'MEMBER WITH ADMIN OPTION');
+      if porte = 0 then
+        raise exception
+          'topologie: le plan de controle fige « % » ne detient l''ADMIN sur '
+          'aucun role d''autorite. Ou bien il a ete retire — et l''exemption '
+          'ne protege plus rien — ou bien il n''a jamais ete le plan de '
+          'controle reel.', plan_nom using errcode = 'insufficient_privilege';
+      end if;
+    end;
+  end if;
 
   for r in select rolname as cible from pg_roles
             where rolname = any (autorites)
@@ -623,8 +773,7 @@ begin
        and c.rolcanlogin
        and pg_has_role(c.rolname, sv.rolname, 'MEMBER')
        and c.rolname <> all (string_to_array(
-             btrim(coalesce(current_setting(
-               'eurostruct.approved_service_logins', true), '')), ','))
+             btrim(coalesce(normative_declared_setting('eurostruct.approved_service_logins'), '')), ','))
   loop
     raise exception
       'topologie: le role connectable « % » atteint le service « % » sans '
@@ -639,7 +788,7 @@ begin
     select sv.rolname as cible, j.rolname as porteur
       from pg_roles sv
       cross join unnest(string_to_array(
-        coalesce(current_setting('eurostruct.token_roles', true),
+        coalesce(nullif(normative_declared_setting('eurostruct.token_roles'), ''),
                  'authenticated,anon'), ',')) as t(nom)
       join pg_roles j on j.rolname = btrim(t.nom)
      where sv.rolname = any (services)
@@ -690,8 +839,7 @@ begin
        and not d.rolsuper
        and pg_has_role(d.rolname, 'eurostruct_deployment', 'MEMBER')
        and d.rolname <> all (string_to_array(
-             btrim(coalesce(current_setting(
-               'eurostruct.approved_deployment_roles', true), '')), ','))
+             btrim(coalesce(normative_declared_setting('eurostruct.approved_deployment_roles'), '')), ','))
   loop
     raise exception
       'topologie: « % » detient eurostruct_deployment sans approbation. '

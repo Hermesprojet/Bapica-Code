@@ -227,12 +227,29 @@ begin
   end loop;
 
   -- La table d'activation, telle que la MIGRATION l'installe (6.3b6a):
-  -- lecture ouverte, ecriture fermee a tous. Constate ici, hors harnais.
-  if not has_table_privilege('authenticated', 'normative_activation', 'SELECT') then
+  -- AUCUNE lecture brute pour les roles applicatifs, aucune ecriture pour
+  -- personne. Constate ici, hors harnais.
+  --
+  -- 6.3b6a #6. La version precedente accordait `select` sur la TABLE a
+  -- `authenticated`, et ce fichier le verifiait — il gravait donc le defaut.
+  -- La ligne ne porte pas que l'etat: elle porte QUI a active, QUAND, et le
+  -- digest de topologie constate au deploiement.
+  foreach r in array array['authenticated', 'normative_backend', 'public'] loop
+    if has_table_privilege(r, 'normative_activation', 'SELECT') then
+      raise exception
+        '% lit directement normative_activation: l''audit de deploiement '
+        '(activated_by, activated_at, topology_digest) franchit la frontiere '
+        'alors que seul l''etat devait la franchir', r;
+    end if;
+  end loop;
+  -- La gouvernance, elle, lit la ligne entiere: c'est son objet.
+  if not has_table_privilege('normative_governance', 'normative_activation',
+                             'SELECT') then
     raise exception
-      'authenticated ne peut pas lire l''etat d''activation: un client '
-      'afficherait des resultats pre-activation sans le savoir';
+      'normative_governance ne peut pas lire normative_activation: l''audit '
+      'du deploiement ne serait consultable par personne';
   end if;
+
   foreach r in array array['authenticated', 'normative_backend',
                            'normative_governance', 'public'] loop
     if has_table_privilege(r, 'normative_activation', 'INSERT')
@@ -243,6 +260,48 @@ begin
         's''activerait sans verification de topologie', r;
     end if;
   end loop;
+
+  -- Ce qui EST expose: l'etat seul, par la vue minimale et par la fonction.
+  -- Sans ce controle, la fermeture ci-dessus serait satisfaite par un
+  -- sous-systeme devenu muet, et un client ne pourrait plus savoir qu'il lit
+  -- des resultats pre-activation.
+  if not has_table_privilege('authenticated', 'normative_activation_status',
+                             'SELECT') then
+    raise exception
+      'authenticated ne peut pas lire l''etat d''activation: un client '
+      'afficherait des resultats pre-activation sans le savoir';
+  end if;
+  if not has_function_privilege('authenticated', 'normative_activation_state()',
+                                'EXECUTE') then
+    raise exception
+      'authenticated ne peut pas appeler normative_activation_state()';
+  end if;
+  -- Et la vue n'expose QUE l'etat: une colonne, nommee `state`. Un ajout de
+  -- colonne rouvrirait silencieusement ce qu'on vient de fermer.
+  if (select count(*) from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'normative_activation_status') <> 1
+     or not exists (select 1 from information_schema.columns
+                     where table_schema = 'public'
+                       and table_name = 'normative_activation_status'
+                       and column_name = 'state') then
+    raise exception
+      'normative_activation_status n''expose plus exactement la colonne '
+      '« state »: la vue minimale a cesse d''etre minimale';
+  end if;
+  -- `security_invoker` doit rester DESACTIVE: active, la vue lirait au nom de
+  -- l'appelant, et il faudrait de nouveau lui donner un droit sur la table.
+  if (select coalesce(
+                (select option_value from pg_options_to_table(c.reloptions)
+                  where option_name = 'security_invoker'), 'false')
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public'
+         and c.relname = 'normative_activation_status') not in ('false', 'off',
+                                                                '0') then
+    raise exception
+      'normative_activation_status est en security_invoker: la lecture se '
+      'ferait au nom de l''appelant, qui n''a aucun droit sur la table';
+  end if;
 
   -- Le role de service, lui, ecrit: sans cela plus rien ne serait insérable
   -- et les refus ci-dessus seraient satisfaits par une base morte.

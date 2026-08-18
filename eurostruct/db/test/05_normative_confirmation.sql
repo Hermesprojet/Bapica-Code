@@ -1244,12 +1244,25 @@ grant select on normative_authorisation_revocations     to authenticated;
 grant select on normative_rule_confirmations            to authenticated;
 grant select on normative_rule_confirmation_revocations to authenticated;
 
--- 6.3b6a. La table d'activation subit le meme blanc-seing du harnais: sans
--- ce retablissement, `authenticated` pourrait ecrire dedans et le controle
--- ci-dessous echouerait sur une permission que la MIGRATION n'accorde pas.
--- Lecture ouverte, ecriture fermee — c'est ce qu'installe le deploiement.
+-- 6.3b6a. La table d'activation subit le meme blanc-seing du harnais: sans ce
+-- retablissement, `authenticated` pourrait la LIRE et l'ECRIRE, et les
+-- controles ci-dessous porteraient sur des permissions que la MIGRATION
+-- n'accorde pas.
+--
+-- Correctif #6: la migration n'accorde plus AUCUN acces a la table — la ligne
+-- porte l'audit de deploiement (qui, quand, quel digest de topologie). Ce qui
+-- franchit la frontiere est l'ETAT SEUL, par la vue minimale et par la
+-- fonction. La premiere ecriture de ce bloc rendait `select` sur la table, et
+-- gravait donc dans le harnais le defaut que le correctif retire.
 revoke all on normative_activation from authenticated;
-grant select on normative_activation to authenticated;
+revoke all on normative_activation_status from authenticated;
+grant select on normative_activation_status to authenticated;
+
+-- Le singleton du plan de controle subit le meme blanc-seing, et il est le
+-- sujet le plus sensible de tous: qui peut y ecrire se designe lui-meme comme
+-- « le plan approuve » et s'exempte du refus d'ADMIN residuel. La migration ne
+-- l'ouvre a personne d'applicatif; le harnais ne doit pas le rouvrir.
+revoke all on normative_control_plane from authenticated;
 
 do $$
 declare n bigint; total bigint;
@@ -1494,30 +1507,46 @@ $$;
 -- 6.3b3 #5 — EXECUTE refuse a TOUS les roles applicatifs, pas seulement a
 -- PUBLIC. Les deux roles d'autorite en ont, et c'est le point: ils sont
 -- NOLOGIN et personne n'en est membre.
-do $$
-declare f record; role_nom text;
+-- La garantie est une FONCTION et non un bloc anonyme: le test de mutation
+-- qui suit doit rejouer EXACTEMENT ce code, et non une seconde ecriture du
+-- meme controle qui pourrait deriver de lui sans que rien ne le dise.
+create function t_garantie_execute() returns void language plpgsql as $$
+declare f record; role_nom text; exempte oid;
 begin
+  -- EXEMPTION IDENTIFIEE PAR SIGNATURE, et une seule (6.3b6a, correctif #7).
+  --
+  -- `normative_activation_state()` rend « PENDING » ou « ACTIVE » et rien
+  -- d'autre. Ce n'est pas une fonction sensible: c'est l'inverse. Un client qui
+  -- ignore que le sous-systeme n'est pas active afficherait des resultats
+  -- pre-activation sans le savoir — exactement le genre de silence que ce
+  -- projet refuse. La lecture de l'etat est donc ouverte, l'ECRITURE ne l'est
+  -- pas: aucune policy d'ecriture n'existe sur `normative_activation`, et
+  -- l'activation ne passe que par la finalisation, qui verifie la topologie
+  -- avant d'ecrire.
+  --
+  -- POURQUOI L'OID ET NON `proname`. La version precedente exemptait par le
+  -- NOM. PostgreSQL autorise les surcharges: `normative_activation_state(text)`
+  -- ajoutee demain — n'importe quel corps, n'importe quels droits — aurait
+  -- herite de l'exemption sans que personne ne l'ecrive. Une exception qui
+  -- s'elargit toute seule n'est plus une exception. On resout donc UNE
+  -- signature, une fois, et on compare des OID.
+  exempte := to_regprocedure('public.normative_activation_state()');
+  if exempte is null then
+    raise exception
+      'la signature exemptee public.normative_activation_state() n''existe '
+      'pas: l''exemption porterait dans le vide et le controle ne dirait plus '
+      'ce qu''il annonce';
+  end if;
+
   for f in
-    select p.oid, p.proname from pg_proc p
+    select p.oid, p.proname,
+           pg_get_function_identity_arguments(p.oid) as args
+      from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public'
        and (p.proname like '%normative%' or p.proname = 'assert_digest_integrity')
   loop
-    -- EXEMPTION NOMMEE, et une seule (6.3b6a).
-    --
-    -- `normative_activation_state()` rend « PENDING » ou « ACTIVE » et rien
-    -- d'autre. Ce n'est pas une fonction sensible: c'est l'inverse. Un client
-    -- qui ignore que le sous-systeme n'est pas active afficherait des
-    -- resultats pre-activation sans le savoir — exactement le genre de
-    -- silence que ce projet refuse. La lecture de l'etat est donc ouverte,
-    -- l'ECRITURE ne l'est pas: aucune policy d'ecriture n'existe sur
-    -- `normative_activation`, et l'activation ne passe que par la
-    -- finalisation, qui verifie la topologie avant d'ecrire.
-    --
-    -- L'exemption est ecrite ICI, nommement, plutot que par un motif large:
-    -- une exception qui s'elargirait toute seule ne serait plus une
-    -- exception.
-    if f.proname = 'normative_activation_state' then
+    if f.oid = exempte then
       continue;
     end if;
 
@@ -1526,13 +1555,82 @@ begin
                                     'normative_governance'] loop
       if has_function_privilege(role_nom, f.oid, 'EXECUTE') then
         raise exception
-          'le role % detient EXECUTE sur %: une fonction sensible ne doit pas '
-          'etre appelable par un role applicatif', role_nom, f.proname;
+          'le role % detient EXECUTE sur %(%): une fonction sensible ne doit '
+          'pas etre appelable par un role applicatif', role_nom, f.proname,
+          f.args;
       end if;
     end loop;
   end loop;
 end
 $$;
+
+select t_garantie_execute();
+
+
+-- 6.3b6a #7 — TEST DE MUTATION DE L'EXEMPTION ELLE-MEME.
+--
+-- Le correctif precedent remplace `proname = 'normative_activation_state'` par
+-- une comparaison d'OID. Rien, dans un test vert, ne distingue les deux
+-- ecritures: la base ne porte aujourd'hui qu'une seule fonction de ce nom. Une
+-- garantie qu'aucun etat du monde ne peut faire echouer ne garantit rien.
+--
+-- On fabrique donc l'etat qui les separe: une SURCHARGE, du meme nom, dotee de
+-- droits qui devraient etre refuses. Sous l'ancienne ecriture elle etait
+-- exemptee en silence; sous celle-ci elle doit etre VUE.
+--
+-- Le corps de la surcharge est deliberement inoffensif: ce qui est teste est
+-- le mecanisme d'exemption, pas la fonction.
+create function normative_activation_state(p_fictif text) returns text
+language sql immutable as $$ select 'FICTIF'; $$;
+grant execute on function normative_activation_state(text) to authenticated;
+
+do $$
+declare vu boolean := false; message text;
+begin
+  begin
+    perform t_garantie_execute();
+  exception when others then
+    vu := true; message := sqlerrm;
+  end;
+
+  if not vu then
+    raise exception
+      'une surcharge public.normative_activation_state(text) executable par '
+      'authenticated n''a pas ete vue: l''exemption porte sur le NOM et '
+      's''elargit donc d''elle-meme a toute fonction future qui le reprend';
+  end if;
+
+  -- Et pour la BONNE raison: le refus doit nommer la surcharge, pas une autre
+  -- fonction qui aurait par ailleurs derive.
+  if message not like '%normative_activation_state(p_fictif text)%' then
+    raise exception
+      'la garantie a echoue, mais sur un autre sujet que la surcharge: %',
+      message;
+  end if;
+end
+$$;
+
+drop function normative_activation_state(text);
+
+-- Et l'etat rendu: la signature exemptee doit etre de nouveau seule, et la
+-- garantie de nouveau verte. Sans ce retour, le fichier laisserait derriere lui
+-- l'objet meme qu'il vient de declarer inacceptable.
+do $$
+declare n integer;
+begin
+  select count(*) into n
+    from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+   where ns.nspname = 'public' and p.proname = 'normative_activation_state';
+  if n <> 1 then
+    raise exception
+      'apres le test de mutation, % fonction(s) normative_activation_state '
+      'subsistent au lieu d''une seule', n;
+  end if;
+end
+$$;
+
+select t_garantie_execute();
+drop function t_garantie_execute();
 
 
 -- 6.3b3 #5 — le sens INVERSE des appartenances: aucun role applicatif ne doit
@@ -2150,6 +2248,238 @@ begin
       end if;
     end loop;
   end;
+end
+$$;
+
+
+-- =====================================================================
+-- 6.3b6a #6 — l'ETAT franchit la frontiere, la LIGNE ne la franchit pas
+-- =====================================================================
+-- La version precedente accordait `select` sur `normative_activation` a
+-- `authenticated`. Ce n'est pas l'etat: c'est QUI a active, QUAND, et le
+-- digest de topologie constate au deploiement — l'audit de deploiement, remis
+-- a tout porteur de jeton. La lecture ouverte se justifiait pour « ACTIVE ou
+-- PENDING », pas pour la ligne.
+do $$
+declare ok boolean := false; etat text;
+begin
+  set local role authenticated;
+
+  -- Ce qui est REFUSE: la table.
+  begin
+    perform 1 from normative_activation;
+  exception when insufficient_privilege then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'authenticated lit directement normative_activation: activated_by, '
+      'activated_at et topology_digest franchissent la frontiere alors que '
+      'seul l''etat devait la franchir';
+  end if;
+
+  -- Ce qui est OUVERT: l'etat, par la vue minimale et par la fonction. Sans
+  -- cette moitie, le refus ci-dessus serait satisfait par un sous-systeme
+  -- devenu muet, et un client afficherait des resultats pre-activation sans
+  -- pouvoir le savoir.
+  select state into etat from normative_activation_status;
+  if etat is distinct from 'PENDING' then
+    raise exception
+      'la vue rend « % » alors que la table est vide: PENDING attendu', etat;
+  end if;
+  if normative_activation_state() is distinct from 'PENDING' then
+    raise exception 'normative_activation_state() ne rend pas PENDING';
+  end if;
+end
+$$;
+reset role;
+
+-- Et la vue n'expose QUE l'etat. Une colonne ajoutee demain rouvrirait en
+-- silence ce que le controle precedent vient de fermer.
+do $$
+declare cols text;
+begin
+  select string_agg(column_name, ',' order by ordinal_position) into cols
+    from information_schema.columns
+   where table_schema = 'public' and table_name = 'normative_activation_status';
+  if cols is distinct from 'state' then
+    raise exception
+      'normative_activation_status expose « % » au lieu de la seule colonne '
+      '« state »: la vue minimale a cesse d''etre minimale', cols;
+  end if;
+end
+$$;
+
+
+-- =====================================================================
+-- 6.3b6a #5 — LES DECLARATIONS DE DEPLOIEMENT NE SONT PAS FORGEABLES
+-- =====================================================================
+-- Trois declarations decident de refus de topologie:
+--
+--     eurostruct.approved_service_logins
+--     eurostruct.token_roles
+--     eurostruct.approved_deployment_roles
+--
+-- Elles etaient lues par `current_setting('...', true)`, qui rend la valeur
+-- EFFECTIVE de la session. N'importe quel role — y compris `authenticated` —
+-- n'avait donc qu'a poser
+--
+--     SET eurostruct.approved_service_logins = 'moi';
+--
+-- pour faire passer au vert un controle de readiness qui devait refuser. Le
+-- meme defaut, exactement, que le marqueur d'audit de 6.3b3: un parametre de
+-- session est une declaration de l'appelant, jamais une preuve.
+--
+-- Elles sont desormais lues dans `pg_db_role_setting` — ce que le DEPLOIEMENT
+-- a pose par `ALTER DATABASE ... SET`. Un `SET` de session n'y figure pas.
+--
+-- LE CONTRE-EXEMPLE EST JOUE DANS LA MEME TRANSACTION, et c'est sa forme la
+-- plus forte: la valeur est posee PAR `authenticated`, puis lue par le role de
+-- readiness sans que la session ait ete quittee. Si la lecture declaree
+-- bougeait, elle bougerait ici.
+do $$
+declare n text; lu text;
+begin
+  foreach n in array array['eurostruct.approved_service_logins',
+                           'eurostruct.token_roles',
+                           'eurostruct.approved_deployment_roles'] loop
+    -- Le role applicatif POSE la valeur, comme un attaquant le ferait.
+    set local role authenticated;
+    perform set_config(n, 'FICTIF_role_qui_se_declare', true);
+
+    -- `current_setting` la voit — c'est bien la preuve que la session a ete
+    -- modifiee, et donc que ce test exerce reellement le contre-exemple.
+    if current_setting(n, true) is distinct from 'FICTIF_role_qui_se_declare' then
+      raise exception
+        'le SET de session sur % n''a pas pris: le contre-exemple vise n''est '
+        'pas reproduit et ce controle ne prouverait rien', n;
+    end if;
+
+    -- La lecture est faite HORS du role applicatif: `normative_declared_setting`
+    -- ne lui est pas executable — c'est meme l'un des points du correctif — et
+    -- la readiness s'exerce sous le role de deploiement. Le parametre de
+    -- session, lui, reste pose: la transaction n'a pas change.
+    reset role;
+    lu := normative_declared_setting(n);
+    if lu = 'FICTIF_role_qui_se_declare' then
+      raise exception
+        'normative_declared_setting(%) rend la valeur posee par la SESSION: '
+        'un role applicatif se declare lui-meme approuve et fait passer au '
+        'vert un refus de topologie', n;
+    end if;
+  end loop;
+end
+$$;
+reset role;
+
+-- La fonction n'est appelable par aucun role applicatif — verifie par la
+-- garantie generale `t_garantie_execute()` plus haut, qui couvre toute
+-- fonction `%normative%` du schema public sauf la seule signature exemptee.
+-- Rien n'est reecrit ici: une seconde liste divergerait de la premiere.
+
+
+-- =====================================================================
+-- 6.3b6a #4 — LE PLAN DE CONTROLE NE PEUT PAS SE DESIGNER LUI-MEME
+-- =====================================================================
+-- L'identite du plan de controle etait portee par `eurostruct.control_plane`,
+-- un GUC de session: le role qu'il s'agissait de contenir pouvait le poser
+-- lui-meme et s'exempter. Elle est desormais DERIVEE du `grantor` de l'octroi
+-- temporaire — un fait que PostgreSQL inscrit seul dans `pg_auth_members` —
+-- puis FIGEE dans un singleton immuable.
+do $$
+declare r text; ok boolean;
+begin
+  -- Rien n'est fige tant que rien n'a ete constate, et NULL n'exempte
+  -- personne: c'est le comportement fail-closed. Sans cette verification,
+  -- l'exemption pourrait viser « tout le monde » sans que rien ne le dise —
+  -- defaut mesure: ecrite sans `coalesce`, la clause d'exemption valait NULL
+  -- et excluait TOUTES les lignes du controle.
+  if normative_control_plane() is not null then
+    raise exception
+      'un plan de controle est deja fige apres la seule migration: son '
+      'identite doit etre CONSTATEE au deploiement, jamais installee';
+  end if;
+
+  -- Aucun role applicatif ne lit ni n'ecrit le singleton.
+  foreach r in array array['public', 'authenticated', 'normative_backend'] loop
+    if has_table_privilege(r, 'normative_control_plane', 'SELECT')
+       or has_table_privilege(r, 'normative_control_plane', 'INSERT')
+       or has_table_privilege(r, 'normative_control_plane', 'UPDATE')
+       or has_table_privilege(r, 'normative_control_plane', 'DELETE') then
+      raise exception
+        '% atteint normative_control_plane: le detenteur de l''ADMIN residuel '
+        'n''aurait qu''a s''y ecrire pour devenir « le plan approuve »', r;
+    end if;
+    if has_function_privilege(r, 'normative_control_plane()', 'EXECUTE') then
+      raise exception '% peut executer normative_control_plane()', r;
+    end if;
+  end loop;
+end
+$$;
+
+-- IMMUABLE, et verifie en agissant — pas seulement en lisant des ACL. Le
+-- superutilisateur du harnais tient ici le role du pire cas: meme lui ne
+-- reecrit pas la ligne.
+do $$
+declare ok boolean;
+begin
+  insert into normative_control_plane (role_name, recorded_by)
+  values ('FICTIF_plan_temoin', session_user);
+
+  ok := false;
+  begin
+    update normative_control_plane set role_name = 'FICTIF_usurpateur';
+  exception when others then ok := (sqlstate = '38000' or sqlstate = '2F004'
+                                    or sqlerrm like '%fige a l''installation%');
+  end;
+  if not ok then
+    raise exception
+      'le plan de controle a ete REECRIT: le detenteur de l''ADMIN residuel '
+      'se designe lui-meme comme approuve';
+  end if;
+
+  ok := false;
+  begin
+    delete from normative_control_plane;
+  exception when others then ok := (sqlerrm like '%fige a l''installation%');
+  end;
+  if not ok then
+    raise exception
+      'le plan de controle a ete EFFACE: il suffirait de l''effacer puis de '
+      'le reecrire a son nom';
+  end if;
+
+  -- Et une SECONDE ligne est impossible: « exactement un » se tient par la
+  -- cle primaire, pas par convention.
+  ok := false;
+  begin
+    insert into normative_control_plane (role_name, recorded_by)
+    values ('FICTIF_second_plan', session_user);
+  exception when unique_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'deux plans de controle coexistent: l''exemption d''ADMIN residuel ne '
+      'designerait plus un role unique';
+  end if;
+
+  -- Le decor est rendu: la ligne temoin ne doit pas survivre a ce fichier,
+  -- sans quoi les controles suivants porteraient sur un etat fabrique ici.
+  -- Elle ne s'efface que par une desactivation explicite du declencheur, ce
+  -- que seul le proprietaire de la table peut faire — et c'est precisement ce
+  -- que le controle ci-dessus vient d'etablir.
+  alter table normative_control_plane disable trigger normative_control_plane_is_immutable;
+  delete from normative_control_plane;
+  alter table normative_control_plane enable trigger normative_control_plane_is_immutable;
+end
+$$;
+
+do $$
+begin
+  if normative_control_plane() is not null then
+    raise exception
+      'le temoin du controle precedent survit: l''etat de la base a ete '
+      'modifie par un test qui devait le rendre intact';
+  end if;
 end
 $$;
 
