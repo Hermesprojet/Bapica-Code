@@ -143,10 +143,14 @@ jobs:
         run: pip install -e engine
 
       # La preuve, AVANT de laisser les harnais toucher le cluster: leurs
-      # barrieres refusent-elles vraiment ? L'auto-test les met en echec cinq
+      # barrieres refusent-elles vraiment ? L'auto-test les met en echec seize
       # fois, avec des temoins portant les noms canoniques, et verifie qu'ils
       # survivent. Il tourne d'abord: si une barriere cedait, l'etape suivante
       # serait precisement celle qui detruirait des roles.
+      #
+      # Le nombre n'est pas decoratif: il est rapporte par le script lui-meme
+      # et par `run_tests.sh`. L'ecrire ici faux ferait passer une barriere
+      # perdue pour un choix.
       - name: Securite des harnais (preuve des barrieres)
         env:
           PGPASSWORD: postgres
