@@ -1254,6 +1254,15 @@ begin
       using errcode = 'insufficient_privilege';
   end if;
 
+  -- ET IL N'EST PAS LE MIGRATEUR. Reverifie ici: cette fonction doit rester
+  -- sure meme appelee directement.
+  if p_plan_de_controle = p_migrateur then
+    raise exception
+      'le plan de controle et le migrateur sont le meme role (« % »): la '
+      'separation entre qui migre et qui approuve serait nominale.',
+      p_migrateur using errcode = 'insufficient_privilege';
+  end if;
+
   -- LE MIGRATEUR NE DOIT PLUS RIEN DETENIR. C'est la propriete que la
   -- finalisation achete, et elle est constatee ICI, juste avant d'ecrire.
   select count(*) into n from unnest(array['eurostruct_normative_writer',
@@ -1408,6 +1417,31 @@ begin
         using errcode = 'insufficient_privilege';
     end if;
   end loop;
+
+  -- LE PLAN DE CONTROLE NE PEUT PAS ETRE LE MIGRATEUR.
+  --
+  -- DECISION DE DEPLOIEMENT, prise explicitement: « qui migre » et « qui
+  -- approuve » doivent etre deux roles distincts.
+  --
+  -- En greenfield, le migrateur cree lui-meme les roles d'autorite et
+  -- PostgreSQL lui en donne l'ADMIN residuel (fait F1). Il serait alors son
+  -- propre plan de controle — et l'exemption qui tolere cet ADMIN lui
+  -- permettrait de se reaccorder SET a tout moment. La separation deviendrait
+  -- nominale: celui qui a applique la migration pourrait, quand il veut,
+  -- reprendre le pouvoir de forger une origine normative.
+  --
+  -- CONSEQUENCE ASSUMEE: un projet ou un seul role privilegie existe ne peut
+  -- pas etre finalise. C'est un refus, pas une degradation silencieuse.
+  if donneur_nom = p_migrateur then
+    raise exception
+      'le plan de controle derive est le migrateur lui-meme (« % »). '
+      'La finalisation exige deux roles DISTINCTS: celui qui applique les '
+      'migrations et celui qui approuve. Sinon le migrateur conserve l''ADMIN '
+      'residuel en etant son propre plan de controle, et peut se reaccorder '
+      'SET quand il veut — la separation serait nominale. Provisionnez les '
+      'roles d''autorite depuis un role distinct, puis relancez.', p_migrateur
+      using errcode = 'insufficient_privilege';
+  end if;
 
   -- SEUL LE DONNEUR PEUT REVOQUER. Ce n'est pas une regle du produit, c'est
   -- PostgreSQL: `REVOKE` execute par un autre role emet un avertissement et ne
