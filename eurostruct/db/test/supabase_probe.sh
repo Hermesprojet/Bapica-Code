@@ -57,11 +57,21 @@
 #      superutilisateur)
 #   3  residu: des roles de sonde subsistent
 set -euo pipefail
+# Aucune trace d'execution: `bash -x`, ou un BASH_XTRACEFD herite, imprimerait
+# l'URL et le secret ligne par ligne. Une sonde manipule un mot de passe: elle
+# doit refuser de se raconter.
+set +x
 
 # --------------------------------------------------------------------------
 # 0. CONSENTEMENT, avant tout acces reseau.
 # --------------------------------------------------------------------------
-if [[ "${EUROSTRUCT_PROBE_TARGET:-}" != "staging" ]]; then
+# Deux cibles seulement, et une seule autorise le hook de test.
+#
+#   staging        instance reelle. Le hook de nettoyage y est INACTIVABLE.
+#   selftest-local PostgreSQL de boucle locale, pour les auto-tests. Refuse
+#                  toute autre adresse.
+CIBLE="${EUROSTRUCT_PROBE_TARGET:-}"
+if [[ "$CIBLE" != "staging" && "$CIBLE" != "selftest-local" ]]; then
   echo "REFUS: cette sonde cree et detruit des roles sur l'instance cible." >&2
   echo "       Elle n'est pas destinee a une base de production." >&2
   echo "       Pour l'autoriser: EUROSTRUCT_PROBE_TARGET=staging" >&2
@@ -143,12 +153,30 @@ for v in PGHOST PGUSER PGDATABASE; do
   fi
 done
 
+# Le mode auto-test est CONFINE a la boucle locale. Sans ce controle, il
+# suffirait de poser EUROSTRUCT_PROBE_TARGET=selftest-local pour emporter le
+# hook de nettoyage sur une instance distante — et y laisser des roles.
+if [[ "$CIBLE" == "selftest-local" ]]; then
+  case "$PGHOST" in
+    127.0.0.1|::1|localhost|/*) : ;;
+    *)
+      echo "REFUS: EUROSTRUCT_PROBE_TARGET=selftest-local exige un hote de" >&2
+      echo "       boucle locale. Hote fourni: non local." >&2
+      exit 2 ;;
+  esac
+fi
+
 # Delais: une sonde ne doit jamais rester pendue sur une instance distante.
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-10}"
 export PGOPTIONS="${PGOPTIONS:-} -c statement_timeout=15s -c lock_timeout=5s -c idle_in_transaction_session_timeout=15s"
 
 # Aucun argument de connexion: tout vient de l'environnement.
 PSQL=(psql -X -q -tA -v ON_ERROR_STOP=1)
+
+# L'URL a livre ce qu'elle contenait: elle n'a plus de raison d'exister dans
+# l'environnement. La garder exposerait le secret a tout sous-processus — y
+# compris a un `psql` remplace sur le PATH — et a toute trace de debogage.
+unset DATABASE_URL
 
 # --------------------------------------------------------------------------
 # Noms UNIQUES et IMPREVISIBLES, propres a cette execution.
@@ -175,11 +203,21 @@ non() { printf '  NON   %s\n' "$1"; [[ -n "${2:-}" ]] && printf '        %s\n' "
 RESIDU=0
 nettoyer() {
   local r
+  # RIEN CREE, RIEN A NETTOYER — EN PREMIER.
+  #
+  # Cette garde etait placee APRES la revocation et la boucle de destruction:
+  # sur un arret precoce, le script emettait donc deja des ordres SQL portant
+  # sur des roles qui n'avaient jamais existe. Inoffensif ici, mais c'est
+  # exactement le raisonnement qui produit les nettoyages a portee large.
+  if [[ ${#CREES[@]} -eq 0 ]]; then
+    return
+  fi
+
   # HOOK DE TEST, et rien d'autre. `supabase_probe_selftest.sh` s'en sert pour
   # exercer le chemin « nettoyage en echec -> code 3 », qu'aucune manipulation
   # externe ne peut declencher de facon deterministe: les noms sont aleatoires
   # et connus de la seule execution en cours. Sans valeur en production.
-  if [[ "${EUROSTRUCT_PROBE_SKIP_CLEANUP:-}" == "1" ]]; then
+  if [[ "${EUROSTRUCT_PROBE_SKIP_CLEANUP:-}" == "1" && "$CIBLE" == "selftest-local" ]]; then
     echo "  (nettoyage volontairement saute: hook de test)" >&2
     RESIDU=1
     return
@@ -191,14 +229,6 @@ nettoyer() {
     [[ -n "$r" ]] || continue
     "${PSQL[@]}" -c "drop role if exists \"$r\";" >/dev/null 2>&1 || true
   done
-  # RIEN CREE, RIEN A NETTOYER. Sans cette garde, une connexion refusee — ou
-  # tout arret avant la premiere creation — annoncait un « residu » alors
-  # qu'aucun role n'avait jamais existe: un diagnostic faux, et un code de
-  # sortie qui accusait la mauvaise chose.
-  if [[ ${#CREES[@]} -eq 0 ]]; then
-    return
-  fi
-
   # Et on CONSTATE. Un residu sur une instance cliente doit faire echouer la
   # sonde, pas partir dans un avertissement que personne ne lit.
   local restants
