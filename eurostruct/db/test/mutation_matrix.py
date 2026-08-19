@@ -100,7 +100,14 @@ def essayer(nom, point, fichier, paires, redondant=False,
     # comptait comme « aucun rouge » et concluait « le controle ne porte
     # rien » — mesure: lancee sans `EUROSTRUCT_CLUSTER_JETABLE`, la matrice a
     # declare les DIX controles creux alors qu'aucun n'avait ete exerce.
-    if code in (2, 3):
+    # LE CODE 4 EST LUI AUSSI UN NON-VERDICT (6.3b6d). Il signifie « surface
+    # non executable ici » — pas de second cluster, pas d'ecoute TCP. Absent de
+    # cette liste, il tombait dans la branche normale et faisait conclure « le
+    # controle ne porte rien »: mesure, les trois mutations de
+    # `official_deployment.sh` ont ete declarees creuses alors que le harnais
+    # n'avait pas demarre. C'est exactement le defaut que les codes 2 et 3
+    # avaient deja produit en 6.3b6c, reintroduit par un code de plus.
+    if code in (2, 3, 4):
         print(f"  NON EXECUTE {nom}\n        -> le harnais a refuse (code {code}), "
               f"aucune conclusion possible:")
         for ligne in sortie.splitlines()[:3]:

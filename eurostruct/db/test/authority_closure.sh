@@ -715,7 +715,21 @@ fi
 # « restauration » dans un document d'empreintes. Un controle qu'un mot de
 # vocabulaire suffit a satisfaire ne controle rien.
 MARQUEUR="RESTAURATION INTER-CLUSTER"
-DIAG_SQL=$(grep -lF "$MARQUEUR" "${MIGRATIONS[@]}" 2>/dev/null | sed 's#.*/##' | tr '\n' ' ')
+# LE MARQUEUR DOIT ETRE DANS LE MESSAGE, PAS DANS UN COMMENTAIRE (6.3b6d).
+#
+# Le controle cherchait le marqueur N'IMPORTE OU dans le fichier. 6.3b6d a
+# ajoute deux commentaires qui le contiennent — dont un qui explique justement
+# pourquoi le diagnostic ne promet plus de reprise. La mutation qui retire le
+# marqueur du message laissait donc ces commentaires, et le controle restait
+# VERT: mesure, `mutation_matrix.py` a declare le controle G creux.
+#
+# C'est le meme defaut qu'en 6.3b6c — « un controle qu'un mot de vocabulaire
+# suffit a satisfaire ne controle rien » — reintroduit par notre propre prose.
+# Ce qui est exige est que le REFUS le nomme: les lignes de commentaire SQL ne
+# comptent pas.
+DIAG_SQL=$(grep -nF "$MARQUEUR" "${MIGRATIONS[@]}" 2>/dev/null \
+             | grep -vE '^[^:]+:[0-9]+:[[:space:]]*--' \
+             | sed 's#:[0-9]*:.*##; s#.*/##' | sort -u | tr '\n' ' ')
 DOC_MD=$(grep -rlF "$MARQUEUR" "$DB_DIR/../docs" 2>/dev/null | head -1)
 if [[ -n "$DIAG_SQL" && -n "$DOC_MD" ]]; then
   echo "      ok: G. la restauration inter-cluster a un diagnostic et une"
