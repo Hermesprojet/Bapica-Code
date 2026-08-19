@@ -383,16 +383,40 @@ SQL
 migrations_copiees
 appeler; CODE_P2=$?
 CAP_P2=$(capacites_du_migrateur)
-if [[ $CODE_P2 -ne 0 ]] \
-   && grep -qiE "prerequis|eurostruct_deployment" <<<"$SORTIE_CMD" \
+# CE QUI EST EXIGE, ET POURQUOI C'EST ECRIT AINSI (6.3b6e).
+#
+# La premiere version demandait « code non nul ET la sortie contient
+# "prerequis" ou "eurostruct_deployment" ET aucune capacite ». Elle etait
+# HOLLOW, et la matrice de mutation l'a montre: retirer LES DEUX garanties de
+# l'etape 2b la laissait verte. La raison est que `eurostruct_deployment`
+# apparait dans un message de REUSSITE de cette etape —
+# « ok: eurostruct_deployment accorde a ... » —, si bien que n'importe quel
+# echec SURVENU PLUS LOIN satisfaisait le motif. Mesure: la commande mutee
+# tombait sur « permission denied for function normative_activation_state »,
+# trois etapes apres, et P2 l'acceptait.
+#
+# Trois exigences la remplacent, et chacune ferme une moitie du defaut:
+#
+#   1. LE CODE 3, et non « non nul ». Un prerequis non tenu se distingue d'une
+#      panne; le texte ne sert qu'a l'affichage.
+#   2. LE REFUS TOMBE AVANT L'OCTROI. Le constat de reussite de l'etape 2b ne
+#      doit PAS figurer dans la sortie: s'il y est, l'octroi a eu lieu et le
+#      refus vient d'ailleurs.
+#   3. AUCUNE CAPACITE, inchange.
+if [[ $CODE_P2 -eq 3 ]] \
+   && grep -qF "DEPLOYMENT_PRECONDITION_FAILED" <<<"$SORTIE_CMD" \
+   && ! grep -qF "eurostruct_deployment accorde" <<<"$SORTIE_CMD" \
    && [[ -z "$CAP_P2" ]]; then
-  echo "      ok: P2. prerequis manquant: refus nomme, aucun emprunt accorde"
+  echo "      ok: P2. prerequis manquant: refus code 3 avant tout octroi"
 else
   rouge "P2. roles preexistants sans capacite sur eurostruct_deployment:"
-  detail "    code $CODE_P2, capacites du migrateur: « ${CAP_P2:-aucune} »"
-  detail "      $(grep -m1 -E '^ECHEC' <<<"$SORTIE_CMD" | cut -c1-130)"
-  detail "    Le refus doit etre un diagnostic de PREREQUIS, et tomber AVANT"
-  detail "    que writer/bootstrap ne soient pretes au migrateur."
+  detail "    code $CODE_P2 (3 attendu), capacites du migrateur: « ${CAP_P2:-aucune} »"
+  detail "      $(grep -m1 -E '^(ECHEC|DEPLOYMENT_)' <<<"$SORTIE_CMD" | cut -c1-130)"
+  if grep -qF "eurostruct_deployment accorde" <<<"$SORTIE_CMD"; then
+    detail "    L'ETAPE 2b A REUSSI: le refus observe vient d'AILLEURS, plus loin."
+  fi
+  detail "    Le refus doit porter le code 3, et tomber AVANT que"
+  detail "    writer/bootstrap ne soient pretes au migrateur."
 fi
 decor_deposer
 fi
@@ -600,14 +624,35 @@ if ! decor_poser r1; then
   echoue "le decor R1 n'a pas pu etre pose"
 else
 suivre_decor
-R_PREFIXE="${PREFIXE}_mr_${JETON}"
-R_TEMOIN="${PREFIXE}_temoin_${JETON}"
-R_HOSTILE="$R_PREFIXE\"; create role $R_TEMOIN nologin; --"
+# LE NOM HOSTILE DOIT TENIR DANS 63 OCTETS, ET C'EST LA CORRECTION D'UN DEFAUT
+# MESURE (6.3b6e).
+#
+# La premiere ecriture composait un nom de 67 octets. PostgreSQL TRONQUE les
+# identifiants a 63: le role etait cree sous un nom tronque, l'URL portait le
+# nom entier, et `verifier_identite` — ajoutee au commit 5 de ce jalon —
+# comparait `session_user` (63 octets, rendu par le serveur) au nom attendu
+# (67 octets, cote shell). La commande refusait DONC AVANT l'etape 3, seul
+# endroit ou le nom du migrateur entre dans du SQL comme IDENTIFIANT.
+#
+# Le contre-exemple restait vert sans jamais atteindre le site d'injection: la
+# matrice de mutation l'a montre en retirant LES DEUX garanties de R1 sans
+# rien faire rougir. Il etait rouge en 5bdd3ca, et l'est devenu hollow en
+# a347dcb — sans qu'aucune de ces deux executions ne le signale.
+#
+# Le jeton est donc raccourci, et la longueur VERIFIEE ci-dessous.
+R_JETON="${JETON:0:6}"
+R_PREFIXE="${PREFIXE}_i${R_JETON}"
+R_TEMOIN="${PREFIXE}_t${R_JETON}"
+R_HOSTILE="$R_PREFIXE\";create role $R_TEMOIN;--"
 adm -c "create role \"$R_PREFIXE\" nologin;" >/dev/null 2>&1
 adm -v ON_ERROR_STOP=1 -v n="$R_HOSTILE" -v mdp="$MDP" >/dev/null 2>&1 <<'SQL'
 create role :"n" login password :'mdp' createrole createdb;
 SQL
-if [[ "$(adm -tAc "select count(*) from pg_roles where rolname = '$R_TEMOIN'")" != "0" ]]; then
+if [[ ${#R_HOSTILE} -gt 63 ]]; then
+  echoue "R1. le nom hostile fait ${#R_HOSTILE} octets: PostgreSQL le tronquerait"
+  echoue "    a 63, et la commande refuserait sur l'identite AVANT l'etape 3."
+  echoue "    Le scenario ne dirait rien de l'injection. Raccourcissez le prefixe."
+elif [[ "$(adm -tAc "select count(*) from pg_roles where rolname = '$R_TEMOIN'")" != "0" ]]; then
   echoue "R1. le temoin existe avant l'essai: le scenario ne dirait rien"
 else
   # L'URL porte le nom hostile PERCENT-ENCODE. Le decoupeur de la commande le
@@ -619,17 +664,92 @@ else
     bash "$COMMANDE_COPIE" 2>&1
   ); CODE_R=$?
   CREE=$(adm -tAc "select count(*) from pg_roles where rolname = '$R_TEMOIN'")
-  if [[ "$CREE" == "0" && $CODE_R -ne 0 ]]; then
-    echo "      ok: R1. un nom de role hostile n'execute aucune instruction"
+  # LE SITE D'INJECTION DOIT AVOIR ETE ATTEINT. C'est la moitie qui manquait:
+  # « le temoin n'existe pas » ne prouve rien si la commande a renonce avant
+  # l'etape 3, ou le nom du migrateur entre dans du SQL comme identifiant.
+  #
+  # ET NON PLUS « la commande a echoue ». Un nom hostile est, une fois cite,
+  # UN NOM: le deploiement va jusqu'au bout, et c'est le resultat correct.
+  # Exiger un echec revenait a exiger que la commande refuse un role legitime
+  # parce que son nom contient des caracteres deplaisants.
+  if ! grep -qF "3/10" <<<"$SORTIE_R"; then
+    echoue "R1. la commande n'a pas atteint l'etape 3 (code $CODE_R): le site"
+    echoue "    d'injection n'a pas ete exerce, le scenario ne dit rien."
+    detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_)' <<<"$SORTIE_R" | cut -c1-140)"
+  elif [[ "$CREE" == "0" ]]; then
+    echo "      ok: R1. le nom hostile atteint l'etape 3 et n'y execute rien"
   else
     rouge "R1. un nom de role venu de l'URL est execute comme du SQL."
     detail "    role temoin cree: $CREE (1 = injection reussie), code $CODE_R"
     detail "    nom employe: ${R_HOSTILE:0:70}"
     detail "    L'instruction s'execute avec les privileges du PLAN DE CONTROLE,"
-    detail "    qui porte CREATEROLE. Le refus doit tomber avant tout octroi."
+    detail "    qui porte CREATEROLE."
   fi
 fi
 r_nettoyer
+decor_deposer
+fi
+
+# --- R2. DEUX NOMS QUI N'EN FONT QU'UN -----------------------------------
+# CE SCENARIO EXISTE PARCE QUE R1 L'EXERCAIT PAR ACCIDENT (6.3b6e).
+#
+# La borne de 63 octets de `borner_identifiant` etait, sans que ce soit ecrit
+# nulle part, ce qui faisait passer R1: son nom hostile depassait la borne. En
+# raccourcissant ce nom, R1 mesure enfin l'interpolation — et la borne se
+# retrouvait sans contre-exemple. Elle en a un ici, et il porte sur ce que la
+# borne protege vraiment.
+#
+# LE DANGER N'EST PAS LA LONGUEUR. C'est que PostgreSQL TRONQUE a 63 octets:
+# deux noms qui ne different qu'apres le 63e octet designent LE MEME role. Le
+# controle « plan et migrateur sont distincts » compare deux CHAINES SHELL,
+# qui, elles, different. Sans la borne, la commande deploierait donc avec un
+# seul role jouant les deux acteurs — exactement ce que le modele de menace
+# interdit — et le compte rendu afficherait deux noms.
+R2_BASE=""
+if ! decor_poser r2; then
+  echoue "le decor R2 n'a pas pu etre pose"
+else
+suivre_decor
+# 63 octets EXACTEMENT, puis deux suffixes qui tombent au-dela.
+R2_BASE="${PREFIXE}_r2_${JETON}"
+while [[ ${#R2_BASE} -lt 63 ]]; do R2_BASE="${R2_BASE}z"; done
+R2_BASE="${R2_BASE:0:63}"
+R2_PLAN="${R2_BASE}AAA"
+R2_MIG="${R2_BASE}BBB"
+adm -v ON_ERROR_STOP=1 -v n="$R2_BASE" -v mdp="$MDP" >/dev/null 2>&1 <<'SQL'
+create role :"n" login password :'mdp' createrole createdb;
+SQL
+R2_MEME=$(adm -tA -v a="$R2_PLAN" -v b="$R2_MIG" <<'SQL'
+select (:'a'::name = :'b'::name)::text;
+SQL
+)
+if [[ "$R2_MEME" != "true" ]]; then
+  echoue "R2. les deux noms ne se confondent pas cote serveur ($R2_MEME);"
+  echoue "    le scenario ne dirait rien de la troncature."
+else
+  SORTIE_R2=$(
+    ESC_PLAN_URL="postgresql://$R2_PLAN:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+    ESC_MIGRATOR_URL="postgresql://$R2_MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+    bash "$COMMANDE_COPIE" 2>&1
+  ); CODE_R2=$?
+  if [[ $CODE_R2 -ne 0 ]] \
+     && grep -qF "DEPLOYMENT_IDENTIFIER_REJECTED" <<<"$SORTIE_R2" \
+     && ! grep -qF "1/10" <<<"$SORTIE_R2"; then
+    echo "      ok: R2. deux noms confondus par la troncature sont refuses"
+  else
+    rouge "R2. deux noms qui designent le MEME role passent pour deux acteurs."
+    detail "    code $CODE_R2; « ${R2_PLAN:0:20}...AAA » et « ...BBB » valent"
+    detail "    tous deux « ${R2_BASE:0:24}... » une fois tronques a 63 octets."
+    detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_)' <<<"$SORTIE_R2" | cut -c1-140)"
+    if grep -qF "1/10" <<<"$SORTIE_R2"; then
+      detail "    LA PHASE 0 A DEMARRE: le refus, s'il a eu lieu, est venu trop tard."
+    fi
+  fi
+fi
+[[ -n "$R2_BASE" ]] && adm -v n="$R2_BASE" >/dev/null 2>&1 <<'SQL'
+drop owned by :"n";
+drop role if exists :"n";
+SQL
 decor_deposer
 fi
 

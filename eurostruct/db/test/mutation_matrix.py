@@ -355,12 +355,22 @@ CAS_COMMANDE = [
 # de decoupage: la reprise n'est une garantie que si les quatre tiennent
 # ENSEMBLE, et une matrice qui n'en muterait qu'un le laisserait croire.
 #
-# TROIS PAIRES DE REDONDANCE Y FIGURENT, et elles sont le sujet:
+# DEUX PAIRES DE REDONDANCE Y FIGURENT, et elles sont le sujet:
 #   P2  — l'ADMIN preexistant ET l'octroi constate;
-#   R1  — la borne de longueur ET l'interpolation sure;
 #   T4  — le portillon (hors transaction) ET le controle re-fait a l'ecriture.
 # Pour chacune, retirer UNE garantie doit rester vert, et retirer LES DEUX doit
 # rougir. C'est ce qui distingue une double verification d'un doublon.
+#
+# IL Y EN AVAIT UNE TROISIEME, ET ELLE N'EN ETAIT PAS UNE. La borne de longueur
+# et l'interpolation sure etaient declarees redondantes pour R1: retirer les
+# deux devait le faire rougir, et ne le faisait pas. La cause n'etait pas dans
+# la commande mais dans le contre-exemple — son nom hostile depassait 63 octets,
+# PostgreSQL le tronquait, et `verifier_identite` refusait AVANT l'etape 3, seul
+# site d'injection. R1 passait sans jamais l'atteindre.
+#
+# Les deux garanties sont donc separees, et chacune a son contre-exemple:
+# l'interpolation repond de R1, la borne repond de R2 — deux noms qui ne
+# different qu'apres le 63e octet designent le meme role.
 MUT_P2_ADMIN = ("""  if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'MEMBER WITH ADMIN OPTION')::text" 2>/dev/null)" != "true" ]]; then""",
                 """  if false; then""")
 MUT_P2_CONSTAT = ("""  if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'USAGE')::text" 2>/dev/null)" != "true" ]]; then""",
@@ -391,12 +401,10 @@ CAS_REPRISE = [
     ("Q   la compensation ne se declenche plus", "Q1", CMD,
      [("  if [[ $EMPRUNTS_ACCORDES -eq 1 && $FINALISE -eq 0 ]]; then",
        "  if false; then")], False),
-    ("R1  la borne de longueur des identifiants", "R1", CMD,
-     [MUT_R1_BORNE], True),
-    ("R1' l'interpolation sure du nom de migrateur", "R1", CMD,
-     [MUT_R1_INTERP], True),
-    ("R1b LES DEUX: borne retiree ET interpolation shell", "R1", CMD,
-     [MUT_R1_BORNE, MUT_R1_INTERP], False),
+    ("R1  l'interpolation sure du nom de migrateur", "R1", CMD,
+     [MUT_R1_INTERP], False),
+    ("R2  la borne de longueur des identifiants", "R2", CMD,
+     [MUT_R1_BORNE], False),
     ("S1  le verrou de deploiement ne refuse plus", "S1", CMD,
      [('if [[ "$PRIS" != "true" ]]; then', "if false; then")], False),
     ("T1  le registre repond toujours « jamais appliquee »", "T1", APP,
@@ -442,23 +450,83 @@ CAS_ACL_SCEAU = [
        "grant select on normative_seal_metadata to eurostruct_deployment;")], False),
 ]
 
+# --------------------------------------------------------------------------
+# UN FILTRE, POUR REJOUER CE QU'ON VIENT DE CORRIGER
+# --------------------------------------------------------------------------
+#   python3 db/test/mutation_matrix.py            les 48 controles
+#   python3 db/test/mutation_matrix.py R1 R2 P2   ceux dont le nom commence
+#                                                 par l'un de ces mots
+#
+# 48 controles, c'est autant d'executions completes de harnais: pres d'une
+# heure et demie. Corriger un controle creux et revalider LUI SEUL demandait
+# jusqu'ici de tout relancer, ou de commenter des lignes — c'est-a-dire de
+# modifier le fichier qui juge.
+#
+# LE VERDICT FINAL LE DIT. Une execution filtree n'annonce jamais que les 48
+# controles portent quelque chose: elle ne les a pas exerces, et un compte
+# rendu partiel presente comme complet est exactement ce que ce projet refuse.
+FILTRE = [a for a in sys.argv[1:] if not a.startswith("-")]
+
+
+def retenu(cas):
+    return not FILTRE or any(cas[0].split()[0] == f for f in FILTRE)
+
+
+def lot(cas, **kw):
+    gardes = [c for c in cas if retenu(c)]
+    return all([essayer(*c, **kw) for c in gardes]), len(gardes)
+
+
+# LA GARDE EST APPELEE ICI, ET ELLE NE L'A JAMAIS ETE (6.3b6e).
+#
+# `exiger_arbre_propre()` etait DEFINIE et jamais invoquee. Sa docstring affirme
+# qu'elle est « la seule chose qui rend l'outil utilisable sans precaution
+# particuliere »; en fait, chaque `restaurer()` faisait un
+# `git checkout -- <fichier>` sur un arbre que personne n'avait verifie.
+#
+# Mesure, en ecrivant ce jalon: des corrections NON VALIDEES de
+# `tools/deploy_eurostruct.sh` ont ete effacees par la premiere restauration,
+# en silence. Le harnais suivant a alors teste le fichier de HEAD tout en
+# annoncant le contraire.
+#
+# Une surface non executee n'est pas un verdict — la regle vaut aussi pour
+# l'outil qui l'applique.
+exiger_arbre_propre()
+
 print("MUTATIONS — chaque garantie retiree doit rougir son contre-exemple")
-ok = all([essayer(*c) for c in CAS])
-ok = all([essayer(*c, harnais="db/test/authority_closure.sh", prefixe="mv")
-          for c in CAS_AUTORITE]) and ok
-ok = all([essayer(*c, harnais="db/test/seal_contract.sh", prefixe="ms")
-          for c in CAS_SCEAU]) and ok
-ok = all([essayer(*c, harnais="db/test/cross_cluster_restore.sh", prefixe="mx")
-          for c in CAS_RESTAURATION]) and ok
-ok = all([essayer(*c, harnais="db/test/official_deployment.sh", prefixe="mo")
-          for c in CAS_COMMANDE]) and ok
-ok = all([essayer(*c, harnais="db/test/deploy_recovery.sh", prefixe="mp")
-          for c in CAS_REPRISE]) and ok
-ok = all([essayer(*c, harnais="db/test/seal_contract.sh", prefixe="mw")
-          for c in CAS_ACL_SCEAU]) and ok
+if FILTRE:
+    print(f"         (filtre: {' '.join(FILTRE)} — execution PARTIELLE)")
+LOTS = [
+    (CAS, {}),
+    (CAS_AUTORITE, dict(harnais="db/test/authority_closure.sh", prefixe="mv")),
+    (CAS_SCEAU, dict(harnais="db/test/seal_contract.sh", prefixe="ms")),
+    (CAS_RESTAURATION,
+     dict(harnais="db/test/cross_cluster_restore.sh", prefixe="mx")),
+    (CAS_COMMANDE, dict(harnais="db/test/official_deployment.sh", prefixe="mo")),
+    (CAS_REPRISE, dict(harnais="db/test/deploy_recovery.sh", prefixe="mp")),
+    (CAS_ACL_SCEAU, dict(harnais="db/test/seal_contract.sh", prefixe="mw")),
+]
+
+TOTAL = sum(len(cas) for cas, _ in LOTS)
+ok = True
+exerces = 0
+for cas, kw in LOTS:
+    verdict, n = lot(cas, **kw)
+    ok = verdict and ok
+    exerces += n
+
 print()
-TOTAL = len(CAS) + len(CAS_AUTORITE) + len(CAS_SCEAU) + len(CAS_RESTAURATION) \
-      + len(CAS_COMMANDE) + len(CAS_REPRISE) + len(CAS_ACL_SCEAU)
-print(f"MUTATIONS: les {TOTAL} controles portent quelque chose." if ok
-      else "MUTATIONS: au moins un controle ne porte rien.")
-sys.exit(0 if ok else 1)
+if FILTRE and exerces == 0:
+    print(f"MUTATIONS: aucun controle ne correspond a « {' '.join(FILTRE)} ».")
+    sys.exit(2)
+if not ok:
+    print("MUTATIONS: au moins un controle ne porte rien.")
+    sys.exit(1)
+# UNE EXECUTION FILTREE NE REND PAS LE VERDICT COMPLET. Elle dit ce qu'elle a
+# exerce, et combien elle a laisse de cote.
+if exerces < TOTAL:
+    print(f"MUTATIONS: {exerces} controle(s) sur {TOTAL} portent quelque chose "
+          f"— execution PARTIELLE, {TOTAL - exerces} non exerces.")
+    sys.exit(0)
+print(f"MUTATIONS: les {TOTAL} controles portent quelque chose.")
+sys.exit(0)

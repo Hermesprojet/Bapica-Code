@@ -115,6 +115,25 @@ unset PGSERVICE PGSERVICEFILE PGPASSFILE PGOPTIONS PGDATABASE PGHOSTADDR \
       PGHOST PGPORT PGUSER PGPASSWORD PGSSLMODE
 
 echec()  { echo "ECHEC: $*" >&2; exit 1; }
+
+# UN PREREQUIS NON TENU N'EST PAS UNE PANNE, ET SE DISTINGUE PAR UN CODE.
+#
+# Mesure (6.3b6e): le contre-exemple P2 acceptait n'importe quel echec dont la
+# sortie contenait « prerequis » ou « eurostruct_deployment ». Or la chaine
+# `eurostruct_deployment` figure dans un message de REUSSITE de l'etape 2b
+# (« ok: eurostruct_deployment accorde a ... »). Retirer les deux garanties que
+# P2 etait cense exercer le laissait donc vert: la commande echouait trois
+# etapes plus loin, sur « permission denied for function
+# normative_activation_state », et le mot cherche etait deja la. Le
+# contre-exemple ne regardait pas OU le refus tombait.
+#
+# Ce que l'exploitant doit corriger — un droit a demander a un tiers — n'est pas
+# ce qu'un incident demande. Le code 3 le dit, et le jeton le nomme; le texte ne
+# sert qu'a l'affichage.
+echec_prerequis() {
+  echo "DEPLOYMENT_PRECONDITION_FAILED: $*" >&2
+  exit 3
+}
 etape()  { echo; echo "== $*"; }
 constat(){ echo "   ok: $*"; }
 
@@ -220,8 +239,13 @@ fi
 borner_identifiant() {
   local quoi="$1" valeur="$2"
   if [[ ${#valeur} -eq 0 || ${#valeur} -gt 63 ]]; then
-    echec "le nom du $quoi fait ${#valeur} caracteres. PostgreSQL tronque les
-       identifiants a 63 octets: deux roles distincts deviendraient le meme."
+    echec "DEPLOYMENT_IDENTIFIER_REJECTED: le nom du $quoi fait ${#valeur}
+       caracteres. PostgreSQL tronque les identifiants a 63 octets: deux noms
+       qui ne different qu'au-dela du 63e octet designent LE MEME role, et le
+       plan de controle deviendrait son propre migrateur sans que rien ne le
+       montre — les deux CHAINES, elles, restent distinctes.
+       Le jeton est la pour qu'un orchestrateur branche sur lui, et non sur ce
+       texte."
   fi
   # PAS DE TEST SUR L'OCTET NUL, ET C'EST DELIBERE. `$'\0'` vaut la chaine
   # VIDE dans un motif bash: `*$'\0'*` devient `**`, qui accepte TOUT. Ecrit
@@ -596,7 +620,7 @@ if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'U
   constat "« $PLAN_USER » detient deja eurostruct_deployment"
 else
   if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'MEMBER WITH ADMIN OPTION')::text" 2>/dev/null)" != "true" ]]; then
-    echec "prerequis non tenu: « $PLAN_USER » ne detient ni eurostruct_deployment
+    echec_prerequis "« $PLAN_USER » ne detient ni eurostruct_deployment
        ni l'ADMIN OPTION qui lui permettrait de se l'accorder.
        C'est le cas quand les six roles canoniques PREEXISTENT, provisionnes
        par un tiers. Faites accorder, par leur createur:
@@ -612,8 +636,8 @@ SQL
   # avertissement: sans ce controle, la commande poursuivrait et echouerait
   # trois etapes plus loin, sur un diagnostic sans rapport.
   if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'USAGE')::text" 2>/dev/null)" != "true" ]]; then
-    echec "l'octroi de eurostruct_deployment a « $PLAN_USER » n'a pas pris.
-       Aucun emprunt n'a ete accorde au migrateur."
+    echec_prerequis "l'octroi de eurostruct_deployment a « $PLAN_USER » n'a
+       pas pris. Aucun emprunt n'a ete accorde au migrateur."
   fi
   constat "eurostruct_deployment accorde a « $PLAN_USER »"
 fi
@@ -641,7 +665,7 @@ else
 # pour une raison qu'on ignore. On ne reprend que ce qu'on a donne.
 DEJA_DETENU=$(capacites_du_migrateur)
 if [[ -n "$DEJA_DETENU" ]]; then
-  echec "prerequis non tenu: « $MIG_USER » detient deja des capacites sur les
+  echec_prerequis "« $MIG_USER » detient deja des capacites sur les
        roles d'autorite: $DEJA_DETENU
        Cette commande n'accorde des emprunts que si elle peut les reprendre, et
        elle ne reprend que ce qu'elle a donne. Revoquez ces appartenances —
