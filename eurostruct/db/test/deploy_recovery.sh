@@ -359,17 +359,18 @@ q_verifier() {
   return 1
 }
 
-# `q_amorcer` — pose le decor et amene la base au point ou l'etape 3 va
-# s'executer. Le premier appel + l'octroi externe reproduisent le parcours
-# REEL d'aujourd'hui (defaut P1); sans lui, les scenarios Q n'atteindraient
-# jamais l'octroi et seraient verts pour la mauvaise raison.
+# `q_amorcer` — pose le decor, et RIEN DE PLUS.
+#
+# LA VERSION ROUGE APPELAIT LA COMMANDE UNE PREMIERE FOIS puis accordait
+# `eurostruct_deployment` de l'exterieur: c'etait le parcours reel tant que la
+# commande ne savait pas s'accorder ce role (defaut P1). Depuis qu'elle le
+# fait, un premier appel DEPLOIERAIT ENTIEREMENT la base — les scenarios Q
+# n'atteindraient plus jamais l'octroi qu'ils testent, et seraient verts pour
+# la mauvaise raison.
 q_amorcer() {
   local s="$1"
   decor_poser "$s" || return 1
   suivre_decor
-  migrations_copiees
-  appeler >/dev/null 2>&1
-  adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
   return 0
 }
 
@@ -543,12 +544,6 @@ else
   # L'URL porte le nom hostile PERCENT-ENCODE. Le decoupeur de la commande le
   # desencode, et c'est ce nom-la qui arrive dans le SQL.
   R_ENC=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$R_HOSTILE")
-  # Le premier appel pose le sceau; l'octroi qui suit reproduit le parcours
-  # d'aujourd'hui (defaut P1) et donne sa portee a l'etape 3.
-  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
-  ESC_MIGRATOR_URL="postgresql://$R_ENC:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
-  bash "$COMMANDE_COPIE" >/dev/null 2>&1
-  adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
   SORTIE_R=$(
     ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
     ESC_MIGRATOR_URL="postgresql://$R_ENC:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \

@@ -104,10 +104,6 @@ SQL
   adm -c "alter database \"$BASE\"
             set eurostruct.approved_deployment_roles = '$MIG,$CTL';" >/dev/null 2>&1
   adm -c "alter database \"$BASE\" set eurostruct.token_roles = 'authenticated';" >/dev/null 2>&1
-  # LE ROLE DE DEPLOIEMENT: la commande exerce la phase 2, il lui faut donc
-  # `eurostruct_deployment`. Il n'existe qu'apres la phase 0 — que la commande
-  # applique elle-meme. L'octroi se fait donc APRES son premier appel, ce qui
-  # est le vrai enchainement d'exploitation et non un artefact de test.
   return 0
 }
 
@@ -206,16 +202,12 @@ if ! decor_poser n1; then
   echoue "le decor N1 n'a pas pu etre pose"
 else
 suivre_decor
-# LA PHASE 0 CREE `eurostruct_deployment`; l'exploitant l'accorde ensuite au
-# plan de controle. La commande est donc appelee DEUX FOIS dans le vrai
-# enchainement: une premiere qui pose le sceau et s'arrete faute de droit sur
-# la phase 2, puis l'octroi, puis la seconde qui va au bout.
-#
-# CE N'EST PAS UN ARTEFACT DE TEST. C'est l'ordre reel: `eurostruct_deployment`
-# n'existe pas avant la phase 0, donc personne ne peut le detenir avant.
-deployer >/dev/null 2>&1
-adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
-
+# UN SEUL APPEL, ET C'EST LE SUJET (6.3b6e, point 1). Ce bloc appelait la
+# commande DEUX FOIS, en ignorant l'echec du premier appel et en accordant
+# `eurostruct_deployment` entre les deux. Ce n'etait pas un artefact de test:
+# c'etait le seul parcours possible, et il decrivait un defaut sans le nommer.
+# La commande s'accorde desormais ce role elle-meme, en constatant qu'elle le
+# peut.
 if deployer; then
   echo "      ok: N1. le deploiement complet aboutit (exit 0)"
 

@@ -181,6 +181,146 @@ fi
 
 [[ -f "$SCEAU" ]] || echec "le fichier de sceau est introuvable ($SCEAU)."
 
+# ==========================================================================
+# LE VERROU DE DEPLOIEMENT — tenu du debut a la fin
+# ==========================================================================
+# Le verrou consultatif de `normative_finalize_deployment()` protege la PHASE 2,
+# et elle seule. La phase 0, les octrois, les migrations et la lecture du
+# manifeste ne l'etaient pas: deux commandes lancees ensemble sur la meme base
+# pouvaient intercaler leurs etapes et appliquer deux fois des migrations qui ne
+# sont pas idempotentes.
+#
+# LA CLE EST CONSTANTE ET NON INTERPOLABLE. Les deux moities sont calculees PAR
+# LE SERVEUR: un libelle fixe, et le nom de la base courante. Rien de ce que
+# l'appelant fournit n'entre dans la cle — sans quoi deux invocations visant la
+# meme base pourraient choisir deux verrous differents.
+#
+# LA BASE FAIT PARTIE DE LA CLE, et c'est necessaire: les verrous consultatifs
+# sont globaux au cluster. Sans elle, deployer la base B attendrait la fin du
+# deploiement de la base A, sur un cluster qui en porte plusieurs.
+#
+# IL EXIGE UNE CONNEXION PERSISTANTE. Un verrou de session vit dans sa session:
+# le co-processus `psql` ci-dessous la tient ouverte pour toute la duree de la
+# commande. DERRIERE PGBOUNCER EN MODE TRANSACTION, cela ne fonctionne pas —
+# la session change a chaque transaction. Voir docs/DEPLOIEMENT_PREREQUIS.md.
+VERROU_TENU=0
+coproc VERROU { PGHOST="$PLAN_HOST" PGPORT="$PLAN_PORT" PGUSER="$PLAN_USER" \
+                PGPASSWORD="$PLAN_PASSWORD" PGSSLMODE="$PLAN_SSLMODE" \
+                psql -X -q -At -d "$BASE" 2>&1; }
+if [[ -z "${VERROU_PID:-}" ]]; then
+  echec "la session du verrou de deploiement n'a pas pu etre ouverte."
+fi
+echo "select pg_try_advisory_lock(hashtext('eurostruct.deploiement'),
+                                  hashtext(current_database()))::text;" >&"${VERROU[1]}"
+if ! read -r -t 30 -u "${VERROU[0]}" PRIS; then
+  echec "aucune reponse du verrou de deploiement en 30 s."
+fi
+if [[ "$PRIS" != "true" ]]; then
+  cat >&2 <<EOF
+DEPLOYMENT_ALREADY_RUNNING: un autre deploiement de « $BASE » est en cours.
+
+       Deux commandes simultanees appliqueraient deux fois des migrations qui
+       ne sont pas idempotentes. Celle-ci s'arrete SANS RIEN MODIFIER.
+
+       Relancez quand l'autre execution est terminee.
+EOF
+  exit 4
+fi
+VERROU_TENU=1
+
+# --------------------------------------------------------------------------
+# LA COMPENSATION — ce que la commande reprend si elle n'aboutit pas
+# --------------------------------------------------------------------------
+# A l'etape 3, la commande accorde au migrateur writer et bootstrap AVEC ADMIN
+# OPTION. Sans ce piege, toute erreur ensuite — une migration refusee, une
+# lecture de manifeste impossible, un `Ctrl-C` — laissait le migrateur capable
+# d'ENDOSSER et de READMINISTRER les roles d'autorite sur une base en cours de
+# deploiement. Contre-exemples mesures: db/test/deploy_recovery.sh, Q1 a Q5.
+#
+# ELLE NE REVOQUE QUE CE QU'ELLE A ACCORDE. C'est la raison de la precondition
+# « zero capacite avant octroi »: si le migrateur detenait deja une
+# appartenance, la reprendre ici detruirait un octroi que quelqu'un d'autre a
+# pose, pour une raison qu'on ignore.
+#
+# ELLE NE SE DECLENCHE PAS APRES UNE FINALISATION REUSSIE: la phase 2 a deja
+# revoque, et le piege ne fait alors que constater.
+EMPRUNTS_ACCORDES=0
+FINALISE=0
+NETTOYAGE_ECHOUE=0
+
+capacites_du_migrateur() {
+  plan -tAc "
+    select coalesce(string_agg(a.r || '(' ||
+        case when pg_has_role('$MIG_USER', a.r, 'SET') then 'SET ' else '' end ||
+        case when pg_has_role('$MIG_USER', a.r, 'USAGE') then 'USAGE ' else '' end ||
+        case when pg_has_role('$MIG_USER', a.r, 'MEMBER WITH ADMIN OPTION')
+             then 'ADMIN' else '' end || ')', ' '), '')
+      from unnest(array['eurostruct_normative_writer',
+                        'eurostruct_normative_bootstrap',
+                        'eurostruct_normative_activator']) a(r)
+     where pg_has_role('$MIG_USER', a.r, 'SET')
+        or pg_has_role('$MIG_USER', a.r, 'USAGE')
+        or pg_has_role('$MIG_USER', a.r, 'MEMBER WITH ADMIN OPTION')" 2>/dev/null
+}
+
+revoquer_les_emprunts() {
+  plan -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
+revoke eurostruct_normative_writer    from "$MIG_USER";
+revoke eurostruct_normative_bootstrap from "$MIG_USER";
+SQL
+  capacites_du_migrateur
+}
+
+sortie_compensee() {
+  local code=$?
+  local reste
+  trap - EXIT
+  if [[ $EMPRUNTS_ACCORDES -eq 1 && $FINALISE -eq 0 ]]; then
+    echo
+    echo "== compensation — les emprunts accordes a l'etape 3 sont repris"
+    reste=$(revoquer_les_emprunts)
+    if [[ -n "$reste" ]]; then
+      NETTOYAGE_ECHOUE=1
+      cat >&2 <<EOF
+DEPLOYMENT_CLEANUP_FAILED: les emprunts n'ont PAS pu etre repris.
+
+       « $MIG_USER » conserve: $reste
+
+       La base n'est pas finalisee ET le migrateur reste capable d'endosser ou
+       de readministrer les roles d'autorite. N'EXPLOITEZ PAS CETTE BASE en
+       l'etat. Revoquez a la main, depuis « $PLAN_USER »:
+
+           REVOKE eurostruct_normative_writer, eurostruct_normative_bootstrap
+             FROM <migrateur>;
+EOF
+    else
+      echo "   ok: aucune capacite residuelle du migrateur"
+    fi
+  fi
+  if [[ $VERROU_TENU -eq 1 && -n "${VERROU_PID:-}" ]]; then
+    # Fermer l'entree du co-processus termine `psql`, donc la session, donc le
+    # verrou. Aucun `pg_advisory_unlock` explicite: on veut que la liberation
+    # tienne aussi quand le script meurt sans passer par ici.
+    #
+    # LE DESCRIPTEUR EST FERME PAR SON NUMERO, via `eval`. Bash n'accepte la
+    # forme `exec {nom}>&-` qu'avec un nom SIMPLE: avec un indice de tableau,
+    # le mot est pris pour un nom de COMMANDE, et `exec` remplace alors le
+    # shell — qui meurt sur-le-champ, sans un mot. Defaut mesure en 6.3b6a.
+    eval "exec ${VERROU[1]}>&-" 2>/dev/null || true
+    wait "$VERROU_PID" 2>/dev/null || true
+    VERROU_TENU=0
+  fi
+  [[ $NETTOYAGE_ECHOUE -eq 1 ]] && exit 5
+  exit $code
+}
+trap sortie_compensee EXIT
+# ET SUR SIGNAL. Sans cela, TERM, INT ou HUP tuent bash AVANT le piege de
+# sortie: le migrateur garderait ses emprunts, et le verrou serait relache par
+# la mort de la session sans que rien ne soit repris. Mesure: 6.3b6e, Q5.
+trap 'echo; echo "== interruption (TERM) — compensation"; exit 130' TERM
+trap 'echo; echo "== interruption (INT) — compensation";  exit 130' INT
+trap 'echo; echo "== interruption (HUP) — compensation";  exit 130' HUP
+
 # --------------------------------------------------------------------------
 # 1. PHASE 0 — LE SCEAU, PAR LE PLAN DE CONTROLE
 # --------------------------------------------------------------------------
@@ -266,6 +406,53 @@ fi
 #
 # Une base ACTIVE ne recoit donc plus d'emprunt du tout: on saute directement
 # aux constats.
+# --------------------------------------------------------------------------
+# 2b. LE ROLE DE DEPLOIEMENT — constate, et accorde si besoin
+# --------------------------------------------------------------------------
+# `eurostruct_deployment` n'existe qu'APRES la phase 0: personne ne peut le
+# detenir avant le premier appel de cette commande. Sans ce bloc, la commande
+# s'arretait ici sur « permission denied for function
+# normative_activation_state » — une erreur brute, presentee comme un « etat de
+# deploiement inattendu ».
+#
+# LE PARCOURS REEL ETAIT DONC: appeler, ignorer l'echec, accorder le role a la
+# main, rappeler. Le harnais le decrivait sans le nommer. UN ECHEC UTILISE
+# COMME MECANISME DE PROGRESSION N'EN EST PAS UN.
+#
+# LA CAPACITE EXISTE, et c'est ce qui rend ce bloc possible: PostgreSQL 16
+# donne au CREATEUR d'un role un ADMIN residuel (fait F1), et c'est le plan de
+# controle qui cree les six roles en phase 0. Il peut donc se l'accorder.
+#
+# SI LES ROLES PREEXISTENT et que personne ne lui a donne cet ADMIN, le refus
+# tombe ICI — nomme, et AVANT que writer/bootstrap ne soient pretes au
+# migrateur.
+etape "2b/10 le role de deploiement"
+if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'USAGE')::text" 2>/dev/null)" == "true" ]]; then
+  constat "« $PLAN_USER » detient deja eurostruct_deployment"
+else
+  if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'MEMBER WITH ADMIN OPTION')::text" 2>/dev/null)" != "true" ]]; then
+    echec "prerequis non tenu: « $PLAN_USER » ne detient ni eurostruct_deployment
+       ni l'ADMIN OPTION qui lui permettrait de se l'accorder.
+       C'est le cas quand les six roles canoniques PREEXISTENT, provisionnes
+       par un tiers. Faites accorder, par leur createur:
+
+           GRANT eurostruct_deployment TO \"$PLAN_USER\" WITH ADMIN OPTION;
+
+       Aucun emprunt n'a ete accorde au migrateur."
+  fi
+  plan -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
+grant eurostruct_deployment to "$PLAN_USER" with inherit true;
+SQL
+  # CONSTATE, ET NON SUPPOSE. Un `GRANT` sans effet emet un simple
+  # avertissement: sans ce controle, la commande poursuivrait et echouerait
+  # trois etapes plus loin, sur un diagnostic sans rapport.
+  if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'USAGE')::text" 2>/dev/null)" != "true" ]]; then
+    echec "l'octroi de eurostruct_deployment a « $PLAN_USER » n'a pas pris.
+       Aucun emprunt n'a ete accorde au migrateur."
+  fi
+  constat "eurostruct_deployment accorde a « $PLAN_USER »"
+fi
+
 DEJA=$(plan -tAc "select normative_activation_state()" 2>&1)
 if [[ "$DEJA" == "ACTIVE" ]]; then
   echo
@@ -281,6 +468,22 @@ else
 # --------------------------------------------------------------------------
 # DEUX ROLES, ET NON TROIS: l'activateur n'est jamais prete — il possede la
 # racine. Ces deux-la sont rendus par la phase 2, et c'est le but.
+# LA PRECONDITION: LE MIGRATEUR NE DETIENT RIEN.
+#
+# Elle n'est pas decorative — c'est ELLE qui autorise la compensation a
+# revoquer. Sans elle, un migrateur deja membre verrait son appartenance
+# DETRUITE par le piege de sortie, alors que quelqu'un d'autre l'avait posee
+# pour une raison qu'on ignore. On ne reprend que ce qu'on a donne.
+DEJA_DETENU=$(capacites_du_migrateur)
+if [[ -n "$DEJA_DETENU" ]]; then
+  echec "prerequis non tenu: « $MIG_USER » detient deja des capacites sur les
+       roles d'autorite: $DEJA_DETENU
+       Cette commande n'accorde des emprunts que si elle peut les reprendre, et
+       elle ne reprend que ce qu'elle a donne. Revoquez ces appartenances —
+       depuis le role qui les a accordees — puis relancez.
+       Aucun emprunt supplementaire n'a ete accorde."
+fi
+
 etape "3/10  octroi temporaire de writer/bootstrap a « $MIG_USER »"
 SORTIE=$(plan -v ON_ERROR_STOP=1 2>&1 <<SQL
 grant eurostruct_normative_writer    to "$MIG_USER" with admin option;
@@ -288,6 +491,8 @@ grant eurostruct_normative_bootstrap to "$MIG_USER" with admin option;
 SQL
 ) || echec "les emprunts n'ont pas pu etre accordes:
 $(grep -m2 -E 'ERROR|FATAL' <<<"$SORTIE" | sed 's/^/       /')"
+# A PARTIR D'ICI, TOUTE SORTIE PASSE PAR LA COMPENSATION.
+EMPRUNTS_ACCORDES=1
 constat "emprunts accordes (ils seront rendus par la phase 2)"
 
 # --------------------------------------------------------------------------
@@ -360,6 +565,10 @@ fi   # fin du bloc « la base n'etait pas deja finalisee »
 etape "8/10  constat de l'etat apres la phase 2"
 ETAT=$(plan -tAc "select normative_activation_state()" 2>&1)
 [[ "$ETAT" == "ACTIVE" ]] || echec "la phase 2 ne laisse pas la base ACTIVE (obtenu: $ETAT)."
+# LA PHASE 2 A REVOQUE LES EMPRUNTS ELLE-MEME: la compensation n'a plus rien a
+# reprendre, et se declencher ici reviendrait a revoquer deux fois — donc a
+# emettre un avertissement PostgreSQL sur une base parfaitement saine.
+FINALISE=1
 constat "etat ACTIVE"
 
 # --------------------------------------------------------------------------
