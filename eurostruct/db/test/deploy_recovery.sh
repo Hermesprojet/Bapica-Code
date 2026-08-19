@@ -1027,18 +1027,73 @@ SORTIE_V2=$(
   ESC_MIGRATOR_URL="postgresql://m:x@127.0.0.2:5432/b?sslmode=disable" \
   bash "$COMMANDE_COPIE" 2>&1
 ); CODE_V2=$?
-SORTIE_V3=$(
+SORTIE_V2H=$(
   ESC_PLAN_URL="postgresql://p:x@127.0.0.2:5432/b?sslmode=disable" \
   ESC_MIGRATOR_URL="postgresql://m:x@127.0.0.2:5432/b?sslmode=disable" \
   bash "$COMMANDE_COPIE" --auto-heberge 2>&1
-); CODE_V3=$?
+); CODE_V2H=$?
 if [[ $CODE_V2 -ne 0 ]] && grep -qiE "sslmode|TLS" <<<"$SORTIE_V2" \
-   && ! grep -qiE "sslmode=disable\.$" <<<"$SORTIE_V3"; then
+   && ! grep -qiE "sslmode=disable\.$" <<<"$SORTIE_V2H"; then
   echo "      ok: V2. mode strict: une cible distante en clair est refusee"
 else
   rouge "V2. le mode strict accepte une cible distante sans TLS verifiable."
   detail "    strict: code $CODE_V2 — $(grep -m1 ECHEC <<<"$SORTIE_V2" | cut -c1-110)"
-  detail "    --auto-heberge: code $CODE_V3"
+  detail "    --auto-heberge: code $CODE_V2H"
+fi
+
+# --- V3. LA MATIERE TLS DE L'URL EST-ELLE PORTEE ? ------------------------
+# LE MODE STRICT EXIGE `verify-ca` OU `verify-full` VERS UNE CIBLE DISTANTE
+# (V2). Ces deux modes n'ont de sens qu'avec une AUTORITE DE CERTIFICATION: sans
+# elle, libpq echoue a la negociation. Or:
+#
+#   * `PGSSLROOTCERT` est EFFACEE par l'hygiene d'environnement de la commande —
+#     a juste titre, une variable ambiante ne doit pas decider de la cible;
+#   * le decoupeur d'URL ne lisait que `sslmode`, et laissait tomber
+#     `sslrootcert` EN SILENCE.
+#
+# L'exploitant n'avait donc aucun moyen de designer sa CA: la commande exigeait
+# `verify-full` tout en rendant impossible de le satisfaire autrement qu'avec
+# le magasin par defaut de libpq (`~/.postgresql/root.crt`). Une exigence qu'on
+# ne peut pas satisfaire n'est pas une exigence, c'est une impasse.
+#
+# CE SCENARIO NE DEPEND PAS DU SERVEUR, ET C'EST DELIBERE. libpq ne lit le
+# fichier de CA qu'APRES que le serveur a accepte la negociation SSL: une
+# assertion sur son message d'erreur passerait ici (ou `ssl = on`) et echouerait
+# en CI, ou l'image `postgres:16` demarre sans SSL. Ce qui est exige est donc un
+# controle que la commande fait ELLE-MEME, avant toute connexion: la matiere TLS
+# nommee dans l'URL doit exister et etre lisible, sinon refus nomme.
+VR_CA="/nonexistent/esc-ca-$JETON.crt"
+SORTIE_VR=$(
+  ESC_PLAN_URL="postgresql://p:x@127.0.0.2:5432/b?sslmode=verify-full&sslrootcert=$VR_CA" \
+  ESC_MIGRATOR_URL="postgresql://m:x@127.0.0.2:5432/b?sslmode=verify-full&sslrootcert=$VR_CA" \
+  bash "$COMMANDE_COPIE" 2>&1
+); CODE_VR=$?
+if [[ $CODE_VR -ne 0 ]] \
+   && grep -qF "DEPLOYMENT_TLS_MATERIAL_MISSING" <<<"$SORTIE_VR" \
+   && grep -qF "$VR_CA" <<<"$SORTIE_VR"; then
+  echo "      ok: V3. la CA nommee dans l'URL est portee, et verifiee"
+else
+  rouge "V3. la matiere TLS nommee dans l'URL n'est pas portee."
+  detail "    code $CODE_VR; la CA demandee etait « $VR_CA »"
+  detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_|REFUS)' <<<"$SORTIE_VR" | cut -c1-140)"
+  detail "    Le mode strict exige verify-ca/verify-full, et rien ne permet de"
+  detail "    designer l'autorite: PGSSLROOTCERT est effacee, et le decoupeur"
+  detail "    d'URL ignore sslrootcert. L'exigence est insatisfiable."
+fi
+
+# --- V3b. UN PARAMETRE TLS NON PORTE NE DOIT PAS ETRE IGNORE --------------
+# Accepter puis jeter en silence est la meme faute, en pire: l'exploitant croit
+# avoir configure quelque chose. Ce qui n'est pas porte doit etre REFUSE.
+SORTIE_VRB=$(
+  ESC_PLAN_URL="postgresql://p:x@127.0.0.2:5432/b?sslmode=require&sslcompression=1" \
+  ESC_MIGRATOR_URL="postgresql://m:x@127.0.0.2:5432/b?sslmode=require&sslcompression=1" \
+  bash "$COMMANDE_COPIE" --auto-heberge 2>&1
+); CODE_VRB=$?
+if [[ $CODE_VRB -ne 0 ]] && grep -qF "sslcompression" <<<"$SORTIE_VRB"; then
+  echo "      ok: V3b. un parametre TLS non porte est refuse, et nomme"
+else
+  rouge "V3b. un parametre TLS inconnu est ignore en silence."
+  detail "    code $CODE_VRB; « sslcompression » n'apparait pas dans le refus."
 fi
 
 echo ""
