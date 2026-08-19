@@ -431,6 +431,78 @@ comment on function normative_seal_assurance is
   'PREMIERE generation: une mise a niveau ne lave pas une installation.';
 
 
+-- ---------------------------------------------------------------------
+-- LA READINESS — un etat LISIBLE, et son motif (6.3b6d, point 5)
+-- ---------------------------------------------------------------------
+-- `assert_normative_topology()` rend void et leve. C'est ce qu'il faut pour
+-- BLOQUER, et c'est inutilisable pour RENDRE COMPTE: un appelant qui veut
+-- ecrire une trace n'a que « ca a explose » ou « ca n'a pas explose ».
+--
+-- Cette fonction rend l'etat complet en une ligne, motif compris. Ce qu'elle
+-- ne fait pas: decider. `strict` est une decision du branchement, comme le dit
+-- deja `engine/.../confirmation.py`. Elle fournit de quoi decider, et le
+-- deploiement — `tools/deploy_eurostruct.sh` — decide.
+--
+-- LE NIVEAU D'ASSURANCE Y FIGURE, ET C'EST TOUT L'OBJET. Il ne vivait que dans
+-- un NOTICE de la phase 0, c'est-a-dire nulle part le lendemain. Deux bases
+-- identiques par ailleurs — l'une scellee par un role contenu, l'autre par un
+-- superutilisateur — etaient indiscernables.
+create or replace function normative_deployment_readiness()
+returns table (etat text, sceau text, assurance text,
+               plan_de_controle text, topologie text, motif text)
+language plpgsql
+stable
+set search_path = public, pg_temp
+as $$
+declare
+  a text;
+begin
+  etat  := normative_activation_state();
+  sceau := (select seal_version from normative_seal_metadata
+             order by installed_at desc, seal_version desc limit 1);
+  a     := (select assurance_level from normative_seal_metadata
+             order by installed_at asc, seal_version asc limit 1);
+  assurance := a;
+  plan_de_controle := coalesce(normative_control_plane(), 'AUCUN');
+
+  begin
+    perform assert_normative_topology();
+    topologie := 'CONFORME';
+  exception when others then
+    topologie := 'REFUSEE';
+    motif := sqlerrm;
+  end;
+
+  -- LE MOTIF DIT POURQUOI, MEME QUAND TOUT VA BIEN. Un champ vide se lit
+  -- « rien a signaler » ou « on n'a pas regarde », et rien ne les distingue.
+  if motif is null then
+    if a = 'UNCONTAINED_SUPERUSER' then
+      motif := 'la phase 0 a ete posee par un superutilisateur: le sceau est '
+            || 'en place mais ne contient pas celui qui l''a pose. Deploiement '
+            || 'AUTO-HEBERGE, explicitement degrade — il n''offre PAS '
+            || 'l''assurance de la forme contenue.';
+    elsif etat = 'ACTIVE' then
+      motif := 'deploiement contenu et finalise: aucun des deux acteurs n''est '
+            || 'superutilisateur, la racine est hors de portee du migrateur.';
+    else
+      motif := 'phase 1 appliquee, finalisation non faite: le sous-systeme '
+            || 'n''engage rien tant qu''il est PENDING.';
+    end if;
+  end if;
+  return next;
+end;
+$$;
+
+comment on function normative_deployment_readiness is
+  'Etat de deploiement LISIBLE: etat, version du sceau, niveau d''assurance, '
+  'plan de controle fige, verdict de topologie et motif. Ne decide rien — '
+  'CONTAINED_NON_SUPERUSER peut porter un mode strict, UNCONTAINED_SUPERUSER '
+  'ne le peut pas et ne doit jamais etre presente comme equivalent.';
+
+revoke all on function normative_deployment_readiness() from public;
+grant execute on function normative_deployment_readiness() to eurostruct_deployment;
+
+
 -- =====================================================================
 -- PARAMETRES DE DEPLOIEMENT — LUS DANS LE CATALOGUE, PAS DANS LA SESSION
 -- =====================================================================
@@ -1913,9 +1985,10 @@ begin
   -- explicite, inscrit et audite. Aucun tel evenement n'existe aujourd'hui, et
   -- ce refus dit ou il devra s'inscrire quand il existera.
   declare
-    p_oid oid; p_nom text;
+    p_oid oid; p_nom text; p_assurance text;
   begin
-    select installer_oid, installer_name into p_oid, p_nom
+    select installer_oid, installer_name, assurance_level
+      into p_oid, p_nom, p_assurance
       from normative_seal_metadata
      order by installed_at asc, seal_version asc limit 1;
 
@@ -1927,15 +2000,45 @@ begin
     end if;
 
     if d_oid <> p_oid or d_nom <> p_nom then
-      raise exception
-        'SEAL_INSTALLER_MISMATCH: le sceau a ete pose par « % » (oid %), et la '
-        'finalisation est exercee au nom de « % » (oid %). Le plan de controle '
-        'd''une base est celui qui a pose sa racine de confiance: il ne se '
-        'transfere pas par un GRANT. Si une delegation est voulue, elle doit '
-        'etre un evenement explicite et audite — il n''en existe aucun '
-        'aujourd''hui. Finalisez depuis « % », ou redeployez la base depuis la '
-        'phase 0.', p_nom, p_oid, d_nom, d_oid, p_nom
-        using errcode = 'insufficient_privilege';
+      -- UN SCEAU POSE PAR UN SUPERUTILISATEUR NE PORTE PAS CETTE LIAISON, et
+      -- ce n'est pas une indulgence: c'est une CONSEQUENCE MESUREE de
+      -- PostgreSQL 16. Un `GRANT role TO membre` execute par un
+      -- superutilisateur est enregistre au nom du superutilisateur
+      -- D'AMORCAGE — `postgres`, oid 10 —, jamais du role qui l'a execute:
+      --
+      --   set role t_sup;  grant t_r to t_m;   -- t_sup EST superutilisateur
+      --   -> grantor enregistre: postgres (oid 10)
+      --   set role t_ns;   grant t_r to t_m;   -- t_ns ne l'est pas
+      --   -> grantor enregistre: t_ns
+      --
+      -- Le donneur DERIVE d'une phase 1 pretee par un superutilisateur est
+      -- donc toujours `postgres`, et jamais le poseur. Exiger l'egalite
+      -- rendrait le deploiement auto-heberge INFINALISABLE — pour une raison
+      -- de comptabilite des octrois, sans rapport avec la securite.
+      --
+      -- ET LA GARANTIE N'EST PAS PERDUE POUR AUTANT, parce qu'elle n'existait
+      -- pas: un superutilisateur peut de toute facon endosser n'importe qui,
+      -- reecrire n'importe quelle table et desactiver n'importe quel
+      -- declencheur. La base le DIT — `assurance_level` vaut
+      -- UNCONTAINED_SUPERUSER, il est persiste, lisible par la readiness, et
+      -- `tools/deploy_eurostruct.sh` le refuse en mode strict.
+      if p_assurance = 'UNCONTAINED_SUPERUSER' then
+        raise notice
+          'la liaison poseur/finaliseur ne s''applique pas: le sceau a ete '
+          'pose par un SUPERUTILISATEUR (« % »), et PostgreSQL attribue ses '
+          'octrois au superutilisateur d''amorcage. Deploiement AUTO-HEBERGE, '
+          'explicitement degrade.', p_nom;
+      else
+        raise exception
+          'SEAL_INSTALLER_MISMATCH: le sceau a ete pose par « % » (oid %), et '
+          'la finalisation est exercee au nom de « % » (oid %). Le plan de '
+          'controle d''une base est celui qui a pose sa racine de confiance: '
+          'il ne se transfere pas par un GRANT. Si une delegation est voulue, '
+          'elle doit etre un evenement explicite et audite — il n''en existe '
+          'aucun aujourd''hui. Finalisez depuis « % », ou redeployez la base '
+          'depuis la phase 0.', p_nom, p_oid, d_nom, d_oid, p_nom
+          using errcode = 'insufficient_privilege';
+      end if;
     end if;
   end;
 
