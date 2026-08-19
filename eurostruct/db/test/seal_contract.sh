@@ -38,6 +38,11 @@ DB_DIR="$(dirname "$HERE")"
 RACINE="$(dirname "$DB_DIR")"
 # shellcheck source=lib_harnais.sh
 source "$HERE/lib_harnais.sh"
+# LE SEUL CHEMIN QUI SAIT APPLIQUER UNE MIGRATION (6.3b6e): les harnais
+# l'empruntent AUSSI, sans quoi ils testeraient un chemin que la
+# production n'emprunte pas.
+# shellcheck source=../apply_migration.sh
+source "$HERE/../apply_migration.sh"
 
 PREFIXE="${1:?usage: seal_contract.sh <prefixe-de-base-jetable>}"
 
@@ -163,7 +168,8 @@ SQL
 decor_phase_1() {
   local s="$1" f sortie
   while read -r f; do
-    if ! sortie=$(mig -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
+    if ! esc_appliquer_migration "$f" mig; then
+      sortie="$ESC_MIGRATION_SORTIE"
       echoue "decor $s: phase 1 refusee sur $(basename "$f"):"
       grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
       return 1
@@ -313,7 +319,7 @@ else
 suivre_decor
 SORTIE_H4=$(
   while read -r f; do
-    mig -v ON_ERROR_STOP=1 -f "$f" 2>&1 || break
+    esc_appliquer_migration "$f" mig || { echo "$ESC_MIGRATION_SORTIE"; break; }
   done < <(migrations_de_phase_1)
 )
 if grep -qF "le sceau normatif est absent ou incomplet" <<<"$SORTIE_H4"; then
@@ -371,7 +377,7 @@ grant eurostruct_normative_bootstrap to "$MIG" with admin option;
 SQL
     SORTIE_I2B=$(
       while read -r f; do
-        mig -v ON_ERROR_STOP=1 -f "$f" 2>&1 || break
+        esc_appliquer_migration "$f" mig || { echo "$ESC_MIGRATION_SORTIE"; break; }
       done < <(migrations_de_phase_1)
     )
     if grep -qF "SEAL_VERSION_MISMATCH" <<<"$SORTIE_I2B"; then

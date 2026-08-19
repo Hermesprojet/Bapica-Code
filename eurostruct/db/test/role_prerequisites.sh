@@ -69,6 +69,11 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib_harnais.sh
 source "$HERE/lib_harnais.sh"
+# LE SEUL CHEMIN QUI SAIT APPLIQUER UNE MIGRATION (6.3b6e): les harnais
+# l'empruntent AUSSI, sans quoi ils testeraient un chemin que la
+# production n'emprunte pas.
+# shellcheck source=../apply_migration.sh
+source "$HERE/../apply_migration.sh"
 DB_DIR="$(dirname "$HERE")"
 DB="${1:?usage: role_prerequisites.sh <nom-de-base-jetable>}"
 
@@ -324,7 +329,8 @@ scenario() {
 
   local err="" out=""
   for f in "$DB_DIR"/migrations/*.sql; do
-    if ! out=$(psql_mig -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
+    if ! esc_appliquer_migration "$f" psql_mig; then
+      out="$ESC_MIGRATION_SORTIE"
       err=$(grep -m1 -oE "prerequis non tenu: .{0,120}" <<<"$out")
       break
     fi
@@ -439,7 +445,7 @@ phase_0 || { echo "      ECHEC   la phase 0 a refuse: le cas APPROUVE n'est pas 
 APPROUVE=0
 APPROUVE_OUT=""
 for f in "$DB_DIR"/migrations/*.sql; do
-  APPROUVE_OUT=$(psql_mig -v ON_ERROR_STOP=1 -f "$f" 2>&1) || { APPROUVE=1; break; }
+  esc_appliquer_migration "$f" psql_mig || { APPROUVE=1; APPROUVE_OUT="$ESC_MIGRATION_SORTIE"; break; }
 done
 if [[ $APPROUVE -ne 0 ]]; then
   grep -m1 -E "ERROR|FATAL" <<<"$APPROUVE_OUT" | cut -c1-160 | sed 's/^/              /'
@@ -460,7 +466,7 @@ SAIN_OUT=""
 phase_0 || { SAIN=1; SAIN_OUT="$PHASE0_OUT"; }
 if [[ $SAIN -eq 0 ]]; then
   for f in "$DB_DIR"/migrations/*.sql; do
-    SAIN_OUT=$(psql_mig -v ON_ERROR_STOP=1 -f "$f" 2>&1) || { SAIN=1; break; }
+    esc_appliquer_migration "$f" psql_mig || { SAIN=1; SAIN_OUT="$ESC_MIGRATION_SORTIE"; break; }
   done
 fi
 if [[ $SAIN -ne 0 ]]; then

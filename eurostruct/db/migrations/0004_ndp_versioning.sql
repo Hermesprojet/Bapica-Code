@@ -287,4 +287,11 @@ create policy national_annexes_read on national_annexes
 create policy ndp_parameters_read on national_annex_parameters
   for select to authenticated using (true);
 
+-- L'INSCRIPTION AU REGISTRE, DANS LA MEME TRANSACTION QUE CE QUI PRECEDE.
+-- Les deux variables sont posees par `db/apply_migration.sh`, seul chemin
+-- d'application. Sans elles, psql laisse `:'...'` tel quel et la migration
+-- echoue sur une erreur de syntaxe: on ne peut donc pas l'appliquer par
+-- accident hors du runner.
+select normative_migration_applied(:'esc_migration_id', :'esc_migration_sum');
+
 commit;

@@ -42,6 +42,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="$(dirname "$HERE")"
 # shellcheck source=lib_harnais.sh
 source "$HERE/lib_harnais.sh"
+# LE SEUL CHEMIN QUI SAIT APPLIQUER UNE MIGRATION (6.3b6e): les harnais
+# l'empruntent AUSSI, sans quoi ils testeraient un chemin que la
+# production n'emprunte pas.
+# shellcheck source=../apply_migration.sh
+source "$HERE/../apply_migration.sh"
 
 PREFIXE="${1:?usage: cross_cluster_restore.sh <prefixe-de-base-jetable>}"
 
@@ -205,7 +210,8 @@ grant eurostruct_normative_bootstrap to "$MIG" with admin option;
 SQL
 for f in "$DB_DIR"/migrations/*.sql; do
   [[ "$f" == "$SCEAU" ]] && continue
-  if ! SORTIE=$(mig -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
+  if ! esc_appliquer_migration "$f" mig; then
+    SORTIE="$ESC_MIGRATION_SORTIE"
     echoue "phase 1 refusee sur $(basename "$f"): $(grep -m1 ERROR <<<"$SORTIE" | cut -c1-180)"
     exit 1
   fi

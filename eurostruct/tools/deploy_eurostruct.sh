@@ -66,6 +66,21 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RACINE="$(dirname "$HERE")"
 SCEAU="$RACINE/db/control_plane/0001_normative_seal.sql"
 MIGRATIONS_DIR="$RACINE/db/migrations"
+# LE SEUL CHEMIN QUI SAIT APPLIQUER UNE MIGRATION (6.3b6e).
+#
+# L'ABSENCE DE CE FICHIER EST UN REFUS, pas un avertissement. Avec
+# `set -uo pipefail` mais sans `-e`, un `source` qui echoue ne stoppe rien: le
+# script poursuivait avec `esc_appliquer_migration` indefinie, chaque migration
+# rendait « command not found » sur un code non nul, et le message d'echec
+# etait VIDE. Defaut mesure en cablant ce fichier.
+# shellcheck source=../db/apply_migration.sh
+source "$RACINE/db/apply_migration.sh" 2>/dev/null
+if ! declare -F esc_appliquer_migration >/dev/null; then
+  echo "ECHEC: db/apply_migration.sh est introuvable ou illisible" >&2
+  echo "       ($RACINE/db/apply_migration.sh). Sans lui, cette commande ne" >&2
+  echo "       sait pas appliquer une migration ni consulter le registre." >&2
+  exit 2
+fi
 
 STRICT=1
 DRY_RUN=0
@@ -502,13 +517,26 @@ constat "emprunts accordes (ils seront rendus par la phase 2)"
 # contient QUE ce que le migrateur applique: il n'y a plus rien a ignorer, et
 # c'est ce qui rend cette boucle sure pour un outil quelconque.
 etape "4/10  phase 1 — les migrations, par « $MIG_USER »"
+APPLIQUEES=0; SAUTEES=0
 for f in "$MIGRATIONS_DIR"/*.sql; do
-  echo "   $(basename "$f")"
-  SORTIE=$(mig -v ON_ERROR_STOP=1 -f "$f" 2>&1) \
-    || echec "$(basename "$f") a ete refusee:
-$(grep -m3 -E 'ERROR|FATAL|DETAIL' <<<"$SORTIE" | sed 's/^/       /')"
+  esc_appliquer_migration "$f" mig
+  case $? in
+    0) if [[ "$ESC_MIGRATION_ETAT" == "SAUTEE" ]]; then
+         SAUTEES=$((SAUTEES + 1)); echo "   $(basename "$f")  — deja appliquee"
+       else
+         APPLIQUEES=$((APPLIQUEES + 1)); echo "   $(basename "$f")"
+       fi ;;
+    6) echec "$ESC_MIGRATION_SORTIE" ;;
+    # LE MOTIF EST REPRIS TEL QUEL QUAND IL N'Y A PAS DE LIGNE `ERROR`.
+    # Un filtre sur ERROR/FATAL/DETAIL rendait un message VIDE quand l'echec
+    # venait de l'applicateur lui-meme — registre injoignable, par exemple —
+    # et l'exploitant lisait « 0001 a ete refusee: » suivi de rien.
+    *) echec "$(basename "$f") a ete refusee:
+$( { grep -m3 -E 'ERROR|FATAL|DETAIL' <<<"$ESC_MIGRATION_SORTIE" \
+       || grep -m3 -v '^[[:space:]]*$' <<<"$ESC_MIGRATION_SORTIE"; } | sed 's/^/       /')" ;;
+  esac
 done
-constat "phase 1 appliquee"
+constat "phase 1: $APPLIQUEES appliquee(s), $SAUTEES deja inscrite(s)"
 
 # --------------------------------------------------------------------------
 # 5. CONSTAT: PENDING

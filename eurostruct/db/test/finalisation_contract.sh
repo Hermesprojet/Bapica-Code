@@ -47,6 +47,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="$(dirname "$HERE")"
 # shellcheck source=lib_harnais.sh
 source "$HERE/lib_harnais.sh"
+# LE SEUL CHEMIN QUI SAIT APPLIQUER UNE MIGRATION (6.3b6e): les harnais
+# l'empruntent AUSSI, sans quoi ils testeraient un chemin que la
+# production n'emprunte pas.
+# shellcheck source=../apply_migration.sh
+source "$HERE/../apply_migration.sh"
 
 PREFIXE="${1:?usage: finalisation_contract.sh <prefixe-de-base-jetable>}"
 
@@ -170,7 +175,8 @@ SQL
 
   # PHASE 1 — par le migrateur, sans 0000 qui appartient a la phase 0.
   for f in "$DB_DIR"/migrations/*.sql; do
-    if ! sortie=$(mig -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
+    if ! esc_appliquer_migration "$f" mig; then
+      sortie="$ESC_MIGRATION_SORTIE"
       echoue "decor $suffixe: phase 1 refusee sur $(basename "$f"):"
       grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
       return 1

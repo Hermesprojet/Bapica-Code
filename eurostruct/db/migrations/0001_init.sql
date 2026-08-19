@@ -28,6 +28,156 @@
 -- semi-structurees en jsonb valide par les schemas Pydantic cote applicatif.
 -- =====================================================================
 
+begin;
+
+-- =====================================================================
+-- LE REGISTRE DES MIGRATIONS (6.3b6e)
+-- =====================================================================
+-- CE QU'IL EXISTE POUR RENDRE POSSIBLE: relancer un deploiement interrompu.
+--
+-- Avant lui, la boucle de `tools/deploy_eurostruct.sh` recommencait toujours a
+-- `0001` — et ces migrations ne sont pas idempotentes. Contre-exemples mesures
+-- (db/test/deploy_recovery.sh, T1 a T3): interrompue apres 0001, apres 0005 ou
+-- apres 0010, la relance echouait sur un objet deja existant. Rien ne savait ce
+-- qui avait deja ete applique.
+--
+-- IL EST ECRIT PAR LA MIGRATION ELLE-MEME, DANS SA PROPRE TRANSACTION. C'est
+-- la seule facon d'obtenir l'atomicite exigee: la ligne du registre et les
+-- objets qu'elle atteste sont valides ensemble, ou pas du tout. Inscrire
+-- depuis une transaction separee, apres coup, laisserait une fenetre ou la
+-- migration est appliquee et non inscrite — c'est-a-dire exactement l'etat
+-- qu'un registre existe pour supprimer.
+--
+-- IL APPARTIENT AU MIGRATEUR, et c'est voulu: ce n'est pas un objet de
+-- confiance. Il n'atteste pas d'une approbation normative — il atteste de
+-- quels FICHIERS DE SCHEMA ont ete appliques, ce qui est precisement le
+-- perimetre pour lequel le migrateur est fiable. La racine de confiance, elle,
+-- reste dans le sceau, hors de sa portee.
+--
+-- IL EST APPEND-ONLY. Une migration appliquee ne se « desapplique » pas: il n'y
+-- a pas de `revert` dans ce modele, et il ne doit pas y en avoir — une base
+-- normative en service ne revient pas en arriere sur un schema qui porte des
+-- confirmations signees.
+create table if not exists normative_migration_ledger (
+  migration_id    text        primary key,
+  checksum_sha256 text        not null check (checksum_sha256 ~ '^[0-9a-f]{64}$'),
+  applied_at      timestamptz not null default now(),
+  applied_by      text        not null default session_user
+);
+
+create or replace function forbid_migration_ledger_mutation() returns trigger
+language plpgsql as $$
+begin
+  raise exception
+    'normative_migration_ledger est append-only: une migration appliquee ne se '
+    'retire pas. Il n''existe pas de « revert » dans ce modele, et une base '
+    'normative en service ne revient pas en arriere sur un schema qui porte '
+    'des confirmations signees.'
+    using errcode = 'restrict_violation';
+end;
+$$;
+drop trigger if exists normative_migration_ledger_is_append_only
+  on normative_migration_ledger;
+create trigger normative_migration_ledger_is_append_only
+  before update or delete or truncate on normative_migration_ledger
+  for each statement execute function forbid_migration_ledger_mutation();
+
+-- `normative_migration_gate(id, sum)` — CE QUE LE RUNNER DEMANDE AVANT
+-- D'APPLIQUER. Trois reponses, et aucune autre:
+--
+--   ABSENTE   -> jamais appliquee, il faut l'appliquer;
+--   DEJA      -> meme identifiant, MEME empreinte: on saute;
+--   MISMATCH  -> meme identifiant, AUTRE empreinte: on refuse.
+--
+-- LE TROISIEME CAS EST LE PLUS IMPORTANT. Une migration reecrite apres avoir
+-- ete appliquee — un correctif pousse a chaud, un `git rebase` malheureux —
+-- produit une base dont le schema ne correspond a aucun etat du depot. La
+-- rejouer l'aggraverait; l'ignorer la masquerait.
+create or replace function normative_migration_gate(p_id text, p_sum text)
+returns text
+language plpgsql
+stable
+set search_path = public, pg_temp
+as $$
+declare connu text;
+begin
+  select checksum_sha256 into connu
+    from normative_migration_ledger where migration_id = p_id;
+  if not found then
+    return 'ABSENTE';
+  end if;
+  if connu = p_sum then
+    return 'DEJA';
+  end if;
+  return 'MISMATCH';
+end;
+$$;
+
+-- `normative_migration_applied(id, sum)` — LA DERNIERE LIGNE DE CHAQUE
+-- MIGRATION, avant son `commit`.
+--
+-- Elle refait le controle du portillon, et ce n'est pas une redondance
+-- decorative: le portillon est interroge par le RUNNER, hors transaction, et
+-- un second deploiement pourrait s'intercaler entre la question et la reponse.
+-- Ici, la verification et l'ecriture sont dans la meme transaction que la
+-- migration.
+create or replace function normative_migration_applied(p_id text, p_sum text)
+returns void
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare connu text;
+begin
+  if p_id is null or btrim(p_id) = '' then
+    raise exception 'aucun identifiant de migration presente.'
+      using errcode = 'invalid_parameter_value';
+  end if;
+  if p_sum !~ '^[0-9a-f]{64}$' then
+    raise exception
+      'empreinte de migration invalide pour « % »: un sha256 hexadecimal de 64 '
+      'caracteres est attendu, obtenu « % ».', p_id, p_sum
+      using errcode = 'invalid_parameter_value';
+  end if;
+
+  select checksum_sha256 into connu
+    from normative_migration_ledger where migration_id = p_id;
+
+  if found and connu <> p_sum then
+    raise exception
+      'MIGRATION_CHECKSUM_MISMATCH: la migration « % » a deja ete appliquee '
+      'avec l''empreinte %, et le fichier present porte %. Le schema de cette '
+      'base ne correspond a aucun etat du depot. Ne rejouez pas: retrouvez la '
+      'version qui a ete appliquee, ou ecrivez une NOUVELLE migration qui porte '
+      'le correctif.', p_id, connu, p_sum
+      using errcode = 'ES010';
+  end if;
+
+  if not found then
+    insert into normative_migration_ledger (migration_id, checksum_sha256)
+    values (p_id, p_sum);
+  end if;
+end;
+$$;
+
+-- AUCUNE DES DEUX N'EST EXECUTABLE PAR PUBLIC.
+--
+-- `db/test/05_normative_confirmation.sql` pose une regle GENERALE sur les
+-- fonctions normatives: aucune n'est executable par PUBLIC, pour qu'aucune ne
+-- le devienne par accident le jour ou elle passera SECURITY DEFINER. Elle a
+-- attrape ces deux-la des leur ecriture, ce qui est exactement son office.
+--
+-- LE MIGRATEUR N'A BESOIN D'AUCUN OCTROI: il est le PROPRIETAIRE de ces
+-- fonctions — c'est lui qui applique ce fichier — et un proprietaire detient
+-- toujours EXECUTE. Le registre est son outil, pas celui de la base.
+--
+-- SI LE ROLE QUI MIGRE CHANGE, le nouveau devra recevoir EXECUTE explicitement.
+-- L'applicateur le dit alors: « le registre n'a pas pu etre interroge ». C'est
+-- un fail-closed volontaire — changer de migrateur est une decision de
+-- deploiement, pas un detail qui doit passer inapercu.
+revoke all on function normative_migration_gate(text, text) from public;
+revoke all on function normative_migration_applied(text, text) from public;
+
+
 create extension if not exists "pgcrypto";
 
 -- ---------------------------------------------------------------------
@@ -559,3 +709,12 @@ create trigger projects_updated_at before update on projects
   for each row execute function set_updated_at();
 create trigger structural_models_updated_at before update on structural_models
   for each row execute function set_updated_at();
+
+-- L'INSCRIPTION AU REGISTRE, DANS LA MEME TRANSACTION QUE CE QUI PRECEDE.
+-- Les deux variables sont posees par `db/apply_migration.sh`, seul chemin
+-- d'application. Sans elles, psql laisse `:'...'` tel quel et la migration
+-- echoue sur une erreur de syntaxe: on ne peut donc pas l'appliquer par
+-- accident hors du runner.
+select normative_migration_applied(:'esc_migration_id', :'esc_migration_sum');
+
+commit;

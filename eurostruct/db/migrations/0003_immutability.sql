@@ -19,6 +19,12 @@
 -- ---------------------------------------------------------------------
 -- Une signature ne se modifie pas
 -- ---------------------------------------------------------------------
+-- UNE SEULE TRANSACTION, comme toutes les autres migrations (6.3b6e).
+-- Ce fichier n'en avait pas: une erreur au milieu le laissait
+-- PARTIELLEMENT applique, et aucun registre ne peut rattraper cela
+-- parce que l'unite d'application n'existe pas.
+begin;
+
 create or replace function forbid_mutation() returns trigger
 language plpgsql as $$
 begin
@@ -218,3 +224,12 @@ $$;
 create trigger projects_retention_guard
   before delete on projects
   for each row execute function forbid_purge_within_retention();
+
+-- L'INSCRIPTION AU REGISTRE, DANS LA MEME TRANSACTION QUE CE QUI PRECEDE.
+-- Les deux variables sont posees par `db/apply_migration.sh`, seul chemin
+-- d'application. Sans elles, psql laisse `:'...'` tel quel et la migration
+-- echoue sur une erreur de syntaxe: on ne peut donc pas l'appliquer par
+-- accident hors du runner.
+select normative_migration_applied(:'esc_migration_id', :'esc_migration_sum');
+
+commit;

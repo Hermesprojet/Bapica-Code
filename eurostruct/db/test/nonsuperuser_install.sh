@@ -49,6 +49,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="$(dirname "$HERE")"
 # shellcheck source=lib_harnais.sh
 source "$HERE/lib_harnais.sh"
+# LE SEUL CHEMIN QUI SAIT APPLIQUER UNE MIGRATION (6.3b6e): les harnais
+# l'empruntent AUSSI, sans quoi ils testeraient un chemin que la
+# production n'emprunte pas.
+# shellcheck source=../apply_migration.sh
+source "$HERE/../apply_migration.sh"
 DB="${1:?usage: nonsuperuser_install.sh <nom-de-base-jetable>}"
 
 if ! [[ "$DB" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,62}$ ]]; then
@@ -411,7 +416,8 @@ echo "      ok: le migrateur se connecte ($sonde)"
 
 
 for f in "$DB_DIR"/migrations/*.sql; do
-  if ! out=$(mig -v ON_ERROR_STOP=1 -q -f "$f" 2>&1); then
+  if ! esc_appliquer_migration "$f" mig -q; then
+    out="$ESC_MIGRATION_SORTIE"
     echoue "$(basename "$f") refusee sous un role non superutilisateur:"
     grep -m2 -E "ERROR|DETAIL|FATAL|psql: error" <<<"$out" | sed 's/^/              /'
     exit 1

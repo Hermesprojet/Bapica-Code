@@ -248,4 +248,11 @@ create trigger deliverables_log_transitions
   after insert or update on deliverables
   for each row execute function log_deliverable_transition();
 
+-- L'INSCRIPTION AU REGISTRE, DANS LA MEME TRANSACTION QUE CE QUI PRECEDE.
+-- Les deux variables sont posees par `db/apply_migration.sh`, seul chemin
+-- d'application. Sans elles, psql laisse `:'...'` tel quel et la migration
+-- echoue sur une erreur de syntaxe: on ne peut donc pas l'appliquer par
+-- accident hors du runner.
+select normative_migration_applied(:'esc_migration_id', :'esc_migration_sum');
+
 commit;

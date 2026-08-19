@@ -20,6 +20,11 @@ DB_DIR="$(dirname "$HERE")"
 DB_NAME="${DB_NAME:-eurostruct_test}"
 # shellcheck source=lib_harnais.sh
 source "$HERE/lib_harnais.sh"
+# LE SEUL CHEMIN QUI SAIT APPLIQUER UNE MIGRATION (6.3b6e): les harnais
+# l'empruntent AUSSI, sans quoi ils testeraient un chemin que la
+# production n'emprunte pas.
+# shellcheck source=../apply_migration.sh
+source "$HERE/../apply_migration.sh"
 
 # --------------------------------------------------------------------------
 # SECURITE DU HARNAIS (6.3b6a)
@@ -371,12 +376,13 @@ SQL
   adm -c "grant eurostruct_deployment to \"$PLAN_R\" with inherit true;" >/dev/null 2>&1
   preter_les_emprunts
   for f in "$@"; do
-    echo "    $(basename "$f")"
-    if ! out=$(mig_db "$b" -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
-      echo "ECHEC: $(basename "$f") refusee:" >&2
-      grep -m2 -E "ERROR|FATAL" <<<"$out" | sed 's/^/       /' >&2
-      return 1
-    fi
+    esc_appliquer_migration "$f" mig_db "$b"
+    case $? in
+      0) echo "    $(basename "$f")$( [[ "$ESC_MIGRATION_ETAT" == SAUTEE ]] && echo '  — deja appliquee')" ;;
+      *) echo "ECHEC: $(basename "$f") refusee:" >&2
+         grep -m2 -E "ERROR|FATAL|MISMATCH" <<<"$ESC_MIGRATION_SORTIE" | sed 's/^/       /' >&2
+         return 1 ;;
+    esac
   done
   etat=$(plan_db "$b" -tAc 'select normative_activation_state()' 2>&1)
   if [[ "$etat" != "PENDING" ]]; then

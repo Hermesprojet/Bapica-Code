@@ -86,21 +86,47 @@ COPIE="$(mktemp -d "/tmp/${PREFIXE}_deploiement.XXXXXX")"
 mkdir -p "$COPIE/tools" "$COPIE/db/control_plane" "$COPIE/db/migrations"
 cp "$COMMANDE" "$COPIE/tools/"
 cp "$DB_DIR/control_plane/"*.sql "$COPIE/db/control_plane/"
+# L'APPLICATEUR PART AVEC ELLE. La commande le charge depuis SA propre racine
+# (`$RACINE/db/apply_migration.sh`): sans cette copie, le `source` echouait en
+# silence — `set -uo pipefail` sans `-e` ne stoppe pas — et chaque migration
+# rendait « command not found » avec un message d'echec VIDE. Defaut mesure.
+cp "$DB_DIR/apply_migration.sh" "$COPIE/db/"
 COMMANDE_COPIE="$COPIE/tools/$(basename "$COMMANDE")"
 
-# L'EMPREINTE, CONSTATEE. Un harnais qui testerait une copie divergente ne
+# LES EMPREINTES, CONSTATEES. Un harnais qui testerait une copie divergente ne
 # dirait rien de la commande officielle — et le dirait avec assurance.
-if [[ "$(sha256sum <"$COMMANDE" | cut -d' ' -f1)" \
-   != "$(sha256sum <"$COMMANDE_COPIE" | cut -d' ' -f1)" ]]; then
-  echoue "la copie de la commande differe de l'original"
-  harnais_verrou_rendre; exit 2
-fi
+for paire in "$COMMANDE:$COMMANDE_COPIE" \
+             "$DB_DIR/apply_migration.sh:$COPIE/db/apply_migration.sh"; do
+  if [[ "$(sha256sum <"${paire%%:*}" | cut -d' ' -f1)" \
+     != "$(sha256sum <"${paire##*:}" | cut -d' ' -f1)" ]]; then
+    echoue "la copie de $(basename "${paire%%:*}") differe de l'original"
+    harnais_verrou_rendre; exit 2
+  fi
+done
 
-# `migrations_copiees [fichier-a-casser] [position]` — repose le jeu de
-# migrations de la copie. `position` vaut « avant » (un fichier fautif qui
-# s'applique EN PREMIER) ou un nom de fichier a saboter.
+# `migrations_copiees [casse] [position]` — repose le jeu de migrations de la
+# copie.
+#
+#   casse    vide      -> jeu sain
+#            « avant » -> un fichier fautif qui s'applique EN PREMIER
+#            <nom>     -> ce fichier est sabote
+#            « apres » -> une migration supplementaire retire, APRES la phase 1,
+#                         le droit de lire le manifeste
+#
+#   position « dans »  (defaut) -> l'echec tombe DANS la transaction: la
+#                         migration n'est pas inscrite au registre;
+#            « apres_commit » -> l'echec tombe APRES le `commit`: la migration
+#                         EST inscrite, et le runner voit pourtant un echec.
+#                         C'est la coupure reseau apres le commit serveur mais
+#                         avant que le client ait recu le resultat.
+#
+# LA POSITION N'EST PAS UN DETAIL. Premiere ecriture: l'instruction fautive
+# etait ajoutee a la FIN du fichier, donc apres son `commit`. La migration
+# etait donc VALIDEE, ligne de registre comprise, et la relance rendait
+# MIGRATION_CHECKSUM_MISMATCH — un refus exact, mais sur un sujet que T1 a T3
+# ne traitent pas. Le contre-exemple mesurait autre chose que ce qu'il annonce.
 migrations_copiees() {
-  local casse="${1:-}"
+  local casse="${1:-}" position="${2:-dans}"
   rm -f "$COPIE/db/migrations/"*.sql
   cp "$DB_DIR/migrations/"*.sql "$COPIE/db/migrations/"
   case "$casse" in
@@ -127,8 +153,49 @@ commit;
 SQL
       ;;
     *)
-      printf '\ndo $$ begin raise exception %s; end $$;\n' \
-        "'ECHEC INJECTE dans $casse'" >>"$COPIE/db/migrations/$casse"
+      local cible="$COPIE/db/migrations/$casse"
+      local faute
+      faute=$(printf 'do $$ begin raise exception %s; end $$;' \
+                "'ECHEC INJECTE dans $casse'")
+      if [[ "$position" == "apres_commit" ]]; then
+        # LE FICHIER DOIT ETRE IDENTIQUE DANS LES DEUX PASSAGES, sans quoi la
+        # relance rendrait MIGRATION_CHECKSUM_MISMATCH — un refus exact, sur un
+        # sujet que T6 ne traite pas. Premiere ecriture, mesuree: l'instruction
+        # etait ajoutee au premier passage et retiree au second, et T6 rougissait
+        # sur le checksum au lieu de la reprise.
+        #
+        # L'ECHEC NE SE PRODUIT DONC QU'UNE FOIS, et sans que le texte change:
+        # il est conditionne a l'absence de la migration SUIVANTE dans le
+        # registre. Au premier passage elle n'y est pas — l'echec tombe, apres
+        # que celle-ci a ete validee. Au second, le fichier est SAUTE et n'est
+        # meme pas lu.
+        local suivante
+        suivante=$(cd "$COPIE/db/migrations" && ls *.sql | awk -v c="$casse" '$0>c' | head -1)
+        cat >>"$cible" <<SQLT6
+
+-- FICTIF — coupure simulee APRES le commit serveur (db/test/deploy_recovery.sh).
+do \$\$
+begin
+  if not exists (select 1 from normative_migration_ledger
+                  where migration_id = '$suivante') then
+    raise exception 'ECHEC INJECTE apres le commit de $casse';
+  end if;
+end
+\$\$;
+SQLT6
+      else
+        # DANS la transaction: juste avant l'inscription au registre, donc
+        # avant le `commit`. Rien n'est valide.
+        python3 - "$cible" "$faute" <<'FINPY'
+import sys, pathlib
+cible, faute = pathlib.Path(sys.argv[1]), sys.argv[2]
+s = cible.read_text()
+marque = "select normative_migration_applied("
+i = s.index(marque)
+# On remonte au debut de la ligne de commentaire qui precede l'appel.
+cible.write_text(s[:i] + faute + "\n" + s[i:])
+FINPY
+      fi
       ;;
   esac
 }
@@ -653,6 +720,38 @@ t_reprise() {
 t_reprise "T1" 0002_rls.sql
 t_reprise "T2" 0006_ndp_import.sql
 t_reprise "T3" 0010_normative_confirmation.sql
+
+# --- T6. coupure APRES le commit serveur, avant la reponse au client -------
+# LE CAS QUE L'EXPLOITANT NE PEUT PAS DISTINGUER. La migration a ete VALIDEE —
+# ligne de registre comprise — mais le client n'a pas recu le resultat: pour
+# lui, elle a echoue. La relance doit la SAUTER, pas la rejouer.
+#
+# C'est exactement ce que le registre existe pour trancher, et c'est le seul
+# scenario ou « appliquee » et « sautee » ne se confondent pas.
+if ! q_amorcer t6; then
+  echoue "le decor T6 n'a pas pu etre pose"
+else
+migrations_copiees 0006_ndp_import.sql apres_commit
+appeler >/dev/null 2>&1
+INSCRITE=$(admb -tAc "select count(*) from normative_migration_ledger
+                       where migration_id = '0006_ndp_import.sql'" 2>&1)
+# LE JEU N'EST PAS REPOSE, ET C'EST TOUT LE SUJET. Reposer le jeu sain
+# changerait le contenu de 0006 entre les deux passages, et la relance rendrait
+# MIGRATION_CHECKSUM_MISMATCH — le refus de T4, pas la reprise de T6. Ici le
+# fichier est IDENTIQUE: seul son etat dans le registre a change.
+appeler; CODE_T6=$?
+ETAT_T6=$(admb -tAc "select normative_activation_state()" 2>&1)
+if [[ "$INSCRITE" != "1" ]]; then
+  echoue "T6. la migration n'a pas ete inscrite malgre son commit ($INSCRITE);"
+  echoue "    le scenario ne dirait rien de la coupure qu'il vise"
+elif [[ $CODE_T6 -eq 0 && "$ETAT_T6" == "ACTIVE" ]]; then
+  echo "      ok: T6. une migration validee mais non confirmee au client est sautee"
+else
+  rouge "T6. la relance rejoue une migration deja validee (code $CODE_T6)."
+  detail "    $(grep -m1 -E 'ERROR|already exists|ECHEC' <<<"$SORTIE_CMD" | cut -c1-140)"
+fi
+decor_deposer
+fi
 
 # --- T4. une migration MODIFIEE apres application -------------------------
 # Le contrat demande `MIGRATION_CHECKSUM_MISMATCH`. Aujourd'hui rien n'inscrit
