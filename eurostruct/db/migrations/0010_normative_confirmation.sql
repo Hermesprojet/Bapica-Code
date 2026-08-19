@@ -62,7 +62,7 @@ begin
   -- LE SCEAU DE LA PHASE 0 EST EXIGE (6.3b6c).
   --
   -- Ce bloc CREAIT les six roles canoniques. Il ne le fait plus: c'est la
-  -- phase 0 — `0000_sceau_normatif.sql`, appliquee par le PLAN DE CONTROLE —
+  -- phase 0 — `db/control_plane/0001_normative_seal.sql`, appliquee par le
   -- qui les cree, avec les quatre tables de confiance et les fonctions qui
   -- les ecrivent.
   --
@@ -79,7 +79,8 @@ begin
     into manquantes
     from unnest(array['normative_control_plane', 'normative_activation',
                       'normative_approved_settings',
-                      'normative_finalization_intent']) as t(nom)
+                      'normative_finalization_intent',
+                      'normative_seal_metadata']) as t(nom)
    where not exists (
      select 1 from pg_class c
        join pg_roles o on o.oid = c.relowner
@@ -89,9 +90,50 @@ begin
   if manquantes <> '' then
     raise exception
       'le sceau normatif est absent ou incomplet (%). La phase 0 '
-      '(0000_sceau_normatif.sql) doit etre appliquee PAR LE PLAN DE CONTROLE '
-      'avant cette migration: c''est elle qui pose la racine de confiance, '
-      'hors de portee du role qui applique les migrations.', manquantes
+      '(db/control_plane/0001_normative_seal.sql) doit etre appliquee PAR LE '
+      'PLAN DE CONTROLE avant cette migration: c''est elle qui pose la racine '
+      'de confiance, hors de portee du role qui applique les migrations.',
+      manquantes
+      using errcode = 'insufficient_privilege';
+  end if;
+end
+$$;
+
+-- LA VERSION DU SCEAU EST EXIGEE, PAS SEULEMENT SA FORME (6.3b6d)
+--
+-- Le bloc ci-dessus verifie que cinq tables existent, appartiennent a
+-- l'activateur et ont la RLS forcee. Cela ne dit pas QUELLE racine est en
+-- place: une phase 0 d'une version anterieure presente exactement la meme
+-- forme, et la phase 1 s'appliquerait dessus en supposant des fonctions et des
+-- invariants qui n'y sont peut-etre pas.
+--
+-- LA LISTE EST EXPLICITE ET FERMEE. Une comparaison « superieure ou egale »
+-- sur une chaine de version supposerait un ordre que rien ne garantit — et
+-- accepterait, par construction, toutes les versions futures, c'est-a-dire
+-- celles dont on ne sait rien. Ce qui est ecrit ici est ce qui a ete teste.
+do $$
+declare
+  compatibles constant text[] := array['esc-normative-seal/1'];
+  posee text;
+begin
+  select seal_version into posee
+    from normative_seal_metadata
+   order by installed_at desc, seal_version desc limit 1;
+
+  if posee is null then
+    raise exception
+      'SEAL_VERSION_MISMATCH: le sceau ne declare aucune version. La racine '
+      'est presente mais sans identite: elle ne peut pas etre reconnue.'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  if not (posee = any (compatibles)) then
+    raise exception
+      'SEAL_VERSION_MISMATCH: cette base porte le sceau « % »; cette migration '
+      'exige l''une des versions suivantes: %. Mettez le sceau a niveau depuis '
+      'db/control_plane/ avant d''appliquer la phase 1 — voir '
+      'docs/DEPLOIEMENT_PREREQUIS.md, section « Faire evoluer le sceau ».',
+      posee, array_to_string(compatibles, ', ')
       using errcode = 'insufficient_privilege';
   end if;
 end

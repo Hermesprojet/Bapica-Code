@@ -1,8 +1,27 @@
 -- =====================================================================
--- EUROSTRUCT — 0000: LE SCEAU NORMATIF (phase 0)
+-- EUROSTRUCT — LE SCEAU NORMATIF (phase 0) — esc-normative-seal/1
 -- =====================================================================
 -- CE FICHIER EST APPLIQUE PAR LE PLAN DE CONTROLE, PAS PAR LE MIGRATEUR.
 -- C'est toute sa raison d'etre.
+--
+-- IL N'EST PAS DANS `db/migrations/`, ET C'EST STRUCTUREL (6.3b6d)
+-- ----------------------------------------------------------------
+-- Il s'appelait `db/migrations/0000_sceau_normatif.sql`. Tout outil de
+-- migration du commerce, tout script de deploiement, toute boucle
+-- `for f in migrations/*.sql` l'appliquait donc SOUS LE MIGRATEUR — c'est-a-dire
+-- posait la racine de confiance a la portee de celui qu'elle doit contenir.
+--
+-- Ce qui l'en empechait etait une ligne de bash, repetee dans chaque appelant:
+--
+--     [[ "$(basename "$f")" == 0000_* ]] && continue
+--
+-- Cinq appelants la portaient. `role_prerequisites.sh` l'avait deja oubliee, et
+-- appliquait le repertoire entier sous un acteur unique. Une frontiere de
+-- confiance qui depend de la vigilance de chaque appelant n'est pas une
+-- frontiere: c'est une convention.
+--
+-- `db/migrations/` ne contient donc plus que ce que le MIGRATEUR applique.
+-- Ce fichier vit dans `db/control_plane/`, et rien n'a plus a l'ignorer.
 --
 -- POURQUOI IL EXISTE (6.3b6c)
 -- ----------------------------
@@ -63,6 +82,107 @@
 -- =====================================================================
 
 begin;
+
+-- =====================================================================
+-- LA GARDE DE REEXECUTION (6.3b6d)
+-- =====================================================================
+-- CE QUE FAISAIT CE FICHIER RELANCE A L'IDENTIQUE, avant ce bloc:
+--
+--     ERROR: relation "normative_control_plane" already exists
+--
+-- Une erreur brute de PostgreSQL, ligne 241 — donc APRES que les blocs
+-- precedents ont deja agi: roles crees ou constates, activateur emprunte,
+-- CREATE accorde sur `public`. La transaction les annule, mais l'exploitant
+-- n'apprend rien: ce message ne dit ni que le sceau est deja pose, ni qu'il
+-- l'est dans la bonne version, ni qu'il est complet.
+--
+-- LA REEXECUTION EST UN FAIT D'EXPLOITATION, pas une hypothese d'ecole: un
+-- deploiement interrompu, un pipeline rejoue, un operateur qui doute. Elle doit
+-- avoir une semantique DECIDEE, la meme a chaque fois.
+--
+-- QUATRE ISSUES, ET AUCUNE AUTRE:
+--
+--   * rien n'est pose            -> installation, ce fichier s'applique;
+--   * le sceau est la, MEME VERSION  -> SEAL_ALREADY_INSTALLED, aucune mutation;
+--   * le sceau est la, AUTRE VERSION -> SEAL_VERSION_MISMATCH;
+--   * le sceau est INCOMPLET         -> SEAL_PARTIAL, fail-closed.
+--
+-- POURQUOI UN REFUS ET NON UN SUCCES IDEMPOTENT. Les deux etaient acceptables.
+-- Un fichier qui, selon l'etat de la base, INSTALLE UNE RACINE DE CONFIANCE ou
+-- NE FAIT RIEN — en sortant 0 dans les deux cas — est precisement le genre
+-- d'outil qui laisse une erreur passer inapercue. Le refus est nomme, porte un
+-- SQLSTATE dedie, et n'a mute rien du tout: il est verifiable.
+--
+-- LE CODE EST LISIBLE PAR LA MACHINE. `ES001`/`ES002`/`ES003` permettent a un
+-- orchestrateur de brancher sur le SQLSTATE, jamais sur le texte du message —
+-- un texte se reformule, un code non.
+--
+-- POURQUOI LE COMPTE ET NON `IF NOT EXISTS`. « Aucun IF NOT EXISTS ne doit
+-- accepter silencieusement un objet divergent »: `create table if not exists`
+-- passerait sur une table qui porte le bon NOM et une tout autre structure.
+-- Ici on compte les cinq objets de la racine, et TOUT ce qui n'est ni 0 ni 5
+-- est un refus.
+do $$
+declare
+  attendue constant text := 'esc-normative-seal/1';
+  objets   constant text[] := array['normative_control_plane',
+                                    'normative_activation',
+                                    'normative_approved_settings',
+                                    'normative_finalization_intent',
+                                    'normative_seal_metadata'];
+  presents int;
+  version_posee text;
+  manquants text;
+begin
+  select count(*) into presents
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind = 'r' and c.relname = any (objets);
+
+  if presents = 0 then
+    return;                                     -- installation neuve
+  end if;
+
+  if presents <> array_length(objets, 1) then
+    select string_agg(o, ', ' order by o) into manquants
+      from unnest(objets) o
+     where not exists (select 1 from pg_class c
+                         join pg_namespace n on n.oid = c.relnamespace
+                        where n.nspname = 'public' and c.relname = o);
+    raise exception
+      'SEAL_PARTIAL: le sceau normatif est INCOMPLET — % objet(s) sur %, il '
+      'manque: %. Une racine a moitie posee ne se repare pas en relancant ce '
+      'fichier: on ne saurait plus quelle version elle porte, ni qui l''a '
+      'posee. Detruisez la base et redeployez-la depuis la phase 0, ou '
+      'restaurez-la avant l''interruption.',
+      presents, array_length(objets, 1), manquants
+      using errcode = 'ES003';
+  end if;
+
+  -- LES CINQ SONT LA. La version est lisible: `normative_seal_metadata` est
+  -- scellee en ECRITURE, pas en lecture — c'est une declaration d'audit sur le
+  -- deploiement, faite pour etre lue par la readiness et par cette garde.
+  select seal_version into version_posee
+    from normative_seal_metadata order by installed_at desc, seal_version desc
+   limit 1;
+
+  if version_posee is distinct from attendue then
+    raise exception
+      'SEAL_VERSION_MISMATCH: cette base porte le sceau « % » et ce fichier '
+      'pose « % ». Un sceau ne se remplace pas en le reappliquant: seule une '
+      'MISE A NIVEAU, appliquee par le poseur enregistre, peut le faire '
+      'evoluer. Voir docs/DEPLOIEMENT_PREREQUIS.md, section « Faire evoluer le '
+      'sceau ».', coalesce(version_posee, 'INCONNU'), attendue
+      using errcode = 'ES002';
+  end if;
+
+  raise exception
+    'SEAL_ALREADY_INSTALLED: le sceau « % » est deja pose sur cette base, et '
+    'rien n''a ete modifie. Ce n''est pas une erreur de deploiement: c''est le '
+    'resultat normal d''une phase 0 rejouee. Passez a la phase 1.', attendue
+    using errcode = 'ES001';
+end
+$$;
+
 
 -- ---------------------------------------------------------------------
 -- LES SIX ROLES CANONIQUES, CREES PAR LE PLAN DE CONTROLE
@@ -140,6 +260,170 @@ $$;
 -- roles d'autorite: un droit accorde pour une operation ponctuelle et laisse
 -- en place est un droit qu'on a cesse de justifier.
 grant usage, create on schema public to eurostruct_normative_activator;
+
+
+-- =====================================================================
+-- L'IDENTITE DU SCEAU (6.3b6d) — version, poseur, niveau d'assurance
+-- =====================================================================
+-- CE QUE LA PHASE 1 VERIFIAIT AVANT: quatre noms de tables, un proprietaire et
+-- FORCE RLS. Cela ne dit pas QUELLE racine est en place. Une phase 0 d'une
+-- version anterieure — ou quatre tables fabriquees portant les bons noms —
+-- passait le controle a l'identique.
+--
+-- TROIS FAITS SONT INSCRITS ICI, ET AUCUN N'EST DERIVABLE AUTREMENT:
+--
+--   * LA VERSION. Sans elle, aucune evolution de ces 2000 lignes ne peut etre
+--     distinguee d'une autre, et la phase 1 ne peut pas exiger de compatibilite.
+--   * LE POSEUR, par OID ET par nom. C'est lui, et lui seul, qui pourra
+--     finaliser (voir la finalisation) et faire evoluer le sceau: il detient
+--     l'ADMIN residuel sur l'activateur, donc la seule capacite de le
+--     re-emprunter. Sans cette inscription, le plan de controle se transferait
+--     par un simple GRANT — contre-exemple mesure, cf. db/test/seal_contract.sh.
+--   * LE NIVEAU D'ASSURANCE. Une phase 0 superutilisateur emettait un NOTICE,
+--     qui disparaissait avec la console. Deux bases identiques par ailleurs
+--     etaient indiscernables le lendemain.
+--
+-- APPEND-ONLY, UNE LIGNE PAR GENERATION DE SCEAU — et non un singleton fige.
+-- C'est ce qui rend une MISE A NIVEAU possible sans jamais reecrire l'histoire:
+-- la version 1 reste inscrite, la version 2 s'ajoute, et le sceau courant est
+-- la derniere ligne. Un singleton immuable aurait rendu toute evolution de ces
+-- 2000 lignes impossible autrement qu'a la main, hors versionnement.
+--
+-- SCELLEE EN ECRITURE, PAS EN LECTURE. Le contenu n'est pas un secret: une
+-- version, un nom de role, un horodatage, un niveau d'assurance. Ce qui doit
+-- etre impossible, c'est de l'ECRIRE — et c'est ce que la RLS forcee, le
+-- declencheur et l'absence de politique d'ecriture pour quiconque garantissent.
+-- La readiness, l'audit et la garde de reexecution doivent pouvoir la LIRE.
+create table normative_seal_metadata (
+  seal_version    text        primary key,
+  installer_oid   oid         not null,
+  installer_name  text        not null,
+  installed_at    timestamptz not null default now(),
+  assurance_level text        not null
+    check (assurance_level in ('CONTAINED_NON_SUPERUSER',
+                               'UNCONTAINED_SUPERUSER'))
+);
+
+-- LA LIGNE EST ECRITE AVANT LE DECLENCHEUR ET AVANT LE TRANSFERT DE PROPRIETE.
+-- C'est l'ordre le plus simple qui soit sur: tant que la table appartient au
+-- poseur, il y ecrit; des la ligne suivante, plus personne ne le peut.
+--
+-- L'IDENTITE INSCRITE EST `current_user`, ET NON `session_user`. C'est
+-- `current_user` qui s'emprunte l'activateur quelques lignes plus haut, qui
+-- conservera l'ADMIN residuel, et que la finalisation derivera comme donneur
+-- des emprunts. Inscrire l'identite de connexion designerait un role qui, apres
+-- un `SET ROLE`, n'est pas celui qui detient quoi que ce soit.
+--
+-- LE NIVEAU D'ASSURANCE REGARDE LES DEUX. Un superutilisateur qui fait
+-- `set role plan_de_controle` presente un `current_user` non privilegie — et
+-- peut faire `reset role` a la ligne suivante. Le sceau ne le contient donc
+-- pas davantage, et le dire autrement serait faux.
+insert into normative_seal_metadata
+  (seal_version, installer_oid, installer_name, assurance_level)
+select 'esc-normative-seal/1',
+       c.oid, c.rolname,
+       case when c.rolsuper or s.rolsuper then 'UNCONTAINED_SUPERUSER'
+            else 'CONTAINED_NON_SUPERUSER' end
+  from pg_roles c, pg_roles s
+ where c.rolname = current_user and s.rolname = session_user;
+
+-- IMMUABLE ET APPEND-ONLY. Une generation inscrite ne se reecrit pas: c'est
+-- l'audit de ce qui a ete pose, et il ne sert a rien s'il peut etre corrige
+-- apres coup.
+create or replace function forbid_seal_metadata_mutation() returns trigger
+language plpgsql as $$
+begin
+  raise exception
+    'normative_seal_metadata est append-only: une generation de sceau inscrite '
+    'ne peut etre ni modifiee ni supprimee. Corriger l''audit de ce qui a ete '
+    'pose reviendrait a ne rien auditer.'
+    using errcode = 'restrict_violation';
+end;
+$$;
+create trigger normative_seal_metadata_is_append_only
+  before update or delete or truncate on normative_seal_metadata
+  for each statement execute function forbid_seal_metadata_mutation();
+
+alter table normative_seal_metadata owner to eurostruct_normative_activator;
+revoke all on normative_seal_metadata from public;
+grant select, insert on normative_seal_metadata to eurostruct_normative_activator;
+alter table normative_seal_metadata enable row level security;
+alter table normative_seal_metadata force row level security;
+
+-- LA LECTURE EST OUVERTE, L'ECRITURE NE L'EST POUR PERSONNE.
+--
+-- `select` a PUBLIC: la garde de reexecution s'execute sous le poseur, dont
+-- l'identite n'est pas connue a l'avance; la readiness s'execute sous le role
+-- de deploiement; l'audit sous la gouvernance. Enumerer ces roles reviendrait a
+-- deviner qui aura besoin de lire une declaration publique.
+--
+-- AUCUNE POLITIQUE D'ECRITURE N'EST CREEE, PAS MEME POUR L'ACTIVATEUR. La RLS
+-- forcee sans politique d'insertion ferme la table a tout le monde une fois
+-- l'installation faite — y compris au proprietaire, y compris a un futur
+-- porteur de l'activateur. Une mise a niveau devra donc passer par une
+-- politique posee explicitement par le fichier de mise a niveau lui-meme,
+-- sous l'ADMIN residuel du poseur enregistre: c'est un evenement, pas un droit
+-- permanent.
+grant select on normative_seal_metadata to public;
+create policy normative_seal_metadata_lecture on normative_seal_metadata
+  for select to public using (true);
+
+-- LA VERSION ET LE NIVEAU, LUS. Deux fonctions de confort pour la readiness et
+-- l'audit, qui demandent un fait plutot qu'une table.
+--
+-- ELLES NE SONT PAS ACCORDEES A PUBLIC, ET LA TABLE L'EST. Ce n'est pas une
+-- incoherence: `db/test/05_normative_confirmation.sql` pose une regle de
+-- securite GENERALE sur les fonctions normatives — aucune n'est executable par
+-- PUBLIC, pour qu'aucune ne le devienne par accident le jour ou elle passera
+-- SECURITY DEFINER. La regle a d'ailleurs attrape ces deux fonctions des leur
+-- ecriture, ce qui est exactement son office.
+--
+-- La garde de reexecution et la phase 1 n'en ont pas besoin: elles s'executent
+-- sous des roles de connexion choisis par le deploiement, dont le nom n'est
+-- connu de personne a l'avance, et lisent donc la TABLE directement.
+--
+-- NI A `normative_governance`, POUR LA MEME RAISON QUE `topology_digest` en
+-- 6.3b6c: c'est un role APPLICATIF, et une seconde regle de 05 interdit qu'un
+-- role applicatif detienne EXECUTE sur une fonction normative. Elle a attrape
+-- ce grant a l'ecriture, comme la premiere. La gouvernance lit la TABLE, qui
+-- est publique en lecture — elle n'a besoin d'aucune fonction pour cela.
+create or replace function normative_seal_version() returns text
+language sql stable
+set search_path = public, pg_temp
+as $$
+  select seal_version from normative_seal_metadata
+   order by installed_at desc, seal_version desc limit 1;
+$$;
+revoke all on function normative_seal_version() from public;
+grant execute on function normative_seal_version() to eurostruct_deployment;
+
+comment on function normative_seal_version is
+  'Version du sceau normatif en place, ou NULL si aucun sceau. La derniere '
+  'generation inscrite fait foi.';
+
+create or replace function normative_seal_assurance() returns text
+language sql stable
+set search_path = public, pg_temp
+as $$
+  select assurance_level from normative_seal_metadata
+   order by installed_at asc, seal_version asc limit 1;
+$$;
+revoke all on function normative_seal_assurance() from public;
+grant execute on function normative_seal_assurance() to eurostruct_deployment;
+
+-- LE NIVEAU D'ASSURANCE EST CELUI DE LA PREMIERE GENERATION, et c'est
+-- deliberement l'inverse de la version. Le niveau qualifie l'INSTALLATION: si
+-- la racine a ete posee par un superutilisateur, aucune mise a niveau
+-- ulterieure ne peut effacer le fait qu'elle l'a ete. Prendre la derniere
+-- generation permettrait de « laver » une base en lui appliquant une mise a
+-- niveau depuis un role contenu.
+comment on function normative_seal_assurance is
+  'Niveau d''assurance du deploiement: CONTAINED_NON_SUPERUSER quand la phase 0 '
+  'a ete posee par un role non superutilisateur — la forme qui obtient les '
+  'garanties du modele de menace —, UNCONTAINED_SUPERUSER sinon. Celui de la '
+  'PREMIERE generation: une mise a niveau ne lave pas une installation.';
+
+
 -- =====================================================================
 -- PARAMETRES DE DEPLOIEMENT — LUS DANS LE CATALOGUE, PAS DANS LA SESSION
 -- =====================================================================
@@ -2131,10 +2415,15 @@ begin
   --
   -- EXEMPTER SANS LE DIRE aurait ete pire que ne pas verifier: le fichier
   -- aurait annonce un sceau ferme la ou il ne l'est pas.
-  if (select rolsuper from pg_roles where rolname = current_user) then
+  if (select bool_or(rolsuper) from pg_roles
+       where rolname in (current_user, session_user)) then
+    -- LE NOTICE RESTE, MAIS IL N'EST PLUS LA SEULE TRACE (6.3b6d). Le niveau
+    -- est inscrit dans `normative_seal_metadata`, ou la readiness le lit. Un
+    -- NOTICE ne survit pas au pipeline qui l'a affiche.
     raise notice
       'phase 0 appliquee par un SUPERUTILISATEUR (%): le sceau est pose, mais '
-      'il ne contient pas celui qui l''a pose — aucun sceau ne le peut. Voir '
+      'il ne contient pas celui qui l''a pose — aucun sceau ne le peut. '
+      'Niveau d''assurance inscrit: UNCONTAINED_SUPERUSER. Voir '
       'docs/schema/MODELE_DE_MENACE_NORMATIF.md.', current_user;
     return;
   end if;
@@ -2154,9 +2443,13 @@ begin
 end
 $$;
 
--- LE SCEAU, CONSTATE. Les quatre tables de confiance existent, appartiennent
+-- LE SCEAU, CONSTATE. Les CINQ tables de confiance existent, appartiennent
 -- a l'activateur, et leur RLS est FORCEE — le proprietaire lui-meme y est
 -- soumis. C'est ce que la phase 1 verifiera avant de s'appliquer.
+--
+-- `normative_seal_metadata` EN FAIT PARTIE (6.3b6d): sans elle, un sceau
+-- installe serait indistinguable d'un sceau partiel, et la garde de
+-- reexecution ne pourrait pas trancher.
 do $$
 declare manquantes text;
 begin
@@ -2164,7 +2457,8 @@ begin
     into manquantes
     from unnest(array['normative_control_plane', 'normative_activation',
                       'normative_approved_settings',
-                      'normative_finalization_intent']) as t(nom)
+                      'normative_finalization_intent',
+                      'normative_seal_metadata']) as t(nom)
    where not exists (
      select 1 from pg_class c
        join pg_roles o on o.oid = c.relowner
@@ -2176,6 +2470,26 @@ begin
       'le sceau est incomplet: % ne sont pas possedees par l''activateur avec '
       'RLS forcee.', manquantes using errcode = 'insufficient_privilege';
   end if;
+end
+$$;
+
+-- ET L'IDENTITE DU SCEAU EST CONSTATEE AUSSI. La ligne a-t-elle bien ete
+-- ecrite ? Sans ce controle, une base ou l'insertion aurait echoue en silence
+-- — un `select` sans ligne n'est pas une erreur — sortirait de la phase 0 avec
+-- une racine complete et sans identite, c'est-a-dire infinalisable pour une
+-- raison qu'aucun message n'expliquerait.
+do $$
+declare v text; a text; qui text;
+begin
+  select seal_version, assurance_level, installer_name
+    into v, a, qui from normative_seal_metadata;
+  if v is null then
+    raise exception
+      'le sceau a ete pose sans identite: normative_seal_metadata est vide. '
+      'La base serait complete et infinalisable.'
+      using errcode = 'insufficient_privilege';
+  end if;
+  raise notice 'sceau « % » pose par « % » — assurance: %', v, qui, a;
 end
 $$;
 

@@ -4,7 +4,7 @@ Ce document dit **qui l'on cherche à contenir**, et **qui l'on ne cherche pas �
 contenir**. Sans cette liste, chaque garantie se discute au cas par cas et
 finit par reposer sur une hypothèse implicite que personne n'a écrite.
 
-Il s'applique à `db/migrations/0000_sceau_normatif.sql` et
+Il s'applique à `db/control_plane/0001_normative_seal.sql` et
 `db/migrations/0010_normative_confirmation.sql`, et aux harnais
 `db/test/authority_closure.sh` et `db/test/finalisation_contract.sh`.
 
@@ -119,4 +119,4 @@ tous deux non superutilisateurs.
   `normative_topology_digest(...)` permet de **refaire la photo** et de la
   comparer à celle qui a été inscrite : c'est une information d'audit, jamais
   un verdict. Le contrat est écrit sous le titre `CONTRAT DU topology_digest`
-  dans `0000_sceau_normatif.sql`.
+  dans `0001_normative_seal.sql`.

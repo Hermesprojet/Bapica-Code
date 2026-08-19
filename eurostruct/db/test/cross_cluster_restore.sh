@@ -69,12 +69,8 @@ adm() { psql -X -q -d postgres "$@"; }
 # --------------------------------------------------------------------------
 # OU EST LE SCEAU (voir seal_contract.sh pour le raisonnement)
 # --------------------------------------------------------------------------
-SCEAU=""
-for candidat in "$DB_DIR/control_plane/0001_normative_seal.sql" \
-                "$DB_DIR/migrations/0000_sceau_normatif.sql"; do
-  [[ -f "$candidat" ]] && { SCEAU="$candidat"; break; }
-done
-[[ -n "$SCEAU" ]] || { echo "      ECHEC: aucun fichier de sceau trouve" >&2
+SCEAU="$HARNAIS_SCEAU"
+[[ -f "$SCEAU" ]] || { echo "      ECHEC: le sceau est introuvable ($SCEAU)" >&2
                        harnais_verrou_rendre; exit 2; }
 
 # --------------------------------------------------------------------------

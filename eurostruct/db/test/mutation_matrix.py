@@ -31,7 +31,7 @@ import sys
 # designe rien: la garde d'arbre propre passait alors sans rien constater.
 RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 M = "db/migrations/0010_normative_confirmation.sql"
-S = "db/migrations/0000_sceau_normatif.sql"
+S = "db/control_plane/0001_normative_seal.sql"
 R = "db/test/run.sh"
 H = "db/test/authority_closure.sh"
 SCRATCH = os.environ.get("TMPDIR", "/tmp")
@@ -130,7 +130,7 @@ def essayer(nom, point, fichier, paires, redondant=False,
 # --------------------------------------------------------------------------
 # LE CONTRAT DE FINALISATION (6.3b6b) — les cibles ont demenage en phase 0
 # --------------------------------------------------------------------------
-# La racine de confiance est passee dans `0000_sceau_normatif.sql` avec 6.3b6c.
+# La racine de confiance est passee dans `db/control_plane/0001_normative_seal.sql` (6.3b6c, deplace en 6.3b6d).
 # Une matrice qui continuait de muter `0010` ne trouvait plus ses motifs — et
 # `muter()` le dit, au lieu de rendre un vert silencieux.
 MUT_INTENT = ("""  select * into intention from normative_finalization_intent;

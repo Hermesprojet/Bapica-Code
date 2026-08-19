@@ -14,7 +14,7 @@ et les deux premières sont exercées par **deux rôles différents** :
 
 | Phase | Fichier | Exercée par | Ce qu'elle fait |
 |---|---|---|---|
-| **0** | `db/migrations/0000_sceau_normatif.sql` | **plan de contrôle** | crée les six rôles canoniques et la **racine de confiance** — les quatre tables de confiance et les fonctions qui les écrivent, possédées par `eurostruct_normative_activator` |
+| **0** | `db/control_plane/0001_normative_seal.sql` | **plan de contrôle** | crée les six rôles canoniques et la **racine de confiance** — les quatre tables de confiance et les fonctions qui les écrivent, possédées par `eurostruct_normative_activator` |
 | **1** | `0001` … `0010` | **migrateur** | applique le schéma applicatif ; termine en `PENDING` |
 | **2** | `select normative_finalize_deployment(<manifeste>)` | **plan de contrôle** | compare le manifeste, restitue les emprunts, inscrit l'activation → `ACTIVE` |
 

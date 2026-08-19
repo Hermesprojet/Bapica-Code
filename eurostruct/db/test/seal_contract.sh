@@ -78,21 +78,13 @@ adm() { psql -X -q -d postgres "$@"; }
 # --------------------------------------------------------------------------
 # OU EST LE SCEAU
 # --------------------------------------------------------------------------
-# LE CHEMIN EST RESOLU, PAS ECRIT EN DUR — et ce n'est pas une precaution de
-# style. Le point H1 exige precisement que ce fichier QUITTE `db/migrations/`.
-# Un harnais qui le nommerait a son emplacement actuel se refuserait a poser
-# son decor le jour ou il bouge, et TOUS ses scenarios deviendraient rouges
-# d'un coup — pour une raison de plomberie, pas de securite.
-#
-# La resolution accepte les deux emplacements. Ce qui juge l'emplacement, c'est
-# H1 et H3, et eux seuls.
-SCEAU=""
-for candidat in "$DB_DIR/control_plane/0001_normative_seal.sql" \
-                "$DB_DIR/migrations/0000_sceau_normatif.sql"; do
-  [[ -f "$candidat" ]] && { SCEAU="$candidat"; break; }
-done
-if [[ -z "$SCEAU" ]]; then
-  echo "      ECHEC: aucun fichier de sceau trouve; le harnais ne peut rien poser" >&2
+# `HARNAIS_SCEAU` vient de `lib_harnais.sh`: un seul endroit du depot connait
+# ce chemin. La version ROUGE de ce fichier resolvait elle-meme les deux
+# emplacements possibles, parce que le sceau n'avait pas encore demenage; ce
+# n'est plus necessaire, et redire un chemin, c'est le desynchroniser.
+SCEAU="$HARNAIS_SCEAU"
+if [[ ! -f "$SCEAU" ]]; then
+  echo "      ECHEC: le sceau est introuvable ($SCEAU)" >&2
   harnais_verrou_rendre
   exit 2
 fi
@@ -243,28 +235,28 @@ echo "    contrat du sceau: la racine est-elle deployable ?"
 # ==========================================================================
 # H. LA FRONTIERE DE PHASE EST STRUCTURELLE, PAS CONVENTIONNELLE
 # ==========================================================================
-# Le sceau est aujourd'hui `db/migrations/0000_sceau_normatif.sql`. Tout outil
-# standard — un migrateur du commerce, un script de deploiement, un `psql -f`
-# en boucle — parcourt ce repertoire avec `migrations/*.sql` et l'appliquera
-# SOUS LE MIGRATEUR.
+# LE DEFAUT, TEL QU'IL ETAIT. Le sceau vivait dans le repertoire des
+# migrations. Tout outil standard — un migrateur du commerce, un script de
+# deploiement, une boucle `psql -f` — parcourt ce repertoire et l'aurait
+# applique SOUS LE MIGRATEUR, c'est-a-dire aurait pose la racine de confiance a
+# la portee de celui qu'elle doit contenir.
 #
-# Ce qui l'en empeche aujourd'hui est une ligne de bash, repetee dans chaque
-# harnais:
+# Ce qui l'en empechait etait une ligne de bash, repetee dans chaque appelant,
+# qui comparait le nom du fichier et sautait. Cinq appelants la portaient; un
+# sixieme — `role_prerequisites.sh` — l'avait oubliee, et appliquait le
+# repertoire entier sous un acteur unique.
 #
-#     [[ "$(basename "$f")" == 0000_* ]] && continue
-#
-# Une frontiere de confiance qui depend de la presence d'un `continue` dans
-# chaque appelant n'est pas une frontiere: c'est une convention, et les
-# conventions s'oublient. `role_prerequisites.sh` l'a d'ailleurs deja oubliee
-# — trois de ses boucles appliquent le repertoire entier sous un acteur unique.
+# Une frontiere de confiance qui depend de la vigilance de chaque appelant
+# n'est pas une frontiere: c'est une convention, et les conventions s'oublient.
+# C'est maintenant la frontiere des REPERTOIRES, et ces trois controles la
+# tiennent.
 
 # --- H1. le repertoire des migrations ne contient pas la racine ------------
-# LE CONTROLE PORTE SUR LE CONTENU, pas sur le nom du fichier. Renommer
-# `0000_sceau_normatif.sql` en `0000_zzz.sql` satisferait un controle nominal
-# sans rien deplacer.
+# LE CONTROLE PORTE SUR LE CONTENU, pas sur le nom du fichier. Renommer le
+# fichier suffirait a satisfaire un controle nominal sans rien deplacer.
 #
 # La racine de confiance se reconnait a ce qu'elle CREE: les six roles
-# canoniques et les quatre tables de confiance possedees par l'activateur.
+# canoniques et les tables de confiance possedees par l'activateur.
 RACINE_DANS_MIGRATIONS=()
 for f in "$DB_DIR"/migrations/*.sql; do
   if grep -qE "create role eurostruct_normative_activator" "$f" \
@@ -283,10 +275,18 @@ else
 fi
 
 # --- H2. aucun script n'a besoin d'ignorer specialement un fichier ---------
-# Le motif cherche est l'exclusion PAR LE NOM d'un fichier de migration. Tant
-# qu'un seul appelant doit le porter, la frontiere reste conventionnelle.
-EXCLUSIONS=$(grep -rln '0000_\*' "$DB_DIR" "$RACINE/tools" "$RACINE/run_tests.sh" \
-               2>/dev/null | sed "s#^$RACINE/##" | sort | tr '\n' ' ')
+# Le motif cherche est l'idiome d'exclusion PAR LE NOM: un `basename` compare a
+# un motif, suivi d'un `continue`. Tant qu'un seul appelant doit le porter, la
+# frontiere reste conventionnelle.
+#
+# LES LIGNES DE COMMENTAIRE SONT EXCLUES, et c'est necessaire: ce fichier
+# lui-meme decrit l'idiome quelques lignes plus haut pour expliquer ce qui a ete
+# ferme. Un controle qu'une explication suffit a faire rougir ne serait pas
+# tenable — on cesserait d'expliquer.
+EXCLUSIONS=$(grep -rn --include='*.sh' --include='*.py' \
+               -E '^[^#]*\bbasename\b[^#]*\bcontinue\b' \
+               "$DB_DIR" "$RACINE/tools" "$RACINE/run_tests.sh" \
+               2>/dev/null | cut -d: -f1 | sed "s#^$RACINE/##" | sort -u | tr '\n' ' ')
 if [[ -z "$EXCLUSIONS" ]]; then
   echo "      ok: H2. aucun script n'exclut une migration par son nom"
 else
@@ -347,6 +347,48 @@ fi
 # les memes quatre noms — passe le controle a l'identique. Et le jour ou ces
 # 2000 lignes evolueront, rien ne distinguera une base scellee par la nouvelle
 # version d'une base scellee par l'ancienne.
+# --- I2. la phase 1 exige une version -------------------------------------
+# LE CONTROLE EST COMPORTEMENTAL, et il a d'abord ete ecrit en `grep`: « le
+# texte de la phase 1 contient-il SEAL_VERSION_MISMATCH ? ». Cela ne prouve
+# rien — un message peut exister sans qu'aucun chemin ne l'atteigne, ce qui est
+# exactement le defaut que le scenario G d'`authority_closure.sh` avait.
+#
+# On pose donc un sceau qui declare une AUTRE version, sur une base neuve, et
+# on demande a la phase 1 de s'appliquer dessus. La copie modifiee ne vit que
+# le temps du scenario; elle n'est jamais ecrite dans le depot.
+SCEAU_AUTRE="$(mktemp "/tmp/${PREFIXE}_sceau_v9.XXXXXX.sql")"
+sed 's#esc-normative-seal/1#esc-normative-seal/9-FICTIF#g' "$SCEAU" >"$SCEAU_AUTRE"
+if ! grep -qF 'esc-normative-seal/9-FICTIF' "$SCEAU_AUTRE"; then
+  echoue "I2. la version n'a pas pu etre substituee; le scenario n'est pas evalue"
+elif ! decor_roles i2; then
+  echoue "I2. le decor n'a pas pu etre pose"
+else
+  suivre_decor
+  if ! SORTIE_I2=$(ctl -v ON_ERROR_STOP=1 -f "$SCEAU_AUTRE" 2>&1); then
+    echoue "I2. la phase 0 en version 9-FICTIF a refuse: $(grep -m1 ERROR <<<"$SORTIE_I2" | cut -c1-140)"
+  else
+    ctlp -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
+grant eurostruct_normative_writer    to "$MIG" with admin option;
+grant eurostruct_normative_bootstrap to "$MIG" with admin option;
+SQL
+    SORTIE_I2B=$(
+      while read -r f; do
+        mig -v ON_ERROR_STOP=1 -f "$f" 2>&1 || break
+      done < <(migrations_de_phase_1)
+    )
+    if grep -qF "SEAL_VERSION_MISMATCH" <<<"$SORTIE_I2B"; then
+      echo "      ok: I2. la phase 1 refuse un sceau d'une autre version"
+    else
+      rouge "I2. la phase 1 s'applique sur un sceau de version « 9-FICTIF »."
+      detail "    Quatre tables aux bons noms suffisent: une racine d'une version"
+      detail "    anterieure — ou fabriquee — passe le controle a l'identique."
+      detail "    $(grep -m1 -E 'ERROR|FATAL' <<<"$SORTIE_I2B" | cut -c1-150)"
+    fi
+  fi
+  decor_deposer
+fi
+rm -f "$SCEAU_AUTRE"
+
 if ! decor_poser i; then
   echoue "le decor I n'a pas pu etre pose: les scenarios I ne sont pas evalues"
 else
@@ -366,19 +408,6 @@ else
   detail "    posee, ni sous quel niveau d'assurance."
 fi
 
-# --- I2. la phase 1 exige une version -------------------------------------
-# Le controle est comportemental: on presente a la phase 1 un sceau dont la
-# version est incompatible, et on attend `SEAL_VERSION_MISMATCH`.
-#
-# Tant que I1 est rouge, il n'y a pas de version a falsifier: le controle
-# porte alors sur le TEXTE de la phase 1, qui ne mentionne aucune version.
-if grep -qF "SEAL_VERSION_MISMATCH" "$DB_DIR"/migrations/*.sql 2>/dev/null; then
-  echo "      ok: I2. la phase 1 nomme SEAL_VERSION_MISMATCH"
-else
-  rouge "I2. la phase 1 n'exige aucune version du sceau: quatre tables aux"
-  detail "    bons noms suffisent. Une racine d'une version anterieure — ou"
-  detail "    fabriquee — passe le controle a l'identique."
-fi
 
 # --- I3. reexecution stricte du sceau -------------------------------------
 # LA REEXECUTION EST UN FAIT D'EXPLOITATION, pas une hypothese: un deploiement

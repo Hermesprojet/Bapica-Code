@@ -40,6 +40,25 @@
 # qui a de toute facon un `psql`.
 
 # --------------------------------------------------------------------------
+# OU EST LA PHASE 0 — UN SEUL ENDROIT LE SAIT (6.3b6d)
+# --------------------------------------------------------------------------
+# Le sceau vivait dans `db/migrations/`, et chaque harnais devait l'ignorer:
+#
+#     [[ "$(basename "$f")" == 0000_* ]] && continue
+#
+# Cinq appelants portaient cette ligne, un sixieme l'avait oubliee. La frontiere
+# entre ce que le PLAN DE CONTROLE applique et ce que le MIGRATEUR applique est
+# maintenant celle des repertoires — `db/control_plane/` contre
+# `db/migrations/` — et plus une convention d'ecriture.
+#
+# `HARNAIS_SCEAU` est donne ici pour qu'aucun harnais ne redise ce chemin: le
+# jour ou une version 2 s'ajoutera, c'est cette ligne qui changera, et elle
+# seule.
+HARNAIS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HARNAIS_DB_DIR="$(dirname "$HARNAIS_LIB_DIR")"
+HARNAIS_SCEAU="$HARNAIS_DB_DIR/control_plane/0001_normative_seal.sql"
+
+# --------------------------------------------------------------------------
 # CONNEXION — le secret ne passe jamais par argv
 # --------------------------------------------------------------------------
 # Apres cet appel, TOUTE connexion se fait par `psql -X -q [-d base]`, sans

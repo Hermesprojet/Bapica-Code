@@ -354,7 +354,7 @@ grant usage on schema auth to "$PLAN";
 SQL
   # PHASE 0 — LE SCEAU.
   if ! out=$($acteur "$base" -q -v ON_ERROR_STOP=1 \
-               -f "$DB_DIR/migrations/0000_sceau_normatif.sql" 2>&1); then
+               -f "$HARNAIS_SCEAU" 2>&1); then
     DIAG="phase 0: $(grep -m1 -E 'ERROR|FATAL' <<<"$out" | cut -c1-300)"
     return 1
   fi
@@ -370,7 +370,6 @@ SQL
 
   # PHASE 1 — par le migrateur, 0000 exclu.
   for f in "$DB_DIR"/migrations/*.sql; do
-    [[ "$(basename "$f")" == 0000_* ]] && continue
     if ! out=$(mig "$base" -q -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
       DIAG="$(grep -m1 -E 'ERROR|FATAL' <<<"$out" | cut -c1-320)"
       return 1

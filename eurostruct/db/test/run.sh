@@ -318,9 +318,9 @@ SQL
   adm -c "alter database \"$b\"
             set eurostruct.approved_deployment_roles = '$MIG_R,$PLAN_R';" >/dev/null 2>&1
   # PHASE 0 — LE SCEAU, par le plan de controle.
-  echo "    0000_sceau_normatif.sql (phase 0)"
+  echo "    control_plane/0001_normative_seal.sql (phase 0)"
   if ! out=$(plan_db "$b" -v ON_ERROR_STOP=1 \
-               -f "$DB_DIR/migrations/0000_sceau_normatif.sql" 2>&1); then
+               -f "$HARNAIS_SCEAU" 2>&1); then
     echo "ECHEC: phase 0 refusee sur $b:" >&2
     grep -m2 -E "ERROR|FATAL" <<<"$out" | sed 's/^/       /' >&2
     return 1
@@ -328,7 +328,6 @@ SQL
   adm -c "grant eurostruct_deployment to \"$PLAN_R\" with inherit true;" >/dev/null 2>&1
   preter_les_emprunts
   for f in "$@"; do
-    [[ "$(basename "$f")" == 0000_* ]] && continue
     echo "    $(basename "$f")"
     if ! out=$(mig_db "$b" -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
       echo "ECHEC: $(basename "$f") refusee:" >&2

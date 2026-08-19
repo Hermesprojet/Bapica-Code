@@ -127,7 +127,7 @@ SQL
   # PHASE 0 — LE SCEAU, POSE PAR LE PLAN DE CONTROLE.
   # C'est elle qui cree les six roles canoniques ET la racine de confiance.
   # Le migrateur n'y participe pas: c'est tout l'objet de 6.3b6c.
-  if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$DB_DIR/migrations/0000_sceau_normatif.sql" 2>&1); then
+  if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
     echoue "decor $s: phase 0 refusee:"
     grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
     return 1
@@ -148,7 +148,6 @@ SQL
 
   # PHASE 1 — par le migrateur, et sans 0000 qui appartient a la phase 0.
   for f in "$DB_DIR"/migrations/*.sql; do
-    [[ "$(basename "$f")" == 0000_* ]] && continue
     if ! sortie=$(mig -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
       echoue "decor $s: phase 1 refusee sur $(basename "$f"):"
       grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
@@ -620,7 +619,7 @@ fi
 # en phase 0 (6.3b6c): un motif qui ne regardait que 0010 est passe au VERT du
 # jour au lendemain sans que rien ne soit corrige — le controle avait perdu son
 # sujet, pas trouve sa reponse.
-MIGRATIONS=("$DB_DIR/migrations/0000_sceau_normatif.sql"
+MIGRATIONS=("$HARNAIS_SCEAU"
             "$DB_DIR/migrations/0010_normative_confirmation.sql")
 NOM_SEUL=$(grep -nE "^\s+(p|c)\.rolname = normative_control_plane\(\)" \
              "${MIGRATIONS[@]}" | sed 's#.*/##' | tr '\n' ' ')

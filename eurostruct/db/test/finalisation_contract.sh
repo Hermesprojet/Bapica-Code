@@ -148,7 +148,7 @@ SQL
     ctl_pg) phase0=ctl ;;
     *)      phase0=mig ;;
   esac
-  if ! sortie=$($phase0 -v ON_ERROR_STOP=1 -f "$DB_DIR/migrations/0000_sceau_normatif.sql" 2>&1); then
+  if ! sortie=$($phase0 -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
     echoue "decor $suffixe: phase 0 refusee:"
     grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
     return 1
@@ -170,7 +170,6 @@ SQL
 
   # PHASE 1 — par le migrateur, sans 0000 qui appartient a la phase 0.
   for f in "$DB_DIR"/migrations/*.sql; do
-    [[ "$(basename "$f")" == 0000_* ]] && continue
     if ! sortie=$(mig -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
       echoue "decor $suffixe: phase 1 refusee sur $(basename "$f"):"
       grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2

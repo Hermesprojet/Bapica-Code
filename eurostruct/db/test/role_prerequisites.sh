@@ -47,6 +47,23 @@
 # satisfont `pg_has_role` pour tout role, peuvent desactiver les declencheurs
 # et ne sont pas un adversaire que la base contient. Les roles applicatifs,
 # eux, sont contenus.
+#
+# CE QUE CE FICHIER NE PROUVE PAS, ET NE PROUVAIT DEJA PAS (6.3b6d)
+# ------------------------------------------------------------------
+# Ses boucles appliquaient `migrations/*.sql` — sceau compris — SOUS UN ACTEUR
+# UNIQUE. Il n'a donc jamais rien etabli sur la SEPARATION entre le plan de
+# controle et le migrateur, et il ne faut pas le lire ainsi: cette separation
+# est etablie par `nonsuperuser_install.sh`, `two_phase_deployment.sh`,
+# `authority_closure.sh` et `seal_contract.sh`.
+#
+# Ce qu'il etablit — et c'est ce pour quoi il existe — est TOPOLOGIQUE: la
+# phase 1 refuse-t-elle une configuration de roles hostile, et accepte-t-elle
+# une configuration saine ?
+#
+# Il construit desormais le meme deploiement a DEUX ACTEURS que les autres:
+# phase 0 par le plan de controle, phase 1 par le migrateur. Non pour prouver
+# la separation, mais parce qu'exercer un refus dans une configuration que le
+# produit ne connait pas ne prouve rien sur le produit.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,7 +81,14 @@ if ! [[ "$DB" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,62}$ ]]; then
   exit 2
 fi
 
-ROLES_FICTIFS="fictif_login_a fictif_b fictif_c fictif_relais"
+# LES DEUX ACTEURS DU DEPLOIEMENT (6.3b6d) portent eux aussi des noms fixes, et
+# passent donc par la meme discipline: absence prouvee au demarrage, puis
+# destruction par nom exact.
+ROLES_FICTIFS="fictif_login_a fictif_b fictif_c fictif_relais
+               fictif_plan fictif_migrateur"
+PLAN=fictif_plan
+MIGR=fictif_migrateur
+MDP_ACTEURS='FICTIF-role-prereq'
 
 # DETRUIRE PAR NOM N'EST LEGITIME QU'APRES AVOIR PROUVE L'ABSENCE.
 #
@@ -141,6 +165,64 @@ exiger_roles_absents "role_prerequisites.sh" $ROLES_FICTIFS $CANONIQUES \
 PSQL_DB=(psql -X -q -d "$DB")
 PSQL_ADMIN=(psql -X -q -d postgres)
 
+# --------------------------------------------------------------------------
+# LE DEPLOIEMENT A DEUX ACTEURS (6.3b6d)
+# --------------------------------------------------------------------------
+# `poser_la_base` construit une base PENDANTE dans la forme reelle: phase 0 par
+# le plan de controle, emprunts pretes au migrateur. `appliquer_phase_1` fait
+# ensuite ce que le migrateur fait, et c'est LA que les prerequis se refusent.
+#
+# Les roles canoniques sont pre-crees par l'administrateur dans chaque scenario
+# — c'est la forme « environnement gere » que ce fichier existe pour couvrir.
+# Les emprunts viennent donc de l'administrateur et non du plan de controle:
+# ces scenarios ne FINALISENT jamais, si bien que la derivation du donneur n'y
+# joue aucun role. Ecrire le contraire donnerait a ce fichier l'air de prouver
+# une separation qu'il ne prouve pas.
+psql_plan() { PGUSER="$PLAN" PGPASSWORD="$MDP_ACTEURS" psql -X -q -d "$DB" "$@"; }
+psql_mig()  { PGUSER="$MIGR" PGPASSWORD="$MDP_ACTEURS" psql -X -q -d "$DB" "$@"; }
+
+poser_la_base() {
+  "${PSQL_ADMIN[@]}" -q -c "create role $PLAN login password '$MDP_ACTEURS' createrole;" >/dev/null 2>&1
+  "${PSQL_ADMIN[@]}" -q -c "create role $MIGR login password '$MDP_ACTEURS' createrole createdb;" >/dev/null 2>&1
+  "${PSQL_ADMIN[@]}" -q -c "create database $DB owner \"$MIGR\";" >/dev/null
+  "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
+  "${PSQL_DB[@]}" -q >/dev/null 2>&1 <<SQL
+grant usage on schema auth to "$MIGR" with grant option;
+grant select, insert, references on auth.users to "$MIGR" with grant option;
+grant execute on function auth.uid() to "$MIGR" with grant option;
+grant create on database "$DB" to "$MIGR";
+grant create on schema public to "$PLAN" with grant option;
+grant usage on schema auth to "$PLAN";
+SQL
+  # LES DEUX ACTEURS SONT DECLARES. `eurostruct_deployment` ouvre la chaine de
+  # confiance: la topologie exige que ses detenteurs soient nommes par le
+  # deploiement. Sans cette declaration, les deux scenarios POSITIFS echouaient
+  # sur « fictif_plan detient eurostruct_deployment sans avoir ete declare » —
+  # un refus exact, mais sur un sujet que ce fichier ne traite pas.
+  "${PSQL_ADMIN[@]}" -q -c \
+    "alter database $DB set eurostruct.approved_deployment_roles = '$MIGR,$PLAN';" \
+    >/dev/null 2>&1
+}
+
+# `phase_0` — le sceau, pose par le plan de controle. Rend 1 et laisse la
+# sortie dans `PHASE0_OUT` si elle refuse: un decor qui ne se pose pas ne doit
+# pas etre confondu avec un prerequis qui refuse.
+PHASE0_OUT=""
+phase_0() {
+  if ! PHASE0_OUT=$(psql_plan -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
+    return 1
+  fi
+  # LES EMPRUNTS, par l'administrateur qui a cree les roles canoniques. Sans
+  # eux la phase 1 ne peut pas transferer la propriete de ses fonctions, et
+  # echouerait sur un motif etranger a ce qui est teste.
+  "${PSQL_ADMIN[@]}" -q >/dev/null 2>&1 <<SQL
+grant eurostruct_normative_writer    to "$MIGR" with admin option;
+grant eurostruct_normative_bootstrap to "$MIGR" with admin option;
+grant eurostruct_deployment to "$PLAN" with inherit true;
+SQL
+  return 0
+}
+
 nettoyer() {
   # ORDRE. Defaire les GREFFES d'abord, detruire ensuite.
   #
@@ -202,16 +284,12 @@ KO=0
 # Un scenario: fabriquer la configuration hostile, appliquer les migrations,
 # exiger un refus PORTANT SUR LE BON MOTIF. Un refus pour une autre raison
 # serait un test vert sur un sujet different.
-scenario() {
-  local nom="$1" sql="$2" attendu="$3"
-  nettoyer
-  "${PSQL_ADMIN[@]}" -q -c "create database $DB;" >/dev/null
-
+preexister_les_roles() {
   # Environnement GERE: les roles PREEXISTENT a la migration, avec des
   # attributs et des appartenances qu'elle n'a pas choisis. C'est exactement
   # la situation que ce prerequis existe pour couvrir — sur une base ou la
   # migration cree elle-meme des roles neufs, il n'y aurait rien a verifier.
-  "${PSQL_DB[@]}" -q >/dev/null 2>&1 <<'SQL'
+  "${PSQL_ADMIN[@]}" -q >/dev/null 2>&1 <<'SQL'
 do $$
 declare r text;
 begin
@@ -225,13 +303,28 @@ begin
   end loop;
 end $$;
 SQL
+}
+
+scenario() {
+  local nom="$1" sql="$2" attendu="$3"
+  nettoyer
+  preexister_les_roles
+  poser_la_base
+  if ! phase_0; then
+    printf '      ECHEC   %s\n' "$nom"
+    printf '              la phase 0 a refuse: le scenario n%s\n' "'est pas evalue"
+    grep -m1 ERROR <<<"$PHASE0_OUT" | cut -c1-160 | sed 's/^/              /'
+    KO=1; return
+  fi
+  # LA CONFIGURATION HOSTILE EST POSEE ENTRE LES DEUX PHASES. La poser avant la
+  # phase 0 ferait refuser le decor lui-meme dans certains cas — un role
+  # d'autorite rendu connectable, par exemple — et le refus obtenu ne serait
+  # plus celui de la phase 1.
   "${PSQL_ADMIN[@]}" -q -c "$sql" >/dev/null 2>&1
 
   local err="" out=""
-  "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql" \
-    >/dev/null 2>&1
   for f in "$DB_DIR"/migrations/*.sql; do
-    if ! out=$("${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$f" 2>&1); then
+    if ! out=$(psql_mig -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
       err=$(grep -m1 -oE "prerequis non tenu: .{0,120}" <<<"$out")
       break
     fi
@@ -337,30 +430,19 @@ scenario "role d'autorite rendu connectable" \
 # la migration qui s'y connecte. C'est la declaration de celui qui exerce les
 # migrations, au moment ou il les exerce.
 nettoyer
-"${PSQL_ADMIN[@]}" -q -c "create database $DB;" >/dev/null
-"${PSQL_DB[@]}" -q >/dev/null 2>&1 <<'SQL'
-do $$
-declare r text;
-begin
-  foreach r in array array['eurostruct_normative_writer',
-                           'eurostruct_normative_bootstrap',
-                           'normative_backend', 'normative_governance',
-                           'authenticated', 'anon'] loop
-    if not exists (select 1 from pg_roles where rolname = r) then
-      execute format('create role %I nologin', r);
-    end if;
-  end loop;
-end $$;
-SQL
+preexister_les_roles
+poser_la_base
+phase_0 || { echo "      ECHEC   la phase 0 a refuse: le cas APPROUVE n'est pas evalue"; KO=1; }
 "${PSQL_ADMIN[@]}" -q -c "create role fictif_login_a login password 'FICTIF';
                           grant normative_backend to fictif_login_a;"   >/dev/null 2>&1
 "${PSQL_ADMIN[@]}" -q -c   "alter database $DB set eurostruct.approved_service_logins = 'fictif_login_a';"   >/dev/null 2>&1
 APPROUVE=0
-"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
+APPROUVE_OUT=""
 for f in "$DB_DIR"/migrations/*.sql; do
-  "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 || APPROUVE=1
+  APPROUVE_OUT=$(psql_mig -v ON_ERROR_STOP=1 -f "$f" 2>&1) || { APPROUVE=1; break; }
 done
 if [[ $APPROUVE -ne 0 ]]; then
+  grep -m1 -E "ERROR|FATAL" <<<"$APPROUVE_OUT" | cut -c1-160 | sed 's/^/              /'
   echo "      ECHEC   role connectable APPROUVE refuse malgre la declaration"
   echo "              fail-closed degenererait en refus systematique"
   KO=1
@@ -372,14 +454,18 @@ fi
 # elle, les refus ci-dessus seraient satisfaits par une migration qui
 # refuse toujours.
 nettoyer
-"${PSQL_ADMIN[@]}" -q -c "create database $DB;" >/dev/null
-"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
+poser_la_base
 SAIN=0
-for f in "$DB_DIR"/migrations/*.sql; do
-  "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 || SAIN=1
-done
+SAIN_OUT=""
+phase_0 || { SAIN=1; SAIN_OUT="$PHASE0_OUT"; }
+if [[ $SAIN -eq 0 ]]; then
+  for f in "$DB_DIR"/migrations/*.sql; do
+    SAIN_OUT=$(psql_mig -v ON_ERROR_STOP=1 -f "$f" 2>&1) || { SAIN=1; break; }
+  done
+fi
 if [[ $SAIN -ne 0 ]]; then
   echo "      ECHEC   configuration SAINE refusee: le controle refuse tout"
+  grep -m1 -E "ERROR|FATAL" <<<"$SAIN_OUT" | cut -c1-160 | sed 's/^/              /'
   KO=1
 else
   echo "      ok: une configuration saine reste acceptee"

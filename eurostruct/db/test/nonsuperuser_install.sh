@@ -346,7 +346,7 @@ fi
 "${ADMIN[@]}" -q -v ON_ERROR_STOP=1 -c \
   "grant $PLAN to ${PGUSER:-postgres};" >/dev/null 2>&1
 # LA PHASE 0 — LE SCEAU (6.3b6c). Ce n'est plus un `create role` a la main:
-# c'est `0000_sceau_normatif.sql`, applique PAR LE PLAN DE CONTROLE, qui cree
+# c'est `db/control_plane/0001_normative_seal.sql`, applique PAR LE PLAN DE CONTROLE,
 # les six roles canoniques ET la racine de confiance — les quatre tables que
 # le migrateur ne doit jamais posseder ni pouvoir endosser.
 "${ADMIN_DB[@]}" -q >/dev/null 2>&1 <<SQL
@@ -355,7 +355,7 @@ grant usage on schema auth to $PLAN;
 SQL
 PLAN_DB0=(env PGUSER="$PLAN" PGPASSWORD="$MDP" psql -X -q -d "$DB")
 if ! sortie=$("${PLAN_DB0[@]}" -v ON_ERROR_STOP=1 \
-                -f "$DB_DIR/migrations/0000_sceau_normatif.sql" 2>&1); then
+                -f "$HARNAIS_SCEAU" 2>&1); then
   echoue "la phase 0 a echoue sous « $PLAN »:"
   grep -m2 -E "ERROR|FATAL" <<<"$sortie" | sed 's/^/              /'
   exit 1
@@ -366,19 +366,34 @@ PLAN_PSQL=(env PGUSER="$PLAN" PGPASSWORD="$MDP" psql -X -q -d postgres)
 grant eurostruct_normative_writer    to $MIGRATEUR with admin option;
 grant eurostruct_normative_bootstrap to $MIGRATEUR with admin option;
 SQL
+# LE CONTROLE PORTE SUR LES NOMS, PAS SUR UN COMPTE (6.3b6d).
+#
+# Il comparait a « 4 », ecrit en dur. L'arrivee de `normative_seal_metadata`
+# — cinquieme table de confiance — a fait echouer ce controle sur « 5 tables
+# sur 4 », alors que le sceau etait exactement ce qu'il devait etre. Un compte
+# fige transforme toute evolution correcte en panne, et ne dit jamais QUOI
+# manque.
 PROVISION=$("${ADMIN_DB[@]}" -X -q -tAc "
-  select count(*) from pg_class c join pg_roles o on o.oid = c.relowner
-   where o.rolname = 'eurostruct_normative_activator'
-     and c.relrowsecurity and c.relforcerowsecurity")
-if [[ "$PROVISION" != "4" ]]; then
-  echoue "le sceau est incomplet: $PROVISION table(s) de confiance sur 4"
+  select coalesce(string_agg(t.nom, ', ' order by t.nom), '')
+    from unnest(array['normative_control_plane','normative_activation',
+                      'normative_approved_settings',
+                      'normative_finalization_intent',
+                      'normative_seal_metadata']) as t(nom)
+   where not exists (
+     select 1 from pg_class c join pg_roles o on o.oid = c.relowner
+      where c.relname = t.nom
+        and o.rolname = 'eurostruct_normative_activator'
+        and c.relrowsecurity and c.relforcerowsecurity)")
+if [[ -n "$PROVISION" ]]; then
+  echoue "le sceau est incomplet: $PROVISION ne sont pas possedees par"
+  echoue "l'activateur avec RLS forcee"
   exit 1
 fi
 # Il exercera la phase 2: il lui faut le role de deploiement, et il est
 # declare ci-dessus dans `approved_deployment_roles`.
 "${ADMIN[@]}" -q -c "grant eurostruct_deployment to $PLAN with inherit true;" \
   >/dev/null 2>&1
-echo "      ok: phase 0 — sceau pose par « $PLAN », 4 tables de confiance"
+echo "      ok: phase 0 — sceau pose par « $PLAN », toutes les tables de confiance"
 
 # --------------------------------------------------------------------------
 # 3. Les migrations, appliquees PAR LE MIGRATEUR
@@ -396,7 +411,6 @@ echo "      ok: le migrateur se connecte ($sonde)"
 
 
 for f in "$DB_DIR"/migrations/*.sql; do
-  [[ "$(basename "$f")" == 0000_* ]] && continue
   if ! out=$(mig -v ON_ERROR_STOP=1 -q -f "$f" 2>&1); then
     echoue "$(basename "$f") refusee sous un role non superutilisateur:"
     grep -m2 -E "ERROR|DETAIL|FATAL|psql: error" <<<"$out" | sed 's/^/              /'
