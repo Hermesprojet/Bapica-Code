@@ -50,6 +50,23 @@ suite était rouge.
 ./run_tests.sh --require-db    # échoue si la base manque (CI)
 ```
 
+### Déployer
+
+Le déploiement a **trois phases** et **deux acteurs distincts** — un plan de
+contrôle qui pose la racine de confiance et approuve, un migrateur qui applique
+le schéma. Une seule commande les orchestre, et **vérifie** ses postconditions :
+
+```bash
+export ESC_PLAN_URL='postgresql://plan:…@hote:5432/base'
+export ESC_MIGRATOR_URL='postgresql://migrateur:…@hote:5432/base'
+tools/deploy_eurostruct.sh --dry-run    # les connexions, rien d'appliqué
+tools/deploy_eurostruct.sh              # les dix étapes
+```
+
+Prérequis, provisionnement, niveaux d'assurance et limites connues :
+`docs/DEPLOIEMENT_PREREQUIS.md`. Modèle de menace :
+`docs/schema/MODELE_DE_MENACE_NORMATIF.md`.
+
 ### Un calcul de bout en bout
 
 ```python

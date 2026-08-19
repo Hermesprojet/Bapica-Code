@@ -129,7 +129,7 @@ decor_deposer() {
 # script lui-meme n'en met aucun dans `argv`, et ce harnais non plus.
 SORTIE_CMD=""
 deployer() {
-  local hote="${PGHOST:-/tmp}" port="${PGPORT:-5432}"
+  local port="${PGPORT:-5432}"
   SORTIE_CMD=$(
     ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:$port/$BASE?sslmode=disable" \
     ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:$port/$BASE?sslmode=disable" \

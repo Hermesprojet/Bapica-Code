@@ -34,7 +34,7 @@ M = "db/migrations/0010_normative_confirmation.sql"
 S = "db/control_plane/0001_normative_seal.sql"
 R = "db/test/run.sh"
 H = "db/test/authority_closure.sh"
-O = "tools/deploy_eurostruct.sh"
+CMD = "tools/deploy_eurostruct.sh"
 SCRATCH = os.environ.get("TMPDIR", "/tmp")
 
 
@@ -46,7 +46,7 @@ def exiger_arbre_propre():
     cours. Cette garde est la seule chose qui rend l'outil utilisable sans
     precaution particuliere.
     """
-    p = subprocess.run(["git", "status", "--porcelain", "--", M, S, R, H, O],
+    p = subprocess.run(["git", "status", "--porcelain", "--", M, S, R, H, CMD],
                        cwd=RACINE, capture_output=True, text=True)
     if p.stdout.strip():
         raise SystemExit(
@@ -310,14 +310,14 @@ CAS_RESTAURATION = [
 ]
 
 CAS_COMMANDE = [
-    ("N4  la commande accepte deux acteurs identiques", "N4", O,
+    ("N4  la commande accepte deux acteurs identiques", "N4", CMD,
      [('if [[ "$PLAN_USER" == "$MIG_USER" ]]; then', 'if false; then')], False),
-    ("N5  le mode strict ne refuse plus l'assurance degradee", "N5", O,
+    ("N5  le mode strict ne refuse plus l'assurance degradee", "N5", CMD,
      [("""  if ((STRICT)); then
     echec "niveau d'assurance « $SCEAU_ASSURANCE ».""",
        """  if false; then
     echec "niveau d'assurance « $SCEAU_ASSURANCE ».""")], False),
-    ("N3  la relance reaccorde les emprunts sur une base ACTIVE", "N3", O,
+    ("N3  la relance reaccorde les emprunts sur une base ACTIVE", "N3", CMD,
      [('if [[ "$DEJA" == "ACTIVE" ]]; then', 'if false; then')], False),
     # N1 est couvert par tout ce qui precede: aucune de ces mutations ne peut
     # rougir si le deploiement complet ne tourne pas. Il n'a donc pas de
