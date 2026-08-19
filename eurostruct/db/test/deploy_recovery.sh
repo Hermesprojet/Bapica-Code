@@ -905,6 +905,254 @@ fi
 decor_deposer
 fi
 
+# --- T7. LE PORTILLON NE DOIT PAS PRENDRE UNE PANNE POUR UNE ABSENCE ------
+# `esc_migration_etat` demandait `to_regclass('public.normative_migration_ledger')
+# is null` puis testait `!= "f"`. Une sortie VIDE — connexion tombee, droit
+# manquant, proxy qui coupe — n'est pas « f », et valait donc ABSENTE: le
+# registre etait repute inexistant, et la migration REJOUEE sur une base qui la
+# portait deja. Le commentaire du second aller-retour affirmait pourtant
+# l'inverse: « une reponse illisible n'est pas une absence ».
+#
+# LE CONTRE-EXEMPLE FAIT ECHOUER LA SEULE PREMIERE INTERROGATION. Un faux
+# `psql`, place devant le vrai dans le PATH, refuse le premier `to_regclass` et
+# laisse passer tout le reste — c'est le comportement d'un proxy qui recycle une
+# connexion, pas d'une base en panne. La base porte deja les dix migrations.
+#
+# CE QUI EST OBSERVE N'EST PAS « la commande a echoue »: elle echoue dans les
+# deux mondes. C'est qu'AUCUN SQL DE MIGRATION n'a ete execute. Le faux `psql`
+# journalise chacun de ses appels; un `-f .../0001_init.sql` dans ce journal
+# prouve que le portillon a conclu ABSENTE et a rejoue.
+if ! q_amorcer t7; then
+  echoue "le decor T7 n'a pas pu etre pose"
+else
+# LA BASE DOIT ETRE « PENDING » AVEC UN REGISTRE PARTIEL, et c'est le coeur du
+# scenario. Premiere ecriture: la base etait menee jusqu'a ACTIVE. La commande
+# saute alors les etapes 3 a 7 — elle n'interroge JAMAIS le portillon —, le
+# leurre ne se declenchait pas, et le contre-exemple ne mesurait rien.
+migrations_copiees 0006_ndp_import.sql
+appeler >/dev/null 2>&1                    # echoue en 0006: 0001-0005 inscrites
+ETAT_T7A=$(admb -tAc "select normative_activation_state()" 2>&1)
+INSCRITES_T7=$(admb -tAc "select count(*) from normative_migration_ledger" 2>&1)
+migrations_copiees                          # le jeu sain, comme apres correctif
+LEURRE="$COPIE/leurre"
+mkdir -p "$LEURRE"
+JOURNAL_T7="$COPIE/psql_appels.log"
+VRAI_PSQL="$(command -v psql)"
+cat >"$LEURRE/psql" <<LEURREFIN
+#!/usr/bin/env bash
+# FAUX psql — db/test/deploy_recovery.sh, scenario T7.
+# Refuse la PREMIERE interrogation du registre, puis se comporte normalement.
+#
+# IL SE DECIDE SUR ARGV, ET NE LIT L'ENTREE QU'ENSUITE. Deux ecritures
+# precedentes lisaient l'entree d'abord, et le contre-exemple se declarait vert
+# sans rien avoir exerce:
+#
+#   * un \`cat\` inconditionnel bloquait les appels en \`-c\`/\`-f\`, qui ne
+#     consomment pas d'entree;
+#   * meme filtre, il bloquait le CO-PROCESSUS DU VERROU, dont l'entree reste
+#     ouverte pour toute la duree de la commande — « aucune reponse du verrou de
+#     deploiement en 30 s », mesure faite.
+#
+# La premiere interrogation du registre est le SEUL appel qui porte \`-tA\` sans
+# \`-v\`: le portillon passe \`-v id=\` et \`-v sum=\`, et le verrou \`-At\`.
+printf '%s\n' "ARGV: \$*" >>"$JOURNAL_T7"
+DIRECT=0
+for a in "\$@"; do
+  case "\$a" in
+    -c|--command*|-f|--file*|-v) DIRECT=1 ;;
+  esac
+done
+SONDE=0
+for a in "\$@"; do [[ "\$a" == "-tA" ]] && SONDE=1; done
+if (( DIRECT )) || (( ! SONDE )); then
+  exec "$VRAI_PSQL" "\$@"
+fi
+CORPS="\$(cat)"
+if [[ "\$CORPS" == *to_regclass*normative_migration_ledger* ]] \\
+   && [[ ! -f "$COPIE/leurre_deja" ]]; then
+  : >"$COPIE/leurre_deja"
+  echo "psql: error: connexion perdue (leurre T7)" >&2
+  exit 2
+fi
+printf '%s\n' "\$CORPS" | "$VRAI_PSQL" "\$@"
+LEURREFIN
+chmod +x "$LEURRE/psql"
+: >"$JOURNAL_T7"
+rm -f "$COPIE/leurre_deja"
+PATH="$LEURRE:$PATH" appeler; CODE_T7=$?
+REJOUEE_T7="$(grep -oE -- '-f [^ ]*migrations/[0-9]+[^ ]*' "$JOURNAL_T7" 2>/dev/null \
+              | head -3 | tr '\n' ' ')"
+DECLENCHE_T7=$([[ -f "$COPIE/leurre_deja" ]] && echo oui || echo non)
+APRES_T7=$(admb -tAc "select count(*) from normative_migration_ledger" 2>&1)
+if [[ "$ETAT_T7A" != "PENDING" || "$INSCRITES_T7" != "5" ]]; then
+  echoue "T7. le decor n'est pas dans l'etat attendu (etat « $ETAT_T7A »,"
+  echoue "    $INSCRITES_T7 migration(s) inscrite(s) au lieu de 5)"
+elif [[ "$DECLENCHE_T7" != "oui" ]]; then
+  echoue "T7. le leurre ne s'est pas declenche: le portillon n'a pas ete"
+  echoue "    interroge, et le scenario ne dit rien."
+elif [[ -z "$REJOUEE_T7" && $CODE_T7 -ne 0 && "$APRES_T7" == "5" ]]; then
+  echo "      ok: T7. une interrogation en echec ne vaut pas « registre absent »"
+else
+  rouge "T7. une panne du portillon est prise pour une absence de registre."
+  detail "    code $CODE_T7; SQL de migration execute: « ${REJOUEE_T7:-aucun} »"
+  detail "    registre: $INSCRITES_T7 ligne(s) avant, $APRES_T7 apres"
+  detail "    La base portait deja cinq migrations. Une reponse vide au premier"
+  detail "    « to_regclass » ne doit jamais valoir ABSENTE: elle fait rejouer"
+  detail "    une migration deja appliquee."
+fi
+rm -f "$COPIE/leurre_deja"
+decor_deposer
+fi
+
+# --- T8 a T11. L'INTEGRITE DE L'HISTOIRE, PAS CELLE D'UN FICHIER ----------
+# L'empreinte compare un fichier ENCORE PRESENT a ce qui est inscrit. Elle ne
+# voit donc pas:
+#
+#   * une migration appliquee puis SUPPRIMEE — le runner ne la demande plus;
+#   * un RENOMMAGE — pour le registre, c'est une disparition;
+#   * une migration INSEREE AVANT la derniere appliquee — elle s'appliquera
+#     apres des migrations qui la suivent, sur un schema qu'elle n'attend pas.
+#
+# Et elle ne doit PAS refuser le geste normal: ajouter une migration en
+# SUFFIXE. Les quatre cas sont exerces, le dernier etant le cas positif — sans
+# lui, un controle qui refuserait tout passerait pour correct.
+#
+# LA BASE EST LAISSEE « PENDING » AVEC CINQ MIGRATIONS INSCRITES. Sur une base
+# ACTIVE, la commande saute les etapes 3 a 7: le cas positif ne prouverait rien,
+# puisque aucune migration ne serait appliquee.
+t_historique() {
+  local nom="$1" geste="$2" code
+  local M5="0005_validation_workflow.sql"
+  q_amorcer "${nom,,}" || { echoue "le decor $nom n'a pas pu etre pose"; return 1; }
+  migrations_copiees 0006_ndp_import.sql
+  appeler >/dev/null 2>&1
+  local etat inscrites
+  etat=$(admb -tAc "select normative_activation_state()" 2>&1)
+  inscrites=$(admb -tAc "select count(*) from normative_migration_ledger" 2>&1)
+  if [[ "$etat" != "PENDING" || "$inscrites" != "5" ]]; then
+    echoue "$nom. le decor n'est pas dans l'etat attendu (« $etat », $inscrites"
+    echoue "    migration(s) inscrite(s) au lieu de 5)"
+    decor_deposer; return 1
+  fi
+
+  migrations_copiees
+  case "$geste" in
+    supprime) rm -f "$COPIE/db/migrations/$M5" ;;
+    renomme)  mv "$COPIE/db/migrations/$M5" \
+                 "$COPIE/db/migrations/0005_renommee_apres_coup.sql" ;;
+    # Trie entre `0004_ndp_versioning.sql` et `0005_...`: elle s'intercale donc
+    # DANS le prefixe deja applique.
+    insere)   printf 'begin;\nselect 1;\ncommit;\n' \
+                >"$COPIE/db/migrations/0004_zz_insertion.sql" ;;
+    suffixe)  cat >"$COPIE/db/migrations/0011_ajout_legitime.sql" <<'SQL'
+-- FICTIF — ajout EN SUFFIXE, le geste normal. Il doit etre accepte.
+begin;
+comment on schema public is 'ajout legitime en suffixe (harnais)';
+select normative_migration_applied(:'esc_migration_id', :'esc_migration_sum');
+commit;
+SQL
+              ;;
+  esac
+
+  appeler; code=$?
+  local apres etat_fin
+  apres=$(admb -tAc "select count(*) from normative_migration_ledger" 2>&1)
+  etat_fin=$(admb -tAc "select normative_activation_state()" 2>&1)
+
+  if [[ "$geste" == "suffixe" ]]; then
+    if [[ $code -eq 0 && "$etat_fin" == "ACTIVE" && "$apres" == "11" ]]; then
+      echo "      ok: $nom. une migration ajoutee en suffixe est appliquee"
+    else
+      rouge "$nom. un ajout LEGITIME en suffixe est refuse."
+      detail "    code $code, etat « $etat_fin », $apres ligne(s) au registre"
+      detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_|MIGRATION_)' <<<"$SORTIE_CMD" | cut -c1-140)"
+      detail "    Un controle qui refuse aussi le geste normal n'est pas un"
+      detail "    controle: c'est un blocage."
+    fi
+  elif [[ $code -ne 0 ]] \
+       && grep -qF "MIGRATION_HISTORY_DIVERGENCE" <<<"$SORTIE_CMD" \
+       && [[ "$apres" == "5" ]]; then
+    echo "      ok: $nom. l'ecart d'historique est refuse avant toute mutation"
+  else
+    rouge "$nom. un historique divergent ($geste) n'est pas detecte."
+    detail "    code $code, $apres ligne(s) au registre (5 attendues)"
+    detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_|MIGRATION_)' <<<"$SORTIE_CMD" | cut -c1-140)"
+    detail "    L'empreinte ne protege qu'un fichier PRESENT: une migration"
+    detail "    appliquee puis supprimee, renommee, ou doublee par une insertion"
+    detail "    retroactive lui echappe entierement."
+  fi
+  decor_deposer
+  return 0
+}
+
+t_historique T8  supprime
+t_historique T9  renomme
+t_historique T10 insere
+t_historique T11 suffixe
+
+# --- T12. UNE BASE GARDE SON MIGRATEUR ------------------------------------
+# Les fonctions du registre sont SECURITY INVOKER et lisent
+# `normative_migration_ledger`. Le diagnostic conseillait pourtant, en cas
+# d'echec d'interrogation, un simple:
+#
+#     GRANT EXECUTE ON FUNCTION normative_migration_gate(...) TO <nouveau>;
+#
+# Ce conseil est incomplet — il manque la TABLE — et surtout il improvise une
+# delegation: le nouveau role ne devient pas proprietaire des objets deja crees,
+# et rien n'auditerait le changement. La regle de ce jalon est donc l'identite
+# STABLE, et le refus est nomme.
+if ! q_amorcer t12; then
+  echoue "le decor T12 n'a pas pu etre pose"
+else
+migrations_copiees 0006_ndp_import.sql
+appeler >/dev/null 2>&1                       # PENDING, 0001-0005 inscrites
+ETAT_T12=$(admb -tAc "select normative_activation_state()" 2>&1)
+MIG2="${MIG:0:56}_b"
+adm -v ON_ERROR_STOP=1 -v n="$MIG2" -v mdp="$MDP" >/dev/null 2>&1 <<'SQL'
+create role :"n" login password :'mdp' createrole createdb;
+SQL
+admb >/dev/null 2>&1 <<SQL
+grant usage on schema auth to "$MIG2" with grant option;
+grant select, insert, references on auth.users to "$MIG2" with grant option;
+grant execute on function auth.uid() to "$MIG2" with grant option;
+grant create on database "$BASE" to "$MIG2";
+SQL
+adm -c "alter database \"$BASE\"
+          set eurostruct.approved_deployment_roles = '$MIG2,$CTL';" >/dev/null 2>&1
+migrations_copiees
+SORTIE_T12=$(
+  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://$MIG2:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  bash "$COMMANDE_COPIE" 2>&1
+); CODE_T12=$?
+APRES_T12=$(admb -tAc "select count(*) from normative_migration_ledger" 2>&1)
+CAP_T12=$(adm -tA -v m="$MIG2" <<'SQL'
+select coalesce(string_agg(a.r, ' '), '') from unnest(array[
+  'eurostruct_normative_writer','eurostruct_normative_bootstrap',
+  'eurostruct_normative_activator']) a(r)
+ where pg_has_role(:'m', a.r, 'SET') or pg_has_role(:'m', a.r, 'USAGE')
+    or pg_has_role(:'m', a.r, 'MEMBER WITH ADMIN OPTION');
+SQL
+)
+if [[ "$ETAT_T12" != "PENDING" ]]; then
+  echoue "T12. le decor n'est pas PENDING (« $ETAT_T12 »); scenario non evalue"
+elif [[ $CODE_T12 -ne 0 ]] \
+     && grep -qF "MIGRATOR_IDENTITY_MISMATCH" <<<"$SORTIE_T12" \
+     && [[ "$APRES_T12" == "5" && -z "$CAP_T12" ]]; then
+  echo "      ok: T12. un second migrateur est refuse, et rien ne lui reste"
+else
+  rouge "T12. une base accepte d'etre migree par un AUTRE role."
+  detail "    code $CODE_T12, $APRES_T12 ligne(s) au registre (5 attendues)"
+  detail "    capacites residuelles du second migrateur: « ${CAP_T12:-aucune} »"
+  detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_|MIGRAT)' <<<"$SORTIE_T12" | cut -c1-140)"
+fi
+[[ -n "${MIG2:-}" ]] && adm -v n="$MIG2" >/dev/null 2>&1 <<'SQL'
+drop owned by :"n";
+drop role if exists :"n";
+SQL
+decor_deposer
+fi
+
 # --- T5. le contrat de transactionnalite est UNIFORME ---------------------
 # CONTROLE STATIQUE, et il porte sur une propriete du jeu, pas d'un fichier:
 # `0001`, `0002` et `0003` n'ont ni `BEGIN` ni `COMMIT`, les sept suivantes en

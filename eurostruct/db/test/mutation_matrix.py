@@ -531,6 +531,37 @@ CAS_REPRISE = [
     ("T1  le registre repond toujours « jamais appliquee »", "T1", APP,
      [('    ABSENTE|DEJA|MISMATCH) echo "$reponse" ;;',
        '    ABSENTE|DEJA|MISMATCH) echo "ABSENTE" ;;')], False),
+    # LA CLASSIFICATION STRICTE DE LA PREMIERE INTERROGATION, AUX DEUX ENDROITS
+    # OU ELLE VIT. La mutation retablit l'ancien defaut: tout ce qui n'est ni
+    # « t » ni « f » — sortie vide, connexion tombee — repasse pour benin.
+    #
+    # DEUX PAIRES, ET C'EST UNE MESURE. N'en retirer qu'une ne rougissait plus
+    # rien depuis que `esc_verifier_historique` interroge `to_regclass` AVANT la
+    # boucle: c'est elle qui attrapait la panne, et le contre-exemple restait
+    # vert. Les deux gardes se suppleent — retirer les deux est la seule facon
+    # de savoir si l'une d'elles porte quelque chose.
+    ("T7  une interrogation en echec vaut « registre absent »", "T7", APP,
+     [('''    *)
+      ESC_MIGRATION_DIAG="$(grep -m2 -v '^[[:space:]]*$' "$errfic" | cut -c1-300)"
+      [[ -n "$ESC_MIGRATION_DIAG" ]] \\
+        || ESC_MIGRATION_DIAG="reponse « ${presence:-<vide>} », attendu « t » ou « f »"''',
+       '''    *)
+      rm -f "$errfic"; echo "ABSENTE"; return 0
+      ESC_MIGRATION_DIAG="$(grep -m2 -v '^[[:space:]]*$' "$errfic" | cut -c1-300)"
+      [[ -n "$ESC_MIGRATION_DIAG" ]] \\
+        || ESC_MIGRATION_DIAG="reponse « ${presence:-<vide>} », attendu « t » ou « f »"'''),
+      ('''      ESC_HISTORIQUE_DIAG="MIGRATION_LEDGER_UNREADABLE: l'existence du registre n'a pas pu
+       etre etablie avant de verifier l'historique.''',
+       '''      rm -f "$errfic"; return 0
+      ESC_HISTORIQUE_DIAG="MIGRATION_LEDGER_UNREADABLE: l'existence du registre n'a pas pu
+       etre etablie avant de verifier l'historique.''')],
+     False),
+    ("T8  le prefixe exact n'est plus exige", "T8", APP,
+     [('    if [[ "${inscrites[$i]}" != "${locaux[$i]}" ]]; then',
+       "    if false; then")], False),
+    ("T12 l'identite du migrateur n'est plus exigee", "T12", APP,
+     [('  if [[ -n "$applied_by" && "$applied_by" != "$moi" ]]; then',
+       "  if false; then")], False),
     ("T4  le portillon ne signale plus la divergence", "T4", INIT,
      [MUT_T4_PORTILLON], False),
     ("T4' le controle re-fait a l'ecriture du registre", "T4", INIT,

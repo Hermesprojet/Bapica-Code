@@ -770,6 +770,16 @@ constat "emprunts accordes (ils seront rendus par la phase 2)"
 # contient QUE ce que le migrateur applique: il n'y a plus rien a ignorer, et
 # c'est ce qui rend cette boucle sure pour un outil quelconque.
 etape "4/10  phase 1 — les migrations, par « $MIG_USER »"
+
+# L'HISTOIRE AVANT LES FICHIERS. L'empreinte protege un fichier ENCORE PRESENT;
+# elle ne voit ni une migration appliquee puis supprimee, ni un renommage, ni
+# une migration inseree AVANT la derniere appliquee. Ce controle porte sur le
+# jeu entier, et il tombe AVANT toute mutation.
+if ! esc_verifier_historique "$MIGRATIONS_DIR" mig; then
+  echec "$ESC_HISTORIQUE_DIAG"
+fi
+constat "historique des migrations coherent avec le depot"
+
 APPLIQUEES=0; SAUTEES=0
 for f in "$MIGRATIONS_DIR"/*.sql; do
   esc_appliquer_migration "$f" mig
