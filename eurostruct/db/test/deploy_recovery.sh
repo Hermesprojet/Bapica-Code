@@ -640,9 +640,14 @@ suivre_decor
 # a347dcb — sans qu'aucune de ces deux executions ne le signale.
 #
 # Le jeton est donc raccourci, et la longueur VERIFIEE ci-dessous.
+# LE PREFIXE EST TRONQUE, ET C'EST NECESSAIRE. `run.sh` appelle ce harnais avec
+# « eurostruct_testdr »: le nom hostile repassait alors a 67 octets, et la garde
+# ci-dessous refusait le scenario — verte en execution isolee, rouge dans la
+# suite. Le budget est de 63 octets pour 17 de charge utile
+# (`";create role ` + `;--`), soit 46 pour les deux noms.
 R_JETON="${JETON:0:6}"
-R_PREFIXE="${PREFIXE}_i${R_JETON}"
-R_TEMOIN="${PREFIXE}_t${R_JETON}"
+R_PREFIXE="${PREFIXE:0:8}_i${R_JETON}"
+R_TEMOIN="${PREFIXE:0:8}_t${R_JETON}"
 R_HOSTILE="$R_PREFIXE\";create role $R_TEMOIN;--"
 adm -c "create role \"$R_PREFIXE\" nologin;" >/dev/null 2>&1
 adm -v ON_ERROR_STOP=1 -v n="$R_HOSTILE" -v mdp="$MDP" >/dev/null 2>&1 <<'SQL'

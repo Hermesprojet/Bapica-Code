@@ -161,11 +161,25 @@ base = unquote(u.path.lstrip("/"))
 if not base:
     sys.stderr.write("nom de base absent de l'URL\n"); sys.exit(2)
 q = parse_qs(u.query)
+# CE QUI N'EST PAS PORTE EST REFUSE, JAMAIS IGNORE. Un `sslrootcert` jete en
+# silence laissait l'exploitant croire qu'il avait designe son autorite, alors
+# que le mode strict exige justement `verify-ca` ou `verify-full`. Accepter
+# puis oublier est pire que refuser: la configuration a l'air faite.
+portes = ("sslmode", "sslrootcert", "sslcert", "sslkey")
+inconnus = sorted(k for k in q if k.startswith("ssl") and k not in portes)
+if inconnus:
+    sys.stderr.write(
+        "parametre TLS non porte par cette commande: " + ", ".join(inconnus) +
+        "\nCette commande porte: " + ", ".join(portes) + ".\n")
+    sys.exit(2)
 for k, v in (("HOST", u.hostname), ("PORT", str(u.port or 5432)),
              ("USER", unquote(u.username)),
              ("PASSWORD", unquote(u.password or "")),
              ("DATABASE", base),
-             ("SSLMODE", q.get("sslmode", ["prefer"])[0])):
+             ("SSLMODE", q.get("sslmode", ["prefer"])[0]),
+             ("SSLROOTCERT", q.get("sslrootcert", [""])[0]),
+             ("SSLCERT", q.get("sslcert", [""])[0]),
+             ("SSLKEY", q.get("sslkey", [""])[0])):
     print(f"{k}={shlex.quote(v)}")
 FINPARSE
   )"; then
@@ -177,7 +191,7 @@ FINPARSE
   rm -f "$errpy"
   while IFS= read -r ligne; do
     [[ -n "$ligne" ]] || continue
-    [[ "$ligne" =~ ^(HOST|PORT|USER|PASSWORD|DATABASE|SSLMODE)= ]] \
+    [[ "$ligne" =~ ^(HOST|PORT|USER|PASSWORD|DATABASE|SSLMODE|SSLROOTCERT|SSLCERT|SSLKEY)= ]] \
       || { echo "REFUS: sortie de decoupage inattendue pour $nom_var." >&2; return 2; }
     eval "${nom_var}_${ligne}"
   done <<<"$conn"
@@ -261,12 +275,59 @@ borner_identifiant "plan de controle" "$PLAN_USER"
 borner_identifiant "migrateur"        "$MIG_USER"
 borner_identifiant "base"             "$BASE"
 
-plan() { PGHOST="$PLAN_HOST" PGPORT="$PLAN_PORT" PGUSER="$PLAN_USER" \
-         PGPASSWORD="$PLAN_PASSWORD" PGSSLMODE="$PLAN_SSLMODE" \
-         psql -X -q -d "$BASE" "$@"; }
-mig()  { PGHOST="$MIG_HOST" PGPORT="$MIG_PORT" PGUSER="$MIG_USER" \
-         PGPASSWORD="$MIG_PASSWORD" PGSSLMODE="$MIG_SSLMODE" \
-         psql -X -q -d "$BASE" "$@"; }
+# ==========================================================================
+# LA MATIERE TLS — portee depuis l'URL, et VERIFIEE avant toute connexion
+# ==========================================================================
+# `PGSSLROOTCERT`, `PGSSLCERT` et `PGSSLKEY` sont effacees plus haut, avec les
+# autres PG* ambiantes: une variable d'environnement ne doit pas decider a qui
+# l'on parle. Il faut donc que l'URL puisse le dire — sans quoi le mode strict
+# exige `verify-ca`/`verify-full` sans laisser aucun moyen de designer
+# l'autorite, et l'exigence devient une impasse (contre-exemple V3).
+#
+# ELLES SONT VERIFIEES ICI, ET NON LAISSEES A libpq. libpq n'ouvre le fichier
+# de CA qu'APRES que le serveur a accepte la negociation SSL: un chemin faux ne
+# se manifeste donc qu'a la fin d'un aller-retour reseau, sous un message qui
+# parle de certificat et non de configuration — et pas du tout si le serveur
+# refuse SSL avant. Un chemin qu'on nous donne et qui n'existe pas est une
+# erreur de configuration: elle se constate ici, sans connexion.
+#
+# `sslrootcert=system` est le mot-cle de libpq pour le magasin du systeme. Ce
+# n'est pas un chemin: il passe tel quel.
+verifier_matiere_tls() {
+  local quoi="$1" chemin="$2"
+  [[ -n "$chemin" ]] || return 0
+  [[ "$chemin" == "system" ]] && return 0
+  [[ -e "$chemin" ]] || echec "DEPLOYMENT_TLS_MATERIAL_MISSING: le $quoi designe
+       « $chemin », qui n'existe pas. Corrigez l'URL, ou retirez le parametre
+       pour retomber sur le magasin par defaut de libpq."
+  [[ -r "$chemin" ]] || echec "DEPLOYMENT_TLS_MATERIAL_MISSING: le $quoi designe
+       « $chemin », qui existe mais n'est pas lisible par cet utilisateur."
+}
+for cote in PLAN MIG; do
+  eval "verifier_matiere_tls \"certificat d'autorite du ${cote,,}\" \"\${${cote}_SSLROOTCERT}\""
+  eval "verifier_matiere_tls \"certificat client du ${cote,,}\"      \"\${${cote}_SSLCERT}\""
+  eval "verifier_matiere_tls \"cle client du ${cote,,}\"             \"\${${cote}_SSLKEY}\""
+done
+
+# LES AFFECTATIONS D'ENVIRONNEMENT, CONSTRUITES UNE FOIS. Une variable posee a
+# vide n'est PAS equivalente a une variable absente pour libpq: `PGSSLROOTCERT=`
+# lui fait chercher un fichier nomme « ». Seules les valeurs non vides sont
+# donc transmises, et c'est la raison de ces tableaux.
+PLAN_TLS=(); MIG_TLS=()
+for cote in PLAN MIG; do
+  for p in SSLROOTCERT:PGSSLROOTCERT SSLCERT:PGSSLCERT SSLKEY:PGSSLKEY; do
+    eval "valeur=\${${cote}_${p%%:*}}"
+    [[ -n "$valeur" ]] && eval "${cote}_TLS+=(\"${p##*:}=\$valeur\")"
+  done
+done
+unset valeur
+
+plan() { env PGHOST="$PLAN_HOST" PGPORT="$PLAN_PORT" PGUSER="$PLAN_USER" \
+             PGPASSWORD="$PLAN_PASSWORD" PGSSLMODE="$PLAN_SSLMODE" \
+             "${PLAN_TLS[@]}" psql -X -q -d "$BASE" "$@"; }
+mig()  { env PGHOST="$MIG_HOST" PGPORT="$MIG_PORT" PGUSER="$MIG_USER" \
+             PGPASSWORD="$MIG_PASSWORD" PGSSLMODE="$MIG_SSLMODE" \
+             "${MIG_TLS[@]}" psql -X -q -d "$BASE" "$@"; }
 
 echo "EUROSTRUCT — deploiement de « $BASE » sur $PLAN_HOST:$PLAN_PORT"
 echo "   plan de controle : $PLAN_USER"
@@ -334,12 +395,30 @@ fi
 # `ALTER ROLE ... SET role`. Les deux doivent etre celle qu'on croit.
 verifier_identite() {
   local role_attendu="$1" quoi="$2"; shift 2
-  local obtenu
-  obtenu=$("$@" -tA 2>/dev/null <<'SQL'
+  # LA RAISON DU REFUS EST RENDUE, ET NON JETEE. `2>/dev/null` renvoyait
+  # « le plan de controle ne peut pas se connecter » sans un mot de plus:
+  # mot de passe, hote injoignable, TLS refuse et certificat introuvable
+  # produisaient le meme message. Mesure (contre-exemple V3): c'est ce message
+  # muet qu'obtenait un exploitant dont la CA n'avait pas ete portee.
+  local obtenu err pourquoi
+  err="$(mktemp)"
+  obtenu=$("$@" -tA 2>"$err" <<'SQL'
 select session_user || '|' || current_user || '|' || current_database();
 SQL
   )
-  [[ -n "$obtenu" ]] || echec "le $quoi ne peut pas se connecter a « $BASE »."
+  if [[ -z "$obtenu" ]]; then
+    pourquoi="$(grep -m1 -iE 'error|fatal' "$err" | cut -c1-220)"
+    rm -f "$err"
+    # PAS D'APOSTROPHE DANS CE `${...:-...}`. A l'interieur d'une substitution
+    # de defaut, meme au sein de guillemets doubles, bash traite `'` comme un
+    # DEBUT DE CITATION: « psql n'a rendu... » rendait tout le reste du fichier
+    # non analysable, et l'erreur etait signalee 120 lignes plus bas, sur un
+    # `trap` intact. Mesure faite ici meme.
+    [[ -n "$pourquoi" ]] || pourquoi="psql n'a rendu aucun diagnostic"
+    echec "le $quoi ne peut pas se connecter a « $BASE ».
+       $pourquoi"
+  fi
+  rm -f "$err"
   local su="${obtenu%%|*}" reste="${obtenu#*|}"
   local cu="${reste%%|*}" db="${reste##*|}"
   [[ "$su" == "$role_attendu" && "$cu" == "$role_attendu" ]] \
@@ -378,9 +457,9 @@ constat "identites constatees: « $PLAN_USER » et « $MIG_USER » sur « $BASE 
 # commande. DERRIERE PGBOUNCER EN MODE TRANSACTION, cela ne fonctionne pas —
 # la session change a chaque transaction. Voir docs/DEPLOIEMENT_PREREQUIS.md.
 VERROU_TENU=0
-coproc VERROU { PGHOST="$PLAN_HOST" PGPORT="$PLAN_PORT" PGUSER="$PLAN_USER" \
-                PGPASSWORD="$PLAN_PASSWORD" PGSSLMODE="$PLAN_SSLMODE" \
-                psql -X -q -At -d "$BASE" 2>&1; }
+coproc VERROU { env PGHOST="$PLAN_HOST" PGPORT="$PLAN_PORT" PGUSER="$PLAN_USER" \
+                    PGPASSWORD="$PLAN_PASSWORD" PGSSLMODE="$PLAN_SSLMODE" \
+                    "${PLAN_TLS[@]}" psql -X -q -At -d "$BASE" 2>&1; }
 if [[ -z "${VERROU_PID:-}" ]]; then
   echec "la session du verrou de deploiement n'a pas pu etre ouverte."
 fi

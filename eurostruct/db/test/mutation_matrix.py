@@ -438,6 +438,21 @@ CAS_REPRISE = [
        "unset PGSERVICE PGSERVICEFILE PGPASSFILE PGDATABASE PGHOSTADDR \\")], False),
     ("V2  la politique TLS stricte ne s'applique plus", "V2", CMD,
      [("if ((STRICT)) && ! cible_locale; then", "if false; then")], False),
+    # V3 TIENT SUR DEUX GARANTIES QUI NE SE SUPPLEENT PAS: porter la CA depuis
+    # l'URL, et verifier qu'elle existe. Retirer l'une OU l'autre doit rougir —
+    # ce n'est pas une redondance, c'est une chaine.
+    ("V3  la CA de l'URL n'est plus portee", "V3", CMD,
+     [('             ("SSLROOTCERT", q.get("sslrootcert", [""])[0]),',
+       '             ("SSLROOTCERT", ""),')], False),
+    # LA VERIFICATION ENTIERE, ET NON UN DE SES DEUX TESTS. Mesure: neutraliser
+    # le seul `-e` ne rougit rien — un fichier absent echoue AUSSI le `-r` qui
+    # suit. Les deux tests se suppleent pour ce contre-exemple; c'est la
+    # fonction qu'il faut retirer pour savoir si elle porte quelque chose.
+    ("V3p la matiere TLS n'est plus verifiee du tout", "V3", CMD,
+     [('  [[ -n "$chemin" ]] || return 0\n  [[ "$chemin" == "system" ]] && return 0',
+       '  return 0')], False),
+    ("V3b un parametre TLS inconnu est ignore", "V3b", CMD,
+     [("if inconnus:", "if False:")], False),
 ]
 
 # --------------------------------------------------------------------------

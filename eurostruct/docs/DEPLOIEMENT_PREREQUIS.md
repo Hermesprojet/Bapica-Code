@@ -37,6 +37,26 @@ avec une **autre** empreinte est refusée (`MIGRATION_CHECKSUM_MISMATCH`, sortie
 6) — le schéma de cette base ne correspond alors à aucun état du dépôt, et
 rejouer ne le rapprocherait d'aucun.
 
+### Les codes de sortie, et les jetons
+
+Un orchestrateur branche sur le **code** et sur le **jeton**, jamais sur la
+prose — celle-ci ne sert qu'à l'affichage et peut être reformulée.
+
+| Code | Jeton | Sens |
+|---|---|---|
+| `0` | — | déployé, ou déjà `ACTIVE` avec le manifeste approuvé |
+| `1` | *(variable)* | échec de déploiement ; `MIGRATION_CHECKSUM_MISMATCH` si une migration appliquée a été réécrite depuis |
+| `2` | `REFUS` | usage : option inconnue, URL inexploitable, paramètre `ssl*` non porté |
+| `3` | `DEPLOYMENT_PRECONDITION_FAILED` | un prérequis d'exploitation manque — un droit à faire accorder. **Aucun emprunt n'a été accordé** |
+| `4` | `DEPLOYMENT_ALREADY_RUNNING` | un autre déploiement de cette base tient le verrou. **Rien n'a été modifié** |
+| `5` | `DEPLOYMENT_CLEANUP_FAILED` | les emprunts n'ont **pas** pu être repris : le migrateur reste capable d'endosser les rôles d'autorité. **N'exploitez pas cette base en l'état** |
+| `130` | — | interruption (`TERM`/`INT`/`HUP`) ; la compensation a tourné |
+
+Deux autres jetons apparaissent sans code dédié, parce qu'ils tombent avant
+toute connexion : `DEPLOYMENT_IDENTIFIER_REJECTED` (un nom de rôle dépasse
+63 octets — voir §1) et `DEPLOYMENT_TLS_MATERIAL_MISSING` (un fichier TLS
+nommé dans l'URL est absent ou illisible).
+
 ### La connexion : ce qui décide, et ce qui est ignoré
 
 Seuls les paramètres dérivés des **deux URL** décident de la cible. Les
@@ -63,10 +83,29 @@ ou `verify-full`, et la chaîne de confiance correspondante :
 | `verify-ca` | l'hôte présente un certificat signé par une CA de confiance | **oui** |
 | `verify-full` | `verify-ca`, **plus** la correspondance du nom d'hôte | **oui** |
 
-La racine de confiance se fournit par `PGSSLROOTCERT` — dont la valeur héritée
-de l'environnement est effacée : passez-la dans l'URL
-(`?sslmode=verify-full&sslrootcert=/chemin/ca.crt`) ou utilisez le magasin par
-défaut de libpq (`~/.postgresql/root.crt`).
+La racine de confiance se désigne **dans l'URL**, et nulle part ailleurs :
+
+```
+?sslmode=verify-full&sslrootcert=/chemin/ca.crt
+?sslmode=verify-full&sslrootcert=system      # le magasin du système
+```
+
+`PGSSLROOTCERT`, `PGSSLCERT` et `PGSSLKEY` héritées de l'environnement sont
+**effacées** — une variable ambiante ne doit pas décider à qui l'on parle —, et
+la commande repose les siennes à partir des URL. Sans `sslrootcert`, libpq
+retombe sur `~/.postgresql/root.crt`.
+
+La commande porte quatre paramètres TLS : `sslmode`, `sslrootcert`, `sslcert`
+et `sslkey`. **Tout autre paramètre `ssl*` est refusé**, jamais ignoré :
+accepter puis jeter en silence laisserait croire que la configuration est
+faite.
+
+Les fichiers nommés sont **vérifiés avant toute connexion**
+(`DEPLOYMENT_TLS_MATERIAL_MISSING`). C'est délibéré : libpq n'ouvre le fichier
+de CA qu'*après* que le serveur a accepté la négociation SSL, si bien qu'un
+chemin faux ne se manifeste qu'au bout d'un aller-retour réseau — sous un
+message parlant de certificat plutôt que de configuration — et pas du tout si
+le serveur refuse SSL avant.
 
 Vers une cible distante, les **deux** URL doivent porter la même politique : un
 plan de contrôle en `verify-full` et un migrateur en `prefer` laisserait la
@@ -370,6 +409,7 @@ fermée.
 | Le sceau est séparé, versionné, réexécutable ; le poseur finalise | `seal_contract.sh` | **PostgreSQL 16 local / CI** |
 | La commande officielle tient ses postconditions | `official_deployment.sh` | **PostgreSQL 16 local / CI** |
 | Elle aboutit en **un appel** sur base vierge, reprend après interruption, et ne laisse jamais le migrateur privilégié | `deploy_recovery.sh` | **PostgreSQL 16 local / CI** |
+| Un prérequis manquant refuse **avant** tout octroi (code 3) ; un nom de rôle venu d'une URL n'est pas du SQL ; la matière TLS de l'URL est portée et vérifiée | `deploy_recovery.sh` (P2, R1, R2, V3) | **PostgreSQL 16 local / CI** |
 | La restauration inter-cluster échoue fail-closed | `cross_cluster_restore.sh` (second cluster réel, `initdb`) | **PostgreSQL 16 local / CI** |
 | Prérequis topologiques sur les rôles | `role_prerequisites.sh` | **PostgreSQL 16 local / CI** |
 | **Compatibilité Supabase** | — | **NON VALIDÉ** |
