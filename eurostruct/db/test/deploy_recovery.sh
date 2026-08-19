@@ -1408,6 +1408,99 @@ fi
 decor_deposer
 fi
 
+# --- T13 a T16. UNE BASE ACTIVE EST AUSSI RAPPROCHEE DU DEPOT -------------
+# T8 a T12 laissent la base PENDING, parce qu'une base ACTIVE SAUTE les etapes
+# 3 a 7. Ce raccourci sautait aussi tout controle du registre: la commande
+# annoncait une relance reussie sans jamais regarder si le depot et la base
+# disent encore la meme chose.
+#
+# CE JALON NE MET PAS A NIVEAU UNE BASE EN SERVICE. Ce qui est exige ici est
+# borne, et entierement EN LECTURE:
+#
+#   T13 empreinte divergente          -> MIGRATION_CHECKSUM_MISMATCH
+#   T14 migration supprimee/renommee  -> MIGRATION_HISTORY_DIVERGENCE
+#   T15 migration ajoutee en suffixe  -> ACTIVE_SCHEMA_UPGRADE_REQUIRED, code 9
+#   T16 depot identique au registre   -> relance idempotente, code 0
+#
+# T16 EST LE CAS POSITIF, et il n'est pas decoratif: sans lui, un controle qui
+# refuserait toute relance sur une base ACTIVE passerait pour correct.
+t_active() {
+  local nom="$1" geste="$2" code
+  local M5="0005_validation_workflow.sql"
+  q_amorcer "${nom,,}" || { echoue "le decor $nom n'a pas pu etre pose"; return 1; }
+  migrations_copiees
+  appeler >/dev/null 2>&1
+  local etat inscrites
+  etat=$(admb -tAc "select normative_activation_state()" 2>&1)
+  inscrites=$(admb -tAc "select count(*) from normative_migration_ledger" 2>&1)
+  if [[ "$etat" != "ACTIVE" || "$inscrites" != "10" ]]; then
+    echoue "$nom. le decor n'est pas ACTIVE avec dix migrations (« $etat »,"
+    echoue "    $inscrites inscrite(s)); scenario non evalue"
+    decor_deposer; return 1
+  fi
+
+  case "$geste" in
+    empreinte) printf '\n-- FICTIF: reecriture posterieure\n' \
+                 >>"$COPIE/db/migrations/$M5" ;;
+    disparue)  mv "$COPIE/db/migrations/$M5" \
+                  "$COPIE/db/migrations/0005_renommee_active.sql" ;;
+    suffixe)   cat >"$COPIE/db/migrations/0011_ajout_sur_active.sql" <<'SQL'
+-- FICTIF — migration ajoutee alors que la base est deja ACTIVE.
+begin;
+comment on schema public is 'ajout sur base active (harnais)';
+select normative_migration_applied(:'esc_migration_id', :'esc_migration_sum');
+commit;
+SQL
+               ;;
+    identique) : ;;
+  esac
+
+  appeler; code=$?
+  local apres
+  apres=$(admb -tAc "select count(*) from normative_migration_ledger" 2>&1)
+
+  case "$geste" in
+    identique)
+      if [[ $code -eq 0 && "$apres" == "10" ]]; then
+        echo "      ok: $nom. depot identique: la relance idempotente est permise"
+      else
+        rouge "$nom. une relance sur une base ACTIVE intacte est refusee."
+        detail "    code $code, $apres ligne(s) au registre"
+        detail "    $(grep -m1 -E '^(ECHEC|ACTIVE_|MIGRATION_)' <<<"$SORTIE_CMD" | cut -c1-140)"
+      fi ;;
+    suffixe)
+      if [[ $code -eq 9 ]] \
+         && grep -qF "ACTIVE_SCHEMA_UPGRADE_REQUIRED" <<<"$SORTIE_CMD" \
+         && [[ "$apres" == "10" ]]; then
+        echo "      ok: $nom. migration en suffixe sur ACTIVE: refus nomme, zero mutation"
+      else
+        rouge "$nom. une migration ajoutee sur une base ACTIVE n'est pas nommee."
+        detail "    code $code (9 attendu), $apres ligne(s) au registre (10 attendues)"
+        detail "    $(grep -m1 -E '^(ECHEC|ACTIVE_|MIGRATION_)' <<<"$SORTIE_CMD" | cut -c1-140)"
+        detail "    Sans ce refus, la commande annonce une relance reussie et"
+        detail "    ignore silencieusement une migration du depot."
+      fi ;;
+    *)
+      local jeton="MIGRATION_CHECKSUM_MISMATCH"
+      [[ "$geste" == "disparue" ]] && jeton="MIGRATION_HISTORY_DIVERGENCE"
+      if [[ $code -ne 0 ]] && grep -qF "$jeton" <<<"$SORTIE_CMD" \
+         && [[ "$apres" == "10" ]]; then
+        echo "      ok: $nom. divergence detectee sur une base ACTIVE ($jeton)"
+      else
+        rouge "$nom. une base ACTIVE divergente du depot n'est pas detectee."
+        detail "    code $code, $apres ligne(s) au registre; « $jeton » attendu"
+        detail "    $(grep -m1 -E '^(ECHEC|ACTIVE_|MIGRATION_)' <<<"$SORTIE_CMD" | cut -c1-140)"
+      fi ;;
+  esac
+  decor_deposer
+  return 0
+}
+
+t_active T13 empreinte
+t_active T14 disparue
+t_active T15 suffixe
+t_active T16 identique
+
 t_historique T8  supprime
 t_historique T9  renomme
 t_historique T10 insere

@@ -575,6 +575,15 @@ CAS_REPRISE = [
   etat="$ESC_MIGRATION_GATE_STATE"''',
        '''  etat="$( esc_migration_etat "$fichier" "$@"
              printf '%s' "$ESC_MIGRATION_GATE_STATE" )"''')], False),
+    # LE RAPPROCHEMENT D'UNE BASE ACTIVE, EN DEUX MORCEAUX INDEPENDANTS: la
+    # boucle des empreintes (T13, T15) et la verification d'historique (T14).
+    ("T15 le rapprochement d'une base ACTIVE ne se fait plus", "T15", CMD,
+     [('  ECART_ACTIVE=""\n  for f in "$MIGRATIONS_DIR"/*.sql; do',
+       '  ECART_ACTIVE=""\n  for f in ; do')], False),
+    ("T14 l'historique n'est plus verifie sur une base ACTIVE", "T14", CMD,
+     [('  if ! esc_verifier_historique "$MIGRATIONS_DIR" mig; then\n'
+       '    echec "$ESC_HISTORIQUE_DIAG"\n  fi',
+       '  if false; then\n    echec "$ESC_HISTORIQUE_DIAG"\n  fi')], False),
     ("T8  le prefixe exact n'est plus exige", "T8", APP,
      [('    if [[ "${inscrites[$i]}" != "${locaux[$i]}" ]]; then',
        "    if false; then")], False),

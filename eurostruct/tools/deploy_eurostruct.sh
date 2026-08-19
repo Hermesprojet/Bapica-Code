@@ -844,6 +844,70 @@ if [[ "$DEJA" == "ACTIVE" ]]; then
   echo
   echo "== la base est DEJA FINALISEE — aucun emprunt n'est reaccorde"
   echo "   Les etapes 3 a 7 sont sautees; les postconditions sont verifiees."
+
+  # ==========================================================================
+  # LE RAPPROCHEMENT D'UNE BASE ACTIVE — ENTIEREMENT EN LECTURE
+  # ==========================================================================
+  # CE QUE LE RACCOURCI LAISSAIT PASSER. Sauter les etapes 3 a 7 saute aussi
+  # tout controle du registre: sur une base ACTIVE, la commande annoncait une
+  # relance reussie sans jamais regarder si le depot et la base disent encore la
+  # meme chose. Une migration inscrite puis supprimee, un fichier reecrit apres
+  # coup, ou une migration ajoutee depuis passaient inapercus.
+  #
+  # CE JALON NE MET PAS A NIVEAU UNE BASE EN SERVICE, et c'est une limite
+  # assumee. Le protocole d'upgrade — ordre, verrouillage, retour arriere,
+  # coordination avec les confirmations deja emises — est une conception a part
+  # entiere, qui reste a faire. Le comportement borne est donc:
+  #
+  #   depot == registre, empreintes comprises -> relance idempotente permise;
+  #   empreinte divergente, migration orpheline ou renommee -> refus existant;
+  #   migration locale EN SUFFIXE -> ACTIVE_SCHEMA_UPGRADE_REQUIRED, sans rien
+  #   appliquer.
+  #
+  # L'outil reste ainsi un outil d'INSTALLATION et de VERIFICATION, et ne se
+  # presente pas comme le mecanisme de mise a niveau qu'il n'est pas.
+  etape "4/10  rapprochement du depot et du registre (base ACTIVE, lecture seule)"
+  if ! esc_verifier_historique "$MIGRATIONS_DIR" mig; then
+    echec "$ESC_HISTORIQUE_DIAG"
+  fi
+  ECART_ACTIVE=""
+  for f in "$MIGRATIONS_DIR"/*.sql; do
+    esc_migration_etat "$f" mig
+    case "$ESC_MIGRATION_GATE_STATE" in
+      DEJA) : ;;
+      MISMATCH)
+        echec "MIGRATION_CHECKSUM_MISMATCH: « $(basename "$f") » est inscrite au
+       registre avec une AUTRE empreinte que le fichier present. Le schema de
+       cette base ACTIVE ne correspond a aucun etat du depot. Rien n'a ete
+       applique: retrouvez la version appliquee, ou portez le correctif dans
+       une NOUVELLE migration." ;;
+      ABSENTE)
+        ECART_ACTIVE="${ECART_ACTIVE}$(basename "$f") " ;;
+      *)
+        echec "le registre n'a pas pu etre interroge pour « $(basename "$f") »
+       sur cette base ACTIVE.
+       ${ESC_MIGRATION_DIAG:-aucun diagnostic}" ;;
+    esac
+  done
+  if [[ -n "$ECART_ACTIVE" ]]; then
+    cat >&2 <<EOF
+ACTIVE_SCHEMA_UPGRADE_REQUIRED: cette base est ACTIVE, et le depot porte des
+       migrations qu'elle n'a pas:
+
+           $ECART_ACTIVE
+
+       Cette commande INSTALLE et VERIFIE; elle ne met pas a niveau une base en
+       service. Appliquer ces migrations demanderait de reaccorder les emprunts
+       sur une base ACTIVE — ce que le modele de menace interdit — puis de
+       refinaliser, alors que des confirmations normatives ont peut-etre deja
+       ete emises sous le schema actuel.
+
+       RIEN N'A ETE APPLIQUE. Le protocole de mise a niveau d'une base en
+       service reste a concevoir; voir docs/DEPLOIEMENT_PREREQUIS.md.
+EOF
+    exit 9
+  fi
+  constat "depot et registre concordent (empreintes comprises)"
 else
   if [[ "$DEJA" != "PENDING" ]]; then
     echec "etat de deploiement inattendu: « $DEJA »."
