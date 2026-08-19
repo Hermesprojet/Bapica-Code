@@ -10,10 +10,31 @@ l'a pas vu rougir: il peut etre vert parce que la garantie tient, ou vert parce
 qu'il ne regarde rien. Ce fichier retire les garanties UNE PAR UNE et exige que
 le contre-exemple correspondant rougisse.
 
-IL N'EST PAS DANS LA SUITE CANONIQUE, ET C'EST DELIBERE. Il MODIFIE des
-fichiers suivis par git puis les restaure par `git checkout --`. Lance sur un
-arbre de travail modifie, il detruirait ce travail. Il refuse donc de demarrer
-si l'arbre n'est pas propre — et `run_tests.sh` ne l'appelle jamais.
+IL NE TOUCHE PLUS L'ARBRE DE TRAVAIL, ET C'EST LA CORRECTION D'UN DEFAUT REEL.
+Il mutait les fichiers du depot puis les restaurait par `git checkout --`. Deux
+facons d'y perdre du travail, l'une et l'autre mesurees ou evidentes:
+
+  * une modification creee APRES le demarrage etait ecrasee par la restauration
+    — c'est arrive dans cette session, en silence, et le harnais suivant a
+    teste le fichier de HEAD en annoncant le contraire;
+  * une interruption entre la mutation et la restauration laissait un fichier
+    MUTE dans le depot.
+
+La matrice travaille desormais dans un `git worktree` TEMPORAIRE ET DETACHE.
+Les mutations, les restaurations et les harnais s'y executent tous. Le depot
+principal n'est jamais ecrit. Le nettoyage est porte par un `atexit` et par les
+signaux; et si le repertoire temporaire disparait sans lui, il ne reste qu'une
+entree de metadonnees que `git worktree prune` retire — aucun fichier suivi
+n'est touche.
+
+CE QUI EST JUGE EST CE QUE VOUS AVEZ SOUS LES YEUX. L'espace isole part de HEAD,
+puis les fichiers modifies et non suivis du depot y sont RECOPIES. Sans cela la
+matrice rendrait un verdict sur HEAD pendant qu'on corrige un fichier — le meme
+defaut, deguise en securite. Ce qui a ete recopie est annonce au demarrage.
+
+`db/test/mutation_isolation_selftest.sh` etablit les trois proprietes: une
+modification temoin du depot survit, une interruption ne laisse rien de modifie,
+et la mutation est bien appliquee dans l'espace isole.
 
 DEUX POINTS SONT COUVERTS PAR DEUX GARANTIES INDEPENDANTES. Pour ceux-la,
 retirer UNE SEULE garantie ne doit rien rougir — c'est la redondance voulue — et
@@ -21,10 +42,14 @@ retirer LES DEUX doit rougir. Les deux cas sont exerces.
 
 La connexion vient de l'ENVIRONNEMENT, comme pour tous les harnais.
 """
+import atexit
 import os
 import re
+import shutil
+import signal
 import subprocess
 import sys
+import tempfile
 
 # `.../eurostruct/db/test/mutation_matrix.py` -> `.../eurostruct`: TROIS
 # remontees. Deux laissaient RACINE sur `.../db`, ou `git status -- db/...` ne
@@ -46,28 +71,87 @@ RLS = "db/migrations/0002_rls.sql"
 SCRATCH = os.environ.get("TMPDIR", "/tmp")
 
 
-def exiger_arbre_propre():
-    """Refuse de demarrer sur un arbre modifie.
+def _git(*args, cwd=None, check=True):
+    return subprocess.run(["git", *args], cwd=cwd or DEPOT,
+                          capture_output=True, text=True, check=check)
 
-    Ce fichier restaure ses mutations par `git checkout --`, qui ECRASE le
-    fichier de travail. Sur un arbre modifie, il emporterait le travail en
-    cours. Cette garde est la seule chose qui rend l'outil utilisable sans
-    precaution particuliere.
+
+DEPOT = _git("rev-parse", "--show-toplevel",
+             cwd=RACINE).stdout.strip()          # racine du depot git
+SOUS = os.path.relpath(RACINE, DEPOT)            # « eurostruct »
+ESPACE_DEPOT = None                              # le worktree temporaire
+ESPACE = None                                    # ...et son sous-repertoire
+ORIGINAUX = {}                                   # texte d'avant mutation
+
+
+def nettoyer_espace():
+    """Retire le worktree. Idempotent, et sans effet sur le depot principal.
+
+    `git worktree remove` ne touche que le repertoire temporaire et l'entree
+    de metadonnees qui le decrit. Si le repertoire a deja disparu — machine
+    arretee, `/tmp` vide — il ne reste que cette entree, et `prune` la retire.
+    Aucun fichier suivi n'est ecrit dans les deux cas.
     """
-    p = subprocess.run(["git", "status", "--porcelain", "--",
-                        M, S, R, H, CMD, INIT, APP, RLS],
-                       cwd=RACINE, capture_output=True, text=True)
-    if p.stdout.strip():
-        raise SystemExit(
-            "REFUS: cet outil mute puis RESTAURE par `git checkout --`, ce qui\n"
-            "       ecraserait les modifications non validees suivantes:\n"
-            + p.stdout.rstrip()
-            + "\n       Validez ou mettez de cote, puis relancez.")
+    global ESPACE_DEPOT, ESPACE
+    if ESPACE_DEPOT is None:
+        return
+    chemin, ESPACE_DEPOT, ESPACE = ESPACE_DEPOT, None, None
+    _git("worktree", "remove", "--force", chemin, check=False)
+    shutil.rmtree(chemin, ignore_errors=True)
+    _git("worktree", "prune", check=False)
+
+
+def _sur_signal(numero, _cadre):
+    nettoyer_espace()
+    # Le code conventionnel: le shell distingue ainsi une mort par signal.
+    raise SystemExit(128 + numero)
+
+
+def preparer_espace():
+    """Cree l'espace isole, et y recopie ce que l'arbre principal a de plus.
+
+    LE POINT DE DEPART EST HEAD, pas l'arbre: un worktree ne peut pas partager
+    les modifications non validees. On les RECOPIE donc, sans quoi la matrice
+    jugerait HEAD en laissant croire qu'elle juge le fichier ouvert.
+    """
+    global ESPACE_DEPOT, ESPACE
+    ESPACE_DEPOT = tempfile.mkdtemp(prefix="esc-mutations-", dir=SCRATCH)
+    # `mkdtemp` a deja cree le repertoire; `worktree add` exige qu'il soit
+    # absent ou vide — il l'est.
+    _git("worktree", "add", "--detach", "--quiet", ESPACE_DEPOT, "HEAD")
+    ESPACE = os.path.join(ESPACE_DEPOT, SOUS)
+    atexit.register(nettoyer_espace)
+    for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(s, _sur_signal)
+
+    recopies = []
+    for ligne in _git("status", "--porcelain", "-z").stdout.split("\0"):
+        if len(ligne) < 4:
+            continue
+        etat, chemin = ligne[:2], ligne[3:]
+        # Les renommes portent « ancien -> nouveau »; on ne recopie que la
+        # destination, seule presente dans l'arbre.
+        if "R" in etat and " -> " in chemin:
+            chemin = chemin.split(" -> ")[-1]
+        source = os.path.join(DEPOT, chemin)
+        cible = os.path.join(ESPACE_DEPOT, chemin)
+        if etat == " D" or etat == "D ":
+            if os.path.exists(cible):
+                os.remove(cible)
+                recopies.append(f"supprime {chemin}")
+            continue
+        if not os.path.isfile(source):
+            continue
+        os.makedirs(os.path.dirname(cible), exist_ok=True)
+        shutil.copy2(source, cible)
+        recopies.append(chemin)
+    return recopies
 
 
 def muter(fichier, paires):
-    chemin = f"{RACINE}/{fichier}"
+    chemin = f"{ESPACE}/{fichier}"
     s = open(chemin).read()
+    ORIGINAUX[fichier] = s
     for vieux, neuf in paires:
         if vieux not in s:
             raise SystemExit(f"motif absent dans {fichier}: {vieux[:60]!r}")
@@ -76,7 +160,15 @@ def muter(fichier, paires):
 
 
 def restaurer(fichier):
-    subprocess.run(["git", "checkout", "--", fichier], cwd=RACINE, check=True)
+    """Reecrit le texte d'avant mutation. GIT N'EST PLUS DANS CE CHEMIN.
+
+    `git checkout --` restaurait vers HEAD: dans un espace ou l'on a recopie
+    des modifications non validees, il les aurait effacees a la premiere
+    mutation. Le texte exact d'avant est plus simple et plus juste.
+    """
+    texte = ORIGINAUX.pop(fichier, None)
+    if texte is not None:
+        open(f"{ESPACE}/{fichier}", "w").write(texte)
 
 
 def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
@@ -87,13 +179,42 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     # qui n'ont pas eu lieu.
     env["EUROSTRUCT_CLUSTER_JETABLE"] = "oui-cluster-jetable-et-isole"
     p = subprocess.run(["bash", harnais, prefixe],
-                       cwd=RACINE, env=env, capture_output=True, text=True)
+                       cwd=ESPACE, env=env, capture_output=True, text=True)
     return p.returncode, p.stdout + p.stderr
+
+
+def _tracer(nom, fichier):
+    """Deux prises pour l'auto-test d'isolation, et rien d'autre.
+
+    `ESC_MUTATION_TRACE` fait consigner, pour chaque mutation posee: le nom du
+    cas, le fichier, l'empreinte du fichier MUTE et le chemin de l'espace
+    isole. `ESC_MUTATION_PAUSE` retient la matrice ce nombre de secondes une
+    fois la mutation ecrite.
+
+    Sans elles, `mutation_isolation_selftest.sh` devrait courir apres une
+    fenetre de quelques millisecondes pour constater qu'une mutation existe
+    dans l'espace isole et pas dans le depot — un test qui echoue une fois sur
+    dix n'etablit rien. La trace sert aussi hors test: elle dit ce qu'une
+    execution a reellement mute.
+    """
+    chemin = os.environ.get("ESC_MUTATION_TRACE")
+    if chemin:
+        import hashlib
+        with open(f"{ESPACE}/{fichier}", "rb") as f:
+            somme = hashlib.sha256(f.read()).hexdigest()
+        with open(chemin, "a") as f:
+            f.write(f"{nom}\t{fichier}\t{somme}\t{ESPACE}\n")
+            f.flush()
+    pause = float(os.environ.get("ESC_MUTATION_PAUSE", "0") or 0)
+    if pause:
+        import time
+        time.sleep(pause)
 
 
 def essayer(nom, point, fichier, paires, redondant=False,
             harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     muter(fichier, paires)
+    _tracer(nom, fichier)
     try:
         code, sortie = lancer(harnais, prefixe)
     finally:
@@ -492,23 +613,25 @@ def lot(cas, **kw):
     return all([essayer(*c, **kw) for c in gardes]), len(gardes)
 
 
-# LA GARDE EST APPELEE ICI, ET ELLE NE L'A JAMAIS ETE (6.3b6e).
+# L'ESPACE ISOLE EST CREE ICI, AVANT TOUTE MUTATION.
 #
-# `exiger_arbre_propre()` etait DEFINIE et jamais invoquee. Sa docstring affirme
-# qu'elle est « la seule chose qui rend l'outil utilisable sans precaution
-# particuliere »; en fait, chaque `restaurer()` faisait un
-# `git checkout -- <fichier>` sur un arbre que personne n'avait verifie.
+# Il remplace `exiger_arbre_propre()`, qui etait DEFINIE ET JAMAIS APPELEE — sa
+# docstring affirmait pourtant etre « la seule chose qui rend l'outil utilisable
+# sans precaution particuliere ». Une garde non executee n'est pas une garde.
 #
-# Mesure, en ecrivant ce jalon: des corrections NON VALIDEES de
-# `tools/deploy_eurostruct.sh` ont ete effacees par la premiere restauration,
-# en silence. Le harnais suivant a alors teste le fichier de HEAD tout en
-# annoncant le contraire.
-#
-# Une surface non executee n'est pas un verdict — la regle vaut aussi pour
-# l'outil qui l'applique.
-exiger_arbre_propre()
+# Elle ne suffirait de toute facon pas: elle regarde l'arbre au DEMARRAGE, et
+# n'empeche ni l'ecrasement d'une modification creee ensuite, ni le fichier
+# mute laisse en place par une interruption. L'isolation ferme les deux.
+RECOPIES = preparer_espace()
 
 print("MUTATIONS — chaque garantie retiree doit rougir son contre-exemple")
+print(f"         espace isole: worktree detache sur {_git('rev-parse', '--short', 'HEAD').stdout.strip()}")
+if RECOPIES:
+    print(f"         + {len(RECOPIES)} fichier(s) non valide(s) recopie(s) depuis l'arbre:")
+    for chemin in RECOPIES[:12]:
+        print(f"             {chemin}")
+    if len(RECOPIES) > 12:
+        print(f"             ... et {len(RECOPIES) - 12} autre(s)")
 if FILTRE:
     print(f"         (filtre: {' '.join(FILTRE)} — execution PARTIELLE)")
 LOTS = [

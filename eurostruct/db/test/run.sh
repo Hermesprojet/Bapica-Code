@@ -259,6 +259,21 @@ etape "restauration inter-cluster" \
   "$HERE/cross_cluster_restore.sh" "${DB_NAME:0:20}xr"
 
 # --------------------------------------------------------------------------
+# L'ISOLATION DE LA MATRICE DE MUTATION (6.3b6e)
+# --------------------------------------------------------------------------
+# `mutation_matrix.py` n'est PAS dans la suite canonique — elle est longue, et
+# c'est un outil d'audit. Mais la propriete « elle n'ecrit jamais dans le depot
+# principal » doit tenir a chaque fois, pas seulement le jour ou l'on y pense:
+# c'est en la supposant qu'on a perdu du travail non valide, en silence.
+#
+# CET AUTO-TEST N'A BESOIN D'AUCUNE BASE: il tue la matrice avant qu'elle n'en
+# demande une. Il est ici parce que c'est ici que passe la CI, et non parce
+# qu'il aurait quoi que ce soit a faire d'un cluster.
+echo "==> isolation de la matrice de mutation"
+etape "isolation de la matrice de mutation" \
+  "$HERE/mutation_isolation_selftest.sh"
+
+# --------------------------------------------------------------------------
 # LES ETAPES QUI EXIGENT UN JEU CANONIQUE VIERGE PASSENT AVANT LA BASE
 # PRINCIPALE
 # --------------------------------------------------------------------------
