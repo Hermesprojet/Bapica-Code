@@ -148,14 +148,29 @@ def preparer_espace():
     return recopies
 
 
+class MotifAbsent(Exception):
+    """Le texte a muter n'existe plus dans le fichier vise.
+
+    UN CONTROLE PERIME N'EST PAS UNE MUTATION TUEE — et il ne doit pas non
+    plus emporter la campagne. `raise SystemExit` arretait tout net: mesure
+    faite, la campagne complete s'est arretee au 45e controle sur un motif
+    devenu introuvable, et n'a imprime AUCUNE ligne de verdict. Les 44
+    controles deja passes n'etaient nulle part comptes, et les 19 suivants
+    n'ont jamais ete tentes. Une campagne qui meurt sans decompte est pire
+    qu'une campagne rouge: elle ne dit meme pas ce qu'elle a mesure.
+    """
+
+
 def muter(fichier, paires):
     chemin = f"{ESPACE}/{fichier}"
     s = open(chemin).read()
-    ORIGINAUX[fichier] = s
     for vieux, neuf in paires:
         if vieux not in s:
-            raise SystemExit(f"motif absent dans {fichier}: {vieux[:60]!r}")
+            raise MotifAbsent(f"{fichier}: {vieux.strip()[:70]!r}")
         s = s.replace(vieux, neuf, 1)
+    # L'ORIGINAL N'EST ENREGISTRE QU'UNE FOIS LES PAIRES TOUTES TROUVEES: rien
+    # n'a ete ecrit si l'une manque, donc rien n'est a restaurer.
+    ORIGINAUX[fichier] = open(chemin).read()
     open(chemin, "w").write(s)
 
 
@@ -217,7 +232,13 @@ def _tracer(nom, fichier):
 
 def essayer(nom, point, fichier, paires, redondant=False,
             harnais="db/test/finalisation_contract.sh", prefixe="mu"):
-    muter(fichier, paires)
+    try:
+        muter(fichier, paires)
+    except MotifAbsent as motif:
+        print(f"  PERIME {nom}\n        -> le texte a muter n'existe plus: {motif}\n"
+              "        Le controle ne peut pas etre applique: il ne prouve RIEN "
+              "sur la garantie.")
+        return "perime"
     _tracer(nom, fichier)
     try:
         code, sortie = lancer(harnais, prefixe)
@@ -553,8 +574,15 @@ CAS_REPRISE = [
     ("S1  le verrou de deploiement ne refuse plus", "S1", CMD,
      [('if [[ "$PRIS" != "true" ]]; then', "if false; then")], False),
     ("T1  le registre repond toujours « jamais appliquee »", "T1", APP,
-     [('    ABSENTE|DEJA|MISMATCH) echo "$reponse" ;;',
-       '    ABSENTE|DEJA|MISMATCH) echo "ABSENTE" ;;')], False),
+     # LE MOTIF SUIT LE CODE, ET IL AVAIT CESSE DE LE SUIVRE. Il visait
+     # « echo "$reponse" », forme abandonnee quand `esc_migration_etat()` est
+     # passee aux variables globales pour ne plus perdre le diagnostic dans un
+     # sous-shell. Le controle T1 etait donc INAPPLICABLE depuis ce changement:
+     # la garantie « le registre ne repond pas toujours ABSENTE » n'avait plus
+     # ete verifiee par mutation. Mesure, pas relecture — la campagne complete
+     # s'est arretee dessus au 45e controle.
+     [('    ABSENTE|DEJA|MISMATCH) rm -f "$errfic"; ESC_MIGRATION_GATE_STATE="$reponse" ;;',
+       '    ABSENTE|DEJA|MISMATCH) rm -f "$errfic"; ESC_MIGRATION_GATE_STATE="ABSENTE" ;;')], False),
     # LA CLASSIFICATION STRICTE DE LA PREMIERE INTERROGATION, AUX DEUX ENDROITS
     # OU ELLE VIT. La mutation retablit l'ancien defaut: tout ce qui n'est ni
     # « t » ni « f » — sortie vide, connexion tombee — repasse pour benin.
@@ -635,8 +663,13 @@ CAS_REPRISE = [
     # l'URL, et verifier qu'elle existe. Retirer l'une OU l'autre doit rougir —
     # ce n'est pas une redondance, c'est une chaine.
     ("V3  la CA de l'URL n'est plus portee", "V3", CMD,
-     [('             ("SSLROOTCERT", q.get("sslrootcert", [""])[0]),',
-       '             ("SSLROOTCERT", ""),')], False),
+     # SECOND MOTIF PERIME, TROUVE PAR LE PRE-VOL ET NON PAR CHANCE. Il visait
+     # la ligne terminee par « ), »; le decoupeur a depuis ferme sa boucle sur
+     # cette meme ligne, qui finit maintenant par « )): ». Un caractere, et le
+     # controle V3 ne s'appliquait plus. Il aurait arrete la campagne suivante
+     # exactement comme T1 avait arrete celle-ci.
+     [('             ("SSLROOTCERT", q.get("sslrootcert", [""])[0])):',
+       '             ("SSLROOTCERT", "")):')], False),
     # LA VERIFICATION ENTIERE, ET NON UN DE SES DEUX TESTS. Mesure: neutraliser
     # le seul `-e` ne rougit rien — un fichier absent echoue AUSSI le `-r` qui
     # suit. Les deux tests se suppleent pour ce contre-exemple; c'est la
@@ -726,6 +759,42 @@ LOTS = [
 ]
 
 TOTAL = sum(len(cas) for cas, _ in LOTS)
+
+# --------------------------------------------------------------------------
+# PRE-VOL — les motifs existent-ils encore, AVANT de lancer quoi que ce soit ?
+# --------------------------------------------------------------------------
+# Purement textuel, donc immediat. Sans lui, un controle perime se decouvre au
+# moment ou son tour arrive: la campagne complete s'est arretee au 45e controle
+# sur un motif introuvable, apres plus d'une heure, et les 19 restants n'ont
+# jamais ete tentes. Le savoir coute deux secondes; l'ignorer coute la campagne.
+#
+# IL N'ARRETE RIEN. Il annonce, et laisse la campagne mesurer tout ce qui est
+# encore mesurable: un controle perime ne doit pas priver les 63 autres de leur
+# verdict.
+PERIMES_PREVOL = []
+for _cas, _kw in LOTS:
+    for _c in _cas:
+        if not retenu(_c):
+            continue
+        _nom, _point, _fichier, _paires = _c[0], _c[1], _c[2], _c[3]
+        try:
+            _src = open(f"{ESPACE}/{_fichier}").read()
+        except OSError as _e:
+            PERIMES_PREVOL.append(f"{_nom} — {_fichier} illisible: {_e}")
+            continue
+        for _vieux, _ in _paires:
+            if _vieux not in _src:
+                PERIMES_PREVOL.append(
+                    f"{_nom} — {_fichier}: {_vieux.strip()[:70]!r}")
+if PERIMES_PREVOL:
+    print()
+    print(f"PRE-VOL: {len(PERIMES_PREVOL)} controle(s) visent un texte qui n'existe "
+          "plus.")
+    print("         Ils seront comptes NON EXECUTES, jamais tues:")
+    for _p in PERIMES_PREVOL:
+        print(f"           {_p}")
+    print()
+
 ETATS = []
 for cas, kw in LOTS:
     ETATS += lot(cas, **kw)
@@ -745,7 +814,8 @@ for cas, kw in LOTS:
 # existe pour rendre impossible ailleurs. Le decompte les nomme donc a part,
 # et « non executes » n'est jamais absorbe dans « executes ».
 DEFINIS = TOTAL
-NON_EXECUTES = ETATS.count("non_execute")
+PERIMES = ETATS.count("perime")
+NON_EXECUTES = ETATS.count("non_execute") + PERIMES
 CREUX = ETATS.count("creux")
 REDONDANTS = ETATS.count("redondant")
 TUES = ETATS.count("tue")
@@ -764,12 +834,18 @@ print(f"MUTATIONS: definis {DEFINIS} | executes {EXECUTES} | "
       f"| code {CODE}")
 print(f"           dont tues {TUES}, redondants voulus {REDONDANTS}"
       + (f", ecartes par le filtre {NON_EXERCES}" if NON_EXERCES else "")
-      + (f", refuses par le harnais {NON_EXECUTES}" if NON_EXECUTES else ""))
+      + (f", refuses par le harnais {NON_EXECUTES - PERIMES}"
+         if NON_EXECUTES - PERIMES else "")
+      + (f", PERIMES {PERIMES}" if PERIMES else ""))
 
-if NON_EXECUTES:
-    print(f"           {NON_EXECUTES} controle(s) N'ONT PAS ETE EXERCES: le harnais "
-          "a refuse.\n           Ce n'est pas un echec de garantie — c'est une "
-          "absence de mesure.")
+if PERIMES:
+    print(f"           {PERIMES} controle(s) PERIMES: le texte a muter n'existe "
+          "plus.\n           La garantie visee n'est plus verifiee par mutation — "
+          "le controle\n           doit etre remis en face du code, pas retire.")
+if NON_EXECUTES - PERIMES:
+    print(f"           {NON_EXECUTES - PERIMES} controle(s) N'ONT PAS ETE EXERCES: "
+          "le harnais a refuse.\n           Ce n'est pas un echec de garantie — "
+          "c'est une absence de mesure.")
 if CREUX:
     print(f"           {CREUX} controle(s) ont tourne SANS rougir: ceux-la ne "
           "portent rien.")
