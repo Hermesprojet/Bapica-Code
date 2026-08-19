@@ -59,6 +59,37 @@ HARNAIS_DB_DIR="$(dirname "$HARNAIS_LIB_DIR")"
 HARNAIS_SCEAU="$HARNAIS_DB_DIR/control_plane/0001_normative_seal.sql"
 
 # --------------------------------------------------------------------------
+# LE SERVEUR REPOND-IL EN TCP ? (6.3b6e)
+# --------------------------------------------------------------------------
+# `tools/deploy_eurostruct.sh` recoit deux URL: un `postgresql://` porte un
+# HOTE, pas un repertoire de socket. Les harnais qui l'exercent doivent donc
+# savoir si le cluster ecoute en TCP, meme quand le reste de la suite passe par
+# la socket unix.
+#
+# LA QUESTION EST « LE SERVEUR REPOND-IL », PAS « PUIS-JE M'AUTHENTIFIER ».
+# Premiere ecriture, mesuree: le controle se connectait en `postgres` avec le
+# mot de passe de l'environnement. Sur un cluster local ou `postgres` n'a pas
+# de mot de passe, il obtenait « password authentication failed » et concluait
+# a l'absence de TCP — alors que le serveur venait precisement de repondre. Une
+# garde trop large efface la surface qu'elle pretend proteger: trois scenarios
+# etaient annonces NON EXECUTE sans qu'aucun ne l'ait ete pour cette raison.
+#
+# `pg_isready` pose exactement la bonne question. A defaut, on retombe sur
+# `psql` en distinguant un refus d'AUTHENTIFICATION — qui prouve que le serveur
+# repond — d'une absence de reponse.
+harnais_tcp_joignable() {
+  if command -v pg_isready >/dev/null 2>&1; then
+    pg_isready -h localhost -p "${PGPORT:-5432}" >/dev/null 2>&1
+    return $?
+  fi
+  local err
+  err=$(PGHOST=localhost PGPORT="${PGPORT:-5432}" PGCONNECT_TIMEOUT=5 \
+          psql -X -q -tAc "select 1" -d postgres 2>&1)
+  [[ $? -eq 0 ]] && return 0
+  grep -qiE "authentication|role .* does not exist|database .* does not exist" <<<"$err"
+}
+
+# --------------------------------------------------------------------------
 # CONNEXION — le secret ne passe jamais par argv
 # --------------------------------------------------------------------------
 # Apres cet appel, TOUTE connexion se fait par `psql -X -q [-d base]`, sans

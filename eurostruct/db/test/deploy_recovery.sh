@@ -1,0 +1,497 @@
+#!/usr/bin/env bash
+#
+# EUROSTRUCT — 6.3b6e: LA COMMANDE OFFICIELLE, QUAND ELLE ECHOUE
+#
+#   deploy_recovery.sh <prefixe-de-base-jetable>
+#
+# CE QUE CE FICHIER EXISTE POUR ETABLIR
+# --------------------------------------
+# `official_deployment.sh` etablit que la commande MARCHE. Celui-ci pose la
+# question qui compte en exploitation: que laisse-t-elle derriere elle quand
+# elle N'ABOUTIT PAS ?
+#
+# Un outil de deploiement passe l'essentiel de sa vie a reussir. Ce qui decide
+# de sa qualite, ce sont les fois ou il echoue: une migration refusee, une
+# coupure reseau, un `Ctrl-C`. A ces moments-la, il a deja accorde au migrateur
+# la capacite d'endosser les roles d'autorite — et s'il part sans la reprendre,
+# la base reste dans un etat que tout le jalon 6.3b6c existait pour rendre
+# impossible.
+#
+# CE QUI EST EXERCE
+# ------------------
+#   P. LE PARCOURS GREENFIELD — la commande aboutit-elle par un chemin complet
+#      et nomme, ou par un premier echec qu'on ignore ?
+#   Q. LA COMPENSATION — apres un echec, que detient encore le migrateur ?
+#
+# COMMENT L'ECHEC EST INJECTE, ET POURQUOI AINSI
+# -----------------------------------------------
+# Le harnais construit une COPIE OCTET POUR OCTET de la commande, dans une
+# arborescence temporaire portant ses propres migrations. La commande calcule
+# ses chemins depuis sa propre position (`RACINE=$(dirname $(dirname $0))`):
+# la copie lit donc les migrations de la copie, et le depot n'est jamais
+# modifie. L'empreinte de la copie est comparee a l'original avant chaque
+# scenario — sans quoi on testerait autre chose que la commande officielle.
+#
+# Toutes les identites sont FICTIVES. Aucune confirmation normative n'est creee.
+set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DB_DIR="$(dirname "$HERE")"
+RACINE="$(dirname "$DB_DIR")"
+COMMANDE="$RACINE/tools/deploy_eurostruct.sh"
+# shellcheck source=lib_harnais.sh
+source "$HERE/lib_harnais.sh"
+
+PREFIXE="${1:?usage: deploy_recovery.sh <prefixe-de-base-jetable>}"
+
+harnais_connexion || exit 2
+exiger_precontrole_local "deploy_recovery.sh" || exit 2
+exiger_cluster_jetable  "deploy_recovery.sh" || exit 2
+harnais_verrou_prendre  "deploy_recovery.sh" || exit $?
+harnais_valider_identifiant "prefixe" "$PREFIXE" || exit 2
+
+JETON="$(harnais_jeton)"
+CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
+            eurostruct_normative_activator normative_backend
+            normative_governance eurostruct_deployment)
+AUTORITES=(eurostruct_normative_writer eurostruct_normative_bootstrap
+           eurostruct_normative_activator)
+exiger_roles_absents "deploy_recovery.sh" "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" || exit 2
+
+KO=0; ROUGES=0
+echoue() { echo "      ECHEC: $*" >&2; KO=1; }
+rouge()  { echo "      ROUGE ATTENDU (a fermer): $*"; ROUGES=$((ROUGES + 1)); }
+detail() { echo "                                $*"; }
+
+adm() { psql -X -q -d postgres "$@"; }
+
+[[ -x "$COMMANDE" ]] || { echo "      ECHEC: $COMMANDE introuvable" >&2
+                          harnais_verrou_rendre; exit 2; }
+
+# LA COMMANDE PARLE EN URL, DONC EN TCP (meme raison que official_deployment.sh).
+if ! harnais_tcp_joignable; then
+  echo "NON EXECUTE: le cluster n'accepte pas de connexion TCP sur" >&2
+  echo "       localhost:${PGPORT:-5432}." >&2
+  harnais_verrou_rendre
+  exit 4
+fi
+
+# --------------------------------------------------------------------------
+# L'ARBORESCENCE DE TRAVAIL — une copie fidele, des migrations controlees
+# --------------------------------------------------------------------------
+COPIE="$(mktemp -d "/tmp/${PREFIXE}_deploiement.XXXXXX")"
+mkdir -p "$COPIE/tools" "$COPIE/db/control_plane" "$COPIE/db/migrations"
+cp "$COMMANDE" "$COPIE/tools/"
+cp "$DB_DIR/control_plane/"*.sql "$COPIE/db/control_plane/"
+COMMANDE_COPIE="$COPIE/tools/$(basename "$COMMANDE")"
+
+# L'EMPREINTE, CONSTATEE. Un harnais qui testerait une copie divergente ne
+# dirait rien de la commande officielle — et le dirait avec assurance.
+if [[ "$(sha256sum <"$COMMANDE" | cut -d' ' -f1)" \
+   != "$(sha256sum <"$COMMANDE_COPIE" | cut -d' ' -f1)" ]]; then
+  echoue "la copie de la commande differe de l'original"
+  harnais_verrou_rendre; exit 2
+fi
+
+# `migrations_copiees [fichier-a-casser] [position]` — repose le jeu de
+# migrations de la copie. `position` vaut « avant » (un fichier fautif qui
+# s'applique EN PREMIER) ou un nom de fichier a saboter.
+migrations_copiees() {
+  local casse="${1:-}"
+  rm -f "$COPIE/db/migrations/"*.sql
+  cp "$DB_DIR/migrations/"*.sql "$COPIE/db/migrations/"
+  case "$casse" in
+    "") : ;;
+    avant)
+      # Trie AVANT 0001: il echoue donc avant la premiere vraie migration.
+      cat >"$COPIE/db/migrations/0000_echec_injecte.sql" <<'SQL'
+-- FICTIF — echec injecte par db/test/deploy_recovery.sh.
+begin;
+do $$ begin raise exception 'ECHEC INJECTE avant la premiere migration'; end $$;
+commit;
+SQL
+      ;;
+    apres)
+      # Trie APRES 0010. Elle REUSSIT, et retire au role de deploiement le
+      # droit de lire le manifeste: l'echec tombe donc a l'etape 6, entre la
+      # derniere migration et la finalisation. C'est un echec DETERMINISTE au
+      # bon endroit — une course sur un signal ne l'aurait pas ete.
+      cat >"$COPIE/db/migrations/0011_echec_injecte_apres.sql" <<'SQL'
+-- FICTIF — echec injecte par db/test/deploy_recovery.sh, APRES la phase 1.
+begin;
+revoke execute on function normative_settings_manifest() from eurostruct_deployment;
+commit;
+SQL
+      ;;
+    *)
+      printf '\ndo $$ begin raise exception %s; end $$;\n' \
+        "'ECHEC INJECTE dans $casse'" >>"$COPIE/db/migrations/$casse"
+      ;;
+  esac
+}
+
+# --------------------------------------------------------------------------
+# LE DECOR
+# --------------------------------------------------------------------------
+MIG=""; CTL=""; BASE=""; MDP=""
+admb() { psql -X -q -d "$BASE" "$@"; }
+
+decor_poser() {
+  local s="$1"
+  MIG="${PREFIXE}_m${s}_${JETON}"
+  CTL="${PREFIXE}_c${s}_${JETON}"
+  BASE="${PREFIXE}_d${s}_${JETON}"
+  MDP="FICTIF-dr-${s}-${JETON}"
+
+  creer_role "$MIG" "login password '$MDP' createrole createdb" || return 1
+  creer_role "$CTL" "login password '$MDP' createrole"          || return 1
+  adm -c "grant \"$CTL\" to ${PGUSER:-postgres};" >/dev/null 2>&1
+  creer_base "$BASE" "owner \"$MIG\"" || return 1
+  registre_base "$BASE"
+
+  admb -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
+  admb >/dev/null 2>&1 <<SQL
+grant usage on schema auth to "$MIG" with grant option;
+grant select, insert, references on auth.users to "$MIG" with grant option;
+grant execute on function auth.uid() to "$MIG" with grant option;
+grant create on database "$BASE" to "$MIG";
+grant create on schema public to "$CTL" with grant option;
+grant usage on schema auth to "$CTL";
+SQL
+  adm -c "alter database \"$BASE\"
+            set eurostruct.approved_deployment_roles = '$MIG,$CTL';" >/dev/null 2>&1
+  adm -c "alter database \"$BASE\" set eurostruct.token_roles = 'authenticated';" >/dev/null 2>&1
+  return 0
+}
+
+decor_deposer() {
+  local r
+  adm -c "select pg_terminate_backend(pid) from pg_stat_activity
+           where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
+  detruire_bases_creees || NETTOYAGE_KO=1
+  for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL"; do
+    [[ -n "$r" ]] || continue
+    adm -c "drop owned by \"$r\";"       >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+  done
+}
+
+SORTIE_CMD=""
+# `appeler [options]` — la COPIE de la commande officielle, jamais psql.
+appeler() {
+  SORTIE_CMD=$(
+    ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+    ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+    bash "$COMMANDE_COPIE" "$@" 2>&1
+  )
+  return $?
+}
+
+# `capacites_du_migrateur` — les TROIS capacites sur les TROIS roles
+# d'autorite. Vide = le migrateur ne detient rien.
+capacites_du_migrateur() {
+  adm -tAc "
+    select coalesce(string_agg(a.r || '(' ||
+        case when pg_has_role('$MIG', a.r, 'SET') then 'SET ' else '' end ||
+        case when pg_has_role('$MIG', a.r, 'USAGE') then 'USAGE ' else '' end ||
+        case when pg_has_role('$MIG', a.r, 'MEMBER WITH ADMIN OPTION')
+             then 'ADMIN' else '' end || ')', ' '), '')
+      from unnest(array['${AUTORITES[0]}','${AUTORITES[1]}','${AUTORITES[2]}']) a(r)
+     where pg_has_role('$MIG', a.r, 'SET')
+        or pg_has_role('$MIG', a.r, 'USAGE')
+        or pg_has_role('$MIG', a.r, 'MEMBER WITH ADMIN OPTION')" 2>&1
+}
+
+# `etat_normatif` — ce que la base engage, en une ligne.
+etat_normatif() {
+  admb -tAc "
+    select coalesce((select normative_activation_state()), 'SANS SCEAU')
+        || ' activations=' || (select count(*) from normative_activation)
+        || ' plans=' || (select count(*) from normative_control_plane)" 2>&1 \
+  || echo "illisible"
+}
+
+NETTOYAGE_KO=0
+TOUS_ROLES=()
+suivre_decor() { TOUS_ROLES+=("$MIG" "$CTL"); }
+sortie_propre() {
+  local r
+  decor_deposer
+  rm -rf "$COPIE"
+  for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "${TOUS_ROLES[@]}"; do
+    registre_role "$r"
+  done
+  detruire_roles_crees || NETTOYAGE_KO=1
+  harnais_postcondition_nettoyage "deploy_recovery.sh" \
+    "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "${TOUS_ROLES[@]}" || NETTOYAGE_KO=1
+  harnais_verrou_rendre
+  [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
+}
+trap sortie_propre EXIT
+harnais_piege_signaux
+
+echo "    la commande officielle, quand elle echoue"
+
+# ==========================================================================
+# P. LE PARCOURS GREENFIELD
+# ==========================================================================
+# La commande s'annonce en DIX ETAPES. Sur une base neuve, elle n'en franchit
+# pas trois: `eurostruct_deployment` n'existe qu'apres la phase 0, personne ne
+# le detient donc au premier appel, et l'etape 2 s'arrete.
+#
+# Le harnais `official_deployment.sh` decrit ce parcours sans le nommer:
+#
+#     deployer >/dev/null 2>&1        # premier appel, echec ignore
+#     adm -c "grant eurostruct_deployment to ..."
+#     deployer                        # second appel
+#
+# UN ECHEC UTILISE COMME MECANISME DE PROGRESSION N'EN EST PAS UN. Ce que la
+# commande doit offrir est soit un appel unique qui aboutit, soit DEUX MODES
+# EXPLICITEMENT NOMMES, avec leurs etats et leurs codes de sortie.
+
+# --- P1. un seul appel sur une base neuve ---------------------------------
+if ! decor_poser p1; then
+  echoue "le decor P1 n'a pas pu etre pose"
+else
+suivre_decor
+migrations_copiees
+appeler; CODE_P1=$?
+ETAT_P1=$(admb -tAc "select normative_activation_state()" 2>&1)
+if [[ $CODE_P1 -eq 0 && "$ETAT_P1" == "ACTIVE" ]]; then
+  echo "      ok: P1. un seul appel sur une base neuve atteint ACTIVE"
+else
+  rouge "P1. un seul appel n'atteint pas ACTIVE (code $CODE_P1, etat « $(cut -c1-60 <<<"$ETAT_P1")… »)."
+  detail "    Derniere etape franchie:"
+  detail "      $(grep -E '^== ' <<<"$SORTIE_CMD" | tail -1)"
+  detail "      $(grep -m1 -E '^ECHEC' <<<"$SORTIE_CMD" | cut -c1-130)"
+  detail "    La commande s'annonce en dix etapes et s'arrete a la deuxieme."
+fi
+
+# --- P1b. le plan PEUT s'accorder le role de deploiement -------------------
+# Le correctif recommande n'est possible que si la capacite existe. Elle
+# existe: PostgreSQL 16 donne au CREATEUR d'un role un ADMIN residuel (fait
+# F1), et c'est le plan de controle qui cree les six roles en phase 0. Ce
+# constat est ecrit pour que le jour ou il cesserait d'etre vrai, on le sache.
+CAP_P1=$(adm -tAc "select 'set=' || pg_has_role('$CTL','eurostruct_deployment','SET')
+                       || ' usage=' || pg_has_role('$CTL','eurostruct_deployment','USAGE')
+                       || ' admin=' || pg_has_role('$CTL','eurostruct_deployment','MEMBER WITH ADMIN OPTION')" 2>&1)
+if [[ "$CAP_P1" == *"admin=t"* ]]; then
+  echo "      ok: P1b. apres la phase 0, le plan detient l'ADMIN sur"
+  echo "             eurostruct_deployment ($CAP_P1) — il peut se l'accorder"
+else
+  echoue "P1b. le plan ne detient pas l'ADMIN sur eurostruct_deployment ($CAP_P1);"
+  echoue "     le correctif recommande du point 1 ne serait pas applicable"
+fi
+decor_deposer
+fi
+
+# --- P2. roles preexistants sans capacite pour le plan --------------------
+# Forme documentee: les six roles PREEXISTENT, provisionnes par un tiers. Le
+# plan de controle n'a alors aucun ADMIN residuel, et ne peut pas s'accorder
+# `eurostruct_deployment`. Ce qui est exige n'est pas qu'il y arrive: c'est un
+# REFUS DE PREREQUIS NOMME, tombant AVANT que writer/bootstrap ne soient
+# pretes au migrateur.
+if ! decor_poser p2; then
+  echoue "le decor P2 n'a pas pu etre pose"
+else
+suivre_decor
+adm -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
+create role normative_backend;
+create role normative_governance;
+create role eurostruct_normative_writer nologin;
+create role eurostruct_normative_bootstrap nologin;
+create role eurostruct_normative_activator nologin;
+create role eurostruct_deployment nologin;
+-- Le plan recoit STRICTEMENT de quoi poser le sceau, et rien sur le role de
+-- deploiement.
+grant eurostruct_normative_activator to "$CTL" with admin option, set false, inherit false;
+grant eurostruct_normative_writer    to "$CTL" with admin option, set false, inherit false;
+grant eurostruct_normative_bootstrap to "$CTL" with admin option, set false, inherit false;
+SQL
+migrations_copiees
+appeler; CODE_P2=$?
+CAP_P2=$(capacites_du_migrateur)
+if [[ $CODE_P2 -ne 0 ]] \
+   && grep -qiE "prerequis|eurostruct_deployment" <<<"$SORTIE_CMD" \
+   && [[ -z "$CAP_P2" ]]; then
+  echo "      ok: P2. prerequis manquant: refus nomme, aucun emprunt accorde"
+else
+  rouge "P2. roles preexistants sans capacite sur eurostruct_deployment:"
+  detail "    code $CODE_P2, capacites du migrateur: « ${CAP_P2:-aucune} »"
+  detail "      $(grep -m1 -E '^ECHEC' <<<"$SORTIE_CMD" | cut -c1-130)"
+  detail "    Le refus doit etre un diagnostic de PREREQUIS, et tomber AVANT"
+  detail "    que writer/bootstrap ne soient pretes au migrateur."
+fi
+decor_deposer
+fi
+
+# ==========================================================================
+# Q. LA COMPENSATION — ce que la commande laisse derriere elle
+# ==========================================================================
+# A l'etape 3, la commande accorde au migrateur writer et bootstrap AVEC ADMIN
+# OPTION. Il n'existe ensuite aucun piege de sortie. Si une migration echoue,
+# si la lecture du manifeste echoue, si l'operateur interrompt — le script part
+# en laissant le migrateur capable d'endosser ET de readministrer les roles
+# d'autorite.
+#
+# CE N'EST PAS UNE IMPERFECTION D'ERGONOMIE. C'est exactement l'etat que
+# 6.3b6c existait pour rendre impossible, reintroduit par l'outil cense
+# l'installer.
+#
+# `q_verifier <nom> <code> <capacites>` — le meme constat pour les trois
+# scenarios: zero capacite, PENDING, aucune activation, aucun plan fige.
+q_verifier() {
+  local nom="$1" code="$2" cap="$3" etat
+  etat=$(etat_normatif)
+  if [[ -z "$cap" && "$etat" == "PENDING activations=0 plans=0" ]]; then
+    echo "      ok: $nom. apres l'echec: aucune capacite, $etat"
+    return 0
+  fi
+  rouge "$nom. apres l'echec (code $code), le migrateur detient encore:"
+  detail "    ${cap:-aucune capacite}"
+  detail "    etat de la base: $etat"
+  detail "    La commande a accorde ces roles a l'etape 3 et est partie sans"
+  detail "    les reprendre. Le migrateur peut endosser et readministrer les"
+  detail "    roles d'autorite sur une base en cours de deploiement."
+  return 1
+}
+
+# `q_amorcer` — pose le decor et amene la base au point ou l'etape 3 va
+# s'executer. Le premier appel + l'octroi externe reproduisent le parcours
+# REEL d'aujourd'hui (defaut P1); sans lui, les scenarios Q n'atteindraient
+# jamais l'octroi et seraient verts pour la mauvaise raison.
+q_amorcer() {
+  local s="$1"
+  decor_poser "$s" || return 1
+  suivre_decor
+  migrations_copiees
+  appeler >/dev/null 2>&1
+  adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
+  return 0
+}
+
+# --- Q1. echec AVANT la premiere migration --------------------------------
+if ! q_amorcer q1; then
+  echoue "le decor Q1 n'a pas pu etre pose"
+else
+migrations_copiees avant
+appeler; CODE_Q1=$?
+q_verifier "Q1" "$CODE_Q1" "$(capacites_du_migrateur)"
+decor_deposer
+fi
+
+# --- Q2. echec AU MILIEU de la phase 1 ------------------------------------
+if ! q_amorcer q2; then
+  echoue "le decor Q2 n'a pas pu etre pose"
+else
+migrations_copiees 0005_validation_workflow.sql
+appeler; CODE_Q2=$?
+q_verifier "Q2" "$CODE_Q2" "$(capacites_du_migrateur)"
+decor_deposer
+fi
+
+# --- Q3. echec APRES la derniere migration, avant la finalisation ---------
+# UNE PREMIERE ECRITURE COURAIT APRES UN SIGNAL: elle attendait que la commande
+# annonce l'etape 6, puis l'interrompait. La fenetre entre l'etape 6 et la fin
+# vaut quelques millisecondes: la commande avait DEJA FINI, la base etait
+# ACTIVE, et le scenario rougissait en annoncant une compensation manquante
+# qu'il n'avait pas exercee. Un contre-exemple qui ne tient pas sa fenetre ne
+# dit rien de ce qu'il nomme.
+#
+# L'echec est donc pose DANS LA BASE: une derniere migration retire au role de
+# deploiement le droit de lire le manifeste. Elle reussit; l'etape 6 echoue.
+if ! q_amorcer q3; then
+  echoue "le decor Q3 n'a pas pu etre pose"
+else
+migrations_copiees apres
+appeler; CODE_Q3=$?
+q_verifier "Q3" "$CODE_Q3" "$(capacites_du_migrateur)"
+decor_deposer
+fi
+
+# --- Q5. INTERRUPTION PAR SIGNAL pendant la phase 1 -----------------------
+# LE CHEMIN QU'UN PIEGE `EXIT` SEUL NE COUVRE PAS. Sur TERM, INT ou HUP, bash
+# meurt avant d'executer son piege de sortie si le signal n'est pas intercepte
+# — defaut mesure en 6.3b6c, et la raison d'etre de `harnais_piege_signaux`.
+# La commande officielle doit tenir la meme discipline: c'est le cas de
+# l'operateur qui fait `Ctrl-C`, et du pipeline qu'on annule.
+#
+# LA FENETRE EST ICI CONFORTABLE: la phase 1 dure plusieurs secondes. On attend
+# qu'une migration du milieu soit annoncee, puis on interrompt.
+if ! q_amorcer q5; then
+  echoue "le decor Q5 n'a pas pu etre pose"
+else
+migrations_copiees
+JOURNAL="$COPIE/q5.log"
+: >"$JOURNAL"
+(
+  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  exec bash "$COMMANDE_COPIE" >"$JOURNAL" 2>&1
+) &
+PID_Q5=$!
+# `exec`: le sous-shell est REMPLACE par bash, si bien que `$PID_Q5` designe la
+# commande elle-meme. Sans lui, on interromprait un sous-shell et la commande
+# orpheline continuerait — defaut mesure en 6.3b6c, scenario 14.
+ATTENTE=0
+while [[ $ATTENTE -lt 600 ]]; do
+  grep -q "0005_" "$JOURNAL" 2>/dev/null && break
+  kill -0 "$PID_Q5" 2>/dev/null || break
+  sleep 0.2
+  ATTENTE=$((ATTENTE + 1))
+done
+if grep -q "0005_" "$JOURNAL" 2>/dev/null && kill -0 "$PID_Q5" 2>/dev/null; then
+  kill -TERM "$PID_Q5" 2>/dev/null
+  wait "$PID_Q5" 2>/dev/null; CODE_Q5=$?
+  sleep 2   # le piege, s'il existe, a besoin d'un instant pour revoquer
+  ETAT_Q5=$(etat_normatif)
+  if [[ "$ETAT_Q5" == "ACTIVE"* ]]; then
+    echoue "Q5. la commande a eu le temps d'aboutir: la fenetre n'a pas tenu"
+  else
+    q_verifier "Q5" "$CODE_Q5" "$(capacites_du_migrateur)"
+  fi
+else
+  wait "$PID_Q5" 2>/dev/null
+  echoue "Q5. la phase 1 n'a pas ete interrompue a temps; scenario non evalue"
+  tail -3 "$JOURNAL" | sed 's/^/              /' >&2
+fi
+decor_deposer
+fi
+
+# --- Q4. apres une finalisation REUSSIE, rien a compenser ------------------
+# La moitie positive. Sans elle, « la compensation revoque » serait satisfait
+# par une compensation qui revoque TOUJOURS — y compris apres une phase 2 qui
+# a deja rendu les emprunts, ou apres avoir refuse pour une raison qui n'a rien
+# a voir. Une compensation qui se declenche toujours n'est pas une
+# compensation, c'est un effet de bord.
+if ! q_amorcer q4; then
+  echoue "le decor Q4 n'a pas pu etre pose"
+else
+migrations_copiees
+appeler; CODE_Q4=$?
+ETAT_Q4=$(etat_normatif)
+CAP_Q4=$(capacites_du_migrateur)
+if [[ $CODE_Q4 -eq 0 && -z "$CAP_Q4" ]] \
+   && [[ "$ETAT_Q4" == "ACTIVE activations=1 plans=1" ]] \
+   && ! grep -qF "DEPLOYMENT_CLEANUP_FAILED" <<<"$SORTIE_CMD"; then
+  echo "      ok: Q4. finalisation reussie: $ETAT_Q4, aucune capacite"
+else
+  rouge "Q4. le parcours nominal ne se termine pas proprement."
+  detail "    code $CODE_Q4, etat « $ETAT_Q4 », capacites « ${CAP_Q4:-aucune} »"
+  detail "      $(grep -m1 -E '^ECHEC|CLEANUP' <<<"$SORTIE_CMD" | cut -c1-130)"
+fi
+decor_deposer
+fi
+
+echo ""
+echo "================================================="
+if [[ $KO -eq 0 && $ROUGES -eq 0 ]]; then
+  echo " La commande officielle ne laisse rien derriere elle."
+  echo "================================================="
+  exit 0
+fi
+echo " Reprise de la commande officielle:"
+echo "   $KO ecart(s) de decor"
+echo "   $ROUGES ouverture(s) a fermer"
+echo "================================================="
+exit 1

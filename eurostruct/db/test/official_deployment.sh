@@ -65,36 +65,7 @@ adm() { psql -X -q -d postgres "$@"; }
 # d'echouer sur « connection refused », un diagnostic qui designerait la
 # commande alors que c'est la configuration du cluster qui est en cause. Une
 # surface qu'on n'a pas pu exercer n'est pas une surface qui a tenu.
-#
-# LA JOIGNABILITE, ET NON L'AUTHENTIFICATION DE L'ADMINISTRATEUR. Une premiere
-# version faisait `psql -tAc "select 1"` avec les identifiants ambiants, et
-# rendait donc 4 sur un cluster parfaitement joignable dont le `postgres`
-# n'a pas de mot de passe TCP:
-#
-#   pg_isready -h localhost -p 5432   -> accepting connections
-#   psql -h localhost -U postgres     -> FATAL: password authentication failed
-#
-# Les roles de ce harnais, eux, portent un mot de passe et se connectent. Le
-# harnais etait donc declare NON EXECUTE — et la matrice de mutation en
-# concluait que trois de ses controles ne portaient rien. Une garde trop large
-# ne protege pas: elle efface la surface qu'elle pretend proteger.
-#
-# `pg_isready` interroge la joignabilite SANS identifiants: c'est exactement la
-# question posee. Sans lui, on retombe sur `psql` en distinguant un refus
-# d'authentification — qui prouve que le serveur repond — d'une absence de
-# reponse.
-tcp_joignable() {
-  if command -v pg_isready >/dev/null 2>&1; then
-    pg_isready -h localhost -p "${PGPORT:-5432}" >/dev/null 2>&1
-    return $?
-  fi
-  local err
-  err=$(PGHOST=localhost PGPORT="${PGPORT:-5432}" PGCONNECT_TIMEOUT=5 \
-          psql -X -q -tAc "select 1" -d postgres 2>&1)
-  [[ $? -eq 0 ]] && return 0
-  grep -qiE "authentication|role .* does not exist|database .* does not exist" <<<"$err"
-}
-if ! tcp_joignable; then
+if ! harnais_tcp_joignable; then
   echo "NON EXECUTE: le cluster n'accepte pas de connexion TCP sur" >&2
   echo "       localhost:${PGPORT:-5432}. La commande officielle de deploiement" >&2
   echo "       recoit deux URL: elle ne peut pas viser une socket unix." >&2
