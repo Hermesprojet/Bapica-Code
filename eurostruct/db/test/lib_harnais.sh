@@ -589,7 +589,28 @@ harnais_verrou_prendre() {
     harnais_verrou_rendre
     return 3
   fi
-  if [[ "$pris" != "true" ]]; then
+  # TROIS REPONSES, ET NON DEUX. `true` et `false` sont des verdicts; TOUT LE
+  # RESTE est une non-reponse, et la confondre avec `false` a produit un faux
+  # diagnostic mesure: le socket local avait change de repertoire, `psql`
+  # rendait « connection refused », et le harnais annoncait « une autre
+  # execution est en cours » — sur un cluster ou aucune session n'existait.
+  # L'exploitant cherchait alors un processus concurrent inexistant.
+  if [[ "$pris" != "true" && "$pris" != "false" ]]; then
+    cat >&2 <<EOF
+NON EXECUTE: $qui n'a pas pu interroger le verrou de harnais.
+
+       La session du verrou n'a rendu ni « true » ni « false », mais:
+           $pris
+
+       CE N'EST PAS UNE CONTENTION: rien ne dit qu'une autre execution tourne.
+       La cause habituelle est une connexion impossible — PGHOST pointe vers un
+       repertoire de socket ou le serveur n'ecoute pas. Verifiez:
+           psql -X -q -tAc "select 1" -d postgres
+EOF
+    harnais_verrou_rendre
+    return 3
+  fi
+  if [[ "$pris" == "false" ]]; then
     cat >&2 <<EOF
 NON EXECUTE: le verrou de harnais est deja detenu par une autre execution.
 
