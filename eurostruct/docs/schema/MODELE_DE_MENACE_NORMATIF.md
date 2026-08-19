@@ -90,13 +90,62 @@ tous deux non superutilisateurs.
 2. **Après `ACTIVE`** — aucune table normative n'appartient au migrateur ; ni
    lui ni un rôle applicatif ne peut désactiver un déclencheur ou contourner la
    RLS ; les propriétaires sont `NOLOGIN` et la RLS est **forcée**.
-3. **La transition** — une seule entrée publique mutante,
-   `normative_finalize_deployment(manifeste_attendu)`. Ses étapes internes ne
-   se composent pas depuis plusieurs transactions.
+3. **La transition** — une entrée **orchestratrice** supportée,
+   `normative_finalize_deployment(manifeste_attendu)`, et deux primitives de
+   bas niveau, `normative_prepare_activation(manifeste)` et
+   `normative_record_activation()`. Les trois sont réservées à
+   `eurostruct_deployment` ; aucune n'est atteignable par `PUBLIC`, par un
+   porteur de jeton ni par un rôle de service. Les primitives portent
+   **exactement** les mêmes contraintes que l'orchestrateur — verrou détenu par
+   la transaction courante, préparation et enregistrement dans **une seule**
+   transaction (`prepare_txid`, assigné par le serveur), appelant égal au
+   donneur dérivé, manifeste comparé aux déclarations réellement posées,
+   révocations constatées effectives — et le chemin composé n'atteint **aucun
+   état** que l'orchestrateur n'atteigne.
+
+   **Cette formulation en remplace une qui était fausse.** Le document affirmait
+   « une seule entrée publique mutante ». Les deux primitives étaient pourtant
+   exécutables par `eurostruct_deployment`, et se composaient dans une seule
+   transaction sous un verrou pris par l'appelant : mesuré, le sous-système
+   passait `ACTIVE` sans que `normative_finalize_deployment()` ait été appelée.
+   6.3b6c avait fermé la composition en *plusieurs* transactions, pas celle-ci.
 4. **L'idempotence** — une seconde finalisation ne réussit que si le manifeste
    présenté est celui qui a été approuvé.
 5. **Les identités** — plan de contrôle et migrateur sont deux rôles distincts,
    contrôlés par OID **et** par nom, partout où une exemption est accordée.
+
+### Pourquoi l'API ne se réduit pas à une seule entrée
+
+Ce n'est pas un choix, c'est une contrainte de PostgreSQL 16, mesurée.
+
+Fermer l'API demanderait que `normative_finalize_deployment` fasse elle-même
+les écritures dans les tables de confiance, donc qu'elle soit `SECURITY
+DEFINER` possédée par `eurostruct_normative_activator`. Or elle doit **aussi**
+exécuter les `REVOKE` des emprunts, et PostgreSQL n'accorde d'effet à un
+`REVOKE` d'appartenance que s'il est exercé par le **donneur** de l'octroi :
+
+```
+set role t_admin;                       -- ADMIN OPTION sur t_cible
+revoke t_cible from t_membre;
+WARNING:  role "t_membre" has not been granted membership in role "t_cible"
+          by role "t_admin"                                  -- sans effet
+
+revoke t_cible from t_membre granted by t_donneur;
+ERROR:  permission denied to revoke privileges granted by role "t_donneur"
+DETAIL: Only roles with privileges of role "t_donneur" may revoke privileges
+        granted by this role.
+```
+
+Une même transaction ne peut donc pas être à la fois **l'activateur** — pour
+écrire la racine — et **le donneur** — pour que les révocations prennent —,
+sauf à être superutilisateur, c'est-à-dire hors modèle.
+
+Ce qui serait grave n'est pas que deux chemins existent : c'est qu'un chemin
+donne plus que l'autre. `db/test/seal_contract.sh`, scénario K2, joue les deux
+sur **la même base** — le chemin composé dans une transaction annulée, puis
+l'orchestrateur sur la base intacte — et compare l'état, l'identité figée du
+plan par OID **et** par nom, l'empreinte des déclarations gelées et le
+`topology_digest`. Les quatre sont identiques.
 
 ## Ce que ce modèle ne couvre pas
 

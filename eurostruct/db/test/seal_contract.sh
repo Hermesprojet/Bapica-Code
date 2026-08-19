@@ -525,62 +525,143 @@ decor_deposer
 fi
 
 # ==========================================================================
-# K. IL N'EXISTE QU'UNE SEULE ENTREE PUBLIQUE MUTANTE
+# K. LA SURFACE MUTANTE, ET CE QU'ELLE PERMET EXACTEMENT
 # ==========================================================================
-# C'est ce qu'affirme le modele de menace, invariant 3:
+# LE MODELE DE MENACE AFFIRMAIT: « une seule entree publique mutante,
+# normative_finalize_deployment(manifeste_attendu) ». C'ETAIT FAUX.
+# `normative_prepare_activation()` et `normative_record_activation()` sont
+# executables par `eurostruct_deployment`, et se composent DANS UNE SEULE
+# transaction sous un verrou que l'appelant prend lui-meme. 6.3b6c avait ferme
+# la composition en PLUSIEURS transactions, pas celle-ci.
 #
-#   « une seule entree publique mutante,
-#     normative_finalize_deployment(manifeste_attendu). »
+# POURQUOI L'INTEGRATION PREFEREE EST IMPOSSIBLE — mesure, PostgreSQL 16.
 #
-# Or `normative_prepare_activation()` et `normative_record_activation()` sont
-# executables par `eurostruct_deployment`. 6.3b6c a ferme leur composition EN
-# PLUSIEURS TRANSACTIONS — le verrou et `prepare_txid` s'en chargent — mais pas
-# leur composition DANS UNE SEULE, sous un verrou que l'appelant prend lui-meme.
+# Fermer l'API demanderait que `normative_finalize_deployment` fasse elle-meme
+# les ecritures, donc qu'elle soit SECURITY DEFINER possedee par l'activateur.
+# Or elle doit AUSSI executer les REVOKE des emprunts, et PostgreSQL n'accorde
+# d'effet a un REVOKE que s'il est exerce par le DONNEUR de l'octroi:
 #
-# L'affirmation reste donc fausse. Deux issues sont acceptables: fermer l'API,
-# ou corriger l'affirmation. Aucune ne consiste a garder les deux.
+#     set role t_admin;                      -- ADMIN OPTION sur t_cible
+#     revoke t_cible from t_membre;
+#     WARNING: role "t_membre" has not been granted membership in role
+#              "t_cible" by role "t_admin"          -> sans effet
+#
+#     revoke t_cible from t_membre granted by t_donneur;
+#     ERROR: permission denied to revoke privileges granted by role "t_donneur"
+#     DETAIL: Only roles with privileges of role "t_donneur" may revoke
+#             privileges granted by this role.
+#
+# Une seule transaction ne peut donc pas etre a la fois l'ACTIVATEUR (pour
+# ecrire la racine) et le DONNEUR (pour que les revocations prennent), sauf a
+# etre superutilisateur — c'est-a-dire hors du modele.
+#
+# CE QUI EST FAIT A LA PLACE, ET QUI EST LA SECONDE ISSUE ACCEPTABLE:
+#
+#   * l'affirmation est CORRIGEE dans le modele de menace — une entree
+#     orchestratrice supportee, deux primitives de bas niveau reservees au role
+#     de deploiement;
+#   * et la propriete qui compte vraiment est ETABLIE PAR L'EXPERIENCE: les
+#     primitives ne permettent AUCUN etat que le finaliseur ne permette.
+#
+# Ce qui serait grave, ce n'est pas que deux chemins existent: c'est qu'un
+# chemin donne plus que l'autre.
 if ! decor_poser k; then
   echoue "le decor K n'a pas pu etre pose: les scenarios K ne sont pas evalues"
 else
 suivre_decor
 
-# --- K1. la surface mutante exposee ---------------------------------------
-MUTANTES=$(admb -tAc "select string_agg(p.proname, ' ' order by p.proname)
-  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname = 'public'
-   and p.proname in ('normative_prepare_activation','normative_record_activation')
-   and has_function_privilege('eurostruct_deployment', p.oid, 'EXECUTE')" 2>&1)
-if [[ -z "$MUTANTES" || "$MUTANTES" == " " ]]; then
-  echo "      ok: K1. seule la finalisation est exposee au role de deploiement"
+# --- K1. la surface mutante est bornee au role de deploiement --------------
+# Ce que ce controle exige n'est plus « aucune autre fonction mutante », qui
+# etait faux et le restera: c'est qu'aucune ne soit atteignable AILLEURS que
+# par `eurostruct_deployment`. Un role applicatif, un porteur de jeton ou
+# PUBLIC ne doivent en toucher aucune.
+FUITE=$(admb -tAc "
+  select coalesce(string_agg(p.proname || ' <- ' || r.role_nom, '; '), '')
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   cross join (values ('public'),('authenticated'),('normative_backend'),
+                      ('normative_governance')) as r(role_nom)
+   where n.nspname = 'public'
+     and p.proname in ('normative_prepare_activation',
+                       'normative_record_activation',
+                       'normative_finalize_deployment')
+     and has_function_privilege(r.role_nom, p.oid, 'EXECUTE')" 2>&1)
+if [[ -z "$FUITE" ]]; then
+  echo "      ok: K1. les trois entrees mutantes sont bornees au deploiement"
 else
-  rouge "K1. le role de deploiement peut executer d'autres fonctions mutantes:"
-  detail "    $MUTANTES"
+  rouge "K1. une entree mutante est atteignable hors du role de deploiement:"
+  detail "    $FUITE"
 fi
 
-# --- K2. la recomposition, exercee ----------------------------------------
-# LE CONTROLE EST COMPORTEMENTAL, et pas seulement une lecture d'ACL: ce qui
-# compte n'est pas qu'un droit soit accorde, c'est qu'un etat ENGAGEANT soit
-# atteignable sans passer par l'entree annoncee.
+# --- K2. EQUIVALENCE: le chemin compose n'atteint rien de plus -------------
+# LES DEUX CHEMINS SONT JOUES SUR LA MEME BASE, ce qui est le seul moyen de
+# comparer des empreintes: le `topology_digest` porte les OID des roles, qui
+# different d'une base a l'autre. Deux bases jumelles auraient donc donne deux
+# empreintes differentes sans que cela prouve quoi que ce soit.
+#
+# Le chemin compose est joue DANS UNE TRANSACTION ANNULEE: son etat final est
+# lu avant le `rollback`, puis la base — intacte — recoit le finaliseur. Ce que
+# l'on compare est donc bien deux resultats sur le meme monde.
 MANIF_K=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-SORTIE_K=$(ctl -v ON_ERROR_STOP=1 2>&1 <<SQL
+
+# CE QUI EST LU, ET PAR QUI. Les tables de confiance ne sont lisibles ni par le
+# plan de controle ni par le migrateur — c'est le sceau. L'etat est donc lu par
+# les LECTEURS PUBLICS que le sceau expose au role de deploiement:
+#
+#   normative_activation_state()     l'etat
+#   normative_control_plane_oid/()   l'identite figee, OID et nom
+#   normative_approved_manifest()    l'empreinte des declarations gelees
+#
+# et l'empreinte de topologie est la VALEUR DE RETOUR de l'appel — celle de
+# `normative_record_activation()` d'un cote, de `normative_finalize_deployment()`
+# de l'autre. Rien n'est lu par un superutilisateur: faire lire l'admin aurait
+# compare deux etats sous une autorite que le chemin teste n'a pas.
+LECTURE="select normative_activation_state() || ' // '
+              || coalesce(normative_control_plane_oid()::text, 'AUCUN')
+              || '|' || coalesce(normative_control_plane(), 'AUCUN')
+              || ' // ' || coalesce(normative_approved_manifest(), 'AUCUN')"
+
+# LE CHEMIN COMPOSE, DANS UNE TRANSACTION ANNULEE. Son etat final est lu avant
+# le `rollback`; la base — rendue intacte — recoit ensuite le finaliseur. C'est
+# le seul moyen de comparer deux empreintes: le `topology_digest` porte les OID
+# des roles, qui different d'une base a l'autre. Deux bases jumelles auraient
+# donne deux empreintes differentes sans que cela prouve quoi que ce soit.
+BRUT_COMPOSE=$(ctl -tA -v ON_ERROR_STOP=1 2>&1 <<SQL
 begin;
 select pg_advisory_xact_lock(hashtext('eurostruct.normative_finalisation'));
 select normative_prepare_activation('$MANIF_K');
 revoke eurostruct_normative_writer    from "$MIG";
 revoke eurostruct_normative_bootstrap from "$MIG";
-select normative_record_activation();
-commit;
+select 'DIGEST=' || normative_record_activation();
+$LECTURE;
+rollback;
 SQL
 )
-ETAT_K=$(ctl -tAc "select normative_activation_state()" 2>&1)
-if [[ "$ETAT_K" == "PENDING" ]]; then
-  echo "      ok: K2. la recomposition sous verrou n'atteint pas ACTIVE"
+DIGEST_COMPOSE=$(grep -oE 'DIGEST=[0-9a-f]+' <<<"$BRUT_COMPOSE" | head -1)
+ETAT_COMPOSE=$(grep -F ' // ' <<<"$BRUT_COMPOSE" | tail -1)
+
+APRES_ANNULATION=$(ctl -tAc "select normative_activation_state()" 2>&1)
+DIGEST_FINAL=$(ctl -tAc "select 'DIGEST=' || normative_finalize_deployment('$MANIF_K')" 2>&1 \
+                 | grep -oE 'DIGEST=[0-9a-f]+' | head -1)
+ETAT_FINAL=$(ctl -tAc "$LECTURE" 2>&1 | grep -F ' // ' | tail -1)
+
+if [[ "$APRES_ANNULATION" != "PENDING" ]]; then
+  echoue "K2. l'annulation du chemin compose n'a pas rendu la base a PENDING"
+  echoue "    (obtenu: $APRES_ANNULATION); la comparaison ne porterait sur rien"
+elif [[ -z "$ETAT_COMPOSE" || -z "$ETAT_FINAL" || -z "$DIGEST_COMPOSE" ]]; then
+  echoue "K2. l'un des deux chemins n'a produit aucun etat lisible"
+  echoue "    compose:    ${DIGEST_COMPOSE:-<vide>} ${ETAT_COMPOSE:-<vide>}"
+  echoue "    finaliseur: ${DIGEST_FINAL:-<vide>} ${ETAT_FINAL:-<vide>}"
+elif [[ "$ETAT_COMPOSE" == "$ETAT_FINAL" && "$DIGEST_COMPOSE" == "$DIGEST_FINAL" ]]; then
+  echo "      ok: K2. le chemin compose atteint EXACTEMENT l'etat du finaliseur"
+  echo "             (etat, plan par OID et nom, declarations gelees, empreinte)"
 else
-  rouge "K2. le sous-systeme est « $ETAT_K » sans que"
-  detail "    normative_finalize_deployment() ait ete appelee une seule fois."
-  detail "    Prise du verrou, preparation, revocations et enregistrement se"
-  detail "    composent dans UNE transaction — ce que 6.3b6c n'a pas ferme, et"
-  detail "    ce que le modele de menace affirme pourtant impossible."
+  rouge "K2. le chemin compose atteint un etat DIFFERENT du finaliseur."
+  detail "    compose:    $DIGEST_COMPOSE $ETAT_COMPOSE"
+  detail "    finaliseur: $DIGEST_FINAL $ETAT_FINAL"
+  detail "    Deux chemins vers l'activation sont tolerables tant qu'ils"
+  detail "    donnent le meme resultat. Une divergence signifie que l'un des"
+  detail "    deux applique une contrainte que l'autre n'applique pas."
 fi
 decor_deposer
 fi

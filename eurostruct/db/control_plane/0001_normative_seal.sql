@@ -65,7 +65,14 @@
 --     parametres approuves, intention de finalisation;
 --   * les fonctions qui les lisent et les ecrivent;
 --   * `assert_normative_topology()`, que la phase 1 et la readiness appellent;
---   * `normative_finalize_deployment()`, seule entree publique de la phase 2.
+--   * `normative_finalize_deployment()`, entree ORCHESTRATRICE de la phase 2 —
+--     et non son entree UNIQUE: `normative_prepare_activation()` et
+--     `normative_record_activation()` restent executables par
+--     `eurostruct_deployment`, parce qu'une transaction ne peut pas etre a la
+--     fois l'activateur et le donneur (mesure PostgreSQL 16, voir
+--     docs/schema/MODELE_DE_MENACE_NORMATIF.md). Elles portent exactement les
+--     memes contraintes, et le chemin compose n'atteint aucun etat que
+--     l'orchestrateur n'atteigne — verifie par db/test/seal_contract.sh, K2.
 --
 -- La phase 1 (0010) n'emprunte plus que `eurostruct_normative_writer` et
 -- `eurostruct_normative_bootstrap`, et refuse de s'appliquer si ce sceau
@@ -1872,6 +1879,65 @@ begin
       'roles d''autorite depuis un role distinct, puis relancez.', m_nom
       using errcode = 'insufficient_privilege';
   end if;
+
+  -- ------------------------------------------------------------------
+  -- LE DONNEUR DOIT ETRE CELUI QUI A POSE LE SCEAU (6.3b6d, point 3)
+  -- ------------------------------------------------------------------
+  -- L'identite du plan de controle etait DERIVEE du grantor des emprunts, et
+  -- de rien d'autre. Le sceau, lui, n'enregistrait pas son poseur. Le plan de
+  -- controle se transferait donc par un simple GRANT, en silence.
+  --
+  -- CONTRE-EXEMPLE MESURE (db/test/seal_contract.sh, scenario J), dans la
+  -- forme que ce fichier documente lui-meme (« Ils peuvent PREEXISTER »):
+  --
+  --   * les six roles sont crees par l'administrateur;
+  --   * A recoit l'ADMIN sur l'activateur et applique la phase 0;
+  --   * l'administrateur retire a A son ADMIN residuel — operation legitime,
+  --     et possible parce que A n'est pas le createur des roles (fait F3);
+  --   * B recoit writer/bootstrap, prete au migrateur, finalise.
+  --
+  -- Resultat: ACTIVE, plan de controle fige = B. Le sceau de A finalise par B,
+  -- sans qu'aucun evenement ne soit inscrit nulle part.
+  --
+  -- UNE PREMIERE LECTURE CROYAIT LE CAS DEJA FERME. Sans effacer A, la
+  -- topologie refuse — parce que A garde un ADMIN residuel et que deux plans
+  -- de controle sont interdits. Mais c'est un refus obtenu par une AUTRE
+  -- barriere, qui disparait des que A est efface. Une garantie qui ne tient
+  -- que grace a un effet de bord n'est pas une garantie.
+  --
+  -- PAR OID **ET** PAR NOM. Le nom seul suivrait une reprise d'etiquette;
+  -- l'OID seul suivrait un renommage. Les deux, jamais l'un sans l'autre.
+  --
+  -- LA DELEGATION N'EST PAS INTERDITE PAR PRINCIPE — elle est interdite
+  -- SILENCIEUSE. Transferer le plan de controle devra etre un evenement
+  -- explicite, inscrit et audite. Aucun tel evenement n'existe aujourd'hui, et
+  -- ce refus dit ou il devra s'inscrire quand il existera.
+  declare
+    p_oid oid; p_nom text;
+  begin
+    select installer_oid, installer_name into p_oid, p_nom
+      from normative_seal_metadata
+     order by installed_at asc, seal_version asc limit 1;
+
+    if p_oid is null then
+      raise exception
+        'le sceau n''enregistre aucun poseur: la finalisation ne peut pas '
+        'verifier que celui qui approuve est celui qui a pose la racine.'
+        using errcode = 'insufficient_privilege';
+    end if;
+
+    if d_oid <> p_oid or d_nom <> p_nom then
+      raise exception
+        'SEAL_INSTALLER_MISMATCH: le sceau a ete pose par « % » (oid %), et la '
+        'finalisation est exercee au nom de « % » (oid %). Le plan de controle '
+        'd''une base est celui qui a pose sa racine de confiance: il ne se '
+        'transfere pas par un GRANT. Si une delegation est voulue, elle doit '
+        'etre un evenement explicite et audite — il n''en existe aucun '
+        'aujourd''hui. Finalisez depuis « % », ou redeployez la base depuis la '
+        'phase 0.', p_nom, p_oid, d_nom, d_oid, p_nom
+        using errcode = 'insufficient_privilege';
+    end if;
+  end;
 
   -- LE DONNEUR DOIT DETENIR L'ADMIN SUR LES TROIS: c'est ce qui lui permettra
   -- de revoquer (fait F3), et c'est ce qui justifiera son exemption d'ADMIN
