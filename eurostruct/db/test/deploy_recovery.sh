@@ -2032,7 +2032,11 @@ SORTIE_V4=$(
 ); CODE_V4=$?
 ETAT_V4=$(admb -tAc "select normative_activation_state()" 2>&1)
 # Le co-processus du verrou est le seul appel du plan qui porte « -At ».
-CA_VERROU=$(grep -m1 -F -- "-At" "$JOURNAL_V4" | sed 's/.*CA=\([^ ]*\) ARGV.*/\1/')
+# LE CHEMIN CONTIENT DES ESPACES — c'est le propos de ce scenario —, donc on
+# decoupe sur les DELIMITEURS et non sur « le prochain espace ». Premiere
+# ecriture: `CA=\([^ ]*\)` s'arretait au premier espace et rendait « .../ca »,
+# ce qui faisait rougir V4 sur une valeur pourtant correctement transmise.
+CA_VERROU=$(grep -m1 -F -- "-At" "$JOURNAL_V4" | sed 's/.*CA=//; s/ ARGV=.*//')
 MAUVAISES=$(grep -c "ROLE=$CTL CA=$CA_MIG\b" "$JOURNAL_V4")
 MAUVAISES=$((MAUVAISES + $(grep -c "ROLE=$MIG CA=$CA_PLAN\b" "$JOURNAL_V4")))
 if [[ $CODE_V4 -ne 0 || "$ETAT_V4" != "ACTIVE" ]]; then

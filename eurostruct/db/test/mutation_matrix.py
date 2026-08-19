@@ -646,6 +646,14 @@ CAS_REPRISE = [
        '  return 0')], False),
     ("V3b un parametre TLS inconnu est ignore", "V3b", CMD,
      [("if inconnus:", "if False:")], False),
+    # LE CO-PROCESSUS DU VERROU EST UN PROCESSUS COMME LES AUTRES, et c'est
+    # celui qu'on oublie: il ne passe ni par `plan()` ni par `mig()`.
+    ("V4  le co-processus du verrou perd la CA du plan", "V4", CMD,
+     [('                    "${PLAN_TLS[@]}" psql -X -q -At -d "$BASE" 2>&1; }',
+       '                    psql -X -q -At -d "$BASE" 2>&1; }')], False),
+    ("V5  sslcert et sslkey redeviennent « portes »", "V5", CMD,
+     [('portes = ("sslmode", "sslrootcert")',
+       'portes = ("sslmode", "sslrootcert", "sslcert", "sslkey")')], False),
 ]
 
 # --------------------------------------------------------------------------
