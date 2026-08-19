@@ -203,7 +203,11 @@ def _tracer(nom, fichier):
         with open(f"{ESPACE}/{fichier}", "rb") as f:
             somme = hashlib.sha256(f.read()).hexdigest()
         with open(chemin, "a") as f:
-            f.write(f"{nom}\t{fichier}\t{somme}\t{ESPACE}\n")
+            # LA RACINE DU WORKTREE EST TRACEE A PART. `ESPACE` designe le
+            # SOUS-REPERTOIRE du projet; `git worktree remove` n'accepte que la
+            # racine, et un nettoyage vise sur `ESPACE` echouait donc en
+            # silence — deux worktrees restaient enregistres.
+            f.write(f"{nom}\t{fichier}\t{somme}\t{ESPACE}\t{ESPACE_DEPOT}\n")
             f.flush()
     pause = float(os.environ.get("ESC_MUTATION_PAUSE", "0") or 0)
     if pause:

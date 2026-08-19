@@ -55,9 +55,30 @@
 #
 #   * la phase 0 refuse par SEAL_ALREADY_INSTALLED sans rien muter si le sceau
 #     est deja pose dans la meme version — le script le traite comme un succes;
-#   * la phase 1 est composee de migrations idempotentes;
+#   * la phase 1 SAUTE ce que le REGISTRE declare deja applique;
 #   * la phase 2 rend « ACTIVE (deja finalise) » si le manifeste presente est
 #     bien celui qui a ete approuve, et REFUSE sinon (MANIFEST_MISMATCH).
+#
+# LES MIGRATIONS NE SONT PAS IDEMPOTENTES, et l'en-tete l'a longtemps affirme.
+# `0001_init.sql` rejoue sur une base qui le porte deja echoue sur « type
+# org_role already exists ». Ce qui rend la relance sure est le REGISTRE, pas
+# une propriete des fichiers.
+#
+# UN ARRET NON INTERCEPTABLE — SIGKILL, crash, panne machine — ne declenche
+# aucun piege: la base reste PENDING avec les emprunts accordes. La relance
+# ordinaire REFUSE alors (code 3), et `--recover-pending` les reprend apres
+# avoir etabli ses preconditions.
+#
+# SUR UNE BASE DEJA ACTIVE, ce script INSTALLE ET VERIFIE mais ne met pas a
+# niveau: le depot et le registre sont rapproches EN LECTURE, et une migration
+# ajoutee depuis produit ACTIVE_SCHEMA_UPGRADE_REQUIRED (code 9).
+#
+# CONTRAT TLS: seuls `sslmode` et `sslrootcert` sont portes depuis l'URL. Tout
+# autre parametre `ssl*` est REFUSE avant connexion — ce qui n'est pas teste
+# n'est pas annonce comme supporte.
+#
+# LE VERROU DE DEPLOIEMENT est un verrou de SESSION, reconstate avant chaque
+# etape mutante. Il ne fonctionne pas derriere PgBouncer en transaction pooling.
 #
 # Ce qu'il ne faut PAS faire apres une coupure: rejouer une etape a la main, ou
 # reaccorder les emprunts « pour etre sur ». Relancez ce script.
@@ -169,21 +190,25 @@ q = parse_qs(u.query)
 # silence laissait l'exploitant croire qu'il avait designe son autorite, alors
 # que le mode strict exige justement `verify-ca` ou `verify-full`. Accepter
 # puis oublier est pire que refuser: la configuration a l'air faite.
-portes = ("sslmode", "sslrootcert", "sslcert", "sslkey")
+# LE CONTRAT EST DE DEUX PARAMETRES, ET PAS DE QUATRE. `sslcert` et `sslkey`
+# etaient portes sans qu'aucun test ne les exerce: annoncer un support non
+# mesure est la meme faute qu'ignorer un parametre en silence, a ceci pres
+# qu'elle se decouvre plus tard. Ils sont donc REFUSES, comme tout autre
+# `ssl*`, avec un diagnostic qui dit que cette version ne les porte pas.
+portes = ("sslmode", "sslrootcert")
 inconnus = sorted(k for k in q if k.startswith("ssl") and k not in portes)
 if inconnus:
     sys.stderr.write(
-        "parametre TLS non porte par cette commande: " + ", ".join(inconnus) +
-        "\nCette commande porte: " + ", ".join(portes) + ".\n")
+        "parametre TLS non porte par cette version de la commande: "
+        + ", ".join(inconnus)
+        + "\nSeuls " + " et ".join(portes) + " sont portes, et testes.\n")
     sys.exit(2)
 for k, v in (("HOST", u.hostname), ("PORT", str(u.port or 5432)),
              ("USER", unquote(u.username)),
              ("PASSWORD", unquote(u.password or "")),
              ("DATABASE", base),
              ("SSLMODE", q.get("sslmode", ["prefer"])[0]),
-             ("SSLROOTCERT", q.get("sslrootcert", [""])[0]),
-             ("SSLCERT", q.get("sslcert", [""])[0]),
-             ("SSLKEY", q.get("sslkey", [""])[0])):
+             ("SSLROOTCERT", q.get("sslrootcert", [""])[0])):
     print(f"{k}={shlex.quote(v)}")
 FINPARSE
   )"; then
@@ -195,7 +220,7 @@ FINPARSE
   rm -f "$errpy"
   while IFS= read -r ligne; do
     [[ -n "$ligne" ]] || continue
-    [[ "$ligne" =~ ^(HOST|PORT|USER|PASSWORD|DATABASE|SSLMODE|SSLROOTCERT|SSLCERT|SSLKEY)= ]] \
+    [[ "$ligne" =~ ^(HOST|PORT|USER|PASSWORD|DATABASE|SSLMODE|SSLROOTCERT)= ]] \
       || { echo "REFUS: sortie de decoupage inattendue pour $nom_var." >&2; return 2; }
     eval "${nom_var}_${ligne}"
   done <<<"$conn"
@@ -309,8 +334,6 @@ verifier_matiere_tls() {
 }
 for cote in PLAN MIG; do
   eval "verifier_matiere_tls \"certificat d'autorite du ${cote,,}\" \"\${${cote}_SSLROOTCERT}\""
-  eval "verifier_matiere_tls \"certificat client du ${cote,,}\"      \"\${${cote}_SSLCERT}\""
-  eval "verifier_matiere_tls \"cle client du ${cote,,}\"             \"\${${cote}_SSLKEY}\""
 done
 
 # LES AFFECTATIONS D'ENVIRONNEMENT, CONSTRUITES UNE FOIS. Une variable posee a
@@ -319,7 +342,7 @@ done
 # donc transmises, et c'est la raison de ces tableaux.
 PLAN_TLS=(); MIG_TLS=()
 for cote in PLAN MIG; do
-  for p in SSLROOTCERT:PGSSLROOTCERT SSLCERT:PGSSLCERT SSLKEY:PGSSLKEY; do
+  for p in SSLROOTCERT:PGSSLROOTCERT; do
     eval "valeur=\${${cote}_${p%%:*}}"
     [[ -n "$valeur" ]] && eval "${cote}_TLS+=(\"${p##*:}=\$valeur\")"
   done

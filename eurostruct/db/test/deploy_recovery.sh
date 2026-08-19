@@ -1777,11 +1777,17 @@ else
   detail "    capacites residuelles du second migrateur: « ${CAP_T12:-aucune} »"
   detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_|MIGRAT)' <<<"$SORTIE_T12" | cut -c1-140)"
 fi
+# LA BASE D'ABORD, LE ROLE ENSUITE. Le second migrateur possede des objets DANS
+# la base d'essai; tant qu'elle existe, `drop role` echoue — silencieusement,
+# `2>/dev/null` aidant — et le role survit a chaque execution. Mesure: vingt
+# roles « *_b » retrouves sur le cluster, et un harnais suivant qui refuse de
+# demarrer parce qu'il trouve des objets etrangers.
+decor_deposer
 [[ -n "${MIG2:-}" ]] && adm -v n="$MIG2" >/dev/null 2>&1 <<'SQL'
 drop owned by :"n";
 drop role if exists :"n";
 SQL
-decor_deposer
+MIG2=""
 fi
 
 # --- T5. le contrat de transactionnalite est UNIFORME ---------------------
@@ -1979,6 +1985,103 @@ else
   rouge "V3b. un parametre TLS inconnu est ignore en silence."
   detail "    code $CODE_VRB; « sslcompression » n'apparait pas dans le refus."
 fi
+
+# --- V4. LA CA EST PORTEE, DECODEE, ROUTEE, ET N'EST PAS CELLE DE L'AIR ---
+# V3 etablit qu'une CA introuvable est REFUSEE. Celui-ci etablit ce qui arrive
+# quand elle est VALIDE: qui la recoit, et avec quelle valeur.
+#
+# `sslmode=disable` SUR LA BOUCLE LOCALE, ET C'EST DELIBERE. Ce qui est mesure
+# est le TRANSPORT de la valeur jusqu'a chaque processus, pas la negociation
+# TLS: en `verify-full` les connexions echoueraient — l'image `postgres:16` de
+# la CI demarre sans SSL — et le co-processus du verrou ne serait jamais
+# atteint. libpq ignore `PGSSLROOTCERT` sous `disable`; le leurre, lui, la voit.
+#
+# LE CHEMIN CONTIENT UN ESPACE et est percent-encode dans l'URL: un decoupage
+# qui oublierait de decoder rendrait « /tmp/esc%20ca.crt ».
+if ! q_amorcer v4; then
+  echoue "le decor V4 n'a pas pu etre pose"
+else
+migrations_copiees
+CA_PLAN="$COPIE/ca du plan.crt"
+CA_MIG="$COPIE/ca du migrateur.crt"
+printf 'FICTIF CA PLAN\n'      >"$CA_PLAN"
+printf 'FICTIF CA MIGRATEUR\n' >"$CA_MIG"
+CA_HOSTILE="$COPIE/ca hostile ambiante.crt"
+printf 'FICTIF CA HOSTILE\n' >"$CA_HOSTILE"
+LEURRE_V4="$COPIE/leurre_v4"; mkdir -p "$LEURRE_V4"
+JOURNAL_V4="$COPIE/v4.log"; : >"$JOURNAL_V4"
+VRAI_V4="$(command -v psql)"
+cat >"$LEURRE_V4/psql" <<LEURREFIN
+#!/usr/bin/env bash
+# FAUX psql — scenario V4. Il note QUI se connecte et avec QUELLE CA, puis
+# passe la main. Il ne lit JAMAIS l'entree: le co-processus du verrou la garde
+# ouverte, et c'est justement lui qu'on veut observer.
+printf 'ROLE=%s CA=%s ARGV=%s\n' "\${PGUSER:-?}" "\${PGSSLROOTCERT:-<absente>}" "\$*" \\
+  >>"$JOURNAL_V4"
+exec "$VRAI_V4" "\$@"
+LEURREFIN
+chmod +x "$LEURRE_V4/psql"
+CA_PLAN_ENC=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$CA_PLAN")
+CA_MIG_ENC=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$CA_MIG")
+SORTIE_V4=$(
+  PATH="$LEURRE_V4:$PATH" \
+  PGSSLROOTCERT="$CA_HOSTILE" \
+  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable&sslrootcert=$CA_PLAN_ENC" \
+  ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable&sslrootcert=$CA_MIG_ENC" \
+  bash "$COMMANDE_COPIE" 2>&1
+); CODE_V4=$?
+ETAT_V4=$(admb -tAc "select normative_activation_state()" 2>&1)
+# Le co-processus du verrou est le seul appel du plan qui porte « -At ».
+CA_VERROU=$(grep -m1 -F -- "-At" "$JOURNAL_V4" | sed 's/.*CA=\([^ ]*\) ARGV.*/\1/')
+MAUVAISES=$(grep -c "ROLE=$CTL CA=$CA_MIG\b" "$JOURNAL_V4")
+MAUVAISES=$((MAUVAISES + $(grep -c "ROLE=$MIG CA=$CA_PLAN\b" "$JOURNAL_V4")))
+if [[ $CODE_V4 -ne 0 || "$ETAT_V4" != "ACTIVE" ]]; then
+  echoue "V4. le deploiement n'a pas abouti (code $CODE_V4, « $ETAT_V4 »);"
+  echoue "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_|REFUS)' <<<"$SORTIE_V4" | cut -c1-120)"
+elif grep -qF "$CA_HOSTILE" "$JOURNAL_V4"; then
+  rouge "V4. la CA ambiante (PGSSLROOTCERT) atteint un processus psql."
+  detail "    $(grep -m1 -F "$CA_HOSTILE" "$JOURNAL_V4" | cut -c1-140)"
+elif ! grep -q "ROLE=$CTL CA=$CA_PLAN\b" "$JOURNAL_V4"; then
+  rouge "V4. le plan de controle ne recoit pas la CA de SON URL."
+  detail "    attendu « $CA_PLAN »"
+  detail "    $(grep -m1 "ROLE=$CTL" "$JOURNAL_V4" | cut -c1-140)"
+elif ! grep -q "ROLE=$MIG CA=$CA_MIG\b" "$JOURNAL_V4"; then
+  rouge "V4. le migrateur ne recoit pas la CA de SON URL."
+  detail "    attendu « $CA_MIG »"
+elif [[ "$MAUVAISES" != "0" ]]; then
+  rouge "V4. une CA a ete routee vers le mauvais acteur ($MAUVAISES fois)."
+elif [[ "$CA_VERROU" != "$CA_PLAN" ]]; then
+  rouge "V4. le co-processus du verrou ne recoit pas la CA du plan."
+  detail "    obtenu « ${CA_VERROU:-<aucune>} », attendu « $CA_PLAN »"
+elif grep -qF "$MDP" "$JOURNAL_V4" || grep -qF "postgresql://" "$JOURNAL_V4"; then
+  rouge "V4. un secret ou une URL complete apparait dans argv."
+  detail "    $(grep -m1 -F "$MDP" "$JOURNAL_V4" | cut -c1-100)"
+elif grep -qF "$MDP" <<<"$SORTIE_V4"; then
+  rouge "V4. le mot de passe apparait dans le compte rendu de la commande."
+else
+  echo "      ok: V4. CA decodee, routee par acteur, verrou compris; rien dans argv"
+fi
+decor_deposer
+fi
+
+# --- V5. `sslcert` ET `sslkey` NE SONT PAS PORTES, ET LE DISENT ------------
+# Ils l'ont ete un temps, sans qu'aucun test ne les exerce. Annoncer un support
+# non mesure est la meme faute qu'ignorer un parametre en silence — elle se
+# decouvre seulement plus tard.
+for PARAM_V5 in sslcert sslkey sslcompression; do
+  SORTIE_V5=$(
+    ESC_PLAN_URL="postgresql://p:x@127.0.0.2:5432/b?sslmode=require&$PARAM_V5=/tmp/x" \
+    ESC_MIGRATOR_URL="postgresql://m:x@127.0.0.2:5432/b?sslmode=require&$PARAM_V5=/tmp/x" \
+    bash "$COMMANDE_COPIE" --auto-heberge 2>&1
+  ); CODE_V5=$?
+  if [[ $CODE_V5 -ne 0 ]] && grep -qF "$PARAM_V5" <<<"$SORTIE_V5" \
+     && ! grep -qF "1/10" <<<"$SORTIE_V5"; then
+    echo "      ok: V5. « $PARAM_V5 » est refuse avant toute connexion, et nomme"
+  else
+    rouge "V5. « $PARAM_V5 » n'est pas refuse avant connexion."
+    detail "    code $CODE_V5; $(grep -m1 -E '^(REFUS|ECHEC)' <<<"$SORTIE_V5" | cut -c1-120)"
+  fi
+done
 
 echo ""
 echo "================================================="
