@@ -34,6 +34,17 @@
 # `psql` laisse `:'esc_migration_id'` tel quel quand la variable n'est pas
 # posee. On ne peut donc pas contourner le registre par inadvertance.
 #
+# LES MIGRATIONS NE SONT PAS IDEMPOTENTES. Ce fichier existe precisement parce
+# qu'elles ne le sont pas: `0001_init.sql` rejoue echoue sur « type org_role
+# already exists ». Relancer un deploiement est sur parce que le REGISTRE sait
+# lesquelles ont ete appliquees et les saute — jamais parce qu'on pourrait les
+# rejouer.
+#
+# `esc_verifier_historique` complete l'empreinte: elle protege un fichier ENCORE
+# PRESENT, et ne voit ni une migration supprimee, ni un renommage, ni une
+# insertion retroactive. L'identite du migrateur est fixe pour une base
+# (MIGRATOR_IDENTITY_MISMATCH).
+#
 # SORTIES: 0 appliquee ou sautee, 1 refusee (erreur SQL), 2 usage,
 #          6 MIGRATION_CHECKSUM_MISMATCH.
 #

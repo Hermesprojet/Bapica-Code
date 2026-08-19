@@ -64,9 +64,20 @@ tools/deploy_eurostruct.sh              # les dix étapes
 ```
 
 Vers une cible **distante**, `verify-ca` ou `verify-full` sont **exigés** : rien
-d'autre ne dit à qui l'on parle. Relancer la commande est sûr — une phase 1
-interrompue reprend au registre de migrations. Elle tient un verrou de session
-pendant tout le déploiement, et ne fonctionne donc pas derrière PgBouncer en
+d'autre ne dit à qui l'on parle. Seuls `sslmode` et `sslrootcert` sont portés
+depuis l'URL ; tout autre paramètre `ssl*` est refusé plutôt qu'ignoré.
+
+Relancer la commande est sûr — **non parce que les migrations seraient
+idempotentes** (elles ne le sont pas), mais parce qu'un registre sait lesquelles
+ont été appliquées et les saute. Sur une base déjà `ACTIVE`, le dépôt et le
+registre sont rapprochés en lecture ; une migration ajoutée depuis produit
+`ACTIVE_SCHEMA_UPGRADE_REQUIRED` — cette commande installe et vérifie, elle ne
+met pas à niveau une base en service.
+
+Un déploiement tué brutalement laisse la base `PENDING` avec ses emprunts :
+`--recover-pending` les reprend, après avoir établi ses préconditions. La
+commande tient un verrou de session pendant toute sa durée et le **reconstate
+avant chaque étape mutante** ; elle ne fonctionne donc pas derrière PgBouncer en
 *transaction pooling*.
 
 Prérequis, provisionnement, contrat TLS, niveaux d'assurance et limites

@@ -162,6 +162,13 @@ plan par OID **et** par nom, l'empreinte des déclarations gelées et le
 
 * **Le vol d'identifiants du plan de contrôle.** Qui se connecte comme lui
   approuve ; c'est le sens même du rôle.
+* **La mise a niveau d'une base en service.** `tools/deploy_eurostruct.sh`
+  installe et vérifie ; il ne met pas à niveau une base déjà `ACTIVE`. Une
+  migration ajoutée au dépôt y produit `ACTIVE_SCHEMA_UPGRADE_REQUIRED` sans
+  rien appliquer. Le protocole d'upgrade — ordre, verrouillage, retour arrière,
+  et coordination avec les confirmations déjà émises sous le schéma courant —
+  reste à concevoir, et c'est un blocage de mise en production pour toute base
+  destinée à évoluer.
 * **Le transport, en dehors du mode strict.** `tools/deploy_eurostruct.sh`
   exige `verify-ca` ou `verify-full` vers une cible distante — sans quoi le mot
   de passe du plan de contrôle passe en clair, ou l'on scelle une base

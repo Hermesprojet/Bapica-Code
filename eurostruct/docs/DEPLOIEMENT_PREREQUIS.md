@@ -24,11 +24,24 @@ effacées.
 
 **Relancer la commande est sûr.** Si `psql` échoue sur une coupure réseau, on
 ne sait pas si la transaction a été validée : relancez. La phase 0 rend
-`SEAL_ALREADY_INSTALLED` sans rien muter, les migrations sont idempotentes, une
-base déjà `ACTIVE` saute les étapes 3 à 7, et la finalisation rend « ACTIVE
-(déjà finalisé) » **si et seulement si** le manifeste présenté est celui qui a
-été approuvé. Ce qu'il ne faut pas faire : rejouer une étape à la main, ou
+`SEAL_ALREADY_INSTALLED` sans rien muter ; la phase 2 rend « ACTIVE (déjà
+finalisé) » **si et seulement si** le manifeste présenté est celui qui a été
+approuvé. Ce qu'il ne faut pas faire : rejouer une étape à la main, ou
 réaccorder les emprunts « pour être sûr ».
+
+**Les migrations ne sont pas idempotentes**, et c'est important : relancer est
+sûr parce que le **registre** sait lesquelles ont été appliquées et les saute,
+pas parce qu'on pourrait les rejouer. `0001_init.sql` rejoué sur une base qui le
+porte déjà échoue sur `type org_role already exists` — c'est exactement ce que
+le registre existe pour éviter.
+
+**Sur une base déjà `ACTIVE`**, les étapes 3 à 7 sont sautées, mais le dépôt et
+le registre sont **rapprochés en lecture** : empreinte divergente →
+`MIGRATION_CHECKSUM_MISMATCH` ; migration orpheline ou renommée →
+`MIGRATION_HISTORY_DIVERGENCE` ; migration locale en **suffixe** →
+`ACTIVE_SCHEMA_UPGRADE_REQUIRED` (sortie 9), sans rien appliquer. Cette commande
+**installe et vérifie ; elle ne met pas à niveau une base en service** — le
+protocole d'upgrade reste à concevoir, voir §10.
 
 Une phase 1 interrompue **reprend là où elle s'est arrêtée** : chaque migration
 inscrit son empreinte dans `normative_migration_ledger`, dans sa propre
@@ -50,6 +63,10 @@ prose — celle-ci ne sert qu'à l'affichage et peut être reformulée.
 | `3` | `DEPLOYMENT_PRECONDITION_FAILED` | un prérequis d'exploitation manque — un droit à faire accorder. **Aucun emprunt n'a été accordé** |
 | `4` | `DEPLOYMENT_ALREADY_RUNNING` | un autre déploiement de cette base tient le verrou. **Rien n'a été modifié** |
 | `5` | `DEPLOYMENT_CLEANUP_FAILED` | les emprunts n'ont **pas** pu être repris : le migrateur reste capable d'endosser les rôles d'autorité. **N'exploitez pas cette base en l'état** |
+| `6` | `DEPLOYMENT_RECOVERY_REFUSED` | `--recover-pending` n'a pas pu établir toutes ses conditions. **Rien n'a été modifié** |
+| `7` | `DEPLOYMENT_CLEANUP_UNVERIFIED` | la reprise des emprunts n'a **pas pu être constatée**. Ne pas savoir n'est pas mieux que savoir que ça s'est mal passé : **n'exploitez pas cette base** avant vérification |
+| `8` | `DEPLOYMENT_LOCK_LOST` | le verrou de déploiement n'est plus détenu, constaté **avant** une étape mutante. La compensation a tourné |
+| `9` | `ACTIVE_SCHEMA_UPGRADE_REQUIRED` | base `ACTIVE`, et le dépôt porte des migrations qu'elle n'a pas. **Aucune mutation** |
 | `130` | — | interruption (`TERM`/`INT`/`HUP`) ; la compensation a tourné |
 
 Deux autres jetons apparaissent sans code dédié, parce qu'ils tombent avant
@@ -95,10 +112,11 @@ La racine de confiance se désigne **dans l'URL**, et nulle part ailleurs :
 la commande repose les siennes à partir des URL. Sans `sslrootcert`, libpq
 retombe sur `~/.postgresql/root.crt`.
 
-La commande porte quatre paramètres TLS : `sslmode`, `sslrootcert`, `sslcert`
-et `sslkey`. **Tout autre paramètre `ssl*` est refusé**, jamais ignoré :
-accepter puis jeter en silence laisserait croire que la configuration est
-faite.
+La commande porte **exactement deux** paramètres TLS : `sslmode` et
+`sslrootcert`. **Tout autre paramètre `ssl*` est refusé** avant toute connexion
+— `sslcert` et `sslkey` compris. Ce n'est pas un oubli : ce qui n'est pas
+**testé** n'est pas annoncé comme supporté, et accepter puis jeter en silence
+laisserait croire que la configuration est faite.
 
 Les fichiers nommés sont **vérifiés avant toute connexion**
 (`DEPLOYMENT_TLS_MATERIAL_MISSING`). C'est délibéré : libpq n'ouvre le fichier
@@ -412,6 +430,7 @@ fermée.
 | Un prérequis manquant refuse **avant** tout octroi (code 3) ; un nom de rôle venu d'une URL n'est pas du SQL ; la matière TLS de l'URL est portée et vérifiée | `deploy_recovery.sh` (P2, R1, R2, V3) | **PostgreSQL 16 local / CI** |
 | La restauration inter-cluster échoue fail-closed | `cross_cluster_restore.sh` (second cluster réel, `initdb`) | **PostgreSQL 16 local / CI** |
 | Prérequis topologiques sur les rôles | `role_prerequisites.sh` | **PostgreSQL 16 local / CI** |
+| La matrice de mutation n'écrit jamais dans le dépôt | `mutation_isolation_selftest.sh` (worktree jetable, SIGKILL, matrice concurrente) | **sans base** |
 | **Compatibilité Supabase** | — | **NON VALIDÉ** |
 
 La colonne de droite est le sujet de ce tableau. Tout ce qui précède est
@@ -503,6 +522,14 @@ fiable pour appliquer un schéma et pour rien d'autre ; le superutilisateur est
       et `auth.users` avec les droits supposés ici.
 - [ ] Écrire et exercer la **reprise des données métier** vers un déploiement
       neuf (§6). Sans elle, aucune migration inter-cluster n'est possible.
+- [ ] Concevoir le **protocole de mise à niveau d'une base `ACTIVE`**. La
+      commande refuse aujourd'hui par `ACTIVE_SCHEMA_UPGRADE_REQUIRED` et ne
+      touche à rien : appliquer une migration sur une base en service
+      demanderait de réaccorder les emprunts — ce que le modèle de menace
+      interdit — puis de refinaliser, alors que des confirmations normatives
+      ont peut-être déjà été émises sous le schéma courant. Tant que ce
+      protocole n'existe pas, **toute base destinée à évoluer est bloquée sur
+      son schéma d'installation**.
 - [ ] Décider si un cluster doit pouvoir porter **plusieurs bases EUROSTRUCT
       avec des plans de contrôle distincts** (§1) ; si oui, préfixer les six
       rôles canoniques par base.
