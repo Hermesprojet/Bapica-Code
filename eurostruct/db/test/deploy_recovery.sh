@@ -55,6 +55,59 @@ exiger_cluster_jetable  "deploy_recovery.sh" || exit 2
 harnais_verrou_prendre  "deploy_recovery.sh" || exit $?
 harnais_valider_identifiant "prefixe" "$PREFIXE" || exit 2
 
+# --------------------------------------------------------------------------
+# LES LEURRES SONT ECRITS, PAS EXECUTES — barriere sur le corps des heredocs
+# --------------------------------------------------------------------------
+# CE QU'ELLE EMPECHE, ET IL A FALLU UNE EXECUTION REELLE POUR LE VOIR. Les
+# leurres sont produits par des heredocs NON CITES: `$vrai`, `$BASE` et `$motif`
+# doivent y etre resolus a la generation, c'est leur raison d'etre. Mais un
+# ACCENT GRAVE dans ce corps ouvre alors une substitution de commande, et le
+# shell du HARNAIS execute le mot — y compris dans ce qui n'est qu'un
+# commentaire destine au leurre.
+#
+# Mesure faite: deux lignes de commentaire portant \`-d "$BASE"\` et
+# \`pg_locks\` faisaient executer trois commandes par leurre construit. Le
+# commentaire arrivait mutile dans le leurre, et « command not found » tombait
+# sur la sortie d'erreur du harnais — a l'endroit exact ou une VRAIE panne de
+# leurre se serait affichee. Un bruit permanent qui rend une panne reelle
+# indiscernable est un defaut de harnais, pas une coquetterie.
+#
+# La barriere lit LA SOURCE DU HARNAIS LUI-MEME et refuse de demarrer si un
+# corps de leurre contient un accent grave ou un « $( » non echappes. Elle vaut
+# pour les cinq leurres actuels et pour ceux qu'on ecrira ensuite.
+exiger_leurres_inertes() {
+  local rapport
+  rapport="$(python3 - "${BASH_SOURCE[0]}" <<'FININERTE'
+import re, sys
+src = open(sys.argv[1], encoding="utf-8").read().split("\n")
+faits, dedans = [], False
+for n, l in enumerate(src, 1):
+    if not dedans:
+        if re.search(r'<<LEURREFIN\s*$', l):
+            dedans = True
+        continue
+    if l.strip() == "LEURREFIN":
+        dedans = False
+        continue
+    if re.search(r'(?<!\\)`', l) or re.search(r'(?<!\\)\$\(', l):
+        faits.append(f"{n}: {l.strip()[:88]}")
+print("\n".join(faits))
+FININERTE
+  )" || { echo "REFUS: l'inspection des leurres n'a pas pu s'executer." >&2; return 2; }
+  [[ -z "$rapport" ]] && return 0
+  {
+    echo "REFUS: un corps de leurre contient une substitution de commande."
+    echo "       Ces heredocs ne sont PAS cites: le shell du harnais executerait"
+    echo "       ces mots a la generation, mutilerait le leurre, et polluerait la"
+    echo "       sortie d'erreur ou se lisent les vraies pannes de leurre."
+    echo
+    echo "       Echappez l'accent grave (\\\`) ou le \\\$( :"
+    sed 's/^/         /' <<<"$rapport"
+  } >&2
+  return 2
+}
+exiger_leurres_inertes || exit 2
+
 JETON="$(harnais_jeton)"
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator normative_backend
@@ -811,8 +864,16 @@ if [[ -n "\${ESC_TUER:-}" ]] && [[ ! -f "$COPIE/${nom,,}_tue" ]]; then
   # RIEN surcharger. C'est aussi ce qui evite d'ecrire un mot de passe
   # administrateur dans un fichier temporaire.
   #
-  # `-d "$BASE"` et non `-d postgres`: c'est la base que ce role joint a coup
-  # sur, et `pg_locks` est global au cluster.
+  # \`-d "\$BASE"\` et non \`-d postgres\`: c'est la base que ce role joint a coup
+  # sur, et \`pg_locks\` est global au cluster.
+  #
+  # LES ACCENTS GRAVES SONT ECHAPPES, ET CE N'EST PAS COSMETIQUE. Ce heredoc
+  # n'est PAS cite: un accent grave y ouvre une substitution de commande, a la
+  # GENERATION. Ecrits nus, ces trois mots etaient EXECUTES par le shell du
+  # harnais — « -d: command not found », trois fois par leurre — et le
+  # commentaire arrivait mutile dans le leurre (« # et non : c'est la base »).
+  # Le bruit tombait sur la sortie d'erreur du harnais, la ou une VRAIE panne du
+  # leurre se serait affichee: indiscernables.
   : >"$COPIE/${nom,,}_tue"
   "$vrai" -X -q -tA -d "$BASE" -c "
       select pg_terminate_backend(pid) from pg_locks
