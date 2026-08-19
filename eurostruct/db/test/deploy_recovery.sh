@@ -650,6 +650,221 @@ fi
 decor_deposer
 fi
 
+# --- Q8. LA VOIE INDIRECTE VERS WRITER OU BOOTSTRAP -----------------------
+# Les conditions de `--recover-pending` etablissent que le migrateur porte
+# EXACTEMENT deux appartenances DIRECTES, donnees par nous, et qu'il n'atteint
+# pas l'activateur. Elles ne disent rien d'un role INTERMEDIAIRE: le migrateur
+# peut etre membre d'un role qui, lui, est membre de writer. Revoquer les deux
+# octrois directs ne le ramene alors pas a zero.
+#
+# CE QUI EST EXIGE N'EST PAS SEULEMENT LE REFUS: c'est que la base ne soit PAS
+# MODIFIEE. Une reprise qui revoque, decouvre le residu, puis laisse la base
+# sans ses deux octrois aurait detruit ce qu'elle etait censee reprendre — et
+# le prochain appel ne saurait plus quoi rendre.
+if ! q_amorcer q8; then
+  echoue "le decor Q8 n'a pas pu etre pose"
+else
+migrations_copiees
+JOURNAL_Q8="$COPIE/q8.log"
+: >"$JOURNAL_Q8"
+(
+  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  exec bash "$COMMANDE_COPIE" >"$JOURNAL_Q8" 2>&1
+) &
+PID_Q8=$!
+ATTENTE=0
+while [[ $ATTENTE -lt 600 ]]; do
+  grep -q "0005_" "$JOURNAL_Q8" 2>/dev/null && break
+  kill -0 "$PID_Q8" 2>/dev/null || break
+  sleep 0.2; ATTENTE=$((ATTENTE + 1))
+done
+INTERM_Q8=""
+if ! grep -q "0005_" "$JOURNAL_Q8" 2>/dev/null || ! kill -0 "$PID_Q8" 2>/dev/null; then
+  wait "$PID_Q8" 2>/dev/null
+  echoue "Q8. la phase 1 n'a pas ete atteinte a temps; scenario non evalue"
+else
+  kill -KILL "$PID_Q8" 2>/dev/null
+  wait "$PID_Q8" 2>/dev/null
+  sleep 1
+  # LE ROLE INTERMEDIAIRE, pose par un TIERS (l'administrateur): la reprise ne
+  # l'a pas accorde, et n'a donc aucun titre a le defaire.
+  INTERM_Q8="${PREFIXE:0:8}_int_${JETON:0:6}"
+  adm -v ON_ERROR_STOP=1 -v i="$INTERM_Q8" -v m="$MIG" >/dev/null 2>&1 <<'SQL'
+create role :"i" nologin;
+grant eurostruct_normative_writer to :"i";
+grant :"i" to :"m" with inherit true;
+SQL
+  DIRECTS_AVANT=$(adm -tA -v m="$MIG" <<'SQL'
+select count(*) from pg_auth_members am
+  join pg_roles r on r.oid = am.roleid
+  join pg_roles mm on mm.oid = am.member
+ where mm.rolname = :'m'
+   and r.rolname in ('eurostruct_normative_writer','eurostruct_normative_bootstrap');
+SQL
+  )
+  appeler --recover-pending; CODE_Q8=$?
+  DIRECTS_APRES=$(adm -tA -v m="$MIG" <<'SQL'
+select count(*) from pg_auth_members am
+  join pg_roles r on r.oid = am.roleid
+  join pg_roles mm on mm.oid = am.member
+ where mm.rolname = :'m'
+   and r.rolname in ('eurostruct_normative_writer','eurostruct_normative_bootstrap');
+SQL
+  )
+  if [[ "$DIRECTS_AVANT" != "2" ]]; then
+    echoue "Q8. le decor ne porte pas les deux octrois directs ($DIRECTS_AVANT);"
+    echoue "    le scenario ne dit rien."
+  elif [[ $CODE_Q8 -eq 0 ]]; then
+    rouge "Q8. la reprise se declare reussie malgre une voie indirecte."
+    detail "    « $MIG » atteint writer par « $INTERM_Q8 »."
+  elif ! grep -qF "RECOVERY_RESIDUAL_ACCESS" <<<"$SORTIE_CMD"; then
+    rouge "Q8. la voie indirecte n'est pas nommee."
+    detail "    code $CODE_Q8; $(grep -m1 -E '^(ECHEC|DEPLOYMENT_)' <<<"$SORTIE_CMD" | cut -c1-130)"
+  elif [[ "$DIRECTS_APRES" != "2" ]]; then
+    rouge "Q8. le refus a laisse la base MODIFIEE."
+    detail "    $DIRECTS_AVANT octroi(s) direct(s) avant, $DIRECTS_APRES apres."
+    detail "    Un refus ambigu doit laisser intacts les deux octrois initiaux:"
+    detail "    sinon le prochain appel ne sait plus quoi rendre."
+  else
+    echo "      ok: Q8. voie indirecte: refus nomme, les deux octrois intacts"
+  fi
+fi
+[[ -n "$INTERM_Q8" ]] && adm -v n="$INTERM_Q8" >/dev/null 2>&1 <<'SQL'
+drop owned by :"n";
+drop role if exists :"n";
+SQL
+decor_deposer
+fi
+
+# --- S3 et S4. LE VERROU EST RECONSTATE AVANT CHAQUE MUTATION -------------
+# S2 etablit le cas de la phase 1. Ces deux-ci ferment les deux autres moments
+# ou une session morte serait la plus couteuse:
+#
+#   S3 — juste avant l'OCTROI des emprunts: aucun octroi ne doit avoir lieu;
+#   S4 — juste avant le REVOKE de reprise: la reprise refuse sans modifier.
+#
+# LE LEURRE TUE LE BACKEND DU VERROU au lieu de simuler une panne reseau: le
+# verrou disparait reellement, et c'est bien `pg_locks` qui doit le dire.
+s_verrou_perdu() {
+  local nom="$1" mode="$2" avant apres code
+  q_amorcer "${nom,,}" || { echoue "le decor $nom n'a pas pu etre pose"; return 1; }
+  migrations_copiees
+  local leurre="$COPIE/leurre_${nom,,}"
+  mkdir -p "$leurre"
+  local vrai; vrai="$(command -v psql)"
+  # LE DECLENCHEUR DOIT PRECEDER LE RECONSTAT, PAS LA MUTATION.
+  #
+  # Premiere ecriture: il visait l'instruction mutante elle-meme. Le reconstat
+  # du verrou avait alors deja eu lieu, l'octroi passait, et c'est la
+  # COMPENSATION qui le reprenait ensuite — S3 se declarait vert « 0 -> 0 » en
+  # ayant mesure la compensation, et non la prevention.
+  #
+  # On tue donc a l'instruction QUI PRECEDE le reconstat:
+  #   octroi  -> la lecture de `normative_activation_state()`, passee en « -c »;
+  #   reprise -> la requete des constats, un heredoc qui porte « MEMBRE ».
+  local motif="normative_activation_state"
+  [[ "$mode" == "reprise" ]] && motif="MEMBRE"
+  cat >"$leurre/psql" <<LEURREFIN
+#!/usr/bin/env bash
+# FAUX psql — scenario $nom. Il tue le backend du verrou juste AVANT la
+# mutation visee, puis laisse passer l'appel: c'est donc le reconstat du
+# verrou, et lui seul, qui doit arreter la commande.
+#
+# IL SE DECIDE SUR ARGV AVANT DE LIRE L'ENTREE: le co-processus du verrou ne
+# porte pas de « -v » et ne doit jamais etre bloque.
+DIRECT=1
+for a in "\$@"; do
+  case "\$a" in -c|--command*|-f|--file*) DIRECT=1; break ;; -v) DIRECT=0 ;; esac
+done
+# LE MOTIF EST CHERCHE D'ABORD DANS ARGV: un appel en « -c » y porte son SQL et
+# ne lit pas l'entree. Sans cela, un declencheur pose sur un « -c » serait
+# inatteignable.
+if [[ "\$*" == *"$motif"* ]] && [[ ! -f "$COPIE/${nom,,}_tue" ]]; then
+  ESC_TUER=1
+fi
+if (( DIRECT )) && [[ -z "\${ESC_TUER:-}" ]]; then exec "$vrai" "\$@"; fi
+if [[ -z "\${ESC_TUER:-}" ]]; then
+  CORPS="\$(cat)"
+  [[ "\$CORPS" == *"$motif"* ]] && ESC_TUER=1
+fi
+if [[ -n "\${ESC_TUER:-}" ]] && [[ ! -f "$COPIE/${nom,,}_tue" ]]; then
+  : >"$COPIE/${nom,,}_tue"
+  PGHOST="${PGHOST:-/var/run/postgresql}" PGUSER="${PGUSER:-postgres}" \\
+    "$vrai" -X -q -tA -d postgres -c "
+      select pg_terminate_backend(pid) from pg_locks
+       where locktype='advisory' and granted and objsubid=2
+         and classid = (hashtext('eurostruct.deploiement')::bigint & 4294967295)::oid
+         and objid   = (hashtext('$BASE')::bigint & 4294967295)::oid" >/dev/null 2>&1
+fi
+# L'APPEL PASSE ENSUITE NORMALEMENT: c'est le reconstat du verrou, et lui seul,
+# qui doit arreter la commande — pas une erreur de cet appel-ci.
+if (( DIRECT )); then exec "$vrai" "\$@"; fi
+printf '%s\n' "\${CORPS:-\$(cat)}" | "$vrai" "\$@"
+LEURREFIN
+  chmod +x "$leurre/psql"
+  rm -f "$COPIE/${nom,,}_tue"
+
+  if [[ "$mode" == "reprise" ]]; then
+    # Amener la base a PENDING avec les deux emprunts, comme apres un SIGKILL.
+    local jr="$COPIE/${nom,,}.log"; : >"$jr"
+    (
+      ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+      ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+      exec bash "$COMMANDE_COPIE" >"$jr" 2>&1
+    ) &
+    local pid=$!
+    local att=0
+    while [[ $att -lt 600 ]]; do
+      grep -q "0005_" "$jr" 2>/dev/null && break
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.2; att=$((att + 1))
+    done
+    kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; sleep 1
+  fi
+
+  avant=$(adm -tA -v m="$MIG" <<'SQL'
+select count(*) from pg_auth_members am
+  join pg_roles r on r.oid = am.roleid join pg_roles mm on mm.oid = am.member
+ where mm.rolname = :'m'
+   and r.rolname in ('eurostruct_normative_writer','eurostruct_normative_bootstrap');
+SQL
+  )
+  if [[ "$mode" == "reprise" ]]; then
+    PATH="$leurre:$PATH" appeler --recover-pending; code=$?
+  else
+    PATH="$leurre:$PATH" appeler; code=$?
+  fi
+  apres=$(adm -tA -v m="$MIG" <<'SQL'
+select count(*) from pg_auth_members am
+  join pg_roles r on r.oid = am.roleid join pg_roles mm on mm.oid = am.member
+ where mm.rolname = :'m'
+   and r.rolname in ('eurostruct_normative_writer','eurostruct_normative_bootstrap');
+SQL
+  )
+  if [[ ! -f "$COPIE/${nom,,}_tue" ]]; then
+    echoue "$nom. le backend du verrou n'a pas ete tue; scenario non evalue"
+  elif [[ "$apres" != "$avant" ]]; then
+    rouge "$nom. la mutation a eu lieu malgre la perte du verrou."
+    detail "    $avant octroi(s) direct(s) avant, $apres apres (code $code)"
+  elif grep -qF "emprunts accordes" <<<"$SORTIE_CMD"; then
+    rouge "$nom. les emprunts ont ete accordes malgre la perte du verrou."
+    detail "    Les reprendre ensuite par compensation n'est pas la meme chose"
+    detail "    que ne pas les avoir accordes."
+  elif [[ $code -ne 8 ]] || ! grep -qF "DEPLOYMENT_LOCK_LOST" <<<"$SORTIE_CMD"; then
+    rouge "$nom. la perte du verrou n'est ni detectee ni nommee."
+    detail "    code $code (8 attendu)"
+    detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_)' <<<"$SORTIE_CMD" | cut -c1-140)"
+  else
+    echo "      ok: $nom. verrou perdu: arret nomme, aucune mutation ($avant -> $apres)"
+  fi
+  decor_deposer
+  return 0
+}
+
+s_verrou_perdu S3 octroi
+s_verrou_perdu S4 reprise
+
 # --- Q4. apres une finalisation REUSSIE, rien a compenser ------------------
 # La moitie positive. Sans elle, « la compensation revoque » serait satisfait
 # par une compensation qui revoque TOUJOURS — y compris apres une phase 2 qui

@@ -696,6 +696,10 @@ trap 'echo; echo "== interruption (HUP) — compensation";  exit 130' HUP
 # --------------------------------------------------------------------------
 # 1. PHASE 0 — LE SCEAU, PAR LE PLAN DE CONTROLE
 # --------------------------------------------------------------------------
+# LE VERROU VIENT D'ETRE PRIS, ET ON LE RECONSTATE QUAND MEME. Une session
+# peut mourir entre deux instructions; le contrat doit correspondre au
+# commentaire et au compte rendu, pas au cas le plus probable.
+etape_mutante "la phase 0"
 etape "1/10  phase 0 — le sceau, par « $PLAN_USER »"
 # `VERBOSITY=verbose` FAIT PREFIXER LE SQLSTATE AU MESSAGE:
 #
@@ -812,6 +816,7 @@ fi
 # SI LES ROLES PREEXISTENT et que personne ne lui a donne cet ADMIN, le refus
 # tombe ICI — nomme, et AVANT que writer/bootstrap ne soient pretes au
 # migrateur.
+etape_mutante "l'auto-octroi de eurostruct_deployment"
 etape "2b/10 le role de deploiement"
 if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'USAGE')::text" 2>/dev/null)" == "true" ]]; then
   constat "« $PLAN_USER » detient deja eurostruct_deployment"
@@ -943,7 +948,7 @@ select 'POSEUR',     installer_oid::text || '|' || installer_name
 select 'MOI',        oid::text || '|' || rolname from pg_roles where rolname = current_user;
 -- Les appartenances DIRECTES du migrateur vers les deux roles pretables, avec
 -- leur donneur. On exige exactement deux lignes, toutes deux donnees par nous.
-select 'MEMBRE', r.rolname || '|' || g.rolname
+select 'MEMBRE', r.rolname || '|' || g.oid::text || '|' || g.rolname
   from pg_auth_members am
   join pg_roles r  on r.oid = am.roleid
   join pg_roles mm on mm.oid = am.member
@@ -1009,11 +1014,18 @@ SQL
        roles d'autorite, et un deploiement interrompu en laisse exactement deux
        (writer et bootstrap). Constate: ${R_MEMBRES[*]:-aucune}"
   fi
+  local m_reste
   for m in "${R_MEMBRES[@]}"; do
-    [[ "${m#*|}" == "$PLAN_USER" ]] \
-      || refus_reprise "l'appartenance « ${m%%|*} » a ete donnee par « ${m#*|} », et non
-       par « $PLAN_USER ». ON NE REPREND QUE CE QU'ON A DONNE: revoquer un
-       octroi etranger detruirait ce qu'un tiers a pose."
+    # LE DONNEUR EST COMPARE PAR OID *ET* PAR NOM, comme le poseur du sceau.
+    # L'unicite des noms de role rend aujourd'hui le nom suffisant; la trace
+    # doit suivre la meme discipline que le reste du modele, ou elle deviendra
+    # l'exception qu'on oublie de corriger.
+    m_reste="${m#*|}"                       # « oid|nom »
+    [[ "$m_reste" == "$R_MOI" ]] \
+      || refus_reprise "l'appartenance « ${m%%|*} » a ete donnee par « ${m_reste#*|} »
+       (oid ${m_reste%%|*}), et non par « ${R_MOI#*|} » (oid ${R_MOI%%|*}).
+       ON NE REPREND QUE CE QU'ON A DONNE: revoquer un octroi etranger
+       detruirait ce qu'un tiers a pose."
     case "${m%%|*}" in
       eurostruct_normative_writer|eurostruct_normative_bootstrap) : ;;
       *) refus_reprise "appartenance inattendue vers « ${m%%|*} »." ;;
@@ -1023,7 +1035,63 @@ SQL
   constat "poseur=connexion par OID et nom, aucune voie vers l'activateur,"
   constat "exactement deux appartenances, toutes deux donnees par nous"
 
-  revoquer_les_emprunts
+  # LA REVOCATION ET SON CONTROLE, DANS UNE SEULE TRANSACTION.
+  #
+  # LES CONDITIONS CI-DESSUS NE FERMENT PAS LA VOIE INDIRECTE vers writer et
+  # bootstrap. Elles etablissent que le migrateur porte exactement DEUX
+  # appartenances DIRECTES, donnees par nous, et qu'il n'atteint pas
+  # l'activateur — mais il peut appartenir a un role intermediaire qui, lui,
+  # atteint writer ou bootstrap. Revoquer les deux ne le ramenerait alors pas a
+  # zero, et la reprise annoncerait un resultat qu'elle n'a pas obtenu.
+  #
+  # `pg_has_role` EST TRANSITIF, et le serveur sait donc deja calculer cette
+  # fermeture. Plutot que de la reecrire en Bash — ou l'on oublierait un cas —
+  # on revoque, on interroge, et on ANNULE si un acces subsiste. Les deux
+  # octrois directs sont alors intacts: un refus ambigu ne doit rien changer.
+  #
+  # Le branchement est fait par psql (`\gset` puis `\if`), sans plpgsql: le
+  # nom du migrateur reste porte par `:'m'`, et la decision par le serveur.
+  # IMMEDIATEMENT AVANT LE REVOKE, et non seulement a l'entree de la reprise:
+  # les huit constats qui precedent prennent du temps, et ne mutent rien.
+  etape_mutante "la revocation de reprise"
+  SORTIE_REPRISE=$(plan -v ON_ERROR_STOP=1 -v m="$MIG_USER" 2>&1 <<'SQL'
+begin;
+revoke eurostruct_normative_writer    from :"m";
+revoke eurostruct_normative_bootstrap from :"m";
+select bool_or(pg_has_role(:'m', r, 'USAGE')
+            or pg_has_role(:'m', r, 'SET')
+            or pg_has_role(:'m', r, 'MEMBER WITH ADMIN OPTION')) as esc_residu
+  from unnest(array['eurostruct_normative_writer',
+                    'eurostruct_normative_bootstrap',
+                    'eurostruct_normative_activator']) r
+\gset
+\if :esc_residu
+\echo 'RECOVERY_RESIDUAL_ACCESS'
+rollback;
+\else
+commit;
+\endif
+SQL
+  ); CODE_REPRISE=$?
+  if grep -qF "RECOVERY_RESIDUAL_ACCESS" <<<"$SORTIE_REPRISE"; then
+    cat >&2 <<EOF
+DEPLOYMENT_RECOVERY_REFUSED: RECOVERY_RESIDUAL_ACCESS — apres revocation des
+       deux emprunts, « $MIG_USER » atteint ENCORE un role d'autorite.
+
+       Il existe donc une voie que cette reprise n'a pas accordee: une
+       appartenance a un role intermediaire, lui-meme membre de writer ou de
+       bootstrap. La transaction a ete ANNULEE: les deux octrois directs sont
+       intacts, et rien n'a change.
+
+       Etablissez d'ou vient cette voie avant de reprendre quoi que ce soit.
+EOF
+    exit 6
+  fi
+  if [[ $CODE_REPRISE -ne 0 ]]; then
+    echo "DEPLOYMENT_CLEANUP_UNVERIFIED: la reprise n'a pas abouti." >&2
+    grep -m3 -E 'ERROR|FATAL' <<<"$SORTIE_REPRISE" | sed 's/^/       /' >&2
+    exit 7
+  fi
   if ! capacites_du_migrateur; then
     echo "DEPLOYMENT_CLEANUP_UNVERIFIED: la reprise a revoque, et n'a pas pu le" >&2
     echo "       constater. N'EXPLOITEZ PAS CETTE BASE avant verification." >&2
@@ -1070,6 +1138,7 @@ if [[ -n "$DEJA_DETENU" ]]; then
        Aucun emprunt supplementaire n'a ete accorde."
 fi
 
+etape_mutante "l'octroi des emprunts"
 etape "3/10  octroi temporaire de writer/bootstrap a « $MIG_USER »"
 SORTIE=$(plan -v ON_ERROR_STOP=1 -v m="$MIG_USER" 2>&1 <<'SQL'
 grant eurostruct_normative_writer    to :"m" with admin option;

@@ -530,6 +530,15 @@ CAS_REPRISE = [
        '  [[ $code -ne 0 ]] && { CAPACITES=""; return 0; }')], False),
     ("Q6  la reprise explicite n'existe plus", "Q6", CMD,
      [("    --recover-pending) RECOVER=1 ;;\n", "")], False),
+    # LA FERMETURE INDIRECTE. Sans le `\\if`, la transaction commet toujours:
+    # la reprise se declare reussie alors qu'une voie indirecte subsiste, et
+    # elle a en plus consomme les deux octrois qu'elle devait rendre.
+    ("Q8  la voie indirecte n'est plus fermee", "Q8", CMD,
+     [("\\if :esc_residu", "\\if false")], False),
+    ("S3  le verrou n'est plus reconstate avant l'octroi", "S3", CMD,
+     [("etape_mutante \"l'octroi des emprunts\"\n", "")], False),
+    ("S4  le verrou n'est plus reconstate avant la reprise", "S4", CMD,
+     [("  etape_mutante \"la revocation de reprise\"\n", "")], False),
     ("S2  le verrou n'est plus reconstate avant chaque etape", "S2", CMD,
      [('  etape_mutante "$(basename "$f")"\n', ""),
       ('etape_mutante "la finalisation"\n', "")], False),
