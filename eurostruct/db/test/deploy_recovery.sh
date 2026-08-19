@@ -22,6 +22,9 @@
 #   P. LE PARCOURS GREENFIELD — la commande aboutit-elle par un chemin complet
 #      et nomme, ou par un premier echec qu'on ignore ?
 #   Q. LA COMPENSATION — apres un echec, que detient encore le migrateur ?
+#   R. LES IDENTIFIANTS — un nom de role venu d'une URL est-il du SQL ?
+#   S. LA CONCURRENCE — deux commandes peuvent-elles s'intercaler ?
+#   T. LA REPRISE — une phase 1 interrompue se relance-t-elle ?
 #
 # COMMENT L'ECHEC EST INJECTE, ET POURQUOI AINSI
 # -----------------------------------------------
@@ -481,6 +484,232 @@ else
   detail "      $(grep -m1 -E '^ECHEC|CLEANUP' <<<"$SORTIE_CMD" | cut -c1-130)"
 fi
 decor_deposer
+fi
+
+# ==========================================================================
+# R. LES IDENTIFIANTS SQL
+# ==========================================================================
+# `MIG_USER` vient de l'URL et est interpole tel quel:
+#
+#     grant eurostruct_normative_writer to "$MIG_USER" with admin option;
+#     pg_has_role('$MIG_USER', a.r, 'SET')
+#
+# Une double quote dans le nom du role ferme l'identifiant et laisse la suite
+# s'executer AVEC LES PRIVILEGES DU PLAN DE CONTROLE — qui porte CREATEROLE.
+#
+# QUE L'URL VIENNE DE L'EXPLOITANT NE SUPPRIME PAS LE RISQUE: le migrateur est
+# precisement l'acteur que le modele cherche a contenir, et son nom est ce que
+# l'exploitant recopie d'un fichier de configuration qu'il n'a pas ecrit.
+#
+# LE PREFIXE DOIT EXISTER, et c'est ce qui donne sa portee a l'injection.
+# Premiere ecriture, mesuree: sans role portant le prefixe tronque,
+# `grant ... to "prefixe";` echoue, `ON_ERROR_STOP` arrete psql, et
+# l'instruction injectee ne s'execute jamais. Le contre-exemple etait vert par
+# accident de nommage.
+#
+# CE HARNAIS N'INTERPOLE PAS LE NOM HOSTILE NON PLUS. Il le pose et le retire
+# par `:"n"`, la forme sure — `creer_role` et `detruire_roles_crees` de la
+# bibliotheque interpolent, et se seraient injectes eux-memes. Mesure faite en
+# ecrivant ce scenario: le role temoin a ete cree par la commande de MESURE
+# avant que la commande officielle ne soit appelee.
+R_PREFIXE=""; R_HOSTILE=""; R_TEMOIN=""
+r_nettoyer() {
+  [[ -n "$R_HOSTILE" ]] && adm -v n="$R_HOSTILE" >/dev/null 2>&1 <<'SQL'
+drop owned by :"n";
+drop role if exists :"n";
+SQL
+  local x
+  for x in "$R_PREFIXE" "$R_TEMOIN"; do
+    [[ -n "$x" ]] || continue
+    adm -c "drop owned by \"$x\";"       >/dev/null 2>&1
+    adm -c "drop role if exists \"$x\";" >/dev/null 2>&1
+  done
+}
+
+if ! decor_poser r1; then
+  echoue "le decor R1 n'a pas pu etre pose"
+else
+suivre_decor
+R_PREFIXE="${PREFIXE}_mr_${JETON}"
+R_TEMOIN="${PREFIXE}_temoin_${JETON}"
+R_HOSTILE="$R_PREFIXE\"; create role $R_TEMOIN nologin; --"
+adm -c "create role \"$R_PREFIXE\" nologin;" >/dev/null 2>&1
+adm -v ON_ERROR_STOP=1 -v n="$R_HOSTILE" -v mdp="$MDP" >/dev/null 2>&1 <<'SQL'
+create role :"n" login password :'mdp' createrole createdb;
+SQL
+if [[ "$(adm -tAc "select count(*) from pg_roles where rolname = '$R_TEMOIN'")" != "0" ]]; then
+  echoue "R1. le temoin existe avant l'essai: le scenario ne dirait rien"
+else
+  # L'URL porte le nom hostile PERCENT-ENCODE. Le decoupeur de la commande le
+  # desencode, et c'est ce nom-la qui arrive dans le SQL.
+  R_ENC=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$R_HOSTILE")
+  # Le premier appel pose le sceau; l'octroi qui suit reproduit le parcours
+  # d'aujourd'hui (defaut P1) et donne sa portee a l'etape 3.
+  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://$R_ENC:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  bash "$COMMANDE_COPIE" >/dev/null 2>&1
+  adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
+  SORTIE_R=$(
+    ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+    ESC_MIGRATOR_URL="postgresql://$R_ENC:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+    bash "$COMMANDE_COPIE" 2>&1
+  ); CODE_R=$?
+  CREE=$(adm -tAc "select count(*) from pg_roles where rolname = '$R_TEMOIN'")
+  if [[ "$CREE" == "0" && $CODE_R -ne 0 ]]; then
+    echo "      ok: R1. un nom de role hostile n'execute aucune instruction"
+  else
+    rouge "R1. un nom de role venu de l'URL est execute comme du SQL."
+    detail "    role temoin cree: $CREE (1 = injection reussie), code $CODE_R"
+    detail "    nom employe: ${R_HOSTILE:0:70}"
+    detail "    L'instruction s'execute avec les privileges du PLAN DE CONTROLE,"
+    detail "    qui porte CREATEROLE. Le refus doit tomber avant tout octroi."
+  fi
+fi
+r_nettoyer
+decor_deposer
+fi
+
+# ==========================================================================
+# S. LA CONCURRENCE
+# ==========================================================================
+# Le verrou consultatif protege la FINALISATION, et elle seule. La phase 0, les
+# octrois, les migrations et la lecture du manifeste ne sont pas serialises:
+# deux commandes officielles lancees ensemble sur la meme base intercalent
+# leurs etapes et appliquent deux fois des migrations qui ne sont pas
+# idempotentes.
+if ! q_amorcer s1; then
+  echoue "le decor S1 n'a pas pu etre pose"
+else
+migrations_copiees
+SA="$COPIE/s_a.log"; SB="$COPIE/s_b.log"
+: >"$SA"; : >"$SB"
+(
+  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  exec bash "$COMMANDE_COPIE" >"$SA" 2>&1
+) & PID_A=$!
+(
+  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  exec bash "$COMMANDE_COPIE" >"$SB" 2>&1
+) & PID_B=$!
+wait "$PID_A"; CODE_A=$?
+wait "$PID_B"; CODE_B=$?
+CAP_S=$(capacites_du_migrateur)
+ETAT_S=$(etat_normatif)
+REFUSES=0
+grep -qF "DEPLOYMENT_ALREADY_RUNNING" "$SA" && REFUSES=$((REFUSES + 1))
+grep -qF "DEPLOYMENT_ALREADY_RUNNING" "$SB" && REFUSES=$((REFUSES + 1))
+ABOUTIS=0
+[[ $CODE_A -eq 0 ]] && ABOUTIS=$((ABOUTIS + 1))
+[[ $CODE_B -eq 0 ]] && ABOUTIS=$((ABOUTIS + 1))
+if [[ $ABOUTIS -eq 1 && $REFUSES -eq 1 && -z "$CAP_S" ]] \
+   && [[ "$ETAT_S" == "ACTIVE activations=1 plans=1" ]]; then
+  echo "      ok: S1. une seule commande poursuit, l'autre est refusee"
+else
+  rouge "S1. rien ne serialise deux commandes concurrentes."
+  detail "    codes: $CODE_A / $CODE_B — aboutissent: $ABOUTIS, refus nommes: $REFUSES"
+  detail "    etat: $ETAT_S, capacites residuelles: « ${CAP_S:-aucune} »"
+  detail "    $(grep -m1 -E '^ECHEC' "$SA" | cut -c1-120)"
+  detail "    $(grep -m1 -E '^ECHEC' "$SB" | cut -c1-120)"
+  detail "    CE QUI EST CONSTATE ICI est l'absence d'un REFUS NOMME: la"
+  detail "    perdante echoue sur ce qu'elle rencontre, pas sur le fait qu'une"
+  detail "    autre execution est en cours. L'entrelacement lui-meme depend de"
+  detail "    l'ordonnancement et ne se constate pas a chaque passage — raison"
+  detail "    de plus pour exiger un verrou plutot que de compter dessus."
+  detail "    Le verrou existant ne couvre que la finalisation: la phase 0, les"
+  detail "    octrois, les migrations et le manifeste restent hors de lui."
+fi
+decor_deposer
+fi
+
+# ==========================================================================
+# T. LA REPRISE D'UNE PHASE 1 INTERROMPUE
+# ==========================================================================
+# La commande annonce que la relancer est sur. Ce n'est etabli que pour une
+# base DEJA ACTIVE — cas ou elle saute les etapes 3 a 7. Une phase 1
+# interrompue au milieu n'est pas couverte, et la boucle recommence toujours a
+# `0001`: or ces migrations ne sont pas idempotentes.
+#
+# `t_reprise <nom> <migration-fautive>` — applique jusqu'au point choisi,
+# echoue, puis RELANCE avec un jeu de migrations sain. Ce que la relance doit
+# faire: reprendre ou. Ce qu'elle fait: tout recommencer.
+t_reprise() {
+  local nom="$1" fautive="$2" code sortie
+  q_amorcer "${nom,,}" || { echoue "le decor $nom n'a pas pu etre pose"; return 1; }
+  migrations_copiees "$fautive"
+  appeler >/dev/null 2>&1
+  # LE JEU SAIN, comme apres un correctif ou une reprise de reseau.
+  migrations_copiees
+  appeler; code=$?
+  sortie="$SORTIE_CMD"
+  if [[ $code -eq 0 && "$(admb -tAc 'select normative_activation_state()' 2>&1)" == "ACTIVE" ]]; then
+    echo "      ok: $nom. la relance apres interruption reprend et aboutit"
+  else
+    rouge "$nom. la relance apres interruption ne reprend pas (code $code)."
+    detail "    $(grep -m1 -E 'ERROR|already exists|ECHEC' <<<"$sortie" | cut -c1-140)"
+    detail "    La boucle recommence a 0001, et ces migrations ne sont pas"
+    detail "    idempotentes: rien ne sait ce qui a deja ete applique."
+  fi
+  decor_deposer
+  return 0
+}
+
+t_reprise "T1" 0002_rls.sql
+t_reprise "T2" 0006_ndp_import.sql
+t_reprise "T3" 0010_normative_confirmation.sql
+
+# --- T4. une migration MODIFIEE apres application -------------------------
+# Le contrat demande `MIGRATION_CHECKSUM_MISMATCH`. Aujourd'hui rien n'inscrit
+# ce qui a ete applique: une migration reecrite apres coup n'est ni detectee ni
+# refusee — elle est simplement rejouee.
+if ! q_amorcer t4; then
+  echoue "le decor T4 n'a pas pu etre pose"
+else
+migrations_copiees 0006_ndp_import.sql
+appeler >/dev/null 2>&1
+# 0002 A DEJA ETE APPLIQUEE. On la modifie — c'est le geste qu'un correctif
+# applique a chaud produit — puis on relance.
+migrations_copiees
+printf '\n-- FICTIF: modification posterieure a l application\ncomment on schema public is %s;\n' \
+  "'FICTIF-modifiee'" >>"$COPIE/db/migrations/0002_rls.sql"
+appeler; CODE_T4=$?
+if grep -qF "MIGRATION_CHECKSUM_MISMATCH" <<<"$SORTIE_CMD"; then
+  echo "      ok: T4. une migration modifiee apres application est refusee"
+else
+  rouge "T4. une migration modifiee apres application n'est pas detectee."
+  detail "    code $CODE_T4; obtenu: $(grep -m1 -E 'ERROR|ECHEC' <<<"$SORTIE_CMD" | cut -c1-130)"
+  detail "    Rien n'inscrit ce qui a ete applique, ni avec quelle empreinte."
+fi
+decor_deposer
+fi
+
+# --- T5. le contrat de transactionnalite est UNIFORME ---------------------
+# CONTROLE STATIQUE, et il porte sur une propriete du jeu, pas d'un fichier:
+# `0001`, `0002` et `0003` n'ont ni `BEGIN` ni `COMMIT`, les sept suivantes en
+# ont. Une erreur au milieu d'une des trois premieres laisse donc un fichier
+# PARTIELLEMENT applique — et aucun registre ne pourrait rattraper cela, parce
+# que l'unite d'application n'existe pas.
+#
+# Ce qui est exige n'est pas une forme plutot que l'autre: c'est qu'il n'y en
+# ait qu'UNE.
+AVEC=(); SANS=()
+for f in "$DB_DIR"/migrations/*.sql; do
+  if grep -qi '^begin;' "$f" && grep -qi '^commit;' "$f"; then
+    AVEC+=("$(basename "$f")")
+  else
+    SANS+=("$(basename "$f")")
+  fi
+done
+if [[ ${#AVEC[@]} -eq 0 || ${#SANS[@]} -eq 0 ]]; then
+  echo "      ok: T5. le jeu de migrations a un contrat de transactionnalite unique"
+else
+  rouge "T5. deux contrats de transactionnalite coexistent dans db/migrations/."
+  detail "    avec BEGIN/COMMIT (${#AVEC[@]}): ${AVEC[*]}"
+  detail "    sans (${#SANS[@]}): ${SANS[*]}"
+  detail "    Une erreur au milieu d'une migration sans transaction laisse un"
+  detail "    fichier partiellement applique: aucun registre ne rattrape cela,"
+  detail "    parce que l'unite d'application n'existe pas."
 fi
 
 echo ""
