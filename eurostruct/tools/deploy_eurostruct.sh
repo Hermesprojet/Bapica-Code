@@ -1050,12 +1050,18 @@ for f in "$MIGRATIONS_DIR"/*.sql; do
        fi ;;
     6) echec "$ESC_MIGRATION_SORTIE" ;;
     # LE MOTIF EST REPRIS TEL QUEL QUAND IL N'Y A PAS DE LIGNE `ERROR`.
+    #
+    # ET SUR SEIZE LIGNES, PAS TROIS. L'absence de ligne `ERROR` signale un
+    # refus STRUCTURE de l'applicateur — registre illisible, historique
+    # divergent —, dont le diagnostic reel figure au milieu du texte. Coupe a
+    # trois lignes, il etait systematiquement tronque: la cause revenait bien
+    # du portillon, et n'atteignait quand meme pas le rapport. Mesure: T17.
     # Un filtre sur ERROR/FATAL/DETAIL rendait un message VIDE quand l'echec
     # venait de l'applicateur lui-meme — registre injoignable, par exemple —
     # et l'exploitant lisait « 0001 a ete refusee: » suivi de rien.
     *) echec "$(basename "$f") a ete refusee:
 $( { grep -m3 -E 'ERROR|FATAL|DETAIL' <<<"$ESC_MIGRATION_SORTIE" \
-       || grep -m3 -v '^[[:space:]]*$' <<<"$ESC_MIGRATION_SORTIE"; } | sed 's/^/       /')" ;;
+       || grep -m16 -v '^[[:space:]]*$' <<<"$ESC_MIGRATION_SORTIE"; } | sed 's/^/       /')" ;;
   esac
 done
 constat "phase 1: $APPLIQUEES appliquee(s), $SAUTEES deja inscrite(s)"

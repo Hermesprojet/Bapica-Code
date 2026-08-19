@@ -567,6 +567,14 @@ CAS_REPRISE = [
       ESC_HISTORIQUE_DIAG="MIGRATION_LEDGER_UNREADABLE: l'existence du registre n'a pas pu
        etre etablie avant de verifier l'historique.''')],
      False),
+    # LE SOUS-SHELL, REMIS. `$( ... )` s'execute dans un sous-shell: la globale
+    # que la fonction y pose meurt avec lui, et le rapport retombe sur
+    # « <aucun> » a l'endroit ou l'exploitant a besoin de la cause.
+    ("T17 le diagnostic du portillon repasse par un sous-shell", "T17", APP,
+     [('''  esc_migration_etat "$fichier" "$@"
+  etat="$ESC_MIGRATION_GATE_STATE"''',
+       '''  etat="$( esc_migration_etat "$fichier" "$@"
+             printf '%s' "$ESC_MIGRATION_GATE_STATE" )"''')], False),
     ("T8  le prefixe exact n'est plus exige", "T8", APP,
      [('    if [[ "${inscrites[$i]}" != "${locaux[$i]}" ]]; then',
        "    if false; then")], False),

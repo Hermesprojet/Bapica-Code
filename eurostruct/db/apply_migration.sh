@@ -76,13 +76,23 @@ esc_empreinte_migration() {
 # `normative_migration_gate()` n'existent — la requete echouait a l'analyse, et
 # la premiere migration n'etait jamais appliquee. Mesure faite en cablant ce
 # fichier.
+# ELLE NE REND PLUS SON ETAT PAR `echo`, ET C'EST LA CORRECTION D'UN DEFAUT.
+# L'appelant faisait `etat="$(esc_migration_etat ...)"`. Une substitution de
+# commande s'execute dans un SOUS-SHELL: `ESC_MIGRATION_DIAG` y etait bien
+# posee, et mourait avec lui. Le rapport affichait donc « <aucun> » a l'endroit
+# meme ou l'exploitant a besoin de la cause. Contre-exemple mesure: T17.
+#
+# Les deux resultats sont desormais des GLOBALES, et la fonction est appelee
+# directement.
 ESC_MIGRATION_DIAG=""
+ESC_MIGRATION_GATE_STATE=""
 esc_migration_etat() {
   local fichier="$1"; shift
   local id sum reponse presence errfic
   id="$(basename "$fichier")"
   sum="$(esc_empreinte_migration "$fichier")"
   ESC_MIGRATION_DIAG=""
+  ESC_MIGRATION_GATE_STATE=""
 
   # LE DIAGNOSTIC EST CONSERVE, ET NON JETE. `2>/dev/null` renvoyait « le
   # registre n'a pas pu etre interrogo » sans jamais dire pourquoi, et
@@ -94,14 +104,14 @@ select to_regclass('public.normative_migration_ledger') is null;
 SQL
   )
   case "$presence" in
-    t) rm -f "$errfic"; echo "ABSENTE"; return 0 ;;
+    t) rm -f "$errfic"; ESC_MIGRATION_GATE_STATE="ABSENTE"; return 0 ;;
     f) : ;;
     *)
       ESC_MIGRATION_DIAG="$(grep -m2 -v '^[[:space:]]*$' "$errfic" | cut -c1-300)"
       [[ -n "$ESC_MIGRATION_DIAG" ]] \
         || ESC_MIGRATION_DIAG="reponse « ${presence:-<vide>} », attendu « t » ou « f »"
       rm -f "$errfic"
-      echo "INDETERMINE"
+      ESC_MIGRATION_GATE_STATE="INDETERMINE"
       return 0 ;;
   esac
   rm -f "$errfic"
@@ -112,7 +122,7 @@ select normative_migration_gate(:'id', :'sum');
 SQL
   )
   case "$reponse" in
-    ABSENTE|DEJA|MISMATCH) rm -f "$errfic"; echo "$reponse" ;;
+    ABSENTE|DEJA|MISMATCH) rm -f "$errfic"; ESC_MIGRATION_GATE_STATE="$reponse" ;;
     # UNE REPONSE ILLISIBLE N'EST PAS UNE ABSENCE. Base injoignable, droit
     # manquant, registre a demi cree: on ne peut pas conclure, et conclure
     # « ABSENTE » ferait rejouer une migration deja appliquee.
@@ -121,7 +131,7 @@ SQL
       [[ -n "$ESC_MIGRATION_DIAG" ]] \
         || ESC_MIGRATION_DIAG="reponse « ${reponse:-<vide>} » du portillon"
       rm -f "$errfic"
-      echo "INDETERMINE" ;;
+      ESC_MIGRATION_GATE_STATE="INDETERMINE" ;;
   esac
 }
 
@@ -300,7 +310,10 @@ esc_appliquer_migration() {
   local id sum etat
   id="$(basename "$fichier")"
   sum="$(esc_empreinte_migration "$fichier")"
-  etat="$(esc_migration_etat "$fichier" "$@")"
+  # APPEL DIRECT, ET NON `$( ... )`: c'est la seule facon de recevoir le
+  # diagnostic que la fonction vient de poser.
+  esc_migration_etat "$fichier" "$@"
+  etat="$ESC_MIGRATION_GATE_STATE"
 
   case "$etat" in
     DEJA)

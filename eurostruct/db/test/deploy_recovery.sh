@@ -1333,6 +1333,81 @@ SQL
   return 0
 }
 
+# --- T17. LE DIAGNOSTIC DU PORTILLON DOIT REVENIR AU RAPPORT --------------
+# `esc_appliquer_migration` appelait:
+#
+#     etat="$(esc_migration_etat "$fichier" "$@")"
+#
+# Une substitution de commande s'execute dans un SOUS-SHELL. `esc_migration_etat`
+# y pose bien `ESC_MIGRATION_DIAG`, mais l'affectation meurt avec le sous-shell:
+# l'appelant lit une variable restee vide, et le rapport affiche « <aucun> » a
+# l'endroit meme ou l'exploitant a besoin de la cause.
+#
+# LE LEURRE NE COUPE QUE LA SECONDE INTERROGATION, et c'est ce qui distingue ce
+# scenario de T7. La premiere est celle de `esc_verifier_historique`, qui est
+# appelee DIRECTEMENT et propage donc son diagnostic sans probleme; la seconde
+# est celle du portillon, dans le sous-shell. Couper la premiere ne dirait rien
+# du defaut vise.
+if ! q_amorcer t17; then
+  echoue "le decor T17 n'a pas pu etre pose"
+else
+migrations_copiees 0006_ndp_import.sql
+appeler >/dev/null 2>&1                       # PENDING, 0001-0005 inscrites
+ETAT_T17=$(admb -tAc "select normative_activation_state()" 2>&1)
+migrations_copiees
+LEURRE_T17="$COPIE/leurre_t17"
+mkdir -p "$LEURRE_T17"
+JOURNAL_T17="$COPIE/psql_t17.log"
+VRAI_PSQL_T17="$(command -v psql)"
+COMPTEUR_T17="$COPIE/t17_compteur"
+: >"$COMPTEUR_T17"
+cat >"$LEURRE_T17/psql" <<LEURREFIN
+#!/usr/bin/env bash
+# FAUX psql — scenario T17. Il se decide sur ARGV avant de lire l'entree: le
+# co-processus du verrou ne porte pas de « -tA » et ne doit jamais etre bloque.
+printf '%s\n' "ARGV: \$*" >>"$JOURNAL_T17"
+DIRECT=0
+for a in "\$@"; do
+  case "\$a" in -c|--command*|-f|--file*|-v) DIRECT=1 ;; esac
+done
+SONDE=0
+for a in "\$@"; do [[ "\$a" == "-tA" ]] && SONDE=1; done
+if (( DIRECT )) || (( ! SONDE )); then exec "$VRAI_PSQL_T17" "\$@"; fi
+CORPS="\$(cat)"
+if [[ "\$CORPS" == *to_regclass*normative_migration_ledger* ]]; then
+  echo x >>"$COMPTEUR_T17"
+  if [[ \$(wc -l <"$COMPTEUR_T17") -ge 2 ]]; then
+    echo "FICTIF_T17_DIAGNOSTIC_RESEAU" >&2
+    exit 2
+  fi
+fi
+printf '%s\n' "\$CORPS" | "$VRAI_PSQL_T17" "\$@"
+LEURREFIN
+chmod +x "$LEURRE_T17/psql"
+: >"$JOURNAL_T17"
+PATH="$LEURRE_T17:$PATH" appeler; CODE_T17=$?
+REJOUEE_T17="$(grep -oE -- '-f [^ ]*migrations/[0-9]+[^ ]*' "$JOURNAL_T17" 2>/dev/null | head -1)"
+if [[ "$ETAT_T17" != "PENDING" ]]; then
+  echoue "T17. le decor n'est pas PENDING (« $ETAT_T17 »); scenario non evalue"
+elif [[ $(wc -l <"$COMPTEUR_T17") -lt 2 ]]; then
+  echoue "T17. le portillon n'a pas ete interroge une seconde fois; le"
+  echoue "     scenario ne dit rien du sous-shell."
+elif [[ -n "$REJOUEE_T17" ]]; then
+  rouge "T17. une migration a ete rejouee malgre le refus: $REJOUEE_T17"
+elif ! grep -qF "FICTIF_T17_DIAGNOSTIC_RESEAU" <<<"$SORTIE_CMD"; then
+  rouge "T17. le diagnostic reel du portillon ne revient pas au rapport."
+  detail "    code $CODE_T17; « FICTIF_T17_DIAGNOSTIC_RESEAU » absent de la sortie"
+  detail "    $(grep -m1 -F "aucun" <<<"$SORTIE_CMD" | cut -c1-120)"
+  detail "    L'etat est bien INDETERMINE, mais la cause est perdue: elle a ete"
+  detail "    ecrite dans le SOUS-SHELL d'une substitution de commande."
+elif grep -qF "<aucun>" <<<"$SORTIE_CMD"; then
+  rouge "T17. le rapport porte « <aucun> » alors qu'un diagnostic existait."
+else
+  echo "      ok: T17. le diagnostic reel du portillon revient au rapport"
+fi
+decor_deposer
+fi
+
 t_historique T8  supprime
 t_historique T9  renomme
 t_historique T10 insere
