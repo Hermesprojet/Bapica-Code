@@ -151,11 +151,35 @@ plan par OID **et** par nom, l'empreinte des déclarations gelées et le
 
 * **Le vol d'identifiants du plan de contrôle.** Qui se connecte comme lui
   approuve ; c'est le sens même du rôle.
-* **La restauration inter-cluster.** L'identité du plan porte un OID
+* **La restauration inter-cluster — non prise en charge, et c'est un blocage
+  explicite de mise en production.** L'identité du plan porte un OID
   PostgreSQL, qu'un `pg_dump`/restore vers un autre cluster ne préserve pas.
-  Le comportement attendu est un refus qui se lit : la topologie diagnostique
-  alors `RESTAURATION INTER-CLUSTER` et dit quoi faire — refinaliser la base
-  sur place, par son propre plan de contrôle.
+
+  Le comportement est un refus qui se lit : la topologie diagnostique
+  `RESTAURATION INTER-CLUSTER`. Ce refus est **définitif pour cette base**.
+  Il n'existe aucune procédure de reprise, et il ne peut pas en exister une
+  sans rouvrir ce que la racine ferme : `normative_control_plane` est un
+  singleton immuable, `normative_activation` est append-only,
+  `normative_record_activation()` refuse dès que l'état est `ACTIVE`, et
+  personne ne peut endosser l'activateur après la phase 0.
+
+  Le document a longtemps dit « refinaliser la base sur place, par son propre
+  plan de contrôle ». **Cette opération n'existe pas.** Mesuré sur une
+  restauration réelle entre deux clusters (`db/test/cross_cluster_restore.sh`,
+  qui crée le second cluster par `initdb`) : la consigne exécutée rend
+  `MANIFEST_MISMATCH`, et vider la table d'activation est refusé même au
+  **propriétaire** de la base restaurée. Un refus fail-closed qui envoie
+  l'exploitant exécuter une procédure inexistante ne protège pas mieux qu'un
+  refus muet.
+
+  **Le chemin supporté vers un autre cluster** est un déploiement neuf —
+  phases 0, 1 et 2 sur le cluster cible — suivi d'une reprise des données
+  métier. Il ne transporte pas l'approbation, parce qu'une approbation vaut
+  pour le cluster où elle a eu lieu. Cette procédure de reprise des données
+  n'existe pas encore : tant qu'elle n'existe pas, une migration inter-cluster
+  d'une base EUROSTRUCT en service est un **blocage de mise en production**,
+  pas une opération courante.
+
   L'OID n'est délibérément **pas** réinscriptible : le rendre modifiable
   « pour réparer une restauration » rouvrirait exactement la substitution que
   6.3b6b a fermée, puisqu'il suffirait de déclarer que le bon OID est celui

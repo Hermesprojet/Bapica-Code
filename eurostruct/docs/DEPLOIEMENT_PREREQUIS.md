@@ -1,79 +1,276 @@
-# EUROSTRUCT — prérequis de déploiement de la chaîne normative
+# EUROSTRUCT — déployer la chaîne normative
 
-> **État de la vérification.** Ce document décrit ce qu'un déploiement doit
-> fournir pour que les migrations `0000` à `0010` s'appliquent et que la chaîne
-> de confiance normative fonctionne. Les prérequis listés ne sont pas déduits
-> d'une lecture du code : chacun a été **rencontré** par
-> `db/test/nonsuperuser_install.sh`, qui applique les migrations sous un rôle
-> de migration non superutilisateur.
+> **Ce document décrit le code présent, pas l'histoire des versions
+> précédentes.** Chaque prérequis listé ici a été **rencontré** par un harnais
+> qui échoue quand il n'est pas tenu — jamais déduit d'une lecture du code.
 
-## 0. Trois phases, et **deux acteurs distincts** (6.3b6c)
+## 0. Le chemin officiel
 
-Le déploiement n'est plus « appliquer les migrations ». Il a **trois phases**,
-et les deux premières sont exercées par **deux rôles différents** :
+```sh
+export ESC_PLAN_URL='postgresql://plan:…@hote:5432/base'
+export ESC_MIGRATOR_URL='postgresql://migrateur:…@hote:5432/base'
 
-| Phase | Fichier | Exercée par | Ce qu'elle fait |
+tools/deploy_eurostruct.sh --dry-run     # les deux connexions, rien d'appliqué
+tools/deploy_eurostruct.sh               # les dix étapes, postconditions vérifiées
+```
+
+La commande orchestre les trois phases, **vérifie** ses postconditions et
+refuse plutôt que de dégrader. Elle ne crée ni ne détruit aucun rôle et aucune
+base : provisionner est un geste d'exploitation, décrit au §2.
+
+Les identifiants passent par l'**environnement**, jamais par `argv` — qui est
+lisible par tout processus de la machine. Les deux URL sont découpées puis
+effacées.
+
+**Relancer la commande est sûr.** Si `psql` échoue sur une coupure réseau, on
+ne sait pas si la transaction a été validée : relancez. La phase 0 rend
+`SEAL_ALREADY_INSTALLED` sans rien muter, les migrations sont idempotentes, une
+base déjà `ACTIVE` saute les étapes 3 à 7, et la finalisation rend « ACTIVE
+(déjà finalisé) » **si et seulement si** le manifeste présenté est celui qui a
+été approuvé. Ce qu'il ne faut pas faire : rejouer une étape à la main, ou
+réaccorder les emprunts « pour être sûr ».
+
+## 1. Quatre acteurs, et ils ne se confondent pas
+
+| Acteur | Ce que c'est | Ce qu'il peut | Ce qu'il ne peut pas |
 |---|---|---|---|
-| **0** | `db/control_plane/0001_normative_seal.sql` | **plan de contrôle** | crée les six rôles canoniques et la **racine de confiance** — les quatre tables de confiance et les fonctions qui les écrivent, possédées par `eurostruct_normative_activator` |
-| **1** | `0001` … `0010` | **migrateur** | applique le schéma applicatif ; termine en `PENDING` |
-| **2** | `select normative_finalize_deployment(<manifeste>)` | **plan de contrôle** | compare le manifeste, restitue les emprunts, inscrit l'activation → `ACTIVE` |
+| **Plan de contrôle** | un rôle de connexion, **non superutilisateur**, distinct du migrateur | poser le sceau (phase 0), prêter les emprunts, **approuver** et finaliser (phase 2) | écrire une confirmation normative |
+| **Migrateur** | le rôle qui applique `db/migrations/` | appliquer le schéma | approuver, activer, posséder une preuve |
+| **`eurostruct_deployment`** | un rôle canonique `NOLOGIN`, **accordé au plan de contrôle** | ouvrir la chaîne de confiance (amorçage), lire l'état, exercer la phase 2 | être membre d'un rôle d'autorité |
+| **Rôles applicatifs** | `authenticated`, `normative_backend`, `normative_governance` | ce que leurs politiques RLS permettent | tout le reste |
+
+**Les rôles canoniques sont globaux au cluster.** `eurostruct_normative_writer`,
+`…_bootstrap`, `…_activator`, `normative_backend`, `normative_governance` et
+`eurostruct_deployment` ne sont pas confinés à une base : plusieurs bases
+EUROSTRUCT du même cluster **partagent la même topologie de rôles**. Deux
+conséquences directes :
+
+* prêter les emprunts pour déployer la base B les prête aussi vis-à-vis de la
+  base A — la finalisation de B les rend, et rétablit les deux ;
+* deux bases du même cluster ne peuvent pas avoir deux plans de contrôle
+  différents sans une **stratégie de nommage** distincte (préfixer les six
+  rôles par base). Cette stratégie n'est pas implémentée : à ce jour, un
+  cluster porte **un** jeu de rôles canoniques.
+
+### `eurostruct_deployment` : ce qu'il détient réellement
+
+Il ne reçoit **pas** « `EXECUTE` sur l'amorçage et rien d'autre ». Il porte
+toute la surface d'exploitation :
+
+* **la phase 2** — `normative_finalize_deployment(manifeste)`, et les deux
+  primitives `normative_prepare_activation(manifeste)` /
+  `normative_record_activation()` ;
+* **la lecture d'état** — `normative_activation_state()`,
+  `normative_deployment_readiness()`, `normative_seal_version()`,
+  `normative_seal_assurance()`, `normative_control_plane()` /
+  `…_oid()`, `normative_pending_migrator()` ;
+* **les manifestes** — `normative_settings_manifest()`,
+  `normative_approved_manifest()`, `normative_exiger_manifeste_approuve()` ;
+* **l'audit** — `assert_normative_topology()`, `normative_topology_digest(…)`,
+  `normative_effective_setting(…)` ;
+* **l'amorçage** — `bootstrap_normative_administrator(…)`, une seule fois, un
+  index d'unicité y veille.
+
+Il n'est membre d'**aucun** rôle d'autorité, et les prérequis de la phase 1
+refusent l'installation s'il le devenait. Ouvrir la chaîne et forger une preuve
+restent deux pouvoirs distincts.
+
+## 2. Ce que l'exploitant provisionne, avant la commande
+
+```sql
+-- les deux acteurs, NON superutilisateurs et DISTINCTS
+CREATE ROLE migrateur LOGIN PASSWORD '…' CREATEROLE CREATEDB;
+CREATE ROLE plan      LOGIN PASSWORD '…' CREATEROLE;
+
+CREATE DATABASE base OWNER migrateur;
+
+\connect base
+GRANT CREATE ON DATABASE base TO migrateur;
+GRANT USAGE  ON SCHEMA auth   TO migrateur WITH GRANT OPTION;
+GRANT SELECT, INSERT, REFERENCES ON auth.users TO migrateur WITH GRANT OPTION;
+GRANT EXECUTE ON FUNCTION auth.uid()           TO migrateur WITH GRANT OPTION;
+
+GRANT CREATE ON SCHEMA public TO plan WITH GRANT OPTION;
+GRANT USAGE  ON SCHEMA auth   TO plan;
+
+-- les déclarations que la finalisation figera
+ALTER DATABASE base SET eurostruct.approved_deployment_roles = 'migrateur,plan';
+ALTER DATABASE base SET eurostruct.token_roles               = 'authenticated,anon';
+-- si un rôle connectable doit atteindre un rôle de service (cas Supabase) :
+ALTER DATABASE base SET eurostruct.approved_service_logins   = 'authenticator';
+```
+
+Puis, **après le premier appel de la commande** — `eurostruct_deployment`
+n'existe pas avant la phase 0 :
+
+```sql
+GRANT eurostruct_deployment TO plan WITH INHERIT TRUE;
+```
+
+### Les cinq droits du plan de contrôle, et leur raison
+
+| Droit | Pourquoi |
+|---|---|
+| `CREATE` sur la base | il y crée les tables de confiance |
+| `CREATE` sur `public` **`WITH GRANT OPTION`** | il doit **retransmettre** ce droit à `eurostruct_normative_activator`, qui devient propriétaire de ces objets — PostgreSQL l'exige du nouveau propriétaire |
+| `USAGE` sur `auth` | les fonctions scellées le référencent |
+| `CREATEROLE` | il crée les six rôles canoniques, s'ils n'existent pas déjà |
+| `eurostruct_deployment` (**après** la phase 0) | c'est ce rôle qui porte la phase 2 |
+
+## 3. Les trois phases, et qui exerce quoi
+
+| Phase | Ce qui est appliqué | Par | Résultat |
+|---|---|---|---|
+| **0** | `db/control_plane/0001_normative_seal.sql` | **plan de contrôle** | les six rôles canoniques, la racine de confiance (cinq tables possédées par `eurostruct_normative_activator`, RLS **forcée**), et l'identité du sceau |
+| **1** | `db/migrations/*.sql` | **migrateur** | le schéma applicatif ; se termine en `PENDING` |
+| **2** | `normative_finalize_deployment(<manifeste>)` | **plan de contrôle** | manifeste comparé, emprunts **révoqués**, activation inscrite → `ACTIVE` |
+
+`db/migrations/` ne contient **que** ce que le migrateur applique. Aucun outil
+n'a à y faire d'exception : la frontière est celle des répertoires.
 
 ### Pourquoi deux rôles, et pas un
 
 PostgreSQL n'accepte `ALTER FUNCTION … OWNER TO r` que si le rôle courant peut
-faire `SET ROLE r`. La phase 1 doit donc pouvoir **endosser** les rôles dont
-elle rend ses fonctions propriétaires. Tant que la racine de confiance
-appartenait à un rôle emprunté par le migrateur, elle était **à sa portée** :
-un `SET ROLE` puis un `insert` suffisaient à rendre l'état `ACTIVE` sans
-finalisation. C'est mesuré, et c'est la raison d'être de la phase 0.
+faire `SET ROLE r`. La phase 1 doit donc **endosser** les rôles dont elle rend
+ses fonctions propriétaires. Tant que la racine de confiance appartenait à un
+rôle emprunté par le migrateur, elle était **à sa portée** — mesuré : un
+`SET ROLE eurostruct_normative_activator` puis un `INSERT` suffisaient à rendre
+l'état `ACTIVE` sans finalisation, sans manifeste, sans restitution.
 
 Un déploiement où **un seul** rôle privilégié existe s'installe (phase 1) mais
 **ne se finalise pas** : la phase 2 refuse en nommant la séparation manquante.
 Ce n'est pas une dégradation silencieuse, c'est un refus.
 
-Voir `docs/schema/MODELE_DE_MENACE_NORMATIF.md`.
+### Qui accorde les emprunts, qui les révoque, et quand
 
-### Ce que le plan de contrôle doit détenir
+C'est le point que ce document énonçait de deux façons contradictoires.
 
-En plus d'être un rôle **distinct** du migrateur et **non superutilisateur** :
+| Geste | Par | Quand |
+|---|---|---|
+| `GRANT eurostruct_normative_writer, …_bootstrap TO migrateur WITH ADMIN OPTION` | **plan de contrôle** (étape 3 de la commande) | après la phase 0, avant la phase 1 |
+| révocation de ces deux appartenances | **plan de contrôle**, à l'intérieur de `normative_finalize_deployment()` | phase 2 |
 
-| Droit | Pourquoi |
-|---|---|
-| `CREATE` sur la base | il y crée les tables de confiance |
-| `CREATE` sur le schéma `public` **`WITH GRANT OPTION`** | il doit **retransmettre** ce droit à `eurostruct_normative_activator`, qui devient propriétaire de ces objets — PostgreSQL l'exige du nouveau propriétaire |
-| `USAGE` sur le schéma `auth` | les fonctions scellées le référencent |
-| `CREATEROLE` | il crée les six rôles canoniques |
-| `eurostruct_deployment` (accordé **après** la phase 0) | c'est ce rôle qui porte `EXECUTE` sur la finalisation |
+**La phase 1 ne rend rien.** Elle emprunte, elle s'en sert, elle laisse la base
+en `PENDING` — emprunts encore détenus. C'est la **phase 2** qui les révoque,
+constate que la révocation a pris, et n'inscrit l'activation qu'ensuite. Toute
+exception annule l'ensemble : il n'existe pas d'état intermédiaire où les
+emprunts seraient rendus sans que l'activation soit inscrite, ni l'inverse.
 
-Il conserve, après la phase 0, un **ADMIN résiduel** irrévocable sur les rôles
-qu'il a créés — fait `F1` de PostgreSQL 16. C'est la seule exemption du modèle,
-et elle est figée à l'installation par **OID et par nom**.
+Pourquoi le plan de contrôle et pas un autre : PostgreSQL n'accorde d'effet à
+un `REVOKE` d'appartenance que s'il est exercé par le **donneur** de l'octroi.
+Un `REVOKE` par un tiers, même détenteur de l'`ADMIN OPTION`, émet un simple
+*warning* et ne retire rien.
 
-### Si le plan de contrôle est un superutilisateur
+`eurostruct_normative_activator` n'est **jamais** prêté : il possède la racine.
 
-C'est légitime — forme auto-hébergée — mais la phase 0 émet alors un `notice`
-explicite : le sceau est posé, il ne contient pas celui qui l'a posé, et aucun
-sceau ne le peut. `pg_has_role(superutilisateur, …, 'SET')` rend `true` quoi
-qu'il arrive. Le superutilisateur est **hors modèle de menace**.
+### Le poseur du sceau est celui qui finalise
 
-## 1. Ce qui est vérifié, et ce qui ne l'est pas
+Le sceau enregistre qui l'a posé — OID **et** nom. La finalisation exige la
+même identité et refuse par `SEAL_INSTALLER_MISMATCH` sinon. Le plan de
+contrôle d'une base est celui qui a posé sa racine : il ne se transfère pas par
+un `GRANT`. Aucune procédure de délégation n'existe à ce jour ; si elle est
+voulue, ce devra être un événement explicite et audité.
 
-La distinction est la raison d'être de ce document.
+**Exception mesurée** : un sceau posé par un **superutilisateur** ne porte pas
+cette liaison. PostgreSQL enregistre les octrois d'un superutilisateur au nom
+du superutilisateur *d'amorçage* (`postgres`, oid 10), jamais du rôle qui les a
+exécutés — le donneur dérivé n'est donc jamais le poseur. La garantie n'est pas
+perdue pour autant : elle n'existait pas, un superutilisateur endossant qui il
+veut de toute façon. La base le **dit**, voir §4.
 
-| Question | État |
-|---|---|
-| Les migrations s'appliquent sous un rôle **non superutilisateur** | **Vérifié** en CI |
-| Le rôle de migration n'a **ni `SUPERUSER` ni `BYPASSRLS`** | **Vérifié** en CI |
-| La RLS s'applique réellement (pas contournée par un superutilisateur) | **Vérifié** en CI |
-| Amorçage, octroi, confirmation, révocation sous les rôles réels | **Vérifié** en CI |
-| Compatibilité **Supabase** | **NON vérifié** |
+## 4. Niveau d'assurance : deux formes, et elles ne s'équivalent pas
+
+La phase 0 inscrit dans `normative_seal_metadata` un niveau que la readiness
+relit — il ne vit pas seulement dans une sortie console.
+
+| Niveau | Quand | Ce que ça vaut |
+|---|---|---|
+| `CONTAINED_NON_SUPERUSER` | phase 0 posée par un rôle non superutilisateur | la forme qui obtient les garanties du modèle de menace |
+| `UNCONTAINED_SUPERUSER` | phase 0 posée par un superutilisateur (ou depuis une session superutilisateur) | déploiement **auto-hébergé, explicitement dégradé** |
+
+`tools/deploy_eurostruct.sh` **refuse** `UNCONTAINED_SUPERUSER` par défaut.
+`--auto-heberge` l'accepte, et l'annonce. Il ne doit jamais être présenté comme
+offrant la même assurance.
+
+```sql
+SELECT * FROM normative_deployment_readiness();
+--  etat | sceau | assurance | plan_de_controle | topologie | motif
+```
+
+## 5. Faire évoluer le sceau
+
+Le sceau porte une version — `esc-normative-seal/1` — inscrite à
+l'installation. La phase 1 exige une version d'une **liste explicite et
+fermée** : une comparaison « supérieure ou égale » accepterait par construction
+toutes les versions futures, c'est-à-dire celles dont on ne sait rien.
+
+Réappliquer le fichier du sceau a une sémantique décidée, portée par des
+SQLSTATE dédiés pour qu'un orchestrateur branche sur le **code** et jamais sur
+le texte :
+
+| Situation | Résultat | SQLSTATE |
+|---|---|---|
+| aucun objet de la racine | installation | — |
+| racine complète, **même** version | `SEAL_ALREADY_INSTALLED`, **aucune mutation** | `ES001` |
+| racine complète, **autre** version | `SEAL_VERSION_MISMATCH` | `ES002` |
+| racine **incomplète** | `SEAL_PARTIAL`, fail-closed | `ES003` |
+
+Une racine à moitié posée ne se répare pas en relançant : on ne saurait plus
+quelle version elle porte. Repartez d'une base neuve.
+
+**Une future version** sera un fichier `db/control_plane/000N_….sql` appliqué
+par le **poseur enregistré** — lui seul détient l'`ADMIN` résiduel sur
+l'activateur, donc la seule capacité de le ré-emprunter — et ajoutera sa ligne
+à `normative_seal_metadata`, qui est append-only : la version 1 reste inscrite,
+la version 2 s'ajoute, la dernière fait foi. `normative_seal_assurance()` rend
+en revanche le niveau de la **première** génération : une mise à niveau ne lave
+pas une installation superutilisateur.
+
+## 6. Restauration inter-cluster : non prise en charge
+
+Un `pg_dump`/restore vers un autre cluster recrée les rôles avec de **nouveaux
+OID**. L'identité figée du plan de contrôle porte l'ancien : la topologie
+refuse, en diagnostiquant `RESTAURATION INTER-CLUSTER`.
+
+**Ce refus est définitif pour cette base.** Il n'existe aucune procédure de
+reprise. Exercé sur une restauration réelle entre deux clusters
+(`db/test/cross_cluster_restore.sh`), le seul geste que le diagnostic pouvait
+suggérer rend `MANIFEST_MISMATCH`, et vider la table d'activation est refusé
+même au **propriétaire** de la base restaurée.
+
+Le chemin supporté vers un autre cluster est un **déploiement neuf** — phases
+0, 1 et 2 sur le cluster cible — suivi d'une reprise des données métier. Cette
+procédure de reprise **n'existe pas encore** : tant qu'elle n'existe pas,
+migrer une base EUROSTRUCT en service vers un autre cluster est un **blocage de
+mise en production**.
+
+L'OID n'est délibérément pas réinscriptible : le rendre modifiable « pour
+réparer une restauration » rouvrirait exactement la substitution que 6.3b6b a
+fermée.
+
+## 7. Ce qui est vérifié, et où
+
+| Question | Établi par | Sur quoi |
+|---|---|---|
+| Les trois phases s'enchaînent sous deux rôles non superutilisateurs | `nonsuperuser_install.sh`, `two_phase_deployment.sh` | **PostgreSQL 16 local / CI** |
+| Le migrateur ne peut ni produire `ACTIVE`, ni effacer une preuve | `authority_closure.sh` | **PostgreSQL 16 local / CI** |
+| La phase 2 ne se contourne pas | `finalisation_contract.sh` | **PostgreSQL 16 local / CI** |
+| Le sceau est séparé, versionné, réexécutable ; le poseur finalise | `seal_contract.sh` | **PostgreSQL 16 local / CI** |
+| La commande officielle tient ses postconditions | `official_deployment.sh` | **PostgreSQL 16 local / CI** |
+| La restauration inter-cluster échoue fail-closed | `cross_cluster_restore.sh` (second cluster réel, `initdb`) | **PostgreSQL 16 local / CI** |
+| Prérequis topologiques sur les rôles | `role_prerequisites.sh` | **PostgreSQL 16 local / CI** |
+| **Compatibilité Supabase** | — | **NON VALIDÉ** |
+
+La colonne de droite est le sujet de ce tableau. Tout ce qui précède est
+**testé sur PostgreSQL 16**, en local et en CI. Rien n'est **validé sur un
+staging Supabase**, et les deux ne sont pas la même chose.
 
 ### Pourquoi la compatibilité Supabase n'est pas acquise
 
-`db/test/nonsuperuser_install.sh` reproduit le **modèle de privilèges** de
-Supabase — rôle de migration avec `CREATEROLE` et `CREATEDB` mais sans
-`SUPERUSER`, schéma `auth` qui ne lui appartient pas, rôles applicatifs
-`NOLOGIN` endossés par un rôle connectable — sur un PostgreSQL 16 ordinaire.
+`nonsuperuser_install.sh` reproduit le **modèle de privilèges** de Supabase —
+rôle de migration avec `CREATEROLE` et `CREATEDB` mais sans `SUPERUSER`, schéma
+`auth` qui ne lui appartient pas, rôles applicatifs `NOLOGIN` endossés par un
+rôle connectable — sur un PostgreSQL 16 ordinaire.
 
 Il ne reproduit **pas** : les extensions préinstallées de Supabase, ses
 politiques par défaut, PgBouncer, ses *event triggers*, ni le contenu réel de
@@ -84,133 +281,72 @@ Une exécution en CI, même sous un rôle non superutilisateur, ne peut donc pas
 **instance de staging réelle**, et pas avant. Jusque-là, la mention
 « compatible Supabase » ne doit apparaître nulle part.
 
-## 2. Les prérequis, et l'obstacle qui les a révélés
+## 8. Prérequis rencontrés, et l'obstacle qui les a révélés
 
-Chacun de ces points a fait **échouer** la migration sous un rôle non
+Chacun de ces points a fait **échouer** un déploiement sous un rôle non
 superutilisateur. Aucun n'était visible en CI superutilisateur.
 
-### 2.1 `REFERENCES` sur `auth.users`
+### 8.1 `REFERENCES` sur `auth.users`
 
 Le schéma déclare des clés étrangères vers `auth.users`. PostgreSQL exige
 `REFERENCES`, et non `SELECT`, pour en créer une.
 
-```sql
-GRANT USAGE ON SCHEMA auth TO <migrateur>;
-GRANT SELECT, REFERENCES ON auth.users TO <migrateur>;
-```
+### 8.2 `GRANT OPTION` sur les objets de `auth`
 
-### 2.2 `GRANT OPTION` sur les objets de `auth`
+La phase 1 **retransmet** l'accès à `auth` aux rôles d'autorité. Sans
+`GRANT OPTION`, PostgreSQL **n'échoue pas** : il émet un *warning* et n'accorde
+rien. La chaîne casse alors bien plus tard, à la première confirmation, sur un
+`permission denied for schema auth` que rien ne relie à sa cause. La phase 1
+vérifie désormais le résultat de ses propres `GRANT` et refuse.
 
-La migration **retransmet** l'accès à `auth` aux rôles d'autorité. Sans
-`GRANT OPTION`, PostgreSQL **n'échoue pas** : il émet un simple *warning* et
-n'accorde rien. La chaîne casse alors bien plus tard, à la première
-confirmation, sur un `permission denied for schema auth` que rien ne relie à sa
-cause.
-
-La migration vérifie désormais le résultat de ses propres `GRANT` et refuse si
-la retransmission n'a pas eu lieu.
-
-```sql
-GRANT USAGE ON SCHEMA auth TO <migrateur> WITH GRANT OPTION;
-GRANT SELECT ON auth.users TO <migrateur> WITH GRANT OPTION;
-GRANT EXECUTE ON FUNCTION auth.uid() TO <migrateur> WITH GRANT OPTION;
-```
-
-### 2.3 `ADMIN OPTION` sur les rôles d'autorité, s'ils préexistent
-
-`ALTER FUNCTION … OWNER TO r` exige d'être **membre** de `r`. La migration
-emprunte donc temporairement l'appartenance aux deux rôles d'autorité, puis la
-**rend** avant la fin du fichier — et vérifie qu'elle l'a rendue.
-
-Si la migration crée elle-même ces rôles, PostgreSQL 16 lui donne l'`ADMIN
-OPTION` automatiquement et il n'y a rien à faire. S'ils **préexistent**, créés
-par un tiers, le déploiement doit l'accorder :
-
-```sql
-GRANT eurostruct_normative_writer     TO <migrateur> WITH ADMIN OPTION;
-GRANT eurostruct_normative_bootstrap  TO <migrateur> WITH ADMIN OPTION;
-```
-
-> **À retirer après la migration.** La migration ne rend que ce qu'elle a
-> emprunté : une appartenance accordée par le déploiement n'est pas retirée par
-> elle, et sa dernière étape émet un `WARNING` le rappelant. Tant que le
-> migrateur reste membre, `current_user` cesse d'être une preuve d'origine.
->
-> ```sql
-> REVOKE eurostruct_normative_writer, eurostruct_normative_bootstrap
->   FROM <migrateur>;
-> ```
-
-### 2.4 `CREATE` sur le schéma `public`
+### 8.3 `CREATE` sur le schéma `public`
 
 Depuis PostgreSQL 15, `public` n'accorde plus `CREATE` à `PUBLIC`. Or le
 **nouveau propriétaire** d'une fonction doit avoir `CREATE` sur le schéma qui
-la contient. La migration accorde donc ce droit aux rôles d'autorité
-elle-même — ils sont `NOLOGIN` et sans aucun membre, personne ne peut s'en
-servir.
+la contient. C'est la raison du `WITH GRANT OPTION` exigé du plan de contrôle :
+il doit pouvoir retransmettre ce droit à l'activateur. Les droits sont retirés
+en fin de phase.
 
-Rien à faire côté déploiement ; le point est documenté parce que l'octroi est
-visible dans la migration et pourrait surprendre.
-
-### 2.5 `COMMENT ON ROLE` retiré
+### 8.4 `COMMENT ON ROLE` retiré
 
 Commenter un rôle exige l'`ADMIN OPTION`. La migration échouait donc sur une
 ligne de **documentation**. Les rôles sont par ailleurs des objets de
 **cluster** : les commenter depuis une migration de base écrirait dans un
 espace partagé par toutes les bases de l'instance.
 
-## 3. Le rôle de déploiement
+### 8.5 Rôles de service : déclarations attendues
 
-L'amorçage n'est pas exécutable par un rôle applicatif. Il est réservé à un
-rôle **nommé**, auquel le déploiement rattache son rôle de migration :
-
-```sql
-GRANT eurostruct_deployment TO <migrateur>;
-```
-
-`eurostruct_deployment` reçoit `EXECUTE` sur
-`bootstrap_normative_administrator()` et **rien d'autre**. Il n'est membre
-d'aucun rôle d'autorité, et les prérequis de la migration refusent l'installation
-s'il le devenait. Il peut donc **ouvrir** la chaîne de confiance — une fois, un
-index d'unicité y veille — sans pouvoir fabriquer une trace normative ni
-emprunter la branche `bootstrap` d'une insertion brute.
-
-Ouvrir la chaîne et forger une preuve restent deux pouvoirs distincts.
-
-## 4. Rôles de service : déclarations attendues
-
-La migration refuse **par défaut** qu'un rôle connectable atteigne
+La phase 1 refuse **par défaut** qu'un rôle connectable atteigne
 `normative_backend` ou `normative_governance`. C'est le chemin normal d'un
-déploiement Supabase (`authenticator` endosse `service_role`), il doit donc être
-**déclaré** :
-
-```sql
-ALTER DATABASE <base> SET eurostruct.approved_service_logins = 'authenticator';
-```
-
-Une déclaration absente refuse ; elle n'est jamais déduite.
+déploiement Supabase, il doit donc être **déclaré**
+(`eurostruct.approved_service_logins`). Une déclaration absente refuse ; elle
+n'est jamais déduite.
 
 Deux refus n'ont en revanche **aucun recours** :
 
 - un rôle **privilégié** (`BYPASSRLS`, `CREATEROLE`, `CREATEDB`) qui atteint un
   rôle de service — il contourne déjà la RLS ;
 - un rôle **porteur de jeton** qui l'atteint. Quels rôles un JWT endosse n'est
-  pas dérivable du catalogue : c'est une convention de déploiement, déclarée par
-  `eurostruct.token_roles` (défaut `authenticated,anon`).
+  pas dérivable du catalogue : c'est une convention de déploiement, déclarée
+  par `eurostruct.token_roles` (défaut `authenticated,anon`).
 
-## 5. Modèle de menace
+## 9. Modèle de menace
 
-Ces garanties visent les **rôles applicatifs**. Un superutilisateur PostgreSQL
-peut désactiver les déclencheurs, changer le propriétaire d'une fonction et
-écrire dans les catalogues : ce n'est pas un adversaire que la base peut
-contenir, et prétendre le contraire donnerait une fausse assurance.
+Voir `docs/schema/MODELE_DE_MENACE_NORMATIF.md`. En résumé : le migrateur est
+fiable pour appliquer un schéma et pour rien d'autre ; le superutilisateur est
+**hors modèle**.
 
-## 6. Reste à faire avant toute mise en production
+## 10. Reste à faire avant toute mise en production
 
 - [ ] Exécuter `nonsuperuser_install.sh` contre une **instance Supabase de
       staging**, et consigner le résultat ici.
 - [ ] Vérifier le comportement derrière **PgBouncer** en mode transaction : les
       verrous consultatifs de session et `SET LOCAL ROLE` s'y comportent
       différemment.
-- [ ] Confirmer que le schéma `auth` réel de Supabase expose bien
-      `auth.uid()` et `auth.users` avec les droits supposés ici.
+- [ ] Confirmer que le schéma `auth` réel de Supabase expose bien `auth.uid()`
+      et `auth.users` avec les droits supposés ici.
+- [ ] Écrire et exercer la **reprise des données métier** vers un déploiement
+      neuf (§6). Sans elle, aucune migration inter-cluster n'est possible.
+- [ ] Décider si un cluster doit pouvoir porter **plusieurs bases EUROSTRUCT
+      avec des plans de contrôle distincts** (§1) ; si oui, préfixer les six
+      rôles canoniques par base.

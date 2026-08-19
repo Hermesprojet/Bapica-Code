@@ -1160,8 +1160,31 @@ begin
         --
         -- LE REFUS EST LE COMPORTEMENT ATTENDU, et il est fail-closed: une
         -- base restauree ailleurs n'a pas herite de l'approbation qui avait
-        -- eu lieu sur le cluster d'origine. Elle doit etre refinalisee la, par
-        -- son propre plan de controle.
+        -- eu lieu sur le cluster d'origine.
+        --
+        -- LE DIAGNOSTIC NE PROMET PLUS DE REPRISE (6.3b6d, point 6). Il disait
+        -- « cette base doit etre refinalisee sur place par son propre plan de
+        -- controle ». CETTE OPERATION N'EXISTE PAS, et ne peut pas exister
+        -- sans rouvrir ce que la racine ferme:
+        --
+        --   * `normative_control_plane` est un singleton IMMUABLE;
+        --   * `normative_activation` est APPEND-ONLY;
+        --   * `normative_record_activation()` refuse des que l'etat est ACTIVE;
+        --   * aucun role ne peut endosser l'activateur apres la phase 0.
+        --
+        -- Mesure sur une restauration reelle entre deux clusters
+        -- (db/test/cross_cluster_restore.sh): la consigne executee rend
+        -- MANIFEST_MISMATCH, et vider la table d'activation est refuse meme au
+        -- PROPRIETAIRE de la base restauree. Un refus fail-closed qui envoie
+        -- l'exploitant executer une procedure inexistante ne protege pas mieux
+        -- qu'un refus muet: il fait perdre du temps et suggere une issue.
+        --
+        -- LA RESTAURATION INTER-CLUSTER N'EST DONC PAS PRISE EN CHARGE. La
+        -- base restauree reste fail-closed, definitivement. Le chemin supporte
+        -- vers un autre cluster est un DEPLOIEMENT NEUF — phases 0, 1 et 2 —
+        -- suivi d'une reprise des donnees metier; il ne transporte pas
+        -- l'approbation, parce qu'une approbation vaut pour le cluster ou elle
+        -- a eu lieu.
         --
         -- L'OID N'EST DELIBEREMENT PAS REINSCRIPTIBLE. Le rendre modifiable
         -- « pour reparer une restauration » rouvrirait exactement la
@@ -1174,9 +1197,12 @@ begin
           'pas celui qui a ete approuve: l''exemption d''ADMIN residuel ne '
           'peut pas lui etre transmise avec l''etiquette. '
           'CAS COURANT: RESTAURATION INTER-CLUSTER — les OID ne survivent pas '
-          'a un pg_dump/restore vers un autre cluster. Cette base doit etre '
-          'refinalisee sur place par son propre plan de controle; l''OID fige '
-          'n''est pas reinscriptible, et ne doit pas l''etre.',
+          'a un pg_dump/restore vers un autre cluster. Cette restauration '
+          'N''EST PAS PRISE EN CHARGE: la base reste fail-closed, et il '
+          'n''existe aucune procedure pour la reprendre en l''etat. Deployez '
+          'une base NEUVE sur ce cluster (phases 0, 1, 2) et reprenez-y les '
+          'donnees metier. L''OID fige n''est pas reinscriptible, et ne doit '
+          'pas l''etre.',
           plan_oid, plan_nom using errcode = 'insufficient_privilege';
       end if;
       -- PUIS LE NOM, AU MEME OID. Un renommage laisserait l'audit designer un
