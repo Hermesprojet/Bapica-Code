@@ -3,6 +3,7 @@
 # EUROSTRUCT — LA COMMANDE OFFICIELLE DE DEPLOIEMENT
 #
 #   tools/deploy_eurostruct.sh [--auto-heberge] [--dry-run]
+#   tools/deploy_eurostruct.sh --recover-pending
 #
 # CE QUE CE FICHIER EXISTE POUR REMPLACER
 # ----------------------------------------
@@ -84,16 +85,19 @@ fi
 
 STRICT=1
 DRY_RUN=0
+RECOVER=0
 for arg in "$@"; do
   case "$arg" in
-    --auto-heberge) STRICT=0 ;;
-    --dry-run)      DRY_RUN=1 ;;
+    --auto-heberge)   STRICT=0 ;;
+    --dry-run)        DRY_RUN=1 ;;
+    --recover-pending) RECOVER=1 ;;
     -h|--help)
       sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *)
       echo "REFUS: option inconnue « $arg »." >&2
       echo "       Usage: deploy_eurostruct.sh [--auto-heberge] [--dry-run]" >&2
+      echo "                                 [--recover-pending]" >&2
       exit 2 ;;
   esac
 done
@@ -481,6 +485,68 @@ EOF
 fi
 VERROU_TENU=1
 
+# LE PID DU BACKEND QUI PORTE LE VERROU. `VERROU_TENU=1` est une variable de ce
+# shell: elle dit qu'on a REUSSI a prendre le verrou, jamais qu'on le detient
+# ENCORE. Une session peut etre terminee par `pg_terminate_backend`, coupee par
+# un pooler, ou perdue avec le serveur. C'est ce PID, confronte a `pg_locks`,
+# qui repond a la seule question qui compte avant chaque etape mutante: le
+# verrou est-il tenu MAINTENANT, par NOUS ?
+VERROU_BACKEND=""
+echo "select pg_backend_pid();" >&"${VERROU[1]}"
+if ! read -r -t 30 -u "${VERROU[0]}" VERROU_BACKEND \
+   || ! [[ "$VERROU_BACKEND" =~ ^[0-9]+$ ]]; then
+  echec "la session du verrou de deploiement n'a pas pu etre identifiee."
+fi
+
+# `exiger_verrou <etape>` — LE VERROU EST-IL TENU, MAINTENANT, PAR NOUS ?
+#
+# `pg_try_advisory_lock(bigint, bigint)` decompose la cle en `classid` (32 bits
+# de poids fort) et `objid` (32 bits de poids faible), avec `objsubid = 2` pour
+# la forme a deux arguments.
+#
+# LA QUESTION EST POSEE PAR UNE AUTRE CONNEXION que celle du verrou, et c'est
+# necessaire: si la session du verrou est morte, elle ne peut evidemment pas
+# repondre. Une reponse illisible vaut refus — on ne poursuit pas une etape
+# mutante sur une exclusion qu'on ne peut pas constater.
+exiger_verrou() {
+  local quoi="$1" tenu
+  tenu=$(plan -tA -v ON_ERROR_STOP=1 -v p="$VERROU_BACKEND" 2>/dev/null <<'SQL'
+select count(*) from pg_locks
+ where locktype = 'advisory' and granted
+   and pid = (:'p')::int
+   -- LA FORME A DEUX ARGUMENTS RANGE LES DEUX CLES SEPAREMENT: `classid` porte
+   -- la premiere, `objid` la seconde, et `objsubid` vaut 2. (La forme a un seul
+   -- `bigint` decoupe au contraire la cle en deux moities, avec objsubid = 1.)
+   -- Les recomposer en un entier de 64 bits etait faux: `hashtext` rend un
+   -- `int4` qui peut etre NEGATIF, alors que `classid` et `objid` sont des
+   -- `oid`, donc non signes.
+   and objsubid = 2
+   and classid = (hashtext('eurostruct.deploiement')::bigint & 4294967295)::oid
+   and objid   = (hashtext(current_database())::bigint & 4294967295)::oid;
+SQL
+  )
+  [[ "$tenu" == "1" ]] && return 0
+  cat >&2 <<EOF
+DEPLOYMENT_LOCK_LOST: le verrou de deploiement n'est plus detenu par cette
+       commande, constate avant « $quoi ».
+
+       La session qui le portait (backend $VERROU_BACKEND) a disparu, ou le
+       verrou a ete relache: terminaison du backend, redemarrage du serveur, ou
+       PgBouncer en transaction pooling — ou la session serveur change a chaque
+       transaction. Reponse obtenue: « ${tenu:-<aucune>} ».
+
+       UNE AUTRE COMMANDE PEUT DONC DEJA TRAVAILLER SUR CETTE BASE. Celle-ci
+       s'arrete avant « $quoi » et reprend les emprunts qu'elle a accordes.
+EOF
+  VERROU_TENU=0
+  return 1
+}
+
+# `etape_mutante <libelle>` — le verrou est reverifie AVANT chacune. Sortie 8.
+etape_mutante() {
+  exiger_verrou "$1" || exit 8
+}
+
 # --------------------------------------------------------------------------
 # LA COMPENSATION — ce que la commande reprend si elle n'aboutit pas
 # --------------------------------------------------------------------------
@@ -501,8 +567,21 @@ EMPRUNTS_ACCORDES=0
 FINALISE=0
 NETTOYAGE_ECHOUE=0
 
+# `capacites_du_migrateur` — pose `CAPACITES` et rend 0 SI LA QUESTION A PU
+# ETRE POSEE, 1 sinon. La distinction est tout le sujet.
+#
+# UNE CHAINE VIDE NE PROUVE PAS UNE ABSENCE. La premiere ecriture rendait la
+# sortie de `psql` sous `2>/dev/null`: une connexion tombee produisait la meme
+# chaine vide qu'un migrateur sans aucune capacite, et la compensation
+# annoncait « aucune capacite residuelle » au moment precis ou elle n'avait
+# rien pu reprendre. Contre-exemple mesure: db/test/deploy_recovery.sh, Q7.
+#
+# `coalesce(..., '')` garantit UNE ligne, meme vide: c'est donc le CODE DE
+# SORTIE de psql, et lui seul, qui dit si la reponse est une reponse.
+CAPACITES=""
 capacites_du_migrateur() {
-  plan -tA -v m="$MIG_USER" 2>/dev/null <<'SQL'
+  local sortie code
+  sortie=$(plan -tA -v ON_ERROR_STOP=1 -v m="$MIG_USER" 2>/dev/null <<'SQL'
 select coalesce(string_agg(a.r || '(' ||
     case when pg_has_role(:'m', a.r, 'SET') then 'SET ' else '' end ||
     case when pg_has_role(:'m', a.r, 'USAGE') then 'USAGE ' else '' end ||
@@ -515,30 +594,63 @@ select coalesce(string_agg(a.r || '(' ||
     or pg_has_role(:'m', a.r, 'USAGE')
     or pg_has_role(:'m', a.r, 'MEMBER WITH ADMIN OPTION');
 SQL
+  ); code=$?
+  CAPACITES=""
+  [[ $code -ne 0 ]] && return 1
+  CAPACITES="$sortie"
+  return 0
 }
 
+# Rend 0 si le `REVOKE` a ete execute sans erreur, 1 sinon. LE STATUT ETAIT
+# IGNORE: la fonction rendait la sortie de la verification, et l'appelant ne
+# pouvait pas distinguer « revoque » de « meme pas tente ».
 revoquer_les_emprunts() {
   plan -v ON_ERROR_STOP=1 -v m="$MIG_USER" >/dev/null 2>&1 <<'SQL'
 revoke eurostruct_normative_writer    from :"m";
 revoke eurostruct_normative_bootstrap from :"m";
 SQL
-  capacites_du_migrateur
 }
 
+# TROIS ETATS, ET NON DEUX. « Il ne reste rien » et « je n'ai pas pu regarder »
+# ne sont pas le meme fait, et les confondre a produit l'annonce d'une base
+# propre alors que le migrateur detenait encore les deux roles d'autorite (Q7).
+#
+#   revoque ET zero capacite constate  -> tout va bien;
+#   capacites constatees residuelles   -> DEPLOYMENT_CLEANUP_FAILED, sortie 5;
+#   verification impossible            -> DEPLOYMENT_CLEANUP_UNVERIFIED, sortie 7.
+#
+# Le troisieme n'est pas moins grave que le second: il est seulement moins su.
 sortie_compensee() {
   local code=$?
-  local reste
+  local revoque
   trap - EXIT
   if [[ $EMPRUNTS_ACCORDES -eq 1 && $FINALISE -eq 0 ]]; then
     echo
     echo "== compensation — les emprunts accordes a l'etape 3 sont repris"
-    reste=$(revoquer_les_emprunts)
-    if [[ -n "$reste" ]]; then
-      NETTOYAGE_ECHOUE=1
+    revoquer_les_emprunts; revoque=$?
+    if ! capacites_du_migrateur; then
+      NETTOYAGE_ECHOUE=7
+      cat >&2 <<EOF
+DEPLOYMENT_CLEANUP_UNVERIFIED: l'etat des emprunts n'a PAS pu etre constate.
+
+       Le REVOKE a $( ((revoque == 0)) && echo "ete accepte" || echo "echoue" ), et la verification qui devait
+       le confirmer n'a obtenu aucune reponse — connexion perdue, droit retire,
+       serveur arrete. ON NE SAIT DONC PAS ce que « $MIG_USER » detient.
+
+       Ne pas savoir n'est pas mieux que savoir que ca s'est mal passe.
+       N'EXPLOITEZ PAS CETTE BASE avant d'avoir verifie a la main, depuis un
+       role administrateur:
+
+           SELECT pg_has_role('<migrateur>', 'eurostruct_normative_writer', 'USAGE');
+           REVOKE eurostruct_normative_writer, eurostruct_normative_bootstrap
+             FROM <migrateur>;
+EOF
+    elif [[ -n "$CAPACITES" ]]; then
+      NETTOYAGE_ECHOUE=5
       cat >&2 <<EOF
 DEPLOYMENT_CLEANUP_FAILED: les emprunts n'ont PAS pu etre repris.
 
-       « $MIG_USER » conserve: $reste
+       « $MIG_USER » conserve: $CAPACITES
 
        La base n'est pas finalisee ET le migrateur reste capable d'endosser ou
        de readministrer les roles d'autorite. N'EXPLOITEZ PAS CETTE BASE en
@@ -547,8 +659,14 @@ DEPLOYMENT_CLEANUP_FAILED: les emprunts n'ont PAS pu etre repris.
            REVOKE eurostruct_normative_writer, eurostruct_normative_bootstrap
              FROM <migrateur>;
 EOF
-    else
+    elif [[ $revoque -ne 0 ]]; then
+      # Le REVOKE a echoue et pourtant rien ne reste: quelqu'un d'autre est
+      # passe par la. C'est sur, et ca merite d'etre dit.
       echo "   ok: aucune capacite residuelle du migrateur"
+      echo "       (le REVOKE a echoue, mais le constat est sans appel:"
+      echo "        ces appartenances ont ete reprises par ailleurs)"
+    else
+      echo "   ok: aucune capacite residuelle du migrateur, revocation constatee"
     fi
   fi
   if [[ $VERROU_TENU -eq 1 && -n "${VERROU_PID:-}" ]]; then
@@ -564,7 +682,7 @@ EOF
     wait "$VERROU_PID" 2>/dev/null || true
     VERROU_TENU=0
   fi
-  [[ $NETTOYAGE_ECHOUE -eq 1 ]] && exit 5
+  [[ $NETTOYAGE_ECHOUE -ne 0 ]] && exit $NETTOYAGE_ECHOUE
   exit $code
 }
 trap sortie_compensee EXIT
@@ -731,6 +849,133 @@ else
     echec "etat de deploiement inattendu: « $DEJA »."
   fi
 
+# ==========================================================================
+# LA REPRISE EXPLICITE D'UN DEPLOIEMENT TUE — `--recover-pending`
+# ==========================================================================
+# CE QU'AUCUN PIEGE NE COUVRE. `TERM`, `INT` et `HUP` s'interceptent; `SIGKILL`,
+# un crash du shell, une panne machine ou un conteneur supprime ne declenchent
+# RIEN. La base reste alors PENDING avec les emprunts accordes, et aucun code
+# n'a jamais tourne pour les reprendre. Contre-exemple mesure: Q6.
+#
+# LA RELANCE ORDINAIRE NE DOIT PAS NETTOYER TOUTE SEULE, et c'est le point. La
+# precondition « le migrateur ne detient rien » la fait refuser — a raison: une
+# commande qui reprendrait des appartenances qu'elle n'a pas accordees
+# detruirait peut-etre un octroi qu'un tiers a pose pour une raison qu'on
+# ignore. La reprise est donc un GESTE EXPLICITE, jamais un effet de bord.
+#
+# ELLE NE REVOQUE QU'APRES AVOIR TOUT PROUVE. Huit conditions, et le refus est
+# le defaut: ce qui n'est pas etabli vaut non.
+if ((RECOVER)); then
+  etape "reprise explicite d'un deploiement interrompu (--recover-pending)"
+  exiger_verrou "la reprise" || exit 6
+
+  # LES SEPT AUTRES CONDITIONS, EN UNE SEULE LECTURE. Un `psql` par condition
+  # laisserait la base changer entre deux — et c'est precisement une reprise
+  # concurrente qu'on veut exclure.
+  VERDICT=$(plan -tA -F$'\t' -v ON_ERROR_STOP=1 -v m="$MIG_USER" 2>/dev/null <<'SQL'
+select 'ETAT',       normative_activation_state();
+select 'POSEUR',     installer_oid::text || '|' || installer_name
+  from normative_seal_metadata order by installed_at asc, seal_version asc limit 1;
+select 'MOI',        oid::text || '|' || rolname from pg_roles where rolname = current_user;
+-- Les appartenances DIRECTES du migrateur vers les deux roles pretables, avec
+-- leur donneur. On exige exactement deux lignes, toutes deux donnees par nous.
+select 'MEMBRE', r.rolname || '|' || g.rolname
+  from pg_auth_members am
+  join pg_roles r  on r.oid = am.roleid
+  join pg_roles mm on mm.oid = am.member
+  join pg_roles g  on g.oid = am.grantor
+ where mm.rolname = :'m'
+   and r.rolname in ('eurostruct_normative_writer',
+                     'eurostruct_normative_bootstrap',
+                     'eurostruct_normative_activator');
+-- LA VOIE INDIRECTE. `pg_has_role` est transitif: si le migrateur atteint un
+-- role d'autorite AUTREMENT que par ces deux octrois, les revoquer ne le
+-- ramenerait pas a zero, et la reprise mentirait sur son resultat.
+select 'ACTIVATEUR', case when pg_has_role(:'m', 'eurostruct_normative_activator', 'USAGE')
+                            or pg_has_role(:'m', 'eurostruct_normative_activator', 'SET')
+                            or pg_has_role(:'m', 'eurostruct_normative_activator',
+                                           'MEMBER WITH ADMIN OPTION')
+                       then 'oui' else 'non' end;
+SQL
+  )
+  [[ -n "$VERDICT" ]] || echec "la reprise n'a pas pu constater l'etat de la base."
+
+  R_ETAT=""; R_POSEUR=""; R_MOI=""; R_ACTIVATEUR=""; R_MEMBRES=()
+  while IFS=$'\t' read -r cle val; do
+    case "$cle" in
+      ETAT)        R_ETAT="$val" ;;
+      POSEUR)      R_POSEUR="$val" ;;
+      MOI)         R_MOI="$val" ;;
+      MEMBRE)      R_MEMBRES+=("$val") ;;
+      ACTIVATEUR)  R_ACTIVATEUR="$val" ;;
+    esac
+  done <<<"$VERDICT"
+
+  refus_reprise() {
+    echo "DEPLOYMENT_RECOVERY_REFUSED: $*" >&2
+    echo >&2
+    echo "       La reprise ne revoque qu'apres avoir tout etabli. Rien n'a" >&2
+    echo "       ete modifie." >&2
+    exit 6
+  }
+
+  [[ "$R_ETAT" == "PENDING" ]] \
+    || refus_reprise "l'etat est « $R_ETAT » et non PENDING."
+  # « AUCUNE ACTIVATION » N'EST PAS UNE SECONDE QUESTION: c'est la meme.
+  # `normative_activation_state()` est, dans le sceau, exactement
+  # `exists (select 1 from normative_activation)`. PENDING signifie donc zero
+  # activation, et le compter separement ne prouverait rien de plus.
+  #
+  # Le compter DIRECTEMENT est d'ailleurs impossible ici, et c'est voulu:
+  # `normative_activation` est en RLS forcee et n'est lisible que par
+  # l'activateur et la gouvernance. Mesure: la requete echouait, `ON_ERROR_STOP`
+  # abandonnait le reste du lot, et la reprise refusait sur « la base porte
+  # <vide> activation(s) » — un refus juste, pour une raison fausse.
+  [[ "$R_POSEUR" == "$R_MOI" ]] \
+    || refus_reprise "le sceau a ete pose par « ${R_POSEUR#*|} » (oid ${R_POSEUR%%|*}),
+       et cette connexion est « ${R_MOI#*|} » (oid ${R_MOI%%|*}). Seul le poseur
+       du sceau reprend un deploiement de sa base — par OID ET par nom."
+  [[ "$R_ACTIVATEUR" == "non" ]] \
+    || refus_reprise "« $MIG_USER » atteint eurostruct_normative_activator. Ce role
+       n'est jamais prete par cette commande: sa presence signifie qu'un autre
+       chemin existe, et le revoquer sortirait de ce que nous avons accorde."
+
+  if [[ ${#R_MEMBRES[@]} -ne 2 ]]; then
+    refus_reprise "« $MIG_USER » porte ${#R_MEMBRES[@]} appartenance(s) directe(s) vers les
+       roles d'autorite, et un deploiement interrompu en laisse exactement deux
+       (writer et bootstrap). Constate: ${R_MEMBRES[*]:-aucune}"
+  fi
+  for m in "${R_MEMBRES[@]}"; do
+    [[ "${m#*|}" == "$PLAN_USER" ]] \
+      || refus_reprise "l'appartenance « ${m%%|*} » a ete donnee par « ${m#*|} », et non
+       par « $PLAN_USER ». ON NE REPREND QUE CE QU'ON A DONNE: revoquer un
+       octroi etranger detruirait ce qu'un tiers a pose."
+    case "${m%%|*}" in
+      eurostruct_normative_writer|eurostruct_normative_bootstrap) : ;;
+      *) refus_reprise "appartenance inattendue vers « ${m%%|*} »." ;;
+    esac
+  done
+  constat "les conditions sont etablies: PENDING (donc zero activation),"
+  constat "poseur=connexion par OID et nom, aucune voie vers l'activateur,"
+  constat "exactement deux appartenances, toutes deux donnees par nous"
+
+  revoquer_les_emprunts
+  if ! capacites_du_migrateur; then
+    echo "DEPLOYMENT_CLEANUP_UNVERIFIED: la reprise a revoque, et n'a pas pu le" >&2
+    echo "       constater. N'EXPLOITEZ PAS CETTE BASE avant verification." >&2
+    exit 7
+  fi
+  if [[ -n "$CAPACITES" ]]; then
+    echo "DEPLOYMENT_CLEANUP_FAILED: « $MIG_USER » conserve: $CAPACITES" >&2
+    exit 5
+  fi
+  constat "emprunts repris; « $MIG_USER » ne detient plus rien"
+  echo
+  echo "Reprise terminee. La base reste PENDING: relancez un deploiement"
+  echo "ordinaire pour la mener a ACTIVE."
+  exit 0
+fi
+
 # --------------------------------------------------------------------------
 # 3. LES EMPRUNTS, TEMPORAIRES
 # --------------------------------------------------------------------------
@@ -742,7 +987,16 @@ else
 # revoquer. Sans elle, un migrateur deja membre verrait son appartenance
 # DETRUITE par le piege de sortie, alors que quelqu'un d'autre l'avait posee
 # pour une raison qu'on ignore. On ne reprend que ce qu'on a donne.
-DEJA_DETENU=$(capacites_du_migrateur)
+# LA MEME DISCIPLINE QUE LA COMPENSATION: une question sans reponse ne vaut
+# pas une reponse vide. Sans ce refus, une precondition « le migrateur ne
+# detient rien » serait TENUE PAR DEFAUT le jour ou la base ne repond pas — et
+# c'est cette precondition qui autorise la compensation a revoquer.
+if ! capacites_du_migrateur; then
+  echec_prerequis "l'etat des roles d'autorite n'a pas pu etre constate avant
+       l'octroi des emprunts. Cette commande n'accorde que ce qu'elle sait
+       pouvoir reprendre: aucun emprunt n'a ete accorde."
+fi
+DEJA_DETENU="$CAPACITES"
 if [[ -n "$DEJA_DETENU" ]]; then
   echec_prerequis "« $MIG_USER » detient deja des capacites sur les
        roles d'autorite: $DEJA_DETENU
@@ -782,6 +1036,11 @@ constat "historique des migrations coherent avec le depot"
 
 APPLIQUEES=0; SAUTEES=0
 for f in "$MIGRATIONS_DIR"/*.sql; do
+  # LE VERROU EST RECONSTATE AVANT CHAQUE MIGRATION, et non suppose tenu depuis
+  # l'acquisition. `VERROU_TENU=1` dit qu'on a REUSSI a le prendre, jamais qu'on
+  # le detient encore: la session peut avoir ete terminee, coupee par un pooler,
+  # ou perdue avec le serveur. Contre-exemple mesure: S2.
+  etape_mutante "$(basename "$f")"
   esc_appliquer_migration "$f" mig
   case $? in
     0) if [[ "$ESC_MIGRATION_ETAT" == "SAUTEE" ]]; then
@@ -845,6 +1104,9 @@ constat "manifeste $MANIFESTE"
 # 7-8. PHASE 2 — FINALISATION, PUIS CONSTAT
 # --------------------------------------------------------------------------
 etape "7/10  phase 2 — finalisation par « $PLAN_USER »"
+# LA FINALISATION EST LA PLUS MUTANTE DE TOUTES: elle ecrit la racine et
+# revoque. On ne l'engage pas sur une exclusion qu'on ne peut plus constater.
+etape_mutante "la finalisation"
 SORTIE=$(plan -tA -v man="$MANIFESTE" 2>&1 <<'SQL'
 select normative_finalize_deployment(:'man');
 SQL
@@ -873,7 +1135,12 @@ constat "etat ACTIVE"
 # l'annoncer sans la constater serait exactement le defaut que tout ce jalon
 # existe pour fermer. Les TROIS capacites, et les trois roles d'autorite.
 etape "9/10  postcondition — capacites residuelles du migrateur"
-RESIDU=$(capacites_du_migrateur)
+if ! capacites_du_migrateur; then
+  echec "la postcondition « zero capacite residuelle » n'a pas pu etre
+       constatee: la question n'a obtenu aucune reponse. Un deploiement dont on
+       ne peut pas verifier la sortie n'est pas un deploiement verifie."
+fi
+RESIDU="$CAPACITES"
 [[ -z "$RESIDU" ]] || echec "le migrateur « $MIG_USER » conserve des capacites: $RESIDU
        La base est ACTIVE, mais la separation n'est pas obtenue. N'exploitez
        pas ce deploiement en l'etat."

@@ -522,6 +522,17 @@ CAS_REPRISE = [
     ("Q   la compensation ne se declenche plus", "Q1", CMD,
      [("  if [[ $EMPRUNTS_ACCORDES -eq 1 && $FINALISE -eq 0 ]]; then",
        "  if false; then")], False),
+    # UNE CHAINE VIDE REDEVIENT UNE PREUVE D'ABSENCE. C'est exactement l'ancien
+    # defaut: la question sans reponse et le migrateur sans capacite rendaient
+    # la meme chose.
+    ("Q7  une question sans reponse vaut « aucune capacite »", "Q7", CMD,
+     [("  [[ $code -ne 0 ]] && return 1",
+       '  [[ $code -ne 0 ]] && { CAPACITES=""; return 0; }')], False),
+    ("Q6  la reprise explicite n'existe plus", "Q6", CMD,
+     [("    --recover-pending) RECOVER=1 ;;\n", "")], False),
+    ("S2  le verrou n'est plus reconstate avant chaque etape", "S2", CMD,
+     [('  etape_mutante "$(basename "$f")"\n', ""),
+      ('etape_mutante "la finalisation"\n', "")], False),
     ("R1  l'interpolation sure du nom de migrateur", "R1", CMD,
      [MUT_R1_INTERP], False),
     ("R2  la borne de longueur des identifiants", "R2", CMD,

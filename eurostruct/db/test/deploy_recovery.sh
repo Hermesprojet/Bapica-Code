@@ -555,6 +555,101 @@ fi
 decor_deposer
 fi
 
+# --- Q6. UN ARRET NON INTERCEPTABLE ---------------------------------------
+# LES PIEGES NE COUVRENT PAS TOUT. `TERM`, `INT` et `HUP` s'interceptent;
+# `SIGKILL`, un crash du shell, une panne machine ou un conteneur supprime ne
+# declenchent RIEN. La base reste alors PENDING avec les emprunts accordes, et
+# aucun code n'a jamais tourne pour les reprendre.
+#
+# CE QUI EST EXIGE N'EST PAS QUE LA COMMANDE SURVIVE — elle ne le peut pas.
+# C'est que:
+#
+#   1. l'etat laisse soit exactement celui-la, et pas un ACTIVE a moitie;
+#   2. une RELANCE ORDINAIRE reste fail-closed — elle ne doit pas reprendre en
+#      silence des appartenances qu'elle n'a pas accordees;
+#   3. une reprise existe, EXPLICITE, et ne revoque qu'apres avoir tout prouve.
+if ! q_amorcer q6; then
+  echoue "le decor Q6 n'a pas pu etre pose"
+else
+migrations_copiees
+JOURNAL_Q6="$COPIE/q6.log"
+: >"$JOURNAL_Q6"
+(
+  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  exec bash "$COMMANDE_COPIE" >"$JOURNAL_Q6" 2>&1
+) &
+PID_Q6=$!
+ATTENTE=0
+while [[ $ATTENTE -lt 600 ]]; do
+  grep -q "0005_" "$JOURNAL_Q6" 2>/dev/null && break
+  kill -0 "$PID_Q6" 2>/dev/null || break
+  sleep 0.2
+  ATTENTE=$((ATTENTE + 1))
+done
+if ! grep -q "0005_" "$JOURNAL_Q6" 2>/dev/null || ! kill -0 "$PID_Q6" 2>/dev/null; then
+  wait "$PID_Q6" 2>/dev/null
+  echoue "Q6. la phase 1 n'a pas ete atteinte a temps; scenario non evalue"
+  tail -3 "$JOURNAL_Q6" | sed 's/^/              /' >&2
+else
+  # AUCUN PIEGE NE VA S'EXECUTER. C'est le propos.
+  kill -KILL "$PID_Q6" 2>/dev/null
+  wait "$PID_Q6" 2>/dev/null
+  sleep 1
+  ETAT_Q6=$(etat_normatif)
+  CAP_Q6=$(adm -tA -v m="$MIG" <<'SQL'
+select coalesce(string_agg(a.r, ' '), '') from unnest(array[
+  'eurostruct_normative_writer','eurostruct_normative_bootstrap']) a(r)
+ where pg_has_role(:'m', a.r, 'SET') or pg_has_role(:'m', a.r, 'USAGE')
+    or pg_has_role(:'m', a.r, 'MEMBER WITH ADMIN OPTION');
+SQL
+  )
+  if [[ "$ETAT_Q6" == "ACTIVE"* ]]; then
+    echoue "Q6. la commande a eu le temps d'aboutir: la fenetre n'a pas tenu"
+  elif [[ -z "$CAP_Q6" ]]; then
+    echoue "Q6. apres SIGKILL, le migrateur ne detient rien: le scenario n'a"
+    echoue "    pas capture la fenetre ou les emprunts sont accordes."
+  else
+    # 2. LA RELANCE ORDINAIRE RESTE FAIL-CLOSED.
+    appeler; CODE_Q6R=$?
+    if [[ $CODE_Q6R -ne 3 ]] \
+       || ! grep -qF "DEPLOYMENT_PRECONDITION_FAILED" <<<"$SORTIE_CMD"; then
+      rouge "Q6. apres un SIGKILL, la relance ordinaire ne refuse pas."
+      detail "    code $CODE_Q6R (3 attendu); « $MIG » detenait: $CAP_Q6"
+      detail "    Une commande qui reprend des appartenances qu'elle n'a pas"
+      detail "    accordees revoque ce qu'un tiers a peut-etre pose."
+    else
+      # 3. LA REPRISE EXPLICITE.
+      appeler --recover-pending; CODE_Q6V=$?
+      CAP_Q6B=$(adm -tA -v m="$MIG" <<'SQL'
+select coalesce(string_agg(a.r, ' '), '') from unnest(array[
+  'eurostruct_normative_writer','eurostruct_normative_bootstrap']) a(r)
+ where pg_has_role(:'m', a.r, 'SET') or pg_has_role(:'m', a.r, 'USAGE')
+    or pg_has_role(:'m', a.r, 'MEMBER WITH ADMIN OPTION');
+SQL
+      )
+      if [[ $CODE_Q6V -ne 0 || -n "$CAP_Q6B" ]]; then
+        rouge "Q6. la reprise explicite n'a pas rendu la base a zero capacite."
+        detail "    code $CODE_Q6V; reste: « ${CAP_Q6B:-aucune} »"
+        detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_)' <<<"$SORTIE_CMD" | cut -c1-140)"
+      else
+        # ...ET UN DEPLOIEMENT NORMAL DOIT ENSUITE ABOUTIR.
+        appeler; CODE_Q6F=$?
+        ETAT_Q6F=$(admb -tAc "select normative_activation_state()" 2>&1)
+        if [[ $CODE_Q6F -eq 0 && "$ETAT_Q6F" == "ACTIVE" ]]; then
+          echo "      ok: Q6. SIGKILL: relance refusee, reprise explicite, puis ACTIVE"
+        else
+          rouge "Q6. apres la reprise, un deploiement normal n'aboutit pas."
+          detail "    code $CODE_Q6F, etat « $ETAT_Q6F »"
+          detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_)' <<<"$SORTIE_CMD" | cut -c1-140)"
+        fi
+      fi
+    fi
+  fi
+fi
+decor_deposer
+fi
+
 # --- Q4. apres une finalisation REUSSIE, rien a compenser ------------------
 # La moitie positive. Sans elle, « la compensation revoque » serait satisfait
 # par une compensation qui revoque TOUJOURS — y compris apres une phase 2 qui
@@ -758,6 +853,88 @@ SQL
 decor_deposer
 fi
 
+# --- Q7. LA COMPENSATION NE DOIT PAS SE DECLARER REUSSIE SANS PREUVE ------
+# `sortie_compensee` faisait:
+#
+#     reste=$(revoquer_les_emprunts)
+#     if [[ -n "$reste" ]]; then ... echec ... else "aucune capacite" ; fi
+#
+# Deux fautes qui se composent: le statut du `REVOKE` etait ignore, et la
+# verification qui suit lisait `pg_has_role(...)` avec `2>/dev/null`. Si la
+# connexion du plan tombe, LES DEUX ne produisent rien — et la chaine vide
+# passait pour « aucune capacite residuelle ». La commande annoncait donc une
+# base propre au moment precis ou elle ne l'est pas.
+#
+# LE LEURRE FAIT TOMBER LA CONNEXION JUSTE AVANT LE `REVOKE`, et l'y laisse:
+# c'est la panne reseau au pire moment. Un observateur ADMINISTRATEUR, qui ne
+# passe pas par le leurre, constate ensuite que les octrois subsistent.
+if ! q_amorcer q7; then
+  echoue "le decor Q7 n'a pas pu etre pose"
+else
+migrations_copiees 0006_ndp_import.sql        # force la compensation
+LEURRE_Q7="$COPIE/leurre_q7"
+mkdir -p "$LEURRE_Q7"
+VRAI_PSQL_Q7="$(command -v psql)"
+cat >"$LEURRE_Q7/psql" <<LEURREFIN
+#!/usr/bin/env bash
+# FAUX psql — scenario Q7. Coupe a partir du REVOKE de compensation, inclus.
+#
+# IL NE LIT L'ENTREE QUE POUR LES APPELS QUI PORTENT « -v ». Le REVOKE de
+# compensation et la verification qui suit en portent un (« -v m= »); le
+# CO-PROCESSUS DU VERROU, lui, n'en a pas — et son entree reste ouverte toute
+# la duree de la commande. Un « cat » inconditionnel s'y bloquait: mesure, la
+# commande mourait sur « aucune reponse du verrou en 30 s », bien avant
+# d'accorder quoi que ce soit, et le scenario n'exercait rien.
+DIRECT=1
+for a in "\$@"; do
+  case "\$a" in -c|--command*|-f|--file*) DIRECT=1; break ;; -v) DIRECT=0 ;; esac
+done
+if (( DIRECT )); then exec "$VRAI_PSQL_Q7" "\$@"; fi
+CORPS="\$(cat)"
+if [[ "\$CORPS" == *"revoke eurostruct_normative_writer"* ]]; then
+  : >"$COPIE/q7_coupe"
+fi
+if [[ -f "$COPIE/q7_coupe" ]]; then
+  echo "psql: error: connexion perdue (leurre Q7)" >&2
+  exit 2
+fi
+printf '%s\n' "\$CORPS" | "$VRAI_PSQL_Q7" "\$@"
+LEURREFIN
+chmod +x "$LEURRE_Q7/psql"
+rm -f "$COPIE/q7_coupe"
+PATH="$LEURRE_Q7:$PATH" appeler; CODE_Q7=$?
+# L'OBSERVATEUR EXTERNE. Il se connecte par le socket administrateur, sans
+# passer par le leurre: c'est lui qui dit la verite sur l'etat des octrois.
+CAP_Q7=$(adm -tA -v m="$MIG" <<'SQL'
+select coalesce(string_agg(a.r, ' '), '') from unnest(array[
+  'eurostruct_normative_writer','eurostruct_normative_bootstrap']) a(r)
+ where pg_has_role(:'m', a.r, 'SET') or pg_has_role(:'m', a.r, 'USAGE')
+    or pg_has_role(:'m', a.r, 'MEMBER WITH ADMIN OPTION');
+SQL
+)
+if [[ -z "$CAP_Q7" ]]; then
+  echoue "Q7. le leurre n'a pas empeche la revocation: les octrois ont ete"
+  echoue "    repris malgre la coupure, le scenario ne dit rien."
+elif grep -qF "aucune capacite residuelle" <<<"$SORTIE_CMD"; then
+  rouge "Q7. la commande annonce une base propre alors qu'elle ne l'est pas."
+  detail "    « $MIG » detient encore: $CAP_Q7"
+  detail "    code $CODE_Q7"
+  detail "    Le REVOKE et la verification ont TOUS DEUX echoue sur la meme"
+  detail "    connexion perdue; la chaine vide a ete lue comme une absence."
+elif [[ $CODE_Q7 -ne 5 && $CODE_Q7 -ne 7 ]]; then
+  rouge "Q7. le nettoyage non verifie ne porte pas de code de sortie dedie."
+  detail "    code $CODE_Q7 (5 = repris impossible, 7 = non verifiable)"
+  detail "    « $MIG » detient encore: $CAP_Q7"
+elif ! grep -qE "DEPLOYMENT_CLEANUP_(FAILED|UNVERIFIED)" <<<"$SORTIE_CMD"; then
+  rouge "Q7. aucun jeton ne nomme l'etat du nettoyage."
+  detail "    code $CODE_Q7; « $MIG » detient encore: $CAP_Q7"
+else
+  echo "      ok: Q7. nettoyage non verifiable: refus nomme, code $CODE_Q7"
+fi
+rm -f "$COPIE/q7_coupe"
+decor_deposer
+fi
+
 # ==========================================================================
 # S. LA CONCURRENCE
 # ==========================================================================
@@ -808,6 +985,77 @@ else
   detail "    de plus pour exiger un verrou plutot que de compter dessus."
   detail "    Le verrou existant ne couvre que la finalisation: la phase 0, les"
   detail "    octrois, les migrations et le manifeste restent hors de lui."
+fi
+decor_deposer
+fi
+
+# --- S2. LA SESSION DU VERROU MEURT PENDANT LA PHASE 1 --------------------
+# `VERROU_TENU=1` est une variable de shell. Elle dit qu'on a REUSSI a prendre
+# le verrou, jamais qu'on le detient ENCORE. Une session peut etre terminee par
+# `pg_terminate_backend`, coupee par un pooler, ou perdue avec le serveur — et
+# le verrou consultatif meurt avec elle, sans que rien ne le signale au shell.
+#
+# UNE AUTRE COMMANDE PEUT ALORS DEMARRER. Celle qui poursuit en se fiant a sa
+# variable applique des migrations, puis finalise, pendant qu'une seconde fait
+# de meme: exactement ce que le verrou existait pour empecher.
+#
+# ON TUE LE BACKEND QUI PORTE LE VERROU, et lui seul: les connexions du plan et
+# du migrateur restent vivantes. La compensation doit donc pouvoir s'executer
+# ET etre constatee — c'est ce qui distingue ce scenario de Q7.
+if ! q_amorcer s2; then
+  echoue "le decor S2 n'a pas pu etre pose"
+else
+migrations_copiees
+JOURNAL_S2="$COPIE/s2.log"
+: >"$JOURNAL_S2"
+(
+  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  exec bash "$COMMANDE_COPIE" >"$JOURNAL_S2" 2>&1
+) &
+PID_S2=$!
+ATTENTE=0
+while [[ $ATTENTE -lt 600 ]]; do
+  grep -q "0003_" "$JOURNAL_S2" 2>/dev/null && break
+  kill -0 "$PID_S2" 2>/dev/null || break
+  sleep 0.2
+  ATTENTE=$((ATTENTE + 1))
+done
+# LA CLE EST CELLE DE LA COMMANDE, recalculee ici depuis le NOM de la base:
+# cette connexion-ci est sur `postgres`, pas sur la base visee.
+TUES_S2=$(adm -tA -v b="$BASE" <<'SQL'
+select count(*) from (
+  select pg_terminate_backend(pid) from pg_locks
+   where locktype = 'advisory' and granted and objsubid = 2
+     and classid = (hashtext('eurostruct.deploiement')::bigint & 4294967295)::oid
+     and objid   = (hashtext(:'b')::bigint & 4294967295)::oid
+) t;
+SQL
+)
+wait "$PID_S2" 2>/dev/null; CODE_S2=$?
+ETAT_S2=$(admb -tAc "select normative_activation_state()" 2>&1)
+CAP_S2=$(adm -tA -v m="$MIG" <<'SQL'
+select coalesce(string_agg(a.r, ' '), '') from unnest(array[
+  'eurostruct_normative_writer','eurostruct_normative_bootstrap']) a(r)
+ where pg_has_role(:'m', a.r, 'SET') or pg_has_role(:'m', a.r, 'USAGE')
+    or pg_has_role(:'m', a.r, 'MEMBER WITH ADMIN OPTION');
+SQL
+)
+if [[ "$TUES_S2" != "1" ]]; then
+  echoue "S2. la session du verrou n'a pas ete trouvee ($TUES_S2 tuee(s));"
+  echoue "    le scenario ne dit rien de sa disparition."
+elif [[ "$ETAT_S2" == "ACTIVE" ]]; then
+  rouge "S2. la commande a finalise apres avoir perdu son verrou."
+  detail "    code $CODE_S2 — elle s'est fiee a VERROU_TENU=1."
+elif [[ $CODE_S2 -ne 8 ]] || ! grep -qF "DEPLOYMENT_LOCK_LOST" <<<"$(cat "$JOURNAL_S2")"; then
+  rouge "S2. la perte du verrou n'est ni detectee ni nommee."
+  detail "    code $CODE_S2 (8 attendu), etat « $ETAT_S2 »"
+  detail "    $(grep -m1 -E '^(ECHEC|DEPLOYMENT_)' "$JOURNAL_S2" | cut -c1-140)"
+elif [[ -n "$CAP_S2" ]]; then
+  rouge "S2. le verrou perdu est detecte, mais les emprunts restent."
+  detail "    « $MIG » detient encore: $CAP_S2"
+else
+  echo "      ok: S2. verrou perdu: arret nomme avant l'etape suivante, emprunts repris"
 fi
 decor_deposer
 fi
