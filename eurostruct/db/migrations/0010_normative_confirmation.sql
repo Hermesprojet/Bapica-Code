@@ -116,9 +116,11 @@ declare
   compatibles constant text[] := array['esc-normative-seal/1'];
   posee text;
 begin
-  select seal_version into posee
-    from normative_seal_metadata
-   order by installed_at desc, seal_version desc limit 1;
+  -- PAR LA FONCTION, PLUS PAR LA TABLE (6.3b6e, point 7). La table n'est plus
+  -- lisible par `PUBLIC`, et le nom du migrateur n'est pas connu du sceau:
+  -- `normative_seal_version()` est SECURITY DEFINER et accordee aux deux roles
+  -- que la phase 1 EMPRUNTE.
+  posee := normative_seal_version();
 
   if posee is null then
     raise exception

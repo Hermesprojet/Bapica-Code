@@ -30,6 +30,79 @@ base déjà `ACTIVE` saute les étapes 3 à 7, et la finalisation rend « ACTIVE
 été approuvé. Ce qu'il ne faut pas faire : rejouer une étape à la main, ou
 réaccorder les emprunts « pour être sûr ».
 
+Une phase 1 interrompue **reprend là où elle s'est arrêtée** : chaque migration
+inscrit son empreinte dans `normative_migration_ledger`, dans sa propre
+transaction. Une migration déjà inscrite est sautée ; une migration inscrite
+avec une **autre** empreinte est refusée (`MIGRATION_CHECKSUM_MISMATCH`, sortie
+6) — le schéma de cette base ne correspond alors à aucun état du dépôt, et
+rejouer ne le rapprocherait d'aucun.
+
+### La connexion : ce qui décide, et ce qui est ignoré
+
+Seuls les paramètres dérivés des **deux URL** décident de la cible. Les
+variables `PG*` ambiantes sont effacées avant la première connexion —
+`PGSERVICE`, `PGSERVICEFILE`, `PGHOSTADDR`, `PGPASSFILE` et `PGOPTIONS`
+peuvent rediriger une connexion **sans apparaître dans l'URL**, si bien qu'un
+déploiement croyant viser une base en scellerait une autre, et que le compte
+rendu afficherait la première.
+
+Conséquence pratique : un fichier `~/.pg_service.conf` ou un `PGOPTIONS`
+exporté dans le shell **n'a aucun effet** sur cette commande. Tout ce qui doit
+compter — hôte, port, base, utilisateur, mot de passe, `sslmode` — s'écrit dans
+`ESC_PLAN_URL` et `ESC_MIGRATOR_URL`.
+
+### Le contrat TLS
+
+En mode **strict** (le défaut), une cible **distante** exige `sslmode=verify-ca`
+ou `verify-full`, et la chaîne de confiance correspondante :
+
+| `sslmode` | Ce qu'il garantit | Accepté vers une cible distante |
+|---|---|---|
+| `disable`, `allow`, `prefer` | rien : la connexion peut être **en clair** | non — le mot de passe du plan de contrôle passerait en clair |
+| `require` | chiffre, **sans vérifier à qui l'on parle** | non — un interlocuteur substitué scellerait une base qui n'est pas la vôtre |
+| `verify-ca` | l'hôte présente un certificat signé par une CA de confiance | **oui** |
+| `verify-full` | `verify-ca`, **plus** la correspondance du nom d'hôte | **oui** |
+
+La racine de confiance se fournit par `PGSSLROOTCERT` — dont la valeur héritée
+de l'environnement est effacée : passez-la dans l'URL
+(`?sslmode=verify-full&sslrootcert=/chemin/ca.crt`) ou utilisez le magasin par
+défaut de libpq (`~/.postgresql/root.crt`).
+
+Les **deux** URL doivent porter la même politique : un plan de contrôle en
+`verify-full` et un migrateur en `prefer` laisserait la phase 1 — celle qui
+écrit tout le schéma — sur une connexion non vérifiée.
+
+Une cible de **boucle locale** (`localhost`, `127.0.0.1`, `::1`, ou un socket
+Unix) est traitée à part : le trafic ne quitte pas la machine, et exiger un
+certificat vérifiable de `localhost` rendrait la CI et tout poste de
+développement indéployables sans rien protéger de plus.
+
+`--auto-heberge` lève l'exigence. C'est une **dérogation assumée**, pas une
+option de confort : elle n'a de sens que si vous maîtrisez le chemin réseau.
+
+### Le verrou de déploiement exige une connexion persistante
+
+Deux commandes simultanées appliqueraient deux fois des migrations qui ne sont
+pas idempotentes. La commande prend donc un **verrou consultatif de session**,
+`pg_try_advisory_lock(hashtext('eurostruct.deploiement'),
+hashtext(current_database()))`, tenu par un co-processus `psql` pour toute sa
+durée. Une seconde exécution s'arrête immédiatement, **sans rien modifier**, en
+`DEPLOYMENT_ALREADY_RUNNING` (sortie 4).
+
+La clé est dérivée de `current_database()` **côté serveur**, et non du nom
+fourni par l'appelant : deux invocations visant la même base ne peuvent pas
+choisir deux verrous différents. La base y entre parce que les verrous
+consultatifs sont **globaux au cluster** — sans elle, déployer la base B
+attendrait la fin du déploiement de la base A.
+
+> **Ce verrou ne fonctionne pas derrière PgBouncer en mode *transaction*.** Un
+> verrou de session vit dans sa session ; en *transaction pooling*, la session
+> serveur change à chaque transaction, et le verrou est relâché — ou pris sur
+> une session que la commande ne tient plus. La commande **ne le détecte pas**
+> et croirait détenir une exclusion qu'elle n'a pas. Visez le port **session**
+> de PgBouncer (mode `session`) ou l'instance PostgreSQL directement. Le même
+> raisonnement vaut pour `SET LOCAL ROLE` : voir §10.
+
 ## 1. Quatre acteurs, et ils ne se confondent pas
 
 | Acteur | Ce que c'est | Ce qu'il peut | Ce qu'il ne peut pas |
@@ -197,6 +270,43 @@ SELECT * FROM normative_deployment_readiness();
 --  etat | sceau | assurance | plan_de_controle | topologie | motif
 ```
 
+### Qui peut lire les métadonnées du sceau
+
+`normative_seal_metadata` dit quelle version de racine porte la base, **qui**
+l'a posée (OID et nom) et à quel niveau d'assurance. C'est une carte de la
+chaîne de confiance : elle nomme la cible qu'il faudrait usurper. Elle n'est
+donc **pas** lisible par `PUBLIC`.
+
+| Lecteur | Accès | Pourquoi |
+|---|---|---|
+| `eurostruct_normative_activator` | `SELECT`, `INSERT` | il possède la table |
+| `eurostruct_deployment` | `SELECT` | la readiness et la phase 2 |
+| `normative_governance` | `SELECT` | l'audit — c'est son rôle |
+| le **poseur du sceau** | `SELECT` | il finalise, et doit pouvoir constater ce qu'il a posé |
+| `eurostruct_normative_writer`, `…_bootstrap` | *aucun sur la table* | ils appellent `normative_seal_version()`, et rien d'autre |
+| `PUBLIC`, `anon`, `authenticated`, `normative_backend` | **aucun** | ils n'ont aucune raison de connaître l'identité du plan de contrôle |
+
+Le droit du poseur est accordé dynamiquement à l'installation
+(`GRANT … TO <current_user>`) : son nom n'est pas connu à l'écriture du
+fichier. Il porte aussi `EXECUTE` sur `normative_seal_version()`, et c'est
+**nécessaire** dans la forme greenfield où le poseur est aussi le migrateur :
+PostgreSQL refuse alors qu'il se prête les rôles d'autorité à lui-même
+(`ADMIN option cannot be granted back to your own grantor`), si bien qu'il
+détient l'`ADMIN` sur `eurostruct_normative_writer` **sans hériter d'aucun de
+ses droits** — la phase 1 ne pourrait pas lire la version du sceau qu'elle
+vient de poser.
+
+La phase 1 ne lit **plus** la table. Elle vérifie la version par
+`normative_seal_version()`, `SECURITY DEFINER` possédée par l'activateur, qui
+rend la version **et rien d'autre** — ni le poseur, ni son OID, ni l'assurance.
+`normative_seal_assurance()` est fermée de la même façon et n'est ouverte
+qu'à `eurostruct_deployment`.
+
+Retirer un de ces droits ne rend pas le déploiement « plus sûr » : la phase 2
+et la readiness cesseraient de fonctionner. `db/test/seal_contract.sh`
+(scénario W) échoue si l'un des lecteurs légitimes perd son accès **comme** si
+un rôle non listé en gagne un.
+
 ## 5. Faire évoluer le sceau
 
 Le sceau porte une version — `esc-normative-seal/1` — inscrite à
@@ -257,6 +367,7 @@ fermée.
 | La phase 2 ne se contourne pas | `finalisation_contract.sh` | **PostgreSQL 16 local / CI** |
 | Le sceau est séparé, versionné, réexécutable ; le poseur finalise | `seal_contract.sh` | **PostgreSQL 16 local / CI** |
 | La commande officielle tient ses postconditions | `official_deployment.sh` | **PostgreSQL 16 local / CI** |
+| Elle aboutit en **un appel** sur base vierge, reprend après interruption, et ne laisse jamais le migrateur privilégié | `deploy_recovery.sh` | **PostgreSQL 16 local / CI** |
 | La restauration inter-cluster échoue fail-closed | `cross_cluster_restore.sh` (second cluster réel, `initdb`) | **PostgreSQL 16 local / CI** |
 | Prérequis topologiques sur les rôles | `role_prerequisites.sh` | **PostgreSQL 16 local / CI** |
 | **Compatibilité Supabase** | — | **NON VALIDÉ** |
@@ -340,9 +451,12 @@ fiable pour appliquer un schéma et pour rien d'autre ; le superutilisateur est
 
 - [ ] Exécuter `nonsuperuser_install.sh` contre une **instance Supabase de
       staging**, et consigner le résultat ici.
-- [ ] Vérifier le comportement derrière **PgBouncer** en mode transaction : les
-      verrous consultatifs de session et `SET LOCAL ROLE` s'y comportent
-      différemment.
+- [ ] Vérifier le comportement derrière **PgBouncer**. Le verrou de déploiement
+      exige déjà une connexion persistante et est documenté comme incompatible
+      avec le *transaction pooling* (§0) ; reste à mesurer ce que devient
+      `SET LOCAL ROLE` sur une session recyclée entre deux transactions, et à
+      décider si la commande doit **détecter** un pooler plutôt que de
+      documenter la contrainte.
 - [ ] Confirmer que le schéma `auth` réel de Supabase expose bien `auth.uid()`
       et `auth.users` avec les droits supposés ici.
 - [ ] Écrire et exercer la **reprise des données métier** vers un déploiement

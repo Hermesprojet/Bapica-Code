@@ -20,6 +20,7 @@
 #   J. LE POSEUR DU SCEAU est celui qui finalise
 #   K. IL N'EXISTE QU'UNE SEULE ENTREE PUBLIQUE MUTANTE
 #   M. LE NIVEAU D'ASSURANCE survit a la console
+#   W. LES METADONNEES DU SCEAU ne sont pas servies a n'importe qui
 #
 # La restauration inter-cluster — le sixieme point — demande un SECOND CLUSTER
 # et vit dans `cross_cluster_restore.sh`.
@@ -698,6 +699,93 @@ if grep -qF "SUPERUTILISATEUR" <<<"$SORTIE_M"; then
   fi
 else
   echoue "M. la phase 0 superutilisateur n'a pas emis son notice; scenario non evalue"
+fi
+decor_deposer
+fi
+
+# ==========================================================================
+# W. LES METADONNEES DU SCEAU NE SONT PAS SERVIES A N'IMPORTE QUI
+# ==========================================================================
+# `normative_seal_metadata` a d'abord ete accordee en lecture a `PUBLIC`
+# (6.3b6d), au motif que la garde de reexecution s'execute sous un poseur dont
+# le nom n'est pas connu a l'avance. C'etait une facilite, et elle avait un
+# cout: dans un schema `public` expose par PostgREST — la forme Supabase —, un
+# utilisateur ANONYME lisait le nom du role d'installation, son OID,
+# l'horodatage et le niveau d'assurance.
+#
+# Ces informations ne sont pas secretes pour la gouvernance. Elles n'ont
+# simplement aucune raison d'etre servies a `anon`.
+if ! decor_poser w; then
+  echoue "le decor W n'a pas pu etre pose: W n'est pas evalue"
+else
+suivre_decor
+
+# --- W1. le PRIVILEGE de table, role par role -----------------------------
+# `has_table_privilege` repond sur le PRIVILEGE, independamment de la RLS: un
+# role qui l'a mais qu'aucune politique ne laisse passer lirait quand meme la
+# table le jour ou une politique s'ajoute. C'est donc le privilege qu'on ferme.
+# LA LISTE EST DERIVEE DE `pg_roles`, ET NON ECRITE EN DUR. `has_table_privilege`
+# LEVE sur un role inconnu — interroge sur `service_role`, absent de ce decor,
+# il rendait une erreur que le scenario prenait pour une fuite. Un `and exists`
+# ne suffisait pas: SQL ne garantit pas l'ordre d'evaluation des conjonctions,
+# et la fonction etait appelee quand meme. Partir du catalogue supprime la
+# question. `public` est traite a part: ce n'est pas un role de `pg_roles`.
+FUITE_W=$(admb -tAc "
+  select coalesce(string_agg(nom, ', ' order by nom), '') from (
+    select rolname as nom from pg_roles
+     where rolname in ('anon','authenticated','service_role','normative_backend')
+       and has_table_privilege(rolname, 'normative_seal_metadata', 'SELECT')
+    union all
+    select 'public' where has_table_privilege('public', 'normative_seal_metadata', 'SELECT')
+  ) f" 2>&1)
+if [[ -z "$FUITE_W" ]]; then
+  echo "      ok: W1. ni PUBLIC, ni anon, ni authenticated ne lisent la table"
+else
+  rouge "W1. la table des metadonnees du sceau est lisible par: $FUITE_W"
+  detail "    Dans un schema « public » expose par PostgREST, cela sert le nom"
+  detail "    du role d'installation et le niveau d'assurance a un anonyme."
+fi
+
+# --- W2. les lecteurs LEGITIMES lisent encore -----------------------------
+# Sans cette moitie, « personne ne lit » serait satisfait en fermant la table a
+# tout le monde — et la readiness, l'audit et la garde de reexecution
+# cesseraient de fonctionner sans que rien ne le dise.
+MANQUE_W=$(admb -tAc "
+  select coalesce(string_agg(r.nom, ', ' order by r.nom), '')
+    from (values ('eurostruct_deployment'),('normative_governance')) as r(nom)
+   where not has_table_privilege(r.nom, 'normative_seal_metadata', 'SELECT')" 2>&1)
+if [[ -z "$MANQUE_W" ]]; then
+  echo "      ok: W2. le deploiement et la gouvernance lisent la table"
+else
+  echoue "W2. des lecteurs legitimes ont perdu l'acces: $MANQUE_W"
+fi
+
+# --- W3. la LECTURE REELLE, sous un role applicatif ------------------------
+# Le privilege est une declaration; ce scenario constate le comportement. Un
+# `set role` vers `anon` puis un `select` doit etre refuse.
+LU_W=$(admb -tA 2>&1 <<'SQL'
+begin;
+set local role anon;
+select count(*) from normative_seal_metadata;
+rollback;
+SQL
+)
+if grep -qiE "permission denied|denied for table" <<<"$LU_W"; then
+  echo "      ok: W3. sous « anon », la lecture est refusee"
+else
+  rouge "W3. « anon » lit effectivement la table des metadonnees:"
+  detail "    $(tr '\n' ' ' <<<"$LU_W" | cut -c1-140)"
+fi
+
+# --- W4. la PHASE 1 lit encore la version ---------------------------------
+# Le resserrement des droits ne doit pas casser ce qui en depend. La phase 1
+# verifie la version du sceau, et le decor W vient de l'appliquer entierement:
+# s'il est PENDING, c'est que la lecture a fonctionne.
+ETAT_W=$(ctl -tAc "select normative_activation_state()" 2>&1)
+if [[ "$ETAT_W" == "PENDING" ]]; then
+  echo "      ok: W4. la phase 1 lit la version du sceau sans acces a la table"
+else
+  echoue "W4. la phase 1 ne s'est pas appliquee (etat « $ETAT_W »)"
 fi
 decor_deposer
 fi

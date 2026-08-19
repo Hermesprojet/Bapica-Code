@@ -357,12 +357,28 @@ grant select, insert on normative_seal_metadata to eurostruct_normative_activato
 alter table normative_seal_metadata enable row level security;
 alter table normative_seal_metadata force row level security;
 
--- LA LECTURE EST OUVERTE, L'ECRITURE NE L'EST POUR PERSONNE.
+-- LA LECTURE EST NOMMEE, L'ECRITURE N'EST OUVERTE A PERSONNE.
 --
--- `select` a PUBLIC: la garde de reexecution s'execute sous le poseur, dont
--- l'identite n'est pas connue a l'avance; la readiness s'execute sous le role
--- de deploiement; l'audit sous la gouvernance. Enumerer ces roles reviendrait a
--- deviner qui aura besoin de lire une declaration publique.
+-- ELLE A D'ABORD ETE ACCORDEE A `PUBLIC` (6.3b6d), au motif que la garde de
+-- reexecution s'execute sous un poseur dont le nom n'est pas connu a l'avance.
+-- C'etait une facilite, et elle avait un cout: dans un schema `public` expose
+-- par PostgREST — la forme Supabase —, un utilisateur ANONYME lisait le nom du
+-- role d'installation, son OID, l'horodatage et le niveau d'assurance. Ces
+-- informations ne sont pas secretes pour la gouvernance; elles n'ont aucune
+-- raison d'etre servies a `anon`.
+--
+-- TROIS LECTEURS NOMMES, ET AUCUN AUTRE:
+--
+--   * `eurostruct_deployment` — la readiness et l'orchestrateur;
+--   * `normative_governance`  — l'audit, comme pour les autres tables de
+--     confiance;
+--   * LE POSEUR LUI-MEME, accorde dynamiquement ci-dessous: c'est lui, et lui
+--     seul, que la garde de reexecution fera revenir.
+--
+-- LA PHASE 1 NE LIT PLUS LA TABLE. Elle passe par `normative_seal_version()`,
+-- devenue SECURITY DEFINER et accordee aux deux roles que le migrateur
+-- EMPRUNTE — meme mecanisme que `normative_declared_setting`, et pour la meme
+-- raison: le nom du migrateur n'est pas connu du sceau.
 --
 -- AUCUNE POLITIQUE D'ECRITURE N'EST CREEE, PAS MEME POUR L'ACTIVATEUR. La RLS
 -- forcee sans politique d'insertion ferme la table a tout le monde une fois
@@ -371,7 +387,18 @@ alter table normative_seal_metadata force row level security;
 -- politique posee explicitement par le fichier de mise a niveau lui-meme,
 -- sous l'ADMIN residuel du poseur enregistre: c'est un evenement, pas un droit
 -- permanent.
-grant select on normative_seal_metadata to public;
+grant select on normative_seal_metadata to eurostruct_deployment;
+grant select on normative_seal_metadata to normative_governance;
+do $$
+begin
+  execute format('grant select on normative_seal_metadata to %I', current_user);
+end
+$$;
+-- LA POLITIQUE RESTE OUVERTE A `public`, ET CE N'EST PAS UNE CONTRADICTION:
+-- une politique RLS ne DONNE aucun droit, elle filtre ceux qui existent. Le
+-- privilege de table, lui, n'est accorde qu'aux trois roles ci-dessus. Ecrire
+-- la politique pour chacun d'eux obligerait a en creer une de plus a chaque
+-- lecteur legitime, sans rien changer a ce qui est lisible.
 create policy normative_seal_metadata_lecture on normative_seal_metadata
   for select to public using (true);
 
@@ -396,13 +423,42 @@ create policy normative_seal_metadata_lecture on normative_seal_metadata
 -- est publique en lecture — elle n'a besoin d'aucune fonction pour cela.
 create or replace function normative_seal_version() returns text
 language sql stable
+security definer
 set search_path = public, pg_temp
 as $$
   select seal_version from normative_seal_metadata
    order by installed_at desc, seal_version desc limit 1;
 $$;
+alter function normative_seal_version() owner to eurostruct_normative_activator;
 revoke all on function normative_seal_version() from public;
 grant execute on function normative_seal_version() to eurostruct_deployment;
+-- LES DEUX ROLES QUE LA PHASE 1 EMPRUNTE. C'est par eux que le migrateur — dont
+-- le nom n'est pas connu du sceau — lit la version pour verifier qu'il peut
+-- s'appliquer. Meme mecanisme que `normative_declared_setting`.
+grant execute on function normative_seal_version() to eurostruct_normative_writer;
+grant execute on function normative_seal_version() to eurostruct_normative_bootstrap;
+-- ET LE POSEUR, POUR LA MEME RAISON QUE LA TABLE — mais un fait de plus le
+-- rend NECESSAIRE, et non seulement coherent.
+--
+-- FAIT MESURE (PG16): quand le poseur du sceau EST le migrateur — la forme
+-- greenfield — l'octroi des emprunts a lui-meme ECHOUE:
+--
+--   ERROR: ADMIN option cannot be granted back to your own grantor
+--
+-- Il reste alors sur la seule appartenance que PostgreSQL donne au CREATEUR
+-- d'un role: `grantor=postgres, admin=t, inherit=f, set=f` (fait F1). Il
+-- detient donc l'ADMIN sur les deux roles d'autorite, et n'HERITE d'aucun de
+-- leurs droits — `pg_has_role(migrateur, writer, 'USAGE')` rend `f`. Sans ce
+-- grant, la phase 1 greenfield echouait sur
+-- « permission denied for function normative_seal_version », un refus qui ne
+-- protege rien: la version du sceau n'est pas un secret vis-a-vis du role qui
+-- vient de le poser.
+do $$
+begin
+  execute format('grant execute on function normative_seal_version() to %I',
+                 current_user);
+end
+$$;
 
 comment on function normative_seal_version is
   'Version du sceau normatif en place, ou NULL si aucun sceau. La derniere '
@@ -410,11 +466,13 @@ comment on function normative_seal_version is
 
 create or replace function normative_seal_assurance() returns text
 language sql stable
+security definer
 set search_path = public, pg_temp
 as $$
   select assurance_level from normative_seal_metadata
    order by installed_at asc, seal_version asc limit 1;
 $$;
+alter function normative_seal_assurance() owner to eurostruct_normative_activator;
 revoke all on function normative_seal_assurance() from public;
 grant execute on function normative_seal_assurance() to eurostruct_deployment;
 
