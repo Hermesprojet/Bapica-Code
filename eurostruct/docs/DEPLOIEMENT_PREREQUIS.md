@@ -68,9 +68,11 @@ de l'environnement est effacée : passez-la dans l'URL
 (`?sslmode=verify-full&sslrootcert=/chemin/ca.crt`) ou utilisez le magasin par
 défaut de libpq (`~/.postgresql/root.crt`).
 
-Les **deux** URL doivent porter la même politique : un plan de contrôle en
-`verify-full` et un migrateur en `prefer` laisserait la phase 1 — celle qui
-écrit tout le schéma — sur une connexion non vérifiée.
+Vers une cible distante, les **deux** URL doivent porter la même politique : un
+plan de contrôle en `verify-full` et un migrateur en `prefer` laisserait la
+phase 1 — celle qui écrit tout le schéma — sur une connexion non vérifiée. La
+commande le vérifie et refuse. Vers la boucle locale, aucune des deux
+exigences ne s'applique.
 
 Une cible de **boucle locale** (`localhost`, `127.0.0.1`, `::1`, ou un socket
 Unix) est traitée à part : le trafic ne quitte pas la machine, et exiger un

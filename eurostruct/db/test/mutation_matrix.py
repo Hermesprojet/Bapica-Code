@@ -35,6 +35,14 @@ S = "db/control_plane/0001_normative_seal.sql"
 R = "db/test/run.sh"
 H = "db/test/authority_closure.sh"
 CMD = "tools/deploy_eurostruct.sh"
+# LES TROIS CIBLES DE 6.3b6e. Le registre vit dans la premiere migration,
+# l'applicateur au-dessus d'elle, et `0002` sert de temoin au controle statique
+# de transactionnalite. Les trois sont mutees, donc les trois entrent dans la
+# garde d'arbre propre — un fichier mute sans y figurer serait restaure par
+# `git checkout --` sans que la garde ait pu prevenir.
+INIT = "db/migrations/0001_init.sql"
+APP = "db/apply_migration.sh"
+RLS = "db/migrations/0002_rls.sql"
 SCRATCH = os.environ.get("TMPDIR", "/tmp")
 
 
@@ -46,7 +54,8 @@ def exiger_arbre_propre():
     cours. Cette garde est la seule chose qui rend l'outil utilisable sans
     precaution particuliere.
     """
-    p = subprocess.run(["git", "status", "--porcelain", "--", M, S, R, H, CMD],
+    p = subprocess.run(["git", "status", "--porcelain", "--",
+                        M, S, R, H, CMD, INIT, APP, RLS],
                        cwd=RACINE, capture_output=True, text=True)
     if p.stdout.strip():
         raise SystemExit(
@@ -338,6 +347,101 @@ CAS_COMMANDE = [
     # d'un `grep`.
 ]
 
+# --------------------------------------------------------------------------
+# LA REPRISE SURE DE LA COMMANDE (6.3b6e) — treize mutations
+# --------------------------------------------------------------------------
+# Elles portent sur QUATRE fichiers: la commande, l'applicateur de migrations,
+# le registre (dans `0001`) et une migration temoin. Ce n'est pas un accident
+# de decoupage: la reprise n'est une garantie que si les quatre tiennent
+# ENSEMBLE, et une matrice qui n'en muterait qu'un le laisserait croire.
+#
+# TROIS PAIRES DE REDONDANCE Y FIGURENT, et elles sont le sujet:
+#   P2  — l'ADMIN preexistant ET l'octroi constate;
+#   R1  — la borne de longueur ET l'interpolation sure;
+#   T4  — le portillon (hors transaction) ET le controle re-fait a l'ecriture.
+# Pour chacune, retirer UNE garantie doit rester vert, et retirer LES DEUX doit
+# rougir. C'est ce qui distingue une double verification d'un doublon.
+MUT_P2_ADMIN = ("""  if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'MEMBER WITH ADMIN OPTION')::text" 2>/dev/null)" != "true" ]]; then""",
+                """  if false; then""")
+MUT_P2_CONSTAT = ("""  if [[ "$(plan -tAc "select pg_has_role(current_user, 'eurostruct_deployment', 'USAGE')::text" 2>/dev/null)" != "true" ]]; then""",
+                  """  if false; then""")
+MUT_R1_BORNE = ("  if [[ ${#valeur} -eq 0 || ${#valeur} -gt 63 ]]; then",
+                "  if false; then")
+# L'INTERPOLATION SURE, RETIREE. Le heredoc cite (`<<'SQL'`) devient non cite,
+# et `:"m"` — que psql sait citer comme IDENTIFIANT — devient une substitution
+# shell. C'est la forme exacte qui rendait la commande injectable avant 6.3b6e.
+MUT_R1_INTERP = ("""SORTIE=$(plan -v ON_ERROR_STOP=1 -v m="$MIG_USER" 2>&1 <<'SQL'
+grant eurostruct_normative_writer    to :"m" with admin option;
+grant eurostruct_normative_bootstrap to :"m" with admin option;
+SQL
+)""",
+                 """SORTIE=$(plan -v ON_ERROR_STOP=1 -v m="$MIG_USER" 2>&1 <<SQL
+grant eurostruct_normative_writer    to "$MIG_USER" with admin option;
+grant eurostruct_normative_bootstrap to "$MIG_USER" with admin option;
+SQL
+)""")
+MUT_T4_PORTILLON = ("  return 'MISMATCH';", "  return 'DEJA';")
+MUT_T4_ECRITURE = ("  if found and connu <> p_sum then", "  if false then")
+
+CAS_REPRISE = [
+    ("P2  l'ADMIN preexistant n'est plus exige", "P2", CMD,
+     [MUT_P2_ADMIN], True),
+    ("P2b l'ADMIN exige ET l'octroi constate", "P2", CMD,
+     [MUT_P2_ADMIN, MUT_P2_CONSTAT], False),
+    ("Q   la compensation ne se declenche plus", "Q1", CMD,
+     [("  if [[ $EMPRUNTS_ACCORDES -eq 1 && $FINALISE -eq 0 ]]; then",
+       "  if false; then")], False),
+    ("R1  la borne de longueur des identifiants", "R1", CMD,
+     [MUT_R1_BORNE], True),
+    ("R1' l'interpolation sure du nom de migrateur", "R1", CMD,
+     [MUT_R1_INTERP], True),
+    ("R1b LES DEUX: borne retiree ET interpolation shell", "R1", CMD,
+     [MUT_R1_BORNE, MUT_R1_INTERP], False),
+    ("S1  le verrou de deploiement ne refuse plus", "S1", CMD,
+     [('if [[ "$PRIS" != "true" ]]; then', "if false; then")], False),
+    ("T1  le registre repond toujours « jamais appliquee »", "T1", APP,
+     [('    ABSENTE|DEJA|MISMATCH) echo "$reponse" ;;',
+       '    ABSENTE|DEJA|MISMATCH) echo "ABSENTE" ;;')], False),
+    ("T4  le portillon ne signale plus la divergence", "T4", INIT,
+     [MUT_T4_PORTILLON], False),
+    ("T4' le controle re-fait a l'ecriture du registre", "T4", INIT,
+     [MUT_T4_ECRITURE], True),
+    ("T5  une migration perd sa transaction", "T5", RLS,
+     [("begin;", "-- begin retire par mutation")], False),
+    # UNE SEULE MUTATION POUR U1 ET U2, ET C'EST LE PROPOS. Brancher sur la
+    # prose casse les deux a la fois: le message reformule n'est plus reconnu
+    # (U1), et n'importe quel SQLSTATE portant le meme texte passe (U2). Les
+    # deux contre-exemples sont donc exerces contre le MEME defaut, ce qui est
+    # exactement ce qu'ils ont ete ecrits pour attraper.
+    ("U1  le branchement suit la prose et non le SQLSTATE", "U1", CMD,
+     [('sqlstate() { grep -qE "(^|: )ERROR:  $1:" <<<"$SORTIE"; }',
+       'sqlstate() { case "$1" in\n'
+       '  ES001) grep -qF "SEAL_ALREADY_INSTALLED" <<<"$SORTIE" ;;\n'
+       '  *) grep -qE "(^|: )ERROR:  $1:" <<<"$SORTIE" ;;\n'
+       'esac; }')], False),
+    ("U2  le meme branchement, vu par l'autre contre-exemple", "U2", CMD,
+     [('sqlstate() { grep -qE "(^|: )ERROR:  $1:" <<<"$SORTIE"; }',
+       'sqlstate() { case "$1" in\n'
+       '  ES001) grep -qF "SEAL_ALREADY_INSTALLED" <<<"$SORTIE" ;;\n'
+       '  *) grep -qE "(^|: )ERROR:  $1:" <<<"$SORTIE" ;;\n'
+       'esac; }')], False),
+    ("V1  PGOPTIONS n'est plus efface", "V1", CMD,
+     [("unset PGSERVICE PGSERVICEFILE PGPASSFILE PGOPTIONS PGDATABASE PGHOSTADDR \\",
+       "unset PGSERVICE PGSERVICEFILE PGPASSFILE PGDATABASE PGHOSTADDR \\")], False),
+    ("V2  la politique TLS stricte ne s'applique plus", "V2", CMD,
+     [("if ((STRICT)) && ! cible_locale; then", "if false; then")], False),
+]
+
+# --------------------------------------------------------------------------
+# LE MOINDRE PRIVILEGE DU SCEAU (6.3b6e, point 7) — une mutation
+# --------------------------------------------------------------------------
+CAS_ACL_SCEAU = [
+    ("W1  les metadonnees du sceau redeviennent publiques", "W1", S,
+     [("grant select on normative_seal_metadata to eurostruct_deployment;",
+       "grant select on normative_seal_metadata to public;\n"
+       "grant select on normative_seal_metadata to eurostruct_deployment;")], False),
+]
+
 print("MUTATIONS — chaque garantie retiree doit rougir son contre-exemple")
 ok = all([essayer(*c) for c in CAS])
 ok = all([essayer(*c, harnais="db/test/authority_closure.sh", prefixe="mv")
@@ -348,9 +452,13 @@ ok = all([essayer(*c, harnais="db/test/cross_cluster_restore.sh", prefixe="mx")
           for c in CAS_RESTAURATION]) and ok
 ok = all([essayer(*c, harnais="db/test/official_deployment.sh", prefixe="mo")
           for c in CAS_COMMANDE]) and ok
+ok = all([essayer(*c, harnais="db/test/deploy_recovery.sh", prefixe="mp")
+          for c in CAS_REPRISE]) and ok
+ok = all([essayer(*c, harnais="db/test/seal_contract.sh", prefixe="mw")
+          for c in CAS_ACL_SCEAU]) and ok
 print()
 TOTAL = len(CAS) + len(CAS_AUTORITE) + len(CAS_SCEAU) + len(CAS_RESTAURATION) \
-      + len(CAS_COMMANDE)
+      + len(CAS_COMMANDE) + len(CAS_REPRISE) + len(CAS_ACL_SCEAU)
 print(f"MUTATIONS: les {TOTAL} controles portent quelque chose." if ok
       else "MUTATIONS: au moins un controle ne porte rien.")
 sys.exit(0 if ok else 1)

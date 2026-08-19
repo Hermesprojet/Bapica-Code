@@ -57,14 +57,20 @@ contrôle qui pose la racine de confiance et approuve, un migrateur qui applique
 le schéma. Une seule commande les orchestre, et **vérifie** ses postconditions :
 
 ```bash
-export ESC_PLAN_URL='postgresql://plan:…@hote:5432/base'
-export ESC_MIGRATOR_URL='postgresql://migrateur:…@hote:5432/base'
+export ESC_PLAN_URL='postgresql://plan:…@hote:5432/base?sslmode=verify-full'
+export ESC_MIGRATOR_URL='postgresql://migrateur:…@hote:5432/base?sslmode=verify-full'
 tools/deploy_eurostruct.sh --dry-run    # les connexions, rien d'appliqué
 tools/deploy_eurostruct.sh              # les dix étapes
 ```
 
-Prérequis, provisionnement, niveaux d'assurance et limites connues :
-`docs/DEPLOIEMENT_PREREQUIS.md`. Modèle de menace :
+Vers une cible **distante**, `verify-ca` ou `verify-full` sont **exigés** : rien
+d'autre ne dit à qui l'on parle. Relancer la commande est sûr — une phase 1
+interrompue reprend au registre de migrations. Elle tient un verrou de session
+pendant tout le déploiement, et ne fonctionne donc pas derrière PgBouncer en
+*transaction pooling*.
+
+Prérequis, provisionnement, contrat TLS, niveaux d'assurance et limites
+connues : `docs/DEPLOIEMENT_PREREQUIS.md`. Modèle de menace :
 `docs/schema/MODELE_DE_MENACE_NORMATIF.md`.
 
 ### Un calcul de bout en bout

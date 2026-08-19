@@ -113,6 +113,17 @@ tous deux non superutilisateurs.
    présenté est celui qui a été approuvé.
 5. **Les identités** — plan de contrôle et migrateur sont deux rôles distincts,
    contrôlés par OID **et** par nom, partout où une exemption est accordée.
+6. **La racine ne se lit pas** — `normative_seal_metadata` nomme le rôle qui a
+   posé la racine, son OID et le niveau d'assurance : c'est la carte de la
+   chaîne de confiance, donc la désignation de la cible qu'il faudrait usurper.
+   Elle n'est lisible ni par `PUBLIC`, ni par un porteur de jeton, ni par un
+   rôle de service. Quatre lecteurs nommés seulement : l'activateur qui la
+   possède, `eurostruct_deployment`, `normative_governance` pour l'audit, et le
+   **poseur** lui-même. La phase 1 ne la lit pas : elle interroge
+   `normative_seal_version()`, qui rend la version **et rien d'autre**.
+   Exercé par `db/test/seal_contract.sh`, scénario W, dans les deux sens — un
+   lecteur légitime qui perd son accès est rouge autant qu'un rôle non listé
+   qui en gagne un.
 
 ### Pourquoi l'API ne se réduit pas à une seule entrée
 
@@ -151,6 +162,13 @@ plan par OID **et** par nom, l'empreinte des déclarations gelées et le
 
 * **Le vol d'identifiants du plan de contrôle.** Qui se connecte comme lui
   approuve ; c'est le sens même du rôle.
+* **Le transport, en dehors du mode strict.** `tools/deploy_eurostruct.sh`
+  exige `verify-ca` ou `verify-full` vers une cible distante — sans quoi le mot
+  de passe du plan de contrôle passe en clair, ou l'on scelle une base
+  substituée sans le savoir. `--auto-heberge` lève cette exigence : le chemin
+  réseau devient alors la responsabilité de l'exploitant, et ce déploiement
+  n'obtient pas les garanties ci-dessus contre un attaquant du réseau. Le
+  refus, et sa levée, sont exercés par `db/test/deploy_recovery.sh`, V2.
 * **La restauration inter-cluster — non prise en charge, et c'est un blocage
   explicite de mise en production.** L'identité du plan porte un OID
   PostgreSQL, qu'un `pg_dump`/restore vers un autre cluster ne préserve pas.
