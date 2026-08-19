@@ -6,39 +6,45 @@
 #
 # CE QUE CE FICHIER EXISTE POUR ETABLIR
 # --------------------------------------
-# `mutation_matrix.py` MUTE des fichiers du depot pour verifier que chaque
-# garantie porte quelque chose. Tant qu'elle mutait l'arbre de travail reel et
-# restaurait par `git checkout --`, elle pouvait:
-#
-#   * ECRASER une modification creee apres son demarrage — c'est arrive, en
-#     silence, et le harnais suivant a teste le fichier de HEAD en annoncant le
-#     contraire;
-#   * laisser un fichier MUTE dans le depot si elle etait interrompue entre la
-#     mutation et la restauration.
+# `mutation_matrix.py` MUTE des fichiers pour verifier que chaque garantie porte
+# quelque chose. Tant qu'elle mutait l'arbre de travail reel et restaurait par
+# `git checkout --`, elle pouvait ecraser une modification creee apres son
+# demarrage — c'est arrive, en silence — ou laisser un fichier MUTE dans le
+# depot si elle etait interrompue.
 #
 # Elle travaille desormais dans un `git worktree` temporaire et detache. CE
 # FICHIER LE PROUVE, au lieu de le supposer:
 #
-#   1. une modification TEMOIN du depot principal survit a une execution;
-#   2. une interruption NON INTERCEPTABLE (SIGKILL) ne laisse aucun fichier du
-#      depot principal modifie;
+#   1. une modification TEMOIN survit a une execution de la matrice;
+#   2. une interruption NON INTERCEPTABLE (SIGKILL) ne laisse rien de modifie;
 #   3. la mutation est REELLEMENT appliquee, dans l'espace isole et nulle part
-#      ailleurs.
+#      ailleurs;
+#   4. se debarrasser du worktree ne touche aucun fichier suivi;
+#   5. le nettoyage de CE fichier ne touche QUE ce qu'il a cree — le worktree
+#      d'une matrice concurrente survit intact, mutation comprise.
 #
-# IL NE DEMANDE AUCUNE BASE. Les harnais que la matrice lance en ont besoin, pas
-# l'isolation elle-meme: ce fichier tue la matrice avant qu'elle n'aboutisse.
-# C'est ce qui lui permet d'etre dans la suite canonique — une garantie qui ne
-# s'execute que sur le poste de celui qui y pense n'est pas une garantie.
+# CE SCRIPT NE TOUCHE PAS LA VRAIE BRANCHE, ET C'EST LA CORRECTION D'UN DEFAUT.
+# Il ecrivait son temoin dans `tools/deploy_eurostruct.sh` du depot principal,
+# et le retirait par un `trap`. Un `SIGKILL` de CE script laissait donc le depot
+# modifie — exactement le defaut qu'il denonce chez la matrice.
 #
-# LE TEMOIN EST UN COMMENTAIRE, en fin de fichier, et il est retire par un
-# `trap`. Si ce script meurt malgre tout, le temoin reste visible dans
-# `git status` — genant, jamais destructeur.
+# Il cree desormais son PROPRE worktree jetable, le traite comme son « depot
+# principal », et y depose son temoin. Meme tue brutalement, la branche reelle
+# est intacte: il n'y a jamais rien ecrit.
+#
+# ET IL NE NETTOIE QUE SES PROPRES CHEMINS. Il retirait tout worktree dont le
+# chemin contenait « esc-mutations- », ce qui emportait celui d'une matrice
+# concurrente legitime — la meme famille de defaut qu'un nettoyage par prefixe.
+#
+# IL NE DEMANDE AUCUNE BASE: il tue la matrice avant qu'elle n'en ait besoin.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="$(dirname "$HERE")"
 RACINE="$(dirname "$DB_DIR")"
 DEPOT="$(git -C "$RACINE" rev-parse --show-toplevel)"
+SOUS="$(basename "$RACINE")"
+SCRATCH="${TMPDIR:-/tmp}"
 
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=$((KO + 1)); }
@@ -46,142 +52,175 @@ detail() { echo "                    $*"; }
 
 echo "    isolation de la matrice de mutation"
 
-# LE PORTEUR DU TEMOIN EST UNE CIBLE DE MUTATION, et c'est le point. Un temoin
-# depose dans un fichier que la matrice ne touche jamais ne prouverait rien.
-# `tools/deploy_eurostruct.sh` est precisement celui dont des corrections non
-# validees ont ete effacees.
-TEMOIN_REL="eurostruct/tools/deploy_eurostruct.sh"
-TEMOIN="$DEPOT/$TEMOIN_REL"
-MARQUE="# TEMOIN mutation_isolation_selftest $$ — retire par son trap"
-TRACE="$(mktemp)"
-SORTIE="$(mktemp)"
+# CHAQUE EXECUTION A SON IDENTIFIANT, et ne connait que ses propres chemins.
+JETON="$(od -An -N6 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
+[[ -n "$JETON" ]] || JETON="$$-$(date +%s)"
+ESSAI=""          # le worktree qui sert de « depot principal » a ce test
 MATRICE_PID=""
-POSE=0
+MATRICE_ESPACE=""  # la RACINE du worktree cree par la matrice de ce test
+MATRICE_SOUS=""    # ...et son sous-repertoire de projet
+CONC_PID=""
+CONC_ESPACE=""     # la racine de celui de la matrice CONCURRENTE
+CONC_SOUS=""
+TRACE="$(mktemp)"
+TRACE_CONC="$(mktemp)"
+SORTIE="$(mktemp)"
+SORTIE_CONC="$(mktemp)"
+
+# `retirer_worktree <chemin>` — un chemin EXACT, jamais un motif.
+retirer_worktree() {
+  local w="$1"
+  [[ -n "$w" && "$w" != "$DEPOT" ]] || return 0
+  git -C "$DEPOT" worktree remove --force "$w" >/dev/null 2>&1
+  rm -rf "$w"
+}
 
 nettoyer() {
   [[ -n "$MATRICE_PID" ]] && kill -KILL "$MATRICE_PID" 2>/dev/null
-  # LE TEMOIN D'ABORD: c'est la seule ecriture de ce script dans le depot.
-  if ((POSE)) && [[ -f "$TEMOIN" ]]; then
-    # Retire la DERNIERE ligne si — et seulement si — c'est bien la marque.
-    if [[ "$(tail -1 "$TEMOIN")" == "$MARQUE" ]]; then
-      sed -i '$ d' "$TEMOIN"
-    fi
-  fi
-  # Les worktrees laisses par une matrice tuee: leur repertoire et leur
-  # entree de metadonnees. `prune` ne touche aucun fichier suivi.
-  git -C "$DEPOT" worktree list --porcelain 2>/dev/null \
-    | awk '/^worktree /{print $2}' \
-    | while read -r w; do
-        [[ "$w" == "$DEPOT" ]] && continue
-        [[ "$w" == *esc-mutations-* ]] || continue
-        git -C "$DEPOT" worktree remove --force "$w" >/dev/null 2>&1
-        rm -rf "$w"
-      done
+  [[ -n "$CONC_PID" ]]    && kill -KILL "$CONC_PID"    2>/dev/null
+  retirer_worktree "$MATRICE_ESPACE"
+  retirer_worktree "$CONC_ESPACE"
+  retirer_worktree "$ESSAI"
   git -C "$DEPOT" worktree prune >/dev/null 2>&1
-  rm -f "$TRACE" "$SORTIE"
+  rm -f "$TRACE" "$TRACE_CONC" "$SORTIE" "$SORTIE_CONC"
 }
 trap nettoyer EXIT INT TERM HUP
 
+AVANT="$(git -C "$DEPOT" status --porcelain | sort -u)"
+# LES WORKTREES PRESENTS AU DEPART. Ce test doit n'en AJOUTER aucun; il n'a pas
+# a repondre de ceux qu'il a trouves — en compter le total ferait echouer ce
+# fichier a cause d'une matrice tuee la veille, ce qui n'est pas son sujet.
+WT_AVANT="$(git -C "$DEPOT" worktree list --porcelain | awk '/^worktree /{print $2}' | sort -u)"
+
 # --------------------------------------------------------------------------
-# L'ETAT DE DEPART — sans lui, aucune des trois proprietes n'est mesurable
+# LE « DEPOT PRINCIPAL » DE CE TEST — un worktree jetable
 # --------------------------------------------------------------------------
-AVANT="$(git -C "$DEPOT" status --porcelain)"
-if grep -qF "$MARQUE" "$TEMOIN" 2>/dev/null; then
-  echoue "un temoin d'une execution precedente est deja present; abandon"
+ESSAI="$SCRATCH/esc-selftest-$JETON"
+if ! git -C "$DEPOT" worktree add --detach --quiet "$ESSAI" HEAD 2>"$SORTIE"; then
+  echoue "le worktree d'essai n'a pas pu etre cree"
+  detail "$(head -2 "$SORTIE")"
   exit 1
 fi
+# LES MODIFICATIONS NON VALIDEES Y SONT RECOPIEES: sans elles, ce test
+# exercerait la matrice de HEAD pendant qu'on corrige la matrice ouverte.
+while IFS= read -r ligne; do
+  [[ ${#ligne} -gt 3 ]] || continue
+  chemin="${ligne:3}"
+  [[ "$chemin" == *" -> "* ]] && chemin="${chemin##* -> }"
+  [[ -f "$DEPOT/$chemin" ]] || continue
+  mkdir -p "$(dirname "$ESSAI/$chemin")"
+  cp -p "$DEPOT/$chemin" "$ESSAI/$chemin"
+done < <(git -C "$DEPOT" status --porcelain)
 
+TEMOIN_REL="$SOUS/tools/deploy_eurostruct.sh"
+TEMOIN="$ESSAI/$TEMOIN_REL"
+MARQUE="# TEMOIN mutation_isolation_selftest $JETON"
 printf '%s\n' "$MARQUE" >>"$TEMOIN"
-POSE=1
 TEMOIN_SOMME="$(sha256sum <"$TEMOIN" | cut -d' ' -f1)"
+ETAT_ESSAI_AVANT="$(git -C "$ESSAI" status --porcelain | sort -u)"
 
 # --------------------------------------------------------------------------
-# LA MATRICE, LANCEE PUIS TUEE
+# UNE MATRICE CONCURRENTE, QUI DOIT SURVIVRE AU NETTOYAGE DE CELLE-CI
 # --------------------------------------------------------------------------
-# `W1` mute le fichier du sceau — une cible DIFFERENTE du porteur du temoin, de
-# sorte que les deux proprietes ne se confondent pas. La pause retient la
-# matrice une fois la mutation ecrite: sans elle, il faudrait courir apres une
-# fenetre de quelques millisecondes.
-#
-# LE CONSENTEMENT DE CLUSTER JETABLE N'EST PAS POSE ICI, ET C'EST VOULU: la
-# matrice est tuee avant d'avoir besoin d'une base. Ce script ne doit pouvoir
-# detruire aucun role, sur aucun cluster.
-ESC_MUTATION_TRACE="$TRACE" ESC_MUTATION_PAUSE=30 \
-  python3 "$HERE/mutation_matrix.py" W1 >"$SORTIE" 2>&1 &
+# Elle est lancee depuis le DEPOT REEL, comme le ferait quelqu'un d'autre au
+# meme moment. Ce test ne doit pas la connaitre autrement que par sa trace.
+ESC_MUTATION_TRACE="$TRACE_CONC" ESC_MUTATION_PAUSE=90 \
+  python3 "$RACINE/db/test/mutation_matrix.py" W1 >"$SORTIE_CONC" 2>&1 &
+CONC_PID=$!
+
+# --------------------------------------------------------------------------
+# LA MATRICE DE CE TEST, LANCEE DEPUIS LE WORKTREE D'ESSAI, PUIS TUEE
+# --------------------------------------------------------------------------
+ESC_MUTATION_TRACE="$TRACE" ESC_MUTATION_PAUSE=90 \
+  python3 "$ESSAI/$SOUS/db/test/mutation_matrix.py" W1 >"$SORTIE" 2>&1 &
 MATRICE_PID=$!
 
-# Attendre la trace, sans jamais boucler indefiniment.
-ATTENTE=0
-while [[ ! -s "$TRACE" ]] && ((ATTENTE < 600)); do
-  kill -0 "$MATRICE_PID" 2>/dev/null || break
-  sleep 0.1; ATTENTE=$((ATTENTE + 1))
-done
+attendre_trace() {
+  local f="$1" pid="$2" n=0
+  while [[ ! -s "$f" ]] && ((n < 900)); do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.1; n=$((n + 1))
+  done
+  [[ -s "$f" ]]
+}
 
-if [[ ! -s "$TRACE" ]]; then
-  echoue "la matrice n'a pose aucune mutation en 60 s; les trois proprietes"
-  echoue "      ne sont pas evaluees."
-  detail "$(head -3 "$SORTIE")"
+if ! attendre_trace "$TRACE" "$MATRICE_PID" || ! attendre_trace "$TRACE_CONC" "$CONC_PID"; then
+  echoue "une matrice n'a pose aucune mutation en 90 s; rien n'est evalue."
+  detail "$(head -2 "$SORTIE")"
+  detail "$(head -2 "$SORTIE_CONC")"
   exit 1
 fi
+IFS=$'\t' read -r _N MUTE_REL MUTE_SOMME MATRICE_SOUS MATRICE_ESPACE <"$TRACE"
+IFS=$'\t' read -r _N2 CONC_REL CONC_SOMME CONC_SOUS CONC_ESPACE <"$TRACE_CONC"
 
-IFS=$'\t' read -r _NOM MUTE_REL MUTE_SOMME ESPACE <"$TRACE"
-
-# --- 3. LA MUTATION EST APPLIQUEE, DANS L'ESPACE ISOLE --------------------
-if [[ ! -d "$ESPACE" ]]; then
-  echoue "3. l'espace isole annonce ($ESPACE) n'existe pas"
-elif [[ "$ESPACE" == "$RACINE" ]]; then
-  echoue "3. l'espace isole EST le depot principal: rien n'est isole"
+# --- 3. LA MUTATION VIT DANS L'ESPACE ISOLE -------------------------------
+if [[ ! -d "$MATRICE_ESPACE" ]]; then
+  echoue "3. l'espace isole annonce ($MATRICE_ESPACE) n'existe pas"
+elif [[ "$MATRICE_SOUS" == "$ESSAI/$SOUS" || "$MATRICE_SOUS" == "$RACINE" ]]; then
+  echoue "3. l'espace isole EST l'arbre de depart: rien n'est isole"
 else
-  SOMME_DEPOT="$(sha256sum <"$RACINE/$MUTE_REL" | cut -d' ' -f1)"
-  if [[ "$MUTE_SOMME" == "$SOMME_DEPOT" ]]; then
-    echoue "3. le fichier mute est identique dans l'espace et dans le depot:"
-    echoue "   la mutation n'a pas ete appliquee, ou elle l'a ete au depot."
+  SOMME_ESSAI="$(sha256sum <"$ESSAI/$SOUS/$MUTE_REL" | cut -d' ' -f1)"
+  if [[ "$MUTE_SOMME" == "$SOMME_ESSAI" ]]; then
+    echoue "3. le fichier mute est identique dans l'espace et dans l'arbre de depart"
   else
-    echo "      ok: 3. la mutation vit dans l'espace isole, pas dans le depot"
-    detail "  $MUTE_REL: ${MUTE_SOMME:0:12} (isole) / ${SOMME_DEPOT:0:12} (depot)"
+    echo "      ok: 3. la mutation vit dans l'espace isole, pas dans l'arbre"
+    detail "  $MUTE_REL: ${MUTE_SOMME:0:12} (isole) / ${SOMME_ESSAI:0:12} (depart)"
   fi
 fi
 
 # --- 2. UNE INTERRUPTION NON INTERCEPTABLE --------------------------------
-# SIGKILL: aucun `trap`, aucun `atexit`, aucune restauration. C'est le pire cas,
-# et c'est celui qui laissait un fichier mute dans le depot.
 kill -KILL "$MATRICE_PID" 2>/dev/null
 wait "$MATRICE_PID" 2>/dev/null
 MATRICE_PID=""
-
-APRES="$(git -C "$DEPOT" status --porcelain)"
-ATTENDU="$(printf '%s\n' "$AVANT" | grep -v '^[[:space:]]*$'; echo " M $TEMOIN_REL")"
-INATTENDU="$(comm -13 <(printf '%s\n' "$ATTENDU" | sort -u) \
-                      <(printf '%s\n' "$APRES" | grep -v '^[[:space:]]*$' | sort -u))"
-if [[ -n "$INATTENDU" ]]; then
-  echoue "2. apres SIGKILL, le depot principal porte des modifications"
-  echoue "   qu'il n'avait pas:"
-  while IFS= read -r l; do detail "  $l"; done <<<"$INATTENDU"
+APRES_ESSAI="$(git -C "$ESSAI" status --porcelain | sort -u)"
+if [[ "$APRES_ESSAI" != "$ETAT_ESSAI_AVANT" ]]; then
+  echoue "2. apres SIGKILL, l'arbre de depart porte des modifications nouvelles:"
+  while IFS= read -r l; do detail "  $l"; done \
+    < <(comm -13 <(printf '%s\n' "$ETAT_ESSAI_AVANT") <(printf '%s\n' "$APRES_ESSAI"))
 else
-  echo "      ok: 2. apres SIGKILL, aucun fichier du depot n'est modifie"
+  echo "      ok: 2. apres SIGKILL, aucun fichier de l'arbre n'est modifie"
 fi
 
 # --- 1. LE TEMOIN A SURVECU -----------------------------------------------
-if [[ ! -f "$TEMOIN" ]]; then
-  echoue "1. le porteur du temoin a disparu"
-elif [[ "$(sha256sum <"$TEMOIN" | cut -d' ' -f1)" != "$TEMOIN_SOMME" ]]; then
+if [[ "$(sha256sum <"$TEMOIN" 2>/dev/null | cut -d' ' -f1)" != "$TEMOIN_SOMME" ]]; then
   echoue "1. le fichier temoin a ete reecrit par la matrice"
-  detail "  attendu ${TEMOIN_SOMME:0:12}, obtenu $(sha256sum <"$TEMOIN" | cut -d' ' -f1 | cut -c1-12)"
 elif [[ "$(tail -1 "$TEMOIN")" != "$MARQUE" ]]; then
-  echoue "1. la modification temoin a disparu du depot principal"
+  echoue "1. la modification temoin a disparu"
 else
-  echo "      ok: 1. la modification temoin du depot est intacte"
+  echo "      ok: 1. la modification temoin est intacte"
 fi
 
-# --- LE NETTOYAGE NE TOUCHE PAS LE DEPOT ----------------------------------
-# Apres un SIGKILL, le worktree survit: c'est attendu. Ce qui doit etre vrai,
-# c'est que s'en debarrasser ne touche aucun fichier suivi.
-AVANT_PRUNE="$(git -C "$DEPOT" status --porcelain | sort -u)"
-git -C "$DEPOT" worktree prune >/dev/null 2>&1
-if [[ "$(git -C "$DEPOT" status --porcelain | sort -u)" != "$AVANT_PRUNE" ]]; then
-  echoue "4. `git worktree prune` a modifie l'etat du depot principal"
+# --- 5. LE NETTOYAGE NE TOUCHE QUE SES PROPRES CHEMINS --------------------
+# On nettoie CE QU'ON A CREE, puis on constate que la matrice concurrente est
+# intacte: son worktree existe encore, et sa mutation y est toujours lisible.
+retirer_worktree "$MATRICE_ESPACE"; MATRICE_ESPACE=""
+if [[ ! -d "$CONC_ESPACE" ]]; then
+  echoue "5. le nettoyage a emporte le worktree d'une matrice concurrente"
+  detail "  $CONC_ESPACE"
+elif [[ "$(sha256sum <"$CONC_SOUS/$CONC_REL" 2>/dev/null | cut -d' ' -f1)" != "$CONC_SOMME" ]]; then
+  echoue "5. le worktree concurrent survit, mais sa mutation a ete alteree"
 else
-  echo "      ok: 4. se debarrasser du worktree ne touche aucun fichier suivi"
+  echo "      ok: 5. le worktree d'une matrice concurrente est intact"
+fi
+
+# --- 4. SE DEBARRASSER DES WORKTREES NE TOUCHE AUCUN FICHIER SUIVI --------
+kill -KILL "$CONC_PID" 2>/dev/null; wait "$CONC_PID" 2>/dev/null; CONC_PID=""
+retirer_worktree "$CONC_ESPACE"; CONC_ESPACE=""
+retirer_worktree "$ESSAI";       ESSAI=""
+git -C "$DEPOT" worktree prune >/dev/null 2>&1
+APRES="$(git -C "$DEPOT" status --porcelain | sort -u)"
+WT_APRES="$(git -C "$DEPOT" worktree list --porcelain | awk '/^worktree /{print $2}' | sort -u)"
+RESTANTS="$(comm -13 <(printf '%s\n' "$WT_AVANT") <(printf '%s\n' "$WT_APRES") | wc -l)"
+if [[ "$APRES" != "$AVANT" ]]; then
+  echoue "4. le depot principal a change au cours de ce test:"
+  while IFS= read -r l; do detail "  $l"; done \
+    < <(comm -13 <(printf '%s\n' "$AVANT") <(printf '%s\n' "$APRES"))
+elif [[ "$RESTANTS" != "0" ]]; then
+  echoue "4. $RESTANTS worktree(s) AJOUTE(S) et non retire(s):"
+  while IFS= read -r l; do detail "  $l"; done \
+    < <(comm -13 <(printf '%s\n' "$WT_AVANT") <(printf '%s\n' "$WT_APRES"))
+else
+  echo "      ok: 4. aucun residu, et le depot principal n'a pas bouge"
 fi
 
 echo ""
