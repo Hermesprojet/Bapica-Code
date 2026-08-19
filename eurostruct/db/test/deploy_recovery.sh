@@ -789,13 +789,41 @@ if [[ -z "\${ESC_TUER:-}" ]]; then
   [[ "\$CORPS" == *"$motif"* ]] && ESC_TUER=1
 fi
 if [[ -n "\${ESC_TUER:-}" ]] && [[ ! -f "$COPIE/${nom,,}_tue" ]]; then
+  # IL TUE AVEC LES IDENTIFIANTS QU'IL A DEJA, ET N'INVENTE AUCUNE CONNEXION
+  # ADMINISTRATEUR.
+  #
+  # DEFAUT MESURE, ET IL A FALLU LA CI POUR LE VOIR. La version precedente
+  # ecrivait PGHOST="\${PGHOST:-...}" PGUSER="\${PGUSER:-postgres}" dans un
+  # heredoc NON CITE: les deux substitutions etaient donc evaluees A LA
+  # GENERATION, dans le shell du harnais, et gravees en dur — sans mot de passe,
+  # qu'elles esperaient heriter.
+  #
+  #   sur socket -> « postgres » en authentification PEER: aucun mot de passe
+  #                 requis, le kill passait, S3/S4 verts;
+  #   en TCP     -> « postgres » avec le mot de passe du PLAN DE CONTROLE herite
+  #                 de la commande: « password authentication failed for user
+  #                 "postgres" ». Le backend du verrou n'etait jamais tue, et
+  #                 S3/S4 ne mesuraient rien.
+  #
+  # AUCUN ADMINISTRATEUR N'EST NECESSAIRE: le co-processus du verrou tourne sous
+  # le plan de controle, et un role peut terminer SES PROPRES backends. Le
+  # leurre est justement invoque sur une connexion du plan — il lui suffit de ne
+  # RIEN surcharger. C'est aussi ce qui evite d'ecrire un mot de passe
+  # administrateur dans un fichier temporaire.
+  #
+  # `-d "$BASE"` et non `-d postgres`: c'est la base que ce role joint a coup
+  # sur, et `pg_locks` est global au cluster.
   : >"$COPIE/${nom,,}_tue"
-  PGHOST="${PGHOST:-/var/run/postgresql}" PGUSER="${PGUSER:-postgres}" \\
-    "$vrai" -X -q -tA -d postgres -c "
+  "$vrai" -X -q -tA -d "$BASE" -c "
       select pg_terminate_backend(pid) from pg_locks
        where locktype='advisory' and granted and objsubid=2
          and classid = (hashtext('eurostruct.deploiement')::bigint & 4294967295)::oid
-         and objid   = (hashtext('$BASE')::bigint & 4294967295)::oid" >/dev/null 2>&1
+         and objid   = (hashtext('$BASE')::bigint & 4294967295)::oid" \\
+    >"$COPIE/${nom,,}_kill.log" 2>&1
+  # LE RESULTAT N'EST PLUS JETE. Le marqueur etait pose AVANT la tentative et
+  # son issue ignoree: « le backend a ete tue » ne prouvait que « le leurre
+  # s'est declenche ». Une ligne « t » atteste une terminaison REELLE.
+  grep -qx 't' "$COPIE/${nom,,}_kill.log" || : >"$COPIE/${nom,,}_rate"
 fi
 # L'APPEL PASSE ENSUITE NORMALEMENT: c'est le reconstat du verrou, et lui seul,
 # qui doit arreter la commande — pas une erreur de cet appel-ci.
@@ -803,7 +831,7 @@ if (( DIRECT )); then exec "$vrai" "\$@"; fi
 printf '%s\n' "\${CORPS:-\$(cat)}" | "$vrai" "\$@"
 LEURREFIN
   chmod +x "$leurre/psql"
-  rm -f "$COPIE/${nom,,}_tue"
+  rm -f "$COPIE/${nom,,}_tue" "$COPIE/${nom,,}_rate" "$COPIE/${nom,,}_kill.log"
 
   if [[ "$mode" == "reprise" ]]; then
     # Amener la base a PENDING avec les deux emprunts, comme apres un SIGKILL.
@@ -842,8 +870,15 @@ select count(*) from pg_auth_members am
    and r.rolname in ('eurostruct_normative_writer','eurostruct_normative_bootstrap');
 SQL
   )
+  # DEUX FAITS DISTINCTS, ET LES CONFONDRE A RENDU S3/S4 CREUX EN TCP: que le
+  # leurre se soit DECLENCHE, et que le backend soit REELLEMENT mort. Le second
+  # seul autorise a conclure.
   if [[ ! -f "$COPIE/${nom,,}_tue" ]]; then
-    echoue "$nom. le backend du verrou n'a pas ete tue; scenario non evalue"
+    echoue "$nom. le leurre ne s'est pas declenche; scenario non evalue"
+  elif [[ -f "$COPIE/${nom,,}_rate" ]]; then
+    echoue "$nom. le leurre s'est declenche mais n'a termine AUCUN backend;"
+    echoue "     le verrou n'a donc pas ete perdu, et rien n'est mesure."
+    detail "    $(head -2 "$COPIE/${nom,,}_kill.log" 2>/dev/null | tr '\n' ' ' | cut -c1-160)"
   elif [[ "$apres" != "$avant" ]]; then
     rouge "$nom. la mutation a eu lieu malgre la perte du verrou."
     detail "    $avant octroi(s) direct(s) avant, $apres apres (code $code)"
