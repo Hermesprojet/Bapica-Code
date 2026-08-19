@@ -103,11 +103,21 @@ base() { psql -X -q -d "$DB_NAME" "$@"; }
 # disait pas si elles auraient passe. On ne peut pas distinguer « non
 # executee » de « verte » si l'une se presente comme l'autre.
 SURFACES_ROUGES=()
+# CODE 4 = NON EXECUTE, ET CE N'EST PAS UN ECHEC — c'est une SURFACE MANQUANTE.
+# `cross_cluster_restore.sh` cree un second cluster par `initdb`; sans le paquet
+# serveur, il ne peut pas s'executer. Le confondre avec un rouge enverrait
+# chercher une panne inexistante; le confondre avec un vert annoncerait une
+# garantie qui n'a pas ete verifiee. Les deux sont comptes, et separement.
+SURFACES_NON_EXECUTEES=()
 etape() {
   local nom="$1"; shift
   local code=0
   "$@" || code=$?
-  [[ $code -eq 0 ]] || SURFACES_ROUGES+=("$nom")
+  case $code in
+    0) : ;;
+    4) SURFACES_NON_EXECUTEES+=("$nom") ;;
+    *) SURFACES_ROUGES+=("$nom") ;;
+  esac
   return 0
 }
 
@@ -198,6 +208,39 @@ etape "contrat de finalisation" \
 echo "==> fermeture de l'autorite"
 etape "fermeture de l'autorite" \
   "$HERE/authority_closure.sh" "${DB_NAME:0:20}ac"
+
+# --------------------------------------------------------------------------
+# LE CONTRAT DU SCEAU — la racine est-elle DEPLOYABLE ? (6.3b6d)
+# --------------------------------------------------------------------------
+# `authority_closure.sh` etablit que le migrateur est CONTENU. Celui-ci pose la
+# question suivante, qui est celle de l'exploitation: la racine est-elle separee
+# du jeu de migrations, versionnee, reexecutable, et honnete sur ce qu'elle
+# garantit ? Douze scenarios, chacun avec son propre decor canonique vierge.
+echo "==> contrat du sceau"
+etape "contrat du sceau" \
+  "$HERE/seal_contract.sh" "${DB_NAME:0:20}sc"
+
+# --------------------------------------------------------------------------
+# LA COMMANDE OFFICIELLE DE DEPLOIEMENT (6.3b6d)
+# --------------------------------------------------------------------------
+# `tools/deploy_eurostruct.sh` est le chemin officiel. Un chemin officiel qui
+# n'est jamais execute est une documentation deguisee en outil: il derive du
+# produit sans que rien ne le signale, et se decouvre le jour du premier
+# deploiement reel.
+echo "==> commande officielle de deploiement"
+etape "commande officielle de deploiement" \
+  "$HERE/official_deployment.sh" "${DB_NAME:0:20}od"
+
+# --------------------------------------------------------------------------
+# LA RESTAURATION INTER-CLUSTER, EXERCEE (6.3b6d)
+# --------------------------------------------------------------------------
+# Ce harnais cree un SECOND CLUSTER par `initdb`. Si le paquet SERVEUR de
+# PostgreSQL n'est pas installe, il rend 4 — NON EXECUTE — et `etape` le
+# rapporte comme tel: une surface qu'on n'a pas pu exercer n'est pas une
+# surface qui a tenu, et elle ne doit pas passer pour verte.
+echo "==> restauration inter-cluster"
+etape "restauration inter-cluster" \
+  "$HERE/cross_cluster_restore.sh" "${DB_NAME:0:20}xr"
 
 # --------------------------------------------------------------------------
 # LES ETAPES QUI EXIGENT UN JEU CANONIQUE VIERGE PASSENT AVANT LA BASE
@@ -465,14 +508,20 @@ etape "contrat croise moteur/base" \
 adm -c "drop database if exists $XC_DB;" >/dev/null
 
 echo ""
-if [[ ${#SURFACES_ROUGES[@]} -eq 0 ]]; then
+if [[ ${#SURFACES_ROUGES[@]} -eq 0 && ${#SURFACES_NON_EXECUTEES[@]} -eq 0 ]]; then
   echo "================================================="
   echo " Toutes les surfaces de db/test sont vertes."
   echo "================================================="
   exit 0
 fi
 echo "================================================="
-echo " ${#SURFACES_ROUGES[@]} surface(s) ROUGE(S):"
-for s_rouge in "${SURFACES_ROUGES[@]}"; do echo "   - $s_rouge"; done
+if [[ ${#SURFACES_ROUGES[@]} -gt 0 ]]; then
+  echo " ${#SURFACES_ROUGES[@]} surface(s) ROUGE(S):"
+  for s_rouge in "${SURFACES_ROUGES[@]}"; do echo "   - $s_rouge"; done
+fi
+if [[ ${#SURFACES_NON_EXECUTEES[@]} -gt 0 ]]; then
+  echo " ${#SURFACES_NON_EXECUTEES[@]} surface(s) NON EXECUTEE(S) — pas verte(s):"
+  for s_ne in "${SURFACES_NON_EXECUTEES[@]}"; do echo "   - $s_ne"; done
+fi
 echo "================================================="
 exit 1

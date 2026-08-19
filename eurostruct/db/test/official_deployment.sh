@@ -57,6 +57,23 @@ adm() { psql -X -q -d postgres "$@"; }
 [[ -x "$COMMANDE" ]] || { echo "      ECHEC: $COMMANDE introuvable ou non executable" >&2
                           harnais_verrou_rendre; exit 2; }
 
+# LA COMMANDE OFFICIELLE PARLE EN URL, DONC EN TCP. Un `postgresql://` porte un
+# HOTE, pas un repertoire de socket: ce harnais se connecte donc a
+# `localhost:$PGPORT`, meme quand le reste de la suite passe par la socket unix.
+#
+# SI LE SERVEUR N'ECOUTE PAS EN TCP, ce harnais rend 4 — NON EXECUTE — au lieu
+# d'echouer sur « connection refused », un diagnostic qui designerait la
+# commande alors que c'est la configuration du cluster qui est en cause. Une
+# surface qu'on n'a pas pu exercer n'est pas une surface qui a tenu.
+if ! PGHOST=localhost PGPORT="${PGPORT:-5432}" psql -X -q -tAc "select 1" \
+        -d postgres >/dev/null 2>&1; then
+  echo "NON EXECUTE: le cluster n'accepte pas de connexion TCP sur" >&2
+  echo "       localhost:${PGPORT:-5432}. La commande officielle de deploiement" >&2
+  echo "       recoit deux URL: elle ne peut pas viser une socket unix." >&2
+  harnais_verrou_rendre
+  exit 4
+fi
+
 # --------------------------------------------------------------------------
 # LE DECOR — CE QUE FAIT L'EXPLOITANT, ET QUE LA COMMANDE NE FAIT PAS
 # --------------------------------------------------------------------------

@@ -34,6 +34,7 @@ M = "db/migrations/0010_normative_confirmation.sql"
 S = "db/control_plane/0001_normative_seal.sql"
 R = "db/test/run.sh"
 H = "db/test/authority_closure.sh"
+O = "tools/deploy_eurostruct.sh"
 SCRATCH = os.environ.get("TMPDIR", "/tmp")
 
 
@@ -45,7 +46,7 @@ def exiger_arbre_propre():
     cours. Cette garde est la seule chose qui rend l'outil utilisable sans
     precaution particuliere.
     """
-    p = subprocess.run(["git", "status", "--porcelain", "--", M, S, R, H],
+    p = subprocess.run(["git", "status", "--porcelain", "--", M, S, R, H, O],
                        cwd=RACINE, capture_output=True, text=True)
     if p.stdout.strip():
         raise SystemExit(
@@ -108,7 +109,7 @@ def essayer(nom, point, fichier, paires, redondant=False,
         return False
     # Les points se subdivisent (« 2a. », « 8b. », « A1. »): un rouge sur une
     # sous-verification EST un rouge du point.
-    base = re.match(r"[0-9A-G]+", point).group(0)
+    base = re.match(r"[0-9A-Z]+", point).group(0)
     rougit = re.search(rf"^ *(ROUGE ATTENDU \(a fermer\)|ECHEC): {base}[0-9a-z]?\.",
                        sortie, re.M) is not None
     if redondant:
@@ -263,11 +264,86 @@ SQL""")], False),
       ("CAS COURANT: RESTAURATION INTER-CLUSTER", "CAS COURANT: transport de base")], False),
 ]
 
+
+# --------------------------------------------------------------------------
+# L'INDUSTRIALISATION DU SCEAU (6.3b6d) — treize garanties, treize mutations
+# --------------------------------------------------------------------------
+# Elles portent sur trois harnais differents, et c'est le sujet: une garantie
+# qui vit dans `0001_normative_seal.sql` mais n'est constatee que par
+# `official_deployment.sh` ne serait pas couverte par une matrice qui ne
+# lancerait qu'un seul harnais.
+CAS_SCEAU = [
+    ("I3  la garde de reexecution ne refuse plus", "I3", S,
+     [("""  raise exception
+    'SEAL_ALREADY_INSTALLED: le sceau « % » est deja pose sur cette base, et '""",
+       """  return;
+  raise exception
+    'SEAL_ALREADY_INSTALLED: le sceau « % » est deja pose sur cette base, et '""")], False),
+    ("I4  le controle de completude du sceau disparait", "I4", S,
+     [("  if presents <> array_length(objets, 1) then", "  if false then")], False),
+    ("I2  la phase 1 n'exige plus la version du sceau", "I2", M,
+     [("  if not (posee = any (compatibles)) then", "  if false then")], False),
+    ("J   la liaison poseur/finaliseur est retiree", "J", S,
+     [("    if d_oid <> p_oid or d_nom <> p_nom then", "    if false then")], False),
+    # REDONDANCE VOULUE: le nom seul et l'OID seul attrapent chacun le
+    # contre-exemple J, ou les deux different. En retirer UN ne doit rien
+    # rougir; c'est ce qui distingue une double verification d'un doublon.
+    ("J'  une SEULE des deux moities de l'identite", "J", S,
+     [("    if d_oid <> p_oid or d_nom <> p_nom then", "    if d_oid <> p_oid then")], True),
+    ("M   le niveau d'assurance est toujours « contenu »", "M", S,
+     [("""       case when c.rolsuper or s.rolsuper then 'UNCONTAINED_SUPERUSER'
+            else 'CONTAINED_NON_SUPERUSER' end""",
+       """       'CONTAINED_NON_SUPERUSER'""")], False),
+    ("K1  une primitive mutante est ouverte a la gouvernance", "K1", S,
+     [("""revoke all on function normative_prepare_activation(text) from public;""",
+       """revoke all on function normative_prepare_activation(text) from public;
+grant execute on function normative_prepare_activation(text) to normative_governance;""")], False),
+]
+
+CAS_RESTAURATION = [
+    ("L3  le marqueur du diagnostic de restauration disparait", "L3", S,
+     [("          'CAS COURANT: RESTAURATION INTER-CLUSTER — les OID ne survivent pas '",
+       "          'CAS COURANT: transport de base — les OID ne survivent pas '")], False),
+    ("L4  le diagnostic promet a nouveau une reprise", "L4", S,
+     [("          'une base NEUVE sur ce cluster (phases 0, 1, 2) et reprenez-y les '",
+       "          'refinalisee sur place. Deployez une base NEUVE et reprenez-y les '")], False),
+]
+
+CAS_COMMANDE = [
+    ("N4  la commande accepte deux acteurs identiques", "N4", O,
+     [('if [[ "$PLAN_USER" == "$MIG_USER" ]]; then', 'if false; then')], False),
+    ("N5  le mode strict ne refuse plus l'assurance degradee", "N5", O,
+     [("""  if ((STRICT)); then
+    echec "niveau d'assurance « $SCEAU_ASSURANCE ».""",
+       """  if false; then
+    echec "niveau d'assurance « $SCEAU_ASSURANCE ».""")], False),
+    ("N3  la relance reaccorde les emprunts sur une base ACTIVE", "N3", O,
+     [('if [[ "$DEJA" == "ACTIVE" ]]; then', 'if false; then')], False),
+    # N1 est couvert par tout ce qui precede: aucune de ces mutations ne peut
+    # rougir si le deploiement complet ne tourne pas. Il n'a donc pas de
+    # mutation propre, et le dire vaut mieux que d'en inventer une.
+    #
+    # N6 — « la commande ne contient aucune destruction » — n'en a pas non plus,
+    # DELIBEREMENT: sa mutation consisterait a ECRIRE un `drop database` dans un
+    # outil de deploiement, meme sur une branche morte. Le fichier est restaure
+    # apres coup, mais une interruption au mauvais moment le laisserait en
+    # place. Le risque n'est pas proportionne a ce que la mutation etablirait
+    # d'un `grep`.
+]
+
 print("MUTATIONS — chaque garantie retiree doit rougir son contre-exemple")
 ok = all([essayer(*c) for c in CAS])
 ok = all([essayer(*c, harnais="db/test/authority_closure.sh", prefixe="mv")
           for c in CAS_AUTORITE]) and ok
+ok = all([essayer(*c, harnais="db/test/seal_contract.sh", prefixe="ms")
+          for c in CAS_SCEAU]) and ok
+ok = all([essayer(*c, harnais="db/test/cross_cluster_restore.sh", prefixe="mx")
+          for c in CAS_RESTAURATION]) and ok
+ok = all([essayer(*c, harnais="db/test/official_deployment.sh", prefixe="mo")
+          for c in CAS_COMMANDE]) and ok
 print()
-print(f"MUTATIONS: les {len(CAS) + len(CAS_AUTORITE)} controles portent "
-      "quelque chose." if ok else "MUTATIONS: au moins un controle ne porte rien.")
+TOTAL = len(CAS) + len(CAS_AUTORITE) + len(CAS_SCEAU) + len(CAS_RESTAURATION) \
+      + len(CAS_COMMANDE)
+print(f"MUTATIONS: les {TOTAL} controles portent quelque chose." if ok
+      else "MUTATIONS: au moins un controle ne porte rien.")
 sys.exit(0 if ok else 1)

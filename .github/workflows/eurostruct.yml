@@ -163,6 +163,37 @@ jobs:
           EUROSTRUCT_CLUSTER_JETABLE: oui-cluster-jetable-et-isole
         run: ./db/test/harness_safety_selftest.sh
 
+      # `db/test/cross_cluster_restore.sh` cree un SECOND CLUSTER par `initdb`
+      # pour exercer une restauration reelle. `initdb` est dans le paquet
+      # SERVEUR, pas dans le client — et le service `postgres:16` de ce job est
+      # un CONTENEUR: ses binaires ne sont pas sur le runner.
+      #
+      # SANS CE PAQUET, LE HARNAIS REND 4 (NON EXECUTE) et `run.sh` le compte
+      # comme une surface manquante, donc rouge. C'est voulu: une garantie
+      # qu'on n'a pas pu verifier ne doit pas passer pour verte. Cette etape
+      # existe pour que le rouge ne soit jamais du a l'outillage.
+      #
+      # Le cluster local eventuellement demarre par le paquet est ARRETE: le
+      # port 5432 du runner est deja pris par le mappage du service.
+      - name: Serveur PostgreSQL local (second cluster de restauration)
+        run: |
+          set -u
+          trouve() { ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 \
+                     || command -v initdb >/dev/null 2>&1; }
+          if ! trouve; then
+            sudo apt-get update -qq || true
+            sudo apt-get install -y -qq postgresql-16 || sudo apt-get install -y -qq postgresql || true
+          fi
+          sudo systemctl stop postgresql 2>/dev/null || true
+          sudo pg_ctlcluster 16 main stop 2>/dev/null || true
+          if ! trouve; then
+            echo "ECHEC: initdb reste introuvable apres installation." >&2
+            echo "       cross_cluster_restore.sh ne pourrait pas s'executer," >&2
+            echo "       et une surface non executee n'est pas une surface verte." >&2
+            exit 1
+          fi
+          ls -1 /usr/lib/postgresql/*/bin/initdb 2>/dev/null || command -v initdb
+
       - name: Migrations et garanties structurelles
         # RLS tenant isolation, the human validation gate, immutability of
         # signed records, the ten-year retention guard.
