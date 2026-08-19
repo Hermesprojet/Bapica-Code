@@ -98,6 +98,22 @@ for arg in "$@"; do
   esac
 done
 
+# ==========================================================================
+# HYGIENE DE CONNEXION — les PG* ambiantes ne decident de rien
+# ==========================================================================
+# libpq lit une douzaine de variables d'environnement. Certaines REDIRIGENT la
+# connexion sans apparaitre dans l'URL: `PGSERVICE` et `PGSERVICEFILE` la font
+# resoudre par un fichier de service, `PGHOSTADDR` remplace l'adresse tout en
+# laissant `PGHOST` intact dans les messages, `PGPASSFILE` fournit un mot de
+# passe, `PGOPTIONS` injecte des parametres de session — `search_path` compris.
+#
+# Un deploiement qui croit viser une base peut donc en atteindre une autre, et
+# le compte rendu affichera la premiere. SEULS les parametres derives des deux
+# URL decident: les autres sont EFFACES ici, avant la premiere connexion.
+unset PGSERVICE PGSERVICEFILE PGPASSFILE PGOPTIONS PGDATABASE PGHOSTADDR \
+      PGREQUIRESSL PGCHANNELBINDING PGSSLROOTCERT PGSSLCERT PGSSLKEY \
+      PGHOST PGPORT PGUSER PGPASSWORD PGSSLMODE
+
 echec()  { echo "ECHEC: $*" >&2; exit 1; }
 etape()  { echo; echo "== $*"; }
 constat(){ echo "   ok: $*"; }
@@ -174,6 +190,53 @@ if [[ "$PLAN_USER" == "$MIG_USER" ]]; then
        migrations et celui qui approuve. Provisionnez un second role."
 fi
 
+# ==========================================================================
+# LES NOMS DE ROLES NE SONT JAMAIS INTERPOLES DANS DU SQL
+# ==========================================================================
+# `MIG_USER` vient de l'URL et etait ecrit tel quel dans
+# `grant ... to "$MIG_USER"` et `pg_has_role('$MIG_USER', ...)`. Contre-exemple
+# MESURE (db/test/deploy_recovery.sh, R1): un nom de la forme
+#
+#     <prefixe-existant>"; create role <temoin> nologin; --
+#
+# fermait l'identifiant et faisait executer l'instruction AVEC LES PRIVILEGES
+# DU PLAN DE CONTROLE, qui porte CREATEROLE. Le role temoin etait cree.
+#
+# QUE L'URL VIENNE DE L'EXPLOITANT NE SUPPRIME PAS LE RISQUE: le migrateur est
+# precisement l'acteur que le modele cherche a contenir, et son nom est ce que
+# l'exploitant recopie d'une configuration qu'il n'a pas ecrite.
+#
+# DEUX MESURES, ET LES DEUX SONT NECESSAIRES:
+#
+#   1. TOUT SQL PASSE PAR LES FORMES SURES de psql — `:"nom"` pour un
+#      identifiant, `:'texte'` pour un litteral. Elles citent et echappent cote
+#      client, et ne peuvent pas etre sorties de leur contexte.
+#      `psql -c` NE LES DEVELOPPE PAS (mesure): tout passe donc par un heredoc.
+#
+#   2. UNE BORNE, fail-closed. Un nom de plus de 63 octets est TRONQUE par
+#      PostgreSQL — deux roles distincts pourraient devenir le meme — et un nom
+#      portant un octet nul ou un saut de ligne n'a aucune raison d'exister.
+#      Ce n'est pas la protection principale, c'est la ceinture.
+borner_identifiant() {
+  local quoi="$1" valeur="$2"
+  if [[ ${#valeur} -eq 0 || ${#valeur} -gt 63 ]]; then
+    echec "le nom du $quoi fait ${#valeur} caracteres. PostgreSQL tronque les
+       identifiants a 63 octets: deux roles distincts deviendraient le meme."
+  fi
+  # PAS DE TEST SUR L'OCTET NUL, ET C'EST DELIBERE. `$'\0'` vaut la chaine
+  # VIDE dans un motif bash: `*$'\0'*` devient `**`, qui accepte TOUT. Ecrit
+  # ainsi, le controle refusait le premier nom venu — mesure: « le nom du plan
+  # de controle contient un saut de ligne ou un octet nul » sur un role
+  # parfaitement ordinaire. Une variable shell ne peut de toute facon pas
+  # porter d'octet nul: la valeur serait tronquee bien avant d'arriver ici.
+  if [[ "$valeur" == *$'\n'* || "$valeur" == *$'\r'* ]]; then
+    echec "le nom du $quoi contient un saut de ligne."
+  fi
+}
+borner_identifiant "plan de controle" "$PLAN_USER"
+borner_identifiant "migrateur"        "$MIG_USER"
+borner_identifiant "base"             "$BASE"
+
 plan() { PGHOST="$PLAN_HOST" PGPORT="$PLAN_PORT" PGUSER="$PLAN_USER" \
          PGPASSWORD="$PLAN_PASSWORD" PGSSLMODE="$PLAN_SSLMODE" \
          psql -X -q -d "$BASE" "$@"; }
@@ -193,6 +256,78 @@ if ((DRY_RUN)); then
   constat "les deux acteurs se connectent a « $BASE »"
   exit 0
 fi
+
+# ==========================================================================
+# LA POLITIQUE TLS, EN MODE STRICT
+# ==========================================================================
+# `sslmode=disable`, `allow` et `prefer` acceptent une connexion EN CLAIR, et
+# `require` chiffre sans verifier a qui l'on parle. Vers une cible distante,
+# cela expose le mot de passe du plan de controle et laisse la porte ouverte a
+# un interlocuteur substitue — c'est-a-dire a un « deploiement » qui scelle une
+# base qui n'est pas la votre.
+#
+# UNE CIBLE DE BOUCLE LOCALE EST TRAITEE A PART, et ce n'est pas une
+# complaisance: le trafic ne quitte pas la machine, et exiger un certificat
+# verifiable de `localhost` rendrait la CI et tout poste de developpement
+# indeployables sans rien protoger de plus.
+cible_locale() {
+  case "$PLAN_HOST" in
+    localhost|127.0.0.1|::1|/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+if ((STRICT)) && ! cible_locale; then
+  case "$PLAN_SSLMODE" in
+    verify-full|verify-ca) : ;;
+    *)
+      echec "cible distante « $PLAN_HOST » avec sslmode=$PLAN_SSLMODE.
+       En mode strict, une connexion distante exige « verify-full » — ou au
+       minimum « verify-ca » — et la chaine de confiance correspondante
+       (PGSSLROOTCERT, ou le magasin du systeme).
+         * disable / allow / prefer acceptent une connexion EN CLAIR: le mot de
+           passe du plan de controle passerait en clair sur le reseau;
+         * require chiffre sans verifier a QUI l'on parle: un interlocuteur
+           substitue scellerait une base qui n'est pas la votre.
+       Corrigez les deux URL, ou assumez explicitement: --auto-heberge." ;;
+  esac
+  [[ "$MIG_SSLMODE" == "$PLAN_SSLMODE" ]] \
+    || echec "les deux URL n'ont pas la meme politique TLS
+       (plan: $PLAN_SSLMODE, migrateur: $MIG_SSLMODE)."
+  constat "TLS: $PLAN_SSLMODE vers « $PLAN_HOST »"
+fi
+
+# ==========================================================================
+# LES IDENTITES OBTENUES, ET NON CELLES DEMANDEES
+# ==========================================================================
+# Comparer les chaines contenues dans les URL ne dit rien de la connexion
+# reellement etablie: un fichier de service, un `PGHOSTADDR`, un
+# `user=` dans `PGOPTIONS` ou un mappage `pg_ident` peuvent livrer une AUTRE
+# identite ou une AUTRE base. Les variables ambiantes sont effacees plus haut;
+# ce bloc constate le resultat plutot que de le supposer.
+#
+# `session_user` ET `current_user`: le premier est l'identite de connexion, le
+# second peut differer apres un `SET ROLE` — pose par `PGOPTIONS`, ou par un
+# `ALTER ROLE ... SET role`. Les deux doivent etre celle qu'on croit.
+verifier_identite() {
+  local role_attendu="$1" quoi="$2"; shift 2
+  local obtenu
+  obtenu=$("$@" -tA 2>/dev/null <<'SQL'
+select session_user || '|' || current_user || '|' || current_database();
+SQL
+  )
+  [[ -n "$obtenu" ]] || echec "le $quoi ne peut pas se connecter a « $BASE »."
+  local su="${obtenu%%|*}" reste="${obtenu#*|}"
+  local cu="${reste%%|*}" db="${reste##*|}"
+  [[ "$su" == "$role_attendu" && "$cu" == "$role_attendu" ]] \
+    || echec "le $quoi devait etre « $role_attendu »; la connexion obtenue est
+       session_user=« $su », current_user=« $cu ». Une redirection est en jeu
+       (fichier de service, pg_ident, PGOPTIONS, ALTER ROLE ... SET role)."
+  [[ "$db" == "$BASE" ]] \
+    || echec "le $quoi vise « $BASE » mais la connexion obtenue porte « $db »."
+}
+verifier_identite "$PLAN_USER" "plan de controle" plan
+verifier_identite "$MIG_USER"  "migrateur"        mig
+constat "identites constatees: « $PLAN_USER » et « $MIG_USER » sur « $BASE »"
 
 [[ -f "$SCEAU" ]] || echec "le fichier de sceau est introuvable ($SCEAU)."
 
@@ -264,24 +399,25 @@ FINALISE=0
 NETTOYAGE_ECHOUE=0
 
 capacites_du_migrateur() {
-  plan -tAc "
-    select coalesce(string_agg(a.r || '(' ||
-        case when pg_has_role('$MIG_USER', a.r, 'SET') then 'SET ' else '' end ||
-        case when pg_has_role('$MIG_USER', a.r, 'USAGE') then 'USAGE ' else '' end ||
-        case when pg_has_role('$MIG_USER', a.r, 'MEMBER WITH ADMIN OPTION')
-             then 'ADMIN' else '' end || ')', ' '), '')
-      from unnest(array['eurostruct_normative_writer',
-                        'eurostruct_normative_bootstrap',
-                        'eurostruct_normative_activator']) a(r)
-     where pg_has_role('$MIG_USER', a.r, 'SET')
-        or pg_has_role('$MIG_USER', a.r, 'USAGE')
-        or pg_has_role('$MIG_USER', a.r, 'MEMBER WITH ADMIN OPTION')" 2>/dev/null
+  plan -tA -v m="$MIG_USER" 2>/dev/null <<'SQL'
+select coalesce(string_agg(a.r || '(' ||
+    case when pg_has_role(:'m', a.r, 'SET') then 'SET ' else '' end ||
+    case when pg_has_role(:'m', a.r, 'USAGE') then 'USAGE ' else '' end ||
+    case when pg_has_role(:'m', a.r, 'MEMBER WITH ADMIN OPTION')
+         then 'ADMIN' else '' end || ')', ' '), '')
+  from unnest(array['eurostruct_normative_writer',
+                    'eurostruct_normative_bootstrap',
+                    'eurostruct_normative_activator']) a(r)
+ where pg_has_role(:'m', a.r, 'SET')
+    or pg_has_role(:'m', a.r, 'USAGE')
+    or pg_has_role(:'m', a.r, 'MEMBER WITH ADMIN OPTION');
+SQL
 }
 
 revoquer_les_emprunts() {
-  plan -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
-revoke eurostruct_normative_writer    from "$MIG_USER";
-revoke eurostruct_normative_bootstrap from "$MIG_USER";
+  plan -v ON_ERROR_STOP=1 -v m="$MIG_USER" >/dev/null 2>&1 <<'SQL'
+revoke eurostruct_normative_writer    from :"m";
+revoke eurostruct_normative_bootstrap from :"m";
 SQL
   capacites_du_migrateur
 }
@@ -340,21 +476,35 @@ trap 'echo; echo "== interruption (HUP) — compensation";  exit 130' HUP
 # 1. PHASE 0 — LE SCEAU, PAR LE PLAN DE CONTROLE
 # --------------------------------------------------------------------------
 etape "1/10  phase 0 — le sceau, par « $PLAN_USER »"
-SORTIE=$(plan -v ON_ERROR_STOP=1 -f "$SCEAU" 2>&1)
+# `VERBOSITY=verbose` FAIT PREFIXER LE SQLSTATE AU MESSAGE:
+#
+#     ERROR:  ES001: le sceau « ... » est deja pose ...
+#
+# C'est ce qui permet de brancher sur le CODE. Le fichier du sceau porte des
+# SQLSTATE dedies depuis 6.3b6d, mais cette commande branchait encore sur le
+# TEXTE — `grep SEAL_ALREADY_INSTALLED` —, c'est-a-dire sur de la prose. Un
+# message se reformule, se traduit, se raccourcit; un code non.
+SORTIE=$(plan -v ON_ERROR_STOP=1 -v VERBOSITY=verbose -f "$SCEAU" 2>&1)
 CODE=$?
+# LE MOTIF N'EST PAS ANCRE EN DEBUT DE LIGNE, et c'est necessaire: quand psql
+# lit un FICHIER (`-f`), il prefixe ses diagnostics par
+# `psql:<fichier>:<ligne>: `. Ancre sur `^ERROR:`, le controle ne trouvait
+# jamais rien — mesure: la relance de la phase 0 tombait dans la branche
+# generique « la phase 0 a ete refusee » au lieu d'etre reconnue comme
+# SEAL_ALREADY_INSTALLED, et cinq scenarios de reprise rougissaient.
+sqlstate() { grep -qE "(^|: )ERROR:  $1:" <<<"$SORTIE"; }
 if [[ $CODE -ne 0 ]]; then
-  # SEAL_ALREADY_INSTALLED N'EST PAS UNE ERREUR DE DEPLOIEMENT. C'est le
-  # resultat normal d'une phase 0 rejouee — apres une coupure reseau, par
-  # exemple. Le branchement se fait sur le MARQUEUR, jamais sur le code de
-  # sortie de psql, qui vaut 3 pour toute exception.
-  if grep -qF "SEAL_ALREADY_INSTALLED" <<<"$SORTIE"; then
+  # ES001 N'EST PAS UNE ERREUR DE DEPLOIEMENT. C'est le resultat normal d'une
+  # phase 0 rejouee — apres une coupure reseau, par exemple. Le branchement ne
+  # se fait pas sur le code de sortie de psql, qui vaut 3 pour toute exception.
+  if sqlstate ES001; then
     constat "le sceau etait deja pose dans cette version — rien n'a ete modifie"
-  elif grep -qF "SEAL_VERSION_MISMATCH" <<<"$SORTIE"; then
+  elif sqlstate ES002; then
     echec "cette base porte un sceau d'une AUTRE version.
        $(grep -m1 -oE 'SEAL_VERSION_MISMATCH.{0,200}' <<<"$SORTIE")
        Un sceau ne se remplace pas: appliquez la mise a niveau prevue dans
        db/control_plane/, ou redeployez la base depuis une base neuve."
-  elif grep -qF "SEAL_PARTIAL" <<<"$SORTIE"; then
+  elif sqlstate ES003; then
     echec "le sceau de cette base est INCOMPLET — une phase 0 interrompue.
        $(grep -m1 -oE 'SEAL_PARTIAL.{0,200}' <<<"$SORTIE")
        Ce script ne repare pas une racine a moitie posee: on ne saurait plus
@@ -455,8 +605,8 @@ else
 
        Aucun emprunt n'a ete accorde au migrateur."
   fi
-  plan -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
-grant eurostruct_deployment to "$PLAN_USER" with inherit true;
+  plan -v ON_ERROR_STOP=1 -v p="$PLAN_USER" >/dev/null 2>&1 <<'SQL'
+grant eurostruct_deployment to :"p" with inherit true;
 SQL
   # CONSTATE, ET NON SUPPOSE. Un `GRANT` sans effet emet un simple
   # avertissement: sans ce controle, la commande poursuivrait et echouerait
@@ -500,9 +650,9 @@ if [[ -n "$DEJA_DETENU" ]]; then
 fi
 
 etape "3/10  octroi temporaire de writer/bootstrap a « $MIG_USER »"
-SORTIE=$(plan -v ON_ERROR_STOP=1 2>&1 <<SQL
-grant eurostruct_normative_writer    to "$MIG_USER" with admin option;
-grant eurostruct_normative_bootstrap to "$MIG_USER" with admin option;
+SORTIE=$(plan -v ON_ERROR_STOP=1 -v m="$MIG_USER" 2>&1 <<'SQL'
+grant eurostruct_normative_writer    to :"m" with admin option;
+grant eurostruct_normative_bootstrap to :"m" with admin option;
 SQL
 ) || echec "les emprunts n'ont pas pu etre accordes:
 $(grep -m2 -E 'ERROR|FATAL' <<<"$SORTIE" | sed 's/^/       /')"
@@ -560,18 +710,19 @@ etape "6/10  lecture du manifeste des declarations"
 # roles empruntes et a l'activateur, jamais au plan de controle. Ce qui est
 # affiche ici est exactement ce que `ALTER DATABASE ... SET` a pose — la meme
 # source que celle sur laquelle le manifeste est calcule.
-plan -tAc "
-  select '   ' || d.nom || ' = ' || coalesce(
-           (select split_part(s, '=', 2)
-              from pg_db_role_setting r
-              join pg_database b on b.oid = r.setdatabase
-             cross join lateral unnest(r.setconfig) as u(s)
-             where b.datname = current_database() and r.setrole = 0
-               and split_part(s, '=', 1) = d.nom),
-           '(non declaree)')
-    from (values ('eurostruct.approved_deployment_roles'),
-                 ('eurostruct.approved_service_logins'),
-                 ('eurostruct.token_roles')) as d(nom)" 2>/dev/null || true
+plan -tA 2>/dev/null <<'SQL' || true
+select '   ' || d.nom || ' = ' || coalesce(
+         (select split_part(s, '=', 2)
+            from pg_db_role_setting r
+            join pg_database b on b.oid = r.setdatabase
+           cross join lateral unnest(r.setconfig) as u(s)
+           where b.datname = current_database() and r.setrole = 0
+             and split_part(s, '=', 1) = d.nom),
+         '(non declaree)')
+  from (values ('eurostruct.approved_deployment_roles'),
+               ('eurostruct.approved_service_logins'),
+               ('eurostruct.token_roles')) as d(nom);
+SQL
 MANIFESTE=$(plan -tAc "select normative_settings_manifest()" 2>&1)
 [[ "$MANIFESTE" =~ ^[0-9a-f]{64}$ ]] \
   || echec "le manifeste n'a pas pu etre lu: $MANIFESTE"
@@ -581,7 +732,10 @@ constat "manifeste $MANIFESTE"
 # 7-8. PHASE 2 — FINALISATION, PUIS CONSTAT
 # --------------------------------------------------------------------------
 etape "7/10  phase 2 — finalisation par « $PLAN_USER »"
-SORTIE=$(plan -tAc "select normative_finalize_deployment('$MANIFESTE')" 2>&1)
+SORTIE=$(plan -tA -v man="$MANIFESTE" 2>&1 <<'SQL'
+select normative_finalize_deployment(:'man');
+SQL
+)
 if [[ $? -ne 0 ]] || grep -qE "^ERROR|^psql:" <<<"$SORTIE"; then
   echec "la finalisation a ete refusee:
 $(grep -m3 -E 'ERROR|DETAIL' <<<"$SORTIE" | sed 's/^/       /')"
@@ -606,18 +760,7 @@ constat "etat ACTIVE"
 # l'annoncer sans la constater serait exactement le defaut que tout ce jalon
 # existe pour fermer. Les TROIS capacites, et les trois roles d'autorite.
 etape "9/10  postcondition — capacites residuelles du migrateur"
-RESIDU=$(plan -tAc "
-  select coalesce(string_agg(a.r || ':' ||
-           case when pg_has_role('$MIG_USER', a.r, 'SET') then 'SET ' else '' end ||
-           case when pg_has_role('$MIG_USER', a.r, 'USAGE') then 'USAGE ' else '' end ||
-           case when pg_has_role('$MIG_USER', a.r, 'MEMBER WITH ADMIN OPTION')
-                then 'ADMIN' else '' end, '; '), '')
-    from unnest(array['eurostruct_normative_writer',
-                      'eurostruct_normative_bootstrap',
-                      'eurostruct_normative_activator']) a(r)
-   where pg_has_role('$MIG_USER', a.r, 'SET')
-      or pg_has_role('$MIG_USER', a.r, 'USAGE')
-      or pg_has_role('$MIG_USER', a.r, 'MEMBER WITH ADMIN OPTION')" 2>&1)
+RESIDU=$(capacites_du_migrateur)
 [[ -z "$RESIDU" ]] || echec "le migrateur « $MIG_USER » conserve des capacites: $RESIDU
        La base est ACTIVE, mais la separation n'est pas obtenue. N'exploitez
        pas ce deploiement en l'etat."

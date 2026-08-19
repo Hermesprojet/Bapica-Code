@@ -243,6 +243,17 @@ etape "commande officielle de deploiement" \
 # PostgreSQL n'est pas installe, il rend 4 — NON EXECUTE — et `etape` le
 # rapporte comme tel: une surface qu'on n'a pas pu exercer n'est pas une
 # surface qui a tenu, et elle ne doit pas passer pour verte.
+# --------------------------------------------------------------------------
+# LA COMMANDE OFFICIELLE, QUAND ELLE ECHOUE (6.3b6e)
+# --------------------------------------------------------------------------
+# `official_deployment.sh` etablit que la commande MARCHE. Celui-ci etablit ce
+# qu'elle laisse derriere elle quand elle N'ABOUTIT PAS: capacites du
+# migrateur, reprise d'une phase 1 interrompue, concurrence, identifiants SQL,
+# branchement sur les SQLSTATE, redirection par l'environnement.
+echo "==> reprise de la commande officielle"
+etape "reprise de la commande officielle" \
+  "$HERE/deploy_recovery.sh" "${DB_NAME:0:20}dr"
+
 echo "==> restauration inter-cluster"
 etape "restauration inter-cluster" \
   "$HERE/cross_cluster_restore.sh" "${DB_NAME:0:20}xr"

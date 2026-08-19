@@ -124,7 +124,7 @@ begin
     raise exception
       'SEAL_VERSION_MISMATCH: le sceau ne declare aucune version. La racine '
       'est presente mais sans identite: elle ne peut pas etre reconnue.'
-      using errcode = 'insufficient_privilege';
+      using errcode = 'ES002';
   end if;
 
   if not (posee = any (compatibles)) then
@@ -134,7 +134,11 @@ begin
       'db/control_plane/ avant d''appliquer la phase 1 — voir '
       'docs/DEPLOIEMENT_PREREQUIS.md, section « Faire evoluer le sceau ».',
       posee, array_to_string(compatibles, ', ')
-      using errcode = 'insufficient_privilege';
+      -- LE MEME CODE POUR LA MEME CLASSE D'ERREUR (6.3b6e). Ce refus retombait
+      -- sur `insufficient_privilege`, generique, alors que la phase 0 emet
+      -- ES002 pour exactement la meme situation: un orchestrateur ne pouvait
+      -- pas brancher dessus.
+      using errcode = 'ES002';
   end if;
 end
 $$;

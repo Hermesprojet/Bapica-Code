@@ -25,6 +25,8 @@
 #   R. LES IDENTIFIANTS — un nom de role venu d'une URL est-il du SQL ?
 #   S. LA CONCURRENCE — deux commandes peuvent-elles s'intercaler ?
 #   T. LA REPRISE — une phase 1 interrompue se relance-t-elle ?
+#   U. LE SQLSTATE — la commande branche-t-elle sur le code ou sur la prose ?
+#   V. LA CONNEXION — l'environnement peut-il rediriger la cible ?
 #
 # COMMENT L'ECHEC EST INJECTE, ET POURQUOI AINSI
 # -----------------------------------------------
@@ -804,6 +806,119 @@ else
   detail "    Une erreur au milieu d'une migration sans transaction laisse un"
   detail "    fichier partiellement applique: aucun registre ne rattrape cela,"
   detail "    parce que l'unite d'application n'existe pas."
+fi
+
+# ==========================================================================
+# U. LE BRANCHEMENT SE FAIT SUR LE SQLSTATE, PAS SUR LA PROSE
+# ==========================================================================
+# Le sceau porte des SQLSTATE dedies depuis 6.3b6d — ES001, ES002, ES003 — et
+# leur commentaire dit qu'ils existent « pour que l'orchestrateur branche sur le
+# CODE, jamais sur le texte ». La commande cherchait pourtant
+# `grep SEAL_ALREADY_INSTALLED`, c'est-a-dire du texte humain.
+#
+# DEUX EPREUVES SYMETRIQUES, et il faut les deux:
+#
+#   U1. le TEXTE change, le CODE reste  -> le comportement ne bouge pas;
+#   U2. le TEXTE reste, le CODE change  -> le refus n'est PAS reconnu.
+#
+# La premiere seule serait satisfaite par un `grep` sur une portion de message
+# qu'on n'aurait pas touchee; la seconde seule, par un branchement qui ne
+# reconnaitrait plus rien du tout.
+if ! q_amorcer u1; then
+  echoue "le decor U n'a pas pu etre pose"
+else
+migrations_copiees
+appeler >/dev/null 2>&1        # la base est deployee et ACTIVE
+SCEAU_COPIE="$COPIE/db/control_plane/$(basename "$HARNAIS_SCEAU")"
+
+# --- U1. le texte change, le code reste -----------------------------------
+sed -i "s/SEAL_ALREADY_INSTALLED: le sceau/FICTIF_AUTRE_TEXTE: le sceau/" "$SCEAU_COPIE"
+appeler; CODE_U1=$?
+ETAT_U1=$(admb -tAc "select normative_activation_state()" 2>&1)
+if [[ $CODE_U1 -eq 0 && "$ETAT_U1" == "ACTIVE" ]]; then
+  echo "      ok: U1. le texte du message change, le comportement ne bouge pas"
+else
+  rouge "U1. reformuler le message change le comportement (code $CODE_U1)."
+  detail "    $(grep -m1 -E '^ECHEC' <<<"$SORTIE_CMD" | cut -c1-140)"
+  detail "    La commande branche donc sur la prose, pas sur le SQLSTATE."
+fi
+
+# --- U2. le texte reste, le code change -----------------------------------
+cp "$DB_DIR/control_plane/$(basename "$HARNAIS_SCEAU")" "$SCEAU_COPIE"
+python3 - "$SCEAU_COPIE" <<'FINPY'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); s = p.read_text()
+i = s.index("SEAL_ALREADY_INSTALLED")
+j = s.index("using errcode = 'ES001';", i)
+p.write_text(s[:j] + "using errcode = 'ES099';" + s[j + len("using errcode = 'ES001';"):])
+FINPY
+appeler; CODE_U2=$?
+if [[ $CODE_U2 -ne 0 ]]; then
+  echo "      ok: U2. le meme texte sous un autre SQLSTATE n'est pas accepte"
+else
+  rouge "U2. un refus portant un AUTRE SQLSTATE est accepte comme ES001."
+  detail "    Le branchement suit le texte: n'importe quel message contenant"
+  detail "    « SEAL_ALREADY_INSTALLED » ferait passer la commande."
+fi
+cp "$DB_DIR/control_plane/$(basename "$HARNAIS_SCEAU")" "$SCEAU_COPIE"
+decor_deposer
+fi
+
+# ==========================================================================
+# V. L'ENVIRONNEMENT NE REDIRIGE PAS LA CIBLE
+# ==========================================================================
+# libpq lit une douzaine de variables. `PGOPTIONS` injecte des parametres de
+# session — `role` compris —, `PGSERVICE` fait resoudre la connexion par un
+# fichier, `PGHOSTADDR` remplace l'adresse en laissant `PGHOST` intact dans les
+# messages. Un deploiement peut donc viser une base et en atteindre une autre,
+# et le compte rendu affichera la premiere.
+if ! q_amorcer v1; then
+  echoue "le decor V n'a pas pu etre pose"
+else
+migrations_copiees
+# `PGOPTIONS` demande un `SET role` a la connexion. Si la commande le laissait
+# passer, `current_user` ne serait plus celui qu'elle annonce — et les
+# `pg_has_role(...)` de ses postconditions porteraient sur un autre role.
+SORTIE_V=$(
+  PGOPTIONS="-c role=$MIG" \
+  ESC_PLAN_URL="postgresql://$CTL:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://$MIG:$MDP@localhost:${PGPORT:-5432}/$BASE?sslmode=disable" \
+  bash "$COMMANDE_COPIE" 2>&1
+); CODE_V=$?
+ETAT_V=$(admb -tAc "select normative_activation_state()" 2>&1)
+PLAN_V=$(admb -tAc "select role_name from normative_control_plane" 2>&1)
+if [[ $CODE_V -eq 0 && "$ETAT_V" == "ACTIVE" && "$PLAN_V" == "$CTL" ]]; then
+  echo "      ok: V1. PGOPTIONS ne redirige pas l'identite du plan de controle"
+else
+  rouge "V1. l'environnement a influence la connexion (code $CODE_V)."
+  detail "    etat « $ETAT_V », plan fige « $PLAN_V », attendu « $CTL »"
+  detail "    $(grep -m1 -E '^ECHEC' <<<"$SORTIE_V" | cut -c1-140)"
+fi
+decor_deposer
+fi
+
+# --- V2. mode strict, cible distante, TLS insuffisant ---------------------
+# `127.0.0.2` est joignable mais n'est pas la boucle locale reconnue par la
+# commande: la politique TLS s'y applique donc, et `sslmode=disable` doit etre
+# refuse AVANT toute connexion. Aucun decor n'est necessaire — c'est le
+# propos: le refus tombe sans qu'un octet parte.
+SORTIE_V2=$(
+  ESC_PLAN_URL="postgresql://p:x@127.0.0.2:5432/b?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://m:x@127.0.0.2:5432/b?sslmode=disable" \
+  bash "$COMMANDE_COPIE" 2>&1
+); CODE_V2=$?
+SORTIE_V3=$(
+  ESC_PLAN_URL="postgresql://p:x@127.0.0.2:5432/b?sslmode=disable" \
+  ESC_MIGRATOR_URL="postgresql://m:x@127.0.0.2:5432/b?sslmode=disable" \
+  bash "$COMMANDE_COPIE" --auto-heberge 2>&1
+); CODE_V3=$?
+if [[ $CODE_V2 -ne 0 ]] && grep -qiE "sslmode|TLS" <<<"$SORTIE_V2" \
+   && ! grep -qiE "sslmode=disable\.$" <<<"$SORTIE_V3"; then
+  echo "      ok: V2. mode strict: une cible distante en clair est refusee"
+else
+  rouge "V2. le mode strict accepte une cible distante sans TLS verifiable."
+  detail "    strict: code $CODE_V2 — $(grep -m1 ECHEC <<<"$SORTIE_V2" | cut -c1-110)"
+  detail "    --auto-heberge: code $CODE_V3"
 fi
 
 echo ""
