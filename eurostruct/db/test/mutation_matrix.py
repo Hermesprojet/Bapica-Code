@@ -247,7 +247,7 @@ def essayer(nom, point, fichier, paires, redondant=False,
         for ligne in sortie.splitlines()[:3]:
             if ligne.strip():
                 print("        " + ligne.strip()[:120])
-        return False
+        return "non_execute"
     # Les points se subdivisent (« 2a. », « 8b. », « A1. »): un rouge sur une
     # sous-verification EST un rouge du point.
     base = re.match(r"[0-9A-Z]+", point).group(0)
@@ -256,17 +256,17 @@ def essayer(nom, point, fichier, paires, redondant=False,
     if redondant:
         if code == 0:
             print(f"  ok    {nom}\n        -> reste vert: la seconde garantie couvre (redondance voulue)")
-            return True
+            return "redondant"
         print(f"  note  {nom}\n        -> rougit (code {code}): la redondance n'en est pas une")
-        return True
+        return "tue"
     if rougit:
         print(f"  ok    {nom}\n        -> le point {point} rougit (code {code})")
-        return True
+        return "tue"
     print(f"  ECHEC {nom}\n        -> le point {point} reste VERT: le controle ne porte rien")
     for ligne in sortie.splitlines():
         if re.match(r"^ *(ok|ROUGE|ECHEC)", ligne):
             print("        " + ligne.strip())
-    return False
+    return "creux"
 
 
 # --------------------------------------------------------------------------
@@ -690,7 +690,7 @@ def retenu(cas):
 
 def lot(cas, **kw):
     gardes = [c for c in cas if retenu(c)]
-    return all([essayer(*c, **kw) for c in gardes]), len(gardes)
+    return [essayer(*c, **kw) for c in gardes]
 
 
 # L'ESPACE ISOLE EST CREE ICI, AVANT TOUTE MUTATION.
@@ -726,25 +726,59 @@ LOTS = [
 ]
 
 TOTAL = sum(len(cas) for cas, _ in LOTS)
-ok = True
-exerces = 0
+ETATS = []
 for cas, kw in LOTS:
-    verdict, n = lot(cas, **kw)
-    ok = verdict and ok
-    exerces += n
+    ETATS += lot(cas, **kw)
+
+# LE DECOMPTE SEPARE CE QUE LE VERDICT PRECEDENT CONFONDAIT.
+#
+# « au moins un controle ne porte rien » couvrait DEUX situations qui ne
+# demandent pas le meme travail:
+#
+#   NON EXECUTE  le harnais a refuse de demarrer (codes 2, 3, 4). On ne sait
+#                RIEN de la garantie: ni qu'elle porte, ni qu'elle est creuse.
+#   CREUX        le harnais a tourne, la garantie a ete retiree, et le
+#                contre-exemple est reste VERT. La, on sait: il ne porte rien.
+#
+# Les confondre, c'est laisser lire « 3 controles en echec » quand la verite
+# est « 3 controles n'ont pas ete exerces » — le defaut meme que la matrice
+# existe pour rendre impossible ailleurs. Le decompte les nomme donc a part,
+# et « non executes » n'est jamais absorbe dans « executes ».
+DEFINIS = TOTAL
+NON_EXECUTES = ETATS.count("non_execute")
+CREUX = ETATS.count("creux")
+REDONDANTS = ETATS.count("redondant")
+TUES = ETATS.count("tue")
+EXERCES = len(ETATS)                      # retenus par le filtre
+EXECUTES = EXERCES - NON_EXECUTES         # qui ont rendu un verdict
+NON_EXERCES = DEFINIS - EXERCES           # ecartes par le filtre
 
 print()
-if FILTRE and exerces == 0:
+if FILTRE and EXERCES == 0:
     print(f"MUTATIONS: aucun controle ne correspond a « {' '.join(FILTRE)} ».")
     sys.exit(2)
-if not ok:
-    print("MUTATIONS: au moins un controle ne porte rien.")
-    sys.exit(1)
-# UNE EXECUTION FILTREE NE REND PAS LE VERDICT COMPLET. Elle dit ce qu'elle a
-# exerce, et combien elle a laisse de cote.
-if exerces < TOTAL:
-    print(f"MUTATIONS: {exerces} controle(s) sur {TOTAL} portent quelque chose "
-          f"— execution PARTIELLE, {TOTAL - exerces} non exerces.")
-    sys.exit(0)
-print(f"MUTATIONS: les {TOTAL} controles portent quelque chose.")
-sys.exit(0)
+
+CODE = 1 if (CREUX or NON_EXECUTES) else 0
+print(f"MUTATIONS: definis {DEFINIS} | executes {EXECUTES} | "
+      f"non executes {NON_EXECUTES + NON_EXERCES} | echecs inexpliques {CREUX} "
+      f"| code {CODE}")
+print(f"           dont tues {TUES}, redondants voulus {REDONDANTS}"
+      + (f", ecartes par le filtre {NON_EXERCES}" if NON_EXERCES else "")
+      + (f", refuses par le harnais {NON_EXECUTES}" if NON_EXECUTES else ""))
+
+if NON_EXECUTES:
+    print(f"           {NON_EXECUTES} controle(s) N'ONT PAS ETE EXERCES: le harnais "
+          "a refuse.\n           Ce n'est pas un echec de garantie — c'est une "
+          "absence de mesure.")
+if CREUX:
+    print(f"           {CREUX} controle(s) ont tourne SANS rougir: ceux-la ne "
+          "portent rien.")
+if NON_EXERCES:
+    # UNE EXECUTION FILTREE NE REND PAS LE VERDICT COMPLET. Elle dit ce qu'elle
+    # a exerce, et combien elle a laisse de cote.
+    print(f"           execution PARTIELLE (filtre): {NON_EXERCES} controle(s) "
+          "non exerces.\n           Ce compte rendu ne vaut PAS pour la matrice "
+          "entiere.")
+elif CODE == 0:
+    print(f"           les {DEFINIS} controles portent quelque chose.")
+sys.exit(CODE)
