@@ -313,14 +313,41 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     temoin = os.environ.get("ESC_MUTATION_TEMOIN")
     if temoin:
         env["ESC_TEMOIN"] = temoin
+        # MARQUEUR VERSIONNE, ET LE PRODUCTEUR VERIFIE AVANT DE DIRE READY.
+        # Deduire « PGID == PID du wrapper » de `start_new_session=True` n'est
+        # pas une preuve: le wrapper OBSERVE son PGID et celui de ses deux
+        # enfants, constate qu'ils vivent et ne sont pas zombies, que les trois
+        # PID sont distincts, et que le temoin ne tient AUCUN pipe. Sans quoi
+        # il publie FAILED — jamais READY par defaut.
         enveloppe = (
             'set -u\n'
+            'umask 077\n'
             '( exec sleep 300 ) >/dev/null 2>&1 </dev/null &\n'
             'TEMOIN=$!\n'
             '"$@" &\n'
             'HARNAIS=$!\n'
-            "printf '%s %s %s READY\\n' \"$$\" \"$HARNAIS\" \"$TEMOIN\""
-            ' >"$ESC_TEMOIN.tmp"\n'
+            'PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d \' \')"\n'
+            'ETAT=READY\n'
+            'PGH="$(ps -o pgid= -p "$HARNAIS" 2>/dev/null | tr -d \' \')"\n'
+            'PGT="$(ps -o pgid= -p "$TEMOIN" 2>/dev/null | tr -d \' \')"\n'
+            'STH="$(ps -o stat= -p "$HARNAIS" 2>/dev/null | tr -d \' \')"\n'
+            'STT="$(ps -o stat= -p "$TEMOIN" 2>/dev/null | tr -d \' \')"\n'
+            '[[ "$$" != "$HARNAIS" && "$HARNAIS" != "$TEMOIN" '
+            '&& "$$" != "$TEMOIN" ]] || ETAT=FAILED\n'
+            '[[ -n "$PGID" && "$PGH" == "$PGID" && "$PGT" == "$PGID" ]] || ETAT=FAILED\n'
+            '[[ -n "$STH" && "$STH" != Z* && -n "$STT" && "$STT" != Z* ]] || ETAT=FAILED\n'
+            'for FD in 1 2; do\n'
+            '  case "$(readlink /proc/$TEMOIN/fd/$FD 2>/dev/null)" in\n'
+            '    pipe:*) ETAT=FAILED ;;\n'
+            '  esac\n'
+            'done\n'
+            '{ echo "FORMAT=esc-mutation-marker/1"\n'
+            '  echo "STATE=$ETAT"\n'
+            '  echo "WRAPPER_PID=$$"\n'
+            '  echo "HARNESS_PID=$HARNAIS"\n'
+            '  echo "WITNESS_PID=$TEMOIN"\n'
+            '  echo "PGID=$PGID"\n'
+            '} >"$ESC_TEMOIN.tmp"\n'
             'mv -f "$ESC_TEMOIN.tmp" "$ESC_TEMOIN"\n'
             'wait "$HARNAIS"; CODE=$?\n'
             'kill "$TEMOIN" 2>/dev/null; wait "$TEMOIN" 2>/dev/null\n'

@@ -61,6 +61,17 @@ ok()     { echo "      ok: $*"; }
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
 detail() { echo "                $*"; }
 
+# LE CONTROLE DE TACHES EST INDISPENSABLE POUR SIGINT. Bash met SIGINT a
+# SIG_IGN dans un job d'arriere-plan lance depuis un shell NON INTERACTIF sans
+# `set -m`, et UN SIG_IGN HERITE NE PEUT PAS ETRE TRAPPE. Mesure:
+#
+#     sans job control :  SIGINT -> code 0   (le trap n'a jamais tourne)
+#     avec set -m      :  SIGINT -> code 130  trap INT
+#
+# Le sous-mode de I ne recevait donc jamais le signal: il dormait ses 300 s
+# puis sortait 0. Le defaut n'etait pas dans `sortir()`.
+set -m
+
 echo "    la matrice meurt proprement sur signal"
 [[ -f "$MATRICE" ]] || { echoue "matrice introuvable: $MATRICE"; exit 2; }
 
@@ -71,6 +82,9 @@ JETON="$$-${RANDOM}${RANDOM}"
 TRACE=""; SORTIE=""; TEMOIN=""; TEMOIN_DESC=""; ESPACE_DEPOT=""; MPID=""
 FUITE_CLIENT=""; FUITE_BACKEND=""; TIERS_CLIENT=""; TIERS_BACKEND=""
 CLE1=0; CLE2=0; APP_FUITE=""; APP_TIERS=""
+FUITE_START=""; FUITE_DATID=""; FUITE_USER=""
+TIERS_START=""; TIERS_DATID=""; TIERS_USER=""
+ID_PID=""; ID_START=""; ID_DATID=""; ID_USER=""
 
 # ==========================================================================
 # LECTURES SQL — FAIL-CLOSED, TOUJOURS
@@ -293,36 +307,63 @@ terminer_possede() {   # terminer_possede <pid> <app> <cle1> <cle2> <mode> <libe
 NETTOYAGE_KO=0
 nettoyage_echoue() { echo "      ECHEC (nettoyage): $*" >&2; NETTOYAGE_KO=1; }
 
-# LE JETON EST UNE PREUVE DE PROPRIETE, MEME SANS VERROU. Mesure: dans le
-# scenario G les connexions existent mais ne prennent AUCUN verrou; le
-# nettoyage par identite-avec-verrou les classait alors REFUS_IDENTITE, rougissait,
-# et la regle « nettoyage rouge -> 9 » ecrasait le code 4 attendu.
+# `application_name` EST UN IDENTIFIANT DE CORRELATION, PAS UNE AUTORITE.
 #
-#     ECHEC: G: code 9, attendu 4
+# J'avais remplace « nettoyage par cles » par « nettoyage par jeton ». Plus
+# etroit — mais toujours pas une identite: `application_name` est une valeur
+# CHOISIE PAR LE CLIENT. N'importe quelle session peut adopter le meme jeton,
+# et un PID peut etre reattribue apres la mort de son porteur.
 #
-# `application_name` porte le jeton unique de CETTE execution: c'est une preuve
-# de propriete suffisante pour nettoyer, et elle reste strictement plus etroite
-# qu'un nettoyage par cles. Le contrat lock-based de `terminer_possede()` reste
-# intact pour les ASSERTIONS du scenario C.
-terminer_par_jeton() {   # terminer_par_jeton <pid> <app> <libelle>
-  local pid="$1" app="$2" quoi="$3" res n=0
+# On enregistre donc, A LA CREATION, l'identite exacte du backend: PID,
+# `backend_start`, `datid`, `usename`, `application_name`. Le nettoyage
+# revalide LES CINQ dans une seule requete avant de terminer. Le jeton sert a
+# RETROUVER les lignes candidates; il n'est jamais le seul predicat.
+#
+# `backend_start` est le discriminant qui compte: il separe un PID reutilise
+# d'un PID d'origine, et un usurpateur du porteur legitime.
+enregistrer_identite() {   # enregistrer_identite <app> -> ID_PID ID_START ID_DATID ID_USER
+  local app="$1" ligne
+  ID_PID=""; ID_START=""; ID_DATID=""; ID_USER=""
+  ligne="$(lire_sql "select pid||'|'||backend_start||'|'||datid||'|'||usename
+                       from pg_stat_activity
+                      where application_name = '$app' and datname = current_database()")"
+  [[ "$ligne" == ILLISIBLE* ]] && { CMP_DIAG="${ligne#*$'\t'}"; return 3; }
+  [[ "$(grep -c . <<<"$ligne")" == "1" ]] || return 1
+  IFS='|' read -r ID_PID ID_START ID_DATID ID_USER <<<"$ligne"
+  pid_valide "${ID_PID:-x}" || return 1
+  return 0
+}
+
+# Machine d'etat sur UN SEUL instantane, et sur l'identite COMPLETE.
+#   0 TERMINE   1 DISPARU   2 REFUS_IDENTITE   3 ECHEC/ILLISIBLE
+terminer_identite() {   # <pid> <start> <datid> <user> <app> <libelle>
+  local pid="$1" start="$2" datid="$3" user="$4" app="$5" quoi="$6" res n=0 vu
   [[ -z "$pid" ]] && return 1
   pid_valide "$pid" || { echoue "$quoi: PID non numerique: « $pid »"; return 3; }
   res="$(lire_sql "with cible as (
              select pid from pg_stat_activity
-              where pid = $pid and application_name = '$app'
+              where pid = $pid
+                and backend_start = '$start'::timestamptz
+                and datid = $datid
+                and usename = '$user'
+                and application_name = '$app'
                 and datname = current_database()
-           )
+           ), present as (select 1 from pg_stat_activity where pid = $pid)
            select case
-             when not exists (select 1 from cible) then 'DISPARU'
+             when not exists (select 1 from present) then 'DISPARU'
+             when not exists (select 1 from cible)   then 'REFUS_IDENTITE'
              when (select pg_terminate_backend(pid) from cible) then 'TERMINE'
              else 'ECHEC_TERMINAISON' end")"
   [[ "$res" == ILLISIBLE* ]] && { echoue "$quoi: terminaison illisible — ${res#*$'\t'}"
                                   return 3; }
-  [[ "$res" == "DISPARU" ]] && return 1
-  [[ "$res" != "TERMINE" ]] && { echoue "$quoi: terminaison rendue « $res »"; return 3; }
+  case "$res" in
+    DISPARU)        return 1 ;;
+    REFUS_IDENTITE) return 2 ;;
+    TERMINE)        : ;;
+    *) echoue "$quoi: terminaison rendue « $res »"; return 3 ;;
+  esac
   while (( n++ < 150 )); do
-    local vu; vu="$(lire_sql "select count(*) from pg_stat_activity where pid = $pid")"
+    vu="$(lire_sql "select count(*) from pg_stat_activity where pid = $pid")"
     [[ "$vu" == ILLISIBLE* ]] && { echoue "$quoi: attente illisible"; return 3; }
     [[ "$vu" == "0" ]] && return 0
     sleep 0.1
@@ -341,15 +382,17 @@ menage() {
   # seul, et SANS `>/dev/null`: un nettoyage dont on jette le diagnostic n'est
   # pas un nettoyage verifie.
   local rc
-  if [[ -n "$FUITE_BACKEND" ]]; then
-    terminer_par_jeton "$FUITE_BACKEND" "$APP_FUITE" "menage (fuite)"
-    rc=$?; (( rc == 3 )) \
-      && nettoyage_echoue "backend de C ($FUITE_BACKEND) non nettoye"
+  if [[ -n "$FUITE_BACKEND" && -n "$FUITE_START" ]]; then
+    terminer_identite "$FUITE_BACKEND" "$FUITE_START" "$FUITE_DATID" "$FUITE_USER" \
+                      "$APP_FUITE" "menage (fuite)"
+    rc=$?; (( rc == 2 || rc == 3 )) \
+      && nettoyage_echoue "backend de C ($FUITE_BACKEND) non nettoye (code $rc)"
   fi
-  if [[ -n "$TIERS_BACKEND" ]]; then
-    terminer_par_jeton "$TIERS_BACKEND" "$APP_TIERS" "menage (tiers)"
-    rc=$?; (( rc == 3 )) \
-      && nettoyage_echoue "backend tiers ($TIERS_BACKEND) non nettoye"
+  if [[ -n "$TIERS_BACKEND" && -n "$TIERS_START" ]]; then
+    terminer_identite "$TIERS_BACKEND" "$TIERS_START" "$TIERS_DATID" "$TIERS_USER" \
+                      "$APP_TIERS" "menage (tiers)"
+    rc=$?; (( rc == 2 || rc == 3 )) \
+      && nettoyage_echoue "backend tiers ($TIERS_BACKEND) non nettoye (code $rc)"
   fi
   # AUCUN VERROU DES DEUX JETONS NE DOIT SUBSISTER.
   if (( CLE1 != 0 )); then
@@ -426,6 +469,38 @@ vivants() {   # vivants <liste de PID> -> ceux qui TOURNENT encore
 
 groupe_vivant() {
   ps -o pid=,stat= -g "$1" 2>/dev/null | awk '$2 !~ /^Z/ {print $1}' | tr '\n' ' '
+}
+
+# LE MARQUEUR EST UN PROTOCOLE VERSIONNE, LU STRICTEMENT. Tout champ absent,
+# inconnu, duplique, non numerique, ou un etat hors des deux valeurs definies,
+# produit un refus fail-closed. Un marqueur portant a la fois READY et FAILED
+# est impossible par construction — `STATE` est unique — et un doublon est
+# refuse.
+MK_FORMAT=""; MK_STATE=""; MK_WRAP=""; MK_HARN=""; MK_WIT=""; MK_PGID=""; MK_DIAG=""
+lire_marqueur() {
+  local f="$1" k v dup
+  MK_FORMAT=""; MK_STATE=""; MK_WRAP=""; MK_HARN=""; MK_WIT=""; MK_PGID=""; MK_DIAG=""
+  [[ -s "$f" ]] || { MK_DIAG="marqueur vide ou absent"; return 1; }
+  dup="$(cut -d= -f1 "$f" | sort | uniq -d | tr '\n' ' ')"
+  [[ -z "${dup// /}" ]] || { MK_DIAG="champ(s) duplique(s): $dup"; return 1; }
+  while IFS='=' read -r k v; do
+    case "$k" in
+      FORMAT) MK_FORMAT="$v" ;;      STATE) MK_STATE="$v" ;;
+      WRAPPER_PID) MK_WRAP="$v" ;;   HARNESS_PID) MK_HARN="$v" ;;
+      WITNESS_PID) MK_WIT="$v" ;;    PGID) MK_PGID="$v" ;;
+      *) MK_DIAG="champ inconnu: ${k:-<vide>}"; return 1 ;;
+    esac
+  done < "$f"
+  [[ "$MK_FORMAT" == "esc-mutation-marker/1" ]] \
+    || { MK_DIAG="version inconnue: ${MK_FORMAT:-<absente>}"; return 1; }
+  case "$MK_STATE" in READY|FAILED) : ;;
+    *) MK_DIAG="etat invalide: ${MK_STATE:-<absent>}"; return 1 ;; esac
+  for v in "$MK_WRAP" "$MK_HARN" "$MK_WIT" "$MK_PGID"; do
+    pid_valide "${v:-x}" || { MK_DIAG="PID/PGID non numerique: ${v:-<absent>}"; return 1; }
+  done
+  [[ "$MK_WRAP" != "$MK_HARN" && "$MK_HARN" != "$MK_WIT" && "$MK_WRAP" != "$MK_WIT" ]] \
+    || { MK_DIAG="PID non distincts: $MK_WRAP/$MK_HARN/$MK_WIT"; return 1; }
+  return 0
 }
 
 attendre() {   # attendre <description> <commande-test> <deciseconds>
@@ -585,18 +660,19 @@ AVANT="$(sha256sum "$PROJET/$CAS_FIC" | cut -d' ' -f1)"
 # temoin, qui retenait alors les pipes du `Popen`, faisait durer cette attente
 # ses 300 secondes entieres. Le wrapper publie desormais les trois PID.
 attendre "le marqueur du wrapper (READY)" '[[ -s "$TEMOIN_DESC" ]]' 3000 || exit 1
-read -r WRAP_PID BASH_PID TEMOIN_PID MARQ_ETAT < "$TEMOIN_DESC"
-if [[ "$MARQ_ETAT" != READY ]] || ! pid_valide "${WRAP_PID:-x}" \
-   || ! pid_valide "${BASH_PID:-x}" || ! pid_valide "${TEMOIN_PID:-x}"; then
-  echoue "marqueur du wrapper invalide: $(tr -d '\n' <"$TEMOIN_DESC")"
-  exit 1
+if ! lire_marqueur "$TEMOIN_DESC"; then
+  echoue "marqueur du wrapper refuse: $MK_DIAG"; exit 1
 fi
-if [[ "$WRAP_PID" == "$BASH_PID" || "$BASH_PID" == "$TEMOIN_PID" \
-      || "$WRAP_PID" == "$TEMOIN_PID" ]]; then
-  echoue "les trois PID du marqueur ne sont pas distincts: $WRAP_PID/$BASH_PID/$TEMOIN_PID"
-  exit 1
+if [[ "$MK_STATE" != READY ]]; then
+  echoue "le wrapper a publie $MK_STATE — scenario non exerce"; exit 1
 fi
-ok "marqueur du wrapper: wrapper $WRAP_PID, harnais $BASH_PID, temoin $TEMOIN_PID"
+WRAP_PID="$MK_WRAP"; BASH_PID="$MK_HARN"; TEMOIN_PID="$MK_WIT"
+ok "marqueur $MK_FORMAT, etat READY: wrapper $WRAP_PID, harnais $BASH_PID, temoin $TEMOIN_PID, PGID $MK_PGID"
+# SECONDE BARRIERE, COTE CONSOMMATEUR. Le producteur a deja verifie; le parent
+# refait les memes controles sur l'etat courant, avant d'envoyer le signal.
+[[ "$MK_PGID" == "$WRAP_PID" ]] \
+  && ok "le PGID publie est bien celui du wrapper" \
+  || echoue "PGID publie $MK_PGID, wrapper $WRAP_PID"
 # LE HARNAIS DOIT ETRE ENCORE VIVANT. S'il a fini avant le signal, le scenario
 # n'exerce rien — et c'est exactement ce que le defaut precedent masquait
 # derriere une attente de 300 s.
@@ -801,12 +877,12 @@ PGAPPNAME="$APP_FUITE" psql -X -qtA -d postgres -c \
 FUITE_CLIENT=$!
 
 for _ in $(seq 1 300); do
-  FUITE_BACKEND="$(psql -X -qtA -d postgres -c \
-    "select pid from pg_stat_activity where application_name = '$APP_FUITE'" 2>/dev/null | head -1)"
-  [[ -n "$FUITE_BACKEND" ]] && break
+  enregistrer_identite "$APP_FUITE" && break
   kill -0 "$FUITE_CLIENT" 2>/dev/null || break
   sleep 0.1
 done
+FUITE_BACKEND="$ID_PID"; FUITE_START="$ID_START"
+FUITE_DATID="$ID_DATID"; FUITE_USER="$ID_USER"
 
 if [[ -z "$FUITE_BACKEND" ]]; then
   echoue "C: la connexion porteuse n'est jamais apparue — scenario non exerce"
@@ -857,12 +933,12 @@ else
       "select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(120);" >/dev/null 2>&1 &
     TIERS_CLIENT=$!
     for _ in $(seq 1 300); do
-      TIERS_BACKEND="$(psql -X -qtA -d postgres -c \
-        "select pid from pg_stat_activity where application_name = '$APP_TIERS'" 2>/dev/null | head -1)"
-      [[ -n "$TIERS_BACKEND" ]] && break
+      enregistrer_identite "$APP_TIERS" && break
       kill -0 "$TIERS_CLIENT" 2>/dev/null || break
       sleep 0.1
     done
+    TIERS_BACKEND="$ID_PID"; TIERS_START="$ID_START"
+    TIERS_DATID="$ID_DATID"; TIERS_USER="$ID_USER"
     rct=1
     if [[ -n "$TIERS_BACKEND" ]]; then
       for _ in $(seq 1 300); do
@@ -883,7 +959,8 @@ else
       # identite: la terminaison doit REFUSER, et la session survivre avec son
       # verrou. Sans ce controle, « on ne termine que ce qu'on possede » ne
       # serait qu'une intention.
-      terminer_possede "$TIERS_BACKEND" "$APP_TIERS-FAUX" "$CLE1" "$CLE2" ShareLock "C (mauvaise identite)"
+      terminer_identite "$TIERS_BACKEND" "$TIERS_START" "$TIERS_DATID" "$TIERS_USER" \
+                        "$APP_TIERS-FAUX" "C (mauvaise identite)"
       rcf=$?
       if (( rcf == 2 )); then
         detient_verrou "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock \
@@ -894,7 +971,8 @@ else
         (( rcf == 0 )) && detail "le PID seul a suffi a tuer: la propriete n'est pas verifiee"
       fi
 
-      terminer_possede "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock "C"
+      terminer_identite "$FUITE_BACKEND" "$FUITE_START" "$FUITE_DATID" "$FUITE_USER" \
+                        "$APP_FUITE" "C"
       rcf=$?
       (( rcf == 0 )) && FUITE_BACKEND="" \
                      || echoue "C: la terminaison du backend de C rend $rcf, attendu 0"
@@ -916,7 +994,8 @@ else
         echoue "C: le verrou du tiers a disparu pendant le nettoyage de C"
       fi
 
-      terminer_possede "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock "C (tiers)"
+      terminer_identite "$TIERS_BACKEND" "$TIERS_START" "$TIERS_DATID" "$TIERS_USER" \
+                        "$APP_TIERS" "C (tiers)"
       (( $? == 0 )) && TIERS_BACKEND="" || echoue "C: le tiers n'a pas pu etre nettoye"
     fi
 
@@ -1091,7 +1170,8 @@ fi
 # C'EST NOUS QUI RENDONS CE QUE LE SOUS-MODE N'A PAS PU RENDRE — par identite
 # verifiee, jamais par cles seules.
 if pid_valide "${F_FB:-x}"; then
-  terminer_possede "$F_FB" "$F_AF" "$F_CLE1" "$F_CLE2" ShareLock "F (rattrapage)" >/dev/null
+  enregistrer_identite "$F_AF" \
+    && terminer_identite "$ID_PID" "$ID_START" "$ID_DATID" "$ID_USER" "$F_AF" "F (rattrapage)" >/dev/null
 fi
 reste="$(lire_sql "select count(*) from pg_locks
                     where locktype='advisory' and classid=$F_CLE1 and objid=$F_CLE2")"
@@ -1167,8 +1247,12 @@ else
   H_TB="$(sed -n 's/^TIERS_BACKEND=//p' "$TEMOIN_H")"
   H_AF="$(sed -n 's/^APP_FUITE=//p' "$TEMOIN_H")"
   H_AT="$(sed -n 's/^APP_TIERS=//p' "$TEMOIN_H")"
-  pid_valide "${H_FB:-x}" && terminer_possede "$H_FB" "$H_AF" "$H_CLE1" "$H_CLE2" ShareLock "H" >/dev/null
-  pid_valide "${H_TB:-x}" && terminer_possede "$H_TB" "$H_AT" "$H_CLE1" "$H_CLE2" ShareLock "H" >/dev/null
+  for duo in "$H_FB:$H_AF" "$H_TB:$H_AT"; do
+    hp="${duo%%:*}"; ha="${duo##*:}"
+    pid_valide "${hp:-x}" || continue
+    enregistrer_identite "$ha" \
+      && terminer_identite "$ID_PID" "$ID_START" "$ID_DATID" "$ID_USER" "$ha" "H" >/dev/null
+  done
   reste="$(lire_sql "select count(*) from pg_locks
                       where locktype='advisory' and classid=$H_CLE1 and objid=$H_CLE2")"
   [[ "$reste" == "0" ]] \
@@ -1240,15 +1324,18 @@ else
   ok "la matrice rend la main en ${J_DUREE}s, sans attendre le temoin"
 fi
 if [[ -s "$TEMOIN_J" ]]; then
-  read -r J_WRAP J_BASH J_TEM J_ETAT < "$TEMOIN_J"
-  if [[ "$J_ETAT" == READY ]] && pid_valide "${J_TEM:-x}"; then
-    ok "marqueur publie: wrapper $J_WRAP, harnais $J_BASH, temoin $J_TEM"
+  if lire_marqueur "$TEMOIN_J"; then
+    J_TEM="$MK_WIT"
+    ok "marqueur $MK_FORMAT, etat $MK_STATE: wrapper $MK_WRAP, harnais $MK_HARN, temoin $J_TEM"
+    [[ "$MK_STATE" == FAILED ]] \
+      && ok "le producteur a REFUSE de dire READY sur un harnais deja mort" \
+      || echoue "J: etat $MK_STATE alors que le harnais sort immediatement"
     [[ -z "$(vivants "$J_TEM")" ]] \
       && ok "le temoin a ete moissonne a la fin normale du harnais" \
       || { echoue "J: le temoin $J_TEM survit a la fin du harnais"
            detail "$(ps -o pid=,ppid=,args= -p "$J_TEM" 2>/dev/null)"; }
   else
-    echoue "J: marqueur incomplet: $(tr -d '\n' <"$TEMOIN_J")"
+    echoue "J: marqueur refuse: $MK_DIAG"
   fi
 else
   echoue "J: aucun marqueur publie"
@@ -1258,6 +1345,62 @@ grep -q 'NON EXECUTE\|harnais a refuse' "$TEMOIN_J.log" \
   && ok "la matrice compte ce controle NON EXECUTE, jamais tue" \
   || detail "note: sortie de la matrice — $(grep -m1 -E '^  (ok|ECHEC|NON EXECUTE)' "$TEMOIN_J.log" || echo '(vide)')"
 rm -f "$TEMOIN_J" "$TEMOIN_J.log" "$FAUX_HARNAIS"
+
+# ==========================================================================
+# K. USURPATION DU JETON — le nettoyage doit refuser, pas tuer largement
+# ==========================================================================
+# `application_name` est CHOISI PAR LE CLIENT. Une session tierce adopte donc
+# volontairement le MEME jeton, avec un autre PID et un autre `backend_start`.
+# Un nettoyage fonde sur le jeton seul la terminerait; celui-ci doit refuser.
+echo "      -- K. usurpation du jeton: identite exacte, ou refus"
+K_APP="esc-fuite-$JETON-K"
+psql -X -qtA -d postgres -c "select pg_sleep(120);" >/dev/null 2>&1 &
+K_LEGIT=$!
+PGAPPNAME="$K_APP" psql -X -qtA -d postgres -c "select pg_sleep(120);" >/dev/null 2>&1 &
+K_CLIENT=$!
+for _ in $(seq 1 300); do enregistrer_identite "$K_APP" && break; sleep 0.1; done
+K_PID="$ID_PID"; K_START="$ID_START"; K_DATID="$ID_DATID"; K_USER="$ID_USER"
+if ! pid_valide "${K_PID:-x}"; then
+  echoue "K: la session porteuse n'est jamais apparue — scenario non exerce"
+else
+  ok "session enregistree: pid $K_PID, backend_start $K_START, datid $K_DATID, role $K_USER"
+  # L'USURPATEUR: meme jeton, autre PID, autre backend_start.
+  PGAPPNAME="$K_APP" psql -X -qtA -d postgres -c "select pg_sleep(120);" >/dev/null 2>&1 &
+  K_IMPOST=$!
+  K_IPID=""
+  for _ in $(seq 1 300); do
+    K_IPID="$(lire_sql "select pid from pg_stat_activity
+                         where application_name = '$K_APP' and pid <> $K_PID" | head -1)"
+    pid_valide "${K_IPID:-x}" && break
+    sleep 0.1
+  done
+  if ! pid_valide "${K_IPID:-x}"; then
+    echoue "K: l'usurpateur n'est jamais apparu — survie non exercee"
+  else
+    ok "usurpateur du MEME jeton: pid $K_IPID (deux lignes portent « $K_APP »)"
+    # Terminer l'identite ENREGISTREE ne doit toucher qu'elle.
+    terminer_identite "$K_PID" "$K_START" "$K_DATID" "$K_USER" "$K_APP" "K"
+    (( $? == 0 )) && ok "le backend enregistre a ete termine" \
+                  || echoue "K: le backend enregistre n'a pas ete termine"
+    vit="$(lire_sql "select count(*) from pg_stat_activity where pid = $K_IPID")"
+    [[ "$vit" == "1" ]] \
+      && ok "l'usurpateur du jeton a SURVECU: le jeton n'est pas une autorite" \
+      || echoue "K: l'usurpateur a ete termine — nettoyage trop large"
+    # Et une identite qui ne concorde pas d'UN SEUL attribut doit etre refusee.
+    terminer_identite "$K_IPID" "$K_START" "$K_DATID" "$K_USER" "$K_APP" "K (start errone)"
+    (( $? == 2 )) \
+      && ok "un seul attribut different (backend_start) suffit a refuser" \
+      || echoue "K: la terminaison n'a pas refuse sur un backend_start errone"
+    enregistrer_identite "$K_APP" >/dev/null 2>&1
+    pid_valide "${ID_PID:-x}" && terminer_identite "$ID_PID" "$ID_START" "$ID_DATID" \
+      "$ID_USER" "$K_APP" "K (menage)" >/dev/null
+    kill "$K_IMPOST" 2>/dev/null; wait "$K_IMPOST" 2>/dev/null
+  fi
+fi
+kill "$K_CLIENT" "$K_LEGIT" 2>/dev/null; wait "$K_CLIENT" 2>/dev/null; wait "$K_LEGIT" 2>/dev/null
+reste="$(lire_sql "select count(*) from pg_stat_activity where application_name = '$K_APP'")"
+[[ "$reste" == "0" ]] && ok "aucune session « $K_APP » ne subsiste" \
+                      || echoue "K: $reste session(s) subsistent"
 
 echo
 [[ $KO -eq 0 ]] \
