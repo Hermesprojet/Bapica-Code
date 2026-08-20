@@ -25,6 +25,9 @@ SCEN="${ESC_SCENARIO:?ESC_SCENARIO requis}"
 LENT="${ESC_LENTEUR:-3}"
 CODE_SORTIE="${ESC_CODE_SORTIE:-0}"
 PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"
+# Initialise AVANT toute trap: `set -u` refuserait une variable non definie
+# si le signal arrivait avant le lancement du fils d'arriere-plan.
+DORT=""
 
 # marq <evenement> [<prerequis>]
 # CHAQUE PRODUCTEUR VERIFIE SON PREDECESSEUR: la chaine causale n'est pas
@@ -84,6 +87,8 @@ nettoyer() {
     marq HARNESS_CLEANUP_STARTED HARNESS_TRAP_ENTERED \
       && echo "DOUBLON_NON_DETECTE=HARNESS_CLEANUP_STARTED" >>"$MARQ/.erreurs"
   fi
+  # LE FILS D'ARRIERE-PLAN EST TUE ET MOISSONNE AVANT DE SORTIR.
+  [[ -n "$DORT" ]] && { kill "$DORT" 2>/dev/null; wait "$DORT" 2>/dev/null; }
   sleep "$LENT"                       # nettoyage lent, deliberement
   marq HARNESS_CLEANUP_DONE HARNESS_CLEANUP_STARTED
   marq HARNESS_EXITING HARNESS_CLEANUP_DONE
@@ -102,7 +107,12 @@ fi
 echo "PRET $$ $PGID" >"$MARQ/.harnais"
 # `wait` sur un sommeil en arriere-plan: la trap peut alors s'executer tout de
 # suite, contrairement a un `sleep` au premier plan qui devrait finir d'abord.
-sleep 600 &
+# SES SORTIES VONT A /dev/null, ET IL EST MOISSONNE. Mesure: sans cela, ce
+# `sleep` heritait des pipes du `Popen`, survivait a la sortie de la trap en
+# orphelin (PPID=1), et `communicate()` n'atteignait jamais EOF — la matrice
+# restait vivante, le resultat n'etait jamais publie, et L1 expirait a 300 s.
+# C'est le meme defaut que celui du temoin, chez un autre acteur.
+sleep 600 >/dev/null 2>&1 </dev/null &
 DORT=$!
 wait "$DORT" 2>/dev/null
 exit 0
