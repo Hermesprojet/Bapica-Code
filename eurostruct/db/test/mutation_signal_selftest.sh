@@ -70,7 +70,7 @@ echo "    la matrice meurt proprement sur signal"
 JETON="$$-${RANDOM}${RANDOM}"
 TRACE=""; SORTIE=""; TEMOIN=""; TEMOIN_DESC=""; ESPACE_DEPOT=""; MPID=""
 FUITE_CLIENT=""; FUITE_BACKEND=""; TIERS_CLIENT=""; TIERS_BACKEND=""
-CLE1=0; CLE2=0
+CLE1=0; CLE2=0; APP_FUITE=""; APP_TIERS=""
 
 # ==========================================================================
 # LECTURES SQL — FAIL-CLOSED, TOUJOURS
@@ -82,6 +82,13 @@ CLE1=0; CLE2=0
 # avoir rien observe.
 lire_sql() {
   local sortie code
+  # PRISE DE TEST: rend toute lecture impossible. Elle sert au scenario F, qui
+  # exerce un nettoyage EN ECHEC — un chemin qu'aucun test ne pouvait atteindre
+  # autrement, et qui doit changer le verdict au lieu d'etre avale.
+  if [[ -n "${ESC_SQL_ILLISIBLE:-}" ]]; then
+    printf 'ILLISIBLE\t%s\n' "lecture rendue impossible (prise de test)"
+    return 1
+  fi
   sortie="$(psql -X -qtA -v ON_ERROR_STOP=1 -d postgres -c "$1" 2>&1)"
   code=$?
   if (( code != 0 )); then
@@ -188,20 +195,91 @@ comparer_verrous() {   # comparer_verrous <scenario> <empreinte-avant> [muet]
 # ON NE TERMINE QUE DES PID DONT LA PROPRIETE A ETE ETABLIE. Jamais un ensemble
 # choisi par des cles: une collision, une execution concurrente ou une session
 # tierce portant les memes cles serait terminee avec lui.
-terminer_backend() {   # terminer_backend <pid> <libelle>
-  local pid="$1" quoi="$2" n=0
-  [[ -z "$pid" ]] && return 0
-  psql -X -qtA -d postgres -c "select pg_terminate_backend($pid)" >/dev/null 2>&1
+# UN PID N'EST PAS UNE AUTORITE. Il est reutilisable, et le noyau le reattribue
+# librement des qu'un processus meurt. Verifier la propriete PUIS terminer en
+# deux operations laisse une fenetre — etroite, mais reelle — ou le PID prouve
+# n'est plus celui qu'on termine. Une fonction qui pretend « ne terminer que ce
+# qu'elle possede » ne peut pas s'accommoder de cette fenetre.
+#
+# `pid_valide` refuse tout ce qui n'est pas une suite de chiffres AVANT toute
+# interpolation SQL.
+pid_valide() { [[ "$1" =~ ^[0-9]+$ ]]; }
+
+# L'IDENTITE COMPLETE, ET NON LA SEULE PRESENCE D'UNE CONNEXION.
+# `pg_stat_activity` peut montrer la session AVANT qu'elle ait acquis son
+# verrou: annoncer « session tierce sur les MEMES cles » sur cette base
+# affirmait une propriete non observee.
+#
+#   0  identite et verrou exacts, accorde
+#   1  aucune ligne ne correspond
+#   3  lecture impossible
+detient_verrou() {   # detient_verrou <pid> <app> <cle1> <cle2> <mode>
+  local pid="$1" app="$2" c1="$3" c2="$4" mode="$5" n
+  pid_valide "$pid" || return 1
+  n="$(lire_sql "select count(*) from pg_locks l
+                   join pg_stat_activity a on a.pid = l.pid
+                  where l.pid = $pid
+                    and a.application_name = '$app'
+                    and a.datname = current_database()
+                    and l.locktype = 'advisory'
+                    and l.classid = $c1 and l.objid = $c2 and l.objsubid = 2
+                    and l.granted and l.mode = '$mode'
+                    and l.database = (select oid from pg_database
+                                       where datname = current_database())")"
+  [[ "$n" == ILLISIBLE* ]] && { CMP_DIAG="${n#*$'\t'}"; return 3; }
+  [[ "$n" == "1" ]] && return 0
+  return 1
+}
+
+# TERMINAISON CONDITIONNELLE, FILTREE DANS LA MEME REQUETE. `pg_terminate_backend`
+# n'est appele que si le catalogue contient ENCORE cette identite exacte et ce
+# verrou exact, accorde. Il n'y a plus de fenetre entre la preuve et l'acte.
+#
+#   0  identite exacte, terminaison acceptee
+#   1  backend deja disparu: le nettoyage est deja satisfait
+#   2  backend present mais identite NON concordante: refus de tuer
+#   3  lecture impossible ou terminaison rendue « false »: fail-closed
+terminer_possede() {   # terminer_possede <pid> <app> <cle1> <cle2> <mode> <libelle>
+  local pid="$1" app="$2" c1="$3" c2="$4" mode="$5" quoi="$6" n=0 vu res
+  [[ -z "$pid" ]] && return 1
+  if ! pid_valide "$pid"; then
+    echoue "$quoi: PID non numerique refuse avant interpolation SQL: « $pid »"
+    return 3
+  fi
+  vu="$(lire_sql "select count(*) from pg_stat_activity where pid = $pid")"
+  [[ "$vu" == ILLISIBLE* ]] && { echoue "$quoi: pg_stat_activity illisible — ${vu#*$'\t'}"
+                                 return 3; }
+  [[ "$vu" == "0" ]] && return 1
+  res="$(lire_sql "select coalesce((
+             select pg_terminate_backend(l.pid)::text
+               from pg_locks l join pg_stat_activity a on a.pid = l.pid
+              where l.pid = $pid
+                and a.application_name = '$app'
+                and a.datname = current_database()
+                and l.locktype = 'advisory'
+                and l.classid = $c1 and l.objid = $c2 and l.objsubid = 2
+                and l.granted and l.mode = '$mode'
+                and l.database = (select oid from pg_database
+                                   where datname = current_database())
+             ), 'AUCUNE')")"
+  [[ "$res" == ILLISIBLE* ]] && { echoue "$quoi: terminaison illisible — ${res#*$'\t'}"
+                                  return 3; }
+  [[ "$res" == "AUCUNE" ]] && return 2
+  [[ "$res" != "true" ]] && { echoue "$quoi: pg_terminate_backend a rendu « $res »"
+                              return 3; }
   while (( n++ < 150 )); do
-    local reste
-    reste="$(psql -X -qtA -d postgres -c \
-      "select count(*) from pg_stat_activity where pid = $pid" 2>/dev/null)"
-    [[ "$reste" == "0" ]] && return 0
+    vu="$(lire_sql "select count(*) from pg_stat_activity where pid = $pid")"
+    [[ "$vu" == ILLISIBLE* ]] && { echoue "$quoi: attente illisible — ${vu#*$'\t'}"
+                                   return 3; }
+    [[ "$vu" == "0" ]] && return 0
     sleep 0.1
   done
   echoue "$quoi: le backend $pid n'a pas disparu apres terminaison"
-  return 1
+  return 3
 }
+
+NETTOYAGE_KO=0
+nettoyage_echoue() { echo "      ECHEC (nettoyage): $*" >&2; NETTOYAGE_KO=1; }
 
 menage() {
   if [[ -n "$MPID" ]] && kill -0 "$MPID" 2>/dev/null; then
@@ -209,10 +287,32 @@ menage() {
     for _ in $(seq 1 100); do kill -0 "$MPID" 2>/dev/null || break; sleep 0.1; done
     kill -KILL "$MPID" 2>/dev/null
   fi
-  # Les backends d'abord — y compris si un signal arrive entre l'acquisition du
-  # verrou et le nettoyage normal.
-  [[ -n "$FUITE_BACKEND" ]] && terminer_backend "$FUITE_BACKEND" "menage (fuite)" >/dev/null 2>&1
-  [[ -n "$TIERS_BACKEND" ]] && terminer_backend "$TIERS_BACKEND" "menage (tiers)" >/dev/null 2>&1
+  # LES BACKENDS D'ABORD — y compris si un signal arrive entre l'acquisition du
+  # verrou et le nettoyage normal. LA MEME FONCTION REVALIDEE, jamais le PID
+  # seul, et SANS `>/dev/null`: un nettoyage dont on jette le diagnostic n'est
+  # pas un nettoyage verifie.
+  local rc
+  if [[ -n "$FUITE_BACKEND" ]]; then
+    terminer_possede "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock "menage (fuite)"
+    rc=$?; (( rc == 2 || rc == 3 )) \
+      && nettoyage_echoue "backend de C ($FUITE_BACKEND) non nettoye (code $rc)"
+  fi
+  if [[ -n "$TIERS_BACKEND" ]]; then
+    terminer_possede "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock "menage (tiers)"
+    rc=$?; (( rc == 2 || rc == 3 )) \
+      && nettoyage_echoue "backend tiers ($TIERS_BACKEND) non nettoye (code $rc)"
+  fi
+  # AUCUN VERROU DES DEUX JETONS NE DOIT SUBSISTER.
+  if (( CLE1 != 0 )); then
+    local reste
+    reste="$(lire_sql "select count(*) from pg_locks
+                        where locktype='advisory' and classid=$CLE1 and objid=$CLE2")"
+    if [[ "$reste" == ILLISIBLE* ]]; then
+      nettoyage_echoue "verrous des scenarios: lecture impossible — ${reste#*$'"'"'\t'"'"'}"
+    elif [[ "$reste" != "0" ]]; then
+      nettoyage_echoue "$reste verrou(s) des cles ($CLE1,$CLE2) subsistent"
+    fi
+  fi
   for c in "$FUITE_CLIENT" "$TIERS_CLIENT"; do
     [[ -n "$c" ]] && { kill "$c" 2>/dev/null; wait "$c" 2>/dev/null; }
   done
@@ -223,7 +323,25 @@ menage() {
   fi
   rm -f "$TRACE" "$SORTIE" "$TEMOIN" "$TEMOIN_DESC"
 }
-trap menage EXIT
+# LE NETTOYAGE PEUT CHANGER LE VERDICT, et il ne le pouvait pas.
+# `menage()` tournait dans un `trap EXIT` declenche par `exit $KO`: le code
+# etait DEJA fige, et modifier `KO` ensuite n'avait aucun effet. Un nettoyage
+# rouge passait donc inapercu. On capture le code, on desarme le trap, on
+# nettoie, et on substitue un code dedie (9) si le nettoyage a echoue.
+sortir() {
+  local code="${1:-$KO}"
+  trap - EXIT TERM INT
+  menage
+  if (( NETTOYAGE_KO )); then
+    echo "    NETTOYAGE ROUGE — le verdict est remplace." >&2
+    (( code == 0 )) && code=9
+  fi
+  exit "$code"
+}
+trap 'sortir $KO' EXIT
+# Un signal doit passer par le meme chemin: sans trap TERM, bash meurt sans
+# executer le trap EXIT, et rien n'est nettoye.
+trap 'sortir 143' TERM INT
 
 # ==========================================================================
 # PROCESSUS
@@ -281,6 +399,71 @@ lancer_matrice() {   # lancer_matrice <filtre> [VAR=val ...]
   ) >"$SORTIE" 2>&1 &
   MPID=$!
 }
+
+# ==========================================================================
+# SOUS-MODE — CREER C ET LE TIERS, PUIS ATTENDRE LE SIGNAL
+# ==========================================================================
+# Le scenario E se relance lui-meme dans ce mode. Le sous-mode pose les deux
+# verrous, ECRIT TOUT CE QU'IL A CREE dans son temoin, annonce READY, puis
+# dort. Le parent le signale a cet instant precis: c'est la seule facon
+# d'exercer reellement « un signal arrive entre l'acquisition du verrou et le
+# nettoyage », au lieu de l'affirmer.
+if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "interruption_c" ]]; then
+  CLE1="${ESC_SIGNAL_CLE1:?}"; CLE2="${ESC_SIGNAL_CLE2:?}"
+  APP_FUITE="esc-fuite-$JETON"; APP_TIERS="esc-tiers-$JETON"
+  PGAPPNAME="$APP_FUITE" psql -X -qtA -d postgres -c \
+    "select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(300);" >/dev/null 2>&1 &
+  FUITE_CLIENT=$!
+  PGAPPNAME="$APP_TIERS" psql -X -qtA -d postgres -c \
+    "select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(300);" >/dev/null 2>&1 &
+  TIERS_CLIENT=$!
+  for _ in $(seq 1 600); do
+    FUITE_BACKEND="$(lire_sql "select pid from pg_stat_activity
+                                where application_name = '$APP_FUITE'" | head -1)"
+    TIERS_BACKEND="$(lire_sql "select pid from pg_stat_activity
+                                where application_name = '$APP_TIERS'" | head -1)"
+    if pid_valide "${FUITE_BACKEND:-x}" && pid_valide "${TIERS_BACKEND:-x}" \
+       && detient_verrou "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock \
+       && detient_verrou "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock; then
+      break
+    fi
+    sleep 0.1
+  done
+  {
+    echo "FUITE_BACKEND=$FUITE_BACKEND"
+    echo "TIERS_BACKEND=$TIERS_BACKEND"
+    echo "FUITE_CLIENT=$FUITE_CLIENT"
+    echo "TIERS_CLIENT=$TIERS_CLIENT"
+    echo "APP_FUITE=$APP_FUITE"
+    echo "APP_TIERS=$APP_TIERS"
+    echo "CLE1=$CLE1"; echo "CLE2=$CLE2"
+    echo "READY"
+  } >"${ESC_SIGNAL_TEMOIN:?}"
+  sleep 300
+  sortir 0
+fi
+
+# SOUS-MODE — LE NETTOYAGE ECHOUE, ET LE CODE DOIT LE DIRE
+if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "nettoyage_casse" ]]; then
+  CLE1="${ESC_SIGNAL_CLE1:?}"; CLE2="${ESC_SIGNAL_CLE2:?}"
+  APP_FUITE="esc-fuite-$JETON"
+  PGAPPNAME="$APP_FUITE" psql -X -qtA -d postgres -c \
+    "select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(300);" >/dev/null 2>&1 &
+  FUITE_CLIENT=$!
+  for _ in $(seq 1 600); do
+    FUITE_BACKEND="$(lire_sql "select pid from pg_stat_activity
+                                where application_name = '$APP_FUITE'" | head -1)"
+    pid_valide "${FUITE_BACKEND:-x}" \
+      && detient_verrou "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock && break
+    sleep 0.1
+  done
+  { echo "FUITE_BACKEND=$FUITE_BACKEND"; echo "APP_FUITE=$APP_FUITE"; echo "READY"; } \
+    >"${ESC_SIGNAL_TEMOIN:?}"
+  # A partir d'ici le nettoyage ne pourra RIEN lire. Il doit rougir, et le code
+  # de sortie doit passer de 0 a 9 — jamais rester 0.
+  export ESC_SQL_ILLISIBLE=1
+  sortir 0
+fi
 
 # ==========================================================================
 # A. SIGNAL PENDANT UN HARNAIS QUI A UNE DESCENDANCE
@@ -513,8 +696,7 @@ comparer_verrous "B" "$VERROUS_AVANT_B"
 echo "      -- C. fuite injectee: la comparaison doit la voir"
 CLE1=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
 CLE2=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
-APP_FUITE="esc-fuite-$JETON"
-APP_TIERS="esc-tiers-$JETON"
+APP_FUITE="esc-fuite-$JETON"; APP_TIERS="esc-tiers-$JETON"
 VERROUS_AVANT_C="$(empreinte_verrous)"
 
 # VERROU PARTAGE, ET C'EST DELIBERE: il permet a une session TIERCE de detenir
@@ -537,20 +719,19 @@ if [[ -z "$FUITE_BACKEND" ]]; then
 else
   # LA PROPRIETE EST PROUVEE AVANT DE TOUCHER A QUOI QUE CE SOIT: ce PID, ce
   # verrou, cette base, `objsubid = 2`.
-  possede="$(lire_sql "select count(*) from pg_locks
-     where locktype='advisory' and pid = $FUITE_BACKEND
-       and classid = $CLE1 and objid = $CLE2 and objsubid = 2
-       and database = (select oid from pg_database where datname = current_database())")"
+  # LA DETENTION, PAS LA PRESENCE. Une ligne dans `pg_stat_activity` peut
+  # preceder l'acquisition du verrou: annoncer la propriete sur cette base
+  # affirmerait ce qui n'a pas ete observe.
+  rcd=1
   for _ in $(seq 1 300); do
-    [[ "$possede" == "1" ]] && break
+    detient_verrou "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock; rcd=$?
+    (( rcd != 1 )) && break
     sleep 0.1
-    possede="$(lire_sql "select count(*) from pg_locks
-       where locktype='advisory' and pid = $FUITE_BACKEND
-         and classid = $CLE1 and objid = $CLE2 and objsubid = 2
-         and database = (select oid from pg_database where datname = current_database())")"
   done
-  if [[ "$possede" != "1" ]]; then
-    echoue "C: le backend $FUITE_BACKEND ne detient pas le verrou attendu ($possede)"
+  if (( rcd == 3 )); then
+    echoue "C: detention du verrou de C illisible — $CMP_DIAG"
+  elif (( rcd != 0 )); then
+    echoue "C: le backend $FUITE_BACKEND ne detient pas le verrou attendu"
   else
     ok "verrou injecte pose: backend $FUITE_BACKEND, cles ($CLE1,$CLE2), objsubid 2"
 
@@ -560,7 +741,7 @@ else
     comparer_verrous "C" "$VERROUS_AVANT_C" muet; rc=$?
     if (( rc == 10 )); then
       if [[ "$(grep -c . <<<"$CMP_APPARUS")" == "1" ]] \
-         && grep -q "|$FUITE_BACKEND|$CLE1|$CLE2|2|" <<<"$CMP_APPARUS"; then
+         && grep -q "|$FUITE_BACKEND|$CLE1|$CLE2|2|ShareLock|true$" <<<"$CMP_APPARUS"; then
         ok "la comparaison rend « verrou supplementaire » (10), sur le PID de C exactement"
         detail "$(tr '\n' ' ' <<<"$CMP_APPARUS")"
       else
@@ -588,20 +769,61 @@ else
       kill -0 "$TIERS_CLIENT" 2>/dev/null || break
       sleep 0.1
     done
-    if [[ -z "$TIERS_BACKEND" ]]; then
-      echoue "C: la session tierce n'est jamais apparue — la survie n'est pas exercee"
+    rct=1
+    if [[ -n "$TIERS_BACKEND" ]]; then
+      for _ in $(seq 1 300); do
+        detient_verrou "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock; rct=$?
+        (( rct != 1 )) && break
+        sleep 0.1
+      done
+    fi
+    if [[ -z "$TIERS_BACKEND" ]] || (( rct != 0 )); then
+      echoue "C: la session tierce ne detient pas le meme verrou — survie non exercee"
+      (( rct == 3 )) && detail "lecture impossible: $CMP_DIAG"
+    elif [[ "$TIERS_BACKEND" == "$FUITE_BACKEND" ]]; then
+      echoue "C: tiers et fuite partagent le meme PID ($TIERS_BACKEND)"
     else
-      ok "session tierce sur les MEMES cles: backend $TIERS_BACKEND"
-      terminer_backend "$FUITE_BACKEND" "C" && FUITE_BACKEND=""
+      ok "session tierce DETENTRICE du meme verrou partage: backend $TIERS_BACKEND (ShareLock, accorde)"
+
+      # UN PID N'EST PAS UNE AUTORITE — et voici la preuve. Meme PID, MAUVAISE
+      # identite: la terminaison doit REFUSER, et la session survivre avec son
+      # verrou. Sans ce controle, « on ne termine que ce qu'on possede » ne
+      # serait qu'une intention.
+      terminer_possede "$TIERS_BACKEND" "$APP_TIERS-FAUX" "$CLE1" "$CLE2" ShareLock "C (mauvaise identite)"
+      rcf=$?
+      if (( rcf == 2 )); then
+        detient_verrou "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock \
+          && ok "identite non concordante: terminaison REFUSEE, backend et verrou intacts" \
+          || echoue "C: la mauvaise identite a ete refusee mais le verrou a disparu"
+      else
+        echoue "C: une mauvaise identite rend $rcf, attendu 2 (refus)"
+        (( rcf == 0 )) && detail "le PID seul a suffi a tuer: la propriete n'est pas verifiee"
+      fi
+
+      terminer_possede "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock "C"
+      rcf=$?
+      (( rcf == 0 )) && FUITE_BACKEND="" \
+                     || echoue "C: la terminaison du backend de C rend $rcf, attendu 0"
+
+      # DEUX PROPRIETES SEPAREES: le backend tiers existe encore, ET il detient
+      # toujours exactement le meme verrou. « Il est vivant » ne prouve pas que
+      # le nettoyage a laisse son verrou tranquille.
       vit="$(lire_sql "select count(*) from pg_stat_activity where pid = $TIERS_BACKEND")"
       if [[ "$vit" == ILLISIBLE* ]]; then
-        echoue "C: impossible de verifier la survie du tiers — ${vit#*$'\t'}"
+        echoue "C: survie du tiers illisible — ${vit#*$'\t'}"
       elif [[ "$vit" == "1" ]]; then
-        ok "la session tierce a SURVECU au nettoyage de C"
+        ok "le backend tiers a SURVECU au nettoyage de C"
       else
         echoue "C: la session tierce a ete terminee — nettoyage par cles, pas par propriete"
       fi
-      terminer_backend "$TIERS_BACKEND" "C (tiers)" && TIERS_BACKEND=""
+      if detient_verrou "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock; then
+        ok "le tiers detient TOUJOURS exactement le meme verrou partage, accorde"
+      else
+        echoue "C: le verrou du tiers a disparu pendant le nettoyage de C"
+      fi
+
+      terminer_possede "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock "C (tiers)"
+      (( $? == 0 )) && TIERS_BACKEND="" || echoue "C: le tiers n'a pas pu etre nettoye"
     fi
 
     kill "$FUITE_CLIENT" 2>/dev/null; wait "$FUITE_CLIENT" 2>/dev/null; FUITE_CLIENT=""
@@ -643,8 +865,118 @@ else
     || echoue "D: etat AVANT illisible rend $rc, attendu 20"
 fi
 
+# ==========================================================================
+# E. INTERRUPTION PENDANT C — le trap nettoie ce qu'il possede, et se mesure
+# ==========================================================================
+# « Y COMPRIS SI UN SIGNAL ARRIVE ENTRE L'ACQUISITION ET LE NETTOYAGE » etait
+# une AFFIRMATION, pas une mesure. Ce scenario l'exerce: un sous-processus pose
+# les deux verrous, annonce READY, et recoit SIGTERM a cet instant.
+echo "      -- E. interruption pendant C: le trap doit tout rendre"
+TEMOIN_E="$(mktemp)"
+E_CLE1=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
+E_CLE2=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
+VERROUS_AVANT_E="$(empreinte_verrous)"
+ESC_SIGNAL_SOUS_MODE=interruption_c ESC_SIGNAL_TEMOIN="$TEMOIN_E" \
+  ESC_SIGNAL_CLE1="$E_CLE1" ESC_SIGNAL_CLE2="$E_CLE2" \
+  bash "$HERE/$(basename "${BASH_SOURCE[0]}")" >/dev/null 2>&1 &
+EPID=$!
+
+pret=0
+for _ in $(seq 1 900); do
+  grep -q READY "$TEMOIN_E" 2>/dev/null && { pret=1; break; }
+  kill -0 "$EPID" 2>/dev/null || break
+  sleep 0.1
+done
+if (( pret == 0 )); then
+  echoue "E: le sous-mode n'a jamais annonce READY"
+  kill -KILL "$EPID" 2>/dev/null; wait "$EPID" 2>/dev/null
+else
+  E_FB="$(sed -n 's/^FUITE_BACKEND=//p' "$TEMOIN_E")"
+  E_TB="$(sed -n 's/^TIERS_BACKEND=//p' "$TEMOIN_E")"
+  E_FC="$(sed -n 's/^FUITE_CLIENT=//p'  "$TEMOIN_E")"
+  E_TC="$(sed -n 's/^TIERS_CLIENT=//p'  "$TEMOIN_E")"
+  E_AF="$(sed -n 's/^APP_FUITE=//p'     "$TEMOIN_E")"
+  E_AT="$(sed -n 's/^APP_TIERS=//p'     "$TEMOIN_E")"
+  if ! pid_valide "${E_FB:-x}" || ! pid_valide "${E_TB:-x}"; then
+    echoue "E: le sous-mode n'a pas publie deux PID backend valides ($E_FB / $E_TB)"
+  else
+    ok "sous-mode pret: backends $E_FB (fuite) et $E_TB (tiers), cles ($E_CLE1,$E_CLE2)"
+    kill -TERM "$EPID"
+    E_CODE=0; wait "$EPID" 2>/dev/null || E_CODE=$?
+    ok "sous-mode interrompu, code $E_CODE"
+
+    # 1. AUCUN BACKEND PORTANT LES DEUX JETONS.
+    reste="$(lire_sql "select coalesce(string_agg(pid::text,','),'') from pg_stat_activity
+                        where application_name in ('$E_AF','$E_AT')")"
+    if [[ "$reste" == ILLISIBLE* ]]; then
+      echoue "E: pg_stat_activity illisible — ${reste#*$'\t'}"
+    elif [[ -z "$reste" ]]; then
+      ok "aucun backend ne porte plus les jetons du sous-mode"
+    else
+      echoue "E: backends survivants sous les jetons du sous-mode: $reste"
+    fi
+
+    # 2. AUCUN VERROU CORRESPONDANT.
+    reste="$(lire_sql "select count(*) from pg_locks
+                        where locktype='advisory' and classid=$E_CLE1 and objid=$E_CLE2")"
+    if [[ "$reste" == ILLISIBLE* ]]; then
+      echoue "E: pg_locks illisible — ${reste#*$'\t'}"
+    elif [[ "$reste" == "0" ]]; then
+      ok "aucun verrou des cles du sous-mode ne subsiste"
+    else
+      echoue "E: $reste verrou(s) des cles ($E_CLE1,$E_CLE2) subsistent"
+    fi
+
+    # 3. AUCUN CLIENT LOCAL VIVANT.
+    survivants="$(vivants "$E_FC $E_TC $EPID")"
+    [[ -z "$survivants" ]] \
+      && ok "aucun client local du sous-mode ne survit" \
+      || echoue "E: clients locaux survivants: $survivants"
+
+    # 4. L'ETAT GLOBAL DES VERROUS EST REVENU A CELUI D'AVANT E.
+    comparer_verrous "E" "$VERROUS_AVANT_E"
+  fi
+fi
+rm -f "$TEMOIN_E"
+
+# ==========================================================================
+# F. NETTOYAGE EN ECHEC — le verdict doit changer, pas absorber
+# ==========================================================================
+echo "      -- F. nettoyage en echec: le code de sortie doit le refleter"
+TEMOIN_F="$(mktemp)"
+F_CLE1=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
+F_CLE2=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
+ESC_SIGNAL_SOUS_MODE=nettoyage_casse ESC_SIGNAL_TEMOIN="$TEMOIN_F" \
+  ESC_SIGNAL_CLE1="$F_CLE1" ESC_SIGNAL_CLE2="$F_CLE2" \
+  bash "$HERE/$(basename "${BASH_SOURCE[0]}")" >"$TEMOIN_F.log" 2>&1 &
+FPID=$!
+F_CODE=0; wait "$FPID" 2>/dev/null || F_CODE=$?
+F_FB="$(sed -n 's/^FUITE_BACKEND=//p' "$TEMOIN_F")"
+F_AF="$(sed -n 's/^APP_FUITE=//p' "$TEMOIN_F")"
+if (( F_CODE == 9 )); then
+  ok "un nettoyage en echec remplace le verdict: code 9, et non 0"
+  grep -q 'ECHEC (nettoyage)' "$TEMOIN_F.log" \
+    && ok "le premier diagnostic de nettoyage est conserve" \
+    || echoue "F: aucun diagnostic « ECHEC (nettoyage) » n'a ete emis"
+else
+  echoue "F: code de sortie $F_CODE, attendu 9 (nettoyage rouge)"
+  detail "un nettoyage dont l'echec n'atteint pas le code de sortie est invisible"
+  detail "$(grep -m2 'ECHEC' "$TEMOIN_F.log" || echo '(aucun ECHEC)')"
+fi
+# C'EST NOUS QUI RENDONS CE QUE LE SOUS-MODE N'A PAS PU RENDRE — par identite
+# verifiee, jamais par cles seules.
+if pid_valide "${F_FB:-x}"; then
+  terminer_possede "$F_FB" "$F_AF" "$F_CLE1" "$F_CLE2" ShareLock "F (rattrapage)" >/dev/null
+fi
+reste="$(lire_sql "select count(*) from pg_locks
+                    where locktype='advisory' and classid=$F_CLE1 and objid=$F_CLE2")"
+[[ "$reste" == "0" ]] \
+  && ok "le verrou laisse par le nettoyage casse a ete rendu" \
+  || echoue "F: verrou residuel apres rattrapage ($reste)"
+rm -f "$TEMOIN_F" "$TEMOIN_F.log"
+
 echo
 [[ $KO -eq 0 ]] \
   && echo "    La matrice rend un verdict, et le test prouve ce qu'il affirme." \
   || echo "    La matrice ne meurt pas proprement." >&2
-exit $KO
+sortir $KO
