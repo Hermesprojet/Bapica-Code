@@ -424,6 +424,11 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
             '}\n'
             'trap \'relayer TERM 15\' TERM\n'
             'trap \'relayer INT 2\' INT\n'
+            # L'ATTENTE EST ANNONCEE. Sans ce marqueur, le test qui vise le
+            # wrapper seul court apres une fenetre: signaler avant que le
+            # `wait` soit arme ne produirait aucun retour interrompu, et le
+            # chemin ne serait pas exerce.
+            'marq WRAPPER_WAITING\n'
             'attendre_harnais\n'
             'marq WRAPPER_REAPED_HARNESS\n'
             'moissonner_temoin\n'
@@ -438,6 +443,40 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
         sortie, erreur = p.communicate()
     finally:
         ENFANT = None
+        # CANAL DE RESULTAT TEST-ONLY. Le code du WRAPPER n'etait observable
+        # nulle part: `essayer()` le consomme, et la matrice sort ensuite avec
+        # SON propre code. Un test qui lisait `wait <matrice>` mesurait donc
+        # 143 la ou le wrapper avait rendu 9 — il ne pouvait ni confirmer ni
+        # infirmer la priorite des codes.
+        #
+        # Publie ICI, dans le `finally`: apres le vrai `p.wait()` de
+        # `communicate()`, avant toute interpretation, et meme si le wrapper
+        # rend un code non nul ou si une branche d'erreur survient.
+        _canal = os.environ.get("ESC_MUTATION_RESULTAT")
+        if _canal:
+            _j = os.environ.get("ESC_JOURNAL", "")
+            _waits = ""
+            if _j and os.path.exists(_j):
+                with open(_j) as _f:
+                    _waits = ";".join(x.strip() for x in _f if x.strip())
+            _tmp = _canal + ".tmp"
+            with open(_tmp, "w") as _f:
+                _f.write(f"FORMAT=esc-wrapper-result/1\n"
+                         f"SCENARIO={os.environ.get('ESC_SCENARIO', '?')}\n"
+                         f"WRAPPER_PID={p.pid}\n"
+                         f"WRAPPER_PGID={p.pid}\n"
+                         f"WRAPPER_RC={p.returncode}\n"
+                         f"WAITS={_waits}\n")
+            # `os.link` echoue si la cible existe: la publication est EXCLUSIVE,
+            # donc un second resultat est une erreur observable et non un
+            # ecrasement silencieux.
+            try:
+                os.link(_tmp, _canal)
+            except FileExistsError:
+                with open(_canal + ".doublon", "a") as _f:
+                    _f.write(f"DOUBLON rc={p.returncode}\n")
+            finally:
+                os.unlink(_tmp)
     return p.returncode, sortie + erreur
 
 

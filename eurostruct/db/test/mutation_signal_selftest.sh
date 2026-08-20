@@ -1054,7 +1054,31 @@ echo "      -- E. interruption pendant C: le trap doit tout rendre"
 TEMOIN_E="$(mktemp)"
 E_CLE1=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
 E_CLE2=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
-VERROUS_AVANT_E="$(empreinte_verrous)"
+# BASELINE EXTERNE B0 — CAPTUREE AVANT DE LANCER QUOI QUE CE SOIT DE E, ET
+# CONFIRMEE PAR DEUX LECTURES IDENTIQUES CONSECUTIVES.
+#
+# Mesure du defaut precedent: la baseline etait prise alors que les ShareLock
+# du scenario PRECEDENT n'etaient pas encore retombes. Leur disparition —
+# normale, c'est le nettoyage qui marche — etait ensuite lue « le scenario a
+# libere un verrou qui ne lui appartenait pas ». Une photographie peut etre
+# stable ET contenir des ressources qui ne sont pas exterieures au scenario.
+#
+# Aucun `sleep` fixe: on exige deux lectures EGALES, dans une attente bornee.
+VERROUS_AVANT_E=""
+b_prec="$(empreinte_verrous)"; b_stable=0
+for _ in $(seq 1 300); do
+  sleep 0.1
+  b_cur="$(empreinte_verrous)"
+  [[ "$b_cur" == ILLISIBLE* ]] && { echoue "E: baseline illisible"; break; }
+  if [[ "$b_cur" == "$b_prec" ]]; then VERROUS_AVANT_E="$b_cur"; b_stable=1; break; fi
+  b_prec="$b_cur"
+done
+if (( b_stable )); then
+  nb0="$(grep -c . <<<"$VERROUS_AVANT_E")"; [[ -z "$VERROUS_AVANT_E" ]] && nb0=0
+  ok "E: baseline externe B0 confirmee par deux lectures identiques ($nb0 verrou(s))"
+else
+  echoue "E: la baseline externe ne s'est pas stabilisee"
+fi
 ESC_SIGNAL_SOUS_MODE=interruption_c ESC_SIGNAL_TEMOIN="$TEMOIN_E" \
   ESC_SIGNAL_CLE1="$E_CLE1" ESC_SIGNAL_CLE2="$E_CLE2" \
   bash "$HERE/$(basename "${BASH_SOURCE[0]}")" >/dev/null 2>&1 &
@@ -1134,7 +1158,10 @@ else
       || echoue "E: clients locaux survivants: $survivants"
 
     # 4. L'ETAT GLOBAL DES VERROUS EST REVENU A CELUI D'AVANT E.
-    comparer_verrous "E" "$VERROUS_AVANT_E"
+    # B1 doit egaler B0 EXACTEMENT: les verrous de E ne doivent apparaitre
+    # dans aucun des deux, et le verrou legitime d'un appelant imbrique doit
+    # apparaitre dans les deux.
+    comparer_verrous "E (B1 = B0)" "$VERROUS_AVANT_E"
   fi
 fi
 rm -f "$TEMOIN_E"
@@ -1474,6 +1501,7 @@ lancer_L() {   # lancer_L <marqueurs> <journal> <marqueur-wrapper> [VAR=val...]
     export ESC_MUTATION_TRACE="$(mktemp)" ESC_MUTATION_TEMOIN="$temoin"
     export ESC_MUTATION_HARNAIS_REMPLACE="$FAUX"
     export ESC_MARQUEURS="$marq" ESC_JOURNAL="$jour" ESC_SCENARIO="$L_SCEN"
+    export ESC_MUTATION_RESULTAT="$L_RESULTAT"
     export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
     for kv in "$@"; do export "${kv?}"; done
     exec python3 "$MATRICE" W1 ) >/dev/null 2>&1 &
@@ -1492,66 +1520,120 @@ chaine_ok() {   # chaine_ok <marqueurs> -> verifie les 7 evenements et l'ordre
   [[ ${#manque[@]} -eq 0 && "$total" == 7 ]]
 }
 
-# --- L1: SIGTERM au wrapper seul -----------------------------------------
+# --- L1: SIGTERM AU WRAPPER SEUL ------------------------------------------
+# TOPOLOGIE, ECRITE ET DISTINCTE DE CELLE DE A.
+#   A  signale la MATRICE; `_arreter_enfant()` relaie ensuite AU GROUPE, donc
+#      le harnais recoit le signal directement et le `wait` du wrapper n'est
+#      pas interrompu.
+#   L1 signale LE WRAPPER SEUL, par son PID. La matrice reste vivante, le
+#      harnais ne recoit rien du systeme: c'est le RELAIS du wrapper qui doit
+#      l'atteindre, et son `wait` qui doit etre interrompu.
+# La version precedente de L1 signalait la matrice tout en s'intitulant
+# « wrapper seul »: elle exercait le meme chemin que A, et la reattente n'etait
+# jamais eprouvee — « aucun retour de wait interrompu observe ».
 L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+L_RESULTAT="$(mktemp -u)"
 lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM"
 attendre "le faux harnais pret (L1)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
 L_HPID="$(awk '{print $2}' "$L_MARQ/.harnais")"
-[[ -z "$(find "$L_MARQ" -mindepth 1 -maxdepth 1 -type d)" ]] \
-  && ok "aucun marqueur de nettoyage avant le signal" \
-  || echoue "L1: des marqueurs existent deja avant le signal"
+attendre "le marqueur du wrapper (L1)" '[[ -s "$L_TEM" ]]' 3000 || exit 1
+L_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
+L_ETAT="$(sed -n 's/^STATE=//p' "$L_TEM")"
+# L'ATTENTE DU WRAPPER EST ARMEE: sans ce marqueur, signaler trop tot ne
+# produirait aucun retour interrompu et le chemin ne serait pas exerce.
+attendre "l'attente du wrapper armee (L1)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
+[[ -z "$(find "$L_MARQ" -mindepth 1 -maxdepth 1 -type d ! -name WRAPPER_WAITING)" ]] \
+  && ok "L1: aucun marqueur de nettoyage avant le signal" \
+  || echoue "L1: des marqueurs de nettoyage existent deja avant le signal"
 
-kill -TERM "$MPID"
-L_T0=$SECONDS; L_CODE=0; wait "$MPID" 2>/dev/null || L_CODE=$?; MPID=""
-L_DUREE=$(( SECONDS - L_T0 ))
-
-[[ "$L_CODE" == "143" ]] \
-  && ok "L1: SIGTERM au wrapper seul -> 143 (nettoyage reussi)" \
-  || echoue "L1: code $L_CODE, attendu 143"
-(( L_DUREE >= 2 )) \
-  && ok "L1: le wrapper a attendu le nettoyage lent (${L_DUREE}s)" \
-  || echoue "L1: le wrapper a rendu la main en ${L_DUREE}s — trop tot pour un nettoyage de 3s"
-if chaine_ok "$L_MARQ"; then
-  ok "L1: les 7 marqueurs causaux sont presents, une seule fois chacun"
+if [[ "$L_ETAT" != READY ]] || ! pid_valide "${L_WPID:-x}" \
+   || [[ -z "$(vivants "$L_WPID")" ]]; then
+  echoue "L1: identite du wrapper invalide avant le signal (etat=$L_ETAT pid=$L_WPID)"
 else
-  echoue "L1: chaine incomplete — manquants[${CHAINE_MANQUE}] total=$CHAINE_TOTAL/7"
-fi
-[[ ! -s "$L_MARQ/.erreurs" ]] \
-  && ok "L1: aucun doublon ni prerequis manquant signale" \
-  || { echoue "L1: erreurs de marqueurs"; detail "$(tr '\n' ' ' <"$L_MARQ/.erreurs")"; }
-prod="$(sed -n 's/^PID=//p' "$L_MARQ/HARNESS_CLEANUP_DONE/meta" 2>/dev/null)"
-[[ "$prod" == "$L_HPID" ]] \
-  && ok "L1: HARNESS_CLEANUP_DONE produit par le harnais lui-meme ($prod)" \
-  || echoue "L1: producteur $prod, attendu le harnais $L_HPID"
-sc="$(sed -n 's/^SCENARIO=//p' "$L_MARQ/WRAPPER_EXITING/meta" 2>/dev/null)"
-[[ "$sc" == "$L_SCEN" ]] \
-  && ok "L1: les marqueurs portent l'identifiant du scenario" \
-  || echoue "L1: scenario « $sc », attendu « $L_SCEN »"
-if grep -q 'interrompu' "$L_JOUR" 2>/dev/null; then
-  ok "L1: la reattente a ete exercee — $(grep -c interrompu "$L_JOUR") retour(s) interrompu(s)"
-  detail "$(tr '\n' ' ' <"$L_JOUR")"
-else
-  detail "note: aucun retour de wait interrompu observe sur ce passage"
-fi
-[[ -z "$(vivants "$L_HPID")" ]] \
-  && ok "L1: le faux harnais est termine" || echoue "L1: le faux harnais survit"
-rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM"
+  ok "L1: wrapper $L_WPID revalide vivant, matrice $MPID laissee intacte"
+  kill -TERM "$L_WPID"                    # LE WRAPPER SEUL, jamais la matrice
+  L_T0=$SECONDS
+  attendre "la fin du wrapper (L1)" '[[ -f "$L_RESULTAT" ]]' 3000 || exit 1
+  L_DUREE=$(( SECONDS - L_T0 ))
+  [[ -n "$(vivants "$MPID")" ]] \
+    && ok "L1: la matrice est restee vivante pendant le signal au wrapper" \
+    || detail "note: la matrice avait deja rendu la main"
+  L_WRC="$(sed -n 's/^WRAPPER_RC=//p' "$L_RESULTAT")"
+  L_WAITS="$(sed -n 's/^WAITS=//p' "$L_RESULTAT")"
+  [[ "$(sed -n 's/^FORMAT=//p' "$L_RESULTAT")" == "esc-wrapper-result/1" \
+     && "$(sed -n 's/^SCENARIO=//p' "$L_RESULTAT")" == "$L_SCEN" ]] \
+    && ok "L1: canal de resultat valide (format et scenario)" \
+    || echoue "L1: canal de resultat invalide"
+  [[ "$L_WRC" == "143" ]] \
+    && ok "L1: WRAPPER_RC=143 (SIGTERM, nettoyage reussi)" \
+    || echoue "L1: WRAPPER_RC=$L_WRC, attendu 143"
+  (( L_DUREE >= 2 )) \
+    && ok "L1: le wrapper a attendu le nettoyage lent (${L_DUREE}s)" \
+    || detail "note: duree ${L_DUREE}s — la preuve principale reste causale"
 
-# --- L2: le code metier du harnais l'emporte sur 128+signal ---------------
+  # LA PREUVE DECISIVE DU CHEMIN: un retour interrompu, PUIS un retour final.
+  n_int="$(grep -o 'WAIT_[0-9]*=interrompu' <<<"$L_WAITS" | head -1 | tr -dc 0-9)"
+  n_fin="$(grep -o 'WAIT_[0-9]*=final'      <<<"$L_WAITS" | head -1 | tr -dc 0-9)"
+  if [[ -z "$n_int" ]]; then
+    echoue "L1: aucun WAIT interrompu — CHEMIN NON EXERCE"
+    detail "waits: $L_WAITS"
+  elif [[ -z "$n_fin" ]] || (( n_fin <= n_int )); then
+    echoue "L1: pas de WAIT final apres l'interrompu (int=$n_int fin=${n_fin:-aucun})"
+  else
+    ok "L1: reattente exercee — WAIT_$n_int interrompu, puis WAIT_$n_fin final"
+    detail "waits: $L_WAITS"
+  fi
+  if chaine_ok "$L_MARQ"; then
+    ok "L1: chaine causale complete, chaque evenement une seule fois"
+  else
+    echoue "L1: chaine incomplete — manquants[${CHAINE_MANQUE}] total=$CHAINE_TOTAL"
+  fi
+  [[ ! -s "$L_MARQ/.erreurs" ]] \
+    && ok "L1: aucun doublon ni prerequis invalide" \
+    || { echoue "L1: erreurs de marqueurs"; detail "$(tr '\n' ' ' <"$L_MARQ/.erreurs")"; }
+  [[ -z "$(vivants "$L_HPID")" ]] \
+    && ok "L1: le faux harnais est termine" || echoue "L1: le faux harnais survit"
+fi
+[[ -n "$MPID" ]] && { kill -TERM "$MPID" 2>/dev/null; wait "$MPID" 2>/dev/null; MPID=""; }
+rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
+
+# --- L2: LE CODE DU HARNAIS L'EMPORTE, LU SUR LE CANAL DU WRAPPER ---------
+# La version precedente lisait `wait "$MPID"` — le code de la MATRICE, qui sort
+# en 143 par son propre `sortir()`. Elle ne pouvait donc ni confirmer ni
+# infirmer la priorite des codes du wrapper: rouge d'oracle, pas de produit.
 L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+L_RESULTAT="$(mktemp -u)"
 lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM" "ESC_CODE_SORTIE=9"
 attendre "le faux harnais pret (L2)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
-kill -TERM "$MPID"; L_CODE=0; wait "$MPID" 2>/dev/null || L_CODE=$?; MPID=""
-[[ "$L_CODE" == "9" ]] \
-  && ok "L2: nettoyage en echec (9) — le code du harnais l'emporte sur 143" \
-  || echoue "L2: code $L_CODE, attendu 9 (143 masquerait l'echec de nettoyage)"
-rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM"
+attendre "le marqueur du wrapper (L2)" '[[ -s "$L_TEM" ]]' 3000 || exit 1
+L_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
+attendre "l'attente du wrapper armee (L2)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
+if ! pid_valide "${L_WPID:-x}"; then
+  echoue "L2: PID de wrapper invalide"
+else
+  kill -TERM "$L_WPID"
+  attendre "la fin du wrapper (L2)" '[[ -f "$L_RESULTAT" ]]' 3000 || exit 1
+  L_WRC="$(sed -n 's/^WRAPPER_RC=//p' "$L_RESULTAT")"
+  L_MRC=0; [[ -n "$MPID" ]] && { kill -TERM "$MPID" 2>/dev/null
+                                 wait "$MPID" 2>/dev/null || L_MRC=$?; MPID=""; }
+  [[ "$L_WRC" == "9" ]] \
+    && ok "L2: WRAPPER_RC=9 — le code du harnais l'emporte sur 128+signal" \
+    || echoue "L2: WRAPPER_RC=$L_WRC, attendu 9 (143 masquerait l'echec de nettoyage)"
+  detail "MATRIX_RC=$L_MRC, rapporte separement et jamais utilise comme preuve"
+fi
+rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
 
 # --- L3: duplication de marqueur refusee ---------------------------------
 L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+L_RESULTAT="$(mktemp -u)"
 lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM" "ESC_DOUBLE=1"
 attendre "le faux harnais pret (L3)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
-kill -TERM "$MPID"; wait "$MPID" 2>/dev/null; MPID=""
+attendre "le marqueur du wrapper (L3)" '[[ -s "$L_TEM" ]]' 3000 || exit 1
+L_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
+attendre "l'attente du wrapper armee (L3)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
+kill -TERM "$L_WPID"
+attendre "la fin du wrapper (L3)" '[[ -f "$L_RESULTAT" ]]' 3000 || exit 1
+[[ -n "$MPID" ]] && { kill -TERM "$MPID" 2>/dev/null; wait "$MPID" 2>/dev/null; MPID=""; }
 if grep -q '^DOUBLON=HARNESS_CLEANUP_STARTED' "$L_MARQ/.erreurs" 2>/dev/null; then
   ok "L3: la SECONDE emission du meme evenement a ete REFUSEE"
 elif grep -q 'DOUBLON_NON_DETECTE' "$L_MARQ/.erreurs" 2>/dev/null; then
@@ -1559,7 +1641,7 @@ elif grep -q 'DOUBLON_NON_DETECTE' "$L_MARQ/.erreurs" 2>/dev/null; then
 else
   echoue "L3: aucune trace de la tentative de duplication"
 fi
-rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM"
+rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
 
 echo
 [[ $KO -eq 0 ]] \

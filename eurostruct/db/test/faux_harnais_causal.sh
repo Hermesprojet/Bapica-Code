@@ -29,9 +29,28 @@ PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"
 # marq <evenement> [<prerequis>]
 # CHAQUE PRODUCTEUR VERIFIE SON PREDECESSEUR: la chaine causale n'est pas
 # seulement constatee apres coup par le parent, elle est EXIGEE a l'emission.
+# LE PREDECESSEUR EST VALIDE SUR SON CONTENU, PAS SUR SON EXISTENCE.
+# Un repertoire cree par `mkdir` sans `meta` — ou avec un `meta` tronque —
+# signifie « evenement interrompu »: la chaine doit s'arreter la, et
+# l'evenement suivant ne doit JAMAIS etre emis. Se contenter de tester le
+# repertoire aurait valide une chaine dont un maillon n'a jamais abouti.
+predecesseur_valide() {
+  local pre="$1" m="$MARQ/$pre/meta"
+  [[ -d "$MARQ/$pre" ]] || { echo "PREREQUIS_ABSENT=$pre" >>"$MARQ/.erreurs"; return 1; }
+  [[ -f "$m" ]] || { echo "PREREQUIS_SANS_META=$pre" >>"$MARQ/.erreurs"; return 1; }
+  local ev pid pgid sc
+  ev="$(sed -n 's/^EVENT=//p' "$m")"; pid="$(sed -n 's/^PID=//p' "$m")"
+  pgid="$(sed -n 's/^PGID=//p' "$m")"; sc="$(sed -n 's/^SCENARIO=//p' "$m")"
+  [[ "$ev" == "$pre" ]] || { echo "PREREQUIS_EVENEMENT=$pre vs $ev" >>"$MARQ/.erreurs"; return 1; }
+  [[ "$sc" == "$SCEN" ]] || { echo "PREREQUIS_SCENARIO=$pre $sc" >>"$MARQ/.erreurs"; return 1; }
+  [[ "$pid" =~ ^[0-9]+$ && "$pgid" =~ ^[0-9]+$ ]] \
+    || { echo "PREREQUIS_TRONQUE=$pre" >>"$MARQ/.erreurs"; return 1; }
+  return 0
+}
+
 marq() {
   local ev="$1" pre="${2:-}"
-  if [[ -n "$pre" && ! -f "$MARQ/$pre/meta" ]]; then
+  if [[ -n "$pre" ]] && ! predecesseur_valide "$pre"; then
     echo "PREREQUIS_MANQUANT=$ev attendait $pre" >>"$MARQ/.erreurs"
     return 9
   fi
@@ -57,6 +76,8 @@ nettoyer() {
   DEDANS=1
   trap - TERM INT
   marq HARNESS_TRAP_ENTERED
+  # Contre-exemple: rend le predecesseur INCOMPLET (repertoire sans `meta`).
+  [[ -n "${ESC_META_TRONQUE:-}" ]] && rm -f "$MARQ/HARNESS_TRAP_ENTERED/meta"
   marq HARNESS_CLEANUP_STARTED HARNESS_TRAP_ENTERED
   # La duplication demandee: la SECONDE emission doit echouer.
   if [[ -n "${ESC_DOUBLE:-}" ]]; then
