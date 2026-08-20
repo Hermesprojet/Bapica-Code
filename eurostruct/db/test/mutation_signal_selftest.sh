@@ -87,6 +87,7 @@ menage() {
     rm -rf "$ESPACE_DEPOT"
     git -C "$RACINE" worktree prune 2>/dev/null
   fi
+  [[ -n "${FUITE_PID:-}" ]] && kill "$FUITE_PID" 2>/dev/null
   rm -f "$TRACE" "$SORTIE" "$TEMOIN"
 }
 trap menage EXIT
@@ -131,6 +132,87 @@ groupe_vivant() {
   ps -o pid=,stat= -g "$1" 2>/dev/null | awk '$2 !~ /^Z/ {print $1}' | tr '\n' ' '
 }
 
+# --------------------------------------------------------------------------
+# LES VERROUS: UNE EMPREINTE AVANT/APRES, JAMAIS UN COMPTE ABSOLU
+# --------------------------------------------------------------------------
+# CE TEST A RENDU LA CI ROUGE POUR CETTE RAISON EXACTE, et le diagnostic tient
+# en une ligne de sa propre sortie:
+#
+#     ECHEC: residu SQL — roles[] bases[] verrous[1]
+#
+# Il exigeait « select count(*) from pg_locks where locktype='advisory' » = 0.
+# Lance SEUL, le cluster n'a aucun verrou et la regle passe. Lance par
+# `db/test/run.sh` — qui prend son verrou de session au demarrage, le garde
+# pendant toute la suite et ne le rend qu'a l'EXIT — le compte vaut 1, et ce 1
+# est le verrou LEGITIME DU PARENT. La regle confondait l'etat normal de
+# l'appelant avec une fuite de l'appele.
+#
+# NI « <= 1 », NI LIBERATION TEMPORAIRE DU VERROU PARENT: le premier accepterait
+# une vraie fuite des qu'elle est seule, le second ouvrirait la fenetre de
+# concurrence que ce verrou existe pour fermer. La propriete juste est une
+# EGALITE D'ENSEMBLES: apres un scenario, les verrous advisory doivent etre
+# exactement ceux d'avant.
+#
+# FAIL-CLOSED. `ON_ERROR_STOP=1`, code de sortie verifie, et une lecture
+# impossible rend « ILLISIBLE » — jamais la chaine vide, qui se confondrait
+# avec « aucun verrou ».
+empreinte_verrous() {
+  local sortie code
+  sortie="$(psql -X -qtA -v ON_ERROR_STOP=1 -d postgres -c "
+    select coalesce(database::text,'-')||'|'||pid||'|'||coalesce(classid::text,'-')
+        ||'|'||coalesce(objid::text,'-')||'|'||coalesce(objsubid::text,'-')
+        ||'|'||mode||'|'||granted
+      from pg_locks where locktype='advisory' order by 1" 2>&1)"
+  code=$?
+  if (( code != 0 )); then
+    printf 'ILLISIBLE\t%s\n' "$(head -1 <<<"$sortie")"
+    return 1
+  fi
+  printf '%s\n' "$sortie"
+  return 0
+}
+
+# Compare deux empreintes, et NOMME la difference: un verrou apparu n'est pas
+# le meme defaut qu'un verrou disparu. Une courte convergence est toleree — la
+# fermeture d'un backend est asynchrone, et un verrou de session tombe quelques
+# instants apres la mort de sa connexion. Une VRAIE fuite, elle, ne converge
+# jamais.
+comparer_verrous() {   # comparer_verrous <scenario> <empreinte-avant>
+  local quoi="$1" avant="$2" apres n=0
+  if [[ "$avant" == ILLISIBLE* ]]; then
+    echoue "$quoi: l'etat des verrous AVANT etait illisible — ${avant#*$'\t'}"
+    detail "une lecture impossible n'est pas « aucun verrou »"
+    return 1
+  fi
+  while :; do
+    apres="$(empreinte_verrous)"
+    if [[ "$apres" == ILLISIBLE* ]]; then
+      echoue "$quoi: l'etat des verrous APRES est illisible — ${apres#*$'\t'}"
+      detail "une lecture impossible n'est pas « aucun verrou »"
+      return 1
+    fi
+    [[ "$apres" == "$avant" ]] && break
+    (( n++ >= 150 )) && break
+    sleep 0.1
+  done
+  if [[ "$apres" == "$avant" ]]; then
+    local combien; combien="$(grep -c . <<<"$avant")"
+    [[ -z "$avant" ]] && combien=0
+    ok "$quoi: les verrous advisory sont exactement ceux d'avant ($combien detenu(s))"
+    (( n > 0 )) && detail "convergence en $((n / 10)) s — fermeture de backend asynchrone"
+    return 0
+  fi
+  local apparus disparus
+  apparus="$(comm -13 <(sort <<<"$avant") <(sort <<<"$apres") | tr '\n' ' ')"
+  disparus="$(comm -23 <(sort <<<"$avant") <(sort <<<"$apres") | tr '\n' ' ')"
+  [[ -n "${apparus// /}" ]] && { echoue "$quoi: verrou advisory SUPPLEMENTAIRE"
+                                 detail "apparu(s): $apparus"; }
+  [[ -n "${disparus// /}" ]] && { echoue "$quoi: verrou advisory INITIAL DISPARU"
+                                  detail "disparu(s): $disparus"
+                                  detail "le scenario a libere un verrou qui ne lui appartenait pas"; }
+  return 1
+}
+
 attendre() {   # attendre <description> <commande-test> <deciseconds>
   local quoi="$1" test="$2" max="$3" n=0
   while ! eval "$test"; do
@@ -164,6 +246,23 @@ lancer_matrice() {   # lancer_matrice <filtre> [VAR=val ...]
 # A. SIGNAL PENDANT UN HARNAIS QUI A UNE DESCENDANCE
 # ==========================================================================
 echo "      -- A. pendant un harnais, avec sa descendance"
+# L'ETAT DES VERROUS EST RELEVE AVANT, ET IL N'EST PAS SUPPOSE VIDE. Lance
+# seul, ce test le trouvera vide; lance par `run.sh`, il y trouvera le verrou
+# de session du parent. Les deux configurations sont legitimes, et c'est
+# l'EGALITE avec cet etat de depart qui est exigee, pas sa valeur.
+VERROUS_AVANT_A="$(empreinte_verrous)"
+if [[ "$VERROUS_AVANT_A" == ILLISIBLE* ]]; then
+  echoue "impossible de lire pg_locks au demarrage — ${VERROUS_AVANT_A#*$'\t'}"
+  exit 1
+fi
+NB_AVANT="$(grep -c . <<<"$VERROUS_AVANT_A")"; [[ -z "$VERROUS_AVANT_A" ]] && NB_AVANT=0
+if (( NB_AVANT == 0 )); then
+  ok "configuration AUTONOME: aucun verrou advisory au depart"
+else
+  ok "configuration IMBRIQUEE: $NB_AVANT verrou(s) advisory detenu(s) par l'appelant"
+  detail "$(tr '\n' ' ' <<<"$VERROUS_AVANT_A")"
+fi
+
 lancer_matrice W1
 
 attendre "la mutation posee" '[[ -s "$TRACE" ]]' 3000 || exit 1
@@ -284,7 +383,8 @@ ERRANTS="$(vivants "$(pgrep -f "$HARNAIS_NOM $HARNAIS_PREFIXE" 2>/dev/null | tr 
   && ok "aucun processus ne porte plus « $HARNAIS_NOM $HARNAIS_PREFIXE »" \
   || echoue "processus portant le harnais: $ERRANTS"
 
-# NI VERROU, NI ROLE, NI BASE LAISSES PAR CETTE DESCENDANCE.
+# NI ROLE, NI BASE LAISSES PAR CETTE DESCENDANCE — au prefixe du harnais, qui
+# lui appartient en propre et ne peut donc rien confondre avec l'appelant.
 if command -v psql >/dev/null 2>&1; then
   reste_r="$(psql -X -tA -d postgres -c \
     "select coalesce(string_agg(rolname,','),'') from pg_roles
@@ -292,12 +392,13 @@ if command -v psql >/dev/null 2>&1; then
   reste_b="$(psql -X -tA -d postgres -c \
     "select coalesce(string_agg(datname,','),'') from pg_database
       where datname like '${HARNAIS_PREFIXE}\\_%'" 2>/dev/null)"
-  reste_v="$(psql -X -tA -d postgres -c \
-    "select count(*) from pg_locks where locktype='advisory'" 2>/dev/null)"
-  [[ -z "$reste_r" && -z "$reste_b" && "$reste_v" == "0" ]] \
-    && ok "ni verrou, ni role, ni base laisses par le harnais" \
-    || echoue "residu SQL — roles[$reste_r] bases[$reste_b] verrous[$reste_v]"
+  [[ -z "$reste_r" && -z "$reste_b" ]] \
+    && ok "ni role ni base au prefixe « $HARNAIS_PREFIXE » ne subsiste" \
+    || echoue "residu SQL — roles[$reste_r] bases[$reste_b]"
 fi
+
+# LES VERROUS: EGALITE EXACTE AVEC L'ETAT D'AVANT LE SCENARIO.
+comparer_verrous "A" "$VERROUS_AVANT_A"
 
 if [[ -n "$ESPACE_DEPOT" ]] && git -C "$RACINE" worktree list --porcelain \
      | grep -q "^worktree $ESPACE_DEPOT$"; then
@@ -314,6 +415,7 @@ fi
 # ==========================================================================
 echo "      -- B. entre deux controles, aucun controle en vol"
 rm -f "$TRACE" "$SORTIE"
+VERROUS_AVANT_B="$(empreinte_verrous)"
 TEMOIN="$(mktemp)"
 # `ESC_MUTATION_PAUSE_ENTRE` ouvre une fenetre DETERMINISTE apres chaque
 # controle rendu, et `ESC_MUTATION_ENTRE_TEMOIN` dit quand elle s'ouvre. Sans
@@ -357,6 +459,67 @@ if [[ -n "$ESPACE_DEPOT" ]] && git -C "$RACINE" worktree list --porcelain \
 else
   ok "aucun worktree residuel"
   ESPACE_DEPOT=""
+fi
+
+comparer_verrous "B" "$VERROUS_AVANT_B"
+
+# ==========================================================================
+# C. FUITE INJECTEE — le detecteur detecte-t-il, ou approuve-t-il ?
+# ==========================================================================
+# UNE COMPARAISON QUI N'A JAMAIS VU DE DIFFERENCE NE PROUVE RIEN. Les scenarios
+# A et B sont verts quand rien ne fuit; encore faut-il etablir qu'ils
+# rougiraient si quelque chose fuyait. On pose donc un verrou advisory
+# SUPPLEMENTAIRE, bien reel, et on exige que la comparaison le voie.
+#
+# C'est aussi ce qui discrimine une mutation qui retablirait la regle naive
+# (« count = 0 ») ou supprimerait la comparaison: la premiere rougirait deja en
+# configuration imbriquee, la seconde laisserait ce scenario-ci vert alors
+# qu'il doit detecter.
+echo "      -- C. fuite injectee: la comparaison doit la voir"
+VERROUS_AVANT_C="$(empreinte_verrous)"
+CLE1=987654321; CLE2=123456789
+psql -X -qtA -d postgres -c \
+  "select pg_advisory_lock($CLE1,$CLE2); select pg_sleep(120);" >/dev/null 2>&1 &
+FUITE_PID=$!
+
+vu=0
+for _ in $(seq 1 300); do
+  if empreinte_verrous | grep -q "|$CLE1|$CLE2|"; then vu=1; break; fi
+  kill -0 "$FUITE_PID" 2>/dev/null || break
+  sleep 0.1
+done
+if (( vu == 0 )); then
+  echoue "C: le verrou injecte n'est jamais apparu — scenario non exerce"
+  kill "$FUITE_PID" 2>/dev/null
+else
+  ok "verrou injecte pose ($CLE1,$CLE2)"
+  # La comparaison DOIT echouer ici. On l'appelle donc en neutralisant sa
+  # sortie et son effet sur KO, puis on juge son VERDICT.
+  KO_AVANT_C=$KO
+  if comparer_verrous "C (attendu rouge)" "$VERROUS_AVANT_C" >/dev/null 2>&1; then
+    KO=$KO_AVANT_C
+    echoue "C: la comparaison a APPROUVE un verrou supplementaire"
+    detail "le detecteur ne detecte pas: A et B ne prouvent alors rien"
+  else
+    KO=$KO_AVANT_C
+    ok "la comparaison rougit sur le verrou supplementaire"
+  fi
+  # LE BACKEND EST TERMINE PAR SES CLES, PAS SEULEMENT LE CLIENT PAR SIGNAL.
+  # Mesure: `kill` sur le `psql` ne rendait pas le verrou. Le backend est
+  # bloque dans `pg_sleep` et ne remarque la disparition de son client qu'en
+  # tentant de lui repondre — soit a la fin de la requete. Le verrou survivait
+  # donc a son client, et la comparaison de retour rougissait a tort.
+  #
+  # `classid`/`objid` portent les deux cles du verrou a deux arguments, et
+  # `objsubid` vaut 2: c'est ce que montre l'empreinte relevee juste au-dessus.
+  psql -X -qtA -d postgres -c \
+    "select pg_terminate_backend(pid) from pg_locks
+      where locktype='advisory' and classid=$CLE1 and objid=$CLE2" >/dev/null 2>&1
+  kill "$FUITE_PID" 2>/dev/null; wait "$FUITE_PID" 2>/dev/null
+  FUITE_PID=""
+  # ...et une fois la fuite refermee, l'egalite doit revenir. Sans cette
+  # seconde moitie, un detecteur qui rougirait TOUJOURS passerait aussi.
+  comparer_verrous "C (retour a l'etat initial)" "$VERROUS_AVANT_C"
 fi
 
 echo
