@@ -268,7 +268,29 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     # meneur: toute sa descendance en herite, et `_arreter_enfant()` peut alors
     # viser LE GROUPE plutot que le seul Bash. Sans cela il n'existe aucune
     # facon sure de nommer « tout ce que ce harnais a engendre ».
-    p = subprocess.Popen(["bash", harnais, prefixe], cwd=ESPACE, env=env,
+    # PRISE DE TEST: UN DESCENDANT DELIBERE DANS LE GROUPE DU HARNAIS.
+    #
+    # Prouver que « toute la descendance est terminee » demande un descendant
+    # dont on soit SUR qu'il vit au moment du signal. S'en remettre a ceux que
+    # le harnais engendre de lui-meme ne marche que par accident: mesure,
+    # `harnais_verrou_prendre()` ouvre un `coproc psql` de longue duree en
+    # execution AUTONOME, mais retourne sans coproc quand le marqueur de
+    # reentrance est present — c'est-a-dire sous `db/test/run.sh`. Le test
+    # trouvait donc un descendant durable seul, et aucun imbrique: vert d'un
+    # cote, rouge de l'autre, sans que la propriete ait change.
+    #
+    # Le temoin ecrit son PID et « READY », puis dort. Il est fils du Bash du
+    # harnais, donc membre de son groupe: le terminer par groupe le tue avec le
+    # reste. Hors test, la variable est absente et rien de tout cela n'existe.
+    argv = ["bash", harnais, prefixe]
+    temoin = os.environ.get("ESC_MUTATION_TEMOIN")
+    if temoin:
+        env["ESC_TEMOIN"] = temoin
+        argv = ["bash", "-c",
+                '( echo "$BASHPID READY" >"$ESC_TEMOIN"; exec sleep 300 ) &\n'
+                'exec bash "$@"\n',
+                "bash", harnais, prefixe]
+    p = subprocess.Popen(argv, cwd=ESPACE, env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          text=True, start_new_session=True)
     ENFANT = p
