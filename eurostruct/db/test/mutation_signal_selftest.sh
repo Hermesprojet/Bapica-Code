@@ -955,13 +955,29 @@ if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "interruption_c" ]]; then
   # SOIENT les resultats: deux PID numeriques suffisaient, sans qu'aucun verrou
   # ait ete acquis. Le parent annoncait alors « sous-mode pret », signalait, et
   # constatait zero verrou residuel — un scenario vert qui n'avait rien exerce.
+  # LE SOUS-MODE ENREGISTRE L'IDENTITE COMPLETE DE CE QU'IL CREE, et pas
+  # seulement le PID. Sans `backend_start`, `datid` et `usename`, son propre
+  # `menage()` sautait `terminer_identite` — il ne pouvait donc PAS nettoyer
+  # ses backends, et laissait ses deux ShareLock derriere lui.
+  #
+  # Ce defaut etait invisible tant que la trap arrivait 300 secondes trop tard:
+  # a cet instant les `pg_sleep(300)` avaient expire d'eux-memes, les verrous
+  # etaient retombes seuls, et E annoncait « le trap doit tout rendre » alors
+  # que le trap n'avait rien rendu du tout. Corriger le retard de la trap a
+  # rendu la mesure possible: E, puis I, sont passes au rouge avec deux
+  # backends survivants et deux verrous subsistants.
   PRET=0
   for _ in $(seq 1 600); do
-    FUITE_BACKEND="$(lire_sql "select pid from pg_stat_activity
-                                where application_name = '$APP_FUITE'" | head -1)"
-    TIERS_BACKEND="$(lire_sql "select pid from pg_stat_activity
-                                where application_name = '$APP_TIERS'" | head -1)"
+    if enregistrer_identite "$APP_FUITE"; then
+      FUITE_BACKEND="$ID_PID"; FUITE_START="$ID_START"
+      FUITE_DATID="$ID_DATID"; FUITE_USER="$ID_USER"
+    fi
+    if enregistrer_identite "$APP_TIERS"; then
+      TIERS_BACKEND="$ID_PID"; TIERS_START="$ID_START"
+      TIERS_DATID="$ID_DATID"; TIERS_USER="$ID_USER"
+    fi
     if pid_valide "${FUITE_BACKEND:-x}" && pid_valide "${TIERS_BACKEND:-x}" \
+       && [[ -n "$FUITE_START" && -n "$TIERS_START" ]] \
        && [[ "$FUITE_BACKEND" != "$TIERS_BACKEND" ]] \
        && detient_verrou "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock \
        && detient_verrou "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock; then
@@ -1016,9 +1032,11 @@ if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "nettoyage_casse" ]]; then
   FUITE_CLIENT=$!
   PRET=0
   for _ in $(seq 1 600); do
-    FUITE_BACKEND="$(lire_sql "select pid from pg_stat_activity
-                                where application_name = '$APP_FUITE'" | head -1)"
-    if pid_valide "${FUITE_BACKEND:-x}" \
+    if enregistrer_identite "$APP_FUITE"; then
+      FUITE_BACKEND="$ID_PID"; FUITE_START="$ID_START"
+      FUITE_DATID="$ID_DATID"; FUITE_USER="$ID_USER"
+    fi
+    if pid_valide "${FUITE_BACKEND:-x}" && [[ -n "$FUITE_START" ]] \
        && detient_verrou "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock; then
       PRET=1; break
     fi
