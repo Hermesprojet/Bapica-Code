@@ -349,6 +349,22 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
             '  echo "PGID=$PGID"\n'
             '} >"$ESC_TEMOIN.tmp"\n'
             'mv -f "$ESC_TEMOIN.tmp" "$ESC_TEMOIN"\n'
+            # LE WRAPPER RELAIE LE SIGNAL ET ATTEND LE HARNAIS. Sans cela il
+            # mourait le premier — bash termine par defaut sur SIGTERM — et
+            # `p.wait()`, qui attend le WRAPPER depuis qu'il ne fait plus
+            # `exec`, rendait la main pendant que le harnais executait encore
+            # ses trappes de nettoyage. Mesure, une fois le `set -m` global
+            # retire de l'auto-test:
+            #     ECHEC: le Bash du harnais (1486) survit
+            #     ECHEC: le groupe 1484 contient encore des processus vivants
+            # Le harnais a des trappes qui prennent du temps; il faut les lui
+            # laisser, puis constater sa mort.
+            'relayer() { kill -"$1" "$HARNAIS" 2>/dev/null; '
+            'wait "$HARNAIS"; CODE=$?; '
+            'kill "$TEMOIN" 2>/dev/null; wait "$TEMOIN" 2>/dev/null; '
+            'exit $((128 + $2)); }\n'
+            'trap \'relayer TERM 15\' TERM\n'
+            'trap \'relayer INT 2\' INT\n'
             'wait "$HARNAIS"; CODE=$?\n'
             'kill "$TEMOIN" 2>/dev/null; wait "$TEMOIN" 2>/dev/null\n'
             'exit "$CODE"\n'

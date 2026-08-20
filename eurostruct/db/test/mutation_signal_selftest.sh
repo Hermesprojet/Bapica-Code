@@ -61,16 +61,22 @@ ok()     { echo "      ok: $*"; }
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
 detail() { echo "                $*"; }
 
-# LE CONTROLE DE TACHES EST INDISPENSABLE POUR SIGINT. Bash met SIGINT a
-# SIG_IGN dans un job d'arriere-plan lance depuis un shell NON INTERACTIF sans
-# `set -m`, et UN SIG_IGN HERITE NE PEUT PAS ETRE TRAPPE. Mesure:
+# LE CONTROLE DE TACHES N'EST PAS POSE GLOBALEMENT, ET C'EST DELIBERE.
 #
-#     sans job control :  SIGINT -> code 0   (le trap n'a jamais tourne)
+# SIGINT est indispensable a I: bash met SIGINT a SIG_IGN dans un job
+# d'arriere-plan lance depuis un shell NON INTERACTIF sans `set -m`, et UN
+# SIG_IGN HERITE NE PEUT PAS ETRE TRAPPE. Mesure:
+#
+#     sans job control :  SIGINT -> code 0    (le trap n'a jamais tourne)
 #     avec set -m      :  SIGINT -> code 130  trap INT
 #
-# Le sous-mode de I ne recevait donc jamais le signal: il dormait ses 300 s
-# puis sortait 0. Le defaut n'etait pas dans `sortir()`.
-set -m
+# MAIS `set -m` EN TETE DE SCRIPT CHANGE LA SEMANTIQUE DE TOUS LES SCENARIOS:
+# chaque job d'arriere-plan obtient alors son PROPRE groupe de processus, donc
+# ce que `groupe_vivant` et les terminaisons par groupe observent n'est plus le
+# meme. Une passe verte sous cette semantique n'etablit pas que A-H, J et K
+# tiennent sous la leur. Le mode monitor est donc confine au SEUL scenario I,
+# dans un SOUS-SHELL dedie: il disparait a la mort de ce sous-shell, y compris
+# sur erreur ou signal — ce qu'un « set -m ... set +m » ne garantit pas.
 
 echo "    la matrice meurt proprement sur signal"
 [[ -f "$MATRICE" ]] || { echoue "matrice introuvable: $MATRICE"; exit 2; }
@@ -1267,34 +1273,70 @@ rm -f "$TEMOIN_H" "$TEMOIN_H.log"
 # Tant que ce chemin n'etait pas exerce, affirmer que SIGINT est correctement
 # reflete etait une promesse sans preuve — et le trap unique lui donnait 143.
 echo "      -- I. SIGINT: code 130"
+# L'ETAT INITIAL EST MESURE, PAS SUPPOSE. En CI non interactif le mode monitor
+# devrait etre absent, mais le test le CONSTATE au lieu de le presumer.
+MONITOR_AVANT="$(set -o | awk '$1=="monitor"{print $2}')"
+ok "mode monitor avant I: $MONITOR_AVANT"
 TEMOIN_I="$(mktemp)"
 I_CLE1=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
 I_CLE2=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
-ESC_SIGNAL_SOUS_MODE=interruption_c ESC_SIGNAL_TEMOIN="$TEMOIN_I" \
-  ESC_SIGNAL_CLE1="$I_CLE1" ESC_SIGNAL_CLE2="$I_CLE2" \
-  bash "$HERE/$(basename "${BASH_SOURCE[0]}")" >/dev/null 2>&1 &
-IPID=$!
-for _ in $(seq 1 900); do
-  grep -qE 'READY|FAILED' "$TEMOIN_I" 2>/dev/null && break
-  kill -0 "$IPID" 2>/dev/null || break
-  sleep 0.1
-done
-if ! grep -q READY "$TEMOIN_I" 2>/dev/null; then
+I_RES="$(mktemp)"
+(
+  # LE SOUS-SHELL DEDIE: `monitor` vit et meurt avec lui.
+  set -m
+  dedans="$(set -o | awk '$1=="monitor"{print $2}')"
+  echo "MONITOR_DEDANS=$dedans" >>"$I_RES"
+  ESC_SIGNAL_SOUS_MODE=interruption_c ESC_SIGNAL_TEMOIN="$TEMOIN_I" \
+    ESC_SIGNAL_CLE1="$I_CLE1" ESC_SIGNAL_CLE2="$I_CLE2" \
+    bash "$HERE/$(basename "${BASH_SOURCE[0]}")" >/dev/null 2>&1 &
+  IPID=$!
+  echo "IPID=$IPID" >>"$I_RES"
+  echo "IPGID=$(ps -o pgid= -p "$IPID" 2>/dev/null | tr -d ' ')" >>"$I_RES"
+  pret=0
+  for _ in $(seq 1 900); do
+    grep -qE 'READY|FAILED' "$TEMOIN_I" 2>/dev/null && { pret=1; break; }
+    kill -0 "$IPID" 2>/dev/null || break
+    sleep 0.1
+  done
+  if (( pret == 0 )) || ! grep -q READY "$TEMOIN_I" 2>/dev/null; then
+    echo "PRET=0" >>"$I_RES"; kill -KILL "$IPID" 2>/dev/null; wait "$IPID" 2>/dev/null
+  else
+    echo "PRET=1" >>"$I_RES"
+    kill -INT "$IPID"
+    c=0; wait "$IPID" 2>/dev/null || c=$?
+    echo "I_CODE=$c" >>"$I_RES"
+  fi
+)
+MONITOR_APRES="$(set -o | awk '$1=="monitor"{print $2}')"
+I_MONDEDANS="$(sed -n 's/^MONITOR_DEDANS=//p' "$I_RES")"
+I_CODE="$(sed -n 's/^I_CODE=//p' "$I_RES")"
+I_PGID="$(sed -n 's/^IPGID=//p' "$I_RES")"
+I_PID_SM="$(sed -n 's/^IPID=//p' "$I_RES")"
+
+[[ "$I_MONDEDANS" == on ]] \
+  && ok "le mode monitor est actif A L'INTERIEUR du sous-shell de I" \
+  || echoue "I: monitor « $I_MONDEDANS » dans le sous-shell, attendu « on »"
+[[ "$MONITOR_APRES" == "$MONITOR_AVANT" ]] \
+  && ok "le mode monitor est restaure apres I ($MONITOR_APRES = etat initial)" \
+  || echoue "I: monitor « $MONITOR_APRES » apres I, initialement « $MONITOR_AVANT »"
+
+if [[ "$(sed -n 's/^PRET=//p' "$I_RES")" != "1" ]]; then
   echoue "I: le sous-mode n'a pas annonce READY — scenario non exerce"
-  kill -KILL "$IPID" 2>/dev/null; wait "$IPID" 2>/dev/null
 else
-  kill -INT "$IPID"
-  I_CODE=0; wait "$IPID" 2>/dev/null || I_CODE=$?
-  (( I_CODE == 130 )) \
+  ok "sous-mode de I: pid $I_PID_SM, PGID vise $I_PGID"
+  [[ "$I_CODE" == "130" ]] \
     && ok "SIGINT rendu en 130 (128 + 2), distinct du 143 de SIGTERM" \
     || echoue "I: code $I_CODE, attendu 130"
+  [[ -z "$(vivants "$I_PID_SM")" ]] \
+    && ok "aucun processus du sous-mode de I ne survit" \
+    || echoue "I: le sous-mode $I_PID_SM survit"
   reste="$(lire_sql "select count(*) from pg_locks
                       where locktype='advisory' and classid=$I_CLE1 and objid=$I_CLE2")"
   [[ "$reste" == "0" ]] \
     && ok "SIGINT a rendu les verrous du sous-mode" \
     || echoue "I: $reste verrou(s) subsistent apres SIGINT"
 fi
-rm -f "$TEMOIN_I"
+rm -f "$TEMOIN_I" "$I_RES"
 
 # ==========================================================================
 # J. HARNAIS QUI SORT IMMEDIATEMENT — le temoin ne doit rien retenir
@@ -1309,6 +1351,17 @@ rm -f "$TEMOIN_I"
 #
 # Ce scenario le rejoue AVEC LA MATRICE, et il est court par construction.
 echo "      -- J. harnais qui sort immediatement: ni blocage, ni orphelin"
+# LE CONFINEMENT SE VERIFIE AUSSI ICI: J doit demarrer avec la semantique
+# d'origine, et rien de I ne doit lui survivre.
+MONITOR_J="$(set -o | awk '$1=="monitor"{print $2}')"
+[[ "$MONITOR_J" == "$MONITOR_AVANT" ]] \
+  && ok "au debut de J, le mode monitor vaut toujours « $MONITOR_J »" \
+  || echoue "J: monitor « $MONITOR_J », initialement « $MONITOR_AVANT »"
+if [[ -n "${I_PGID:-}" ]] && pid_valide "${I_PGID:-x}"; then
+  [[ -z "$(groupe_vivant "$I_PGID")" ]] \
+    && ok "aucun processus du groupe de I ($I_PGID) ne survit au debut de J" \
+    || echoue "J: le groupe $I_PGID de I contient encore des processus vivants"
+fi
 TEMOIN_J="$(mktemp)"; FAUX_HARNAIS="$(mktemp)"
 printf '#!/usr/bin/env bash\nexit 7\n' >"$FAUX_HARNAIS"; chmod +x "$FAUX_HARNAIS"
 J_T0=$(date +%s)
