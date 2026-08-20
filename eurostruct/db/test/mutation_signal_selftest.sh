@@ -99,10 +99,36 @@ descendants() {
   for p in $(pgrep -P "$1" 2>/dev/null); do echo "$p"; descendants "$p"; done
 }
 
-vivants() {   # vivants <liste de PID> -> ceux qui existent encore
-  local p restants=""
-  for p in $1; do kill -0 "$p" 2>/dev/null && restants="$restants $p"; done
+vivants() {   # vivants <liste de PID> -> ceux qui TOURNENT encore
+  # UN ZOMBIE N'EST PAS UN SURVIVANT, et c'est ce qui a rendu la CI rouge.
+  # Le processus est MORT: il ne detient plus rien, n'execute plus rien, et
+  # n'attend que d'etre moissonne par son parent — lequel vient justement de
+  # mourir aussi. Mais `kill -0` REUSSIT sur un zombie, et `ps -g` le liste.
+  #
+  # Mesure, 4 fois sur 4 en TCP: le groupe du harnais etait annonce « contient
+  # encore des processus » alors qu'il ne restait que
+  #     28280 [bash] <defunct>
+  #     28281 [psql] <defunct>
+  # La terminaison de groupe avait parfaitement fonctionne. C'est le predicat
+  # qui etait faux.
+  #
+  # Le reessai introduit au meme commit a rendu le defaut systematique: en
+  # relevant la descendance JUSTE avant le signal, on la releve trop fraiche
+  # pour qu'elle ait ete moissonnee juste apres. La version precedente passait
+  # par chance, sur des PID deja disparus.
+  local p etat restants=""
+  for p in $1; do
+    etat="$(ps -o stat= -p "$p" 2>/dev/null | tr -d ' ')"
+    [[ -n "$etat" && "$etat" != Z* ]] && restants="$restants $p"
+  done
   echo "${restants# }"
+}
+
+# Les processus du groupe qui TOURNENT encore — zombies exclus, pour la meme
+# raison. `kill -0` sur un PGID negatif reussit tant qu'il reste une entree
+# dans la table des processus, fut-elle celle d'un mort.
+groupe_vivant() {
+  ps -o pid=,stat= -g "$1" 2>/dev/null | awk '$2 !~ /^Z/ {print $1}' | tr '\n' ' '
 }
 
 attendre() {   # attendre <description> <commande-test> <deciseconds>
@@ -245,14 +271,15 @@ RESTANTS="$(vivants "$PETITS")"
 # PGID negatif reussit tant qu'IL RESTE UN SEUL PROCESSUS dans le groupe: c'est
 # la formulation exacte de « toute la descendance est terminee », y compris ce
 # qui serait ne apres notre releve.
-if kill -0 -"$BASH_PID" 2>/dev/null; then
-  echoue "le groupe $BASH_PID contient encore des processus"
-  detail "$(ps -o pid=,args= -g "$BASH_PID" 2>/dev/null | head -3)"
+GROUPE="$(groupe_vivant "$BASH_PID")"
+if [[ -n "${GROUPE// /}" ]]; then
+  echoue "le groupe $BASH_PID contient encore des processus vivants: $GROUPE"
+  detail "$(ps -o pid=,stat=,args= -g "$BASH_PID" 2>/dev/null | head -3)"
 else
-  ok "le groupe du harnais est vide: toute la descendance est terminee"
+  ok "le groupe du harnais ne contient plus aucun processus vivant"
 fi
 
-ERRANTS="$(pgrep -f "$HARNAIS_NOM $HARNAIS_PREFIXE" 2>/dev/null | tr '\n' ' ')"
+ERRANTS="$(vivants "$(pgrep -f "$HARNAIS_NOM $HARNAIS_PREFIXE" 2>/dev/null | tr '\n' ' ')")"
 [[ -z "${ERRANTS// /}" ]] \
   && ok "aucun processus ne porte plus « $HARNAIS_NOM $HARNAIS_PREFIXE »" \
   || echoue "processus portant le harnais: $ERRANTS"
