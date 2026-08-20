@@ -359,15 +359,75 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
             #     ECHEC: le groupe 1484 contient encore des processus vivants
             # Le harnais a des trappes qui prennent du temps; il faut les lui
             # laisser, puis constater sa mort.
-            'relayer() { kill -"$1" "$HARNAIS" 2>/dev/null; '
-            'wait "$HARNAIS"; CODE=$?; '
-            'kill "$TEMOIN" 2>/dev/null; wait "$TEMOIN" 2>/dev/null; '
-            'exit $((128 + $2)); }\n'
+            # MARQUEUR CAUSAL EXCLUSIF. `mkdir` echoue si la cible existe:
+            # c'est l'operation atomique qui rend une SECONDE emission
+            # detectable. Un `mv -f` l'aurait ecrasee en silence, et
+            # « une seule entree logique dans le nettoyage » aurait ete une
+            # affirmation invérifiable.
+            'marq() {\n'
+            '  [[ -n "${ESC_MARQUEURS:-}" ]] || return 0\n'
+            '  mkdir "$ESC_MARQUEURS/$1" 2>/dev/null || {\n'
+            '    echo "DOUBLON=$1" >>"$ESC_MARQUEURS/.erreurs"; return 9; }\n'
+            '  { echo "EVENT=$1"; echo "PID=$$"; echo "PGID=$PGID"\n'
+            '    echo "SCENARIO=${ESC_SCENARIO:-?}"; } >"$ESC_MARQUEURS/$1/.m"\n'
+            '  mv -f "$ESC_MARQUEURS/$1/.m" "$ESC_MARQUEURS/$1/meta"\n'
+            '}\n'
+            'journal() { [[ -n "${ESC_JOURNAL:-}" ]] && echo "$1" >>"$ESC_JOURNAL"; :; }\n'
+            # LE PREMIER RETOUR DE `wait` N'EST PAS LA FIN DU HARNAIS. Bash rend
+            # la main a `wait` des qu'une trap s'execute, l'enfant toujours
+            # vivant. Le prendre pour une terminaison faisait moissonner et
+            # sortir pendant que le harnais nettoyait encore. On REATTEND donc
+            # tant que le PID reste un enfant non moissonne — critere qui ne
+            # repose pas sur `kill -0` seul: une fois `wait` revenu avec le
+            # VRAI code, l'enfant est moissonne et le PID n'existe plus.
+            'attendre_harnais() {\n'
+            '  local rc n=0\n'
+            '  while :; do\n'
+            '    wait "$HARNAIS"; rc=$?; n=$((n + 1))\n'
+            '    if ! kill -0 "$HARNAIS" 2>/dev/null; then\n'
+            '      journal "WAIT_$n=final:$rc"; CODE=$rc; return 0\n'
+            '    fi\n'
+            '    journal "WAIT_$n=interrompu:$rc (enfant non moissonne)"\n'
+            '  done\n'
+            '}\n'
+            'moissonner_temoin() {\n'
+            '  kill "$TEMOIN" 2>/dev/null; wait "$TEMOIN" 2>/dev/null\n'
+            '  marq WRAPPER_REAPED_WITNESS\n'
+            '}\n'
+            # PRIORITE DES CODES, ECRITE ICI ET VERIFIEE PAR LE TEST.
+            #   pas de signal                  -> code exact du harnais
+            #   signal + nettoyage reussi      -> 128 + signal
+            #   signal + echec de nettoyage    -> LE CODE DU HARNAIS (ex. 9)
+            # Le code du harnais reste l'autorite des qu'il exprime un echec:
+            # « le wrapper sort en 128+signal » masquait un nettoyage rate.
+            'sortie_wrapper() {\n'
+            '  marq WRAPPER_EXITING\n'
+            '  if [[ -n "${SIGNAL_RECU:-}" ]]; then\n'
+            '    if (( CODE == 0 || CODE == 128 + SIGNAL_RECU )); then\n'
+            '      exit $((128 + SIGNAL_RECU))\n'
+            '    fi\n'
+            '    exit "$CODE"\n'
+            '  fi\n'
+            '  exit "$CODE"\n'
+            '}\n'
+            # LA TRAP EST DESARMEE AVANT LE RELAIS: un second signal ne doit pas
+            # relancer un nettoyage concurrent. Le relais est donc au plus une
+            # fois, que le signal ait vise le groupe entier ou le seul wrapper.
+            'relayer() {\n'
+            '  trap - TERM INT\n'
+            '  SIGNAL_RECU="$2"\n'
+            '  kill -"$1" "$HARNAIS" 2>/dev/null\n'
+            '  attendre_harnais\n'
+            '  marq WRAPPER_REAPED_HARNESS\n'
+            '  moissonner_temoin\n'
+            '  sortie_wrapper\n'
+            '}\n'
             'trap \'relayer TERM 15\' TERM\n'
             'trap \'relayer INT 2\' INT\n'
-            'wait "$HARNAIS"; CODE=$?\n'
-            'kill "$TEMOIN" 2>/dev/null; wait "$TEMOIN" 2>/dev/null\n'
-            'exit "$CODE"\n'
+            'attendre_harnais\n'
+            'marq WRAPPER_REAPED_HARNESS\n'
+            'moissonner_temoin\n'
+            'sortie_wrapper\n'
         )
         argv = ["bash", "-c", enveloppe, "bash", *argv]
     p = subprocess.Popen(argv, cwd=ESPACE, env=env,

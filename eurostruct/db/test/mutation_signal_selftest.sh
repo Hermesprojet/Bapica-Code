@@ -1455,6 +1455,112 @@ reste="$(lire_sql "select count(*) from pg_stat_activity where application_name 
 [[ "$reste" == "0" ]] && ok "aucune session « $K_APP » ne subsiste" \
                       || echoue "K: $reste session(s) subsistent"
 
+# ==========================================================================
+# L. ORDRE CAUSAL DU WRAPPER — prouve par marqueurs exclusifs, pas par horloge
+# ==========================================================================
+# « Le wrapper attend le harnais » etait une intention. Ce scenario etablit la
+# CHAINE: le harnais entre dans sa trap, commence son nettoyage lent, le
+# termine, sort; ALORS SEULEMENT le wrapper le moissonne, moissonne le temoin,
+# et rend la main. Les marqueurs sont crees par `mkdir` — exclusif — donc une
+# seconde emission est une erreur observable et non un ecrasement silencieux.
+echo "      -- L. ordre causal du wrapper: chaine complete, une seule fois"
+L_SCEN="L-$JETON"
+FAUX="$PROJET/db/test/faux_harnais_causal.sh"
+[[ -f "$FAUX" ]] || echoue "L: faux harnais introuvable: $FAUX"
+
+lancer_L() {   # lancer_L <marqueurs> <journal> <marqueur-wrapper> [VAR=val...]
+  local marq="$1" jour="$2" temoin="$3"; shift 3
+  ( cd "$PROJET" || exit 2
+    export ESC_MUTATION_TRACE="$(mktemp)" ESC_MUTATION_TEMOIN="$temoin"
+    export ESC_MUTATION_HARNAIS_REMPLACE="$FAUX"
+    export ESC_MARQUEURS="$marq" ESC_JOURNAL="$jour" ESC_SCENARIO="$L_SCEN"
+    export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
+    for kv in "$@"; do export "${kv?}"; done
+    exec python3 "$MATRICE" W1 ) >/dev/null 2>&1 &
+  MPID=$!
+}
+
+chaine_ok() {   # chaine_ok <marqueurs> -> verifie les 7 evenements et l'ordre
+  local m="$1" manque=() ev
+  for ev in HARNESS_TRAP_ENTERED HARNESS_CLEANUP_STARTED HARNESS_CLEANUP_DONE \
+            HARNESS_EXITING WRAPPER_REAPED_HARNESS WRAPPER_REAPED_WITNESS \
+            WRAPPER_EXITING; do
+    [[ -f "$m/$ev/meta" ]] || manque+=("$ev")
+  done
+  local total; total="$(find "$m" -mindepth 1 -maxdepth 1 -type d | wc -l)"
+  CHAINE_MANQUE="${manque[*]:-}"; CHAINE_TOTAL="$total"
+  [[ ${#manque[@]} -eq 0 && "$total" == 7 ]]
+}
+
+# --- L1: SIGTERM au wrapper seul -----------------------------------------
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM"
+attendre "le faux harnais pret (L1)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
+L_HPID="$(awk '{print $2}' "$L_MARQ/.harnais")"
+[[ -z "$(find "$L_MARQ" -mindepth 1 -maxdepth 1 -type d)" ]] \
+  && ok "aucun marqueur de nettoyage avant le signal" \
+  || echoue "L1: des marqueurs existent deja avant le signal"
+
+kill -TERM "$MPID"
+L_T0=$SECONDS; L_CODE=0; wait "$MPID" 2>/dev/null || L_CODE=$?; MPID=""
+L_DUREE=$(( SECONDS - L_T0 ))
+
+[[ "$L_CODE" == "143" ]] \
+  && ok "L1: SIGTERM au wrapper seul -> 143 (nettoyage reussi)" \
+  || echoue "L1: code $L_CODE, attendu 143"
+(( L_DUREE >= 2 )) \
+  && ok "L1: le wrapper a attendu le nettoyage lent (${L_DUREE}s)" \
+  || echoue "L1: le wrapper a rendu la main en ${L_DUREE}s — trop tot pour un nettoyage de 3s"
+if chaine_ok "$L_MARQ"; then
+  ok "L1: les 7 marqueurs causaux sont presents, une seule fois chacun"
+else
+  echoue "L1: chaine incomplete — manquants[${CHAINE_MANQUE}] total=$CHAINE_TOTAL/7"
+fi
+[[ ! -s "$L_MARQ/.erreurs" ]] \
+  && ok "L1: aucun doublon ni prerequis manquant signale" \
+  || { echoue "L1: erreurs de marqueurs"; detail "$(tr '\n' ' ' <"$L_MARQ/.erreurs")"; }
+prod="$(sed -n 's/^PID=//p' "$L_MARQ/HARNESS_CLEANUP_DONE/meta" 2>/dev/null)"
+[[ "$prod" == "$L_HPID" ]] \
+  && ok "L1: HARNESS_CLEANUP_DONE produit par le harnais lui-meme ($prod)" \
+  || echoue "L1: producteur $prod, attendu le harnais $L_HPID"
+sc="$(sed -n 's/^SCENARIO=//p' "$L_MARQ/WRAPPER_EXITING/meta" 2>/dev/null)"
+[[ "$sc" == "$L_SCEN" ]] \
+  && ok "L1: les marqueurs portent l'identifiant du scenario" \
+  || echoue "L1: scenario « $sc », attendu « $L_SCEN »"
+if grep -q 'interrompu' "$L_JOUR" 2>/dev/null; then
+  ok "L1: la reattente a ete exercee — $(grep -c interrompu "$L_JOUR") retour(s) interrompu(s)"
+  detail "$(tr '\n' ' ' <"$L_JOUR")"
+else
+  detail "note: aucun retour de wait interrompu observe sur ce passage"
+fi
+[[ -z "$(vivants "$L_HPID")" ]] \
+  && ok "L1: le faux harnais est termine" || echoue "L1: le faux harnais survit"
+rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM"
+
+# --- L2: le code metier du harnais l'emporte sur 128+signal ---------------
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM" "ESC_CODE_SORTIE=9"
+attendre "le faux harnais pret (L2)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
+kill -TERM "$MPID"; L_CODE=0; wait "$MPID" 2>/dev/null || L_CODE=$?; MPID=""
+[[ "$L_CODE" == "9" ]] \
+  && ok "L2: nettoyage en echec (9) — le code du harnais l'emporte sur 143" \
+  || echoue "L2: code $L_CODE, attendu 9 (143 masquerait l'echec de nettoyage)"
+rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM"
+
+# --- L3: duplication de marqueur refusee ---------------------------------
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM" "ESC_DOUBLE=1"
+attendre "le faux harnais pret (L3)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
+kill -TERM "$MPID"; wait "$MPID" 2>/dev/null; MPID=""
+if grep -q '^DOUBLON=HARNESS_CLEANUP_STARTED' "$L_MARQ/.erreurs" 2>/dev/null; then
+  ok "L3: la SECONDE emission du meme evenement a ete REFUSEE"
+elif grep -q 'DOUBLON_NON_DETECTE' "$L_MARQ/.erreurs" 2>/dev/null; then
+  echoue "L3: la duplication a ete acceptee — le marqueur n'est pas exclusif"
+else
+  echoue "L3: aucune trace de la tentative de duplication"
+fi
+rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM"
+
 echo
 [[ $KO -eq 0 ]] \
   && echo "    La matrice rend un verdict, et le test prouve ce qu'il affirme." \
