@@ -88,6 +88,7 @@ JETON="$$-${RANDOM}${RANDOM}"
 TRACE=""; SORTIE=""; TEMOIN=""; TEMOIN_DESC=""; ESPACE_DEPOT=""; MPID=""
 FUITE_CLIENT=""; FUITE_BACKEND=""; TIERS_CLIENT=""; TIERS_BACKEND=""
 M_CLIENT=""; M_BACKEND=""; M_APP=""; M_C1=0; M_C2=0; B0_DIAG=""
+DORMEUR=""
 CLE1=0; CLE2=0; APP_FUITE=""; APP_TIERS=""
 FUITE_START=""; FUITE_DATID=""; FUITE_USER=""
 TIERS_START=""; TIERS_DATID=""; TIERS_USER=""
@@ -790,7 +791,10 @@ menage() {
       nettoyage_echoue "$reste verrou(s) des cles ($CLE1,$CLE2) subsistent"
     fi
   fi
-  for c in "$FUITE_CLIENT" "$TIERS_CLIENT" "$M_CLIENT"; do
+  # LE DORMEUR DU SOUS-MODE EST TUE ET MOISSONNE. `wait` rend la main des
+  # que la trap s'execute, l'enfant TOUJOURS VIVANT: sans cela le `sleep`
+  # survivait au sous-mode en orphelin.
+  for c in "$FUITE_CLIENT" "$TIERS_CLIENT" "$M_CLIENT" "$DORMEUR"; do
     [[ -n "$c" ]] && { kill "$c" 2>/dev/null; wait "$c" 2>/dev/null; }
   done
   if [[ -n "$ESPACE_DEPOT" && -d "$ESPACE_DEPOT" ]]; then
@@ -984,7 +988,20 @@ if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "interruption_c" ]]; then
   # Prise: le nettoyage du sous-mode sera rendu impossible AU MOMENT du signal.
   # Le code doit alors passer de 143 a 9, et non rester 143.
   [[ -n "${ESC_NETTOYAGE_CASSE_APRES:-}" ]] && export ESC_SQL_ILLISIBLE=1
-  sleep 300
+  # UN `sleep` DE PREMIER PLAN DIFFERE LA TRAP. Bash n'execute pas de
+  # gestionnaire tant qu'il attend une commande externe de premier plan.
+  # Mesure, hors harnais, meme signal et meme code de sortie:
+  #
+  #     sleep 30              -> trap executee apres 30 s, code 143
+  #     sleep 30 & wait $!    -> trap executee apres  0 s, code 143
+  #
+  # Le sous-mode recevait donc son SIGTERM et ne nettoyait que 300 secondes
+  # plus tard. Les assertions restaient vraies — les verrous etaient encore
+  # tenus — mais « le parent le signale a cet instant precis » decrivait
+  # l'ENVOI du signal, jamais le moment du nettoyage; et E, H et I coutaient
+  # cinq minutes chacun. `wait` est un builtin: la trap s'execute aussitot.
+  sleep 300 & DORMEUR=$!
+  wait "$DORMEUR"
   sortir 0
 fi
 
@@ -2083,6 +2100,85 @@ elif grep -q 'DOUBLON_NON_DETECTE' "$L_MARQ/.erreurs" 2>/dev/null; then
   echoue "L3: la duplication a ete acceptee — le marqueur n'est pas exclusif"
 else
   echoue "L3: aucune trace de la tentative de duplication"
+fi
+rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
+
+# --- L4: LA PUBLICATION DU RESULTAT EST EXCLUSIVE -------------------------
+# `os.link` echoue si la cible existe, et c'est ce qui rend la publication
+# exclusive. RIEN NE L'EXERCAIT: le canal etait toujours un `mktemp -u`, donc
+# toujours absent, et remplacer le lien par un ecrasement n'aurait fait rougir
+# aucune assertion. Une surface non executee n'est pas un verdict.
+#
+# On pose donc un document ANTERIEUR sur le canal et l'on exige trois choses:
+# qu'il survive intact, qu'un `.doublon` signale le refus, et que le lecteur
+# refuse ensuite le canal — meme si le document en place est parfaitement forme.
+echo "      -- L4: publication du resultat exclusive, jamais un ecrasement"
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+L_RESULTAT="$(mktemp)"                      # IL EXISTE DEJA — c'est le sujet
+L_OCCUPANT="OCCUPANT-$JETON"
+{ echo "FORMAT=esc-wrapper-result/1"; echo "SCENARIO=$L_OCCUPANT"
+  echo "JETON=$JETON"; echo "ETAT=ANTERIEUR"; } >"$L_RESULTAT"
+chmod 0600 "$L_RESULTAT"
+L_AVANT="$(sha256sum "$L_RESULTAT" | cut -d' ' -f1)"
+lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM"
+attendre "le faux harnais pret (L4)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
+attendre "le marqueur du wrapper (L4)" '[[ -s "$L_TEM" ]]' 3000 || exit 1
+L_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
+attendre "l'attente du wrapper armee (L4)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
+kill -TERM "$L_WPID"
+if attendre "le refus de publication (L4)" '[[ -f "$L_RESULTAT.doublon" ]]' 3000; then
+  ok "L4: la seconde publication est REFUSEE et signalee (.doublon)"
+  detail "$(head -1 "$L_RESULTAT.doublon")"
+else
+  echoue "L4: aucun .doublon — la seconde publication a ete acceptee en silence"
+fi
+[[ -n "$MPID" ]] && { kill -TERM "$MPID" 2>/dev/null; wait "$MPID" 2>/dev/null; MPID=""; }
+if [[ "$(sha256sum "$L_RESULTAT" | cut -d' ' -f1)" == "$L_AVANT" ]]; then
+  ok "L4: le document anterieur est INTACT — aucun ecrasement silencieux"
+else
+  echoue "L4: le document anterieur a ete ecrase"
+  detail "attendu sha256 $L_AVANT"
+  detail "contenu observe: $(tr '\n' ' ' <"$L_RESULTAT")"
+fi
+lire_canal "$L_RESULTAT" "esc-wrapper-result/1" "$L_OCCUPANT" "$JETON"
+[[ "$CANAL_ETAT" == DUPLIQUE ]] \
+  && ok "L4: le lecteur refuse le canal (DUPLIQUE) malgre un document bien forme" \
+  || { echoue "L4: le lecteur rend $CANAL_ETAT, attendu DUPLIQUE"; detail "$CANAL_DIAG"; }
+rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT" "$L_RESULTAT.doublon"
+
+# --- L5: UN PREDECESSEUR INCOMPLET ARRETE LA CHAINE -----------------------
+# « Un predecesseur causal n'est valide que si son evenement est complet »
+# etait implemente — `ESC_META_TRONQUE` — et exerce par aucun scenario. Le
+# repertoire de HARNESS_TRAP_ENTERED existe, son `meta` est retire: le maillon
+# suivant ne doit JAMAIS etre emis, et l'erreur doit dire « sans meta », pas
+# « absent ». Les deux diagnostics designent des defauts differents.
+echo "      -- L5: predecesseur incomplet, la chaine s'arrete au maillon casse"
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+L_RESULTAT="$(mktemp -u)"
+lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM" "ESC_META_TRONQUE=1"
+attendre "le faux harnais pret (L5)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
+attendre "le marqueur du wrapper (L5)" '[[ -s "$L_TEM" ]]' 3000 || exit 1
+L_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
+attendre "l'attente du wrapper armee (L5)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
+kill -TERM "$L_WPID"
+attendre "la fin du wrapper (L5)" '[[ -f "$L_RESULTAT" ]]' 3000 || exit 1
+[[ -n "$MPID" ]] && { kill -TERM "$MPID" 2>/dev/null; wait "$MPID" 2>/dev/null; MPID=""; }
+if grep -qx 'PREREQUIS_SANS_META=HARNESS_TRAP_ENTERED' "$L_MARQ/.erreurs" 2>/dev/null; then
+  ok "L5: le predecesseur incomplet est nomme « sans meta », et non « absent »"
+else
+  echoue "L5: aucun PREREQUIS_SANS_META — un maillon incomplet a ete accepte"
+  detail "erreurs: $(tr '\n' ' ' <"$L_MARQ/.erreurs" 2>/dev/null || echo '(fichier absent)')"
+fi
+if [[ -d "$L_MARQ/HARNESS_CLEANUP_STARTED" ]]; then
+  echoue "L5: l'evenement suivant a ete emis malgre un predecesseur incomplet"
+else
+  ok "L5: le maillon suivant n'a PAS ete emis — la chaine s'arrete au maillon casse"
+fi
+if chaine_ok "$L_MARQ"; then
+  echoue "L5: la chaine est declaree complete alors qu'un maillon est casse"
+else
+  ok "L5: la chaine est refusee, et le diagnostic distingue les deux causes"
+  detail "$CHAINE_DIAG"
 fi
 rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
 
