@@ -258,6 +258,10 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     # refusent — a juste titre — et la matrice conclurait sur des executions
     # qui n'ont pas eu lieu.
     env["EUROSTRUCT_CLUSTER_JETABLE"] = "oui-cluster-jetable-et-isole"
+    # PRISE DE TEST: substitue le harnais. Elle sert au contre-exemple du
+    # harnais qui sort IMMEDIATEMENT — precisement le cas ou le temoin retenait
+    # les pipes. Inerte quand la variable est absente.
+    remplacement = os.environ.get("ESC_MUTATION_HARNAIS_REMPLACE")
     # `Popen` PLUTOT QUE `run`, POUR QUE LE GESTIONNAIRE DE SIGNAL PUISSE
     # ATTEINDRE L'ENFANT. `subprocess.run` ne publie sa poignee nulle part: a
     # l'arrivee d'un signal, le harnais restait injoignable et ne pouvait etre
@@ -279,17 +283,50 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     # trouvait donc un descendant durable seul, et aucun imbrique: vert d'un
     # cote, rouge de l'autre, sans que la propriete ait change.
     #
-    # Le temoin ecrit son PID et « READY », puis dort. Il est fils du Bash du
-    # harnais, donc membre de son groupe: le terminer par groupe le tue avec le
-    # reste. Hors test, la variable est absente et rien de tout cela n'existe.
-    argv = ["bash", harnais, prefixe]
+    # LE TEMOIN N'HERITE PLUS DES PIPES, ET LE WRAPPER POSSEDE LES DEUX
+    # PROCESSUS. Le modele precedent — temoin en arriere-plan, puis `exec` du
+    # harnais — donnait au `sleep` les deux pipes de `Popen`. Reproduit hors
+    # harnais, sans base, avec un harnais qui sort immediatement:
+    #
+    #   marqueur          : 5991 READY
+    #   enfants directs   : AUCUN
+    #   arbre du groupe   : 5991  PPID 1  PGID 5990  S  sleep 300
+    #   temoin fd/1       : pipe:[2921774]
+    #   temoin fd/2       : pipe:[2921775]
+    #   communicate()     : BLOQUE (irait a 300 s)
+    #
+    # Des que le harnais finissait AVANT le signal, `communicate()` n'atteignait
+    # jamais EOF: la matrice restait vivante SANS ENFANT DIRECT, et l'attente
+    # « le harnais lance par la matrice » — un `pgrep -P` — expirait apres ses
+    # 300 secondes exactes. C'est le surcout de ~5 min de l'etape 8 en CI, et un
+    # defaut LATENT PARTOUT: en local le signal arrivait toujours a temps, le
+    # groupe partait, le temoin mourait. Une course gagnee n'est pas une
+    # garantie.
+    #
+    # Le wrapper ne fait plus `exec`: il reste MENEUR DU GROUPE, lance le temoin
+    # sur /dev/null, lance le harnais comme enfant, publie ATOMIQUEMENT les
+    # trois PID, attend le harnais, moissonne le temoin, et rend le code du
+    # harnais. Meme mesure apres correction: marqueur « 5997 5999 5998 READY »,
+    # groupe vide, fd du temoin absents, `communicate()` rendu en 0,9 s avec le
+    # code 7 du harnais.
+    argv = ["bash", remplacement or harnais, prefixe]
     temoin = os.environ.get("ESC_MUTATION_TEMOIN")
     if temoin:
         env["ESC_TEMOIN"] = temoin
-        argv = ["bash", "-c",
-                '( echo "$BASHPID READY" >"$ESC_TEMOIN"; exec sleep 300 ) &\n'
-                'exec bash "$@"\n',
-                "bash", harnais, prefixe]
+        enveloppe = (
+            'set -u\n'
+            '( exec sleep 300 ) >/dev/null 2>&1 </dev/null &\n'
+            'TEMOIN=$!\n'
+            '"$@" &\n'
+            'HARNAIS=$!\n'
+            "printf '%s %s %s READY\\n' \"$$\" \"$HARNAIS\" \"$TEMOIN\""
+            ' >"$ESC_TEMOIN.tmp"\n'
+            'mv -f "$ESC_TEMOIN.tmp" "$ESC_TEMOIN"\n'
+            'wait "$HARNAIS"; CODE=$?\n'
+            'kill "$TEMOIN" 2>/dev/null; wait "$TEMOIN" 2>/dev/null\n'
+            'exit "$CODE"\n'
+        )
+        argv = ["bash", "-c", enveloppe, "bash", *argv]
     p = subprocess.Popen(argv, cwd=ESPACE, env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          text=True, start_new_session=True)
