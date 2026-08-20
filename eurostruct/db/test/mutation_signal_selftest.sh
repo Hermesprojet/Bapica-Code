@@ -87,6 +87,7 @@ echo "    la matrice meurt proprement sur signal"
 JETON="$$-${RANDOM}${RANDOM}"
 TRACE=""; SORTIE=""; TEMOIN=""; TEMOIN_DESC=""; ESPACE_DEPOT=""; MPID=""
 FUITE_CLIENT=""; FUITE_BACKEND=""; TIERS_CLIENT=""; TIERS_BACKEND=""
+M_CLIENT=""; M_BACKEND=""; M_APP=""; M_C1=0; M_C2=0; B0_DIAG=""
 CLE1=0; CLE2=0; APP_FUITE=""; APP_TIERS=""
 FUITE_START=""; FUITE_DATID=""; FUITE_USER=""
 TIERS_START=""; TIERS_DATID=""; TIERS_USER=""
@@ -202,6 +203,138 @@ comparer_verrous() {   # comparer_verrous <scenario> <empreinte-avant> [muet]
                                   detail "le scenario a libere un verrou qui ne lui appartenait pas"; }
   fi
   return $code
+}
+
+# ==========================================================================
+# MANIFESTES DE PROPRIETE — CE QUI APPARTIENT A UN SCENARIO
+# ==========================================================================
+# DEUX LECTURES IDENTIQUES PROUVENT LA STABILITE, PAS LA PROPRIETE. Mesure
+# contre f14401e: un backend enregistre, detenant reellement son verrou, avec
+# deux empreintes strictement identiques — la baseline etait ACCEPTEE. Elle
+# appartenait pourtant a un scenario anterieur.
+#
+# Chaque scenario declare donc ce qu'il cree, et B0 n'est capturee qu'apres
+# avoir exige que plus rien de A-D ne subsiste. Le verrou legitime de `run.sh`,
+# qui ne figure dans AUCUN manifeste, reste accepte dans B0 comme dans B1.
+MANIFESTES="$(mktemp -d)"
+manifeste_ouvrir() {   # manifeste_ouvrir <scenario>
+  { echo "FORMAT=esc-scenario-manifest/1"; echo "SCENARIO=$1"; echo "JETON=$JETON"
+    echo "ETAT=ACTIF"; } >"$MANIFESTES/$1.tmp"
+  mv -f "$MANIFESTES/$1.tmp" "$MANIFESTES/$1"
+  chmod 0600 "$MANIFESTES/$1"
+}
+manifeste_backend() {  # manifeste_backend <scenario> <pid> <app>
+  local id
+  id="$(lire_sql "select pid||'|'||backend_start||'|'||datid||'|'||usename||'|'||application_name
+                    from pg_stat_activity where pid = $2")"
+  [[ "$id" == ILLISIBLE* ]] || echo "BACKEND=$id" >>"$MANIFESTES/$1"
+}
+manifeste_verrou()  { echo "VERROU=$2|$3" >>"$MANIFESTES/$1"; }
+manifeste_fermer()  { sed -i 's/^ETAT=ACTIF/ETAT=TERMINE/' "$MANIFESTES/$1"; }
+
+# Refuse B0 si un scenario anterieur possede encore quoi que ce soit.
+# Fail-closed: manifeste absent alors que le scenario a tourne, incomplet, mal
+# forme, ou encore ACTIF -> refus.
+b0_contaminee() {
+  B0_DIAG=""
+  local f scen etat ligne pid
+  for f in "$MANIFESTES"/*; do
+    [[ -f "$f" ]] || continue
+    scen="$(basename "$f")"
+    lire_canal "$f" "esc-scenario-manifest/1" "$scen" "$JETON" || {
+      B0_DIAG="manifeste $scen invalide ($CANAL_ETAT: $CANAL_DIAG)"; return 0; }
+    etat="$(sed -n 's/^ETAT=//p' "$f")"
+    [[ "$etat" == TERMINE ]] || { B0_DIAG="scenario $scen encore $etat"; return 0; }
+    while IFS= read -r ligne; do
+      pid="${ligne%%|*}"
+      pid_valide "$pid" || continue
+      # L'IDENTITE ENREGISTREE EST REVALIDEE DANS L'ETAT REEL, pas seulement le
+      # `application_name`: PID, backend_start, base, role et nom applicatif.
+      local vu
+      vu="$(lire_sql "select pid||'|'||backend_start||'|'||datid||'|'||usename||'|'||application_name
+                        from pg_stat_activity where pid = $pid")"
+      [[ "$vu" == ILLISIBLE* ]] && { B0_DIAG="pg_stat_activity illisible"; return 0; }
+      [[ "$vu" == "$ligne" ]] && { B0_DIAG="$scen possede encore le backend $pid"; return 0; }
+    done < <(sed -n 's/^BACKEND=//p' "$f")
+    while IFS='|' read -r c1 c2; do
+      [[ "$c1" =~ ^[0-9]+$ ]] || continue
+      local n
+      n="$(lire_sql "select count(*) from pg_locks
+                      where locktype='advisory' and classid=$c1 and objid=$c2")"
+      [[ "$n" == ILLISIBLE* ]] && { B0_DIAG="pg_locks illisible"; return 0; }
+      [[ "$n" != "0" ]] && { B0_DIAG="$scen detient encore le verrou ($c1,$c2)"; return 0; }
+    done < <(sed -n 's/^VERROU=//p' "$f")
+  done
+  return 1
+}
+
+# ==========================================================================
+# CANAUX — UNE SEULE LOGIQUE DE VALIDATION, CINQ ETATS DISTINCTS
+# ==========================================================================
+# DEUX PARSEURS DIVERGENTS, C'EST DEUX SEMANTIQUES. Le canal de resultat et le
+# fichier `.erreurs` etaient lus de deux facons differentes, et tous deux
+# convertissaient l'invalide en succes. Mesure contre f14401e:
+#
+#   .erreurs absent  -> erreurs=[]         indistinguable de « zero erreur »
+#   resultat vide    -> WRAPPER_RC=[]      aucun diagnostic
+#   resultat tronque -> WRAPPER_RC=[]      malforme lu comme correct
+#   duplique         -> .doublon ecrit, JAMAIS LU: la violation est enregistree,
+#                       la barriere n'existe pas
+#   permissions      -> mode 644 jamais verifie
+#
+# UN FICHIER ABSENT OU VIDE NE VAUT JAMAIS ZERO. Zero doit etre PUBLIE, dans un
+# document versionne qui porte son propre compteur.
+#
+#   CANAL_ETAT: ABSENT | VIDE_OU_NON_VERSIONNE | TRONQUE_OU_MALFORME
+#             | DUPLIQUE | VALIDE
+CANAL_ETAT=""; CANAL_DIAG=""; CANAL_COUNT=""
+lire_canal() {   # lire_canal <fichier> <format> <scenario> <jeton> [champ-obligatoire...]
+  local f="$1" fmt="$2" scen="$3" jet="$4"; shift 4
+  CANAL_ETAT=""; CANAL_DIAG=""; CANAL_COUNT=""
+  # LA DUPLICATION EST BLOQUANTE MEME SI LE PREMIER DOCUMENT EST VALIDE.
+  if [[ -f "$f.doublon" ]]; then
+    CANAL_ETAT=DUPLIQUE
+    CANAL_DIAG="publication concurrente: $(head -1 "$f.doublon")"
+    return 1
+  fi
+  [[ -e "$f" ]] || { CANAL_ETAT=ABSENT; CANAL_DIAG="aucun document publie"; return 1; }
+  [[ -f "$f" ]] || { CANAL_ETAT=TRONQUE_OU_MALFORME
+                     CANAL_DIAG="n'est pas un fichier regulier"; return 1; }
+  local mode; mode="$(stat -c %a "$f" 2>/dev/null)"
+  if [[ "$mode" != "600" ]]; then
+    CANAL_ETAT=TRONQUE_OU_MALFORME
+    CANAL_DIAG="permissions $mode, attendu 600"
+    return 1
+  fi
+  [[ -s "$f" ]] || { CANAL_ETAT=VIDE_OU_NON_VERSIONNE; CANAL_DIAG="document vide"; return 1; }
+  local vu_fmt; vu_fmt="$(grep -c '^FORMAT=' "$f")"
+  if [[ "$vu_fmt" != "1" ]]; then
+    CANAL_ETAT=VIDE_OU_NON_VERSIONNE
+    CANAL_DIAG="FORMAT absent ou repete ($vu_fmt fois)"
+    return 1
+  fi
+  [[ "$(sed -n 's/^FORMAT=//p' "$f")" == "$fmt" ]] \
+    || { CANAL_ETAT=VIDE_OU_NON_VERSIONNE
+         CANAL_DIAG="version « $(sed -n 's/^FORMAT=//p' "$f") », attendu « $fmt »"
+         return 1; }
+  local champ n
+  for champ in SCENARIO JETON ETAT "$@"; do
+    n="$(grep -c "^$champ=" "$f")"
+    [[ "$n" == "1" ]] || { CANAL_ETAT=TRONQUE_OU_MALFORME
+                           CANAL_DIAG="champ $champ present $n fois"; return 1; }
+  done
+  [[ "$(sed -n 's/^SCENARIO=//p' "$f")" == "$scen" ]] \
+    || { CANAL_ETAT=TRONQUE_OU_MALFORME; CANAL_DIAG="scenario inattendu"; return 1; }
+  [[ "$(sed -n 's/^JETON=//p' "$f")" == "$jet" ]] \
+    || { CANAL_ETAT=TRONQUE_OU_MALFORME; CANAL_DIAG="jeton inattendu"; return 1; }
+  if grep -q '^COUNT=' "$f"; then
+    CANAL_COUNT="$(sed -n 's/^COUNT=//p' "$f")"
+    [[ "$CANAL_COUNT" =~ ^[0-9]+$ ]] \
+      || { CANAL_ETAT=TRONQUE_OU_MALFORME
+           CANAL_DIAG="COUNT non numerique: « $CANAL_COUNT »"; return 1; }
+  fi
+  CANAL_ETAT=VALIDE
+  return 0
 }
 
 # ==========================================================================
@@ -419,6 +552,7 @@ menage() {
     rm -rf "$ESPACE_DEPOT"
     git -C "$RACINE" worktree prune 2>/dev/null
   fi
+  rm -rf "$MANIFESTES"
   rm -f "$TRACE" "$SORTIE" "$TEMOIN" "$TEMOIN_DESC"
 }
 # LE NETTOYAGE PEUT CHANGER LE VERDICT, et il ne le pouvait pas.
@@ -1064,6 +1198,10 @@ E_CLE2=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
 # stable ET contenir des ressources qui ne sont pas exterieures au scenario.
 #
 # Aucun `sleep` fixe: on exige deux lectures EGALES, dans une attente bornee.
+if b0_contaminee; then
+  echoue "E: BASELINE_CONTAMINEE — $B0_DIAG"
+  detail "une baseline stable peut contenir des ressources qui ne sont pas exterieures"
+fi
 VERROUS_AVANT_E=""
 b_prec="$(empreinte_verrous)"; b_stable=0
 for _ in $(seq 1 300); do
@@ -1642,6 +1780,81 @@ else
   echoue "L3: aucune trace de la tentative de duplication"
 fi
 rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
+
+# ==========================================================================
+# M. BASELINE CONTAMINEE MAIS STABLE — refusee pour la bonne raison
+# ==========================================================================
+# FIXTURE PERMANENTE, pas un script de mesure jetable. Elle etablit la seule
+# chose qui distingue « stable » de « exterieur au test »: une ressource
+# parfaitement immobile, mais enregistree comme appartenant a un scenario
+# anterieur, doit faire REFUSER la baseline.
+echo "      -- M. baseline contaminee mais stable: refus par propriete"
+M_APP="esc-m-$JETON"; M_C1=778899; M_C2=112233
+manifeste_ouvrir M
+PGAPPNAME="$M_APP" psql -X -qtA -d postgres -c \
+  "select pg_advisory_lock_shared($M_C1,$M_C2); select pg_sleep(120);" >/dev/null 2>&1 &
+M_CLIENT=$!
+M_BACKEND=""
+for _ in $(seq 1 300); do
+  M_BACKEND="$(lire_sql "select pid from pg_stat_activity where application_name='$M_APP'" | head -1)"
+  pid_valide "${M_BACKEND:-x}" && detient_verrou "$M_BACKEND" "$M_APP" "$M_C1" "$M_C2" ShareLock && break
+  sleep 0.1
+done
+if ! pid_valide "${M_BACKEND:-x}"; then
+  echoue "M: le temoin n'a pas pu etre cree — scenario non exerce"
+else
+  manifeste_backend M "$M_BACKEND" "$M_APP"
+  manifeste_verrou M "$M_C1" "$M_C2"
+  manifeste_fermer M
+  ok "M: temoin enregistre au manifeste (backend $M_BACKEND, verrou $M_C1/$M_C2)"
+  m_a="$(empreinte_verrous)"; sleep 0.6; m_b="$(empreinte_verrous)"
+  [[ "$m_a" == "$m_b" ]] \
+    && ok "M: la baseline est STABLE (deux lectures identiques)" \
+    || echoue "M: baseline instable — le contre-exemple ne porte pas"
+  if b0_contaminee; then
+    ok "M: baseline REFUSEE malgre sa stabilite — $B0_DIAG"
+  else
+    echoue "M: baseline stable ACCEPTEE alors qu'elle appartient au scenario M"
+    detail "la stabilite a ete confondue avec la propriete"
+  fi
+  terminer_possede "$M_BACKEND" "$M_APP" "$M_C1" "$M_C2" ShareLock "M"
+  (( $? == 0 )) && M_BACKEND="" || echoue "M: le temoin n'a pas pu etre nettoye"
+  kill "$M_CLIENT" 2>/dev/null; wait "$M_CLIENT" 2>/dev/null; M_CLIENT=""
+  rm -f "$MANIFESTES/M"
+  b0_contaminee \
+    && echoue "M: la baseline reste refusee apres nettoyage — $B0_DIAG" \
+    || ok "M: apres nettoyage, la baseline redevient acceptable"
+fi
+
+# ==========================================================================
+# N. LES CINQ ETATS DU CANAL — aucun invalide converti en succes
+# ==========================================================================
+echo "      -- N. canaux: cinq etats distincts, aucun converti en succes"
+N_D="$(mktemp -d)"; N_F="$N_D/canal"
+attendu() {   # attendu <libelle> <etat-attendu>
+  local quoi="$1" att="$2"
+  lire_canal "$N_F" "esc-erreurs/1" N "$JETON" COUNT
+  [[ "$CANAL_ETAT" == "$att" ]] \
+    && ok "N: $quoi -> $CANAL_ETAT" \
+    || { echoue "N: $quoi -> $CANAL_ETAT, attendu $att"; detail "$CANAL_DIAG"; }
+}
+rm -f "$N_F" "$N_F.doublon";                                    attendu "canal absent" ABSENT
+: >"$N_F"; chmod 0600 "$N_F";                                   attendu "canal vide" VIDE_OU_NON_VERSIONNE
+printf 'FORMAT=esc-erreurs/9\n' >"$N_F"; chmod 0600 "$N_F";     attendu "version inconnue" VIDE_OU_NON_VERSIONNE
+printf 'FORMAT=esc-erreurs/1\nSCENARIO=N\n' >"$N_F"; chmod 0600 "$N_F"
+                                                                attendu "champs manquants" TRONQUE_OU_MALFORME
+printf 'FORMAT=esc-erreurs/1\nSCENARIO=N\nJETON=%s\nETAT=OK\nCOUNT=zero\n' "$JETON" >"$N_F"
+chmod 0600 "$N_F";                                              attendu "COUNT non numerique" TRONQUE_OU_MALFORME
+printf 'FORMAT=esc-erreurs/1\nSCENARIO=N\nJETON=%s\nETAT=OK\nCOUNT=0\n' "$JETON" >"$N_F"
+chmod 0644 "$N_F";                                              attendu "permissions 0644" TRONQUE_OU_MALFORME
+chmod 0600 "$N_F"; : >"$N_F.doublon";                           attendu "publication dupliquee" DUPLIQUE
+rm -f "$N_F.doublon"
+attendu "document versionne, COUNT=0" VALIDE
+[[ "$CANAL_COUNT" == "0" ]] \
+  && ok "N: zero erreur est PUBLIE explicitement (COUNT=0), jamais deduit d'un fichier absent" \
+  || echoue "N: COUNT lu « $CANAL_COUNT », attendu 0"
+rm -rf "$N_D"
+
 
 echo
 [[ $KO -eq 0 ]] \
