@@ -246,27 +246,39 @@ terminer_possede() {   # terminer_possede <pid> <app> <cle1> <cle2> <mode> <libe
     echoue "$quoi: PID non numerique refuse avant interpolation SQL: « $pid »"
     return 3
   fi
-  vu="$(lire_sql "select count(*) from pg_stat_activity where pid = $pid")"
-  [[ "$vu" == ILLISIBLE* ]] && { echoue "$quoi: pg_stat_activity illisible — ${vu#*$'\t'}"
-                                 return 3; }
-  [[ "$vu" == "0" ]] && return 1
-  res="$(lire_sql "select coalesce((
-             select pg_terminate_backend(l.pid)::text
-               from pg_locks l join pg_stat_activity a on a.pid = l.pid
-              where l.pid = $pid
-                and a.application_name = '$app'
-                and a.datname = current_database()
+  # LA DECISION VIENT D'UN SEUL INSTANTANE SQL. Lire la presence, puis decider
+  # dans une seconde requete, laissait une course de CLASSIFICATION: entre les
+  # deux, le backend peut disparaitre, la requete conditionnelle ne trouve plus
+  # rien, et « deja disparu » etait alors annonce « identite non concordante ».
+  # Ce n'est plus un risque de tuer le mauvais backend — c'est un faux rouge,
+  # et un faux rouge sur un refus d'identite est exactement le diagnostic qu'on
+  # ne veut pas voir se declencher a tort.
+  res="$(lire_sql "with cible as (
+             select a.pid, a.application_name, a.datname
+               from pg_stat_activity a where a.pid = $pid
+           ), verrou as (
+             select l.pid from pg_locks l join cible c on c.pid = l.pid
+              where c.application_name = '$app'
+                and c.datname = current_database()
                 and l.locktype = 'advisory'
                 and l.classid = $c1 and l.objid = $c2 and l.objsubid = 2
                 and l.granted and l.mode = '$mode'
                 and l.database = (select oid from pg_database
                                    where datname = current_database())
-             ), 'AUCUNE')")"
+           )
+           select case
+             when not exists (select 1 from cible)  then 'DISPARU'
+             when not exists (select 1 from verrou) then 'REFUS_IDENTITE'
+             when (select pg_terminate_backend(pid) from verrou) then 'TERMINE'
+             else 'ECHEC_TERMINAISON' end")"
   [[ "$res" == ILLISIBLE* ]] && { echoue "$quoi: terminaison illisible — ${res#*$'\t'}"
                                   return 3; }
-  [[ "$res" == "AUCUNE" ]] && return 2
-  [[ "$res" != "true" ]] && { echoue "$quoi: pg_terminate_backend a rendu « $res »"
-                              return 3; }
+  case "$res" in
+    DISPARU)           return 1 ;;
+    REFUS_IDENTITE)    return 2 ;;
+    TERMINE)           : ;;
+    *) echoue "$quoi: terminaison rendue « $res »"; return 3 ;;
+  esac
   while (( n++ < 150 )); do
     vu="$(lire_sql "select count(*) from pg_stat_activity where pid = $pid")"
     [[ "$vu" == ILLISIBLE* ]] && { echoue "$quoi: attente illisible — ${vu#*$'\t'}"
@@ -281,6 +293,43 @@ terminer_possede() {   # terminer_possede <pid> <app> <cle1> <cle2> <mode> <libe
 NETTOYAGE_KO=0
 nettoyage_echoue() { echo "      ECHEC (nettoyage): $*" >&2; NETTOYAGE_KO=1; }
 
+# LE JETON EST UNE PREUVE DE PROPRIETE, MEME SANS VERROU. Mesure: dans le
+# scenario G les connexions existent mais ne prennent AUCUN verrou; le
+# nettoyage par identite-avec-verrou les classait alors REFUS_IDENTITE, rougissait,
+# et la regle « nettoyage rouge -> 9 » ecrasait le code 4 attendu.
+#
+#     ECHEC: G: code 9, attendu 4
+#
+# `application_name` porte le jeton unique de CETTE execution: c'est une preuve
+# de propriete suffisante pour nettoyer, et elle reste strictement plus etroite
+# qu'un nettoyage par cles. Le contrat lock-based de `terminer_possede()` reste
+# intact pour les ASSERTIONS du scenario C.
+terminer_par_jeton() {   # terminer_par_jeton <pid> <app> <libelle>
+  local pid="$1" app="$2" quoi="$3" res n=0
+  [[ -z "$pid" ]] && return 1
+  pid_valide "$pid" || { echoue "$quoi: PID non numerique: « $pid »"; return 3; }
+  res="$(lire_sql "with cible as (
+             select pid from pg_stat_activity
+              where pid = $pid and application_name = '$app'
+                and datname = current_database()
+           )
+           select case
+             when not exists (select 1 from cible) then 'DISPARU'
+             when (select pg_terminate_backend(pid) from cible) then 'TERMINE'
+             else 'ECHEC_TERMINAISON' end")"
+  [[ "$res" == ILLISIBLE* ]] && { echoue "$quoi: terminaison illisible — ${res#*$'\t'}"
+                                  return 3; }
+  [[ "$res" == "DISPARU" ]] && return 1
+  [[ "$res" != "TERMINE" ]] && { echoue "$quoi: terminaison rendue « $res »"; return 3; }
+  while (( n++ < 150 )); do
+    local vu; vu="$(lire_sql "select count(*) from pg_stat_activity where pid = $pid")"
+    [[ "$vu" == ILLISIBLE* ]] && { echoue "$quoi: attente illisible"; return 3; }
+    [[ "$vu" == "0" ]] && return 0
+    sleep 0.1
+  done
+  echoue "$quoi: le backend $pid n'a pas disparu"; return 3
+}
+
 menage() {
   if [[ -n "$MPID" ]] && kill -0 "$MPID" 2>/dev/null; then
     kill -TERM "$MPID" 2>/dev/null
@@ -293,14 +342,14 @@ menage() {
   # pas un nettoyage verifie.
   local rc
   if [[ -n "$FUITE_BACKEND" ]]; then
-    terminer_possede "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock "menage (fuite)"
-    rc=$?; (( rc == 2 || rc == 3 )) \
-      && nettoyage_echoue "backend de C ($FUITE_BACKEND) non nettoye (code $rc)"
+    terminer_par_jeton "$FUITE_BACKEND" "$APP_FUITE" "menage (fuite)"
+    rc=$?; (( rc == 3 )) \
+      && nettoyage_echoue "backend de C ($FUITE_BACKEND) non nettoye"
   fi
   if [[ -n "$TIERS_BACKEND" ]]; then
-    terminer_possede "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock "menage (tiers)"
-    rc=$?; (( rc == 2 || rc == 3 )) \
-      && nettoyage_echoue "backend tiers ($TIERS_BACKEND) non nettoye (code $rc)"
+    terminer_par_jeton "$TIERS_BACKEND" "$APP_TIERS" "menage (tiers)"
+    rc=$?; (( rc == 3 )) \
+      && nettoyage_echoue "backend tiers ($TIERS_BACKEND) non nettoye"
   fi
   # AUCUN VERROU DES DEUX JETONS NE DOIT SUBSISTER.
   if (( CLE1 != 0 )); then
@@ -333,15 +382,22 @@ sortir() {
   trap - EXIT TERM INT
   menage
   if (( NETTOYAGE_KO )); then
-    echo "    NETTOYAGE ROUGE — le verdict est remplace." >&2
-    (( code == 0 )) && code=9
+    # SANS EXCEPTION. La regle « si le code initial vaut zero » laissait un
+    # nettoyage rouge pendant un SIGTERM conserver 143: l'appelant ne pouvait
+    # plus distinguer « signal correctement nettoye » de « signal suivi d'un
+    # nettoyage incomplet ». Le code initial est journalise, pas conserve.
+    echo "    NETTOYAGE ROUGE — code initial $code, remplace par 9." >&2
+    code=9
   fi
   exit "$code"
 }
 trap 'sortir $KO' EXIT
 # Un signal doit passer par le meme chemin: sans trap TERM, bash meurt sans
-# executer le trap EXIT, et rien n'est nettoye.
-trap 'sortir 143' TERM INT
+# executer le trap EXIT, et rien n'est nettoye. LES DEUX SIGNAUX N'ONT PAS LE
+# MEME CODE: SIGTERM vaut 15 donc 143, SIGINT vaut 2 donc 130. Les confondre
+# annoncait un code qui n'etait pas celui du signal recu.
+trap 'sortir 143' TERM
+trap 'sortir 130' INT
 
 # ==========================================================================
 # PROCESSUS
@@ -411,24 +467,40 @@ lancer_matrice() {   # lancer_matrice <filtre> [VAR=val ...]
 if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "interruption_c" ]]; then
   CLE1="${ESC_SIGNAL_CLE1:?}"; CLE2="${ESC_SIGNAL_CLE2:?}"
   APP_FUITE="esc-fuite-$JETON"; APP_TIERS="esc-tiers-$JETON"
-  PGAPPNAME="$APP_FUITE" psql -X -qtA -d postgres -c \
-    "select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(300);" >/dev/null 2>&1 &
+  # PRISE DE TEST: les connexions s'ouvrent mais NE PRENNENT AUCUN VERROU. Les
+  # PID seront numeriques et presents — exactement le cas ou l'ancienne boucle
+  # publiait `READY` a tort.
+  SQL_VERROU="select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(300);"
+  [[ -n "${ESC_ACQUISITION_IMPOSSIBLE:-}" ]] && SQL_VERROU="select pg_sleep(300);"
+  PGAPPNAME="$APP_FUITE" psql -X -qtA -d postgres -c "$SQL_VERROU" >/dev/null 2>&1 &
   FUITE_CLIENT=$!
-  PGAPPNAME="$APP_TIERS" psql -X -qtA -d postgres -c \
-    "select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(300);" >/dev/null 2>&1 &
+  PGAPPNAME="$APP_TIERS" psql -X -qtA -d postgres -c "$SQL_VERROU" >/dev/null 2>&1 &
   TIERS_CLIENT=$!
+  # `READY` N'EST PUBLIE QUE SUR PREUVE, JAMAIS PAR ARRIVEE EN FIN DE BOUCLE.
+  # La version precedente ecrivait le temoin apres 600 passages QUELS QUE
+  # SOIENT les resultats: deux PID numeriques suffisaient, sans qu'aucun verrou
+  # ait ete acquis. Le parent annoncait alors « sous-mode pret », signalait, et
+  # constatait zero verrou residuel — un scenario vert qui n'avait rien exerce.
+  PRET=0
   for _ in $(seq 1 600); do
     FUITE_BACKEND="$(lire_sql "select pid from pg_stat_activity
                                 where application_name = '$APP_FUITE'" | head -1)"
     TIERS_BACKEND="$(lire_sql "select pid from pg_stat_activity
                                 where application_name = '$APP_TIERS'" | head -1)"
     if pid_valide "${FUITE_BACKEND:-x}" && pid_valide "${TIERS_BACKEND:-x}" \
+       && [[ "$FUITE_BACKEND" != "$TIERS_BACKEND" ]] \
        && detient_verrou "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock \
        && detient_verrou "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock; then
-      break
+      PRET=1; break
     fi
     sleep 0.1
   done
+  if (( PRET != 1 )); then
+    { echo "FAILED"
+      echo "diag=acquisition non prouvee: fuite[$FUITE_BACKEND] tiers[$TIERS_BACKEND]"
+    } >"${ESC_SIGNAL_TEMOIN:?}"
+    sortir 4
+  fi
   {
     echo "FUITE_BACKEND=$FUITE_BACKEND"
     echo "TIERS_BACKEND=$TIERS_BACKEND"
@@ -439,6 +511,9 @@ if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "interruption_c" ]]; then
     echo "CLE1=$CLE1"; echo "CLE2=$CLE2"
     echo "READY"
   } >"${ESC_SIGNAL_TEMOIN:?}"
+  # Prise: le nettoyage du sous-mode sera rendu impossible AU MOMENT du signal.
+  # Le code doit alors passer de 143 a 9, et non rester 143.
+  [[ -n "${ESC_NETTOYAGE_CASSE_APRES:-}" ]] && export ESC_SQL_ILLISIBLE=1
   sleep 300
   sortir 0
 fi
@@ -450,13 +525,21 @@ if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "nettoyage_casse" ]]; then
   PGAPPNAME="$APP_FUITE" psql -X -qtA -d postgres -c \
     "select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(300);" >/dev/null 2>&1 &
   FUITE_CLIENT=$!
+  PRET=0
   for _ in $(seq 1 600); do
     FUITE_BACKEND="$(lire_sql "select pid from pg_stat_activity
                                 where application_name = '$APP_FUITE'" | head -1)"
-    pid_valide "${FUITE_BACKEND:-x}" \
-      && detient_verrou "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock && break
+    if pid_valide "${FUITE_BACKEND:-x}" \
+       && detient_verrou "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock; then
+      PRET=1; break
+    fi
     sleep 0.1
   done
+  if (( PRET != 1 )); then
+    { echo "FAILED"; echo "diag=acquisition non prouvee: [$FUITE_BACKEND]"; } \
+      >"${ESC_SIGNAL_TEMOIN:?}"
+    sortir 4
+  fi
   { echo "FUITE_BACKEND=$FUITE_BACKEND"; echo "APP_FUITE=$APP_FUITE"; echo "READY"; } \
     >"${ESC_SIGNAL_TEMOIN:?}"
   # A partir d'ici le nettoyage ne pourra RIEN lire. Il doit rougir, et le code
@@ -497,9 +580,30 @@ AVANT="$(sha256sum "$PROJET/$CAS_FIC" | cut -d' ' -f1)"
   && ok "le depot principal differe deja de la version mutee (attendu)" \
   || echoue "le depot principal porte l'empreinte MUTEE: l'isolation a cede"
 
-attendre "le harnais lance par la matrice" \
-         '[[ -n "$(pgrep -P "$MPID" 2>/dev/null)" ]]' 3000 || exit 1
-BASH_PID="$(pgrep -P "$MPID" 2>/dev/null | head -1)"
+# LE PID DU HARNAIS EST LU DANS LE MARQUEUR, PAS DECOUVERT PAR UNE COURSE.
+# `pgrep -P "$MPID"` ne peut rien trouver des que le harnais a fini — et le
+# temoin, qui retenait alors les pipes du `Popen`, faisait durer cette attente
+# ses 300 secondes entieres. Le wrapper publie desormais les trois PID.
+attendre "le marqueur du wrapper (READY)" '[[ -s "$TEMOIN_DESC" ]]' 3000 || exit 1
+read -r WRAP_PID BASH_PID TEMOIN_PID MARQ_ETAT < "$TEMOIN_DESC"
+if [[ "$MARQ_ETAT" != READY ]] || ! pid_valide "${WRAP_PID:-x}" \
+   || ! pid_valide "${BASH_PID:-x}" || ! pid_valide "${TEMOIN_PID:-x}"; then
+  echoue "marqueur du wrapper invalide: $(tr -d '\n' <"$TEMOIN_DESC")"
+  exit 1
+fi
+if [[ "$WRAP_PID" == "$BASH_PID" || "$BASH_PID" == "$TEMOIN_PID" \
+      || "$WRAP_PID" == "$TEMOIN_PID" ]]; then
+  echoue "les trois PID du marqueur ne sont pas distincts: $WRAP_PID/$BASH_PID/$TEMOIN_PID"
+  exit 1
+fi
+ok "marqueur du wrapper: wrapper $WRAP_PID, harnais $BASH_PID, temoin $TEMOIN_PID"
+# LE HARNAIS DOIT ETRE ENCORE VIVANT. S'il a fini avant le signal, le scenario
+# n'exerce rien — et c'est exactement ce que le defaut precedent masquait
+# derriere une attente de 300 s.
+if [[ -z "$(vivants "$BASH_PID")" ]]; then
+  echoue "harnais termine avant le signal — scenario non exerce"
+  exit 1
+fi
 CMDLINE="$(ps -o args= -p "$BASH_PID" 2>/dev/null)"
 HARNAIS_NOM="$(awk '{print $2}' <<<"$CMDLINE")"
 HARNAIS_PREFIXE="$(awk '{print $3}' <<<"$CMDLINE")"
@@ -509,9 +613,12 @@ ok "harnais « $HARNAIS_NOM $HARNAIS_PREFIXE » (PID $BASH_PID)"
 # SON PROPRE GROUPE: sans cela, « terminer tout ce que ce harnais a engendre »
 # ne peut meme pas s'exprimer — on ne saurait pas quoi viser.
 PGID_HARNAIS="$(ps -o pgid= -p "$BASH_PID" 2>/dev/null | tr -d ' ')"
-[[ "$PGID_HARNAIS" == "$BASH_PID" ]] \
-  && ok "le harnais mene son propre groupe (PGID $PGID_HARNAIS = PID)" \
-  || echoue "le harnais partage le groupe $PGID_HARNAIS: sa descendance n'est pas delimitee"
+PGID_TEMOIN2="$(ps -o pgid= -p "$TEMOIN_PID" 2>/dev/null | tr -d ' ')"
+if [[ "$PGID_HARNAIS" == "$WRAP_PID" && "$PGID_TEMOIN2" == "$WRAP_PID" ]]; then
+  ok "harnais et temoin sont dans le groupe du wrapper (PGID $WRAP_PID)"
+else
+  echoue "groupes incoherents: harnais[$PGID_HARNAIS] temoin[$PGID_TEMOIN2] wrapper[$WRAP_PID]"
+fi
 
 # LE TEMOIN, PAS UN `psql` DE PASSAGE. Attendre un descendant naturel ne
 # marchait que par accident: `harnais_verrou_prendre()` ouvre un `coproc psql`
@@ -521,21 +628,8 @@ PGID_HARNAIS="$(ps -o pgid= -p "$BASH_PID" 2>/dev/null | tr -d ' ')"
 # en 60 s » — dans les DEUX modes de connexion, sans que la propriete testee
 # ait change. Un descendant explicite, qui annonce lui-meme sa disponibilite,
 # ne depend d'aucun ordonnancement.
-attendre "le temoin descendant (READY)" '[[ -s "$TEMOIN_DESC" ]]' 3000 || exit 1
-TEMOIN_PID="$(awk '{print $1}' "$TEMOIN_DESC")"
-if [[ -z "$TEMOIN_PID" ]] || ! grep -q READY "$TEMOIN_DESC"; then
-  echoue "le temoin n'a pas annonce READY: $(tr -d '\n' <"$TEMOIN_DESC")"
-  exit 1
-fi
-ok "temoin descendant cree et READY (PID $TEMOIN_PID)"
-
 # Il doit VRAIMENT etre dans le groupe du harnais — sinon le terminer par
 # groupe ne prouverait rien de la descendance du harnais.
-PGID_TEMOIN="$(ps -o pgid= -p "$TEMOIN_PID" 2>/dev/null | tr -d ' ')"
-[[ "$PGID_TEMOIN" == "$BASH_PID" ]] \
-  && ok "le temoin appartient au groupe du harnais (PGID $PGID_TEMOIN)" \
-  || echoue "le temoin est dans le groupe $PGID_TEMOIN, pas $BASH_PID"
-
 PETITS="$(vivants "$TEMOIN_PID $(descendants "$BASH_PID" | tr '\n' ' ')")"
 [[ -n "$(vivants "$TEMOIN_PID")" ]] \
   && ok "descendance vivante a l'instant du signal: $PETITS" \
@@ -589,11 +683,11 @@ RESTANTS="$(vivants "$PETITS")"
   && ok "aucun descendant du harnais ne survit ($PETITS verifies)" \
   || echoue "descendants orphelins: $RESTANTS"
 
-GROUPE="$(groupe_vivant "$BASH_PID")"
+GROUPE="$(groupe_vivant "$WRAP_PID")"
 [[ -z "${GROUPE// /}" ]] \
-  && ok "le groupe du harnais ne contient plus aucun processus vivant" \
-  || { echoue "le groupe $BASH_PID contient encore des processus vivants: $GROUPE"
-       detail "$(ps -o pid=,stat=,args= -g "$BASH_PID" 2>/dev/null | head -3)"; }
+  && ok "le groupe du wrapper ne contient plus aucun processus vivant" \
+  || { echoue "le groupe $WRAP_PID contient encore des processus vivants: $GROUPE"
+       detail "$(ps -o pid=,stat=,args= -g "$WRAP_PID" 2>/dev/null | head -3)"; }
 
 ERRANTS="$(vivants "$(pgrep -f "$HARNAIS_NOM $HARNAIS_PREFIXE" 2>/dev/null | tr '\n' ' ')")"
 [[ -z "${ERRANTS// /}" ]] \
@@ -900,10 +994,31 @@ else
   if ! pid_valide "${E_FB:-x}" || ! pid_valide "${E_TB:-x}"; then
     echoue "E: le sous-mode n'a pas publie deux PID backend valides ($E_FB / $E_TB)"
   else
-    ok "sous-mode pret: backends $E_FB (fuite) et $E_TB (tiers), cles ($E_CLE1,$E_CLE2)"
+    # LE PARENT REVALIDE LUI-MEME, JUSTE AVANT LE SIGNAL. Il ne se fie pas au
+    # temoin ecrit par le sous-mode: c'est l'etat du catalogue a cet instant qui
+    # decide s'il y a bien quelque chose a nettoyer.
+    revalide=1
+    if [[ "$E_FB" == "$E_TB" ]]; then
+      echoue "E: les deux PID publies sont identiques ($E_FB)"
+    elif ! detient_verrou "$E_FB" "$E_AF" "$E_CLE1" "$E_CLE2" ShareLock; then
+      echoue "E: le backend de fuite ne detient pas le verrou attendu — rien a nettoyer"
+    elif ! detient_verrou "$E_TB" "$E_AT" "$E_CLE1" "$E_CLE2" ShareLock; then
+      echoue "E: le backend tiers ne detient pas le verrou attendu — rien a nettoyer"
+    else
+      revalide=0
+      ok "sous-mode pret et REVALIDE: $E_FB et $E_TB detiennent ($E_CLE1,$E_CLE2) en ShareLock accorde"
+    fi
     kill -TERM "$EPID"
     E_CODE=0; wait "$EPID" 2>/dev/null || E_CODE=$?
-    ok "sous-mode interrompu, code $E_CODE"
+    # UN CODE QUELCONQUE N'EST PAS UN SUCCES. « ok: sous-mode interrompu, code
+    # $E_CODE » etait vert pour 0, 1, 9 comme 143 — le scenario n'imposait rien.
+    case "$E_CODE" in
+      143) ok "sous-mode interrompu: code 143 (SIGTERM rendu, nettoyage vert)" ;;
+      9)   echoue "E: code 9 — le nettoyage du sous-mode a echoue" ;;
+      0)   echoue "E: code 0 — le signal n'a pas ete reflete" ;;
+      *)   echoue "E: code $E_CODE, attendu 143" ;;
+    esac
+    (( revalide == 0 )) || detail "les postconditions ci-dessous ne prouvent rien: rien n'avait ete acquis"
 
     # 1. AUCUN BACKEND PORTANT LES DEUX JETONS.
     reste="$(lire_sql "select coalesce(string_agg(pid::text,','),'') from pg_stat_activity
@@ -953,7 +1068,17 @@ FPID=$!
 F_CODE=0; wait "$FPID" 2>/dev/null || F_CODE=$?
 F_FB="$(sed -n 's/^FUITE_BACKEND=//p' "$TEMOIN_F")"
 F_AF="$(sed -n 's/^APP_FUITE=//p' "$TEMOIN_F")"
-if (( F_CODE == 9 )); then
+# LE SOUS-MODE A-T-IL SEULEMENT EU UN VERROU A NETTOYER ? Sans cette preuve, F
+# testerait le remplacement du code de sortie sur un nettoyage qui n'avait rien
+# a rendre.
+if ! grep -q READY "$TEMOIN_F" 2>/dev/null; then
+  echoue "F: le sous-mode n'a pas annonce READY — scenario non exerce"
+  detail "$(sed -n 's/^diag=//p' "$TEMOIN_F")"
+elif [[ "$(lire_sql "select count(*) from pg_locks
+                      where locktype='advisory' and classid=$F_CLE1 and objid=$F_CLE2
+                        and granted and mode='ShareLock'")" != "1" ]]; then
+  echoue "F: aucun verrou reel n'a survecu au nettoyage casse — rien n'etait a nettoyer"
+elif (( F_CODE == 9 )); then
   ok "un nettoyage en echec remplace le verdict: code 9, et non 0"
   grep -q 'ECHEC (nettoyage)' "$TEMOIN_F.log" \
     && ok "le premier diagnostic de nettoyage est conserve" \
@@ -974,6 +1099,165 @@ reste="$(lire_sql "select count(*) from pg_locks
   && ok "le verrou laisse par le nettoyage casse a ete rendu" \
   || echoue "F: verrou residuel apres rattrapage ($reste)"
 rm -f "$TEMOIN_F" "$TEMOIN_F.log"
+
+# ==========================================================================
+# G. ACQUISITION IMPOSSIBLE — pas de READY, et le parent le dit
+# ==========================================================================
+# Les connexions s'ouvrent, les PID sont numeriques et presents, mais AUCUN
+# verrou n'est pris. C'est exactement le cas ou l'ancienne boucle publiait
+# `READY` en arrivant au bout de ses 600 passages, et ou E passait au vert sans
+# avoir rien exerce.
+echo "      -- G. acquisition impossible: aucun READY, rouge explicite"
+TEMOIN_G="$(mktemp)"
+G_CLE1=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
+G_CLE2=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
+ESC_SIGNAL_SOUS_MODE=interruption_c ESC_SIGNAL_TEMOIN="$TEMOIN_G" \
+  ESC_SIGNAL_CLE1="$G_CLE1" ESC_SIGNAL_CLE2="$G_CLE2" \
+  ESC_ACQUISITION_IMPOSSIBLE=1 \
+  bash "$HERE/$(basename "${BASH_SOURCE[0]}")" >/dev/null 2>&1 &
+GPID=$!
+G_CODE=0; wait "$GPID" 2>/dev/null || G_CODE=$?
+if grep -q READY "$TEMOIN_G" 2>/dev/null; then
+  echoue "G: READY publie alors qu'aucun verrou n'a ete acquis"
+  detail "c'est le faux vert que E pouvait produire"
+else
+  ok "aucun READY publie sans acquisition prouvee"
+fi
+grep -q FAILED "$TEMOIN_G" 2>/dev/null \
+  && ok "le sous-mode a publie FAILED avec son diagnostic" \
+  || echoue "G: ni READY ni FAILED — le sous-mode n'a rien dit"
+(( G_CODE == 4 )) \
+  && ok "le sous-mode sort en 4 (scenario non exerce), et non 0" \
+  || echoue "G: code $G_CODE, attendu 4"
+rm -f "$TEMOIN_G"
+
+# ==========================================================================
+# H. INTERRUPTION + NETTOYAGE CASSE — 9, jamais 143
+# ==========================================================================
+echo "      -- H. signal puis nettoyage casse: 9, pas 143"
+TEMOIN_H="$(mktemp)"
+H_CLE1=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
+H_CLE2=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
+ESC_SIGNAL_SOUS_MODE=interruption_c ESC_SIGNAL_TEMOIN="$TEMOIN_H" \
+  ESC_SIGNAL_CLE1="$H_CLE1" ESC_SIGNAL_CLE2="$H_CLE2" \
+  ESC_NETTOYAGE_CASSE_APRES=1 \
+  bash "$HERE/$(basename "${BASH_SOURCE[0]}")" >"$TEMOIN_H.log" 2>&1 &
+HPID=$!
+for _ in $(seq 1 900); do
+  grep -qE 'READY|FAILED' "$TEMOIN_H" 2>/dev/null && break
+  kill -0 "$HPID" 2>/dev/null || break
+  sleep 0.1
+done
+if ! grep -q READY "$TEMOIN_H" 2>/dev/null; then
+  echoue "H: le sous-mode n'a pas annonce READY — scenario non exerce"
+  kill -KILL "$HPID" 2>/dev/null; wait "$HPID" 2>/dev/null
+else
+  kill -TERM "$HPID"
+  H_CODE=0; wait "$HPID" 2>/dev/null || H_CODE=$?
+  if (( H_CODE == 9 )); then
+    ok "signal + nettoyage casse: code 9, et non 143"
+    grep -q 'code initial 143' "$TEMOIN_H.log" \
+      && ok "le code initial 143 est journalise dans le diagnostic" \
+      || echoue "H: le code initial n'est pas journalise"
+  else
+    echoue "H: code $H_CODE, attendu 9 (le nettoyage rouge doit remplacer 143)"
+  fi
+  # Rattrapage par identite verifiee: le sous-mode n'a rien pu rendre.
+  H_FB="$(sed -n 's/^FUITE_BACKEND=//p' "$TEMOIN_H")"
+  H_TB="$(sed -n 's/^TIERS_BACKEND=//p' "$TEMOIN_H")"
+  H_AF="$(sed -n 's/^APP_FUITE=//p' "$TEMOIN_H")"
+  H_AT="$(sed -n 's/^APP_TIERS=//p' "$TEMOIN_H")"
+  pid_valide "${H_FB:-x}" && terminer_possede "$H_FB" "$H_AF" "$H_CLE1" "$H_CLE2" ShareLock "H" >/dev/null
+  pid_valide "${H_TB:-x}" && terminer_possede "$H_TB" "$H_AT" "$H_CLE1" "$H_CLE2" ShareLock "H" >/dev/null
+  reste="$(lire_sql "select count(*) from pg_locks
+                      where locktype='advisory' and classid=$H_CLE1 and objid=$H_CLE2")"
+  [[ "$reste" == "0" ]] \
+    && ok "les verrous laisses par H ont ete rendus" \
+    || echoue "H: verrou residuel apres rattrapage ($reste)"
+fi
+rm -f "$TEMOIN_H" "$TEMOIN_H.log"
+
+# ==========================================================================
+# I. SIGINT — 130, et non 143
+# ==========================================================================
+# Tant que ce chemin n'etait pas exerce, affirmer que SIGINT est correctement
+# reflete etait une promesse sans preuve — et le trap unique lui donnait 143.
+echo "      -- I. SIGINT: code 130"
+TEMOIN_I="$(mktemp)"
+I_CLE1=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
+I_CLE2=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
+ESC_SIGNAL_SOUS_MODE=interruption_c ESC_SIGNAL_TEMOIN="$TEMOIN_I" \
+  ESC_SIGNAL_CLE1="$I_CLE1" ESC_SIGNAL_CLE2="$I_CLE2" \
+  bash "$HERE/$(basename "${BASH_SOURCE[0]}")" >/dev/null 2>&1 &
+IPID=$!
+for _ in $(seq 1 900); do
+  grep -qE 'READY|FAILED' "$TEMOIN_I" 2>/dev/null && break
+  kill -0 "$IPID" 2>/dev/null || break
+  sleep 0.1
+done
+if ! grep -q READY "$TEMOIN_I" 2>/dev/null; then
+  echoue "I: le sous-mode n'a pas annonce READY — scenario non exerce"
+  kill -KILL "$IPID" 2>/dev/null; wait "$IPID" 2>/dev/null
+else
+  kill -INT "$IPID"
+  I_CODE=0; wait "$IPID" 2>/dev/null || I_CODE=$?
+  (( I_CODE == 130 )) \
+    && ok "SIGINT rendu en 130 (128 + 2), distinct du 143 de SIGTERM" \
+    || echoue "I: code $I_CODE, attendu 130"
+  reste="$(lire_sql "select count(*) from pg_locks
+                      where locktype='advisory' and classid=$I_CLE1 and objid=$I_CLE2")"
+  [[ "$reste" == "0" ]] \
+    && ok "SIGINT a rendu les verrous du sous-mode" \
+    || echoue "I: $reste verrou(s) subsistent apres SIGINT"
+fi
+rm -f "$TEMOIN_I"
+
+# ==========================================================================
+# J. HARNAIS QUI SORT IMMEDIATEMENT — le temoin ne doit rien retenir
+# ==========================================================================
+# LE DEFAUT QUI A RENDU LA CI ROUGE. Le temoin `sleep` heritait des deux pipes
+# du `Popen`: des que le harnais finissait AVANT le signal, `communicate()`
+# n'atteignait jamais EOF, la matrice restait vivante sans enfant direct, et
+# l'attente cote test expirait apres ses 300 secondes. Mesure hors harnais:
+#
+#   CASSE   : temoin fd/1 = pipe:[2921774] — communicate() BLOQUE
+#   CORRIGE : fd absents  — communicate() rendu en 0,9 s, code 7 du harnais
+#
+# Ce scenario le rejoue AVEC LA MATRICE, et il est court par construction.
+echo "      -- J. harnais qui sort immediatement: ni blocage, ni orphelin"
+TEMOIN_J="$(mktemp)"; FAUX_HARNAIS="$(mktemp)"
+printf '#!/usr/bin/env bash\nexit 7\n' >"$FAUX_HARNAIS"; chmod +x "$FAUX_HARNAIS"
+J_T0=$(date +%s)
+( cd "$PROJET" && ESC_MUTATION_TEMOIN="$TEMOIN_J" \
+    ESC_MUTATION_HARNAIS_REMPLACE="$FAUX_HARNAIS" \
+    EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole \
+    timeout 120 python3 "$MATRICE" W1 ) >"$TEMOIN_J.log" 2>&1
+J_CODE=$?; J_DUREE=$(( $(date +%s) - J_T0 ))
+if (( J_DUREE >= 100 )); then
+  echoue "J: la matrice a mis ${J_DUREE}s — le temoin retient encore les pipes"
+  detail "c'est exactement le blocage de 300 s qui a rougi la CI"
+else
+  ok "la matrice rend la main en ${J_DUREE}s, sans attendre le temoin"
+fi
+if [[ -s "$TEMOIN_J" ]]; then
+  read -r J_WRAP J_BASH J_TEM J_ETAT < "$TEMOIN_J"
+  if [[ "$J_ETAT" == READY ]] && pid_valide "${J_TEM:-x}"; then
+    ok "marqueur publie: wrapper $J_WRAP, harnais $J_BASH, temoin $J_TEM"
+    [[ -z "$(vivants "$J_TEM")" ]] \
+      && ok "le temoin a ete moissonne a la fin normale du harnais" \
+      || { echoue "J: le temoin $J_TEM survit a la fin du harnais"
+           detail "$(ps -o pid=,ppid=,args= -p "$J_TEM" 2>/dev/null)"; }
+  else
+    echoue "J: marqueur incomplet: $(tr -d '\n' <"$TEMOIN_J")"
+  fi
+else
+  echoue "J: aucun marqueur publie"
+fi
+# LE CONTROLE DE SECURITE NE PEUT PAS ETRE VERT: le harnais n'a rien exerce.
+grep -q 'NON EXECUTE\|harnais a refuse' "$TEMOIN_J.log" \
+  && ok "la matrice compte ce controle NON EXECUTE, jamais tue" \
+  || detail "note: sortie de la matrice — $(grep -m1 -E '^  (ok|ECHEC|NON EXECUTE)' "$TEMOIN_J.log" || echo '(vide)')"
+rm -f "$TEMOIN_J" "$TEMOIN_J.log" "$FAUX_HARNAIS"
 
 echo
 [[ $KO -eq 0 ]] \
