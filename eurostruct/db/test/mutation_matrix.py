@@ -50,6 +50,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 # `.../eurostruct/db/test/mutation_matrix.py` -> `.../eurostruct`: TROIS
 # remontees. Deux laissaient RACINE sur `.../db`, ou `git status -- db/...` ne
@@ -114,21 +115,40 @@ ACTIF = None         # (nom, fichier) du controle en vol
 
 
 def _arreter_enfant():
-    """Termine le harnais en cours et L'ATTEND. Sans quoi il devient orphelin.
+    """Termine LE GROUPE du harnais, et l'attend. Pas seulement son Bash.
 
     Le harnais tient des connexions, des verrous consultatifs et parfois un
     second cluster. Sortir sans l'attendre le laisse courir sous PID 1, et le
     prochain lancement bute sur les roles qu'il n'a pas eu le temps de rendre.
+
+    LE BASH DIRECT NE SUFFIT PAS. `p.terminate()` ne vise que l'enfant immediat;
+    un `psql` en cours, un sous-shell, un second cluster temporaire — tout ce
+    que le harnais a engendre — pouvait survivre a la mort de son parent. La
+    conclusion « aucun enfant ne survit » etait donc plus large que ce qui
+    etait reellement termine.
+
+    `lancer()` demarre desormais le harnais dans SA PROPRE SESSION, ce qui fait
+    de son PID son PGID: toute sa descendance herite de ce groupe, et le groupe
+    delimite exactement l'arbre a nettoyer. C'est le seul role de
+    `start_new_session` ici — delimiter, pas faire survivre.
     """
     global ENFANT
     p, ENFANT = ENFANT, None
     if p is None or p.poll() is not None:
         return
-    p.terminate()
-    try:
-        p.wait(timeout=20)
-    except subprocess.TimeoutExpired:
-        p.kill()
+    for signum, patience in ((signal.SIGTERM, 20), (signal.SIGKILL, 10)):
+        try:
+            os.killpg(p.pid, signum)
+        except (ProcessLookupError, PermissionError):
+            break
+        try:
+            p.wait(timeout=patience)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+    # Apres un SIGKILL au groupe il ne reste qu'a moissonner: l'attente finale
+    # n'est plus bornee parce qu'elle ne peut plus durer.
+    if p.poll() is None:
         p.wait()
 
 
@@ -243,9 +263,14 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     # l'arrivee d'un signal, le harnais restait injoignable et ne pouvait etre
     # ni termine ni attendu.
     global ENFANT
+    # `start_new_session=True` NE SERT PAS A LE FAIRE SURVIVRE — c'est l'inverse.
+    # Il donne au harnais un groupe de processus a lui, dont son PID est le
+    # meneur: toute sa descendance en herite, et `_arreter_enfant()` peut alors
+    # viser LE GROUPE plutot que le seul Bash. Sans cela il n'existe aucune
+    # facon sure de nommer « tout ce que ce harnais a engendre ».
     p = subprocess.Popen(["bash", harnais, prefixe], cwd=ESPACE, env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True)
+                         text=True, start_new_session=True)
     ENFANT = p
     try:
         sortie, erreur = p.communicate()
@@ -831,46 +856,95 @@ TOTAL = sum(len(cas) for cas, _ in LOTS)
 # IL N'ARRETE RIEN. Il annonce, et laisse la campagne mesurer tout ce qui est
 # encore mesurable: un controle perime ne doit pas priver les 63 autres de leur
 # verdict.
-PERIMES_PREVOL = []
-for _cas, _kw in LOTS:
-    for _c in _cas:
-        if not retenu(_c):
-            continue
-        _nom, _point, _fichier, _paires = _c[0], _c[1], _c[2], _c[3]
-        try:
-            _src = open(f"{ESPACE}/{_fichier}").read()
-        except OSError as _e:
-            PERIMES_PREVOL.append(f"{_nom} — {_fichier} illisible: {_e}")
-            continue
-        for _vieux, _ in _paires:
-            if _vieux not in _src:
-                PERIMES_PREVOL.append(
-                    f"{_nom} — {_fichier}: {_vieux.strip()[:70]!r}")
-if PERIMES_PREVOL:
-    print()
-    print(f"PRE-VOL: {len(PERIMES_PREVOL)} controle(s) visent un texte qui n'existe "
-          "plus.")
-    print("         Ils seront comptes NON EXECUTES, jamais tues:")
-    for _p in PERIMES_PREVOL:
-        print(f"           {_p}")
-    print()
+def _prevol():
+    perimes = []
+    for cas, _ in LOTS:
+        for c in cas:
+            if not retenu(c):
+                continue
+            nom, fichier, paires = c[0], c[2], c[3]
+            try:
+                src = open(f"{ESPACE}/{fichier}").read()
+            except OSError as e:
+                perimes.append(f"{nom} — {fichier} illisible: {e}")
+                continue
+            for vieux, _n in paires:
+                if vieux not in src:
+                    perimes.append(f"{nom} — {fichier}: {vieux.strip()[:70]!r}")
+    if perimes:
+        print()
+        print(f"PRE-VOL: {len(perimes)} controle(s) visent un texte qui n'existe "
+              "plus.")
+        print("         Ils seront comptes NON EXECUTES, jamais tues:")
+        for p in perimes:
+            print(f"           {p}")
+        print()
+    return perimes
+
 
 # LA BOUCLE EST APLATIE, ET C'EST CE QUI REND LE DECOMPTE PARTIEL POSSIBLE.
 # `ETATS += lot(...)` n'ajoutait qu'a la FIN d'un lot: une interruption au
 # milieu du lot de 31 controles jetait les resultats deja obtenus dans ce lot.
 # Un controle rendu est un resultat acquis; il doit etre compte des qu'il est
 # rendu.
-PLAT = [(c, kw) for cas, kw in LOTS for c in cas if retenu(c)]
+#
+# `PLAT` ET `PERIMES_PREVOL` SONT INITIALISES AVANT LA FRONTIERE: le verdict
+# les lit, et une interruption survenue avant leur calcul ne doit pas se
+# transformer en `NameError` — c'est-a-dire en arret sans verdict, le defaut
+# meme qu'on ferme ici.
+PLAT = []
+PERIMES_PREVOL = []
 ETATS = []
 INTERRUPTION = None
-for _c, _kw in PLAT:
-    ACTIF = (_c[0], _c[2])
-    try:
+
+
+def _entre_controles():
+    """Crochet de test: une fenetre DETERMINISTE entre deux controles.
+
+    Prouver qu'un signal recu entre deux controles produit bien un verdict
+    « aucun controle actif » demanderait sinon de viser quelques microsecondes.
+    Un test qui reussit une fois sur mille n'etablit rien.
+
+    `ESC_MUTATION_ENTRE_TEMOIN` recoit une ligne des que la fenetre s'ouvre;
+    `ESC_MUTATION_PAUSE_ENTRE` dit combien de secondes elle reste ouverte. Hors
+    test, les deux sont absentes et cette fonction ne fait rien.
+    """
+    pause = float(os.environ.get("ESC_MUTATION_PAUSE_ENTRE", "0") or 0)
+    if not pause:
+        return
+    temoin = os.environ.get("ESC_MUTATION_ENTRE_TEMOIN")
+    if temoin:
+        with open(temoin, "a") as f:
+            f.write(f"ENTRE\t{len(ETATS)}\n")
+            f.flush()
+    time.sleep(pause)
+
+
+# LA FRONTIERE DE CAPTURE ENTOURE TOUTE LA PHASE DE CAMPAGNE, pas chaque
+# `essayer()`. Placee autour du seul appel, elle laissait quatre fenetres par
+# lesquelles une `Interruption` s'echappait vers un arret SANS VERDICT:
+#
+#   - pendant le pre-vol;
+#   - apres « ACTIF = None » et avant le `try` suivant;
+#   - au retour d'`essayer()`, avant la remise a zero;
+#   - dans la construction de la liste elle-meme.
+#
+# La branche « aucun controle actif » etait donc ECRITE sans qu'aucun chemin ne
+# garantisse de l'atteindre. Le gestionnaire de signal se contente d'enregistrer
+# et de lever; le verdict et le nettoyage restent produits ici, dans le chemin
+# principal.
+try:
+    PERIMES_PREVOL = _prevol()
+    PLAT = [(c, kw) for cas, kw in LOTS for c in cas if retenu(c)]
+    for _c, _kw in PLAT:
+        ACTIF = (_c[0], _c[2])
         ETATS.append(essayer(*_c, **_kw))
-    except Interruption as _sig:
-        INTERRUPTION = _sig
-        break
-    ACTIF = None
+        # ENTRE LES DEUX: plus aucun controle n'est en vol. Un signal recu ici
+        # ne doit pas inventer un controle interrompu.
+        ACTIF = None
+        _entre_controles()
+except Interruption as _sig:
+    INTERRUPTION = _sig
 
 # LE DECOMPTE SEPARE CE QUE LE VERDICT PRECEDENT CONFONDAIT.
 #
