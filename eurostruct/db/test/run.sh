@@ -539,6 +539,21 @@ etape "contrat croise moteur/base" \
   "$HERE/cross_contract.sh" "${XC[@]}"
 adm -c "drop database if exists $XC_DB;" >/dev/null
 
+# --------------------------------------------------------------------------
+# LA MATRICE MEURT-ELLE PROPREMENT ? (6.3b6e)
+# --------------------------------------------------------------------------
+# EN DERNIER, ET C'EST DELIBERE. Contrairement a l'auto-test d'isolation, celui
+# -ci lance un VRAI harnais — il lui faut donc un cluster, et il cree pendant
+# quelques secondes les roles canoniques. Les etapes qui exigent ces roles
+# ABSENTS doivent toutes etre passees avant lui.
+#
+# Mesure: il ne laisse ni role, ni base, ni worktree, ni processus. Mais s'il
+# venait a en laisser, mieux vaut que ce soit apres les surfaces qui comptent
+# que devant elles.
+echo "==> terminaison de la matrice de mutation sur signal"
+etape "terminaison de la matrice sur signal" \
+  "$HERE/mutation_signal_selftest.sh"
+
 echo ""
 if [[ ${#SURFACES_ROUGES[@]} -eq 0 && ${#SURFACES_NON_EXECUTEES[@]} -eq 0 ]]; then
   echo "================================================="

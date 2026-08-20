@@ -101,10 +101,55 @@ def nettoyer_espace():
     _git("worktree", "prune", check=False)
 
 
+class Interruption(Exception):
+    """Un signal est arrive pendant un controle."""
+
+    def __init__(self, numero):
+        super().__init__(numero)
+        self.numero = numero
+
+
+ENFANT = None        # le harnais en cours d'execution, s'il y en a un
+ACTIF = None         # (nom, fichier) du controle en vol
+
+
+def _arreter_enfant():
+    """Termine le harnais en cours et L'ATTEND. Sans quoi il devient orphelin.
+
+    Le harnais tient des connexions, des verrous consultatifs et parfois un
+    second cluster. Sortir sans l'attendre le laisse courir sous PID 1, et le
+    prochain lancement bute sur les roles qu'il n'a pas eu le temps de rendre.
+    """
+    global ENFANT
+    p, ENFANT = ENFANT, None
+    if p is None or p.poll() is not None:
+        return
+    p.terminate()
+    try:
+        p.wait(timeout=20)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        p.wait()
+
+
 def _sur_signal(numero, _cadre):
-    nettoyer_espace()
-    # Le code conventionnel: le shell distingue ainsi une mort par signal.
-    raise SystemExit(128 + numero)
+    """CE GESTIONNAIRE NE NETTOIE PLUS. Mesure, pas relecture.
+
+    Il appelait `nettoyer_espace()` en PREMIER, ce qui mettait `ESPACE = None`
+    et retirait le worktree — puis levait. La levee declenchait alors le
+    `finally: restaurer(fichier)` d'`essayer()`, qui ecrivait dans
+    « None/tools/deploy_eurostruct.sh »: FileNotFoundError, traceback, AUCUN
+    verdict imprime, et un code de sortie qui n'etait meme plus 143.
+
+    L'ordre correct est celui-ci — le nettoyage vient en DERNIER, une fois la
+    mutation restauree et le decompte rendu:
+
+        signal recu -> arret/attente de l'enfant -> restauration de la
+        mutation active -> etat interrompu enregistre -> verdict partiel
+        imprime -> retrait du worktree -> sortie 143
+    """
+    _arreter_enfant()
+    raise Interruption(numero)
 
 
 def preparer_espace():
@@ -193,9 +238,20 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     # refusent — a juste titre — et la matrice conclurait sur des executions
     # qui n'ont pas eu lieu.
     env["EUROSTRUCT_CLUSTER_JETABLE"] = "oui-cluster-jetable-et-isole"
-    p = subprocess.run(["bash", harnais, prefixe],
-                       cwd=ESPACE, env=env, capture_output=True, text=True)
-    return p.returncode, p.stdout + p.stderr
+    # `Popen` PLUTOT QUE `run`, POUR QUE LE GESTIONNAIRE DE SIGNAL PUISSE
+    # ATTEINDRE L'ENFANT. `subprocess.run` ne publie sa poignee nulle part: a
+    # l'arrivee d'un signal, le harnais restait injoignable et ne pouvait etre
+    # ni termine ni attendu.
+    global ENFANT
+    p = subprocess.Popen(["bash", harnais, prefixe], cwd=ESPACE, env=env,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True)
+    ENFANT = p
+    try:
+        sortie, erreur = p.communicate()
+    finally:
+        ENFANT = None
+    return p.returncode, sortie + erreur
 
 
 def _tracer(nom, fichier):
@@ -239,8 +295,12 @@ def essayer(nom, point, fichier, paires, redondant=False,
               "        Le controle ne peut pas etre applique: il ne prouve RIEN "
               "sur la garantie.")
         return "perime"
-    _tracer(nom, fichier)
+    # LE `try` COMMENCE DES QUE LE FICHIER EST MUTE. `_tracer()` etait au
+    # dehors, et il retient la matrice quand `ESC_MUTATION_PAUSE` est pose: un
+    # signal arrive pendant cette pause laissait la mutation en place sans
+    # jamais passer par `restaurer()`.
     try:
+        _tracer(nom, fichier)
         code, sortie = lancer(harnais, prefixe)
     finally:
         restaurer(fichier)
@@ -795,9 +855,22 @@ if PERIMES_PREVOL:
         print(f"           {_p}")
     print()
 
+# LA BOUCLE EST APLATIE, ET C'EST CE QUI REND LE DECOMPTE PARTIEL POSSIBLE.
+# `ETATS += lot(...)` n'ajoutait qu'a la FIN d'un lot: une interruption au
+# milieu du lot de 31 controles jetait les resultats deja obtenus dans ce lot.
+# Un controle rendu est un resultat acquis; il doit etre compte des qu'il est
+# rendu.
+PLAT = [(c, kw) for cas, kw in LOTS for c in cas if retenu(c)]
 ETATS = []
-for cas, kw in LOTS:
-    ETATS += lot(cas, **kw)
+INTERRUPTION = None
+for _c, _kw in PLAT:
+    ACTIF = (_c[0], _c[2])
+    try:
+        ETATS.append(essayer(*_c, **_kw))
+    except Interruption as _sig:
+        INTERRUPTION = _sig
+        break
+    ACTIF = None
 
 # LE DECOMPTE SEPARE CE QUE LE VERDICT PRECEDENT CONFONDAIT.
 #
@@ -824,6 +897,42 @@ EXECUTES = EXERCES - NON_EXECUTES         # qui ont rendu un verdict
 NON_EXERCES = DEFINIS - EXERCES           # ecartes par le filtre
 
 print()
+# --------------------------------------------------------------------------
+# CAMPAGNE INTERROMPUE — un verdict partiel, jamais un silence
+# --------------------------------------------------------------------------
+# Le controle en vol n'est ni tue, ni creux, ni refuse par le harnais: il est
+# INTERROMPU, et les suivants ne sont pas « non executes » mais NON COMMENCES.
+# Les confondre ferait lire un echec de garantie la ou il n'y a qu'une machine
+# arretee.
+if INTERRUPTION is not None:
+    _n = INTERRUPTION.numero
+    _nom_sig = signal.Signals(_n).name
+    _termines = len(ETATS)
+    _interrompu = 1 if ACTIF else 0
+    _non_commences = len(PLAT) - _termines - _interrompu
+    _ecartes = TOTAL - len(PLAT)
+    print(f"MUTATIONS: definis {TOTAL} | termines {_termines} | "
+          f"interrompu {_interrompu} | non commences {_non_commences + _ecartes} "
+          f"| perimes {ETATS.count('perime')} | creux {ETATS.count('creux')} "
+          f"| code {128 + _n}")
+    if ACTIF:
+        print(f"           controle actif : {ACTIF[0]}")
+        print(f"           fichier mute   : {ACTIF[1]} (restaure)")
+    else:
+        print("           controle actif : aucun — le signal est arrive entre "
+              "deux controles")
+    print(f"           signal recu    : {_nom_sig} ({_n})")
+    print(f"           SHA teste      : "
+          f"{_git('rev-parse', 'HEAD').stdout.strip()}")
+    if _ecartes:
+        print(f"           dont ecartes par le filtre : {_ecartes}")
+    print("           CAMPAGNE INTERROMPUE — ce compte rendu ne vaut PAS pour "
+          "la matrice entiere.")
+    # LE RETRAIT DU WORKTREE VIENT ICI, ET SEULEMENT ICI: apres la restauration
+    # (faite par le `finally` d'`essayer()`) et apres le verdict.
+    nettoyer_espace()
+    sys.exit(128 + _n)
+
 if FILTRE and EXERCES == 0:
     print(f"MUTATIONS: aucun controle ne correspond a « {' '.join(FILTRE)} ».")
     sys.exit(2)
