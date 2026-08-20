@@ -413,14 +413,24 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
             # LA TRAP EST DESARMEE AVANT LE RELAIS: un second signal ne doit pas
             # relancer un nettoyage concurrent. Le relais est donc au plus une
             # fois, que le signal ait vise le groupe entier ou le seul wrapper.
+            # LA TRAP EST MINIMALE, ET C'EST CE QUI REND LE CHEMIN DETERMINISTE.
+            # Elle desarme sa reentrance, memorise le signal, relaie UNE FOIS
+            # au harnais, et RETOURNE. Elle n'attend pas, ne moissonne pas, ne
+            # sort pas.
+            #
+            # La version precedente faisait tout le travail dans la trap et
+            # sortait: le `wait` exterieur n'etait jamais repris, donc jamais
+            # observe comme interrompu. `WAITS=WAIT_1=final:0` — la reattente
+            # existait sans qu'aucun chemin ne la traverse, et la mutation
+            # « premier wait pris pour la fin » n'aurait rien eu a rougir.
+            #
+            # En rendant la main, la trap laisse `attendre_harnais()` — SEUL
+            # proprietaire du `wait` et de la moisson — constater son propre
+            # `wait` interrompu, boucler, puis obtenir le vrai code.
             'relayer() {\n'
             '  trap - TERM INT\n'
             '  SIGNAL_RECU="$2"\n'
             '  kill -"$1" "$HARNAIS" 2>/dev/null\n'
-            '  attendre_harnais\n'
-            '  marq WRAPPER_REAPED_HARNESS\n'
-            '  moissonner_temoin\n'
-            '  sortie_wrapper\n'
             '}\n'
             'trap \'relayer TERM 15\' TERM\n'
             'trap \'relayer INT 2\' INT\n'
