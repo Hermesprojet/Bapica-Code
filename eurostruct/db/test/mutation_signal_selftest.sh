@@ -300,10 +300,14 @@ lire_canal() {   # lire_canal <fichier> <format> <scenario> <jeton> [champ-oblig
   [[ -e "$f" ]] || { CANAL_ETAT=ABSENT; CANAL_DIAG="aucun document publie"; return 1; }
   [[ -f "$f" ]] || { CANAL_ETAT=TRONQUE_OU_MALFORME
                      CANAL_DIAG="n'est pas un fichier regulier"; return 1; }
+  # LES PERMISSIONS SONT UNE DIMENSION ORTHOGONALE AU CONTENU. Un document
+  # parfaitement forme peut etre publie avec des droits dangereux: classer cela
+  # « TRONQUE_OU_MALFORME » etait un diagnostic faux, qui aurait envoye vers une
+  # erreur de syntaxe inexistante.
   local mode; mode="$(stat -c %a "$f" 2>/dev/null)"
   if [[ "$mode" != "600" ]]; then
-    CANAL_ETAT=TRONQUE_OU_MALFORME
-    CANAL_DIAG="permissions $mode, attendu 600"
+    CANAL_ETAT=PERMISSIONS_INVALIDES
+    CANAL_DIAG="attendu 0600, observe 0$mode"
     return 1
   fi
   [[ -s "$f" ]] || { CANAL_ETAT=VIDE_OU_NON_VERSIONNE; CANAL_DIAG="document vide"; return 1; }
@@ -315,7 +319,7 @@ lire_canal() {   # lire_canal <fichier> <format> <scenario> <jeton> [champ-oblig
   fi
   [[ "$(sed -n 's/^FORMAT=//p' "$f")" == "$fmt" ]] \
     || { CANAL_ETAT=VIDE_OU_NON_VERSIONNE
-         CANAL_DIAG="version « $(sed -n 's/^FORMAT=//p' "$f") », attendu « $fmt »"
+         CANAL_DIAG="version observee « $(sed -n 's/^FORMAT=//p' "$f") », attendue « $fmt »"
          return 1; }
   local champ n
   for champ in SCENARIO JETON ETAT "$@"; do
@@ -1044,6 +1048,12 @@ else
     echoue "C: le backend $FUITE_BACKEND ne detient pas le verrou attendu"
   else
     ok "verrou injecte pose: backend $FUITE_BACKEND, cles ($CLE1,$CLE2), objsubid 2"
+    # LE REGISTRE N'EST PAS UNE LISTE FERMEE: chaque scenario inscrit ce qu'il
+    # cree, DES SA CREATION. Sans cela `b0_contaminee()` n'a rien a examiner —
+    # c'est ce qui a laisse les deux ShareLock de C entrer dans le B0 de E.
+    manifeste_ouvrir C
+    manifeste_backend C "$FUITE_BACKEND" "$APP_FUITE"
+    manifeste_verrou C "$CLE1" "$CLE2"
 
     # LA COMPARAISON DOIT RENDRE EXACTEMENT 10 — « verrou supplementaire ».
     # Ni 11, ni 12, ni 20/21: une panne d'observation ne doit pas etre lue
@@ -1094,6 +1104,7 @@ else
       echoue "C: tiers et fuite partagent le meme PID ($TIERS_BACKEND)"
     else
       ok "session tierce DETENTRICE du meme verrou partage: backend $TIERS_BACKEND (ShareLock, accorde)"
+      manifeste_backend C "$TIERS_BACKEND" "$APP_TIERS"
 
       # UN PID N'EST PAS UNE AUTORITE — et voici la preuve. Meme PID, MAUVAISE
       # identite: la terminaison doit REFUSER, et la session survivre avec son
@@ -1147,6 +1158,7 @@ else
     # seconde moitie, un detecteur qui rougirait TOUJOURS passerait aussi.
     comparer_verrous "C (retour a l'etat initial)" "$VERROUS_AVANT_C"; rc=$?
     (( rc == 0 )) || echoue "C: apres nettoyage la comparaison rend $rc, attendu 0"
+    manifeste_fermer C
   fi
 fi
 
@@ -1198,9 +1210,16 @@ E_CLE2=$(( (RANDOM * 32768 + RANDOM) % 1000000000 + 1000 ))
 # stable ET contenir des ressources qui ne sont pas exterieures au scenario.
 #
 # Aucun `sleep` fixe: on exige deux lectures EGALES, dans une attente bornee.
+# LA CONVERGENCE EST ATTENDUE, PUIS EXIGEE. Le nettoyage d'un scenario est
+# asynchrone: ses backends peuvent avoir disparu alors que ses verrous ne sont
+# pas encore retombes. On laisse donc au registre le temps de se vider — de
+# facon BORNEE — puis on refuse si quelque chose lui appartient encore.
+for _ in $(seq 1 300); do b0_contaminee || break; sleep 0.1; done
 if b0_contaminee; then
   echoue "E: BASELINE_CONTAMINEE — $B0_DIAG"
   detail "une baseline stable peut contenir des ressources qui ne sont pas exterieures"
+else
+  ok "E: aucun scenario anterieur ne possede plus de ressource"
 fi
 VERROUS_AVANT_E=""
 b_prec="$(empreinte_verrous)"; b_stable=0
@@ -1254,6 +1273,9 @@ else
     else
       revalide=0
       ok "sous-mode pret et REVALIDE: $E_FB et $E_TB detiennent ($E_CLE1,$E_CLE2) en ShareLock accorde"
+    manifeste_ouvrir E
+    manifeste_backend E "$E_FB" "$E_AF"; manifeste_backend E "$E_TB" "$E_AT"
+    manifeste_verrou E "$E_CLE1" "$E_CLE2"
     fi
     kill -TERM "$EPID"
     E_CODE=0; wait "$EPID" 2>/dev/null || E_CODE=$?
@@ -1299,6 +1321,7 @@ else
     # B1 doit egaler B0 EXACTEMENT: les verrous de E ne doivent apparaitre
     # dans aucun des deux, et le verrou legitime d'un appelant imbrique doit
     # apparaitre dans les deux.
+    manifeste_fermer E
     comparer_verrous "E (B1 = B0)" "$VERROUS_AVANT_E"
   fi
 fi
@@ -1646,16 +1669,38 @@ lancer_L() {   # lancer_L <marqueurs> <journal> <marqueur-wrapper> [VAR=val...]
   MPID=$!
 }
 
-chaine_ok() {   # chaine_ok <marqueurs> -> verifie les 7 evenements et l'ordre
-  local m="$1" manque=() ev
-  for ev in HARNESS_TRAP_ENTERED HARNESS_CLEANUP_STARTED HARNESS_CLEANUP_DONE \
-            HARNESS_EXITING WRAPPER_REAPED_HARNESS WRAPPER_REAPED_WITNESS \
-            WRAPPER_EXITING; do
-    [[ -f "$m/$ev/meta" ]] || manque+=("$ev")
+# UNE SEULE SOURCE DE VERITE POUR LES EVENEMENTS. Le total etait ecrit en dur
+# (« == 7 ») independamment de la liste attendue: l'ajout de WRAPPER_WAITING a
+# porte le scan global a 8 sans que la liste change, et la chaine a ete
+# declaree incomplete alors qu'aucun evenement ne manquait —
+# « manquants[] total=8 ». Le nombre attendu, les noms autorises et l'ordre
+# causal derivent desormais tous du meme tableau.
+#
+# WRAPPER_WAITING est une PRECONDITION, pas un maillon causal du nettoyage: il
+# est emis avant tout signal. Il est donc autorise mais exclu de la chaine.
+CHAINE_CAUSALE=(HARNESS_TRAP_ENTERED HARNESS_CLEANUP_STARTED HARNESS_CLEANUP_DONE
+                HARNESS_EXITING WRAPPER_REAPED_HARNESS WRAPPER_REAPED_WITNESS
+                WRAPPER_EXITING)
+CHAINE_PRECONDITIONS=(WRAPPER_WAITING)
+CHAINE_DIAG=""
+chaine_ok() {   # chaine_ok <repertoire-de-marqueurs>
+  local m="$1" ev d base manquants=() inconnus=() sans_meta=()
+  CHAINE_DIAG=""
+  for ev in "${CHAINE_CAUSALE[@]}"; do
+    [[ -d "$m/$ev" ]] || { manquants+=("$ev"); continue; }
+    [[ -f "$m/$ev/meta" ]] || sans_meta+=("$ev")
   done
-  local total; total="$(find "$m" -mindepth 1 -maxdepth 1 -type d | wc -l)"
-  CHAINE_MANQUE="${manque[*]:-}"; CHAINE_TOTAL="$total"
-  [[ ${#manque[@]} -eq 0 && "$total" == 7 ]]
+  # EVENEMENT INCONNU SUPPLEMENTAIRE: refuse separement d'un manquant.
+  for d in "$m"/*/; do
+    [[ -d "$d" ]] || continue
+    base="$(basename "$d")"
+    printf '%s\n' "${CHAINE_CAUSALE[@]}" "${CHAINE_PRECONDITIONS[@]}" \
+      | grep -qx "$base" || inconnus+=("$base")
+  done
+  (( ${#manquants[@]} )) && CHAINE_DIAG="obligatoire(s) absent(s): ${manquants[*]}"
+  (( ${#sans_meta[@]} )) && CHAINE_DIAG="$CHAINE_DIAG; sans meta: ${sans_meta[*]}"
+  (( ${#inconnus[@]} ))  && CHAINE_DIAG="$CHAINE_DIAG; inconnu(s): ${inconnus[*]}"
+  [[ -z "$CHAINE_DIAG" ]]
 }
 
 # --- L1: SIGTERM AU WRAPPER SEUL ------------------------------------------
@@ -1722,9 +1767,9 @@ else
     detail "waits: $L_WAITS"
   fi
   if chaine_ok "$L_MARQ"; then
-    ok "L1: chaine causale complete, chaque evenement une seule fois"
+    ok "L1: chaine causale complete (${#CHAINE_CAUSALE[@]} evenements), aucun inconnu"
   else
-    echoue "L1: chaine incomplete — manquants[${CHAINE_MANQUE}] total=$CHAINE_TOTAL"
+    echoue "L1: chaine invalide — $CHAINE_DIAG"
   fi
   [[ ! -s "$L_MARQ/.erreurs" ]] \
     && ok "L1: aucun doublon ni prerequis invalide" \
@@ -1846,7 +1891,10 @@ printf 'FORMAT=esc-erreurs/1\nSCENARIO=N\n' >"$N_F"; chmod 0600 "$N_F"
 printf 'FORMAT=esc-erreurs/1\nSCENARIO=N\nJETON=%s\nETAT=OK\nCOUNT=zero\n' "$JETON" >"$N_F"
 chmod 0600 "$N_F";                                              attendu "COUNT non numerique" TRONQUE_OU_MALFORME
 printf 'FORMAT=esc-erreurs/1\nSCENARIO=N\nJETON=%s\nETAT=OK\nCOUNT=0\n' "$JETON" >"$N_F"
-chmod 0644 "$N_F";                                              attendu "permissions 0644" TRONQUE_OU_MALFORME
+chmod 0644 "$N_F";                                              attendu "permissions 0644" PERMISSIONS_INVALIDES
+grep -q "attendu 0600, observe 0644" <<<"$CANAL_DIAG" \
+  && ok "N: le diagnostic nomme le mode attendu et le mode observe" \
+  || echoue "N: diagnostic de permissions imprecis: $CANAL_DIAG"
 chmod 0600 "$N_F"; : >"$N_F.doublon";                           attendu "publication dupliquee" DUPLIQUE
 rm -f "$N_F.doublon"
 attendu "document versionne, COUNT=0" VALIDE
