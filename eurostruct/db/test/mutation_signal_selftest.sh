@@ -217,20 +217,37 @@ comparer_verrous() {   # comparer_verrous <scenario> <empreinte-avant> [muet]
 # avoir exige que plus rien de A-D ne subsiste. Le verrou legitime de `run.sh`,
 # qui ne figure dans AUCUN manifeste, reste accepte dans B0 comme dans B1.
 MANIFESTES="$(mktemp -d)"
-manifeste_ouvrir() {   # manifeste_ouvrir <scenario>
+
+# CES QUATRE PRIMITIVES SONT PRIVEES. Elles portent le prefixe `_` et la
+# barriere structurelle `exiger_creation_centralisee()` refuse leur emploi hors
+# des helpers `session_*`. Un scenario ne peut donc plus « enregistrer a la
+# main » ce qu'il vient de creer: c'est precisement ce couplage lache qui a
+# laisse les deux ShareLock de C entrer dans la baseline de E.
+_manifeste_ouvrir() {   # _manifeste_ouvrir <scenario>
+  [[ -f "$MANIFESTES/$1" ]] && return 0        # idempotent: deux backends, un manifeste
   { echo "FORMAT=esc-scenario-manifest/1"; echo "SCENARIO=$1"; echo "JETON=$JETON"
-    echo "ETAT=ACTIF"; } >"$MANIFESTES/$1.tmp"
+    echo "ETAT=PREPARE"; } >"$MANIFESTES/$1.tmp"
   mv -f "$MANIFESTES/$1.tmp" "$MANIFESTES/$1"
   chmod 0600 "$MANIFESTES/$1"
 }
-manifeste_backend() {  # manifeste_backend <scenario> <pid> <app>
+_manifeste_backend() {  # _manifeste_backend <scenario> <pid> <app>
   local id
   id="$(lire_sql "select pid||'|'||backend_start||'|'||datid||'|'||usename||'|'||application_name
                     from pg_stat_activity where pid = $2")"
-  [[ "$id" == ILLISIBLE* ]] || echo "BACKEND=$id" >>"$MANIFESTES/$1"
+  [[ "$id" == ILLISIBLE* ]] && return 1
+  grep -qxF "BACKEND=$id" "$MANIFESTES/$1" || echo "BACKEND=$id" >>"$MANIFESTES/$1"
+  return 0
 }
-manifeste_verrou()  { echo "VERROU=$2|$3" >>"$MANIFESTES/$1"; }
-manifeste_fermer()  { sed -i 's/^ETAT=ACTIF/ETAT=TERMINE/' "$MANIFESTES/$1"; }
+_manifeste_verrou() {   # _manifeste_verrou <scenario> <cle1> <cle2>
+  grep -qxF "VERROU=$2|$3" "$MANIFESTES/$1" || echo "VERROU=$2|$3" >>"$MANIFESTES/$1"
+}
+# `sed -i` REPUBLIE LE FICHIER: le mode est retabli explicitement, sinon un
+# manifeste parfaitement forme serait ensuite refuse en PERMISSIONS_INVALIDES.
+_manifeste_etat() {     # _manifeste_etat <scenario> <ancien> <nouveau>
+  sed -i "s/^ETAT=$2\$/ETAT=$3/" "$MANIFESTES/$1"
+  chmod 0600 "$MANIFESTES/$1"
+  [[ "$(sed -n 's/^ETAT=//p' "$MANIFESTES/$1")" == "$3" ]]
+}
 
 # Refuse B0 si un scenario anterieur possede encore quoi que ce soit.
 # Fail-closed: manifeste absent alors que le scenario a tourne, incomplet, mal
@@ -244,7 +261,13 @@ b0_contaminee() {
     lire_canal "$f" "esc-scenario-manifest/1" "$scen" "$JETON" || {
       B0_DIAG="manifeste $scen invalide ($CANAL_ETAT: $CANAL_DIAG)"; return 0; }
     etat="$(sed -n 's/^ETAT=//p' "$f")"
-    [[ "$etat" == TERMINE ]] || { B0_DIAG="scenario $scen encore $etat"; return 0; }
+    # PREPARE et ACTIF font refuser. NETTOYE n'est PAS cru sur parole: les
+    # identites enregistrees sont revalidees ci-dessous quoi qu'il annonce.
+    # C'est exactement ce que le scenario M etablit en falsifiant l'etat.
+    case "$etat" in
+      NETTOYE) : ;;
+      *) B0_DIAG="scenario $scen encore $etat"; return 0 ;;
+    esac
     while IFS= read -r ligne; do
       pid="${ligne%%|*}"
       pid_valide "$pid" || continue
@@ -267,6 +290,207 @@ b0_contaminee() {
   done
   return 1
 }
+
+# --------------------------------------------------------------------------
+# LA CREATION ET L'ENREGISTREMENT SONT LA MEME OPERATION
+# --------------------------------------------------------------------------
+# « Cela tiendra pour un futur scenario O » n'etait vrai que si l'on pensait a
+# appeler `manifeste_*` a la main. C et E creaient leurs sessions directement
+# puis les enregistraient ensuite: le prochain scenario qui creerait un backend
+# sans y penser reintroduirait exactement le defaut qui a laisse les ShareLock
+# de C entrer dans le B0 de E.
+#
+# `session_creer()` est donc le SEUL chemin. Il declare l'intention AVANT la
+# creation, publie l'identite exacte obtenue, et ne rend la main qu'apres un
+# manifeste valide. Le cycle est explicite:
+#
+#     PREPARE  intention declaree, ressource peut-etre deja creee
+#     ACTIF    identite exacte publiee et verifiee
+#     NETTOYE  absence REELLE du backend ET du verrou revalidee
+#
+# Un arret en PREPARE ou en ACTIF fait refuser B0. Et `NETTOYE` n'est jamais
+# cru sur parole: `b0_contaminee()` revalide l'absence quoi qu'annonce le
+# manifeste.
+SESSION_BACKEND=""; SESSION_CLIENT=""
+SESSION_START=""; SESSION_DATID=""; SESSION_USER=""; SESSION_DIAG=""
+
+# 1. L'INTENTION, AVANT QUE QUOI QUE CE SOIT N'EXISTE.
+session_declarer() {   # session_declarer <scenario> <cle1> <cle2>
+  _manifeste_ouvrir "$1"                      # ETAT=PREPARE
+  _manifeste_verrou "$1" "$2" "$3"
+}
+
+# 2. L'IDENTITE EXACTE OBTENUE, ET LE MANIFESTE RELU AVANT DE RENDRE LA MAIN.
+# `_manifeste_backend` seul ne prouve rien: il ecrit. On relit donc le document
+# par le MEME lecteur que `b0_contaminee` — version, jeton, scenario, unicite
+# des champs, permissions — et l'on exige que la ligne publiee soit exactement
+# celle du backend annonce. Un manifeste ecrit mais illisible vaut echec.
+session_publier() {   # session_publier <scenario> <app> <pid> <cle1> <cle2>
+  local scen="$1" app="$2" pid="$3" c1="$4" c2="$5"
+  SESSION_DIAG=""
+  if ! detient_verrou "$pid" "$app" "$c1" "$c2" ShareLock; then
+    SESSION_DIAG="le backend $pid ne detient pas ($c1,$c2) en ShareLock accorde"; return 1
+  fi
+  _manifeste_backend "$scen" "$pid" "$app" \
+    || { SESSION_DIAG="identite du backend $pid illisible"; return 1; }
+  # Idempotent: le second backend d'un meme scenario trouve deja ACTIF.
+  _manifeste_etat "$scen" PREPARE ACTIF
+  if ! lire_canal "$MANIFESTES/$scen" "esc-scenario-manifest/1" "$scen" "$JETON"; then
+    SESSION_DIAG="manifeste invalide apres publication ($CANAL_ETAT: $CANAL_DIAG)"; return 1
+  fi
+  if ! grep -q "^BACKEND=$pid|" "$MANIFESTES/$scen"; then
+    SESSION_DIAG="le manifeste ne porte pas le backend $pid"; return 1
+  fi
+  if ! enregistrer_identite "$app"; then
+    SESSION_DIAG="identite de « $app » non unique ou illisible"; return 1
+  fi
+  SESSION_BACKEND="$pid"; SESSION_START="$ID_START"
+  SESSION_DATID="$ID_DATID"; SESSION_USER="$ID_USER"
+  return 0
+}
+
+# 3. LE CHEMIN DIRECT — declaration, creation, attente de DETENTION, publication.
+# C'est le SEUL endroit du mode principal ou une session porteuse de verrou est
+# ouverte; la barriere structurelle le verifie sur le texte du fichier.
+session_creer() {   # session_creer <scenario> <app> <cle1> <cle2>
+  local scen="$1" app="$2" c1="$3" c2="$4" pid=""
+  SESSION_BACKEND=""; SESSION_CLIENT=""; SESSION_DIAG=""
+  session_declarer "$scen" "$c1" "$c2"
+  # ESC-CREATION-DIRECTE-DEBUT: chemin unique du mode principal
+  PGAPPNAME="$app" psql -X -qtA -d postgres -c \
+    "select pg_advisory_lock_shared($c1,$c2); select pg_sleep(300);" >/dev/null 2>&1 &
+  # ESC-CREATION-DIRECTE-FIN
+  SESSION_CLIENT=$!
+  echo "CLIENT=$SESSION_CLIENT" >>"$MANIFESTES/$scen"
+  for _ in $(seq 1 600); do
+    pid="$(lire_sql "select pid from pg_stat_activity where application_name='$app'" | head -1)"
+    if pid_valide "${pid:-x}" && session_publier "$scen" "$app" "$pid" "$c1" "$c2"; then
+      return 0
+    fi
+    kill -0 "$SESSION_CLIENT" 2>/dev/null || break
+    sleep 0.1
+  done
+  # ECHEC D'ENREGISTREMENT: nettoyage exact, puis refus. La ressource ne doit
+  # pas survivre a l'impossibilite de la nommer. Le manifeste RESTE en PREPARE:
+  # si le nettoyage lui-meme echouait, la baseline suivante refuserait.
+  [[ -z "$SESSION_DIAG" ]] && SESSION_DIAG="le backend de « $app » n'a jamais detenu ($c1,$c2)"
+  if pid_valide "${pid:-x}"; then
+    terminer_possede "$pid" "$app" "$c1" "$c2" ShareLock "$scen (enregistrement echoue)" \
+      >/dev/null 2>&1
+  fi
+  [[ -n "$SESSION_CLIENT" ]] && { kill "$SESSION_CLIENT" 2>/dev/null
+                                  wait "$SESSION_CLIENT" 2>/dev/null; }
+  SESSION_CLIENT=""; SESSION_BACKEND=""
+  return 1
+}
+
+# 4. `NETTOYE` N'EST PUBLIE QU'APRES REVALIDATION DE L'ABSENCE REELLE — celle du
+# backend ET celle du verrou. Un manifeste qui l'annonce sans cette preuve est
+# exactement le contre-exemple du scenario M.
+session_fermer() {   # session_fermer <scenario> <pid> <app> <cle1> <cle2>
+  local scen="$1" pid="$2" app="$3" c1="$4" c2="$5" rc
+  SESSION_DIAG=""
+  terminer_possede "$pid" "$app" "$c1" "$c2" ShareLock "$scen"; rc=$?
+  (( rc == 2 || rc == 3 )) && { SESSION_DIAG="terminaison refusee ou impossible (code $rc)"
+                                return 1; }
+  session_liberer "$scen" "$c1" "$c2"
+}
+
+# 5. LA LIBERATION SANS TERMINAISON — le sous-mode de E a nettoye lui-meme; le
+# parent ne publie `NETTOYE` que s'il RECONSTATE l'absence de tout ce que son
+# propre manifeste declare. Il ne croit ni le sous-mode ni son propre etat.
+session_liberer() {   # session_liberer <scenario> <cle1> <cle2>
+  local scen="$1" c1="$2" c2="$3" ligne pid vu
+  SESSION_DIAG=""
+  while IFS= read -r ligne; do
+    pid="${ligne%%|*}"; pid_valide "$pid" || continue
+    vu="$(lire_sql "select coalesce(string_agg(pid||'|'||backend_start||'|'||datid||'|'||usename||'|'||application_name,';'),'')
+                      from pg_stat_activity where pid = $pid")"
+    [[ "$vu" == ILLISIBLE* ]] && { SESSION_DIAG="pg_stat_activity illisible"; return 1; }
+    [[ "$vu" == *"$ligne"* ]] && { SESSION_DIAG="le backend $pid est encore la"; return 1; }
+  done < <(sed -n 's/^BACKEND=//p' "$MANIFESTES/$scen")
+  vu="$(lire_sql "select count(*) from pg_locks
+                   where locktype='advisory' and classid=$c1 and objid=$c2")"
+  [[ "$vu" == ILLISIBLE* ]] && { SESSION_DIAG="pg_locks illisible"; return 1; }
+  [[ "$vu" == "0" ]] || { SESSION_DIAG="$vu verrou(s) ($c1,$c2) subsistent"; return 1; }
+  _manifeste_etat "$scen" ACTIF NETTOYE || { SESSION_DIAG="etat non publie"; return 1; }
+  return 0
+}
+
+# --------------------------------------------------------------------------
+# LA BARRIERE STRUCTURELLE — le helper n'est unique que si le texte l'impose
+# --------------------------------------------------------------------------
+# « Passer par un helper » n'est pas une propriete d'execution: c'est une
+# propriete du FICHIER. Un futur scenario O qui ouvrirait sa propre session
+# porteuse de verrou, ou qui appellerait les primitives de manifeste a la main,
+# ne serait rattrape par aucun test d'execution — il produirait simplement une
+# passe verte et une baseline contaminee, comme C l'a fait.
+#
+# On inspecte donc le script lui-meme. Toute acquisition directe doit etre
+# encadree par les deux balises ci-dessous, et les primitives de manifeste ne
+# peuvent apparaitre que dans leur propre definition ou dans un `session_*`.
+#
+# LES MOTIFS SONT ASSEMBLES A L'EXECUTION, et c'est necessaire: ecrits en clair,
+# le programme `awk` se trouverait lui-meme. La balise ouvrante presente dans sa
+# propre regle aurait mis l'inspecteur « en zone autorisee » des sa premiere
+# ligne, et l'inspection entiere serait devenue silencieuse — un controle vert
+# qui n'inspecte rien, exactement ce que ce fichier existe pour interdire.
+exiger_creation_centralisee() {
+  local f="${BASH_SOURCE[0]}" hors_zone="" hors_helper="" l
+  local motif="pg_advisory""_lock" prefixe="_manifeste""_"
+  local ouvre="ESC-CREATION-DIRECTE""-DEBUT" ferme="ESC-CREATION-DIRECTE""-FIN"
+  # LES BALISES SONT APPARIEES ET BORNEES. Mesure faite sur un contre-exemple:
+  # un scenario qui pose la seule balise OUVRANTE et ne la ferme jamais rendait
+  # l'inspection MUETTE pour tout le reste du fichier. Une derogation qu'il
+  # suffit d'ouvrir pour desactiver le controle n'est pas une derogation.
+  # Une zone non fermee, une balise fermante orpheline, une imbrication ou une
+  # zone de plus de dix lignes sont donc elles-memes des anomalies.
+  hors_zone="$(awk -v m="$motif" -v o="$ouvre" -v c="$ferme" '
+    index($0, o) {
+      if (dedans) printf "ligne %d: balise ouvrante dans une zone deja ouverte (ligne %d)\n", FNR, debut
+      dedans = 1; debut = FNR; next
+    }
+    index($0, c) {
+      if (!dedans) printf "ligne %d: balise fermante sans ouvrante\n", FNR
+      else if (FNR - debut > 10) printf "ligne %d: zone derogatoire de %d lignes, maximum 10\n", FNR, FNR - debut
+      dedans = 0; next
+    }
+    index($0, m) && !dedans { printf "ligne %d: %s\n", FNR, $0 }
+    END { if (dedans) printf "ligne %d: zone derogatoire ouverte et JAMAIS fermee\n", debut }
+  ' "$f")"
+  # LA PORTEE EST SUIVIE, PAS DEDUITE DE LA DERNIERE DEFINITION VUE. Sans la
+  # remise a zero sur `}`, du code de PREMIER NIVEAU place apres la definition
+  # d'un `session_*` aurait herite de son nom et serait passe — c'est-a-dire
+  # exactement le cas a attraper: un scenario O qui enregistre a la main.
+  hors_helper="$(awk -v p="$prefixe" '
+    /^[A-Za-z_][A-Za-z_0-9]*\(\)/ {
+      fonction = $0; sub(/\(\).*/, "", fonction)
+      unligne = ($0 ~ /}[[:space:]]*$/)          # definition tenant sur une ligne
+    }
+    index($0, p) && $0 !~ /^[[:space:]]*#/ {
+      if (fonction !~ /^session_/ && index(fonction, p) != 1)
+        printf "ligne %d, dans %s: %s\n", FNR,
+               (fonction == "" ? "le corps principal" : fonction "()"), $0
+    }
+    /^}/      { fonction = "" }
+    unligne   { fonction = ""; unligne = 0 }
+  ' "$f")"
+  if [[ -n "$hors_zone" ]]; then
+    echoue "acquisition de verrou hors du chemin unique de creation:"
+    while IFS= read -r l; do detail "$l"; done <<<"$hors_zone"
+  fi
+  if [[ -n "$hors_helper" ]]; then
+    echoue "primitive de manifeste appelee hors des helpers session_*:"
+    while IFS= read -r l; do detail "$l"; done <<<"$hors_helper"
+  fi
+  [[ -z "$hors_zone" && -z "$hors_helper" ]]
+}
+
+# CONTRE-EXEMPLE DELIBERE, RESERVE AU SCENARIO M. Il publie `NETTOYE` SANS
+# aucune preuve d'absence — c'est le mensonge que `b0_contaminee()` doit
+# refuser. Son nom dit ce qu'il fait: aucun scenario ne peut l'employer pour
+# « terminer » proprement.
+session_falsifier_nettoye() { _manifeste_etat "$1" ACTIF NETTOYE; }
 
 # ==========================================================================
 # CANAUX — UNE SEULE LOGIQUE DE VALIDATION, CINQ ETATS DISTINCTS
@@ -537,6 +761,24 @@ menage() {
     rc=$?; (( rc == 2 || rc == 3 )) \
       && nettoyage_echoue "backend tiers ($TIERS_BACKEND) non nettoye (code $rc)"
   fi
+  # LE TEMOIN DE M AUSSI. Il etait absent de ce nettoyage: interrompu pendant M,
+  # le test laissait derriere lui un backend detenant (778899,112233) jusqu'a
+  # l'expiration de son `pg_sleep`. Meme fonction, meme exigence d'identite.
+  if [[ -n "$M_BACKEND" ]]; then
+    terminer_possede "$M_BACKEND" "$M_APP" "$M_C1" "$M_C2" ShareLock "menage (temoin M)"
+    rc=$?; (( rc == 2 || rc == 3 )) \
+      && nettoyage_echoue "temoin de M ($M_BACKEND) non nettoye (code $rc)"
+  fi
+  if (( M_C1 != 0 )); then
+    local resteM
+    resteM="$(lire_sql "select count(*) from pg_locks
+                         where locktype='advisory' and classid=$M_C1 and objid=$M_C2")"
+    if [[ "$resteM" == ILLISIBLE* ]]; then
+      nettoyage_echoue "verrou de M: lecture impossible — ${resteM#*$'\t'}"
+    elif [[ "$resteM" != "0" ]]; then
+      nettoyage_echoue "$resteM verrou(s) des cles de M ($M_C1,$M_C2) subsistent"
+    fi
+  fi
   # AUCUN VERROU DES DEUX JETONS NE DOIT SUBSISTER.
   if (( CLE1 != 0 )); then
     local reste
@@ -548,7 +790,7 @@ menage() {
       nettoyage_echoue "$reste verrou(s) des cles ($CLE1,$CLE2) subsistent"
     fi
   fi
-  for c in "$FUITE_CLIENT" "$TIERS_CLIENT"; do
+  for c in "$FUITE_CLIENT" "$TIERS_CLIENT" "$M_CLIENT"; do
     [[ -n "$c" ]] && { kill "$c" 2>/dev/null; wait "$c" 2>/dev/null; }
   done
   if [[ -n "$ESPACE_DEPOT" && -d "$ESPACE_DEPOT" ]]; then
@@ -689,12 +931,21 @@ if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "interruption_c" ]]; then
   # PRISE DE TEST: les connexions s'ouvrent mais NE PRENNENT AUCUN VERROU. Les
   # PID seront numeriques et presents — exactement le cas ou l'ancienne boucle
   # publiait `READY` a tort.
+  # LE SOUS-MODE N'EST PAS LE PROPRIETAIRE ENREGISTRE, ET C'EST TOUT LE SUJET.
+  # Il est tue au moment precis ou il detient ses verrous; son propre registre
+  # meurt avec lui. C'est le PARENT qui declare l'intention avant de le lancer
+  # (`session_declarer`) puis publie les identites exactes rendues par le temoin
+  # (`session_publier`). L'exception est donc bornee au bloc balise ci-dessous,
+  # et la propriete « une ressource creee est une ressource enregistree » reste
+  # vraie du cote ou elle doit l'etre: celui qui survit pour la nettoyer.
+  # ESC-CREATION-DIRECTE-DEBUT
   SQL_VERROU="select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(300);"
   [[ -n "${ESC_ACQUISITION_IMPOSSIBLE:-}" ]] && SQL_VERROU="select pg_sleep(300);"
   PGAPPNAME="$APP_FUITE" psql -X -qtA -d postgres -c "$SQL_VERROU" >/dev/null 2>&1 &
   FUITE_CLIENT=$!
   PGAPPNAME="$APP_TIERS" psql -X -qtA -d postgres -c "$SQL_VERROU" >/dev/null 2>&1 &
   TIERS_CLIENT=$!
+  # ESC-CREATION-DIRECTE-FIN
   # `READY` N'EST PUBLIE QUE SUR PREUVE, JAMAIS PAR ARRIVEE EN FIN DE BOUCLE.
   # La version precedente ecrivait le temoin apres 600 passages QUELS QUE
   # SOIENT les resultats: deux PID numeriques suffisaient, sans qu'aucun verrou
@@ -741,8 +992,10 @@ fi
 if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "nettoyage_casse" ]]; then
   CLE1="${ESC_SIGNAL_CLE1:?}"; CLE2="${ESC_SIGNAL_CLE2:?}"
   APP_FUITE="esc-fuite-$JETON"
+  # ESC-CREATION-DIRECTE-DEBUT: sous-mode, meme raison que ci-dessus
   PGAPPNAME="$APP_FUITE" psql -X -qtA -d postgres -c \
     "select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(300);" >/dev/null 2>&1 &
+  # ESC-CREATION-DIRECTE-FIN
   FUITE_CLIENT=$!
   PRET=0
   for _ in $(seq 1 600); do
@@ -765,6 +1018,19 @@ if [[ "${ESC_SIGNAL_SOUS_MODE:-}" == "nettoyage_casse" ]]; then
   # de sortie doit passer de 0 a 9 — jamais rester 0.
   export ESC_SQL_ILLISIBLE=1
   sortir 0
+fi
+
+# ==========================================================================
+# BARRIERE STRUCTURELLE — avant tout scenario, et hors des sous-modes
+# ==========================================================================
+# Elle ne mesure rien a l'execution: elle lit le fichier. C'est voulu. Aucune
+# passe verte n'aurait revele qu'un futur scenario ouvre sa propre session
+# porteuse de verrou sans l'enregistrer — le defaut ne se manifeste que plus
+# tard, dans la baseline d'un AUTRE scenario, et sous forme d'un vert.
+echo "      -- barriere: la creation de ressources est-elle centralisee ?"
+if exiger_creation_centralisee; then
+  ok "toute acquisition de verrou passe par session_creer, hors zones balisees"
+  ok "les primitives de manifeste ne sont appelees que par les helpers session_*"
 fi
 
 # ==========================================================================
@@ -1016,44 +1282,20 @@ VERROUS_AVANT_C="$(empreinte_verrous)"
 # VERROU PARTAGE, ET C'EST DELIBERE: il permet a une session TIERCE de detenir
 # les MEMES cles en meme temps. C'est la seule facon d'exercer reellement le
 # defaut « selection par cles seules », qui les aurait terminees toutes les deux.
-PGAPPNAME="$APP_FUITE" psql -X -qtA -d postgres -c \
-  "select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(120);" >/dev/null 2>&1 &
-FUITE_CLIENT=$!
-
-for _ in $(seq 1 300); do
-  enregistrer_identite "$APP_FUITE" && break
-  kill -0 "$FUITE_CLIENT" 2>/dev/null || break
-  sleep 0.1
-done
-FUITE_BACKEND="$ID_PID"; FUITE_START="$ID_START"
-FUITE_DATID="$ID_DATID"; FUITE_USER="$ID_USER"
-
-if [[ -z "$FUITE_BACKEND" ]]; then
+#
+# LA CREATION ET L'ENREGISTREMENT SONT UNE SEULE OPERATION. `session_creer` ne
+# rend la main qu'apres avoir declare l'intention, constate la DETENTION exacte
+# et relu un manifeste valide; il n'y a donc plus de fenetre pendant laquelle un
+# backend de C existe sans etre enregistre.
+if ! session_creer C "$APP_FUITE" "$CLE1" "$CLE2"; then
   echoue "C: la connexion porteuse n'est jamais apparue — scenario non exerce"
+  detail "$SESSION_DIAG"
 else
-  # LA PROPRIETE EST PROUVEE AVANT DE TOUCHER A QUOI QUE CE SOIT: ce PID, ce
-  # verrou, cette base, `objsubid = 2`.
-  # LA DETENTION, PAS LA PRESENCE. Une ligne dans `pg_stat_activity` peut
-  # preceder l'acquisition du verrou: annoncer la propriete sur cette base
-  # affirmerait ce qui n'a pas ete observe.
-  rcd=1
-  for _ in $(seq 1 300); do
-    detient_verrou "$FUITE_BACKEND" "$APP_FUITE" "$CLE1" "$CLE2" ShareLock; rcd=$?
-    (( rcd != 1 )) && break
-    sleep 0.1
-  done
-  if (( rcd == 3 )); then
-    echoue "C: detention du verrou de C illisible — $CMP_DIAG"
-  elif (( rcd != 0 )); then
-    echoue "C: le backend $FUITE_BACKEND ne detient pas le verrou attendu"
-  else
+  FUITE_CLIENT="$SESSION_CLIENT"; FUITE_BACKEND="$SESSION_BACKEND"
+  FUITE_START="$SESSION_START"; FUITE_DATID="$SESSION_DATID"; FUITE_USER="$SESSION_USER"
+  {
     ok "verrou injecte pose: backend $FUITE_BACKEND, cles ($CLE1,$CLE2), objsubid 2"
-    # LE REGISTRE N'EST PAS UNE LISTE FERMEE: chaque scenario inscrit ce qu'il
-    # cree, DES SA CREATION. Sans cela `b0_contaminee()` n'a rien a examiner —
-    # c'est ce qui a laisse les deux ShareLock de C entrer dans le B0 de E.
-    manifeste_ouvrir C
-    manifeste_backend C "$FUITE_BACKEND" "$APP_FUITE"
-    manifeste_verrou C "$CLE1" "$CLE2"
+    detail "manifeste C: ETAT=$(sed -n 's/^ETAT=//p' "$MANIFESTES/C"), backend enregistre a la creation"
 
     # LA COMPARAISON DOIT RENDRE EXACTEMENT 10 — « verrou supplementaire ».
     # Ni 11, ni 12, ni 20/21: une panne d'observation ne doit pas etre lue
@@ -1079,32 +1321,23 @@ else
     fi
 
     # --- LE TIERS: MEMES CLES, ET IL DOIT SURVIVRE ------------------------
-    PGAPPNAME="$APP_TIERS" psql -X -qtA -d postgres -c \
-      "select pg_advisory_lock_shared($CLE1,$CLE2); select pg_sleep(120);" >/dev/null 2>&1 &
-    TIERS_CLIENT=$!
-    for _ in $(seq 1 300); do
-      enregistrer_identite "$APP_TIERS" && break
-      kill -0 "$TIERS_CLIENT" 2>/dev/null || break
-      sleep 0.1
-    done
-    TIERS_BACKEND="$ID_PID"; TIERS_START="$ID_START"
-    TIERS_DATID="$ID_DATID"; TIERS_USER="$ID_USER"
-    rct=1
-    if [[ -n "$TIERS_BACKEND" ]]; then
-      for _ in $(seq 1 300); do
-        detient_verrou "$TIERS_BACKEND" "$APP_TIERS" "$CLE1" "$CLE2" ShareLock; rct=$?
-        (( rct != 1 )) && break
-        sleep 0.1
-      done
-    fi
-    if [[ -z "$TIERS_BACKEND" ]] || (( rct != 0 )); then
+    # MEME CHEMIN UNIQUE. Le second backend de C entre au manifeste par la meme
+    # porte que le premier: c'est la seule facon que « le registre est complet »
+    # ne dependre pas du soin de l'auteur.
+    if ! session_creer C "$APP_TIERS" "$CLE1" "$CLE2"; then
       echoue "C: la session tierce ne detient pas le meme verrou — survie non exercee"
-      (( rct == 3 )) && detail "lecture impossible: $CMP_DIAG"
+      detail "$SESSION_DIAG"
+    else
+      TIERS_CLIENT="$SESSION_CLIENT"; TIERS_BACKEND="$SESSION_BACKEND"
+      TIERS_START="$SESSION_START"; TIERS_DATID="$SESSION_DATID"; TIERS_USER="$SESSION_USER"
+    fi
+    if [[ -z "$TIERS_BACKEND" ]]; then
+      :
     elif [[ "$TIERS_BACKEND" == "$FUITE_BACKEND" ]]; then
       echoue "C: tiers et fuite partagent le meme PID ($TIERS_BACKEND)"
     else
       ok "session tierce DETENTRICE du meme verrou partage: backend $TIERS_BACKEND (ShareLock, accorde)"
-      manifeste_backend C "$TIERS_BACKEND" "$APP_TIERS"
+      detail "manifeste C: $(grep -c '^BACKEND=' "$MANIFESTES/C") backend(s) enregistre(s) par le helper"
 
       # UN PID N'EST PAS UNE AUTORITE — et voici la preuve. Meme PID, MAUVAISE
       # identite: la terminaison doit REFUSER, et la session survivre avec son
@@ -1158,8 +1391,17 @@ else
     # seconde moitie, un detecteur qui rougirait TOUJOURS passerait aussi.
     comparer_verrous "C (retour a l'etat initial)" "$VERROUS_AVANT_C"; rc=$?
     (( rc == 0 )) || echoue "C: apres nettoyage la comparaison rend $rc, attendu 0"
-    manifeste_fermer C
-  fi
+
+    # L'ETAT TERMINAL EST UNE CONCLUSION, PAS UNE DECLARATION. `session_liberer`
+    # relit chaque identite enregistree dans `pg_stat_activity` et recompte les
+    # verrous des deux cles: sans cette double absence, le manifeste reste ACTIF
+    # et la baseline de E refusera — ce qui est le comportement voulu.
+    if session_liberer C "$CLE1" "$CLE2"; then
+      ok "C: manifeste NETTOYE apres revalidation de l'absence reelle (backends et verrou)"
+    else
+      echoue "C: le manifeste reste $(sed -n 's/^ETAT=//p' "$MANIFESTES/C") — $SESSION_DIAG"
+    fi
+  }
 fi
 
 # ==========================================================================
@@ -1236,6 +1478,12 @@ if (( b_stable )); then
 else
   echoue "E: la baseline externe ne s'est pas stabilisee"
 fi
+# L'INTENTION EST DECLAREE AVANT QUE LE SOUS-MODE N'EXISTE. Le manifeste de E
+# passe en PREPARE ici: si le sous-mode etait tue entre son acquisition et la
+# publication des identites, E resterait en PREPARE et toute baseline ulterieure
+# refuserait. L'ordre « creer puis enregistrer » laissait au contraire une
+# fenetre pendant laquelle la ressource existait sans proprietaire declare.
+session_declarer E "$E_CLE1" "$E_CLE2"
 ESC_SIGNAL_SOUS_MODE=interruption_c ESC_SIGNAL_TEMOIN="$TEMOIN_E" \
   ESC_SIGNAL_CLE1="$E_CLE1" ESC_SIGNAL_CLE2="$E_CLE2" \
   bash "$HERE/$(basename "${BASH_SOURCE[0]}")" >/dev/null 2>&1 &
@@ -1263,19 +1511,23 @@ else
     # LE PARENT REVALIDE LUI-MEME, JUSTE AVANT LE SIGNAL. Il ne se fie pas au
     # temoin ecrit par le sous-mode: c'est l'etat du catalogue a cet instant qui
     # decide s'il y a bien quelque chose a nettoyer.
+    # LA REVALIDATION ET L'ENREGISTREMENT SONT LA MEME OPERATION. `session_publier`
+    # exige la DETENTION exacte avant d'inscrire quoi que ce soit, puis relit le
+    # manifeste par le lecteur de `b0_contaminee`. Le parent ne se fie donc ni au
+    # temoin ecrit par le sous-mode, ni a sa propre ecriture.
     revalide=1
     if [[ "$E_FB" == "$E_TB" ]]; then
       echoue "E: les deux PID publies sont identiques ($E_FB)"
-    elif ! detient_verrou "$E_FB" "$E_AF" "$E_CLE1" "$E_CLE2" ShareLock; then
+    elif ! session_publier E "$E_AF" "$E_FB" "$E_CLE1" "$E_CLE2"; then
       echoue "E: le backend de fuite ne detient pas le verrou attendu — rien a nettoyer"
-    elif ! detient_verrou "$E_TB" "$E_AT" "$E_CLE1" "$E_CLE2" ShareLock; then
+      detail "$SESSION_DIAG"
+    elif ! session_publier E "$E_AT" "$E_TB" "$E_CLE1" "$E_CLE2"; then
       echoue "E: le backend tiers ne detient pas le verrou attendu — rien a nettoyer"
+      detail "$SESSION_DIAG"
     else
       revalide=0
       ok "sous-mode pret et REVALIDE: $E_FB et $E_TB detiennent ($E_CLE1,$E_CLE2) en ShareLock accorde"
-    manifeste_ouvrir E
-    manifeste_backend E "$E_FB" "$E_AF"; manifeste_backend E "$E_TB" "$E_AT"
-    manifeste_verrou E "$E_CLE1" "$E_CLE2"
+      detail "manifeste E: ETAT=$(sed -n 's/^ETAT=//p' "$MANIFESTES/E"), $(grep -c '^BACKEND=' "$MANIFESTES/E") backend(s)"
     fi
     kill -TERM "$EPID"
     E_CODE=0; wait "$EPID" 2>/dev/null || E_CODE=$?
@@ -1321,7 +1573,15 @@ else
     # B1 doit egaler B0 EXACTEMENT: les verrous de E ne doivent apparaitre
     # dans aucun des deux, et le verrou legitime d'un appelant imbrique doit
     # apparaitre dans les deux.
-    manifeste_fermer E
+    #
+    # LE SOUS-MODE A NETTOYE; LE PARENT NE LE CROIT PAS SUR PAROLE. Il relit
+    # chaque identite qu'il a lui-meme enregistree et recompte les verrous des
+    # deux cles avant de publier `NETTOYE`.
+    if session_liberer E "$E_CLE1" "$E_CLE2"; then
+      ok "E: manifeste NETTOYE apres revalidation de l'absence reelle"
+    else
+      echoue "E: le manifeste reste $(sed -n 's/^ETAT=//p' "$MANIFESTES/E") — $SESSION_DIAG"
+    fi
     comparer_verrous "E (B1 = B0)" "$VERROUS_AVANT_E"
   fi
 fi
@@ -1835,40 +2095,46 @@ rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
 # anterieur, doit faire REFUSER la baseline.
 echo "      -- M. baseline contaminee mais stable: refus par propriete"
 M_APP="esc-m-$JETON"; M_C1=778899; M_C2=112233
-manifeste_ouvrir M
-PGAPPNAME="$M_APP" psql -X -qtA -d postgres -c \
-  "select pg_advisory_lock_shared($M_C1,$M_C2); select pg_sleep(120);" >/dev/null 2>&1 &
-M_CLIENT=$!
-M_BACKEND=""
-for _ in $(seq 1 300); do
-  M_BACKEND="$(lire_sql "select pid from pg_stat_activity where application_name='$M_APP'" | head -1)"
-  pid_valide "${M_BACKEND:-x}" && detient_verrou "$M_BACKEND" "$M_APP" "$M_C1" "$M_C2" ShareLock && break
-  sleep 0.1
-done
-if ! pid_valide "${M_BACKEND:-x}"; then
+if ! session_creer M "$M_APP" "$M_C1" "$M_C2"; then
   echoue "M: le temoin n'a pas pu etre cree — scenario non exerce"
+  detail "$SESSION_DIAG"
 else
-  manifeste_backend M "$M_BACKEND" "$M_APP"
-  manifeste_verrou M "$M_C1" "$M_C2"
-  manifeste_fermer M
+  M_CLIENT="$SESSION_CLIENT"; M_BACKEND="$SESSION_BACKEND"
+  # LE MENSONGE EST POSE ICI, ET IL EST DELIBERE. Le manifeste annonce
+  # `NETTOYE` alors que le backend vit et que le verrou tient. C'est le seul
+  # contre-exemple qui separe « etat terminal declare » de « absence reelle »:
+  # si `b0_contaminee()` se contentait de lire l'etat, elle accepterait.
+  session_falsifier_nettoye M
   ok "M: temoin enregistre au manifeste (backend $M_BACKEND, verrou $M_C1/$M_C2)"
+  detail "manifeste M falsifie: ETAT=$(sed -n 's/^ETAT=//p' "$MANIFESTES/M") alors que la ressource vit"
   m_a="$(empreinte_verrous)"; sleep 0.6; m_b="$(empreinte_verrous)"
   [[ "$m_a" == "$m_b" ]] \
     && ok "M: la baseline est STABLE (deux lectures identiques)" \
     || echoue "M: baseline instable — le contre-exemple ne porte pas"
   if b0_contaminee; then
-    ok "M: baseline REFUSEE malgre sa stabilite — $B0_DIAG"
+    ok "M: baseline REFUSEE malgre sa stabilite ET malgre l'etat NETTOYE — $B0_DIAG"
+    grep -q "possede encore le backend $M_BACKEND" <<<"$B0_DIAG" \
+      && ok "M: le refus nomme l'identite revalidee, pas l'etat declare" \
+      || { echoue "M: le refus ne porte pas sur l'identite revalidee"
+           detail "diagnostic obtenu: $B0_DIAG" ; }
   else
     echoue "M: baseline stable ACCEPTEE alors qu'elle appartient au scenario M"
-    detail "la stabilite a ete confondue avec la propriete"
+    detail "un manifeste annoncant NETTOYE a ete cru sur parole"
   fi
-  terminer_possede "$M_BACKEND" "$M_APP" "$M_C1" "$M_C2" ShareLock "M"
-  (( $? == 0 )) && M_BACKEND="" || echoue "M: le temoin n'a pas pu etre nettoye"
+  # NETTOYAGE EXACT, PAR LE MEME CHEMIN QUE LES AUTRES. `session_fermer` termine
+  # l'identite possedee puis exige la double absence avant de publier `NETTOYE`
+  # — cette fois la publication est meritee, et le manifeste RESTE en place:
+  # c'est lui qui doit ensuite laisser passer la baseline.
+  if session_fermer M "$M_BACKEND" "$M_APP" "$M_C1" "$M_C2"; then
+    M_BACKEND=""
+    ok "M: temoin nettoye, NETTOYE publie apres double absence constatee"
+  else
+    echoue "M: le temoin n'a pas pu etre nettoye — $SESSION_DIAG"
+  fi
   kill "$M_CLIENT" 2>/dev/null; wait "$M_CLIENT" 2>/dev/null; M_CLIENT=""
-  rm -f "$MANIFESTES/M"
   b0_contaminee \
     && echoue "M: la baseline reste refusee apres nettoyage — $B0_DIAG" \
-    || ok "M: apres nettoyage, la baseline redevient acceptable"
+    || ok "M: apres nettoyage, la baseline redevient acceptable (manifeste conserve)"
 fi
 
 # ==========================================================================
