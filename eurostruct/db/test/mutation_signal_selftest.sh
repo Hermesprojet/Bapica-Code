@@ -870,6 +870,7 @@ MK_FORMAT=""; MK_STATE=""; MK_WRAP=""; MK_HARN=""; MK_WIT=""; MK_PGID=""; MK_DIA
 lire_marqueur() {
   local f="$1" k v dup
   MK_FORMAT=""; MK_STATE=""; MK_WRAP=""; MK_HARN=""; MK_WIT=""; MK_PGID=""; MK_DIAG=""
+  MK_SCEN=""; MK_JETON=""; MK_WPGID=""; MK_HPGID=""; MK_TPGID=""; MK_GATE=""; MK_GATE_DIAG=""
   [[ -s "$f" ]] || { MK_DIAG="marqueur vide ou absent"; return 1; }
   dup="$(cut -d= -f1 "$f" | sort | uniq -d | tr '\n' ' ')"
   [[ -z "${dup// /}" ]] || { MK_DIAG="champ(s) duplique(s): $dup"; return 1; }
@@ -878,11 +879,23 @@ lire_marqueur() {
       FORMAT) MK_FORMAT="$v" ;;      STATE) MK_STATE="$v" ;;
       WRAPPER_PID) MK_WRAP="$v" ;;   HARNESS_PID) MK_HARN="$v" ;;
       WITNESS_PID) MK_WIT="$v" ;;    PGID) MK_PGID="$v" ;;
+      SCENARIO) MK_SCEN="$v" ;;      TOKEN) MK_JETON="$v" ;;
+      WRAPPER_PGID) MK_WPGID="$v" ;; HARNESS_PGID) MK_HPGID="$v" ;;
+      WITNESS_PGID) MK_TPGID="$v" ;; HARNESS_GATE_STATE) MK_GATE="$v" ;;
+      GATE) MK_GATE_DIAG="$v" ;;
       *) MK_DIAG="champ inconnu: ${k:-<vide>}"; return 1 ;;
     esac
   done < "$f"
-  [[ "$MK_FORMAT" == "esc-mutation-marker/1" ]] \
+  # LA VERSION EST EXIGEE, ET C'EST TOUT LE POINT DU PASSAGE EN /2. Le format /1
+  # ne certifiait qu'une PHOTOGRAPHIE: trois processus vivants a l'instant de la
+  # publication, sans aucune garantie de duree. Le /2 n'est publie qu'apres
+  # preuve que le harnais est BLOQUE sur une porte que seul le signal ouvre.
+  # Reutiliser /1 avec cette nouvelle semantique aurait rendu les deux
+  # indistinguables — un lecteur ne saurait plus ce que « READY » lui promet.
+  [[ "$MK_FORMAT" == "esc-mutation-marker/2" ]] \
     || { MK_DIAG="version inconnue: ${MK_FORMAT:-<absente>}"; return 1; }
+  [[ "$MK_GATE" == BLOCKED ]] \
+    || { MK_DIAG="HARNESS_GATE_STATE=${MK_GATE:-<absent>}, attendu BLOCKED"; return 1; }
   case "$MK_STATE" in READY|FAILED) : ;;
     *) MK_DIAG="etat invalide: ${MK_STATE:-<absent>}"; return 1 ;; esac
   for v in "$MK_WRAP" "$MK_HARN" "$MK_WIT" "$MK_PGID"; do
@@ -1090,7 +1103,16 @@ else
 fi
 
 TEMOIN_DESC="$(mktemp)"
-lancer_matrice W1 "ESC_MUTATION_TEMOIN=$TEMOIN_DESC"
+# LES CANAUX DU WRAPPER SONT DESORMAIS ARMES EN PERMANENCE DANS A. Ils
+# existaient et n'etaient poses que par `lancer_L`: le scenario A n'avait donc
+# ni journal de `wait`, ni marqueurs causaux, ni resultat. Quand il a rougi en
+# CI, il etait impossible de savoir si le harnais avait fini normalement ou
+# avait ete tue — le trou d'observation etait dans le scenario, pas dans l'outil.
+A_JETON="A-$JETON"
+A_MARQ="$(mktemp -d)"; A_JOUR="$(mktemp)"; A_RESULTAT="$(mktemp -u)"
+lancer_matrice W1 "ESC_MUTATION_TEMOIN=$TEMOIN_DESC" \
+  "ESC_MUTATION_JETON=$A_JETON" "ESC_SCENARIO=A" \
+  "ESC_MARQUEURS=$A_MARQ" "ESC_JOURNAL=$A_JOUR" "ESC_MUTATION_RESULTAT=$A_RESULTAT"
 attendre "la mutation posee" '[[ -s "$TRACE" ]]' 3000 || exit 1
 IFS=$'\t' read -r CAS_NOM CAS_FIC CAS_SOMME _ESPACE ESPACE_DEPOT <"$TRACE"
 ok "mutation posee: $CAS_NOM sur $CAS_FIC"
@@ -1118,6 +1140,25 @@ ok "marqueur $MK_FORMAT, etat READY: wrapper $WRAP_PID, harnais $BASH_PID, temoi
 [[ "$MK_PGID" == "$WRAP_PID" ]] \
   && ok "le PGID publie est bien celui du wrapper" \
   || echoue "PGID publie $MK_PGID, wrapper $WRAP_PID"
+[[ "$MK_SCEN" == "A" && "$MK_JETON" == "$A_JETON" ]] \
+  && ok "marqueur du bon scenario et du bon jeton" \
+  || echoue "READY_MALFORME: scenario « $MK_SCEN », jeton « $MK_JETON »"
+
+# LA PREUVE DE BLOCAGE, LUE A LA SOURCE ET NON DEDUITE DU MARQUEUR. Le wrapper
+# affirme `HARNESS_GATE_STATE=BLOCKED`; le parent relit le document que le
+# HARNAIS a publie lui-meme, et compare les identites.
+# Le document BLOCKED est publie par le HARNAIS dans le repertoire prive du
+# wrapper, que celui-ci detruit en sortant. C'est le wrapper qui en fait la
+# verification forte — PID, PGID, jeton et STATE compares un a un AVANT de
+# publier READY — et qui en recopie le resultat dans le marqueur. Le parent
+# revalide ici ce qui lui est accessible: l'etat de la porte et le PGID declare.
+if [[ "$MK_GATE" != BLOCKED ]]; then
+  echoue "HARNESS_BLOCKED_ABSENT: le wrapper a publie READY sans preuve de blocage"
+  exit 1
+fi
+[[ "$MK_HPGID" == "$WRAP_PID" ]] \
+  && ok "porte: le harnais bloque declare le PGID du wrapper" \
+  || echoue "HARNESS_BLOCKED_IDENTITE_INVALIDE: PGID declare « $MK_HPGID »"
 # LE HARNAIS DOIT ETRE ENCORE VIVANT. S'il a fini avant le signal, le scenario
 # n'exerce rien — et c'est exactement ce que le defaut precedent masquait
 # derriere une attente de 300 s.
@@ -1138,7 +1179,17 @@ PGID_TEMOIN2="$(ps -o pgid= -p "$TEMOIN_PID" 2>/dev/null | tr -d ' ')"
 if [[ "$PGID_HARNAIS" == "$WRAP_PID" && "$PGID_TEMOIN2" == "$WRAP_PID" ]]; then
   ok "harnais et temoin sont dans le groupe du wrapper (PGID $WRAP_PID)"
 else
-  echoue "groupes incoherents: harnais[$PGID_HARNAIS] temoin[$PGID_TEMOIN2] wrapper[$WRAP_PID]"
+  # NOMMER LA PERTE DE VIVACITE. Avec la porte, harnais et temoin ne PEUVENT
+  # plus disparaitre avant le signal: si l'un manque, ce n'est plus une course
+  # perdue mais une violation, et le diagnostic doit dire laquelle.
+  if [[ -z "$PGID_HARNAIS" ]]; then
+    echoue "LEASE_LOST_AFTER_READY: le harnais $BASH_PID a disparu apres READY"
+  elif [[ -z "$PGID_TEMOIN2" ]]; then
+    echoue "WITNESS_LOST_AFTER_READY: le temoin $TEMOIN_PID a disparu apres READY"
+  else
+    echoue "groupes incoherents: harnais[$PGID_HARNAIS] temoin[$PGID_TEMOIN2] wrapper[$WRAP_PID]"
+  fi
+  [[ -f "$TEMOIN_DESC.terminal" ]] && detail "terminal: $(tr '\n' ' ' <"$TEMOIN_DESC.terminal")"
 fi
 
 # LE TEMOIN, PAS UN `psql` DE PASSAGE. Attendre un descendant naturel ne
@@ -1154,7 +1205,9 @@ fi
 PETITS="$(vivants "$TEMOIN_PID $(descendants "$BASH_PID" | tr '\n' ' ')")"
 [[ -n "$(vivants "$TEMOIN_PID")" ]] \
   && ok "descendance vivante a l'instant du signal: $PETITS" \
-  || { echoue "le temoin $TEMOIN_PID n'est plus vivant avant le signal"; exit 1; }
+  || { echoue "WITNESS_LOST_AFTER_READY: le temoin $TEMOIN_PID n'est plus vivant avant le signal"
+       [[ -f "$TEMOIN_DESC.terminal" ]] && detail "terminal: $(tr '\n' ' ' <"$TEMOIN_DESC.terminal")"
+       exit 1; }
 
 kill -TERM "$MPID"
 CODE=0; wait "$MPID" 2>/dev/null || CODE=$?

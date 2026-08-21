@@ -400,6 +400,72 @@ else
 suivre_decor
 echo "      ok: decor I — sceau pose par « $CTL », phase 1 par « $MIG », PENDING"
 
+# ==========================================================================
+# PORTE DE VIVACITE — STRICTEMENT RESERVEE A L'AUTO-TEST DE SIGNAUX
+# ==========================================================================
+# INERTE HORS AUTO-TEST: sans `ESC_HARNAIS_PORTE`, pas une instruction de ce
+# bloc ne s'execute, et le contrat du sceau se deroule inchange.
+#
+# POURQUOI ICI PRECISEMENT. Le scenario A de `mutation_signal_selftest.sh`
+# affirme deux choses: que le signal atteint un harnais VIVANT, et que la
+# trap de nettoyage rend ensuite le decor. Les deux exigent ce point:
+#
+#   * les trappes sont armees (`trap sortie_propre EXIT`, `harnais_piege_signaux`);
+#   * le decor EXISTE — roles et base au prefixe — donc « rien ne subsiste »
+#     apres coup est une affirmation qui porte, et non une verite vide;
+#   * la fin nominale de W1 n'est pas encore atteignable.
+#
+# CE QUE CE BLOC CORRIGE. `READY` etait une PHOTOGRAPHIE: le producteur
+# constatait les trois processus vivants, publiait, et rien n'empechait le
+# harnais de finir avant que le consommateur ne revalide. Mesure, `EUROSTRUCT`
+# sur b20bc2e, scenario A:
+#
+#     ok: harnais identifie PID 45206          <- vivant ici
+#     ECHEC: groupes incoherents: harnais[] temoin[] wrapper[45204]
+#     ECHEC: le temoin 45205 n'est plus vivant avant le signal
+#
+# Le harnais est mort entre deux lectures adjacentes du meme script, et le
+# temoin avec lui — consequence normale de `fin harnais -> attendre_harnais
+# retourne -> moissonner_temoin`. La fenetre n'est pas etroite: elle n'est pas
+# bornee.
+#
+# LA PORTE REMPLACE LA PHOTOGRAPHIE PAR UNE VIVACITE DETENUE. Le harnais se
+# bloque sur une FIFO dont le wrapper garde l'ecriture ouverte; il ne peut donc
+# plus finir normalement avant le signal. Une sortie normale du `read` est une
+# VIOLATION DE PROTOCOLE nommee, pas un succes.
+if [[ -n "${ESC_HARNAIS_PORTE:-}" ]]; then
+  porte_refus() { echo "      ECHEC: porte de vivacite — $1" >&2; exit 4; }
+  [[ "${ESC_HARNAIS_SCENARIO:-}" == "A" ]]     || porte_refus "scenario « ${ESC_HARNAIS_SCENARIO:-} », attendu A"
+  [[ -n "${ESC_HARNAIS_JETON:-}" ]] || porte_refus "jeton absent"
+  [[ -p "$ESC_HARNAIS_PORTE" ]]     || porte_refus "« $ESC_HARNAIS_PORTE » n'est pas une FIFO"
+  [[ -n "${ESC_HARNAIS_ETAT:-}" ]] || porte_refus "chemin d'etat absent"
+
+  # PUBLICATION EXCLUSIVE PAR LIEN DUR: `ln` echoue si la cible existe, donc un
+  # second BLOCKED est une erreur observable et non un ecrasement silencieux.
+  # `mv -f` aurait recouvert le premier sans rien dire.
+  _pgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"
+  { echo "FORMAT=esc-harness-blocked/1"
+    echo "SCENARIO=$ESC_HARNAIS_SCENARIO"
+    echo "TOKEN=$ESC_HARNAIS_JETON"
+    echo "PID=$$"
+    echo "PGID=$_pgid"
+    echo "STATE=BLOCKED"
+  } >"$ESC_HARNAIS_ETAT.tmp"
+  ln "$ESC_HARNAIS_ETAT.tmp" "$ESC_HARNAIS_ETAT" 2>/dev/null     || porte_refus "BLOCKED deja publie — publication dupliquee"
+  rm -f "$ESC_HARNAIS_ETAT.tmp"
+
+  # OUVERTURE EN LECTURE SEULE, ET C'EST DELIBERE. Le wrapper detient le cote
+  # ecriture: l'ouverture ne bloque donc pas, et si le wrapper disparaissait le
+  # `read` recevrait EOF — ce qui devient une violation nommee au lieu d'une
+  # attente eternelle.
+  exec 8<"$ESC_HARNAIS_PORTE" || porte_refus "ouverture de la porte impossible"
+  # SEUL LE SIGNAL DOIT TERMINER CETTE ATTENTE. Mesure, hors harnais:
+  #     kill -TERM pendant `read -u 9`  -> trap executee, delai 0 s, code 143
+  #     ecriture dans la FIFO           -> `read` rend 0, chemin d'erreur atteint
+  read -r -u 8
+  porte_refus "l'attente s'est terminee sans signal (read a rendu $?)"
+fi
+
 # --- I1. le sceau porte son identite --------------------------------------
 META=$(admb -tAc "select count(*) from pg_class c join pg_roles o on o.oid = c.relowner
                    where c.relname = 'normative_seal_metadata'

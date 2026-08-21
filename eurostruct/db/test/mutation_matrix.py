@@ -322,12 +322,47 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
         enveloppe = (
             'set -u\n'
             'umask 077\n'
-            '( exec sleep 300 ) >/dev/null 2>&1 </dev/null &\n'
+            'BARRIERE="$(mktemp -d)"; chmod 0700 "$BARRIERE"\n'
+            'mkfifo -m 0600 "$BARRIERE/harnais.fifo" "$BARRIERE/temoin.fifo"\n'
+            'exec 6<>"$BARRIERE/harnais.fifo" 7<>"$BARRIERE/temoin.fifo"\n'
+            'ETAT_HARNAIS="$BARRIERE/harnais.etat"\n'
+            '( exec 5<"$BARRIERE/temoin.fifo"; read -r -u 5 ) '
+            '6>&- 7>&- >/dev/null 2>&1 </dev/null &\n'
             'TEMOIN=$!\n'
-            '"$@" &\n'
+            'ESC_HARNAIS_PORTE="$BARRIERE/harnais.fifo" '
+            'ESC_HARNAIS_ETAT="$ETAT_HARNAIS" '
+            'ESC_HARNAIS_JETON="${ESC_MUTATION_JETON:-}" '
+            'ESC_HARNAIS_SCENARIO="${ESC_SCENARIO:-}" '
+            '"$@" 6>&- 7>&- &\n'
             'HARNAIS=$!\n'
             'PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d \' \')"\n'
             'ETAT=READY\n'
+            'GATE=ABSENT\n'
+            # UNE SEULE AUTORITE DE DELAI, ET CE N'EST PAS LE WRAPPER. Il
+            # attend des EVENEMENTS — la preuve de blocage, ou la mort du
+            # harnais — et rien d'autre. Le parent possede le delai
+            # d'obtention de READY; `_arreter_enfant()` possede l'escalade et
+            # SIGKILL. Un compteur autonome ici aurait ete une SECONDE
+            # horloge: regle a 30 s il concluait ABSENT sur un harnais
+            # parfaitement vivant, et le porter a 600 s n'aurait fait que
+            # rendre l'ordonnancement probable au lieu de le contraindre.
+            'while :; do\n'
+            '  [[ -s "$ETAT_HARNAIS" ]] && { GATE=PRESENT; break; }\n'
+            '  kill -0 "$HARNAIS" 2>/dev/null '
+            '|| { GATE=HARNAIS_TERMINE_AVANT_BLOCKED; break; }\n'
+            '  sleep 0.05\n'
+            'done\n'
+            '[[ "$GATE" == PRESENT ]] || ETAT=FAILED\n'
+            'GH=""; GP=""; GT=""; GS=""\n'
+            'if [[ "$GATE" == PRESENT ]]; then\n'
+            '  GH="$(sed -n \'s/^PID=//p\' "$ETAT_HARNAIS")"\n'
+            '  GP="$(sed -n \'s/^PGID=//p\' "$ETAT_HARNAIS")"\n'
+            '  GT="$(sed -n \'s/^TOKEN=//p\' "$ETAT_HARNAIS")"\n'
+            '  GS="$(sed -n \'s/^STATE=//p\' "$ETAT_HARNAIS")"\n'
+            '  [[ "$GH" == "$HARNAIS" && "$GP" == "$PGID" '
+            '     && "$GT" == "${ESC_MUTATION_JETON:-}" && "$GS" == BLOCKED ]] '
+            '     || ETAT=FAILED\n'
+            'fi\n'
             'PGH="$(ps -o pgid= -p "$HARNAIS" 2>/dev/null | tr -d \' \')"\n'
             'PGT="$(ps -o pgid= -p "$TEMOIN" 2>/dev/null | tr -d \' \')"\n'
             'STH="$(ps -o stat= -p "$HARNAIS" 2>/dev/null | tr -d \' \')"\n'
@@ -341,14 +376,24 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
             '    pipe:*) ETAT=FAILED ;;\n'
             '  esac\n'
             'done\n'
-            '{ echo "FORMAT=esc-mutation-marker/1"\n'
+            'PGT="$(ps -o pgid= -p "$TEMOIN" 2>/dev/null | tr -d \' \')"\n'
+            '{ echo "FORMAT=esc-mutation-marker/2"\n'
+            '  echo "SCENARIO=${ESC_SCENARIO:-}"\n'
+            '  echo "TOKEN=${ESC_MUTATION_JETON:-}"\n'
             '  echo "STATE=$ETAT"\n'
             '  echo "WRAPPER_PID=$$"\n'
+            '  echo "WRAPPER_PGID=$PGID"\n'
             '  echo "HARNESS_PID=$HARNAIS"\n'
+            '  echo "HARNESS_PGID=$GP"\n'
             '  echo "WITNESS_PID=$TEMOIN"\n'
+            '  echo "WITNESS_PGID=$PGT"\n'
             '  echo "PGID=$PGID"\n'
+            '  echo "HARNESS_GATE_STATE=$GS"\n'
+            '  echo "GATE=$GATE"\n'
             '} >"$ESC_TEMOIN.tmp"\n'
-            'mv -f "$ESC_TEMOIN.tmp" "$ESC_TEMOIN"\n'
+            'ln "$ESC_TEMOIN.tmp" "$ESC_TEMOIN" 2>/dev/null '
+            '|| echo "DOUBLON_READY" >>"$ESC_TEMOIN.doublon"\n'
+            'rm -f "$ESC_TEMOIN.tmp"\n'
             # LE WRAPPER RELAIE LE SIGNAL ET ATTEND LE HARNAIS. Sans cela il
             # mourait le premier — bash termine par defaut sur SIGTERM — et
             # `p.wait()`, qui attend le WRAPPER depuis qu'il ne fait plus
@@ -440,8 +485,21 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
             # chemin ne serait pas exerce.
             'marq WRAPPER_WAITING\n'
             'attendre_harnais\n'
+            'if [[ -z "${SIGNAL_RECU:-}" && "$ETAT" == READY ]]; then\n'
+            '  { echo "FORMAT=esc-mutation-terminal/1"\n'
+            '    echo "SCENARIO=${ESC_SCENARIO:-}"\n'
+            '    echo "TOKEN=${ESC_MUTATION_JETON:-}"\n'
+            '    echo "STATE=FAILED_AFTER_READY"\n'
+            '    echo "HARNESS_PID=$HARNAIS"\n'
+            '    echo "HARNESS_RC=$CODE"\n'
+            '  } >"$ESC_TEMOIN.terminal.tmp"\n'
+            '  ln "$ESC_TEMOIN.terminal.tmp" "$ESC_TEMOIN.terminal" 2>/dev/null || :\n'
+            '  rm -f "$ESC_TEMOIN.terminal.tmp"\n'
+            'fi\n'
             'marq WRAPPER_REAPED_HARNESS\n'
             'moissonner_temoin\n'
+            'exec 6>&- 7>&- 2>/dev/null || :\n'
+            'rm -rf "$BARRIERE"\n'
             'sortie_wrapper\n'
         )
         argv = ["bash", "-c", enveloppe, "bash", *argv]
@@ -476,6 +534,7 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
                          f"WRAPPER_PID={p.pid}\n"
                          f"WRAPPER_PGID={p.pid}\n"
                          f"WRAPPER_RC={p.returncode}\n"
+                         f"TOKEN={os.environ.get('ESC_MUTATION_JETON', '')}\n"
                          f"WAITS={_waits}\n")
             # `os.link` echoue si la cible existe: la publication est EXCLUSIVE,
             # donc un second resultat est une erreur observable et non un
