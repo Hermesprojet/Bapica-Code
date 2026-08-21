@@ -2031,6 +2031,20 @@ else
   ok "L1: wrapper $L_WPID revalide vivant, matrice $MPID laissee intacte"
   kill -TERM "$L_WPID"                    # LE WRAPPER SEUL, jamais la matrice
   L_T0=$SECONDS
+  # LE RELAIS A-T-IL ATTEINT LE HARNAIS ? PROPRIETE NOMMEE, ET BORNEE COURT.
+  # Dans cette topologie le harnais ne recoit rien du systeme: seul le relais
+  # du wrapper peut le toucher. Mesure, campagne de mutations sur 28daf35 —
+  # supprimer le relais ne se manifestait QUE par l'expiration de l'attente de
+  # fin du wrapper: 300 secondes plus tard, sur un diagnostic qui dit « la fin
+  # n'est pas venue » sans dire POURQUOI, et en avortant la passe avant L2.
+  # Rouge n'est pas rouge SUR LA BONNE ASSERTION. Ce controle nomme la cause,
+  # et il rougit en moins d'une seconde.
+  if attendre "le relais jusqu'au harnais (L1)" \
+       '[[ -f "$L_MARQ/HARNESS_TRAP_ENTERED/meta" ]]' 300; then
+    ok "L1: le relais du wrapper a atteint le harnais (HARNESS_TRAP_ENTERED)"
+  else
+    detail "le harnais n'a jamais recu le signal: le relais du wrapper est en cause"
+  fi
   attendre "la fin du wrapper (L1)" '[[ -f "$L_RESULTAT" ]]' 3000 || exit 1
   L_DUREE=$(( SECONDS - L_T0 ))
   [[ -n "$(vivants "$MPID")" ]] \
