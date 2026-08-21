@@ -17,3 +17,4 @@ __pycache__/
 # publie comme artefact CI. Genere, jamais versionne: sa presence dans
 # l arbre ferait echouer les controles « arbre propre » des harnais.
 eurostruct/conc-diagnostic.txt
+eurostruct/run-sql.log

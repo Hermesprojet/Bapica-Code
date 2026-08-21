@@ -29,6 +29,10 @@ DB_NAME="${1:?base de travail attendue en premier argument}"
 # contaminent des que deux suites tournent en meme temps — et c'est
 # precisement ce qu'une suite de concurrence risque de faire.
 TMP="$(mktemp -d)"
+# Nettoyage seul TANT QUE la connexion n'est pas etablie: le diagnostic
+# interroge la base, et une trap qui s'appuierait sur `PSQL` avant sa
+# definition mourrait elle-meme sous `set -u`. Elle est REMPLACEE plus bas,
+# des que la connexion existe.
 trap 'rm -rf "$TMP"' EXIT
 
 # Verdict par CODE D'ERREUR attendu, jamais par duree.
@@ -55,6 +59,23 @@ code_sqlstate() {
 # processus de la machine. Seule la base change desormais, par `-d`.
 harnais_connexion || exit 2
 PSQL=(psql -X -q -d "$DB_NAME")
+
+# LE DIAGNOSTIC EST PUBLIE SUR TOUTE SORTIE NON NULLE, PAS SEULEMENT SUR UNE
+# ASSERTION QUI ECHOUE. Mesure, `EUROSTRUCT` sur 5e97b9f: l'etape 8 rougit au
+# scenario 4 et l'etape d'artefact rend ZERO fichier. `echoue()` n'avait donc
+# jamais ete appelee — le script sortait non nul SANS qu'aucune assertion ne
+# rougisse (`set -u`, signal recu, ou processus tue). Un diagnostic accroche a
+# la seule fonction d'assertion ne couvre pas ces sorties-la, et c'est
+# precisement celles-la qu'on n'arrivait pas a voir.
+#
+# La trap tourne AVANT que `run.sh` ne detruise la base: dernier instant ou
+# pg_stat_activity, pg_locks et les lignes metier existent encore.
+sortie_diagnostiquee() {
+  local code=$?
+  (( code != 0 )) && diagnostic "sortie non nulle du script (code $code), aucune assertion rouge"
+  rm -rf "$TMP"
+  exit "$code"
+}
 
 R1='c0000000-0000-0000-0000-000000000001'   # candidat racine 1
 R2='c0000000-0000-0000-0000-000000000002'   # candidat racine 2
@@ -95,14 +116,20 @@ diagnostic() {   # diagnostic <libelle-de-l-echec>
   (( DIAG_ECRIT )) && return 0
   DIAG_ECRIT=1
   {
-    echo "FORMAT=esc-diagnostic-concurrence/1"
+    echo "FORMAT=esc-diagnostic-concurrence/2"
     echo "SHA=$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo inconnu)"
+    echo "GITHUB_RUN_ID=${GITHUB_RUN_ID:-hors-ci}"
+    echo "GITHUB_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT:-hors-ci}"
+    echo "BASH_VERSION=$BASH_VERSION"
     echo "BASE=$DB_NAME"
     echo "SCENARIO=$SCENARIO_COURANT"
     echo "PREMIER_ECHEC=$1"
     echo "CODES_CONCURRENTS=$CODES_CONCURRENTS"
     echo "BARRIERES=${#BARRIERES[@]}"
-    printf 'BARRIERE=%s\n' "${BARRIERES[@]}"
+    # Un tableau vide ferait imprimer une ligne « BARRIERE= » fantome, qu'on
+    # lirait comme une barriere sans nom. Zero barriere se dit, il ne se
+    # devine pas.
+    (( ${#BARRIERES[@]} )) && printf 'BARRIERE=%s\n' "${BARRIERES[@]}"
     echo "-- sessions du scenario (jetons FICTIF-conc-*)"
     "${PSQL[@]}" -X -qtA -c "
       select 'SESSION|'||pid||'|'||application_name||'|'||state
@@ -138,6 +165,12 @@ diagnostic() {   # diagnostic <libelle-de-l-echec>
 }
 
 echoue() { echo "      ECHEC: $*"; ECHECS=$((ECHECS + 1)); diagnostic "$*"; }
+
+# LA TRAP N'EST ARMEE QU'ICI: tout ce dont elle depend — PSQL, DB_NAME, les
+# variables de diagnostic et la fonction elle-meme — existe desormais. Armee
+# plus haut, elle serait morte sous `set -u` en tentant de diagnostiquer une
+# sortie survenue avant ses propres dependances.
+trap sortie_diagnostiquee EXIT
 
 # --------------------------------------------------------------------------
 # BARRIERES (6.3b4 #7)
