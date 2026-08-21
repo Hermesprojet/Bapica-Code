@@ -60,7 +60,84 @@ R1='c0000000-0000-0000-0000-000000000001'   # candidat racine 1
 R2='c0000000-0000-0000-0000-000000000002'   # candidat racine 2
 VERIF='c0000000-0000-0000-0000-00000000000f'
 ECHECS=0
-echoue() { echo "      ECHEC: $*"; ECHECS=$((ECHECS + 1)); }
+
+# --------------------------------------------------------------------------
+# DIAGNOSTIC DE COURSE — capture AU MOMENT du premier echec
+# --------------------------------------------------------------------------
+# CE FICHIER EXISTE PARCE QUE LE STDOUT DE CETTE SURFACE EST INACCESSIBLE EN CI.
+# Mesure: `EUROSTRUCT` rouge deux fois de suite sur le meme SHA `31552da`, a la
+# meme etape, au meme scenario, et VERT en local. Or les assertions de ce
+# script ne sont lisibles nulle part depuis une session distante:
+#
+#   * `get_job_logs` plafonne a 5000 lignes ET rend le journal du CONTENEUR de
+#     service `postgres:16`, jamais le stdout de l'etape;
+#   * l'archive ZIP complete est refusee par la politique du proxy
+#     (403 sur CONNECT vers results-receiver.actions.githubusercontent.com).
+#
+# On ne pouvait donc que LOCALISER la defaillance — par les horodatages du
+# journal du conteneur — jamais la DIAGNOSTIQUER. Ce document comble cela.
+#
+# IL EST ECRIT AVANT TOUT NETTOYAGE. `run.sh` detruit la base de concurrence
+# des le retour de ce script: apres coup, `pg_stat_activity`, `pg_locks` et les
+# lignes metier n'existent plus. La capture a lieu dans `echoue()`, donc au
+# premier echec, base encore vivante.
+#
+# IL NE CONTIENT NI URL, NI MOT DE PASSE, NI ENVIRONNEMENT COMPLET: seulement
+# le scenario, les barrieres, les codes des deux connexions concurrentes, les
+# identites du scenario et un inventaire cible.
+SCENARIO_COURANT="(avant le premier scenario)"
+BARRIERES=()
+CODES_CONCURRENTS="(non renseignes)"
+DIAG_ECRIT=0
+DIAG="${ESC_DIAG_CONCURRENCE:-$(dirname "$(dirname "$HERE")")/conc-diagnostic.txt}"
+
+diagnostic() {   # diagnostic <libelle-de-l-echec>
+  (( DIAG_ECRIT )) && return 0
+  DIAG_ECRIT=1
+  {
+    echo "FORMAT=esc-diagnostic-concurrence/1"
+    echo "SHA=$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo inconnu)"
+    echo "BASE=$DB_NAME"
+    echo "SCENARIO=$SCENARIO_COURANT"
+    echo "PREMIER_ECHEC=$1"
+    echo "CODES_CONCURRENTS=$CODES_CONCURRENTS"
+    echo "BARRIERES=${#BARRIERES[@]}"
+    printf 'BARRIERE=%s\n' "${BARRIERES[@]}"
+    echo "-- sessions du scenario (jetons FICTIF-conc-*)"
+    "${PSQL[@]}" -X -qtA -c "
+      select 'SESSION|'||pid||'|'||application_name||'|'||state
+             ||'|'||coalesce(wait_event_type,'-')||'|'||coalesce(wait_event,'-')
+             ||'|'||backend_start
+             ||'|'||left(replace(coalesce(query,''), chr(10), ' '), 120)
+        from pg_stat_activity
+       where application_name like 'FICTIF-conc-%'" 2>&1
+    echo "-- verrous detenus ou attendus par ces sessions"
+    "${PSQL[@]}" -X -qtA -c "
+      select 'VERROU|'||l.pid||'|'||l.locktype||'|'||coalesce(l.mode,'-')
+             ||'|'||l.granted||'|'||coalesce(l.classid::text,'-')
+             ||'|'||coalesce(l.objid::text,'-')
+        from pg_locks l join pg_stat_activity a on a.pid = l.pid
+       where a.application_name like 'FICTIF-conc-%'" 2>&1
+    echo "-- lignes metier concernees"
+    "${PSQL[@]}" -X -qtA -c "
+      select 'ADMIN_ACTIF|'||count(*) from normative_authorisation_grants g
+       where g.permission='can_manage_normative_authorisations'
+         and normative_grant_is_active(g.id)" 2>&1
+    "${PSQL[@]}" -X -qtA -c "
+      select 'OCTROI|'||g.id||'|'||g.grantee_id||'|'||g.permission
+             ||'|actif='||normative_grant_is_active(g.id)
+        from normative_authorisation_grants g order by g.created_at" 2>&1
+    echo "-- inventaire cible"
+    "${PSQL[@]}" -X -qtA -c "
+      select 'INVENTAIRE|confirmations='||(select count(*) from normative_rule_confirmations)
+             ||'|revocations_octroi='||(select count(*) from normative_authorisation_revocations)" 2>&1
+    echo "-- processus psql survivants de ce scenario"
+    ps -o pid=,stat=,etime= -C psql 2>/dev/null | sed 's/^/PROCESSUS|/' || echo "PROCESSUS|(aucun)"
+  } >"$DIAG" 2>&1
+  echo "      diagnostic de course ecrit: $DIAG"
+}
+
+echoue() { echo "      ECHEC: $*"; ECHECS=$((ECHECS + 1)); diagnostic "$*"; }
 
 # --------------------------------------------------------------------------
 # BARRIERES (6.3b4 #7)
@@ -88,9 +165,13 @@ attendre() {                # attendre <description> <predicat-sql>
   local quoi="$1" sql="$2" i n
   for ((i = 0; i < 600; i++)); do      # 60 s au plus, jamais un succes muet
     n=$("${PSQL[@]}" -X -q -tAc "select ($sql)::int" 2>/dev/null)
-    [[ "$n" == "1" ]] && return 0
+    # ATTEINTE ET NON ATTEINTE SONT TOUTES DEUX ENREGISTREES, avec le rang de
+    # scrutation: « la barriere a ete franchie » et « elle l'a ete au 597e
+    # essai » ne decrivent pas la meme execution.
+    [[ "$n" == "1" ]] && { BARRIERES+=("ATTEINTE|$quoi|essai=$((i + 1))"); return 0; }
     sleep 0.1
   done
+  BARRIERES+=("JAMAIS_ATTEINTE|$quoi|essais=600")
   echoue "barriere jamais atteinte: $quoi"
   return 1
 }
@@ -206,6 +287,7 @@ SQL
 # --------------------------------------------------------------------------
 # 1. Deux amorcages concurrents — la chaine ne s'ouvre qu'une fois
 # --------------------------------------------------------------------------
+SCENARIO_COURANT="1: deux amorcages concurrents"
 echo "    scenario 1: deux amorcages concurrents"
 # Le decalage se faisait par des pg_sleep de 0,1 et 0,2 seconde. Ici c'est la
 # session 1 qui retient: elle amorce, puis attend d'avoir OBSERVE la session 2
@@ -252,6 +334,7 @@ ADMIN=$("${PSQL[@]}" -X -q -tAc \
 # second voit alors le premier et refuse. Sans verrou, les deux passent et la
 # resolution d'habilitation devient ambigue pour toujours.
 # --------------------------------------------------------------------------
+SCENARIO_COURANT="2: deux octrois identiques concurrents"
 echo "    scenario 2: deux octrois identiques concurrents"
 # L'ORDRE EST IMPOSE PAR DES BARRIERES, plus par des temporisations.
 #
@@ -333,6 +416,7 @@ fi
 #
 # Les deux ordres seriels sont acceptables; l'etat intermediaire ne l'est pas.
 # --------------------------------------------------------------------------
+SCENARIO_COURANT="3a: revocation bloquee par une confirmation en vol"
 echo "    scenario 3a: revocation bloquee par une confirmation en vol"
 GRANT_ID=$("${PSQL[@]}" -X -q -tAc "
   select g.id from normative_authorisation_grants g
@@ -402,6 +486,7 @@ fi
 #     Apres attente, la confirmation doit etre REFUSEE — l'habilitation
 #     n'existe plus.
 # ------------------------------------------------------------------------
+SCENARIO_COURANT="3b: confirmation apres une revocation deja engagee"
 echo "    scenario 3b: confirmation apres une revocation deja engagee"
 # Un octroi NEUF. Le scenario 3a revoque desormais reellement le sien — il
 # n'expire plus, il attend son tour et aboutit — et rejouer 3b sur le meme
@@ -474,6 +559,7 @@ fi
 #    plus etre rejoue. Le verrou COMMUN de l'administration doit desormais les
 #    serialiser.
 # ------------------------------------------------------------------------
+SCENARIO_COURANT="4: A revoque B pendant que B revoque A"
 echo "    scenario 4: A revoque B pendant que B revoque A"
 ADMIN_B='c0000000-0000-0000-0000-0000000000ab'
 "${PSQL[@]}" -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
@@ -520,6 +606,9 @@ PGAPPNAME="$APP_B" "${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f "$TMP/dern_B.sql" \
   >"$TMP/dB.log" 2>&1 & DB=$!
 wait $DA; CDA=$?
 wait $DB; CDB=$?
+# LES DEUX CODES SONT RETENUS AVANT TOUTE ASSERTION: c'est la premiere chose
+# qu'on veut savoir quand ce scenario rougit, et elle disparait sinon.
+CODES_CONCURRENTS="A(pid $DA)=$CDA B(pid $DB)=$CDB"
 
 RESTANTS=$("${PSQL[@]}" -X -q -tAc "
   select count(*) from normative_authorisation_grants g

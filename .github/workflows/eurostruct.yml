@@ -208,3 +208,25 @@ jobs:
           # consentement ne serait plus une barriere.
           EUROSTRUCT_CLUSTER_JETABLE: oui-cluster-jetable-et-isole
         run: ./db/test/run.sh
+
+      # `if: always()` EST LE POINT. Sans lui, l'artefact ne serait publie que
+      # lorsque l'etape reussit — c'est-a-dire exactement quand il n'apprend
+      # rien. Ce diagnostic n'existe que pour les executions ROUGES.
+      #
+      # POURQUOI IL EXISTE. `EUROSTRUCT` a rougi deux fois de suite sur le meme
+      # SHA, a la meme etape et au meme scenario de concurrence, sans rougir
+      # une seule fois en local. Les assertions de `concurrency.sh` etaient
+      # illisibles: le seul journal accessible depuis une session distante est
+      # celui du CONTENEUR de service `postgres:16`, plafonne a 5000 lignes, et
+      # l'archive complete est refusee par la politique du proxy. La defaillance
+      # pouvait etre LOCALISEE par horodatage, jamais DIAGNOSTIQUEE.
+      #
+      # Le document ne porte ni URL, ni mot de passe, ni environnement complet.
+      - name: Diagnostic de course (publie meme en echec)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-concurrence
+          path: eurostruct/conc-diagnostic.txt
+          if-no-files-found: ignore
+          retention-days: 7
