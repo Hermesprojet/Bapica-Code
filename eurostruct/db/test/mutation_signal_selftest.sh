@@ -894,8 +894,8 @@ lire_marqueur() {
   # indistinguables — un lecteur ne saurait plus ce que « READY » lui promet.
   [[ "$MK_FORMAT" == "esc-mutation-marker/2" ]] \
     || { MK_DIAG="version inconnue: ${MK_FORMAT:-<absente>}"; return 1; }
-  [[ "$MK_GATE" == BLOCKED ]] \
-    || { MK_DIAG="HARNESS_GATE_STATE=${MK_GATE:-<absent>}, attendu BLOCKED"; return 1; }
+  [[ "$MK_GATE" == GATE_ARMED ]] \
+    || { MK_DIAG="HARNESS_GATE_STATE=${MK_GATE:-<absent>}, attendu GATE_ARMED"; return 1; }
   case "$MK_STATE" in READY|FAILED) : ;;
     *) MK_DIAG="etat invalide: ${MK_STATE:-<absent>}"; return 1 ;; esac
   for v in "$MK_WRAP" "$MK_HARN" "$MK_WIT" "$MK_PGID"; do
@@ -1152,7 +1152,7 @@ ok "marqueur $MK_FORMAT, etat READY: wrapper $WRAP_PID, harnais $BASH_PID, temoi
 # verification forte — PID, PGID, jeton et STATE compares un a un AVANT de
 # publier READY — et qui en recopie le resultat dans le marqueur. Le parent
 # revalide ici ce qui lui est accessible: l'etat de la porte et le PGID declare.
-if [[ "$MK_GATE" != BLOCKED ]]; then
+if [[ "$MK_GATE" != GATE_ARMED ]]; then
   echoue "HARNESS_BLOCKED_ABSENT: le wrapper a publie READY sans preuve de blocage"
   exit 1
 fi

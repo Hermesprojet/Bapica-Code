@@ -440,29 +440,42 @@ if [[ -n "${ESC_HARNAIS_PORTE:-}" ]]; then
   [[ -p "$ESC_HARNAIS_PORTE" ]]     || porte_refus "« $ESC_HARNAIS_PORTE » n'est pas une FIFO"
   [[ -n "${ESC_HARNAIS_ETAT:-}" ]] || porte_refus "chemin d'etat absent"
 
-  # PUBLICATION EXCLUSIVE PAR LIEN DUR: `ln` echoue si la cible existe, donc un
-  # second BLOCKED est une erreur observable et non un ecrasement silencieux.
-  # `mv -f` aurait recouvert le premier sans rien dire.
+  # L'OUVERTURE PRECEDE LA PUBLICATION, ET CE N'EST PAS COSMETIQUE. Publier
+  # d'abord aurait affirme un blocage que rien n'avait encore etabli: entre le
+  # marqueur et le `read`, le harnais n'etait tenu par rien. En ouvrant avant,
+  # l'etat publie decrit ce qui est VRAI a cet instant — le descripteur de
+  # lecture est ouvert et la seule instruction suivante est la lecture bloquante.
+  #
+  # LE NUMERO EST ALLOUE PAR BASH, pas choisi: un numero fixe pouvait entrer en
+  # collision avec un descripteur deja ouvert par l'appelant.
+  exec {FD_PORTE}<"$ESC_HARNAIS_PORTE" \
+    || porte_refus "ouverture de la porte impossible"
+
+  # `GATE_ARMED` ET NON `BLOCKED`. C'est un etat de PROTOCOLE, pas une
+  # observation de l'ordonnanceur: il garantit que la fin nominale est devenue
+  # inatteignable tant que le wrapper conserve l'unique extremite d'ecriture. Il
+  # ne pretend pas avoir constate le harnais endormi dans le noyau — cette
+  # mesure-la, personne ne l'a faite.
+  #
+  # PUBLICATION EXCLUSIVE PAR LIEN DUR: `ln` echoue si la cible existe, donc une
+  # seconde publication est une erreur observable et non un ecrasement muet.
   _pgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"
-  { echo "FORMAT=esc-harness-blocked/1"
+  { echo "FORMAT=esc-harness-gate/1"
     echo "SCENARIO=$ESC_HARNAIS_SCENARIO"
     echo "TOKEN=$ESC_HARNAIS_JETON"
     echo "PID=$$"
     echo "PGID=$_pgid"
-    echo "STATE=BLOCKED"
+    echo "STATE=GATE_ARMED"
   } >"$ESC_HARNAIS_ETAT.tmp"
-  ln "$ESC_HARNAIS_ETAT.tmp" "$ESC_HARNAIS_ETAT" 2>/dev/null     || porte_refus "BLOCKED deja publie — publication dupliquee"
+  ln "$ESC_HARNAIS_ETAT.tmp" "$ESC_HARNAIS_ETAT" 2>/dev/null \
+    || porte_refus "GATE_ARMED deja publie — publication dupliquee"
   rm -f "$ESC_HARNAIS_ETAT.tmp"
 
-  # OUVERTURE EN LECTURE SEULE, ET C'EST DELIBERE. Le wrapper detient le cote
-  # ecriture: l'ouverture ne bloque donc pas, et si le wrapper disparaissait le
-  # `read` recevrait EOF — ce qui devient une violation nommee au lieu d'une
-  # attente eternelle.
-  exec 8<"$ESC_HARNAIS_PORTE" || porte_refus "ouverture de la porte impossible"
-  # SEUL LE SIGNAL DOIT TERMINER CETTE ATTENTE. Mesure, hors harnais:
-  #     kill -TERM pendant `read -u 9`  -> trap executee, delai 0 s, code 143
-  #     ecriture dans la FIFO           -> `read` rend 0, chemin d'erreur atteint
-  read -r -u 8
+  # SEUL LE SIGNAL DOIT TERMINER CETTE ATTENTE. Mesures, hors harnais:
+  #     kill -TERM pendant `read -u`  -> trap executee, delai 0 s, code 143
+  #     ecriture dans la FIFO         -> `read` rend 0, chemin d'erreur atteint
+  #     SIGKILL du wrapper seul       -> EOF, `read` rend 1, violation nommee
+  read -r -u "$FD_PORTE"
   porte_refus "l'attente s'est terminee sans signal (read a rendu $?)"
 fi
 
