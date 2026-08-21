@@ -112,9 +112,30 @@ CODES_CONCURRENTS="(non renseignes)"
 DIAG_ECRIT=0
 DIAG="${ESC_DIAG_CONCURRENCE:-$(dirname "$(dirname "$HERE")")/conc-diagnostic.txt}"
 
+# `psql` BORNE, ET SON ECHEC N'EST PAS CELUI DU SCRIPT. Une base devenue
+# injoignable ne doit ni faire pendre la capture ni remplacer le code d'origine:
+# chaque interrogation a son propre delai, et tout ce qui rate est note comme
+# erreur DU DIAGNOSTIC, dans un canal distinct.
+DIAG_ERREURS=0
+diag_sql() {   # diag_sql <etiquette> <requete>
+  local etiquette="$1" sql="$2" sortie
+  if sortie=$(timeout 10 "${PSQL[@]}" -X -qtA \
+                -v ON_ERROR_STOP=1 \
+                -c "set local statement_timeout = '5s'" -c "$sql" 2>&1); then
+    printf '%s\n' "$sortie"
+  else
+    DIAG_ERREURS=$((DIAG_ERREURS + 1))
+    printf 'DIAG_ERREUR|%s|%s\n' "$etiquette" "$(head -1 <<<"$sortie")"
+  fi
+}
+
 diagnostic() {   # diagnostic <libelle-de-l-echec>
   (( DIAG_ECRIT )) && return 0
   DIAG_ECRIT=1
+  # LA TRAP EST DESARMEE AVANT DE PUBLIER. Sans cela une sortie provoquee par
+  # la capture elle-meme la relancerait, et le code d'origine serait perdu au
+  # profit d'une erreur du diagnostic.
+  trap - EXIT
   {
     echo "FORMAT=esc-diagnostic-concurrence/2"
     echo "SHA=$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo inconnu)"
@@ -125,43 +146,50 @@ diagnostic() {   # diagnostic <libelle-de-l-echec>
     echo "SCENARIO=$SCENARIO_COURANT"
     echo "PREMIER_ECHEC=$1"
     echo "CODES_CONCURRENTS=$CODES_CONCURRENTS"
+    echo "BARRIERE_EN_COURS=$BARRIERE_EN_COURS"
+    echo "BARRIERE_ETAT=$BARRIERE_ETAT"
+    echo "BARRIERE_RANG=$BARRIERE_RANG"
     echo "BARRIERES=${#BARRIERES[@]}"
     # Un tableau vide ferait imprimer une ligne « BARRIERE= » fantome, qu'on
     # lirait comme une barriere sans nom. Zero barriere se dit, il ne se
     # devine pas.
     (( ${#BARRIERES[@]} )) && printf 'BARRIERE=%s\n' "${BARRIERES[@]}"
     echo "-- sessions du scenario (jetons FICTIF-conc-*)"
-    "${PSQL[@]}" -X -qtA -c "
+    diag_sql sessions "
       select 'SESSION|'||pid||'|'||application_name||'|'||state
              ||'|'||coalesce(wait_event_type,'-')||'|'||coalesce(wait_event,'-')
              ||'|'||backend_start
              ||'|'||left(replace(coalesce(query,''), chr(10), ' '), 120)
         from pg_stat_activity
-       where application_name like 'FICTIF-conc-%'" 2>&1
+       where application_name like 'FICTIF-conc-%'"
     echo "-- verrous detenus ou attendus par ces sessions"
-    "${PSQL[@]}" -X -qtA -c "
+    diag_sql verrous "
       select 'VERROU|'||l.pid||'|'||l.locktype||'|'||coalesce(l.mode,'-')
              ||'|'||l.granted||'|'||coalesce(l.classid::text,'-')
              ||'|'||coalesce(l.objid::text,'-')
         from pg_locks l join pg_stat_activity a on a.pid = l.pid
-       where a.application_name like 'FICTIF-conc-%'" 2>&1
+       where a.application_name like 'FICTIF-conc-%'"
     echo "-- lignes metier concernees"
-    "${PSQL[@]}" -X -qtA -c "
+    diag_sql admins "
       select 'ADMIN_ACTIF|'||count(*) from normative_authorisation_grants g
        where g.permission='can_manage_normative_authorisations'
-         and normative_grant_is_active(g.id)" 2>&1
-    "${PSQL[@]}" -X -qtA -c "
+         and normative_grant_is_active(g.id)"
+    diag_sql octrois "
       select 'OCTROI|'||g.id||'|'||g.grantee_id||'|'||g.permission
              ||'|actif='||normative_grant_is_active(g.id)
-        from normative_authorisation_grants g order by g.created_at" 2>&1
+        from normative_authorisation_grants g order by g.created_at"
     echo "-- inventaire cible"
-    "${PSQL[@]}" -X -qtA -c "
+    diag_sql inventaire "
       select 'INVENTAIRE|confirmations='||(select count(*) from normative_rule_confirmations)
-             ||'|revocations_octroi='||(select count(*) from normative_authorisation_revocations)" 2>&1
+             ||'|revocations_octroi='||(select count(*) from normative_authorisation_revocations)"
     echo "-- processus psql survivants de ce scenario"
+    # `-o args` EST VOLONTAIREMENT ABSENT: une ligne de commande peut porter
+    # un mot de passe, et ce document est publie.
     ps -o pid=,stat=,etime= -C psql 2>/dev/null | sed 's/^/PROCESSUS|/' || echo "PROCESSUS|(aucun)"
+    echo "DIAG_ERREURS=$DIAG_ERREURS"
+    echo "FIN=esc-diagnostic-concurrence/2"
   } >"$DIAG" 2>&1
-  echo "      diagnostic de course ecrit: $DIAG"
+  echo "      diagnostic de course ecrit: $DIAG ($DIAG_ERREURS erreur(s) de capture)"
 }
 
 echoue() { echo "      ECHEC: $*"; ECHECS=$((ECHECS + 1)); diagnostic "$*"; }
@@ -194,16 +222,31 @@ trap sortie_diagnostiquee EXIT
 APP_A='FICTIF-conc-A'
 APP_B='FICTIF-conc-B'
 
+# L'ENREGISTREMENT EST PASSIF: RIEN N'EST ECRIT DANS LE CHEMIN DE SCRUTATION.
+# La boucle ci-dessous est le coeur de la course observee; y ajouter un travail
+# par tour deplacerait la fenetre que l'on cherche justement a mesurer. Deux
+# scalaires sont poses AVANT et APRES la boucle, et l'etat des barrieres est
+# RECONSTRUIT au moment du premier echec a partir d'eux.
+BARRIERE_EN_COURS=""      # nom de la barriere franchie ou en attente
+BARRIERE_RANG=0           # rang de scrutation atteint
+BARRIERE_ETAT=""          # ATTEINTE | JAMAIS_ATTEINTE
+BARRIERES=()              # historique, ecrit UNE FOIS par barriere, hors boucle
+
 attendre() {                # attendre <description> <predicat-sql>
   local quoi="$1" sql="$2" i n
+  BARRIERE_EN_COURS="$quoi"; BARRIERE_ETAT="EN_COURS"; BARRIERE_RANG=0
   for ((i = 0; i < 600; i++)); do      # 60 s au plus, jamais un succes muet
     n=$("${PSQL[@]}" -X -q -tAc "select ($sql)::int" 2>/dev/null)
-    # ATTEINTE ET NON ATTEINTE SONT TOUTES DEUX ENREGISTREES, avec le rang de
-    # scrutation: « la barriere a ete franchie » et « elle l'a ete au 597e
-    # essai » ne decrivent pas la meme execution.
-    [[ "$n" == "1" ]] && { BARRIERES+=("ATTEINTE|$quoi|essai=$((i + 1))"); return 0; }
+    [[ "$n" == "1" ]] && break
     sleep 0.1
   done
+  BARRIERE_RANG=$((i + 1))
+  if (( i < 600 )); then
+    BARRIERE_ETAT=ATTEINTE
+    BARRIERES+=("ATTEINTE|$quoi|essai=$BARRIERE_RANG")
+    return 0
+  fi
+  BARRIERE_ETAT=JAMAIS_ATTEINTE
   BARRIERES+=("JAMAIS_ATTEINTE|$quoi|essais=600")
   echoue "barriere jamais atteinte: $quoi"
   return 1
