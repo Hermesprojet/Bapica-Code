@@ -97,8 +97,14 @@ if [[ -z "${ESC_SANS_PUBLICATION:-}" ]]; then
   rm -f "$ESC_HARNAIS_ETAT.tmp"
   echo "PUBLIE $ETAT_PUB pid=$PID_PUB pgid=$PGID_PUB" >>"$ESC_TRACE"
 fi
-[[ -n "${ESC_DESCENDANCE:-}" ]] && { ( sleep 600 ) >/dev/null 2>&1 </dev/null &
-                                     echo "PETIT_FILS=$!" >>"$ESC_TRACE"; }
+# DEUX NIVEAUX, ET LA FORME COMPTE. `( sleep 600 ) &` n'en cree QU'UN: bash
+# remplace le sous-shell par la commande unique, si bien que `$!` EST le
+# `sleep` et que son pere est le harnais. Mesure: `pgrep -P $!` ne rend rien.
+# `( sleep 600 & wait ) &` force le sous-shell a rester — enfant du harnais —
+# et le `sleep` devient son petit-fils. Sans cela, « la terminaison atteint la
+# descendance PROFONDE » se verifierait sur une descendance plate.
+[[ -n "${ESC_DESCENDANCE:-}" ]] && { ( sleep 600 & wait ) >/dev/null 2>&1 </dev/null &
+                                     echo "ENFANT=$!" >>"$ESC_TRACE"; }
 read -r -u "$FD"
 echo "READ_RENDU=$?" >>"$ESC_TRACE"
 exit 77
@@ -698,6 +704,83 @@ PY
     echoue "19: piege extrait vide ou invalide"
   fi
 fi
+
+# ==========================================================================
+# 20. LA DESCENDANCE PROFONDE EST DANS LE GROUPE, ET LE GROUPE L'EMPORTE
+# ==========================================================================
+# « Terminer le groupe » ne dit rien tant qu'on n'a pas montre que le groupe
+# contient autre chose que le harnais. Le crochet `ESC_DESCENDANCE` existait
+# dans le faux harnais de ce fichier et N'ETAIT EXERCE PAR AUCUN CAS: une
+# capacite morte, c'est-a-dire une garantie qu'on croit avoir.
+#
+# La chaine est ici de quatre niveaux — wrapper, harnais, enfant, petit-fils —
+# et c'est le PETIT-FILS qui porte la preuve: il n'est l'enfant direct de
+# personne dans le groupe, et seule une terminaison PAR GROUPE peut l'atteindre.
+#
+# CE CAS COUVRE LA MOITIE PROTOCOLAIRE. L'autre moitie — l'escalade TERM puis
+# KILL par `_arreter_enfant()`, seule autorite de delai — passe par la vraie
+# matrice et vit dans `mutation_signal_selftest.sh`.
+echo "      -- 20. descendance profonde: wrapper > harnais > enfant > petit-fils"
+M20="$TMP/m20"; T20="$TMP/t20"; : >"$T20"
+lancer_barriere "$M20" "$T20" "ESC_DESCENDANCE=1"
+if attendre_fichier "$M20" 300 && [[ "$(champ "$M20" STATE)" == READY ]]; then
+  W20="$(champ "$M20" WRAPPER_PID)"; H20="$(champ "$M20" HARNESS_PID)"
+  E20="$(sed -n 's/^ENFANT=//p' "$T20" | head -1)"
+  PF20=""
+  n=0; while (( ++n <= 100 )); do
+    PF20="$(pgrep -P "${E20:-0}" 2>/dev/null | head -1)"
+    [[ -n "$PF20" ]] && break
+    sleep 0.05
+  done
+  if [[ -z "$E20" || -z "$PF20" ]]; then
+    echoue "20: descendance absente (enfant=${E20:-aucun} petit-fils=${PF20:-aucun}) — CHEMIN NON EXERCE"
+  else
+    ok "20: NON VACUITE — chaine wrapper $W20 > harnais $H20 > enfant $E20 > petit-fils $PF20"
+    # LA PROFONDEUR EST VERIFIEE, PAS SUPPOSEE: le petit-fils n'est l'enfant ni
+    # du harnais ni du wrapper.
+    ppf="$(ps -o ppid= -p "$PF20" 2>/dev/null | tr -d ' ')"
+    [[ "$ppf" == "$E20" ]] \
+      && ok "20: le petit-fils est bien a DEUX niveaux sous le harnais (ppid $ppf)" \
+      || echoue "20: ppid du petit-fils = ${ppf:-aucun}, attendu $E20"
+    manque=()
+    for p in "$H20" "$E20" "$PF20"; do
+      pg="$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')"
+      [[ "$pg" == "$W20" ]] || manque+=("$p[${pg:-mort}]")
+    done
+    (( ${#manque[@]} == 0 )) \
+      && ok "20: les trois descendants portent le PGID du wrapper ($W20)" \
+      || echoue "20: hors du groupe: ${manque[*]}"
+    # TERMINAISON PAR GROUPE, comme le ferait `_arreter_enfant()`.
+    PG20="$(groupe_sujet "$BARRIERE_PID")" || PG20=""
+    if [[ -z "$PG20" ]]; then
+      echoue "20: le sujet ne possede pas son propre groupe — refus de signaler le notre"
+    else
+      kill -TERM -"$PG20" 2>/dev/null
+      n=0; while (( ++n <= 300 )); do
+        [[ -z "$(ps -o pid= -g "$PG20" 2>/dev/null | tr -d ' \n')" ]] && break
+        sleep 0.1
+      done
+      kill -KILL -"$PG20" 2>/dev/null
+      n=0; while (( ++n <= 100 )); do
+        [[ -z "$(ps -o pid= -g "$PG20" 2>/dev/null | tr -d ' \n')" ]] && break
+        sleep 0.1
+      done
+      survivants=()
+      for p in "$W20" "$H20" "$E20" "$PF20"; do vivant "$p" && survivants+=("$p"); done
+      (( ${#survivants[@]} == 0 )) \
+        && ok "20: aucun des quatre ne survit — la terminaison par groupe atteint le petit-fils" \
+        || echoue "20: survivants: ${survivants[*]}"
+      zombies=()
+      for p in "$W20" "$H20" "$E20" "$PF20"; do zombie "$p" && zombies+=("$p"); done
+      (( ${#zombies[@]} == 0 )) \
+        && ok "20: aucun zombie parmi les quatre" \
+        || echoue "20: zombies: ${zombies[*]}"
+    fi
+  fi
+else
+  echoue "20: la porte ne s'est pas armee"
+fi
+menage_cas
 
 # ==========================================================================
 # 8 et 9. PERTES APRES `READY` — assertions defensives, enfin FALSIFIEES

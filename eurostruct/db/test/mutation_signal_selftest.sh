@@ -2197,6 +2197,20 @@ else
   ok "L1: wrapper $L_WPID revalide vivant, matrice $MPID laissee intacte"
   kill -TERM "$L_WPID"                    # LE WRAPPER SEUL, jamais la matrice
   L_T0=$SECONDS
+  # LA MATRICE EST CONSTATEE VIVANTE ICI, PAS PLUS TARD, ET C'EST UNE ASSERTION.
+  # Elle etait verifiee apres la publication du resultat — c'est-a-dire APRES le
+  # `communicate()` qui la libere: la matrice avait alors parfaitement le droit
+  # d'etre deja sortie, et le controle basculait sur un `detail` muet. Le test
+  # restait vert en n'ayant rien etabli de ce qu'il annonce: « on signale le
+  # wrapper SEUL ». Mesure: deux executions consecutives du meme fichier ont
+  # rendu 115 puis 114 assertions, sans qu'aucune propriete ait change.
+  #
+  # A cet instant-ci la reponse est DETERMINEE: `communicate()` est bloque sur
+  # les tubes du wrapper, qui vient tout juste de recevoir son signal et doit
+  # encore attendre les trois secondes de nettoyage du harnais.
+  [[ -n "$(vivants "$MPID")" ]] \
+    && ok "L1: la matrice $MPID est vivante a l'instant du signal au wrapper" \
+    || echoue "L1: la matrice n'est plus la a l'instant du signal — CHEMIN NON EXERCE"
   # LE RELAIS A-T-IL ATTEINT LE HARNAIS ? PROPRIETE NOMMEE, ET BORNEE COURT.
   # Dans cette topologie le harnais ne recoit rien du systeme: seul le relais
   # du wrapper peut le toucher. Mesure, campagne de mutations sur 28daf35 —
@@ -2213,9 +2227,6 @@ else
   fi
   attendre "la fin du wrapper (L1)" '[[ -f "$L_RESULTAT" ]]' 3000 || exit 1
   L_DUREE=$(( SECONDS - L_T0 ))
-  [[ -n "$(vivants "$MPID")" ]] \
-    && ok "L1: la matrice est restee vivante pendant le signal au wrapper" \
-    || detail "note: la matrice avait deja rendu la main"
   L_WRC="$(sed -n 's/^WRAPPER_RC=//p' "$L_RESULTAT")"
   L_WAITS="$(sed -n 's/^WAITS=//p' "$L_RESULTAT")"
   [[ "$(sed -n 's/^FORMAT=//p' "$L_RESULTAT")" == "esc-wrapper-result/1" \
