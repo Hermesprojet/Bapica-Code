@@ -1192,7 +1192,23 @@ if ! lire_marqueur "$TEMOIN_DESC"; then
   echoue "marqueur du wrapper refuse: $MK_DIAG"; exit 1
 fi
 if [[ "$MK_STATE" != READY ]]; then
-  echoue "le wrapper a publie $MK_STATE — scenario non exerce"; exit 1
+  # UN ROUGE QUI NE NOMME PAS SA CAUSE COUTE UNE ENQUETE. Cette ligne rendait
+  # « le wrapper a publie FAILED — scenario non exerce » et RIEN d'autre: ni
+  # l'etat de la porte, ni le refus du harnais, alors que le wrapper publie le
+  # premier et que la matrice imprime le second. Mesure: sous `run.sh`, ce
+  # message seul a demande une reproduction manuelle pour apprendre que
+  # `seal_contract.sh` refusait parce que la base principale avait laisse les
+  # six roles canoniques dans le cluster. Le diagnostic etait deja ecrit; il
+  # n'etait simplement pas lu.
+  echoue "le wrapper a publie $MK_STATE — scenario non exerce"
+  detail "GATE=${MK_GATE_DIAG:-<absent>}, HARNESS_GATE_STATE=${MK_GATE:-<absent>}"
+  detail "harnais $MK_HARN, wrapper $MK_WRAP, temoin $MK_WIT"
+  if [[ -s "$SORTIE" ]]; then
+    detail "sortie de la matrice:"
+    grep -m6 -E 'REFUS|ECHEC|NON EXECUTE|->' "$SORTIE" | sed 's/^ */                /' \
+      || head -6 "$SORTIE" | sed 's/^ */                /'
+  fi
+  exit 1
 fi
 WRAP_PID="$MK_WRAP"; BASH_PID="$MK_HARN"; TEMOIN_PID="$MK_WIT"
 ok "marqueur $MK_FORMAT, etat READY: wrapper $WRAP_PID, harnais $BASH_PID, temoin $TEMOIN_PID, PGID $MK_PGID"
@@ -1427,12 +1443,46 @@ MPID=""
                       || echoue "code de sortie $CODE, attendu 143"
 
 # UN SIGNAL ENTRE DEUX CONTROLES N'INVENTE PAS DE CONTROLE INTERROMPU.
-if grep -qE '^MUTATIONS: definis 64 \| termines 1 \| interrompu 0 \| non commences 63 \| perimes 0 \| creux 0 \| code 143$' "$SORTIE"; then
-  ok "verdict: 1 termine, 0 interrompu, 63 non commences"
-  detail "$(grep -m1 '^MUTATIONS:' "$SORTIE")"
+#
+# LE TOTAL N'EST PLUS ECRIT EN DUR, ET C'EST LE MEME DEFAUT QU'AILLEURS. Ce
+# controle exigeait « definis 64 [...] non commences 63 »: ajouter un
+# soixante-cinquieme controle a la matrice le faisait rougir sur un decompte
+# parfaitement correct. Mesure, en ajoutant la neuvieme mutation:
+#
+#     MUTATIONS: definis 65 | termines 1 | interrompu 0 | non commences 64
+#     ECHEC: decompte inattendu entre deux controles
+#
+# La propriete visee n'a jamais ete « la matrice compte 64 controles » — c'est
+# un fait de configuration, pas une garantie. Elle est double, et les deux
+# moities sont desormais exprimees telles quelles:
+#
+#   * AUCUN CONTROLE INTERROMPU: le signal est tombe entre deux controles, donc
+#     rien n'etait en vol, et il ne doit rien avoir invente;
+#   * LE DECOMPTE EQUILIBRE: definis == termines + interrompu + non commences
+#     + perimes + creux. Un verdict qui ne boucle pas est un verdict qui a
+#     perdu des controles en route, quel que soit le total.
+B_LIGNE="$(grep -m1 '^MUTATIONS: definis ' "$SORTIE" || true)"
+if [[ -z "$B_LIGNE" ]]; then
+  echoue "aucune ligne de decompte: le verdict n'a pas ete imprime"
 else
-  echoue "decompte inattendu entre deux controles"
-  detail "$(grep -m1 '^MUTATIONS:' "$SORTIE" || echo '(aucune ligne MUTATIONS:)')"
+  read -r B_DEF B_TER B_INT B_NON B_PER B_CRE < <(
+    sed -nE 's/^MUTATIONS: definis ([0-9]+) \| termines ([0-9]+) \| interrompu ([0-9]+) \| non commences ([0-9]+) \| perimes ([0-9]+) \| creux ([0-9]+) \| code .*$/\1 \2 \3 \4 \5 \6/p' <<<"$B_LIGNE")
+  if [[ -z "${B_DEF:-}" ]]; then
+    echoue "ligne de decompte illisible"
+    detail "$B_LIGNE"
+  else
+    B_SOMME=$(( B_TER + B_INT + B_NON + B_PER + B_CRE ))
+    (( B_INT == 0 )) \
+      && ok "aucun controle interrompu: le signal n'en a pas invente" \
+      || echoue "interrompu=$B_INT alors que rien n'etait en vol"
+    (( B_TER == 1 )) \
+      && ok "exactement 1 controle rendu avant le signal" \
+      || echoue "termines=$B_TER, attendu 1"
+    (( B_SOMME == B_DEF )) \
+      && ok "le decompte equilibre: $B_TER+$B_INT+$B_NON+$B_PER+$B_CRE = $B_DEF definis" \
+      || echoue "decompte desequilibre: somme $B_SOMME pour $B_DEF definis"
+    detail "$B_LIGNE"
+  fi
 fi
 
 grep -q "controle actif : aucun" "$SORTIE" \

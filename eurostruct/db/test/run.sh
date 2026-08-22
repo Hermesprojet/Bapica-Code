@@ -328,6 +328,33 @@ etape "installation non superutilisateur" \
 adm -c "drop database if exists $NS_DB;" >/dev/null 2>&1
 
 # --------------------------------------------------------------------------
+# LA MATRICE MEURT-ELLE PROPREMENT ? (6.3b6e)
+# --------------------------------------------------------------------------
+# IL APPARTIENT AU GROUPE CI-DESSUS, ET IL ETAIT PLACE EN DERNIER. Le
+# raisonnement d'origine n'avait considere qu'un sens: « il cree les roles
+# canoniques pendant quelques secondes, donc qu'il passe apres les surfaces
+# qui les exigent absents ». L'autre sens n'avait pas ete regarde — la BASE
+# PRINCIPALE cree ces memes roles en appliquant ses migrations, et ils lui
+# survivent. Place apres elle, le vrai harnais de son scenario A refusait
+# systematiquement.
+#
+# MESURE, ET C'EST UNE SURFACE QUI SE CROYAIT EXERCEE:
+#
+#     REFUS: seal_contract.sh exige que ces roles n'existent pas encore,
+#            et ils existent: eurostruct_deployment, ...
+#
+# Le harnais rendait 2, le wrapper publiait FAILED, et le scenario A n'exercait
+# RIEN sous `run.sh` — c'est-a-dire en CI. Il etait vert en execution autonome,
+# et le defaut est reste invisible tant qu'un autre echec le precedait.
+#
+# Il rend le jeu canonique en sortant, et sa postcondition le verifie: son
+# scenario A exige desormais que le decor ait EXISTE avant le signal, puis
+# qu'il ait disparu apres.
+echo "==> terminaison de la matrice de mutation sur signal"
+etape "terminaison de la matrice sur signal" \
+  "$HERE/mutation_signal_selftest.sh"
+
+# --------------------------------------------------------------------------
 # Oracle comportemental des primitives de portee (6.3b6a #3).
 #
 # `assert_normative_topology()` decide qui atteint un role d'autorite au moyen
@@ -554,21 +581,6 @@ etape "base vierge: racine de confiance" \
 etape "contrat croise moteur/base" \
   "$HERE/cross_contract.sh" "${XC[@]}"
 adm -c "drop database if exists $XC_DB;" >/dev/null
-
-# --------------------------------------------------------------------------
-# LA MATRICE MEURT-ELLE PROPREMENT ? (6.3b6e)
-# --------------------------------------------------------------------------
-# EN DERNIER, ET C'EST DELIBERE. Contrairement a l'auto-test d'isolation, celui
-# -ci lance un VRAI harnais — il lui faut donc un cluster, et il cree pendant
-# quelques secondes les roles canoniques. Les etapes qui exigent ces roles
-# ABSENTS doivent toutes etre passees avant lui.
-#
-# Mesure: il ne laisse ni role, ni base, ni worktree, ni processus. Mais s'il
-# venait a en laisser, mieux vaut que ce soit apres les surfaces qui comptent
-# que devant elles.
-echo "==> terminaison de la matrice de mutation sur signal"
-etape "terminaison de la matrice sur signal" \
-  "$HERE/mutation_signal_selftest.sh"
 
 echo ""
 if [[ ${#SURFACES_ROUGES[@]} -eq 0 && ${#SURFACES_NON_EXECUTEES[@]} -eq 0 ]]; then
