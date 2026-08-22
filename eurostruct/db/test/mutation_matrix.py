@@ -1204,6 +1204,49 @@ CAS_ACL_SCEAU = [
        "grant select on normative_seal_metadata to eurostruct_deployment;")], False),
 ]
 
+BOUCLE_VIVACITE = (
+    "            'while :; do\\n'\n"
+    '            \'  [[ -s "$ETAT_HARNAIS" ]] && { GATE=PRESENT; break; }\\n\'\n'
+    '            \'  kill -0 "$HARNAIS" 2>/dev/null \'\n'
+    "            '|| { GATE=HARNAIS_TERMINE_AVANT_BLOCKED; break; }\\n'\n"
+    "            '  sleep 0.05\\n'\n"
+    "            'done\\n'\n"
+)
+VERIF_VIVACITE = (
+    '            \'  [[ "$GH" == "$HARNAIS" && "$GP" == "$PGID" \'\n'
+    '            \'     && "$GT" == "${ESC_MUTATION_JETON:-}" && "$GS" == GATE_ARMED ]] \'\n'
+    "            '     || ETAT=FAILED\\n'\n"
+)
+
+# --------------------------------------------------------------------------
+# LA BARRIERE DE VIVACITE (6.3b6e) — la neuvieme, et elle vise l'INSTRUMENT
+# --------------------------------------------------------------------------
+# LES HUIT AUTRES MUTATIONS VISENT LE PRODUIT. Celle-ci vise le wrapper que
+# cette matrice pose elle-meme autour de chaque harnais — c'est-a-dire une
+# piece de l'INSTRUMENT. Elle y a sa place pour la meme raison qu'un defaut
+# connu dans l'instrument rend sa preuve irrecevable: si la barriere de
+# vivacite pouvait disparaitre sans que rien ne rougisse, tous les verdicts
+# rendus par cette matrice reposeraient sur un `READY` qui ne promet rien.
+#
+# CE QUE LA MUTATION RETIRE. Le wrapper cesse d'attendre la preuve que le
+# harnais est TENU, et cesse de verifier l'identite de cette preuve: il publie
+# `READY` sur une PHOTOGRAPHIE, exactement comme avant `ef90bb7`.
+#
+# POURQUOI CE HARNAIS-LA. `gate_protocol_selftest.sh` est la seule surface qui
+# EXTRAIT ce wrapper de ce fichier et le met en echec — et il l'extrait de
+# l'espace isole, donc de la version MUTEE. Il ne demande aucune base.
+#
+# LE POINT `B1` EST NOMME PAR LE HARNAIS LUI-MEME. Ses cas sont numerotes par
+# CAS, pas par garantie; sans le verdict « ECHEC: B1. », six cas rougiraient
+# sans qu'aucune ligne ne designe la garantie perdue, et la mutation serait
+# comptee CREUSE alors qu'elle est parfaitement detectee.
+CAS_BARRIERE = [
+    ("B1  la barriere de vivacite est retiree du wrapper", "B1",
+     "db/test/mutation_matrix.py",
+     [(BOUCLE_VIVACITE, "            'GATE=PRESENT\\n'\n"),
+      (VERIF_VIVACITE, "            '  :\\n'\n")], False),
+]
+
 # --------------------------------------------------------------------------
 # UN FILTRE, POUR REJOUER CE QU'ON VIENT DE CORRIGER
 # --------------------------------------------------------------------------
@@ -1261,6 +1304,8 @@ LOTS = [
     (CAS_COMMANDE, dict(harnais="db/test/official_deployment.sh", prefixe="mo")),
     (CAS_REPRISE, dict(harnais="db/test/deploy_recovery.sh", prefixe="mp")),
     (CAS_ACL_SCEAU, dict(harnais="db/test/seal_contract.sh", prefixe="mw")),
+    (CAS_BARRIERE,
+     dict(harnais="db/test/gate_protocol_selftest.sh", prefixe="mb")),
 ]
 
 TOTAL = sum(len(cas) for cas, _ in LOTS)
