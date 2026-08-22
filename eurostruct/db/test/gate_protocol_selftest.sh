@@ -77,10 +77,19 @@ JETON="G-$$-${RANDOM}"
 # herites ni ses sorties.
 cat >"$FAUX" <<'FIN'
 set -u
-trap 'echo "TRAP_HARNAIS" >>"$ESC_TRACE"; exit 143' TERM
+# LE CODE RENDU DEPUIS LA TRAP EST CHOISI PAR L'APPELANT: c'est ce qui permet de
+# dresser la table de priorite des codes sans inventer six faux harnais.
+trap 'echo "TRAP_HARNAIS" >>"$ESC_TRACE"; exit "${ESC_CODE_TRAP:-143}"' TERM
 echo "DEMARRE pid=$$" >>"$ESC_TRACE"
 [[ -n "${ESC_FIN_IMMEDIATE:-}" ]] && { echo "FIN_AVANT_PORTE" >>"$ESC_TRACE"; exit 7; }
 [[ -z "${ESC_HARNAIS_PORTE:-}" ]] && { echo "HOOK_INERTE" >>"$ESC_TRACE"; exit 0; }
+# FENETRE AVANT `GATE_ARMED`: le harnais a demarre, il n'a rien publie, et il ne
+# publiera pas avant ce delai. La fenetre est donc OUVERTE et DATEE, au lieu
+# d'etre visee a l'aveugle.
+if [[ -n "${ESC_RETARD_PORTE:-}" ]]; then
+  echo "AVANT_PORTE" >>"$ESC_TRACE"
+  sleep "$ESC_RETARD_PORTE" & wait $! 2>/dev/null
+fi
 exec {FD}<"$ESC_HARNAIS_PORTE" || { echo "OUVERTURE_KO" >>"$ESC_TRACE"; exit 4; }
 PID_PUB="$$"; PGID_PUB="$(ps -o pgid= -p $$ | tr -d ' ')"
 JET_PUB="$ESC_HARNAIS_JETON"; ETAT_PUB=GATE_ARMED
@@ -779,6 +788,152 @@ if attendre_fichier "$M20" 300 && [[ "$(champ "$M20" STATE)" == READY ]]; then
   fi
 else
   echoue "20: la porte ne s'est pas armee"
+fi
+menage_cas
+
+# ==========================================================================
+# 21. LA PRIORITE DES CODES DE SORTIE, EN TABLE ET NON EN INTENTION
+# ==========================================================================
+# LA REGLE, telle que `sortie_wrapper` la met en oeuvre: quand un signal a ete
+# recu, le wrapper rend 128+signal SI le harnais n'a rien de plus a dire —
+# c'est-a-dire s'il a rendu 0 ou deja 128+signal. Sinon LE CODE DU HARNAIS
+# L'EMPORTE: un echec de nettoyage a 9 ne doit pas etre maquille en 143, sans
+# quoi « interrompu proprement » et « interrompu en laissant des degats »
+# deviennent le meme verdict.
+#
+# ELLE N'ETAIT VERIFIEE QUE SUR DEUX POINTS — 143 par L1, 9 par L2 — et deux
+# points ne dessinent pas une regle. La table les couvre tous, y compris les
+# deux cotes de la frontiere: 0 (absorbe) et 1 (conserve).
+#
+# Chaque ligne est un LANCEMENT REEL du wrapper extrait, signale a la porte.
+echo "      -- 21. priorite des codes: table complete, un lancement par ligne"
+T21_KO=0; T21_N=0
+for ligne in "0:143:le harnais n'a rien a dire -> 128+signal" \
+             "143:143:le harnais rend deja 128+signal -> inchange" \
+             "1:1:un echec generique du harnais l'emporte" \
+             "2:2:un REFUS du harnais l'emporte" \
+             "3:3:un NON EXECUTE du harnais l'emporte" \
+             "9:9:un nettoyage rouge l'emporte sur le signal"; do
+  IFS=: read -r c_harnais c_attendu quoi <<<"$ligne"
+  M21="$TMP/m21-$c_harnais"; T21="$TMP/t21-$c_harnais"; : >"$T21"
+  lancer_barriere "$M21" "$T21" "ESC_CODE_TRAP=$c_harnais"
+  if ! attendre_fichier "$M21" 300 || [[ "$(champ "$M21" STATE)" != READY ]]; then
+    echoue "21[$c_harnais]: la porte ne s'est pas armee — CHEMIN NON EXERCE"
+    T21_KO=$((T21_KO + 1)); menage_cas; continue
+  fi
+  kill -TERM "$(champ "$M21" WRAPPER_PID)" 2>/dev/null
+  C21=0; wait "$BARRIERE_PID" 2>/dev/null || C21=$?
+  BARRIERE_PID=""
+  T21_N=$((T21_N + 1))
+  # NON VACUITE PAR LIGNE: la trap du harnais a bien tourne, donc le code
+  # observe vient de LUI et non d'un wrapper qui aurait conclu tout seul.
+  if ! grep -q '^TRAP_HARNAIS' "$T21"; then
+    echoue "21[$c_harnais]: la trap du harnais n'a pas tourne — code non attribuable"
+    T21_KO=$((T21_KO + 1))
+  elif [[ "$C21" != "$c_attendu" ]]; then
+    echoue "21[$c_harnais]: le wrapper rend $C21, attendu $c_attendu — $quoi"
+    T21_KO=$((T21_KO + 1))
+  else
+    detail "21: harnais $c_harnais -> wrapper $C21   ($quoi)"
+  fi
+done
+if (( T21_N == 0 )); then
+  echoue "21: aucune ligne de la table n'a ete exercee"
+elif (( T21_KO == 0 )); then
+  ok "21: les $T21_N lignes de la table de priorite sont conformes"
+else
+  echoue "21: $T21_KO ligne(s) non conforme(s) sur $T21_N"
+fi
+menage_cas
+
+# ==========================================================================
+# 22. SIGNAL AVANT `GATE_ARMED` — le wrapper meurt sans mentir, et le parent
+#     reprend la main
+# ==========================================================================
+# LA FENETRE. Entre le lancement du harnais et la publication de `GATE_ARMED`,
+# le wrapper tourne dans sa boucle d'attente ET N'A PAS ENCORE ARME SES TRAPPES:
+# elles ne sont posees qu'apres la publication du marqueur. Un signal recu ici
+# le tue donc par la disposition PAR DEFAUT.
+#
+# CE QUI DOIT TENIR MALGRE CELA:
+#   * AUCUN `READY` n'est publie — le wrapper ne peut pas affirmer une vivacite
+#     qu'il n'a pas constatee, meme en mourant;
+#   * le harnais orphelin ne reste pas bloque pour l'eternite: son extremite
+#     d'ecriture disparait avec le wrapper, sa lecture rend EOF, et il sort;
+#   * et si quelque chose survit quand meme, LE PARENT reprend la main.
+#     « Aucun READY » ne distingue pas un refus correct d'un blocage eternel.
+#
+# LA FENETRE EST OUVERTE ET DATEE, pas visee a l'aveugle: `ESC_RETARD_PORTE`
+# retient le harnais avant qu'il n'ouvre la porte, et `AVANT_PORTE` dit qu'on y
+# est. Sans cela il faudrait courir apres quelques millisecondes.
+echo "      -- 22. signal AVANT GATE_ARMED: fenetre ouverte deliberement"
+M22="$TMP/m22"; T22="$TMP/t22"; : >"$T22"
+lancer_barriere "$M22" "$T22" "ESC_RETARD_PORTE=10"
+if ! attendre_fichier "$T22" 300 || ! grep -q '^AVANT_PORTE' "$T22"; then
+  echoue "22: le harnais n'a pas atteint la fenetre — CHEMIN NON EXERCE"
+  detail "trace: $(tr '\n' ' ' <"$T22")"
+else
+  ok "22: NON VACUITE — le harnais est DANS la fenetre, avant toute publication"
+  [[ ! -s "$M22" ]] \
+    && ok "22: aucun marqueur n'existe encore a cet instant" \
+    || echoue "22: un marqueur est deja publie: $(tr '\n' ' ' <"$M22")"
+  H22="$(sed -n 's/^DEMARRE pid=//p' "$T22" | head -1)"
+  PG22="$(groupe_sujet "$BARRIERE_PID")" || PG22=""
+  kill -TERM "$BARRIERE_PID" 2>/dev/null
+  # LE WRAPPER MEURT: on l'attend, borne.
+  n=0; while (( ++n <= 300 )); do vivant "$BARRIERE_PID" || break; sleep 0.1; done
+  vivant "$BARRIERE_PID" \
+    && echoue "22: le wrapper survit au signal recu avant l'armement de ses trappes" \
+    || ok "22: le wrapper est mort — ses trappes n'etaient pas encore armees"
+  [[ ! -s "$M22" ]] \
+    && ok "22: AUCUN READY publie — le wrapper n'affirme rien en mourant" \
+    || echoue "22: marqueur publie malgre la mort avant la porte: $(tr '\n' ' ' <"$M22")"
+  # LE HARNAIS ORPHELIN NE SE LIBERE PAS TOUT SEUL, ET C'EST MESURE.
+  # L'attente naive etait « son ecrivain a disparu, donc sa lecture rend EOF ».
+  # FAUX dans cette fenetre: il n'a pas encore OUVERT la FIFO, et l'ouverture en
+  # lecture d'une FIFO SANS ECRIVAIN BLOQUE. Mesure sur le processus lui-meme:
+  #
+  #     etat=S  wchan=wait_for_partner   (aucun descripteur de FIFO ouvert)
+  #
+  # Il n'y a donc pas d'EOF a recevoir: il n'est pas dans `read`, il est dans
+  # `open`. Un orphelin de cette fenetre attendrait indefiniment.
+  #
+  # CE N'EST PAS UN DEFAUT DU PROTOCOLE, C'EST CE QUI REND LE PARENT
+  # OBLIGATOIRE. « Aucun READY » ne distingue pas un refus correct d'un blocage
+  # eternel; seule la reprise en main par le groupe fait la difference, et elle
+  # est verifiee juste apres.
+  if [[ -n "$H22" ]]; then
+    if vivant "$H22"; then
+      ok "22: le harnais orphelin $H22 NE se libere PAS seul — la reprise du parent est obligatoire"
+      detail "wchan: $(cat "/proc/$H22/wchan" 2>/dev/null || echo inconnu)"
+    else
+      # Sortie autonome: possible si le harnais avait deja ouvert la porte.
+      # Ce n'est pas un echec, mais ce n'est pas la fenetre visee.
+      detail "22: le harnais est sorti seul — la fenetre visee n'etait deja plus celle-la"
+      detail "trace: $(tr '\n' ' ' <"$T22")"
+    fi
+  else
+    echoue "22: le PID du harnais n'a pas ete publie: rien a verifier"
+  fi
+  # LE PARENT REPREND LA MAIN, dans tous les cas: zero survivant.
+  if [[ -n "$PG22" ]]; then
+    kill -TERM -"$PG22" 2>/dev/null
+    n=0; while (( ++n <= 300 )); do
+      [[ -z "$(ps -o pid= -g "$PG22" 2>/dev/null | tr -d ' \n')" ]] && break
+      sleep 0.1
+    done
+    kill -KILL -"$PG22" 2>/dev/null
+    n=0; while (( ++n <= 100 )); do
+      [[ -z "$(ps -o pid= -g "$PG22" 2>/dev/null | tr -d ' \n')" ]] && break
+      sleep 0.1
+    done
+    reste22="$(ps -o pid=,stat= -g "$PG22" 2>/dev/null | tr -s ' ' | tr '\n' ' ')"
+    [[ -z "${reste22// /}" ]] \
+      && ok "22: le groupe $PG22 est vide — aucun blocage eternel" \
+      || echoue "22: survivants dans le groupe $PG22: $reste22"
+  else
+    echoue "22: le sujet ne possede pas son propre groupe — refus de signaler le notre"
+  fi
 fi
 menage_cas
 
