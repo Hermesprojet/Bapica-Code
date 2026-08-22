@@ -1270,6 +1270,45 @@ PETITS="$(vivants "$TEMOIN_PID $(descendants "$BASH_PID" | tr '\n' ' ')")"
        [[ -f "$TEMOIN_DESC.terminal" ]] && detail "terminal: $(tr '\n' ' ' <"$TEMOIN_DESC.terminal")"
        exit 1; }
 
+# ==========================================================================
+# NON VACUITE DU DECOR — « zero residu » sur une scene vide n'est pas un succes
+# ==========================================================================
+# Le controle de residu, plus bas, exige qu'aucun role et aucune base au
+# prefixe du harnais ne subsiste apres le signal. Cette exigence etait
+# SATISFAITE PAR CONSTRUCTION si le harnais n'avait rien cree: un decor qui
+# n'existe pas ne laisse pas de residu. La propriete voulue n'est pas
+# « l'ensemble final est vide » mais « un ensemble NON VIDE a ete detruit ».
+#
+# La porte de vivacite rend cette photographie sure: elle est armee APRES
+# `decor_poser i`, donc au moment ou nous lisons, le decor EXISTE forcement si
+# le harnais s'est comporte comme annonce. Si la lecture le trouve vide, ce
+# n'est plus une course perdue — c'est que la garantie de cleanup ne portait
+# sur rien.
+#
+# Les NOMS sont retenus, pas seulement un compte: apres le signal on exige la
+# disparition de CES objets-la, nommement. Un residu remplace par un homonyme
+# cree entre-temps ne passerait pas pour un nettoyage.
+DECOR_ROLES_AVANT="$(lire_sql "select coalesce(string_agg(rolname,',' order by rolname),'')
+                                 from pg_roles
+                                where rolname like '${HARNAIS_PREFIXE}\\_%'")"
+DECOR_BASES_AVANT="$(lire_sql "select coalesce(string_agg(datname,',' order by datname),'')
+                                 from pg_database
+                                where datname like '${HARNAIS_PREFIXE}\\_%'")"
+if [[ "$DECOR_ROLES_AVANT" == ILLISIBLE* || "$DECOR_BASES_AVANT" == ILLISIBLE* ]]; then
+  echoue "NON VACUITE: impossible de photographier le decor avant le signal"
+  detail "roles: ${DECOR_ROLES_AVANT#*$'\t'} | bases: ${DECOR_BASES_AVANT#*$'\t'}"
+  exit 1
+fi
+if [[ -z "$DECOR_ROLES_AVANT" || -z "$DECOR_BASES_AVANT" ]]; then
+  echoue "DECOR_ABSENT: le harnais a arme sa porte sans avoir pose de decor"
+  detail "roles[$DECOR_ROLES_AVANT] bases[$DECOR_BASES_AVANT] au prefixe « $HARNAIS_PREFIXE »"
+  detail "« aucun residu » ne serait alors qu'une scene vide, pas un nettoyage"
+  exit 1
+fi
+ok "NON VACUITE: le decor EXISTE avant le signal — $(awk -F, '{print NF}' <<<"$DECOR_ROLES_AVANT") role(s), $(awk -F, '{print NF}' <<<"$DECOR_BASES_AVANT") base(s)"
+detail "roles: $DECOR_ROLES_AVANT"
+detail "bases: $DECOR_BASES_AVANT"
+
 kill -TERM "$MPID"
 CODE=0; wait "$MPID" 2>/dev/null || CODE=$?
 MPID=""
@@ -1342,7 +1381,10 @@ else
     echoue "bases residuelles: lecture impossible — ${reste_b#*$'\t'}"
     detail "une lecture impossible n'est pas « aucun residu »"
   elif [[ -z "$reste_r" && -z "$reste_b" ]]; then
-    ok "ni role ni base au prefixe « $HARNAIS_PREFIXE » ne subsiste"
+    # LE VERDICT NOMME CE QUI A ETE DETRUIT. Le compte vient de la photographie
+    # prise AVANT le signal, qui a deja refuse le decor vide: cette ligne ne
+    # peut donc plus s'imprimer sur une scene qui n'a jamais rien porte.
+    ok "les $(awk -F, '{print NF}' <<<"$DECOR_ROLES_AVANT") role(s) et $(awk -F, '{print NF}' <<<"$DECOR_BASES_AVANT") base(s) du decor ont ete DETRUITS; aucun residu au prefixe « $HARNAIS_PREFIXE »"
   else
     echoue "residu SQL — roles[$reste_r] bases[$reste_b]"
   fi
