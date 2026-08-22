@@ -37,8 +37,22 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJET="$(dirname "$(dirname "$HERE")")"
 MATRICE="$HERE/mutation_matrix.py"
 KO=0
+# LE POINT DE GARANTIE EN COURS. La matrice de mutation ne sait lire qu'une
+# chose: « ECHEC: <point>. » en fin de ligne de verdict. Les cas de ce fichier
+# sont numerotes par CAS, pas par garantie, et un cas rouge ne disait donc a
+# personne QUELLE garantie venait de tomber. `POINT_COURANT` rattache chaque
+# echec a la garantie qu'il defend, et le verdict final la NOMME — c'est ce qui
+# rend la neuvieme mutation tuable par ce fichier.
+POINT_COURANT=""
+KO_POINTS=()
 ok()     { echo "      ok: $*"; }
-echoue() { echo "      ECHEC: $*" >&2; KO=1; }
+echoue() { echo "      ECHEC: $*" >&2; KO=1
+           [[ -n "$POINT_COURANT" ]] && KO_POINTS+=("$POINT_COURANT"); return 0; }
+point_touche() {   # point_touche <nom> -> vrai si ce point a rougi
+  local p="$1" e
+  for e in ${KO_POINTS+"${KO_POINTS[@]}"}; do [[ "$e" == "$p" ]] && return 0; done
+  return 1
+}
 detail() { echo "                $*"; }
 
 echo "    la barriere de vivacite: chaque garantie a son contre-exemple"
@@ -166,6 +180,28 @@ zombie() { local e; e="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')"
 
 champ() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
 
+# --------------------------------------------------------------------------
+# LA COUVERTURE DES FENETRES DE SIGNAL SE DECLARE A L'ENDROIT OU ELLE EST OBTENUE
+# --------------------------------------------------------------------------
+# Une table ecrite a la main derive: elle continue d'annoncer une couverture
+# apres que le cas qui la portait a ete supprime ou renomme. `fenetre_couverte`
+# est appelee PAR LE CAS PORTEUR, sur son chemin de succes uniquement — la
+# table qui la lit ne peut donc annoncer que ce qui a reellement tourne.
+FENETRES=()
+fenetre_couverte() { FENETRES+=("$1|$2"); }
+fenetre_vue() {
+  local n="$1" e
+  for e in ${FENETRES+"${FENETRES[@]}"}; do [[ "${e%%|*}" == "$n" ]] && return 0; done
+  return 1
+}
+fenetre_par_qui() {
+  local n="$1" e out=""
+  for e in ${FENETRES+"${FENETRES[@]}"}; do
+    [[ "${e%%|*}" == "$n" ]] && out="${out:+$out, }${e#*|}"
+  done
+  printf '%s' "$out"
+}
+
 # Chaque cas nettoie son propre etat, par chemins exacts.
 menage_cas() {
   [[ -n "${BARRIERE_PID:-}" ]] && { kill -KILL "$BARRIERE_PID" 2>/dev/null
@@ -177,6 +213,11 @@ trap 'menage_cas; rm -rf "$TMP" "$ENVELOPPE"' EXIT
 # ==========================================================================
 # 1. LE HARNAIS FINIT AVANT LA PORTE -> FAILED, JAMAIS READY
 # ==========================================================================
+# LES CAS 1 A 6 DEFENDENT UNE SEULE ET MEME GARANTIE, nommee B1: « READY
+# n'est publie qu'apres preuve que le harnais est TENU ». Les rattacher a un
+# point permet au verdict final de dire laquelle est tombee, au lieu de
+# laisser un numero de cas parler pour une propriete.
+POINT_COURANT=B1
 echo "      -- 1. harnais termine avant la porte"
 M1="$TMP/m1"; T1="$TMP/t1"; : >"$T1"
 lancer_barriere "$M1" "$T1" "ESC_FIN_IMMEDIATE=1"
@@ -278,6 +319,7 @@ else
   echoue "6: aucun marqueur publie"
 fi
 menage_cas
+POINT_COURANT=""
 
 # ==========================================================================
 # 11. ECRITURE DANS LA FIFO -> VIOLATION, JAMAIS SUCCES
@@ -432,6 +474,7 @@ if attendre_fichier "$M10" 300 && [[ "$(champ "$M10" STATE)" == READY ]]; then
     fi
   fi
   # LE WRAPPER TUE NE PEUT PAS NETTOYER: c'est un etat classe, pas un succes vide.
+  fenetre_couverte 6 "cas 10"
   [[ -d "$BAR" ]] \
     && ok "10: repertoire barriere subsistant — classe « wrapper SIGKILLe, nettoyage impossible »" \
     || ok "10: repertoire barriere absent"
@@ -706,6 +749,7 @@ PY
     # que personne ne se remette a le lire comme une preuve de nettoyage.
     if [[ "${R1%%|*}" == "143" && "${R2%%|*}" == "143" ]]; then
       ok "19: code 143 dans les deux cas — le code NE PROUVE PAS le nettoyage, seul le residu le dit"
+      fenetre_couverte 4 "cas 19"
     else
       echoue "19: codes inattendus: un signal ${R1%%|*}, deux signaux ${R2%%|*}"
     fi
@@ -928,9 +972,12 @@ else
       sleep 0.1
     done
     reste22="$(ps -o pid=,stat= -g "$PG22" 2>/dev/null | tr -s ' ' | tr '\n' ' ')"
-    [[ -z "${reste22// /}" ]] \
-      && ok "22: le groupe $PG22 est vide — aucun blocage eternel" \
-      || echoue "22: survivants dans le groupe $PG22: $reste22"
+    if [[ -z "${reste22// /}" ]]; then
+      ok "22: le groupe $PG22 est vide — aucun blocage eternel"
+      fenetre_couverte 1 "cas 22"
+    else
+      echoue "22: survivants dans le groupe $PG22: $reste22"
+    fi
   else
     echoue "22: le sujet ne possede pas son propre groupe — refus de signaler le notre"
   fi
@@ -981,9 +1028,12 @@ if attendre_fichier "$M9" 300 && [[ "$(champ "$M9" STATE)" == READY ]]; then
   vivant "$H9" \
     && ok "9: le harnais reste BLOQUE — les deux pertes sont independantes" \
     || echoue "9: la perte du temoin a entraine celle du harnais"
-  grep -q "READ_RENDU" "$T9" \
-    && echoue "9: le harnais est sorti de la porte" \
-    || ok "9: la porte tient encore malgre la perte du temoin"
+  if grep -q "READ_RENDU" "$T9"; then
+    echoue "9: le harnais est sorti de la porte"
+  else
+    ok "9: la porte tient encore malgre la perte du temoin"
+    fenetre_couverte 3 "cas 8 et 9"
+  fi
 else
   echoue "9: la porte ne s'est pas armee"
 fi
@@ -1002,6 +1052,105 @@ rc=$?
 grep -q "PUBLIE\|READ_RENDU" "$T16" \
   && echoue "16: le hook a agi alors qu'il n'etait pas demande" \
   || ok "16: aucun marqueur, aucune attente: le hook n'a rien fait"
+
+# ==========================================================================
+# LA MATRICE DES FENETRES DE SIGNAL
+# ==========================================================================
+# SIX FENETRES, ET AUCUNE NE DOIT POUVOIR PASSER POUR VERTE SANS AVOIR ETE
+# EXERCEE. Le signal peut arriver a six moments distincts du cycle, et chacun
+# met en jeu une propriete differente. Les enumerer sans dire lesquelles sont
+# reellement couvertes serait exactement le defaut que ce fichier existe pour
+# interdire.
+#
+# LA TABLE NE S'ECRIT PAS A LA MAIN. Les fenetres portees ICI se declarent
+# depuis le chemin de SUCCES de leur cas (`fenetre_couverte`): supprimer le cas,
+# ou le faire echouer, retire la ligne. Les fenetres portees AILLEURS sont
+# verifiees par la PRESENCE de leur assertion dans le fichier cite: renommer ou
+# retirer l'assertion rougit la table, au lieu de la laisser citer un test qui
+# n'existe plus.
+echo
+echo "      -- MATRICE DES FENETRES DE SIGNAL"
+SELFTEST_F="$(dirname "$MATRICE")/mutation_signal_selftest.sh"
+ISOLATION_F="$(dirname "$MATRICE")/mutation_isolation_selftest.sh"
+
+# porte_ailleurs <numero> <libelle> <fichier> <texte-de-l-assertion>
+porte_ailleurs() {
+  local n="$1" quoi="$2" f="$3" motif="$4"
+  if [[ ! -f "$f" ]]; then
+    echoue "fenetre $n: $(basename "$f") introuvable — citation invalide"
+    return 1
+  fi
+  if grep -qF "$motif" "$f"; then
+    fenetre_couverte "$n" "$quoi"
+    return 0
+  fi
+  echoue "fenetre $n: l'assertion citee n'existe plus dans $(basename "$f")"
+  detail "cherche: $motif"
+  return 1
+}
+
+porte_ailleurs 3 "L1 (auto-test de signaux)" "$SELFTEST_F" \
+  "L1: le relais du wrapper a atteint le harnais"
+porte_ailleurs 4 "cas 6 (auto-test d'isolation)" "$ISOLATION_F" \
+  "6. le retrait du worktree va jusqu'au bout malgre deux signaux de plus"
+porte_ailleurs 5 "L7 (auto-test de signaux)" "$SELFTEST_F" \
+  "L7: le resultat est PUBLIE malgre le signal recu dans la fenetre"
+
+FEN_LIBELLE=(
+  "1|avant GATE_ARMED"
+  "2|apres GATE_ARMED, avant READY"
+  "3|apres READY"
+  "4|pendant le nettoyage"
+  "5|entre la fin du harnais et la publication du resultat"
+  "6|apres la perte du wrapper"
+)
+FEN_NON=0
+for e in "${FEN_LIBELLE[@]}"; do
+  n="${e%%|*}"; libelle="${e#*|}"
+  if fenetre_vue "$n"; then
+    printf '                %s. %-52s porte par %s\n' "$n" "$libelle" "$(fenetre_par_qui "$n")"
+  else
+    printf '                %s. %-52s CHEMIN NON EXERCE\n' "$n" "$libelle"
+    FEN_NON=$((FEN_NON + 1))
+  fi
+done
+
+# LA FENETRE 2 EST DECLAREE NON EXERCEE, ET LA RAISON EST ECRITE.
+# Entre la detection de la porte et la publication du marqueur, le wrapper
+# n'execute que ses verifications d'identite: quelques appels a `ps`, soit
+# quelques millisecondes. La viser sans crochet reviendrait a compter des
+# reussites au lieu d'etablir une propriete. ET AUCUN CROCHET N'EST POSE DANS LE
+# WRAPPER: c'est la piece meme que ce fichier extrait et met en echec, et y
+# ajouter du code de test rendrait l'objet mesure different de l'objet livre.
+#
+# CE QUI EST QUAND MEME ETABLI DE PART ET D'AUTRE. Cote wrapper, le cas 22
+# montre qu'un signal recu avant l'armement de ses trappes ne produit AUCUN
+# READY. Cote harnais, le cas 10 montre qu'une porte deja armee rend la main en
+# 0,1 s sur EOF quand le wrapper disparait. La fenetre 2 est encadree par les
+# deux — elle n'est pas exercee, et elle est comptee comme telle.
+if fenetre_vue 2; then
+  echoue "fenetre 2: declaree couverte alors qu'aucun crochet ne permet de l'atteindre"
+else
+  detail "fenetre 2: quelques millisecondes de verifications d'identite; aucun"
+  detail "           crochet dans le wrapper, qui est la piece mesuree. Encadree"
+  detail "           par le cas 22 (cote wrapper) et le cas 10 (cote harnais)."
+fi
+if (( FEN_NON == 0 )); then
+  ok "les six fenetres de signal sont exercees"
+elif (( FEN_NON == 1 )) && ! fenetre_vue 2; then
+  ok "cinq fenetres sur six exercees; la sixieme est declaree NON EXERCEE, avec sa raison"
+else
+  echoue "$FEN_NON fenetre(s) non exercee(s) — voir la table ci-dessus"
+fi
+
+# LE VERDICT NOMME LA GARANTIE TOMBEE, PAS SEULEMENT LE CAS. La matrice de
+# mutation ne reconnait un contre-exemple que sous la forme « ECHEC: <point>. »;
+# sans cette ligne, retirer la barriere du wrapper faisait rougir six cas sans
+# qu'aucun verdict ne designe LA garantie perdue — et la mutation aurait ete
+# comptee CREUSE alors qu'elle etait parfaitement detectee.
+if point_touche B1; then
+  echo "      ECHEC: B1. la barriere de vivacite ne tient plus: READY publie sans preuve de blocage" >&2
+fi
 
 echo
 if (( KO == 0 )); then

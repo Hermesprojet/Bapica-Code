@@ -2513,6 +2513,59 @@ L6_FIFOS="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'esc-barriere-*' 2>/dev/nul
 detail "MATRIX_RC=$L6_MRC, rapporte separement et jamais utilise comme preuve"
 rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
 
+# --- L7: LA FENETRE ENTRE LA FIN DU HARNAIS ET LA PUBLICATION DU RESULTAT --
+# LA FENETRE. Une fois le harnais fini, la matrice a encore une sequence
+# TERMINALE a executer: publier le code du wrapper, puis rendre le repertoire de
+# barriere. C'est le SEUL endroit ou le code du wrapper soit observable — la
+# matrice sort ensuite avec le sien.
+#
+# LE DEFAUT, MESURE AVANT CORRECTION. Un TERM recu dans cette fenetre
+# declenchait `_sur_signal`, donc `Interruption`, et le canal n'etait JAMAIS
+# ecrit. La matrice imprimait pourtant un verdict partiel parfaitement lisible:
+# rien ne signalait la perte. Sonde dediee: « RESULTAT PERDU », code 143.
+#
+# ET UN MASQUE POSE TROP BAS NE SUFFISAIT PAS. Place juste avant l'ecriture, il
+# laissait decouverte toute la portion qui le precede — meme mesure, meme perte.
+# Ce qui doit etre insecable, c'est la sequence terminale ENTIERE.
+#
+# DEUX PROPRIETES, ET LA SECONDE EST CELLE QUI DISTINGUE BLOQUER D'IGNORER:
+#   * le resultat EST publie malgre le signal;
+#   * le signal N'EST PAS PERDU — il est delivre des le masque leve, et la
+#     matrice sort en 143. Un `SIG_IGN` aurait publie le resultat ET avale
+#     l'interruption, laissant la campagne continuer comme si de rien n'etait.
+echo "      -- L7: signal entre la fin du harnais et la publication du resultat"
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(canal_neuf temoin-L)"
+L_RESULTAT="$(mktemp -u)"; L7_FEN="$(canal_neuf fenetre-L7)"
+lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM" "ESC_LENTEUR=1" \
+  "ESC_MUTATION_PAUSE_RESULTAT=30" "ESC_MUTATION_RESULTAT_TEMOIN=$L7_FEN"
+attendre "le faux harnais pret (L7)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
+attendre "le marqueur du wrapper (L7)" '[[ -s "$L_TEM" ]]' 3000 \
+  '[[ -f "$L_TEM.doublon" ]]' \
+  "le wrapper a REFUSE de publier — le canal existait deja (voir <canal>.doublon); un canal doit etre un nom LIBRE" || exit 1
+L7_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
+attendre "l'attente du wrapper armee (L7)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
+kill -TERM "$L7_WPID"                    # le harnais nettoie, puis sort
+attendre "l'entree dans la fenetre terminale (L7)" '[[ -s "$L7_FEN" ]]' 3000 || exit 1
+if [[ -f "$L_RESULTAT" ]]; then
+  echoue "L7: le resultat est deja publie: la fenetre visee n'est pas celle-la"
+else
+  ok "L7: NON VACUITE — la matrice est DANS sa sequence terminale, resultat non encore publie"
+fi
+kill -TERM "$MPID"                       # LE SIGNAL TOMBE DANS LA FENETRE
+L7_MRC=0; wait "$MPID" 2>/dev/null || L7_MRC=$?; MPID=""
+if [[ -f "$L_RESULTAT" ]]; then
+  ok "L7: le resultat est PUBLIE malgre le signal recu dans la fenetre"
+  detail "WRAPPER_RC=$(sed -n 's/^WRAPPER_RC=//p' "$L_RESULTAT")"
+else
+  echoue "L7: RESULTAT PERDU — le signal a interrompu la sequence terminale"
+fi
+# BLOQUER N'EST PAS IGNORER. Si le signal avait ete ignore, la matrice serait
+# sortie par son chemin normal et n'aurait pas rendu 143.
+[[ "$L7_MRC" == "143" ]] \
+  && ok "L7: la matrice rend 143 — le signal a ete DIFFERE, pas avale" \
+  || echoue "L7: la matrice rend $L7_MRC, attendu 143: le signal a ete perdu"
+rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT" "$L7_FEN"
+
 # ==========================================================================
 # M. BASELINE CONTAMINEE MAIS STABLE — refusee pour la bonne raison
 # ==========================================================================

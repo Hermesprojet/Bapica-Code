@@ -160,6 +160,26 @@ def _pause_sortie():
     time.sleep(duree)
 
 
+def _pause_resultat():
+    """Crochet de test: la fenetre ENTRE la fin du harnais et la publication.
+
+    Meme forme et meme raison que `_pause_sortie`: cette fenetre-ci est de
+    quelques microsecondes, et la viser a l'aveugle reviendrait a compter des
+    reussites au lieu d'etablir une propriete.
+
+      ESC_MUTATION_PAUSE_RESULTAT   duree de la fenetre, en secondes
+      ESC_MUTATION_RESULTAT_TEMOIN  fichier ecrit A L'ENTREE de la fenetre
+    """
+    duree = float(os.environ.get("ESC_MUTATION_PAUSE_RESULTAT", "0") or 0)
+    if duree <= 0:
+        return
+    temoin = os.environ.get("ESC_MUTATION_RESULTAT_TEMOIN")
+    if temoin:
+        with open(temoin, "w") as f:
+            f.write(f"FORMAT=esc-resultat-fenetre/1\nPID={os.getpid()}\n")
+    time.sleep(duree)
+
+
 class Interruption(Exception):
     """Un signal est arrive pendant un controle."""
 
@@ -612,38 +632,70 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
         # Publie ICI, dans le `finally`: apres le vrai `p.wait()` de
         # `communicate()`, avant toute interpretation, et meme si le wrapper
         # rend un code non nul ou si une branche d'erreur survient.
-        _canal = os.environ.get("ESC_MUTATION_RESULTAT")
-        if _canal:
-            _j = os.environ.get("ESC_JOURNAL", "")
-            _waits = ""
-            if _j and os.path.exists(_j):
-                with open(_j) as _f:
-                    _waits = ";".join(x.strip() for x in _f if x.strip())
-            _tmp = _canal + ".tmp"
-            with open(_tmp, "w") as _f:
-                _f.write(f"FORMAT=esc-wrapper-result/1\n"
-                         f"SCENARIO={os.environ.get('ESC_SCENARIO', '?')}\n"
-                         f"WRAPPER_PID={p.pid}\n"
-                         f"WRAPPER_PGID={p.pid}\n"
-                         f"WRAPPER_RC={p.returncode}\n"
-                         f"TOKEN={os.environ.get('ESC_MUTATION_JETON', '')}\n"
-                         f"WAITS={_waits}\n")
-            # `os.link` echoue si la cible existe: la publication est EXCLUSIVE,
-            # donc un second resultat est une erreur observable et non un
-            # ecrasement silencieux.
-            try:
-                os.link(_tmp, _canal)
-            except FileExistsError:
-                with open(_canal + ".doublon", "a") as _f:
-                    _f.write(f"DOUBLON rc={p.returncode}\n")
-            finally:
-                os.unlink(_tmp)
-        # LES FIFO SONT RENDUES ICI, ET C'EST LE SEUL ENDROIT OU CE SOIT
-        # POSSIBLE DANS TOUS LES CAS. Le wrapper les retire quand il sort
-        # normalement; quand l'escalade le tue par SIGKILL, il ne retire rien.
-        # La matrice, elle, survit a cette escalade — c'est elle qui la conduit.
-        if barriere:
-            shutil.rmtree(barriere, ignore_errors=True)
+        # LA SEQUENCE TERMINALE EST INSECABLE, ET LES SIGNAUX SONT BLOQUES —
+        # PAS IGNORES. Un TERM recu entre la fin du harnais et le `os.link`
+        # declenchait `_sur_signal`, donc `Interruption`, et le canal n'etait
+        # JAMAIS ecrit: le code du wrapper — seul endroit ou il soit observable
+        # — disparaissait, alors que la matrice imprimait par ailleurs un
+        # verdict partiel parfaitement lisible. Mesure, fenetre ouverte par
+        # `ESC_MUTATION_PAUSE_RESULTAT`: « RESULTAT PERDU », code matrice 143.
+        #
+        # LE MASQUE EST POSE EN TETE DU `finally`, pas juste avant l'ecriture.
+        # Un masque pose plus bas laisse decouverte toute la portion qui le
+        # precede — mesure: avec le crochet AVANT le masque, le resultat etait
+        # perdu exactement comme sans masque. Ce qu'il faut rendre insecable,
+        # c'est la sequence terminale entiere.
+        #
+        # `pthread_sigmask` BLOQUE, il n'ignore pas: le signal reste EN ATTENTE
+        # et est delivre des le masque leve. L'interruption a donc bien lieu,
+        # juste apres l'ecriture — aucune autorite de delai n'est gagnee ni
+        # perdue, et la matrice reste tuable a tout instant par SIGKILL.
+        # `SIG_IGN` aurait ete FAUX ici: le masque est pose au milieu d'une
+        # campagne, et ignorer aurait rendu la matrice sourde pour tous les
+        # controles suivants — le signal serait publie ET perdu.
+        _sig = {signal.SIGINT, signal.SIGTERM, signal.SIGHUP}
+        try:
+            _masque = signal.pthread_sigmask(signal.SIG_BLOCK, _sig)
+        except (AttributeError, OSError):
+            _masque = None
+        try:
+            _pause_resultat()
+            _canal = os.environ.get("ESC_MUTATION_RESULTAT")
+            if _canal:
+                _j = os.environ.get("ESC_JOURNAL", "")
+                _waits = ""
+                if _j and os.path.exists(_j):
+                    with open(_j) as _f:
+                        _waits = ";".join(x.strip() for x in _f if x.strip())
+                _tmp = _canal + ".tmp"
+                with open(_tmp, "w") as _f:
+                    _f.write(f"FORMAT=esc-wrapper-result/1\n"
+                             f"SCENARIO={os.environ.get('ESC_SCENARIO', '?')}\n"
+                             f"WRAPPER_PID={p.pid}\n"
+                             f"WRAPPER_PGID={p.pid}\n"
+                             f"WRAPPER_RC={p.returncode}\n"
+                             f"TOKEN={os.environ.get('ESC_MUTATION_JETON', '')}\n"
+                             f"WAITS={_waits}\n")
+                # `os.link` echoue si la cible existe: la publication est
+                # EXCLUSIVE, donc un second resultat est une erreur observable
+                # et non un ecrasement silencieux.
+                try:
+                    os.link(_tmp, _canal)
+                except FileExistsError:
+                    with open(_canal + ".doublon", "a") as _f:
+                        _f.write(f"DOUBLON rc={p.returncode}\n")
+                finally:
+                    os.unlink(_tmp)
+            # LES FIFO SONT RENDUES ICI, ET C'EST LE SEUL ENDROIT OU CE SOIT
+            # POSSIBLE DANS TOUS LES CAS. Le wrapper les retire quand il sort
+            # normalement; quand l'escalade le tue par SIGKILL, il ne retire
+            # rien. La matrice, elle, survit a cette escalade — c'est elle qui
+            # la conduit.
+            if barriere:
+                shutil.rmtree(barriere, ignore_errors=True)
+        finally:
+            if _masque is not None:
+                signal.pthread_sigmask(signal.SIG_SETMASK, _masque)
     return p.returncode, sortie + erreur
 
 
