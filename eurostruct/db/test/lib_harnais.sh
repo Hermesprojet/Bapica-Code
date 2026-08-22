@@ -421,10 +421,33 @@ HARNAIS_ROLES_STUB=(anon authenticated)
 # Les gestionnaires ci-dessous se contentent d'`exit`, ce qui DECLENCHE le
 # piege de sortie. Les codes sont les codes conventionnels 128+signal, pour que
 # « interrompu » reste distinguable de « refuse » (2) et de « non execute » (3).
+#
+# LE PREMIER SIGNAL PRIS DESARME LES SUIVANTS, ET C'EST CE QUI REND LE PIEGE DE
+# SORTIE ATTEIGNABLE. Sans `trap ""`, un SECOND signal arrivant PENDANT le
+# nettoyage relance ce gestionnaire, donc `exit`, et le nettoyage s'arrete la
+# ou il en etait — en laissant exactement les roles et bases qu'il venait de
+# commencer a rendre.
+#
+# CE N'EST PAS UNE HYPOTHESE. Deux TERM sont la norme, pas l'exception: la
+# matrice signale LE GROUPE (`os.killpg`) et le wrapper RELAIE ensuite le
+# signal au harnais. Mesure en isolation, meme forme que le harnais reel:
+#
+#   un seul TERM   -> code 143, journal « MENAGE_DEBUT MENAGE_FIN »
+#   deux TERM      -> code 143, journal « MENAGE_DEBUT »          <- tronque
+#   avec `trap ""` -> code 143, journal complet pour 1, 2 ou 3 TERM
+#
+# LE CODE DE SORTIE EST 143 DANS LES TROIS CAS: il ne distingue pas un
+# nettoyage acheve d'un nettoyage coupe en deux. C'est le residu qui le dit,
+# et personne ne le regardait — le scenario A affirmait « aucun residu » sur
+# un decor qui n'avait jamais existe.
+#
+# CELA NE CREE PAS DE SECONDE AUTORITE DE DELAI. Le parent garde la sienne et
+# escalade en SIGKILL, qui ne peut etre ni ignore ni piege: un nettoyage
+# reellement bloque reste borne par lui, pas par le harnais.
 harnais_piege_signaux() {
-  trap 'exit 143' TERM
-  trap 'exit 130' INT
-  trap 'exit 129' HUP
+  trap 'trap "" TERM INT HUP; exit 143' TERM
+  trap 'trap "" TERM INT HUP; exit 130' INT
+  trap 'trap "" TERM INT HUP; exit 129' HUP
 }
 
 HARNAIS_IDENT_MAX=40

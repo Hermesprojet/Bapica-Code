@@ -86,6 +86,37 @@ echo "    la matrice meurt proprement sur signal"
 # seraient pas distinguables des siennes.
 JETON="$$-${RANDOM}${RANDOM}"
 TRACE=""; SORTIE=""; TEMOIN=""; TEMOIN_DESC=""; ESPACE_DEPOT=""; MPID=""
+
+# ==========================================================================
+# CANAUX DU WRAPPER — LE NOM DOIT ETRE LIBRE, ET C'EST UN CONTRAT
+# ==========================================================================
+# Le wrapper publie son marqueur par LIEN DUR: `ln` refuse une cible qui
+# existe, ce qui rend la publication EXCLUSIVE et transforme une seconde
+# emission en violation observable au lieu d'un ecrasement muet.
+#
+# LA CONTREPARTIE EST UNE OBLIGATION POUR L'APPELANT, ET ELLE N'ETAIT NULLE
+# PART ECRITE. `mktemp` CREE le fichier. Tous les canaux de ce test etaient
+# donc deja occupes avant meme le lancement, et depuis le passage de `mv -f` a
+# `ln` la publication echouait SYSTEMATIQUEMENT. Mesure, scenario A sur un
+# cluster propre: le harnais atteint sa porte en 11 s, le wrapper ecrit
+# « DOUBLON_READY » dans `<canal>.doublon`, le marqueur reste VIDE, et le
+# parent attend ses 300 s avant de conclure « delai depasse ». Le protocole
+# etait correct; l'appelant violait son contrat.
+#
+# `mktemp -u` seul rendrait un nom libre mais NON RESERVE: un tiers peut le
+# prendre entre-temps. UN SEUL repertoire prive en 0700, cree ici, lui rend
+# cette garantie: a l'interieur, nous sommes le seul processus qui puisse
+# creer quoi que ce soit, donc un nom libre le reste.
+#
+# LE REPERTOIRE EST CREE DANS CE PROCESSUS, PAS DANS `canal_neuf`. La fonction
+# est appelee en substitution de commande — donc dans un SOUS-SHELL — et tout
+# ce qu'elle affecterait (un tableau de repertoires a nettoyer, un compteur)
+# mourrait avec lui. Elle ne fait donc que rendre un nom.
+CANAUX_RACINE="$(mktemp -d)"
+chmod 0700 "$CANAUX_RACINE"
+canal_neuf() {   # canal_neuf <nom> -> chemin LIBRE dans notre repertoire prive
+  mktemp -u -p "$CANAUX_RACINE" "${1:-canal}.XXXXXXXX"
+}
 FUITE_CLIENT=""; FUITE_BACKEND=""; TIERS_CLIENT=""; TIERS_BACKEND=""
 M_CLIENT=""; M_BACKEND=""; M_APP=""; M_C1=0; M_C2=0; B0_DIAG=""
 DORMEUR=""
@@ -804,6 +835,11 @@ menage() {
   fi
   rm -rf "$MANIFESTES"
   rm -f "$TRACE" "$SORTIE" "$TEMOIN" "$TEMOIN_DESC"
+  # LE REPERTOIRE PRIVE DES CANAUX, ET LUI SEUL. Son chemin vient du `mktemp -d`
+  # de CE processus: aucun nettoyage par motif, rien qui puisse viser autre
+  # chose. Il emporte marqueurs, `.doublon` et `.terminal` d'un seul coup.
+  [[ -n "${CANAUX_RACINE:-}" && -d "$CANAUX_RACINE" ]] && rm -rf "$CANAUX_RACINE"
+  return 0
 }
 # LE NETTOYAGE PEUT CHANGER LE VERDICT, et il ne le pouvait pas.
 # `menage()` tournait dans un `trap EXIT` declenche par `exit $KO`: le code
@@ -894,10 +930,22 @@ lire_marqueur() {
   # indistinguables — un lecteur ne saurait plus ce que « READY » lui promet.
   [[ "$MK_FORMAT" == "esc-mutation-marker/2" ]] \
     || { MK_DIAG="version inconnue: ${MK_FORMAT:-<absente>}"; return 1; }
-  [[ "$MK_GATE" == GATE_ARMED ]] \
-    || { MK_DIAG="HARNESS_GATE_STATE=${MK_GATE:-<absent>}, attendu GATE_ARMED"; return 1; }
   case "$MK_STATE" in READY|FAILED) : ;;
     *) MK_DIAG="etat invalide: ${MK_STATE:-<absent>}"; return 1 ;; esac
+  # L'INVARIANT EST CONDITIONNEL, ET IL LE DOIT. « READY implique GATE_ARMED »
+  # est la promesse du /2; « tout marqueur porte GATE_ARMED » n'en est pas une
+  # et serait FAUSSE par construction: un wrapper qui constate que le harnais
+  # a fini avant d'armer publie precisement FAILED sans etat de porte, et c'est
+  # le comportement CORRECT — c'est meme ce que le scenario J exerce, avec un
+  # harnais dont le seul travail est de sortir tout de suite.
+  #
+  # L'exigence inconditionnelle rendait donc rouge un refus conforme. Mesure:
+  # « J: marqueur refuse: HARNESS_GATE_STATE=<absent> » sur un marqueur FAILED
+  # parfaitement regulier.
+  if [[ "$MK_STATE" == READY && "$MK_GATE" != GATE_ARMED ]]; then
+    MK_DIAG="READY sans preuve de porte: HARNESS_GATE_STATE=${MK_GATE:-<absent>}"
+    return 1
+  fi
   for v in "$MK_WRAP" "$MK_HARN" "$MK_WIT" "$MK_PGID"; do
     pid_valide "${v:-x}" || { MK_DIAG="PID/PGID non numerique: ${v:-<absent>}"; return 1; }
   done
@@ -906,11 +954,22 @@ lire_marqueur() {
   return 0
 }
 
-attendre() {   # attendre <description> <commande-test> <deciseconds>
-  local quoi="$1" test="$2" max="$3" n=0
+# UNE ATTENTE QUI NE PEUT PAS CONCLURE TOT SUR UNE CAUSE CONNUE TRANSFORME UN
+# DIAGNOSTIC EN DELAI. Le quatrieme parametre, optionnel, nomme une condition
+# d'ABANDON: quand elle devient vraie, l'attente s'arrete immediatement et dit
+# POURQUOI. Mesure de ce que coutait son absence: la publication du marqueur
+# etait refusee des la premiere seconde — le canal existait deja — et le test
+# attendait quand meme ses 300 secondes avant de rendre « delai depasse »,
+# c'est-a-dire le seul message qui ne designe pas la cause.
+attendre() {   # attendre <description> <commande-test> <deciseconds> [<abandon> <raison>]
+  local quoi="$1" test="$2" max="$3" abandon="${4:-}" raison="${5:-}" n=0
   while ! eval "$test"; do
     kill -0 "$MPID" 2>/dev/null || { echoue "la matrice est morte avant: $quoi"
                                      detail "$(head -3 "$SORTIE")"; return 1; }
+    if [[ -n "$abandon" ]] && eval "$abandon"; then
+      echoue "abandon en attendant $quoi: ${raison:-cause non nommee}"
+      return 1
+    fi
     sleep 0.1; n=$((n + 1))
     if (( n >= max )); then echoue "delai depasse en attendant: $quoi"; return 1; fi
   done
@@ -1102,7 +1161,7 @@ else
   detail "$(tr '\n' ' ' <<<"$VERROUS_AVANT_A")"
 fi
 
-TEMOIN_DESC="$(mktemp)"
+TEMOIN_DESC="$(canal_neuf temoin-A)"
 # LES CANAUX DU WRAPPER SONT DESORMAIS ARMES EN PERMANENCE DANS A. Ils
 # existaient et n'etaient poses que par `lancer_L`: le scenario A n'avait donc
 # ni journal de `wait`, ni marqueurs causaux, ni resultat. Quand il a rougi en
@@ -1126,7 +1185,9 @@ AVANT="$(sha256sum "$PROJET/$CAS_FIC" | cut -d' ' -f1)"
 # `pgrep -P "$MPID"` ne peut rien trouver des que le harnais a fini — et le
 # temoin, qui retenait alors les pipes du `Popen`, faisait durer cette attente
 # ses 300 secondes entieres. Le wrapper publie desormais les trois PID.
-attendre "le marqueur du wrapper (READY)" '[[ -s "$TEMOIN_DESC" ]]' 3000 || exit 1
+attendre "le marqueur du wrapper (READY)" '[[ -s "$TEMOIN_DESC" ]]' 3000 \
+  '[[ -f "$TEMOIN_DESC.doublon" ]]' \
+  "le wrapper a REFUSE de publier — le canal existait deja (voir <canal>.doublon); un canal doit etre un nom LIBRE" || exit 1
 if ! lire_marqueur "$TEMOIN_DESC"; then
   echoue "marqueur du wrapper refuse: $MK_DIAG"; exit 1
 fi
@@ -1898,7 +1959,7 @@ if [[ -n "${I_PGID:-}" ]] && pid_valide "${I_PGID:-x}"; then
     && ok "aucun processus du groupe de I ($I_PGID) ne survit au debut de J" \
     || echoue "J: le groupe $I_PGID de I contient encore des processus vivants"
 fi
-TEMOIN_J="$(mktemp)"; FAUX_HARNAIS="$(mktemp)"
+TEMOIN_J="$(canal_neuf temoin-J)"; FAUX_HARNAIS="$(mktemp)"
 printf '#!/usr/bin/env bash\nexit 7\n' >"$FAUX_HARNAIS"; chmod +x "$FAUX_HARNAIS"
 J_T0=$(date +%s)
 ( cd "$PROJET" && ESC_MUTATION_TEMOIN="$TEMOIN_J" \
@@ -2004,11 +2065,19 @@ L_SCEN="L-$JETON"
 FAUX="$PROJET/db/test/faux_harnais_causal.sh"
 [[ -f "$FAUX" ]] || echoue "L: faux harnais introuvable: $FAUX"
 
+L_JETON="jeton-$L_SCEN"
 lancer_L() {   # lancer_L <marqueurs> <journal> <marqueur-wrapper> [VAR=val...]
   local marq="$1" jour="$2" temoin="$3"; shift 3
   ( cd "$PROJET" || exit 2
     export ESC_MUTATION_TRACE="$(mktemp)" ESC_MUTATION_TEMOIN="$temoin"
     export ESC_MUTATION_HARNAIS_REMPLACE="$FAUX"
+    # LE JETON N'EST PAS DECORATIF ICI NON PLUS. Le wrapper compare le jeton
+    # publie par la porte a `ESC_MUTATION_JETON`; sans lui les deux valent la
+    # chaine vide et la comparaison ne verifie plus rien. Mesure de son
+    # absence: le double refusait d'armer — « PORTE=jeton absent » — le
+    # wrapper publiait FAILED, et les cinq scenarios L mesuraient un refus au
+    # lieu de la chaine causale.
+    export ESC_MUTATION_JETON="$L_JETON"
     export ESC_MARQUEURS="$marq" ESC_JOURNAL="$jour" ESC_SCENARIO="$L_SCEN"
     export ESC_MUTATION_RESULTAT="$L_RESULTAT"
     export EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
@@ -2062,12 +2131,14 @@ chaine_ok() {   # chaine_ok <repertoire-de-marqueurs>
 # La version precedente de L1 signalait la matrice tout en s'intitulant
 # « wrapper seul »: elle exercait le meme chemin que A, et la reattente n'etait
 # jamais eprouvee — « aucun retour de wait interrompu observe ».
-L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(canal_neuf temoin-L)"
 L_RESULTAT="$(mktemp -u)"
 lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM"
 attendre "le faux harnais pret (L1)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
 L_HPID="$(awk '{print $2}' "$L_MARQ/.harnais")"
-attendre "le marqueur du wrapper (L1)" '[[ -s "$L_TEM" ]]' 3000 || exit 1
+attendre "le marqueur du wrapper (L1)" '[[ -s "$L_TEM" ]]' 3000 \
+  '[[ -f "$L_TEM.doublon" ]]' \
+  "le wrapper a REFUSE de publier — le canal existait deja (voir <canal>.doublon); un canal doit etre un nom LIBRE" || exit 1
 L_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
 L_ETAT="$(sed -n 's/^STATE=//p' "$L_TEM")"
 # L'ATTENTE DU WRAPPER EST ARMEE: sans ce marqueur, signaler trop tot ne
@@ -2146,11 +2217,13 @@ rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
 # La version precedente lisait `wait "$MPID"` — le code de la MATRICE, qui sort
 # en 143 par son propre `sortir()`. Elle ne pouvait donc ni confirmer ni
 # infirmer la priorite des codes du wrapper: rouge d'oracle, pas de produit.
-L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(canal_neuf temoin-L)"
 L_RESULTAT="$(mktemp -u)"
 lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM" "ESC_CODE_SORTIE=9"
 attendre "le faux harnais pret (L2)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
-attendre "le marqueur du wrapper (L2)" '[[ -s "$L_TEM" ]]' 3000 || exit 1
+attendre "le marqueur du wrapper (L2)" '[[ -s "$L_TEM" ]]' 3000 \
+  '[[ -f "$L_TEM.doublon" ]]' \
+  "le wrapper a REFUSE de publier — le canal existait deja (voir <canal>.doublon); un canal doit etre un nom LIBRE" || exit 1
 L_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
 attendre "l'attente du wrapper armee (L2)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
 if ! pid_valide "${L_WPID:-x}"; then
@@ -2169,11 +2242,13 @@ fi
 rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
 
 # --- L3: duplication de marqueur refusee ---------------------------------
-L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(canal_neuf temoin-L)"
 L_RESULTAT="$(mktemp -u)"
 lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM" "ESC_DOUBLE=1"
 attendre "le faux harnais pret (L3)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
-attendre "le marqueur du wrapper (L3)" '[[ -s "$L_TEM" ]]' 3000 || exit 1
+attendre "le marqueur du wrapper (L3)" '[[ -s "$L_TEM" ]]' 3000 \
+  '[[ -f "$L_TEM.doublon" ]]' \
+  "le wrapper a REFUSE de publier — le canal existait deja (voir <canal>.doublon); un canal doit etre un nom LIBRE" || exit 1
 L_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
 attendre "l'attente du wrapper armee (L3)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
 kill -TERM "$L_WPID"
@@ -2198,7 +2273,7 @@ rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
 # qu'il survive intact, qu'un `.doublon` signale le refus, et que le lecteur
 # refuse ensuite le canal — meme si le document en place est parfaitement forme.
 echo "      -- L4: publication du resultat exclusive, jamais un ecrasement"
-L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(canal_neuf temoin-L)"
 L_RESULTAT="$(mktemp)"                      # IL EXISTE DEJA — c'est le sujet
 L_OCCUPANT="OCCUPANT-$JETON"
 { echo "FORMAT=esc-wrapper-result/1"; echo "SCENARIO=$L_OCCUPANT"
@@ -2207,7 +2282,9 @@ chmod 0600 "$L_RESULTAT"
 L_AVANT="$(sha256sum "$L_RESULTAT" | cut -d' ' -f1)"
 lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM"
 attendre "le faux harnais pret (L4)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
-attendre "le marqueur du wrapper (L4)" '[[ -s "$L_TEM" ]]' 3000 || exit 1
+attendre "le marqueur du wrapper (L4)" '[[ -s "$L_TEM" ]]' 3000 \
+  '[[ -f "$L_TEM.doublon" ]]' \
+  "le wrapper a REFUSE de publier — le canal existait deja (voir <canal>.doublon); un canal doit etre un nom LIBRE" || exit 1
 L_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
 attendre "l'attente du wrapper armee (L4)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
 kill -TERM "$L_WPID"
@@ -2238,11 +2315,13 @@ rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT" "$L_RESULTAT.doublon"
 # suivant ne doit JAMAIS etre emis, et l'erreur doit dire « sans meta », pas
 # « absent ». Les deux diagnostics designent des defauts differents.
 echo "      -- L5: predecesseur incomplet, la chaine s'arrete au maillon casse"
-L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(mktemp)"
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(canal_neuf temoin-L)"
 L_RESULTAT="$(mktemp -u)"
 lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM" "ESC_META_TRONQUE=1"
 attendre "le faux harnais pret (L5)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
-attendre "le marqueur du wrapper (L5)" '[[ -s "$L_TEM" ]]' 3000 || exit 1
+attendre "le marqueur du wrapper (L5)" '[[ -s "$L_TEM" ]]' 3000 \
+  '[[ -f "$L_TEM.doublon" ]]' \
+  "le wrapper a REFUSE de publier — le canal existait deja (voir <canal>.doublon); un canal doit etre un nom LIBRE" || exit 1
 L_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
 attendre "l'attente du wrapper armee (L5)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
 kill -TERM "$L_WPID"

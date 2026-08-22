@@ -392,8 +392,20 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
             '  echo "HARNESS_GATE_STATE=$GS"\n'
             '  echo "GATE=$GATE"\n'
             '} >"$ESC_TEMOIN.tmp"\n'
+            # LE REFUS EST DIT, PAS SEULEMENT ENREGISTRE. `.doublon` etablit la
+            # violation pour qui va le lire; il ne l'apprend a personne. Un
+            # parent qui attend le marqueur ne voyait, lui, que du silence —
+            # jusqu'a son propre delai. Mesure: un canal deja occupe (`mktemp`
+            # CREE le fichier) faisait echouer la publication a la premiere
+            # seconde et rendait « delai depasse » 300 s plus tard, c'est-a-dire
+            # le seul message qui ne designe pas la cause. Le wrapper ecrit donc
+            # aussi sur son erreur standard, que la matrice capture et rapporte.
             'ln "$ESC_TEMOIN.tmp" "$ESC_TEMOIN" 2>/dev/null '
-            '|| echo "DOUBLON_READY" >>"$ESC_TEMOIN.doublon"\n'
+            '|| { echo "DOUBLON_READY" >>"$ESC_TEMOIN.doublon"\n'
+            '     echo "ESC-WRAPPER: publication du marqueur REFUSEE:'
+            ' « $ESC_TEMOIN » existe deja." >&2\n'
+            '     echo "ESC-WRAPPER: un canal doit etre un nom LIBRE"'
+            ' >&2; }\n'
             'rm -f "$ESC_TEMOIN.tmp"\n'
             # LE WRAPPER RELAIE LE SIGNAL ET ATTEND LE HARNAIS. Sans cela il
             # mourait le premier — bash termine par defaut sur SIGTERM — et

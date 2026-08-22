@@ -273,6 +273,22 @@ echo "==> isolation de la matrice de mutation"
 etape "isolation de la matrice de mutation" \
   "$HERE/mutation_isolation_selftest.sh"
 
+# UN CONTRE-EXEMPLE QUI NE S'EXECUTE PAS N'EN EST PAS UN. `gate_protocol_
+# selftest.sh` a ete ecrit comme suite PERMANENTE des garanties de la barriere
+# de vivacite, et il n'etait cable nulle part: personne ne l'aurait relance, et
+# une garantie non exercee ne se distingue plus d'une garantie perdue. C'est la
+# regle de ce fichier, appliquee a lui — une surface non executee n'est pas une
+# surface verte.
+#
+# IL NE TOUCHE AUCUNE BASE. Il EXTRAIT le wrapper de `mutation_matrix.py`, la
+# fonction d'attente de `mutation_signal_selftest.sh` et le piege de signaux de
+# `lib_harnais.sh` — jamais une copie —, puis les met en echec avec un faux
+# harnais. Il est ici pour la meme raison que l'auto-test d'isolation: c'est
+# ici que passe la CI.
+echo "==> protocole de la barriere de vivacite (contre-exemples)"
+etape "protocole de la barriere de vivacite" \
+  "$HERE/gate_protocol_selftest.sh"
+
 # --------------------------------------------------------------------------
 # LES ETAPES QUI EXIGENT UN JEU CANONIQUE VIERGE PASSENT AVANT LA BASE
 # PRINCIPALE

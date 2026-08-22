@@ -105,8 +105,13 @@ exit 77
 FIN
 
 # lancer_barriere <fichier-marqueur> <trace> [VAR=val ...]
+# `BARRIERE_ERR`, s'il est pose par l'appelant, RECUEILLE l'erreur standard du
+# wrapper. Par defaut elle part au neant: un cas qui veut prouver un diagnostic
+# doit dire explicitement ou il le lit.
+BARRIERE_ERR=""
 lancer_barriere() {
   local marqueur="$1" trace="$2"; shift 2
+  local err="${BARRIERE_ERR:-/dev/null}"
   ( for kv in "$@"; do export "${kv?}"; done
     export ESC_TEMOIN="$marqueur" ESC_MUTATION_JETON="$JETON" ESC_SCENARIO=A
     export ESC_TRACE="$trace"
@@ -115,7 +120,7 @@ lancer_barriere() {
     # a se signaler soi-meme. Mesure: le cas 2 s'est tue lui-meme au premier
     # essai. `setsid` ne fork pas ici — l'enfant n'est pas meneur de groupe —
     # donc `$!` est bien le processus final, et son PGID vaut son PID.
-    exec setsid bash "$ENVELOPPE" bash "$FAUX" ) >/dev/null 2>&1 &
+    exec setsid bash "$ENVELOPPE" bash "$FAUX" ) >/dev/null 2>"$err" &
   BARRIERE_PID=$!
 }
 
@@ -429,10 +434,12 @@ menage_cas
 # AVANT que le wrapper ne publie: le lien dur doit echouer, le document
 # anterieur survivre intact, et la violation etre inscrite dans `.doublon`.
 echo "      -- 7. publication READY dupliquee"
-M7="$TMP/m7"; T7="$TMP/t7"; : >"$T7"
+M7="$TMP/m7"; T7="$TMP/t7"; E7="$TMP/e7"; : >"$T7"; : >"$E7"
 printf 'FORMAT=esc-mutation-marker/2\nSTATE=ANTERIEUR\n' >"$M7"
 AVANT7="$(sha256sum "$M7" | cut -d' ' -f1)"
+BARRIERE_ERR="$E7"
 lancer_barriere "$M7" "$T7"
+BARRIERE_ERR=""
 attendre_fichier "$M7.doublon" 300
 if [[ -f "$M7.doublon" ]]; then
   ok "7: la seconde publication est REFUSEE et inscrite ($(head -1 "$M7.doublon"))"
@@ -446,8 +453,251 @@ fi
 grep -q "^PUBLIE" "$T7" \
   && ok "7: NON VACUITE — le harnais avait bien arme sa porte" \
   || echoue "7: le harnais n'a pas arme: cas non exerce"
+# LE REFUS DOIT ETRE DIT, PAS SEULEMENT ENREGISTRE. `.doublon` s'adresse a qui
+# ira le lire; un parent qui attend le marqueur, lui, ne voyait que du silence
+# jusqu'a son propre delai. C'est exactement ce qui a coute une campagne: le
+# canal etait deja occupe, la publication echouait a la premiere seconde, et le
+# verdict rendu 300 s plus tard etait « delai depasse » — le seul message qui ne
+# designe pas la cause.
+if grep -q "^ESC-WRAPPER: publication du marqueur REFUSEE" "$E7"; then
+  ok "7: le refus est DIT sur l'erreur standard, pas seulement inscrit"
+  detail "$(grep -m1 '^ESC-WRAPPER' "$E7")"
+else
+  echoue "7: refus silencieux — rien sur l'erreur standard"
+  detail "erreur standard: $(tr '\n' ' ' <"$E7" | cut -c1-160)"
+fi
+grep -q "un canal doit etre un nom LIBRE" "$E7" \
+  && ok "7: le diagnostic nomme le CONTRAT viole, pas seulement le symptome" \
+  || echoue "7: le diagnostic ne dit pas ce que l'appelant doit corriger"
 menage_cas
 rm -f "$M7.doublon"
+
+# ==========================================================================
+# 17. LES APPELANTS REELS HONORENT LE CONTRAT DE NOM LIBRE
+# ==========================================================================
+# LE PROTOCOLE ETAIT CORRECT ET LE PRODUIT ETAIT CASSE. Le cas 7 prouve que la
+# publication exclusive refuse une cible occupee; il ne dit rien de la question
+# qui a reellement coute la campagne — les appelants presentent-ils un nom
+# libre ? Ils ne le faisaient pas: `mktemp` CREE le fichier, et depuis le
+# passage de `mv -f` a `ln` chaque canal de `mutation_signal_selftest.sh`
+# etait deja occupe avant meme le lancement.
+#
+# Cette verification est STRUCTURELLE et c'en est la limite: elle lit le texte,
+# pas l'execution. Elle est ici parce que le cout d'attraper ce defaut a
+# l'execution est une campagne entiere, et son cout ici, une seconde.
+echo "      -- 17. les appelants presentent un nom LIBRE"
+SELFTEST="$(dirname "$MATRICE")/mutation_signal_selftest.sh"
+if [[ ! -f "$SELFTEST" ]]; then
+  echoue "17: $SELFTEST introuvable — contrat non verifie"
+else
+  # Les variables passees en ESC_MUTATION_TEMOIN / ESC_MUTATION_RESULTAT...
+  mapfile -t VARS < <(grep -oE 'ESC_MUTATION_(TEMOIN|RESULTAT)="?\$\{?[A-Za-z_][A-Za-z0-9_]*' \
+                        "$SELFTEST" | grep -oE '[A-Za-z_][A-Za-z0-9_]*$' | sort -u)
+  # ...ET UN NIVEAU D'INDIRECTION, parce que le premier jet n'en suivait aucun
+  # et le payait: `lancer_L` recoit le canal en TROISIEME PARAMETRE et l'exporte
+  # sous le nom local `temoin`. Les cinq `L_TEM` passaient donc au travers, et
+  # la verification se declarait verte sur la version defectueuse en n'ayant vu
+  # que deux des sept canaux occupes. Une couverture partielle qui s'annonce
+  # totale est pire qu'une absence de verification.
+  mapfile -t -O "${#VARS[@]}" VARS < <(
+    grep -oE '^[[:space:]]*lancer_L[[:space:]]+"?\$[A-Za-z_][A-Za-z0-9_]*"?[[:space:]]+"?\$[A-Za-z_][A-Za-z0-9_]*"?[[:space:]]+"?\$\{?[A-Za-z_][A-Za-z0-9_]*' \
+      "$SELFTEST" | grep -oE '[A-Za-z_][A-Za-z0-9_]*$')
+  # `printf '%s\n'` SANS ARGUMENT IMPRIME UNE LIGNE VIDE, et `sort -u` la
+  # conserve: un tableau vide serait redevenu un tableau d'un element, et la
+  # garde de non-vacuite juste en dessous aurait laisse passer « zero canal
+  # repere » en se croyant a un. Les lignes vides sont donc filtrees.
+  mapfile -t VARS < <(printf '%s\n' ${VARS+"${VARS[@]}"} | grep -v '^[[:space:]]*$' | sort -u)
+  if (( ${#VARS[@]} == 0 )); then
+    echoue "17: aucune variable de canal reperee — la verification serait vide"
+  else
+    ok "17: NON VACUITE — ${#VARS[@]} variable(s) de canal reperee(s): ${VARS[*]}"
+    occupes=()
+    for v in "${VARS[@]}"; do
+      # `mktemp` sans `-u` et sans `-d` cree le fichier: nom OCCUPE.
+      # PAS D'ANCRE EN DEBUT DE LIGNE: `L_TEM=` vient apres deux autres
+      # affectations sur sa ligne, et l'ancre le rendait invisible.
+      while IFS= read -r ligne; do
+        [[ "$ligne" == *"${v}=\"\$(mktemp -u)\""* ]] && continue
+        [[ "$ligne" == *"${v}=\"\$(mktemp -d)\""* ]] && continue
+        [[ "$ligne" == *'IL EXISTE DEJA'* ]] && continue   # sujet d'un test
+        occupes+=("$v: ${ligne%%:*}: $(sed 's/^[[:space:]]*//' <<<"${ligne#*:}" | cut -c1-90)")
+      done < <(grep -nE "(^|[[:space:];&|]|local[[:space:]]+)${v}=\"?\\\$\(mktemp" "$SELFTEST")
+    done
+    if (( ${#occupes[@]} == 0 )); then
+      ok "17: aucun canal n'est cree par un « mktemp » nu — le contrat tient"
+    else
+      echoue "17: ${#occupes[@]} canal(aux) presentent un nom DEJA OCCUPE"
+      printf '                %s\n' "${occupes[@]}"
+    fi
+  fi
+fi
+
+# ==========================================================================
+# 18. UNE CAUSE CONNUE NE DOIT PAS SE PAYER EN DELAI
+# ==========================================================================
+# Le cas 17 empeche la regression d'entrer; celui-ci borne ce qu'elle coute si
+# elle entre quand meme par un chemin non couvert. La publication refusee etait
+# CONNUE de tous des la premiere seconde — `.doublon` ecrit, marqueur vide — et
+# le parent attendait pourtant ses 300 secondes avant de rendre « delai
+# depasse », c'est-a-dire le seul verdict qui ne designe pas la cause.
+#
+# `attendre()` EST EXTRAITE DE `mutation_signal_selftest.sh`, jamais recopiee:
+# un double du mecanisme divergerait, et ce test finirait par prouver ses
+# propres hypotheses.
+echo "      -- 18. l'attente abandonne sur cause connue au lieu d'expirer"
+if [[ ! -f "$SELFTEST" ]]; then
+  echoue "18: $SELFTEST introuvable — mecanisme non verifie"
+else
+  ATT="$TMP/attendre.sh"
+  python3 - "$SELFTEST" "$ATT" <<'PY' || echoue "18: extraction d'attendre() impossible"
+import re, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+blocs = re.findall(r"\nattendre\(\) \{.*?\n\}\n", src, re.S)
+if len(blocs) != 1:
+    sys.exit(f"attendu 1 definition d'attendre(), trouve {len(blocs)}")
+open(sys.argv[2], "w", encoding="utf-8").write(blocs[0])
+PY
+  if [[ -s "$ATT" ]] && bash -n "$ATT" 2>/dev/null; then
+    ok "18: attendre() extraite de mutation_signal_selftest.sh ($(wc -c <"$ATT") octets)"
+    # Harnais minimal: les dependances d'`attendre` sont nommees ici, pas
+    # supposees presentes. `pilote18 <fichier> <arguments...>` ecrit un script
+    # autonome autour de la definition EXTRAITE et l'appelle une fois.
+    pilote18() {
+      local cible="$1"; shift
+      { echo 'set -uo pipefail'
+        echo 'echoue() { echo "ECHEC:$*"; }'
+        echo 'detail() { :; }'
+        echo 'SORTIE=/dev/null'
+        echo 'sleep 3600 & MPID=$!'
+        echo "trap 'kill \"\$MPID\" 2>/dev/null' EXIT"
+        cat "$ATT"
+        echo 'T0=$(date +%s%N)'
+        printf 'attendre'; printf ' %q' "$@"; printf '\n'
+        echo 'CODE=$?'
+        echo 'T1=$(date +%s%N)'
+        echo 'echo "CODE=$CODE"'
+        echo 'echo "DECISECONDES=$(( (T1 - T0) / 100000000 ))"'
+      } >"$cible"
+    }
+    PILOTE="$TMP/pilote18.sh"
+    pilote18 "$PILOTE" "un evenement qui n'arrivera pas" false 600 true "CAUSE NOMMEE"
+    RES18="$(bash "$PILOTE" 2>&1)"
+    C18="$(sed -n 's/^CODE=//p' <<<"$RES18")"
+    D18="$(sed -n 's/^DECISECONDES=//p' <<<"$RES18")"
+    [[ "$C18" == "1" ]] \
+      && ok "18: l'attente rend 1 — un abandon n'est pas un succes" \
+      || echoue "18: code $C18, attendu 1"
+    # LE PLAFOND EST 600 DECISECONDES; l'abandon doit conclure sans l'atteindre.
+    # On ne compare pas a « vite »: on compare au SEUL delai que ce test possede.
+    if [[ -n "$D18" ]] && (( D18 < 60 )); then
+      ok "18: conclu en ${D18} deciseconde(s), plafond 600 — la cause n'est pas payee en delai"
+    else
+      echoue "18: ${D18:-?} deciseconde(s) consommee(s) sur un plafond de 600"
+    fi
+    grep -q "CAUSE NOMMEE" <<<"$RES18" \
+      && ok "18: le verdict NOMME la cause au lieu de dire « delai depasse »" \
+      || { echoue "18: la cause n'est pas nommee dans le verdict"
+           detail "$(tr '\n' ' ' <<<"$RES18" | cut -c1-160)"; }
+    grep -q "delai depasse" <<<"$RES18" \
+      && echoue "18: le verdict parle encore de delai depasse" \
+      || ok "18: aucun « delai depasse » — le message n'induit plus en erreur"
+    # NON VACUITE: SANS condition d'abandon, la MEME attente consomme son
+    # plafond. Sinon ce cas pourrait passer sur une attente qui rend 1 pour une
+    # tout autre raison.
+    PILOTE2="$TMP/pilote18b.sh"
+    pilote18 "$PILOTE2" "un evenement qui n'arrivera pas" false 12
+    RES18B="$(bash "$PILOTE2" 2>&1)"
+    D18B="$(sed -n 's/^DECISECONDES=//p' <<<"$RES18B")"
+    if [[ -n "$D18B" ]] && (( D18B >= 10 )); then
+      ok "18: NON VACUITE — sans condition d'abandon la meme attente consomme son plafond (${D18B} ds sur 12)"
+    else
+      echoue "18: sans abandon l'attente rend la main en ${D18B:-?} ds: le cas ne prouve rien"
+    fi
+    grep -q "delai depasse" <<<"$RES18B" \
+      && ok "18: NON VACUITE — et c'est bien « delai depasse » qu'elle rend alors" \
+      || echoue "18: sans abandon, le message attendu n'apparait pas"
+  else
+    echoue "18: attendre() extraite vide ou invalide"
+  fi
+fi
+
+# ==========================================================================
+# 19. UN SECOND SIGNAL NE DOIT PAS COUPER LE NETTOYAGE EN DEUX
+# ==========================================================================
+# LE HARNAIS RECOIT DEUX SIGTERM, ET C'EST LA NORME. La matrice signale LE
+# GROUPE (`os.killpg`), puis le wrapper RELAIE le signal au harnais: deux
+# livraisons a quelques microsecondes d'intervalle. Le second arrive donc
+# pendant que le piege de sortie nettoie.
+#
+# CE QUE CELA COUTAIT, MESURE SUR LE VRAI HARNAIS. Le scenario A, une fois sa
+# porte armee et son decor reellement pose, terminait avec « code 143 »,
+# « groupe vide », « aucun descendant » — et laissait trois roles et une base.
+# Le code de sortie est 143 dans LES DEUX cas: il ne distingue pas un nettoyage
+# acheve d'un nettoyage tronque. Seul le residu le dit.
+#
+# `harnais_piege_signaux` EST EXTRAITE DE `lib_harnais.sh`, jamais recopiee.
+echo "      -- 19. un second signal ne tronque pas le nettoyage"
+LIB="$(dirname "$MATRICE")/lib_harnais.sh"
+if [[ ! -f "$LIB" ]]; then
+  echoue "19: $LIB introuvable — mecanisme non verifie"
+else
+  PIEGE="$TMP/piege.sh"
+  python3 - "$LIB" "$PIEGE" <<'PY' || echoue "19: extraction du piege impossible"
+import re, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+blocs = re.findall(r"\nharnais_piege_signaux\(\) \{.*?\n\}\n", src, re.S)
+if len(blocs) != 1:
+    sys.exit(f"attendu 1 definition, trouve {len(blocs)}")
+open(sys.argv[2], "w", encoding="utf-8").write(blocs[0])
+PY
+  if [[ -s "$PIEGE" ]] && bash -n "$PIEGE" 2>/dev/null; then
+    ok "19: harnais_piege_signaux extraite de lib_harnais.sh ($(wc -c <"$PIEGE") octets)"
+    SUJET="$TMP/sujet19.sh"
+    { echo 'set -u'
+      echo 'J="$1"'
+      # Un nettoyage qui DURE: sans duree, le second signal n'aurait aucune
+      # fenetre ou tomber et le cas ne prouverait rien.
+      echo 'menage() { echo DEBUT >>"$J"; sleep 2; echo FIN >>"$J"; }'
+      echo 'trap menage EXIT'
+      cat "$PIEGE"
+      echo 'harnais_piege_signaux'
+      echo 'echo PRET >>"$J"'
+      echo 'read -r -t 60 x < <(sleep 60)'
+    } >"$SUJET"
+    essai19() {   # essai19 <nombre-de-TERM> -> "code|journal"
+      local nb="$1" j h c n=0
+      j="$(mktemp -p "$TMP")"
+      bash "$SUJET" "$j" & h=$!
+      while (( ++n <= 100 )); do grep -q PRET "$j" 2>/dev/null && break; sleep 0.1; done
+      kill -TERM "$h" 2>/dev/null
+      local k=1
+      while (( ++k <= nb )); do sleep 0.3; kill -TERM "$h" 2>/dev/null; done
+      wait "$h" 2>/dev/null; c=$?
+      printf '%s|%s\n' "$c" "$(tr '\n' ' ' <"$j")"
+      rm -f "$j"
+    }
+    R1="$(essai19 1)"; R2="$(essai19 2)"; R3="$(essai19 3)"
+    [[ "${R1#*|}" == *FIN* ]] \
+      && ok "19: NON VACUITE — un seul signal: le nettoyage va jusqu'au bout" \
+      || echoue "19: meme avec UN signal le nettoyage ne s'acheve pas: [$R1]"
+    [[ "${R2#*|}" == *FIN* ]] \
+      && ok "19: deux signaux: le nettoyage s'acheve quand meme" \
+      || { echoue "19: le second signal a TRONQUE le nettoyage"
+           detail "[$R2]"; }
+    [[ "${R3#*|}" == *FIN* ]] \
+      && ok "19: trois signaux: toujours acheve — le desarmement n'est pas a usage unique" \
+      || { echoue "19: le troisieme signal a tronque le nettoyage"; detail "[$R3]"; }
+    # LE CODE NE DIT RIEN, ET C'EST LE POINT. On l'affirme explicitement pour
+    # que personne ne se remette a le lire comme une preuve de nettoyage.
+    if [[ "${R1%%|*}" == "143" && "${R2%%|*}" == "143" ]]; then
+      ok "19: code 143 dans les deux cas — le code NE PROUVE PAS le nettoyage, seul le residu le dit"
+    else
+      echoue "19: codes inattendus: un signal ${R1%%|*}, deux signaux ${R2%%|*}"
+    fi
+  else
+    echoue "19: piege extrait vide ou invalide"
+  fi
+fi
 
 # ==========================================================================
 # 8 et 9. PERTES APRES `READY` — assertions defensives, enfin FALSIFIEES

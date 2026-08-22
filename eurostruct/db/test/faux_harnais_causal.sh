@@ -105,6 +105,56 @@ else
 fi
 
 echo "PRET $$ $PGID" >"$MARQ/.harnais"
+
+# ==========================================================================
+# LA PORTE DE VIVACITE — UN DOUBLE DE HARNAIS HONORE LE CONTRAT DU HARNAIS
+# ==========================================================================
+# CE FICHIER EST UN DOUBLE, PAS UN DECOR. Le wrapper ne publie plus son
+# marqueur sur une simple photographie: il ATTEND la preuve que le harnais est
+# tenu — un document `GATE_ARMED` — ou la mort de ce harnais. Un double qui
+# reste vivant sans jamais armer ne remplit AUCUNE des deux conditions, et le
+# wrapper l'attend indefiniment.
+#
+# Mesure: apres le passage a la barriere de vivacite, L1 n'expirait plus a
+# cause d'un pipe retenu mais parce que le marqueur n'etait JAMAIS publie —
+# « delai depasse en attendant: le marqueur du wrapper (L1) », 300 s. Le
+# protocole faisait exactement ce qu'on lui demande; c'est le double qui avait
+# cesse de ressembler a ce qu'il double.
+#
+# INERTE SANS `ESC_HARNAIS_PORTE`, comme le crochet du vrai harnais: ce fichier
+# se comporte alors comme avant et reste utilisable seul.
+if [[ -n "${ESC_HARNAIS_PORTE:-}" ]]; then
+  porte_refus() { echo "PORTE=$1" >>"$MARQ/.erreurs"; exit 4; }
+  [[ -p "$ESC_HARNAIS_PORTE" ]]     || porte_refus "pas une FIFO: $ESC_HARNAIS_PORTE"
+  [[ -n "${ESC_HARNAIS_ETAT:-}" ]]  || porte_refus "chemin d etat absent"
+  [[ -n "${ESC_HARNAIS_JETON:-}" ]] || porte_refus "jeton absent"
+
+  # OUVRIR AVANT DE PUBLIER: l'etat publie doit decrire ce qui est VRAI a cet
+  # instant. Publier d'abord affirmerait un blocage que rien n'etablit encore.
+  exec {FD_PORTE}<"$ESC_HARNAIS_PORTE" || porte_refus "ouverture impossible"
+  { echo "FORMAT=esc-harness-gate/1"
+    echo "SCENARIO=${ESC_HARNAIS_SCENARIO:-}"
+    echo "TOKEN=$ESC_HARNAIS_JETON"
+    echo "PID=$$"
+    echo "PGID=$PGID"
+    echo "STATE=GATE_ARMED"
+  } >"$ESC_HARNAIS_ETAT.tmp"
+  # Publication exclusive par lien dur: une seconde publication est une erreur
+  # observable, jamais un ecrasement muet.
+  ln "$ESC_HARNAIS_ETAT.tmp" "$ESC_HARNAIS_ETAT" 2>/dev/null \
+    || porte_refus "GATE_ARMED deja publie"
+  rm -f "$ESC_HARNAIS_ETAT.tmp"
+
+  # LA PORTE REMPLACE LE SOMMEIL, elle ne s'y ajoute pas. Un `sleep 600` a cote
+  # laisserait une fin nominale ATTEIGNABLE, et « le harnais ne peut pas finir
+  # avant le signal » redeviendrait une course gagnee au lieu d'une garantie.
+  # `read -r -u` rend la main a la trap immediatement sur signal — meme mesure
+  # que le `wait` qu'il remplace: 0 s.
+  read -r -u "$FD_PORTE"
+  echo "PORTE_RENDUE_SANS_SIGNAL=$?" >>"$MARQ/.erreurs"
+  exit 4
+fi
+
 # `wait` sur un sommeil en arriere-plan: la trap peut alors s'executer tout de
 # suite, contrairement a un `sleep` au premier plan qui devrait finir d'abord.
 # SES SORTIES VONT A /dev/null, ET IL EST MOISSONNE. Mesure: sans cela, ce
