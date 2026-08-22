@@ -19,6 +19,18 @@
 # Mort entre deux lectures adjacentes du meme script. La fenetre n'etait pas
 # etroite: elle n'etait pas bornee.
 #
+# LES SHA `ef90bb7`, `42601e7` ET `91f5a4b` NE SONT PAS DES REFERENCES.
+# Ils introduisent la barriere et n'ont JAMAIS tourne verts sur le vrai
+# harnais: ils cassaient quatre appelants — canal du marqueur deja occupe,
+# `GATE_ARMED` exige inconditionnellement, double de harnais qui n'arme pas,
+# jeton absent — et le premier scenario mourait avant les autres sur un
+# message qui ne nommait pas la cause (« delai depasse »).
+#
+# LE PREMIER SHA OU LE CHEMIN NOMINAL COMPLET PASSE EST `6448229`. Qui
+# bissecte cette periode y trouverait un vert qui n'a jamais existe. L'histoire
+# n'est pas reecrite; elle est dite. Voir
+# `docs/schema/JALON_6_3b6e_BARRIERE_DE_VIVACITE.md`.
+#
 # LA BARRIERE REMPLACE LA PHOTOGRAPHIE PAR UNE VIVACITE DETENUE. Ce fichier
 # verifie que chaque garantie de ce protocole a un contre-exemple qui la
 # CASSE — sans quoi « vert » ne dirait rien.
