@@ -203,6 +203,66 @@ else
   echo "      ok: 5. le worktree d'une matrice concurrente est intact"
 fi
 
+# --- 6. UN SIGNAL PENDANT LA SORTIE NE LAISSE PAS DE WORKTREE -------------
+# LE DEFAUT, MESURE ET NON SUPPOSE. `_sur_signal` restait arme pendant la
+# sortie: un SIGTERM recu alors que la matrice retirait son worktree y relancait
+# `Interruption`, et le retrait s'arretait entre le `git worktree remove` et le
+# `rmtree`. Un `git worktree prune` d'une execution ULTERIEURE effacait ensuite
+# l'entree de metadonnees — si bien que `git worktree list` redevenait propre
+# et que le REPERTOIRE, lui, restait: une copie complete du depot, par fuite,
+# invisible a l'inspection habituelle.
+#
+# Mesure avant correction, en signalant la matrice au moment ou elle publie son
+# resultat — la fenetre exacte des scenarios L2 et L4 de l'auto-test de
+# signaux: QUATRE FUITES SUR DIX. Apres: zero sur vingt.
+#
+# ET C'EST POURQUOI CE CAS N'EST PAS UNE RAFALE. Un test qui echoue quatre fois
+# sur dix n'etablit rien, et celui qui passe six fois sur dix encore moins. Le
+# crochet `ESC_MUTATION_PAUSE_SORTIE` ouvre la fenetre et DIT quand elle est
+# ouverte; le signal y tombe a coup sur, et le verdict est le meme a chaque
+# execution.
+S6_TEMOIN="$(mktemp -u)"
+S6_TRACE="$(mktemp)"
+S6_SORTIE="$(mktemp)"
+ESC_MUTATION_TRACE="$S6_TRACE" ESC_MUTATION_PAUSE=90 \
+ESC_MUTATION_PAUSE_SORTIE=30 ESC_MUTATION_SORTIE_TEMOIN="$S6_TEMOIN" \
+  python3 "$ESSAI/$SOUS/db/test/mutation_matrix.py" W1 >"$S6_SORTIE" 2>&1 &
+S6_PID=$!
+S6_ESPACE=""
+if attendre_trace "$S6_TRACE" "$S6_PID"; then
+  IFS=$'\t' read -r _ _ _ _ S6_ESPACE <"$S6_TRACE"
+  # On la fait sortir: TERM la conduit a son verdict puis a `nettoyer_espace`,
+  # qui s'arrete dans la fenetre et le signale.
+  kill -TERM "$S6_PID" 2>/dev/null
+  n=0; while [[ ! -s "$S6_TEMOIN" ]] && ((n < 900)); do
+    kill -0 "$S6_PID" 2>/dev/null || break
+    sleep 0.1; n=$((n + 1))
+  done
+fi
+if [[ -z "$S6_ESPACE" ]]; then
+  echoue "6. la matrice n'a pose aucune mutation: CHEMIN NON EXERCE"
+elif [[ ! -s "$S6_TEMOIN" ]]; then
+  echoue "6. la fenetre de sortie n'a jamais ete atteinte: CHEMIN NON EXERCE"
+  detail "  $(head -2 "$S6_SORTIE")"
+else
+  echo "      ok: 6. NON VACUITE — la matrice est ARRETEE dans son retrait de worktree"
+  # DEUX SIGNAUX DE PLUS, DANS LA FENETRE. C'est exactement ce que produisait la
+  # fuite; ils doivent maintenant n'avoir aucun effet.
+  kill -TERM "$S6_PID" 2>/dev/null
+  kill -INT  "$S6_PID" 2>/dev/null
+  wait "$S6_PID" 2>/dev/null; S6_CODE=$?
+  if [[ -d "$S6_ESPACE" ]]; then
+    echoue "6. le worktree survit au signal recu pendant la sortie (code $S6_CODE)"
+    detail "  $S6_ESPACE"
+    retirer_worktree "$S6_ESPACE"
+  else
+    echo "      ok: 6. le retrait du worktree va jusqu'au bout malgre deux signaux de plus"
+    detail "  code de la matrice: $S6_CODE"
+  fi
+fi
+[[ -n "${S6_PID:-}" ]] && kill -KILL "$S6_PID" 2>/dev/null
+rm -f "$S6_TEMOIN" "$S6_TRACE" "$S6_SORTIE"
+
 # --- 4. SE DEBARRASSER DES WORKTREES NE TOUCHE AUCUN FICHIER SUIVI --------
 kill -KILL "$CONC_PID" 2>/dev/null; wait "$CONC_PID" 2>/dev/null; CONC_PID=""
 retirer_worktree "$CONC_ESPACE"; CONC_ESPACE=""

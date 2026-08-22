@@ -85,6 +85,32 @@ ESPACE = None                                    # ...et son sous-repertoire
 ORIGINAUX = {}                                   # texte d'avant mutation
 
 
+def _ignorer_signaux():
+    """Rend TERM, INT et HUP inoffensifs pour la suite de ce processus.
+
+    UN SIGNAL QUI ARRIVE PENDANT UN NETTOYAGE LE COUPE EN DEUX. C'est le meme
+    defaut que celui de `harnais_piege_signaux`, chez un autre acteur, et il
+    etait MESURE: en signalant la matrice au moment precis ou elle publie son
+    resultat et s'apprete a sortir — la fenetre exacte des scenarios L2 et L4 —
+    le worktree survivait QUATRE FOIS SUR DIX.
+
+    Le mecanisme: `_sur_signal` restait arme pendant `atexit`, donc le signal y
+    relancait `Interruption`, et `nettoyer_espace` s'arretait entre le `git
+    worktree remove` et le `rmtree`. `git worktree prune` d'une execution
+    ULTERIEURE retirait ensuite l'entree de metadonnees — si bien que
+    `git worktree list` redevenait propre et que le REPERTOIRE, lui, restait:
+    une copie complete du depot par fuite, invisible a l'inspection habituelle.
+
+    Cela ne cree aucune autorite de delai: SIGKILL n'est ni ignorable ni
+    piegeable, et c'est lui qui borne un nettoyage reellement bloque.
+    """
+    for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(s, signal.SIG_IGN)
+        except (ValueError, OSError):
+            pass
+
+
 def nettoyer_espace():
     """Retire le worktree. Idempotent, et sans effet sur le depot principal.
 
@@ -92,14 +118,46 @@ def nettoyer_espace():
     de metadonnees qui le decrit. Si le repertoire a deja disparu — machine
     arretee, `/tmp` vide — il ne reste que cette entree, et `prune` la retire.
     Aucun fichier suivi n'est ecrit dans les deux cas.
+
+    LES TROIS OPERATIONS SONT INSECABLES vis-a-vis des signaux: voir
+    `_ignorer_signaux`. Sans cela le retrait s'interrompait en son milieu.
     """
     global ESPACE_DEPOT, ESPACE
     if ESPACE_DEPOT is None:
         return
+    _ignorer_signaux()
     chemin, ESPACE_DEPOT, ESPACE = ESPACE_DEPOT, None, None
+    _pause_sortie()
     _git("worktree", "remove", "--force", chemin, check=False)
     shutil.rmtree(chemin, ignore_errors=True)
     _git("worktree", "prune", check=False)
+
+
+def _pause_sortie():
+    """Crochet de test: une fenetre DETERMINISTE dans le retrait du worktree.
+
+    LA REPETITION N'EST PAS LA PREUVE. Sans ce crochet, le seul moyen de viser
+    l'instant ou la matrice retire son worktree serait de la signaler en
+    rafale et de compter les fuites — un test qui echoue quatre fois sur dix
+    n'etablit rien, et un test qui passe six fois sur dix encore moins.
+    Ce crochet ouvre la fenetre et dit QUAND elle est ouverte; le contre-exemple
+    y tombe a coup sur.
+
+    Il est INERTE hors auto-test: sans `ESC_MUTATION_PAUSE_SORTIE`, pas une
+    instruction ne s'execute. Meme forme que `ESC_MUTATION_PAUSE` et
+    `ESC_MUTATION_PAUSE_ENTRE`, qui existent pour la meme raison.
+
+      ESC_MUTATION_PAUSE_SORTIE   duree de la fenetre, en secondes
+      ESC_MUTATION_SORTIE_TEMOIN  fichier ecrit A L'ENTREE de la fenetre
+    """
+    duree = float(os.environ.get("ESC_MUTATION_PAUSE_SORTIE", "0") or 0)
+    if duree <= 0:
+        return
+    temoin = os.environ.get("ESC_MUTATION_SORTIE_TEMOIN")
+    if temoin:
+        with open(temoin, "w") as f:
+            f.write(f"FORMAT=esc-sortie-fenetre/1\nPID={os.getpid()}\n")
+    time.sleep(duree)
 
 
 class Interruption(Exception):
@@ -167,7 +225,14 @@ def _sur_signal(numero, _cadre):
         signal recu -> arret/attente de l'enfant -> restauration de la
         mutation active -> etat interrompu enregistre -> verdict partiel
         imprime -> retrait du worktree -> sortie 143
+
+    LE PREMIER SIGNAL PRIS DESARME LES SUIVANTS. Toute cette sequence est
+    longue: un second signal la relancerait depuis le debut ou l'arreterait en
+    son milieu, et le verdict partiel — la seule raison d'etre de ce
+    gestionnaire — ne serait pas imprime. Le parent garde son escalade en
+    SIGKILL, qui ne peut ni etre ignore ni etre piege.
     """
+    _ignorer_signaux()
     _arreter_enfant()
     raise Interruption(numero)
 
