@@ -29,10 +29,6 @@ DB_NAME="${1:?base de travail attendue en premier argument}"
 # contaminent des que deux suites tournent en meme temps — et c'est
 # precisement ce qu'une suite de concurrence risque de faire.
 TMP="$(mktemp -d)"
-# Nettoyage seul TANT QUE la connexion n'est pas etablie: le diagnostic
-# interroge la base, et une trap qui s'appuierait sur `PSQL` avant sa
-# definition mourrait elle-meme sous `set -u`. Elle est REMPLACEE plus bas,
-# des que la connexion existe.
 trap 'rm -rf "$TMP"' EXIT
 
 # Verdict par CODE D'ERREUR attendu, jamais par duree.
@@ -60,145 +56,12 @@ code_sqlstate() {
 harnais_connexion || exit 2
 PSQL=(psql -X -q -d "$DB_NAME")
 
-# LE DIAGNOSTIC EST PUBLIE SUR TOUTE SORTIE NON NULLE, PAS SEULEMENT SUR UNE
-# ASSERTION QUI ECHOUE. Mesure, `EUROSTRUCT` sur 5e97b9f: l'etape 8 rougit au
-# scenario 4 et l'etape d'artefact rend ZERO fichier. `echoue()` n'avait donc
-# jamais ete appelee — le script sortait non nul SANS qu'aucune assertion ne
-# rougisse (`set -u`, signal recu, ou processus tue). Un diagnostic accroche a
-# la seule fonction d'assertion ne couvre pas ces sorties-la, et c'est
-# precisement celles-la qu'on n'arrivait pas a voir.
-#
-# La trap tourne AVANT que `run.sh` ne detruise la base: dernier instant ou
-# pg_stat_activity, pg_locks et les lignes metier existent encore.
-sortie_diagnostiquee() {
-  local code=$?
-  (( code != 0 )) && diagnostic "sortie non nulle du script (code $code), aucune assertion rouge"
-  rm -rf "$TMP"
-  exit "$code"
-}
-
 R1='c0000000-0000-0000-0000-000000000001'   # candidat racine 1
 R2='c0000000-0000-0000-0000-000000000002'   # candidat racine 2
 VERIF='c0000000-0000-0000-0000-00000000000f'
 ECHECS=0
 
-# --------------------------------------------------------------------------
-# DIAGNOSTIC DE COURSE — capture AU MOMENT du premier echec
-# --------------------------------------------------------------------------
-# CE FICHIER EXISTE PARCE QUE LE STDOUT DE CETTE SURFACE EST INACCESSIBLE EN CI.
-# Mesure: `EUROSTRUCT` rouge deux fois de suite sur le meme SHA `31552da`, a la
-# meme etape, au meme scenario, et VERT en local. Or les assertions de ce
-# script ne sont lisibles nulle part depuis une session distante:
-#
-#   * `get_job_logs` plafonne a 5000 lignes ET rend le journal du CONTENEUR de
-#     service `postgres:16`, jamais le stdout de l'etape;
-#   * l'archive ZIP complete est refusee par la politique du proxy
-#     (403 sur CONNECT vers results-receiver.actions.githubusercontent.com).
-#
-# On ne pouvait donc que LOCALISER la defaillance — par les horodatages du
-# journal du conteneur — jamais la DIAGNOSTIQUER. Ce document comble cela.
-#
-# IL EST ECRIT AVANT TOUT NETTOYAGE. `run.sh` detruit la base de concurrence
-# des le retour de ce script: apres coup, `pg_stat_activity`, `pg_locks` et les
-# lignes metier n'existent plus. La capture a lieu dans `echoue()`, donc au
-# premier echec, base encore vivante.
-#
-# IL NE CONTIENT NI URL, NI MOT DE PASSE, NI ENVIRONNEMENT COMPLET: seulement
-# le scenario, les barrieres, les codes des deux connexions concurrentes, les
-# identites du scenario et un inventaire cible.
-SCENARIO_COURANT="(avant le premier scenario)"
-BARRIERES=()
-CODES_CONCURRENTS="(non renseignes)"
-DIAG_ECRIT=0
-DIAG="${ESC_DIAG_CONCURRENCE:-$(dirname "$(dirname "$HERE")")/conc-diagnostic.txt}"
-
-# `psql` BORNE, ET SON ECHEC N'EST PAS CELUI DU SCRIPT. Une base devenue
-# injoignable ne doit ni faire pendre la capture ni remplacer le code d'origine:
-# chaque interrogation a son propre delai, et tout ce qui rate est note comme
-# erreur DU DIAGNOSTIC, dans un canal distinct.
-DIAG_ERREURS=0
-diag_sql() {   # diag_sql <etiquette> <requete>
-  local etiquette="$1" sql="$2" sortie
-  if sortie=$(timeout 10 "${PSQL[@]}" -X -qtA \
-                -v ON_ERROR_STOP=1 \
-                -c "set local statement_timeout = '5s'" -c "$sql" 2>&1); then
-    printf '%s\n' "$sortie"
-  else
-    DIAG_ERREURS=$((DIAG_ERREURS + 1))
-    printf 'DIAG_ERREUR|%s|%s\n' "$etiquette" "$(head -1 <<<"$sortie")"
-  fi
-}
-
-diagnostic() {   # diagnostic <libelle-de-l-echec>
-  (( DIAG_ECRIT )) && return 0
-  DIAG_ECRIT=1
-  # LA TRAP EST DESARMEE AVANT DE PUBLIER. Sans cela une sortie provoquee par
-  # la capture elle-meme la relancerait, et le code d'origine serait perdu au
-  # profit d'une erreur du diagnostic.
-  trap - EXIT
-  {
-    echo "FORMAT=esc-diagnostic-concurrence/2"
-    echo "SHA=$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo inconnu)"
-    echo "GITHUB_RUN_ID=${GITHUB_RUN_ID:-hors-ci}"
-    echo "GITHUB_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT:-hors-ci}"
-    echo "BASH_VERSION=$BASH_VERSION"
-    echo "BASE=$DB_NAME"
-    echo "SCENARIO=$SCENARIO_COURANT"
-    echo "PREMIER_ECHEC=$1"
-    echo "CODES_CONCURRENTS=$CODES_CONCURRENTS"
-    echo "BARRIERE_EN_COURS=$BARRIERE_EN_COURS"
-    echo "BARRIERE_ETAT=$BARRIERE_ETAT"
-    echo "BARRIERE_RANG=$BARRIERE_RANG"
-    echo "BARRIERES=${#BARRIERES[@]}"
-    # Un tableau vide ferait imprimer une ligne « BARRIERE= » fantome, qu'on
-    # lirait comme une barriere sans nom. Zero barriere se dit, il ne se
-    # devine pas.
-    (( ${#BARRIERES[@]} )) && printf 'BARRIERE=%s\n' "${BARRIERES[@]}"
-    echo "-- sessions du scenario (jetons FICTIF-conc-*)"
-    diag_sql sessions "
-      select 'SESSION|'||pid||'|'||application_name||'|'||state
-             ||'|'||coalesce(wait_event_type,'-')||'|'||coalesce(wait_event,'-')
-             ||'|'||backend_start
-             ||'|'||left(replace(coalesce(query,''), chr(10), ' '), 120)
-        from pg_stat_activity
-       where application_name like 'FICTIF-conc-%'"
-    echo "-- verrous detenus ou attendus par ces sessions"
-    diag_sql verrous "
-      select 'VERROU|'||l.pid||'|'||l.locktype||'|'||coalesce(l.mode,'-')
-             ||'|'||l.granted||'|'||coalesce(l.classid::text,'-')
-             ||'|'||coalesce(l.objid::text,'-')
-        from pg_locks l join pg_stat_activity a on a.pid = l.pid
-       where a.application_name like 'FICTIF-conc-%'"
-    echo "-- lignes metier concernees"
-    diag_sql admins "
-      select 'ADMIN_ACTIF|'||count(*) from normative_authorisation_grants g
-       where g.permission='can_manage_normative_authorisations'
-         and normative_grant_is_active(g.id)"
-    diag_sql octrois "
-      select 'OCTROI|'||g.id||'|'||g.grantee_id||'|'||g.permission
-             ||'|actif='||normative_grant_is_active(g.id)
-        from normative_authorisation_grants g order by g.created_at"
-    echo "-- inventaire cible"
-    diag_sql inventaire "
-      select 'INVENTAIRE|confirmations='||(select count(*) from normative_rule_confirmations)
-             ||'|revocations_octroi='||(select count(*) from normative_authorisation_revocations)"
-    echo "-- processus psql survivants de ce scenario"
-    # `-o args` EST VOLONTAIREMENT ABSENT: une ligne de commande peut porter
-    # un mot de passe, et ce document est publie.
-    ps -o pid=,stat=,etime= -C psql 2>/dev/null | sed 's/^/PROCESSUS|/' || echo "PROCESSUS|(aucun)"
-    echo "DIAG_ERREURS=$DIAG_ERREURS"
-    echo "FIN=esc-diagnostic-concurrence/2"
-  } >"$DIAG" 2>&1
-  echo "      diagnostic de course ecrit: $DIAG ($DIAG_ERREURS erreur(s) de capture)"
-}
-
-echoue() { echo "      ECHEC: $*"; ECHECS=$((ECHECS + 1)); diagnostic "$*"; }
-
-# LA TRAP N'EST ARMEE QU'ICI: tout ce dont elle depend — PSQL, DB_NAME, les
-# variables de diagnostic et la fonction elle-meme — existe desormais. Armee
-# plus haut, elle serait morte sous `set -u` en tentant de diagnostiquer une
-# sortie survenue avant ses propres dependances.
-trap sortie_diagnostiquee EXIT
+echoue() { echo "      ECHEC: $*"; ECHECS=$((ECHECS + 1)); }
 
 # --------------------------------------------------------------------------
 # BARRIERES (6.3b4 #7)
@@ -363,7 +226,6 @@ SQL
 # --------------------------------------------------------------------------
 # 1. Deux amorcages concurrents — la chaine ne s'ouvre qu'une fois
 # --------------------------------------------------------------------------
-SCENARIO_COURANT="1: deux amorcages concurrents"
 echo "    scenario 1: deux amorcages concurrents"
 # Le decalage se faisait par des pg_sleep de 0,1 et 0,2 seconde. Ici c'est la
 # session 1 qui retient: elle amorce, puis attend d'avoir OBSERVE la session 2
@@ -410,7 +272,6 @@ ADMIN=$("${PSQL[@]}" -X -q -tAc \
 # second voit alors le premier et refuse. Sans verrou, les deux passent et la
 # resolution d'habilitation devient ambigue pour toujours.
 # --------------------------------------------------------------------------
-SCENARIO_COURANT="2: deux octrois identiques concurrents"
 echo "    scenario 2: deux octrois identiques concurrents"
 # L'ORDRE EST IMPOSE PAR DES BARRIERES, plus par des temporisations.
 #
@@ -492,7 +353,6 @@ fi
 #
 # Les deux ordres seriels sont acceptables; l'etat intermediaire ne l'est pas.
 # --------------------------------------------------------------------------
-SCENARIO_COURANT="3a: revocation bloquee par une confirmation en vol"
 echo "    scenario 3a: revocation bloquee par une confirmation en vol"
 GRANT_ID=$("${PSQL[@]}" -X -q -tAc "
   select g.id from normative_authorisation_grants g
@@ -562,7 +422,6 @@ fi
 #     Apres attente, la confirmation doit etre REFUSEE — l'habilitation
 #     n'existe plus.
 # ------------------------------------------------------------------------
-SCENARIO_COURANT="3b: confirmation apres une revocation deja engagee"
 echo "    scenario 3b: confirmation apres une revocation deja engagee"
 # Un octroi NEUF. Le scenario 3a revoque desormais reellement le sien — il
 # n'expire plus, il attend son tour et aboutit — et rejouer 3b sur le meme
@@ -635,7 +494,6 @@ fi
 #    plus etre rejoue. Le verrou COMMUN de l'administration doit desormais les
 #    serialiser.
 # ------------------------------------------------------------------------
-SCENARIO_COURANT="4: A revoque B pendant que B revoque A"
 echo "    scenario 4: A revoque B pendant que B revoque A"
 ADMIN_B='c0000000-0000-0000-0000-0000000000ab'
 "${PSQL[@]}" -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
