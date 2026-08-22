@@ -50,11 +50,16 @@ echo "    la barriere de vivacite: chaque garantie a son contre-exemple"
 ENVELOPPE="$(mktemp)"
 python3 - "$MATRICE" "$ENVELOPPE" <<'PY' || { echo "      ECHEC: extraction du wrapper impossible" >&2; exit 2; }
 import re, sys
+# UN SEUL BLOC, ET IL DOIT EXISTER. Zero bloc: le test prouverait le vide.
+# Plusieurs: on ne saurait pas lequel est le protocole reellement utilise.
 src = open(sys.argv[1], encoding="utf-8").read()
-m = re.search(r"        enveloppe = \((.*?)\n        \)\n", src, re.S)
-if not m:
-    sys.exit("bloc `enveloppe` introuvable dans la matrice")
-open(sys.argv[2], "w", encoding="utf-8").write(eval("(" + m.group(1) + ")"))
+blocs = re.findall(r"        enveloppe = \((.*?)\n        \)\n", src, re.S)
+if len(blocs) != 1:
+    sys.exit(f"attendu 1 bloc `enveloppe`, trouve {len(blocs)}")
+texte = eval("(" + blocs[0] + ")")
+if not texte.strip():
+    sys.exit("le bloc `enveloppe` est vide")
+open(sys.argv[2], "w", encoding="utf-8").write(texte)
 PY
 bash -n "$ENVELOPPE" || { echoue "le wrapper extrait n'est pas du Bash valide"; exit 2; }
 ok "wrapper extrait de mutation_matrix.py ($(wc -c <"$ENVELOPPE") octets, syntaxe valide)"
@@ -105,8 +110,23 @@ lancer_barriere() {
   ( for kv in "$@"; do export "${kv?}"; done
     export ESC_TEMOIN="$marqueur" ESC_MUTATION_JETON="$JETON" ESC_SCENARIO=A
     export ESC_TRACE="$trace"
-    exec bash "$ENVELOPPE" bash "$FAUX" ) >/dev/null 2>&1 &
+    # GROUPE PROPRE, comme la matrice reelle (`start_new_session=True`). Sans
+    # cela le wrapper partage le groupe du TEST: terminer « le groupe » revenait
+    # a se signaler soi-meme. Mesure: le cas 2 s'est tue lui-meme au premier
+    # essai. `setsid` ne fork pas ici — l'enfant n'est pas meneur de groupe —
+    # donc `$!` est bien le processus final, et son PGID vaut son PID.
+    exec setsid bash "$ENVELOPPE" bash "$FAUX" ) >/dev/null 2>&1 &
   BARRIERE_PID=$!
+}
+
+# GARDE-FOU: ne jamais signaler son propre groupe. Une erreur d'un chiffre ici
+# tuerait la suite au lieu du sujet, et le rouge serait attribue au produit.
+groupe_sujet() {   # groupe_sujet <pid> -> PGID, ou vide si c'est le notre
+  local p="$1" pg mien
+  pg="$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')"
+  mien="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"
+  [[ -n "$pg" && "$pg" != "$mien" ]] || return 1
+  echo "$pg"
 }
 
 # attendre_fichier <fichier> <deciseconds> — BORNE, jamais un ordonnancement
@@ -176,6 +196,28 @@ fi
 grep -q "^DEMARRE" "$T2" \
   && ok "2: NON VACUITE — le harnais a demarre puis n'a rien publie" \
   || echoue "2: le harnais n'a jamais demarre: cas non exerce"
+# « AUCUN READY » NE DISTINGUE PAS UN REFUS CORRECT D'UN BLOCAGE ETERNEL. Le
+# parent doit reprendre la main: on termine le groupe, comme le ferait
+# `_arreter_enfant()`, et l'on exige zero survivant.
+PG2="$(groupe_sujet "$BARRIERE_PID")" || PG2=""
+if [[ -n "$PG2" ]]; then
+  kill -TERM -"$PG2" 2>/dev/null
+  n=0; while (( ++n <= 300 )); do
+    [[ -z "$(ps -o pid= -g "$PG2" 2>/dev/null | tr -d ' \n')" ]] && break
+    sleep 0.1
+  done
+  kill -KILL -"$PG2" 2>/dev/null
+  n=0; while (( ++n <= 100 )); do
+    [[ -z "$(ps -o pid= -g "$PG2" 2>/dev/null | tr -d ' \n')" ]] && break
+    sleep 0.1
+  done
+  restants="$(ps -o pid=,stat= -g "$PG2" 2>/dev/null | tr -s ' ' | tr '\n' ' ')"
+  [[ -z "${restants// /}" ]] \
+    && ok "2: le parent a repris la main — groupe $PG2 vide, aucun blocage eternel" \
+    || echoue "2: survivants dans le groupe $PG2: $restants"
+else
+  echoue "2: le sujet ne possede pas son propre groupe — refus de signaler le notre"
+fi
 menage_cas
 
 for cas in "3:ESC_FAUX_JETON=jeton-usurpe:mauvais jeton" \
@@ -350,10 +392,25 @@ if attendre_fichier "$M10" 300 && [[ "$(champ "$M10" STATE)" == READY ]]; then
   # au sous-reaper de le recolter. On l'attend donc de facon BORNEE au lieu de
   # constater un zombie transitoire et d'en faire un defaut — ou, pire, de le
   # declarer absent sans avoir regarde.
-  n=0; while (( ++n <= 300 )); do zombie "$H" || break; sleep 0.1; done
-  zombie "$H" \
-    && echoue "10: le harnais reste zombie apres 30 s — personne ne l'a moissonne" \
-    || ok "10: le harnais orphelin a ete moissonne (aucun zombie persistant)"
+  # QUI MOISSONNE ? On ne suppose pas l'existence d'un sub-reaper: on publie le
+  # PPID observe jusqu'a convergence bornee, et l'on nomme le moissonneur.
+  ppid_obs=""; etat_obs=""
+  n=0; while (( ++n <= 300 )); do
+    etat_obs="$(ps -o stat= -p "$H" 2>/dev/null | tr -d ' ')"
+    [[ -z "$etat_obs" ]] && break
+    ppid_obs="$(ps -o ppid= -p "$H" 2>/dev/null | tr -d ' ')"
+    sleep 0.1
+  done
+  if [[ -n "$etat_obs" ]]; then
+    echoue "10: le harnais subsiste apres 30 s (etat $etat_obs, ppid $ppid_obs)"
+  else
+    ok "10: le harnais orphelin a disparu; dernier PPID observe: ${ppid_obs:-inconnu}"
+    if [[ -n "$ppid_obs" && "$ppid_obs" != "1" ]]; then
+      detail "moissonneur = pid $ppid_obs ($(ps -o comm= -p "$ppid_obs" 2>/dev/null || echo disparu))"
+    else
+      detail "reparente a pid 1: c'est init qui a moissonne"
+    fi
+  fi
   # LE WRAPPER TUE NE PEUT PAS NETTOYER: c'est un etat classe, pas un succes vide.
   [[ -d "$BAR" ]] \
     && ok "10: repertoire barriere subsistant — classe « wrapper SIGKILLe, nettoyage impossible »" \
@@ -361,6 +418,86 @@ if attendre_fichier "$M10" 300 && [[ "$(champ "$M10" STATE)" == READY ]]; then
   rm -rf "$BAR"
 else
   echoue "10: la porte ne s'est pas armee"
+fi
+menage_cas
+
+# ==========================================================================
+# 7. PUBLICATION `READY` DUPLIQUEE -> REFUSEE, ET LA VIOLATION EST ENREGISTREE
+# ==========================================================================
+# L'exclusivite du BLOCKED etait eprouvee; celle du READY ne l'etait pas. Un
+# `mv -f` y aurait ecrase un etat anterieur en silence. On occupe donc la cible
+# AVANT que le wrapper ne publie: le lien dur doit echouer, le document
+# anterieur survivre intact, et la violation etre inscrite dans `.doublon`.
+echo "      -- 7. publication READY dupliquee"
+M7="$TMP/m7"; T7="$TMP/t7"; : >"$T7"
+printf 'FORMAT=esc-mutation-marker/2\nSTATE=ANTERIEUR\n' >"$M7"
+AVANT7="$(sha256sum "$M7" | cut -d' ' -f1)"
+lancer_barriere "$M7" "$T7"
+attendre_fichier "$M7.doublon" 300
+if [[ -f "$M7.doublon" ]]; then
+  ok "7: la seconde publication est REFUSEE et inscrite ($(head -1 "$M7.doublon"))"
+else
+  echoue "7: aucun .doublon — la publication concurrente est passee en silence"
+fi
+[[ "$(sha256sum "$M7" | cut -d' ' -f1)" == "$AVANT7" ]] \
+  && ok "7: le document anterieur est INTACT — aucun ecrasement" \
+  || { echoue "7: le document anterieur a ete ecrase"
+       detail "contenu: $(tr '\n' ' ' <"$M7")"; }
+grep -q "^PUBLIE" "$T7" \
+  && ok "7: NON VACUITE — le harnais avait bien arme sa porte" \
+  || echoue "7: le harnais n'a pas arme: cas non exerce"
+menage_cas
+rm -f "$M7.doublon"
+
+# ==========================================================================
+# 8 et 9. PERTES APRES `READY` — assertions defensives, enfin FALSIFIEES
+# ==========================================================================
+# `LEASE_LOST_AFTER_READY` et `WITNESS_LOST_AFTER_READY` existent dans le
+# scenario A depuis la correction, mais la porte rend justement ces pertes
+# impossibles: aucune execution ne les atteignait, et deux assertions jamais
+# exercees ne defendent rien. On provoque donc les pertes par un `kill`
+# EXTERNE — ce que la porte ne pretend pas empecher — pour prouver qu'elles
+# sont DETECTABLES et nommables separement.
+echo "      -- 8. harnais perdu apres READY: evenement terminal distinct"
+M8="$TMP/m8"; T8="$TMP/t8"; : >"$T8"
+lancer_barriere "$M8" "$T8"
+if attendre_fichier "$M8" 300 && [[ "$(champ "$M8" STATE)" == READY ]]; then
+  H8="$(champ "$M8" HARNESS_PID)"
+  kill -KILL "$H8" 2>/dev/null
+  attendre_fichier "$M8.terminal" 300
+  if [[ -f "$M8.terminal" ]]; then
+    [[ "$(champ "$M8.terminal" STATE)" == FAILED_AFTER_READY ]] \
+      && ok "8: FAILED_AFTER_READY publie — evenement terminal SEPARE du READY" \
+      || echoue "8: etat terminal $(champ "$M8.terminal" STATE)"
+    ok "8: code du harnais rapporte: HARNESS_RC=$(champ "$M8.terminal" HARNESS_RC)"
+  else
+    echoue "8: aucun evenement terminal apres la perte du harnais"
+  fi
+  [[ "$(champ "$M8" STATE)" == READY ]] \
+    && ok "8: le fichier READY n'a PAS ete reecrit" \
+    || echoue "8: le READY a ete transforme en $(champ "$M8" STATE)"
+else
+  echoue "8: la porte ne s'est pas armee"
+fi
+menage_cas
+
+echo "      -- 9. temoin perdu apres READY: perte independante et detectable"
+M9="$TMP/m9"; T9="$TMP/t9"; : >"$T9"
+lancer_barriere "$M9" "$T9"
+if attendre_fichier "$M9" 300 && [[ "$(champ "$M9" STATE)" == READY ]]; then
+  H9="$(champ "$M9" HARNESS_PID)"; W9="$(champ "$M9" WITNESS_PID)"
+  kill -KILL "$W9" 2>/dev/null
+  n=0; while (( ++n <= 300 )); do vivant "$W9" || break; sleep 0.1; done
+  vivant "$W9" && echoue "9: le temoin survit a son propre SIGKILL" \
+                || ok "9: le temoin est perdu — un consommateur le constate"
+  vivant "$H9" \
+    && ok "9: le harnais reste BLOQUE — les deux pertes sont independantes" \
+    || echoue "9: la perte du temoin a entraine celle du harnais"
+  grep -q "READ_RENDU" "$T9" \
+    && echoue "9: le harnais est sorti de la porte" \
+    || ok "9: la porte tient encore malgre la perte du temoin"
+else
+  echoue "9: la porte ne s'est pas armee"
 fi
 menage_cas
 
