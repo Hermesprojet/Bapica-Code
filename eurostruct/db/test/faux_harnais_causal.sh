@@ -145,6 +145,24 @@ if [[ -n "${ESC_HARNAIS_PORTE:-}" ]]; then
     || porte_refus "GATE_ARMED deja publie"
   rm -f "$ESC_HARNAIS_ETAT.tmp"
 
+  # DESCENDANCE REELLE, SUR DEMANDE. « Terminer le groupe » ne dit rien tant
+  # qu'on n'a pas montre que le groupe contient autre chose que le harnais.
+  # DEUX NIVEAUX, ET LA FORME COMPTE: `( sleep 600 ) &` n'en cree qu'UN — bash
+  # remplace le sous-shell par sa commande unique, et `$!` EST le `sleep`.
+  # `( sleep 600 & wait ) &` garde le sous-shell, qui devient l'enfant, et le
+  # `sleep` son petit-fils: seule une terminaison PAR GROUPE peut l'atteindre.
+  if [[ -n "${ESC_DESCENDANCE:-}" ]]; then
+    ( sleep 600 & wait ) >/dev/null 2>&1 </dev/null &
+    _enfant=$!
+    echo "ENFANT=$_enfant" >>"$MARQ/.descendance"
+    _n=0
+    while (( ++_n <= 100 )); do
+      _pf="$(pgrep -P "$_enfant" 2>/dev/null | head -1)"
+      [[ -n "$_pf" ]] && { echo "PETIT_FILS=$_pf" >>"$MARQ/.descendance"; break; }
+      sleep 0.05
+    done
+  fi
+
   # LA PORTE REMPLACE LE SOMMEIL, elle ne s'y ajoute pas. Un `sleep 600` a cote
   # laisserait une fin nominale ATTEIGNABLE, et « le harnais ne peut pas finir
   # avant le signal » redeviendrait une course gagnee au lieu d'une garantie.

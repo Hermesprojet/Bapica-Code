@@ -2399,6 +2399,120 @@ else
 fi
 rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
 
+# --- L6: UN HARNAIS QUI REFUSE DE MOURIR, ET UNE SEULE AUTORITE DE DELAI ---
+# CE QUI EST EPROUVE ICI. `_arreter_enfant()` est la SEULE autorite de delai du
+# systeme: elle signale le GROUPE, attend sa patience, puis escalade en SIGKILL.
+# Tant qu'aucun harnais ne lui resistait, cette escalade n'etait qu'une
+# intention: le premier TERM suffisait toujours, et le chemin KILL n'etait
+# jamais parcouru. Une branche non executee n'est pas une branche verte.
+#
+# LE TEST NE BORNE RIEN. Il ne pose ni `timeout`, ni compteur, ni plafond
+# propre: il observe le temps que l'escalade met a conclure et exige qu'il
+# corresponde a la patience declaree. Un test qui imposerait son propre delai
+# deviendrait une SECONDE autorite, et l'on ne saurait plus laquelle a tranche.
+#
+# AUCUN SUCCES PAR EXPIRATION. Trois faits POSITIFS sont exiges, pas une
+# absence: la duree encadre la patience de 20 s, le code publie est celui d'un
+# SIGKILL, et la descendance profonde a disparu.
+echo "      -- L6: harnais qui ignore TERM — l'escalade doit trancher"
+L_MARQ="$(mktemp -d)"; L_JOUR="$(mktemp)"; L_TEM="$(canal_neuf temoin-L)"
+L_RESULTAT="$(mktemp -u)"
+lancer_L "$L_MARQ" "$L_JOUR" "$L_TEM" "ESC_IGNORE_TERM=1" "ESC_DESCENDANCE=1"
+attendre "le faux harnais pret (L6)" '[[ -s "$L_MARQ/.harnais" ]]' 3000 || exit 1
+L6_HPID="$(awk '{print $2}' "$L_MARQ/.harnais")"
+attendre "le marqueur du wrapper (L6)" '[[ -s "$L_TEM" ]]' 3000 \
+  '[[ -f "$L_TEM.doublon" ]]' \
+  "le wrapper a REFUSE de publier — le canal existait deja (voir <canal>.doublon); un canal doit etre un nom LIBRE" || exit 1
+L6_WPID="$(sed -n 's/^WRAPPER_PID=//p' "$L_TEM")"
+attendre "l'attente du wrapper armee (L6)" '[[ -f "$L_MARQ/WRAPPER_WAITING/meta" ]]' 3000 || exit 1
+attendre "la descendance du harnais (L6)" \
+  '[[ -s "$L_MARQ/.descendance" ]] && grep -q "^PETIT_FILS=" "$L_MARQ/.descendance"' 300 || exit 1
+L6_ENF="$(sed -n 's/^ENFANT=//p' "$L_MARQ/.descendance" | head -1)"
+L6_PF="$(sed -n 's/^PETIT_FILS=//p' "$L_MARQ/.descendance" | head -1)"
+
+# NON VACUITE, AVANT DE SIGNALER: la chaine existe vraiment, sur quatre niveaux,
+# et tout le monde est dans le groupe du wrapper.
+L6_MANQUE=()
+for p in "$L6_HPID" "$L6_ENF" "$L6_PF"; do
+  pg="$(ps -o pgid= -p "${p:-0}" 2>/dev/null | tr -d ' ')"
+  [[ "$pg" == "$L6_WPID" ]] || L6_MANQUE+=("${p:-?}[${pg:-mort}]")
+done
+if (( ${#L6_MANQUE[@]} )); then
+  echoue "L6: chaine incomplete avant le signal: ${L6_MANQUE[*]} — CHEMIN NON EXERCE"
+  exit 1
+fi
+ok "L6: NON VACUITE — wrapper $L6_WPID > harnais $L6_HPID > enfant $L6_ENF > petit-fils $L6_PF"
+[[ "$(ps -o ppid= -p "$L6_PF" 2>/dev/null | tr -d ' ')" == "$L6_ENF" ]] \
+  && ok "L6: le petit-fils est a DEUX niveaux sous le harnais" \
+  || echoue "L6: le petit-fils n'est pas ou on l'attend"
+
+# LE SIGNAL VA A LA MATRICE: c'est `_sur_signal` puis `_arreter_enfant()` qu'on
+# veut exercer, pas le relais du wrapper (deja couvert par L1).
+L6_T0=$SECONDS
+kill -TERM "$MPID"
+attendre "la fin de l'escalade (L6)" '[[ -f "$L_RESULTAT" ]]' 6000 || exit 1
+L6_DUREE=$(( SECONDS - L6_T0 ))
+L6_MRC=0; [[ -n "$MPID" ]] && { wait "$MPID" 2>/dev/null || L6_MRC=$?; MPID=""; }
+
+# LA PATIENCE DECLAREE EST DE 20 s AVANT SIGKILL. En deca, l'escalade n'aurait
+# pas attendu; tres au-dela, elle ne serait pas bornee. Les deux sont rouges.
+if (( L6_DUREE >= 20 && L6_DUREE < 45 )); then
+  ok "L6: l'escalade a conclu en ${L6_DUREE}s — patience de 20 s tenue PUIS depassee"
+else
+  echoue "L6: duree ${L6_DUREE}s hors de [20, 45): la patience declaree n'est pas celle observee"
+fi
+L6_WRC="$(sed -n 's/^WRAPPER_RC=//p' "$L_RESULTAT")"
+[[ "$L6_WRC" == "-9" ]] \
+  && ok "L6: WRAPPER_RC=-9 — preuve DIRECTE du SIGKILL, pas une deduction" \
+  || echoue "L6: WRAPPER_RC=$L6_WRC, attendu -9 (SIGKILL)"
+# LE HARNAIS N'A PAS NETTOYE, ET C'EST LA PREUVE QU'IL A BIEN IGNORE TERM.
+# S'il etait entre dans sa trap, c'est que le TERM l'avait atteint, et
+# l'escalade n'aurait rien eu a trancher.
+[[ -d "$L_MARQ/HARNESS_TRAP_ENTERED" ]] \
+  && echoue "L6: le harnais est entre dans sa trap — il n'a pas ignore TERM, rien n'est exerce" \
+  || ok "L6: le harnais n'a jamais nettoye: il a bien ignore TERM jusqu'au bout"
+L6_SURV=()
+for p in "$L6_WPID" "$L6_HPID" "$L6_ENF" "$L6_PF"; do
+  [[ -n "$(vivants "$p")" ]] && L6_SURV+=("$p")
+done
+(( ${#L6_SURV[@]} == 0 )) \
+  && ok "L6: aucun des quatre ne survit — l'escalade atteint la descendance profonde" \
+  || echoue "L6: survivants apres escalade: ${L6_SURV[*]}"
+# LES ZOMBIES SONT ATTENDUS, ET C'EST LEUR PERSISTANCE QUI ROUGIT. Le harnais
+# est tue par SIGKILL: il ne peut plus moissonner ses propres descendants, qui
+# passent donc par un etat Z le temps d'etre reparentes puis recoltes. Mesure
+# au premier essai, sans attente: « zombies: 10022 10023 » — un rouge sur un
+# etat TRANSITOIRE, c'est-a-dire un faux rouge. L'attente est BORNEE, et le
+# moissonneur est NOMME plutot que suppose.
+L6_ZOMB=""
+n=0; while (( ++n <= 300 )); do
+  L6_ZOMB="$(ps -o pid=,stat= -p "$L6_WPID" -p "$L6_HPID" -p "$L6_ENF" -p "$L6_PF" 2>/dev/null \
+               | awk '$2 ~ /^Z/ {print $1}' | tr '\n' ' ')"
+  [[ -z "${L6_ZOMB// /}" ]] && break
+  L6_PPID="$(ps -o ppid= -p "${L6_ZOMB%% *}" 2>/dev/null | tr -d ' ')"
+  sleep 0.1
+done
+if [[ -z "${L6_ZOMB// /}" ]]; then
+  ok "L6: aucun zombie persistant parmi les quatre (convergence bornee)"
+  [[ -n "${L6_PPID:-}" ]] && detail "dernier PPID observe: $L6_PPID ($(ps -o comm= -p "${L6_PPID}" 2>/dev/null || echo 'disparu — reparente et moissonne'))"
+else
+  echoue "L6: zombies persistants apres 30 s: $L6_ZOMB — personne ne les moissonne"
+  detail "dernier PPID observe: ${L6_PPID:-inconnu}"
+fi
+GROUPE6="$(groupe_vivant "$L6_WPID")"
+[[ -z "${GROUPE6// /}" ]] \
+  && ok "L6: le groupe $L6_WPID est vide" \
+  || echoue "L6: le groupe $L6_WPID contient encore: $GROUPE6"
+# LES FIFO SONT RENDUES MEME APRES SIGKILL, parce que c'est la MATRICE qui
+# possede leur repertoire — un wrapper tue ne retire rien.
+L6_FIFOS="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'esc-barriere-*' 2>/dev/null | tr '\n' ' ')"
+[[ -z "${L6_FIFOS// /}" ]] \
+  && ok "L6: aucune FIFO residuelle — la matrice a rendu le repertoire de barriere" \
+  || { echoue "L6: repertoire(s) de barriere subsistant(s): $L6_FIFOS"
+       detail "un wrapper tue ne nettoie pas: le proprietaire doit etre la matrice"; }
+detail "MATRIX_RC=$L6_MRC, rapporte separement et jamais utilise comme preuve"
+rm -rf "$L_MARQ" "$L_JOUR" "$L_TEM" "$L_RESULTAT"
+
 # ==========================================================================
 # M. BASELINE CONTAMINEE MAIS STABLE — refusee pour la bonne raison
 # ==========================================================================

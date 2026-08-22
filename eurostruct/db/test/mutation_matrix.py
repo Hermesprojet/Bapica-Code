@@ -376,6 +376,7 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     # code 7 du harnais.
     argv = ["bash", remplacement or harnais, prefixe]
     temoin = os.environ.get("ESC_MUTATION_TEMOIN")
+    barriere = None
     if temoin:
         env["ESC_TEMOIN"] = temoin
         # MARQUEUR VERSIONNE, ET LE PRODUCTEUR VERIFIE AVANT DE DIRE READY.
@@ -387,7 +388,15 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
         enveloppe = (
             'set -u\n'
             'umask 077\n'
-            'BARRIERE="$(mktemp -d)"; chmod 0700 "$BARRIERE"\n'
+            # LE REPERTOIRE PEUT ETRE FOURNI PAR LA MATRICE, ET C'EST CE QUI
+            # PERMET DE LE RENDRE APRES UN SIGKILL. Le wrapper le retire en
+            # sortant — mais un wrapper tue ne retire rien, et ses deux FIFO
+            # restaient dans `TMPDIR` sans que personne ne puisse les nommer.
+            # Le proprietaire du nettoyage doit etre un processus qui SURVIT a
+            # celui qu'on tue. Le repli sur `mktemp -d` garde le wrapper
+            # autonome: extrait seul par l'auto-test de protocole, il continue
+            # de fonctionner, et son repertoire subsistant y est CLASSE.
+            'BARRIERE="${ESC_BARRIERE:-$(mktemp -d)}"; chmod 0700 "$BARRIERE"\n'
             'mkfifo -m 0600 "$BARRIERE/harnais.fifo" "$BARRIERE/temoin.fifo"\n'
             'exec {FD_H}<>"$BARRIERE/harnais.fifo" '
             '{FD_T}<>"$BARRIERE/temoin.fifo"\n'
@@ -581,6 +590,11 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
             'sortie_wrapper\n'
         )
         argv = ["bash", "-c", enveloppe, "bash", *argv]
+        # LA MATRICE POSSEDE LE REPERTOIRE DE BARRIERE, PAS LE WRAPPER. Elle
+        # survit a l'escalade qui tue le wrapper, donc elle seule peut rendre
+        # les FIFO dans tous les cas. Voir le commentaire dans l'enveloppe.
+        barriere = tempfile.mkdtemp(prefix="esc-barriere-", dir=SCRATCH)
+        env["ESC_BARRIERE"] = barriere
     p = subprocess.Popen(argv, cwd=ESPACE, env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          text=True, start_new_session=True)
@@ -624,6 +638,12 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
                     _f.write(f"DOUBLON rc={p.returncode}\n")
             finally:
                 os.unlink(_tmp)
+        # LES FIFO SONT RENDUES ICI, ET C'EST LE SEUL ENDROIT OU CE SOIT
+        # POSSIBLE DANS TOUS LES CAS. Le wrapper les retire quand il sort
+        # normalement; quand l'escalade le tue par SIGKILL, il ne retire rien.
+        # La matrice, elle, survit a cette escalade — c'est elle qui la conduit.
+        if barriere:
+            shutil.rmtree(barriere, ignore_errors=True)
     return p.returncode, sortie + erreur
 
 
