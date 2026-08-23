@@ -150,6 +150,25 @@ côté de l'auto-test d'isolation.
 | `mutation_isolation_selftest.sh` | 7 | ~32 s |
 | `mutation_signal_selftest.sh` | 127 | ~9 min |
 
+## La campagne de clôture
+
+Exécutée sur **`5d77933`**, le SHA gelé, en un seul passage :
+
+```
+MUTATIONS: definis 65 | executes 65 | non executes 0 | echecs inexpliques 0 | code 0
+           dont tues 58, redondants voulus 7
+           les 65 controles portent quelque chose.
+```
+
+Recevabilité vérifiée, et non supposée : l'espace isolé était un worktree
+détaché **sur `5d77933`** ; aucun survivant, aucun contrôle creux, aucune
+surface non exécutée ; et à la fin, zéro résidu — ni rôle, ni base, ni worktree,
+ni FIFO, ni processus. Le dépôt n'a pas bougé pendant la campagne.
+
+Ce document a été complété **après** la campagne. Le commit qui l'ajoute ne
+touche que `docs/` : aucune surface exécutable n'a changé depuis `5d77933`, et
+le verdict ci-dessus vaut donc pour tout ce que la matrice mesure.
+
 ## La neuvième mutation vise l'instrument
 
 Les huit autres visent le produit. `B1` vise le wrapper que la matrice pose
