@@ -126,6 +126,67 @@ La fenêtre est encadrée par le cas 22 (côté wrapper : aucun `READY` publié)
 le cas 10 (côté harnais : EOF, main rendue en 0,1 s). Elle n'est pas couverte,
 et la table le dit à chaque exécution.
 
+### Risque résiduel : ce qui peut arriver dans cette fenêtre
+
+**Ce n'est pas une fenêtre de rétention, c'est une fenêtre de rapport.** La
+barrière est armée par le **harnais**, pas par l'annonce du wrapper. Quand la
+fenêtre s'ouvre, le harnais a déjà ouvert la FIFO en lecture *et* publié
+`GATE_ARMED` — dans cet ordre, l'ouverture précédant la publication. La retenue
+est une propriété de la FIFO ; le wrapper ne fait que la **constater**.
+
+**Et la porte est terminale.** Après la lecture bloquante, l'instruction
+suivante de `seal_contract.sh` est `porte_refus`, qui sort en 4 :
+
+```
+  read -r -u "$FD_PORTE"
+  porte_refus "l'attente s'est terminee sans signal (read a rendu $?)"
+```
+
+Une fois `GATE_ARMED` publié, le harnais n'a plus **aucune** continuation
+nominale — ni dans cette fenêtre, ni après. Ses seules sorties sont : le signal
+(trap → nettoyage), le retour du `read` (violation nommée → sortie 4), ou
+SIGKILL (classé, sans nettoyage). Les cas restants du contrat du sceau (`j`,
+`k`, `m`, `w`) ne sont jamais atteints.
+
+La garantie centrale — *terminaison nominale impossible avant `READY`* — ne
+dépend donc **pas du tout** de cette fenêtre, ni d'aucun ordonnancement. Il n'y
+a pas de course que la barrière gagnerait : il n'existe pas de chemin de
+terminaison nominale à gagner.
+
+Ce qu'un signal reçu dans la fenêtre peut faire, exhaustivement :
+
+| événement | conséquence | vérifié par |
+|---|---|---|
+| le wrapper meurt | ses descripteurs se ferment → EOF côté harnais → `porte_refus`, sortie 4. **Aucun `READY`** — ses trappes ne sont pas encore armées | cas 22, cas 10 |
+| le harnais meurt | `ps -o pgid= -p "$HARNAIS"` rend vide → `PGH == PGID` faux → **`ETAT=FAILED`** | contrôle d'identité du wrapper |
+| le harnais devient zombie | `STH` commence par `Z` → **`ETAT=FAILED`** | idem |
+| les deux meurent | rien n'est publié ; le parent reprend le groupe | cas 2, cas 22 |
+
+Dans les quatre cas, le mode de défaillance est **« aucun verdict »**, jamais
+« faux verdict ». Pour qu'un `READY` mensonger sorte de cette fenêtre, il
+faudrait que le wrapper passe ses contrôles d'identité — harnais vivant, non
+zombie, PGID conforme, `GS == GATE_ARMED` — alors même que le harnais ne serait
+pas tenu. Or un harnais qui a publié `GATE_ARMED` et qui est vivant a la lecture
+bloquante pour instruction suivante.
+
+**Pourquoi c'est accepté comme risque résiduel.** La fenêtre n'est pas
+instrumentée parce que le wrapper est la pièce *mesurée* : `gate_protocol_selftest.sh`
+l'extrait de `mutation_matrix.py` et le met en échec. Y poser un crochet de
+test rendrait l'objet mesuré différent de l'objet livré — le contre-exemple
+prouverait alors quelque chose sur une variante de test, pas sur le produit.
+Les crochets existants vivent dans la **matrice**, jamais dans le wrapper.
+
+Le coût de ne pas l'instrumenter est borné et connu : une campagne avortée sans
+verdict, jamais un verdict faux. Le bénéfice serait nul pour la garantie
+centrale, puisque celle-ci ne repose pas sur cette fenêtre.
+
+**Ce que cette analyse n'établit pas.** Elle ne dit rien d'un harnais futur qui
+armerait la porte *sans* que la porte soit terminale chez lui — un double, ou
+un harnais qui reprendrait son cours après le `read`. Pour un tel harnais, la
+fenêtre redeviendrait pertinente et il faudrait la réexaminer. Le seul harnais
+réel qui arme aujourd'hui la porte est `seal_contract.sh`, et sa porte est
+terminale.
+
 ## Les SHA intermédiaires ne sont pas des références
 
 `ef90bb7`, `42601e7` et `91f5a4b` introduisent la barrière et **n'ont jamais
@@ -168,6 +229,26 @@ ni FIFO, ni processus. Le dépôt n'a pas bougé pendant la campagne.
 Ce document a été complété **après** la campagne. Le commit qui l'ajoute ne
 touche que `docs/` : aucune surface exécutable n'a changé depuis `5d77933`, et
 le verdict ci-dessus vaut donc pour tout ce que la matrice mesure.
+
+### Contrôle de dérive du SHA de clôture
+
+Vérifié plutôt qu'affirmé, `5d77933..3d1bd56` :
+
+```
+M	eurostruct/docs/schema/JALON_6_3b6e_BARRIERE_DE_VIVACITE.md
+```
+
+Un seul fichier, 19 lignes de prose ajoutées, aucun autre chemin. **Et il n'est
+consommé par aucun test ni protocole** : la seule référence depuis un exécutable
+est un commentaire dans `db/test/gate_protocol_selftest.sh`, et la matrice des
+fenêtres ne cite que des fichiers `.sh` (`porte_ailleurs` vise
+`mutation_signal_selftest.sh` et `mutation_isolation_selftest.sh`). Le workflow
+ne lit pas `docs/`.
+
+La campagne n'a donc **pas** été rejouée : aucune surface mesurable n'a bougé.
+La même règle s'applique aux compléments documentaires ultérieurs de ce
+fichier — ils sont admissibles tant que `git diff --name-status` ne montre que
+`docs/`, et un seul chemin hors `docs/` impose le rejeu complet.
 
 ## La neuvième mutation vise l'instrument
 
