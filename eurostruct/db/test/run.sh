@@ -215,6 +215,27 @@ etape "fermeture de l'autorite" \
   "$HERE/authority_closure.sh" "${DB_NAME:0:20}ac"
 
 # --------------------------------------------------------------------------
+# LA RACINE DE CONFIANCE DES AUTORITES (6.3c) — ROUGE ATTENDU
+# --------------------------------------------------------------------------
+# ATTENTION, CE N'EST PAS UN OUBLI: CETTE ETAPE EST ROUGE, ET ELLE DOIT L'ETRE.
+# C'est le lot de contre-exemples de 6.3c, ecrit AVANT tout correctif. Il sort
+# en 1 tant qu'il reste une ouverture, et il en reste quatre. Une CI verte a ce
+# stade signifierait que le harnais ne mesure plus rien.
+#
+# `authority_closure.sh` demande « le MIGRATEUR est-il contenu ? ». Celui-ci
+# pose la question d'apres, qui ne porte plus sur un role technique mais sur
+# une personne: « l'IDENTITE METIER qui octroie, revoque et confirme est-elle
+# seulement AUTHENTIFIEE ? ». La reponse mesuree est non — `auth.uid()` lit un
+# GUC que toute session peut poser, et le serveur inscrit la valeur declaree
+# dans `granted_by`.
+#
+# Il exige lui aussi un jeu canonique vierge, d'ou sa place ici, avant que la
+# base principale ne cree les six roles.
+echo "==> racine de confiance des autorites (6.3c, ROUGE ATTENDU)"
+etape "racine de confiance des autorites (6.3c, ROUGE ATTENDU)" \
+  "$HERE/authority_root_of_trust.sh" "${DB_NAME:0:20}rt"
+
+# --------------------------------------------------------------------------
 # LE CONTRAT DU SCEAU — la racine est-elle DEPLOYABLE ? (6.3b6d)
 # --------------------------------------------------------------------------
 # `authority_closure.sh` etablit que le migrateur est CONTENU. Celui-ci pose la
