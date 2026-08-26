@@ -1604,7 +1604,12 @@ t_historique() {
     # DANS le prefixe deja applique.
     insere)   printf 'begin;\nselect 1;\ncommit;\n' \
                 >"$COPIE/db/migrations/0004_zz_insertion.sql" ;;
-    suffixe)  cat >"$COPIE/db/migrations/0011_ajout_legitime.sql" <<'SQL'
+    # LE NUMERO EST 9999, ET CE N'EST PAS COSMETIQUE. Le fichier s'appelait
+    # « 0011_... » et TRIAIT donc AVANT `0011_authority_hardening.sql`: ce
+    # n'etait plus un suffixe mais une INSERTION dans le prefixe deja
+    # applique, exactement le geste que T10 verifie etre refuse. Le scenario
+    # mesurait donc l'inverse de ce qu'il annonce des que 0011 a existe.
+    suffixe)  cat >"$COPIE/db/migrations/9999_ajout_legitime.sql" <<'SQL'
 -- FICTIF — ajout EN SUFFIXE, le geste normal. Il doit etre accepte.
 begin;
 comment on schema public is 'ajout legitime en suffixe (harnais)';
@@ -1620,7 +1625,8 @@ SQL
   etat_fin=$(admb -tAc "select normative_activation_state()" 2>&1)
 
   if [[ "$geste" == "suffixe" ]]; then
-    if [[ $code -eq 0 && "$etat_fin" == "ACTIVE" && "$apres" == "11" ]]; then
+    if [[ $code -eq 0 && "$etat_fin" == "ACTIVE" \
+          && "$apres" == "$((MIGRATIONS_ATTENDUES + 1))" ]]; then
       echo "      ok: $nom. une migration ajoutee en suffixe est appliquee"
     else
       rouge "$nom. un ajout LEGITIME en suffixe est refuse."
