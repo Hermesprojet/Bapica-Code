@@ -436,13 +436,24 @@ etape "terminaison de la matrice sur signal" \
 # verifient la RLS et les declencheurs, pas le deploiement.
 PLAN_R="${DB_NAME}_plan"; PLAN_MDP="FICTIF-run-plan"
 MIG_R="${DB_NAME}_mig";   MIG_MDP="FICTIF-run-mig"
+# LE BACKEND AUTHENTIFIE, DISTINCT DU MIGRATEUR. Depuis 6.3c, la declaration
+# « eurostruct.authority_backend_logins » nomme les logins autorises a agir au
+# titre d'une autorite normative. Y nommer le MIGRATEUR reviendrait a defaire
+# la frontiere que le jalon pose: l'identite TECHNIQUE qui applique un schema
+# n'est pas une identite PROFESSIONNELLE. On cree donc un login de service
+# dedie, et c'est LUI qui est declare — meme si les tests de garanties
+# tournent, eux, sous `postgres`.
+SVC_R="${DB_NAME}_svc";   SVC_MDP="FICTIF-run-svc"
 # shellcheck disable=SC2034
 harnais_valider_identifiant "PLAN_R" "$PLAN_R" || exit 2
 harnais_valider_identifiant "MIG_R"  "$MIG_R"  || exit 2
+harnais_valider_identifiant "SVC_R"  "$SVC_R"  || exit 2
 creer_role "$PLAN_R" "login password '$PLAN_MDP' createrole" \
   || { echo "ECHEC: creation du plan de controle impossible" >&2; exit 1; }
 creer_role "$MIG_R" "login password '$MIG_MDP' createrole createdb" \
   || { echo "ECHEC: creation du migrateur impossible" >&2; exit 1; }
+creer_role "$SVC_R" "login password '$SVC_MDP'" \
+  || { echo "ECHEC: creation du backend authentifie impossible" >&2; exit 1; }
 adm -c "grant \"$PLAN_R\" to ${PGUSER:-postgres};" >/dev/null 2>&1
 
 plan_pg() { PGUSER="$PLAN_R" PGPASSWORD="$PLAN_MDP" psql -X -q -d postgres "$@"; }
@@ -482,6 +493,25 @@ grant usage on schema auth to "$PLAN_R";
 SQL
   adm -c "alter database \"$b\"
             set eurostruct.approved_deployment_roles = '$MIG_R,$PLAN_R';" >/dev/null 2>&1
+  # LES DEUX DECLARATIONS DE 6.3c, POSEES AVANT LA PHASE 1.
+  #
+  # C'est 0013 qui les CONSTATE et les fige pendant la migration; declarees
+  # apres, elles ne seraient lues par personne et TOUT le sous-systeme
+  # d'autorite resterait ferme. Mesure du 26/08: sans elles, la suite de
+  # garanties echouait sur BOOTSTRAP_AUTHORITY_NOT_CONFIGURED — la porte que
+  # 6.3c a fermee n'avait ete rouverte que pour les harnais d'autorite, jamais
+  # pour la base principale.
+  #
+  # LE PRINCIPAL DU MANDAT EST CELUI QUE `05_normative_confirmation.sql`
+  # amorce. Un mandat qui nommerait quelqu'un d'autre ne serait pas « un
+  # mandat quelconque »: il refuserait l'amorcage, ce qui est exactement ce
+  # que le mandat doit faire.
+  adm -c "alter database \"$b\"
+            set eurostruct.authority_backend_logins = '$SVC_R';" >/dev/null 2>&1
+  adm -c "alter database \"$b\"
+            set eurostruct.bootstrap_mandate =
+              '44444444-4444-4444-4444-444444444444:FICTIF-EMPREINTE-SUITE-CANONIQUE';" \
+    >/dev/null 2>&1
   # PHASE 0 — LE SCEAU, par le plan de controle.
   echo "    control_plane/0001_normative_seal.sql (phase 0)"
   if ! out=$(plan_db "$b" -v ON_ERROR_STOP=1 \
@@ -513,6 +543,11 @@ SQL
     grep -m2 -E "ERROR|FATAL" <<<"$out" | sed 's/^/       /' >&2
     return 1
   fi
+  # LE ROLE D'EXECUTION VA AU LOGIN DECLARE, ET PAR LE PLAN DE CONTROLE.
+  # C'est lui qui a cree le role en phase 0, donc lui seul en detient l'ADMIN
+  # — le migrateur, non, et c'est la contenance que 6.3c a posee.
+  PGUSER="$PLAN_R" PGPASSWORD="$PLAN_MDP" psql -X -q -d postgres \
+    -c "grant eurostruct_authority_backend to \"$SVC_R\";" >/dev/null 2>&1
   echo "    phase 2: $b PENDING -> ACTIVE par « $PLAN_R »"
   return 0
 }

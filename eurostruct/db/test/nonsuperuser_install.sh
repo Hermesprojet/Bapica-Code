@@ -81,7 +81,14 @@ MIGRATEUR=esc_migrator
 PLAN=esc_control_plane
 ROLES_SB="$MIGRATEUR $PLAN esc_authenticator esc_service_role"
 CANONIQUES="eurostruct_normative_writer eurostruct_normative_bootstrap eurostruct_normative_activator eurostruct_deployment"
-SERVICES="normative_backend normative_governance"
+# LE SEPTIEME ROLE CANONIQUE. `eurostruct_authority_backend` est cree par la
+# PHASE 0 depuis 6.3c: il doit donc etre exige absent AVANT, enregistre pour
+# le demontage, et detruit APRES, exactement comme les six autres. Mesure du
+# 26/08: il ne l'etait pas ici, et il survivait a ce harnais — les sept suites
+# suivantes de `run.sh` refusaient alors de demarrer sur « ces roles existent
+# deja ». Un role oublie dans une liste de demontage n'est pas un detail: il
+# arrete tout ce qui vient apres.
+SERVICES="normative_backend normative_governance eurostruct_authority_backend"
 MDP='FICTIF-nonsuperuser'
 
 # La connexion vient de l'ENVIRONNEMENT, jamais d'argv (6.3b6a, securite des

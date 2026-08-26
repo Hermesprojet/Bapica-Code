@@ -138,7 +138,15 @@ PLAN="${PREFIXE}_ctl_${JETON}";      PLAN_MDP="FICTIF-2p-ctl-$JETON"
 
 AUTORITES=(eurostruct_normative_writer eurostruct_normative_bootstrap
            eurostruct_normative_activator)
-SERVICES=(normative_backend normative_governance)
+# LE SEPTIEME ROLE CANONIQUE. `eurostruct_authority_backend` est cree par la
+# PHASE 0 depuis 6.3c: il doit donc etre exige absent AVANT, enregistre pour
+# le demontage, et detruit APRES, exactement comme les six autres. Mesure du
+# 26/08: il ne l'etait pas ici, et il survivait a ce harnais — les sept suites
+# suivantes de `run.sh` refusaient alors de demarrer sur « ces roles existent
+# deja ». Un role oublie dans une liste de demontage n'est pas un detail: il
+# arrete tout ce qui vient apres.
+SERVICES=(normative_backend normative_governance
+          eurostruct_authority_backend)
 DEPLOIEMENT=eurostruct_deployment
 CANONIQUES=("${AUTORITES[@]}" "${SERVICES[@]}" "$DEPLOIEMENT")
 

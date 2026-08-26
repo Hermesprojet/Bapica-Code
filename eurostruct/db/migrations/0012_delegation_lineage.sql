@@ -194,8 +194,21 @@ $$;
 alter function normative_grant_descendants(uuid)
   owner to eurostruct_normative_writer;
 revoke all on function normative_grant_descendants(uuid) from public;
+-- PAS A `normative_governance`, ET C'EST UNE CORRECTION MESUREE.
+--
+-- Une garantie posee bien avant 6.3c interdit a `public`, `authenticated`,
+-- `normative_backend` ET `normative_governance` d'executer QUELQUE fonction
+-- « normative » que ce soit — `05_normative_confirmation.sql` la verifie sur
+-- toutes les fonctions dont le nom contient « normative ». La premiere
+-- ecriture de 0012 accordait celle-ci a la gouvernance « parce que c'est une
+-- question de gouvernance », et faisait donc echouer cette garantie.
+--
+-- La gouvernance n'en a pas besoin: elle detient deja SELECT sur les octrois
+-- et peut calculer la descendance elle-meme. Accorder une fonction du
+-- sous-systeme d'autorite a un role applicatif pour lui epargner une requete
+-- est exactement ce que la garantie existe pour empecher.
 grant execute on function normative_grant_descendants(uuid)
-  to eurostruct_normative_writer, normative_governance;
+  to eurostruct_normative_writer;
 
 comment on function normative_grant_descendants is
   'Tout ce qui a ete delegue SOUS cet octroi, a toute profondeur. Repond a '

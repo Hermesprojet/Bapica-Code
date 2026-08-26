@@ -237,9 +237,15 @@ $$;
 alter function normative_authentication_configured()
   owner to eurostruct_normative_writer;
 revoke all on function normative_authentication_configured() from public;
+-- PAS A `normative_governance`. Une garantie posee bien avant 6.3c interdit a
+-- `public`, `authenticated`, `normative_backend` ET `normative_governance`
+-- d'executer QUELQUE fonction « normative » que ce soit — c'est verifie sur
+-- toutes les fonctions dont le nom contient « normative ». La gouvernance lit
+-- le CONTRAT (`normative_authentication_contract`, `normative_bootstrap_
+-- mandate_use`), sur lesquels elle a SELECT et une policy: elle y trouve la
+-- meme information sans qu'on lui ouvre une fonction du sous-systeme.
 grant execute on function normative_authentication_configured()
-  to eurostruct_normative_writer, eurostruct_normative_bootstrap,
-     normative_governance;
+  to eurostruct_normative_writer, eurostruct_normative_bootstrap;
 
 create or replace function normative_authenticated_actor() returns uuid
 language plpgsql
@@ -449,9 +455,15 @@ $$;
 alter function normative_bootstrap_mandate()
   owner to eurostruct_normative_bootstrap;
 revoke all on function normative_bootstrap_mandate() from public;
+-- PAS A `normative_governance`. Une garantie posee bien avant 6.3c interdit a
+-- `public`, `authenticated`, `normative_backend` ET `normative_governance`
+-- d'executer QUELQUE fonction « normative » que ce soit — c'est verifie sur
+-- toutes les fonctions dont le nom contient « normative ». La gouvernance lit
+-- le CONTRAT (`normative_authentication_contract`, `normative_bootstrap_
+-- mandate_use`), sur lesquels elle a SELECT et une policy: elle y trouve la
+-- meme information sans qu'on lui ouvre une fonction du sous-systeme.
 grant execute on function normative_bootstrap_mandate()
-  to eurostruct_normative_bootstrap, eurostruct_deployment,
-     normative_governance;
+  to eurostruct_normative_bootstrap, eurostruct_deployment;
 
 
 -- L'AMORCAGE, REECRIT. Meme signature — les appelants existants n'ont pas a
@@ -915,22 +927,41 @@ begin
     -- parce qu'ils ne couvrent ni l'Espagne ni l'Allemagne, et parce qu'une
     -- union de portees serait indecidable des qu'un axe est continu. Un seul
     -- octroi doit contenir la portee retiree.
+    -- UN COUVREUR QUI MEURT AVEC LE RETIRE NE COUVRE RIEN, ET C'EST LA
+    -- CORRECTION LA PLUS GRAVE DE 6.3c.
+    --
+    -- Mesure, suite de garanties: l'octroi d'amorcage a ete RETIRE avec
+    -- succes parce qu'un administrateur global « de releve » etait ACTIF. Or
+    -- cet administrateur avait ete delegue SOUS l'amorcage: depuis 0012
+    -- l'efficacite est transitive, et il est devenu INEFFICACE a l'instant
+    -- meme ou l'amorcage a ete retire. Etat final mesure: zero administrateur
+    -- efficace, et l'amorcage est singulier — donc IRRECUPERABLE. C'est
+    -- exactement la catastrophe que cette garde existe pour empecher, et 0012
+    -- l'avait rouverte sans que rien ne le dise.
+    --
+    -- Deux corrections, et les deux comptent:
+    --   * on exige l'EFFICACITE et non l'activite: un candidat dont un ancetre
+    --     est deja revoque ou expire ne couvre rien;
+    --   * on ECARTE les descendants du retire: ils s'eteignent avec lui. Un
+    --     candidat n'est une releve que s'il survit a la revocation.
     if not exists (
       select 1 from normative_authorisation_grants g
        where g.permission = 'can_manage_normative_authorisations'
          and g.id <> cible.id
-         and normative_grant_is_active(g.id)
+         and normative_grant_is_effective(g.id)
+         and not exists (select 1 from normative_grant_descendants(cible.id) d
+                          where d.id = g.id)
          and (g.country_code    is null or g.country_code    = cible.country_code)
          and (g.standard_family is null or g.standard_family = cible.standard_family)
          and (g.part            is null or g.part            = cible.part)
          and (g.edition         is null or g.edition         = cible.edition)
     ) then
       raise exception
-        'revocation refusee: aucun autre octroi actif de '
+        'revocation refusee: aucun octroi EFFICACE et SURVIVANT de '
         '« can_manage_normative_authorisations » ne couvre la portee de % '
         '(%/%/%/%). Le retirer laisserait cette portee sans administrateur, '
-        'et l''amorcage ne peut pas etre rejoue. Octroyer d''abord une '
-        'administration couvrant AU MOINS cette portee.',
+        'et l''amorcage ne peut pas etre rejoue. Un octroi delegue SOUS celui '
+        'qu''on retire ne compte pas: il s''eteint avec lui.',
         cible.id,
         coalesce(cible.country_code::text, '*'),
         coalesce(cible.standard_family, '*'),
