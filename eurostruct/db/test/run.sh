@@ -84,7 +84,8 @@ exiger_cluster_jetable "db/test/run.sh" || exit 2
 # qu'aucune postcondition ne l'ait signale.
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator
-            normative_backend normative_governance eurostruct_deployment)
+            normative_backend normative_governance eurostruct_deployment
+            eurostruct_authority_backend)
 
 # BLOQUANT, et place ICI: avant l'oracle, avant les migrations, avant tout
 # test. Le rouge d'une sous-surface ne suffirait pas — `etape()` continue

@@ -85,7 +85,8 @@ echoue() { echo "      ECHEC: $*" >&2; KO=1; }
 # 6.3b6b. Le nombre de temoins attendus intacts suit (voir `temoins_intacts`).
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator
-            normative_backend normative_governance eurostruct_deployment)
+            normative_backend normative_governance eurostruct_deployment
+            eurostruct_authority_backend)
 
 adm() { psql -X -q -d postgres "$@"; }
 
