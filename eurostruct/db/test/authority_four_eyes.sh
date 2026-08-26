@@ -58,7 +58,8 @@ verdicts_declarer \
   sans-authentification acteur-falsifie proposition-autorisee \
   auto-approbation approbation-second-principal approbateur-sans-autorite \
   source-hors-scope confusion-organisation confusion-edition \
-  double-approbation-sequentielle double-approbation-concurrente \
+  double-approbation-sequentielle double-approbation-autorisee \
+  double-approbation-concurrente \
   double-consommation-concurrente rejeu-apres-consommation \
   revocation-avant-approbation revocation-pendant-consommation \
   invocation-sql-directe sources-conservees audit-correlation \
@@ -86,12 +87,20 @@ est_uuid() {
 }
 erreur_sql() { grep -qiE 'ERROR|ERREUR|FATAL' <<<"$1"; }
 
-# Quatre identites metier FICTIVES: la racine R, le proposant A, l'approbateur
-# B, et un tiers T sans autorite sur la portee eprouvee.
+# Cinq identites metier FICTIVES: la racine R, le proposant A, l'approbateur
+# B, un tiers T SANS autorite sur la portee eprouvee, et C qui EN A UNE.
+#
+# POURQUOI C EXISTE. Mesure du 26/08: la falsification de la machine a etats
+# — condition d'etat ET declencheur de transition retires — ne rendait AUCUN
+# test rouge. Le controle de double approbation sequentielle faisait tenter la
+# seconde approbation par T, que le controle de PORTEE refuse avant meme que
+# l'etat soit regarde. Le test ne touchait donc pas l'invariant qu'il croyait
+# nommer. Un second approbateur AUTORISE etait necessaire pour l'atteindre.
 R="11111111-4444-4444-4444-444444444401"
 A="22222222-4444-4444-4444-444444444402"
 B="33333333-4444-4444-4444-444444444403"
 T="44444444-4444-4444-4444-444444444404"
+C="55555555-4444-4444-4444-444444444405"
 MANDAT_PRINCIPAL="$R"
 
 # `agir <acteur> <sql>` — le BACKEND AUTHENTIFIE pose le contexte d'acteur puis
@@ -159,7 +168,7 @@ SQL
   ctlp -c "grant eurostruct_authority_backend to \"$SVC\";" >/dev/null 2>&1
   adm  -c "grant normative_backend to \"$ORD\";"            >/dev/null 2>&1
   admb -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
-insert into auth.users (id) values ('$R'),('$A'),('$B'),('$T')
+insert into auth.users (id) values ('$R'),('$A'),('$B'),('$T'),('$C')
 on conflict do nothing;
 SQL
   return 0
@@ -269,7 +278,11 @@ GA="$(octroyer "$A" BE 'EN 1992' '1-1' '2004' 'FICTIF autorite de A')"
 GB="$(octroyer "$B" BE 'EN 1992' '1-1' '2004' 'FICTIF autorite de B')"
 # T recoit une autorite sur une AUTRE edition: il est habilite, mais pas ici.
 GT="$(octroyer "$T" BE 'EN 1992' '1-1' '2099' 'FICTIF autorite de T ailleurs')"
-detail "chaine: racine $GR ; A=$GA ; B=$GB ; T(autre edition)=$GT"
+# C est habilite sur la MEME portee que B: il pourrait legitimement approuver
+# une decision encore PENDING. C'est ce qui permet d'eprouver l'etat, et non
+# la portee.
+GC="$(octroyer "$C" BE 'EN 1992' '1-1' '2004' 'FICTIF autorite de C, meme portee')"
+detail "chaine: racine $GR ; A=$GA ; B=$GB ; T(autre edition)=$GT ; C=$GC"
 if ! est_uuid "$GA" || ! est_uuid "$GB"; then
   echoue "les habilitations de A et B n'ont pas ete creees: chemins vides."
   exit 1
@@ -480,6 +493,44 @@ else
     detail "l'approbateur reste B. $(grep -m1 -oiE '(ERROR|ERREUR)[^|]{0,80}' <<<"$R10")"
   else
     troue double-approbation-sequentielle "non interpretable."
+  fi
+fi
+
+# ==========================================================================
+# 10 bis. DOUBLE APPROBATION PAR UN SECOND APPROBATEUR *AUTORISE*
+# ==========================================================================
+# CE CONTROLE EPROUVE L'ETAT, PAS LA PORTEE. Le controle precedent fait tenter
+# la seconde approbation par T, que le controle de portee refuse d'abord: il
+# n'atteint donc jamais la machine a etats. C, lui, detient une habilitation
+# EFFICACE couvrant exactement la portee de la decision. S'il obtient
+# l'approbation, c'est que « une decision ne s'approuve qu'une fois » n'est
+# tenu par rien.
+echo "      -- double-approbation-autorisee"
+if [[ "$(q "select state from normative_authority_decisions where id='$D1'")" != "APPROVED" ]]; then
+  troue double-approbation-autorisee "la decision n'est pas approuvee."
+elif ! est_uuid "$GC"; then
+  troue double-approbation-autorisee "l'habilitation de C n'a pas ete creee:"
+  detail "le chemin serait refuse pour la mauvaise raison."
+else
+  R10B="$(agir "$C" "select normative_decision_approve('$D1')")"
+  AP="$(q "select approver_id from normative_authority_decisions where id='$D1'")"
+  SRC10="$(q "select approval_source_grant_id from normative_authority_decisions
+               where id='$D1'")"
+  detail "approbateur apres la tentative de C: $AP (attendu $B)"
+  if [[ "$AP" == "$C" ]]; then
+    rouge double-approbation-autorisee "un SECOND approbateur habilite a"
+    detail "remplace le premier: l'etat approuve ne protege rien."
+  elif [[ "$AP" != "$B" || "$SRC10" != "$GB" ]]; then
+    rouge double-approbation-autorisee "l'approbation a bouge: approbateur=$AP"
+    detail "source=$SRC10 (attendu $B / $GB)."
+  elif erreur_sql "$R10B"; then
+    sur double-approbation-autorisee "un second approbateur POURTANT HABILITE"
+    detail "est refuse, et l'approbation d'origine ne bouge pas."
+    detail "$(grep -m1 -oiE '(ERROR|ERREUR)[^|]{0,90}' <<<"$R10B")"
+    detail "non-vacuite: C aurait pu approuver cette decision quand elle etait"
+    detail "PENDING — c'est l'ETAT qui le refuse, pas sa portee."
+  else
+    troue double-approbation-autorisee "non interpretable: $(head -c 100 <<<"$R10B")"
   fi
 fi
 
