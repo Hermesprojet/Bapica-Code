@@ -613,6 +613,15 @@ grant execute on function normative_decision_consume(uuid)
 --
 -- La migration verifie donc, dans les catalogues, que ce qu'elle a demande a
 -- bien eu lieu — et refuse de se declarer appliquee sinon.
+-- CHAQUE LITTERAL EST TYPE `::text`, ET CE N'EST PAS UNE COQUETTERIE.
+-- `text[] || 'litteral'` est AMBIGU: PostgreSQL essaie d'abord
+-- `anyarray || anyarray` et tente de convertir le litteral non type en
+-- tableau. Mesure: la falsification N1 a rendu PUBLIC executable sur
+-- `normative_decision_approve`; l'assertion a bien detecte l'ecart, puis a
+-- echoue sur « malformed array literal » au lieu de le NOMMER. Une garde qui
+-- se declenche sans dire ce qui manque coute l'heure qu'elle devait faire
+-- gagner. Les branches ecrites avec `format()` n'avaient pas le probleme:
+-- `format()` rend un `text` deja type.
 do $$
 declare
   ecarts text[] := array[]::text[];
@@ -630,31 +639,31 @@ begin
                   where n.nspname = 'public'
                     and c.relname = 'normative_authority_decisions'
                     and c.relrowsecurity and c.relforcerowsecurity) then
-    ecarts := ecarts || 'la table des decisions n''est pas en RLS forcee';
+    ecarts := ecarts || 'la table des decisions n''est pas en RLS forcee'::text;
   end if;
 
   if has_table_privilege('eurostruct_authority_backend',
                          'normative_authority_decisions', 'INSERT')
      or has_table_privilege('normative_backend',
                             'normative_authority_decisions', 'INSERT') then
-    ecarts := ecarts || 'un role applicatif detient INSERT sur les decisions: '
-                        'les primitives ne sont plus le seul chemin';
+    ecarts := ecarts || ('un role applicatif detient INSERT sur les decisions: '
+                         'les primitives ne sont plus le seul chemin')::text;
   end if;
 
   if has_function_privilege('public', 'normative_decision_approve(uuid)', 'EXECUTE') then
-    ecarts := ecarts || 'normative_decision_approve est executable par PUBLIC';
+    ecarts := ecarts || 'normative_decision_approve est executable par PUBLIC'::text;
   end if;
   if not has_function_privilege('eurostruct_authority_backend',
                                 'normative_decision_approve(uuid)', 'EXECUTE') then
-    ecarts := ecarts || 'le backend authentifie n''atteint pas '
-                        'normative_decision_approve: le chemin nominal est ferme';
+    ecarts := ecarts || ('le backend authentifie n''atteint pas '
+                         'normative_decision_approve: le chemin nominal est ferme')::text;
   end if;
 
   if not exists (select 1 from pg_trigger t
                    join pg_class c on c.oid = t.tgrelid
                   where c.relname = 'normative_authority_decisions'
                     and t.tgname = 'normative_decisions_transitions_are_checked') then
-    ecarts := ecarts || 'le declencheur de transition est absent';
+    ecarts := ecarts || 'le declencheur de transition est absent'::text;
   end if;
 
   if array_length(ecarts, 1) > 0 then
