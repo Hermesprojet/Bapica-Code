@@ -1310,10 +1310,55 @@ grant execute on function normative_grant_is_effective(uuid)
 -- LES POLICIES SUIVENT LE PRIVILEGE. Une policy `to normative_backend` sur une
 -- table dont ce role n'a plus INSERT ne sert plus a rien; la laisser
 -- entretiendrait l'idee qu'il peut encore ecrire.
+--
+-- LES QUATRE TABLES, ET NON LA PREMIERE. Mesure — une premiere ecriture de
+-- cette section n'avait deplace que la policy des octrois. Les trois autres
+-- gardaient `to normative_backend`. Sous FORCE RLS, le backend authentifie
+-- avait donc le PRIVILEGE sans POLICY: chaque revocation etait refusee par
+-- « new row violates row-level security policy », et le chemin de
+-- confirmation — la raison d'etre de 6.3b — etait mort pour tout le monde.
+-- Deux controles du quatre-yeux sont restes NON_PARCOURUS avant que la cause
+-- soit lue. Un privilege sans policy ne se voit pas dans `has_table_privilege`.
 drop policy if exists normative_grants_insert on normative_authorisation_grants;
 create policy normative_grants_insert on normative_authorisation_grants
   for insert to eurostruct_authority_backend with check (origin = 'delegated');
 create policy normative_grants_backend_read on normative_authorisation_grants
+  for select to eurostruct_authority_backend using (true);
+
+drop policy if exists normative_grant_revocations_insert
+  on normative_authorisation_revocations;
+create policy normative_grant_revocations_insert
+  on normative_authorisation_revocations
+  for insert to eurostruct_authority_backend with check (true);
+
+drop policy if exists normative_confirmations_insert
+  on normative_rule_confirmations;
+create policy normative_confirmations_insert on normative_rule_confirmations
+  for insert to eurostruct_authority_backend with check (true);
+
+drop policy if exists normative_confirmation_revocations_insert
+  on normative_rule_confirmation_revocations;
+create policy normative_confirmation_revocations_insert
+  on normative_rule_confirmation_revocations
+  for insert to eurostruct_authority_backend with check (true);
+
+-- LA LECTURE AUSSI, ET POUR UNE RAISON PLUS GRAVE QUE LE CONFORT.
+--
+-- `normative_grant_is_effective()` est `language sql`, DROITS DE L'APPELANT —
+-- et 0013 en donne l'EXECUTE au backend authentifie. Sans policy de lecture
+-- sur `normative_authorisation_revocations`, la sous-requete « existe-t-il une
+-- revocation ? » ne voit AUCUNE ligne, et la fonction repond « efficace » pour
+-- une habilitation revoquee. Le backend ne recevrait pas une erreur: il
+-- recevrait une REPONSE FAUSSE, ce qui est pire. Un privilege SELECT sans
+-- policy ne se lit ni dans `has_table_privilege` ni dans un plan.
+create policy normative_grant_revocations_backend_read
+  on normative_authorisation_revocations
+  for select to eurostruct_authority_backend using (true);
+create policy normative_confirmations_authority_read
+  on normative_rule_confirmations
+  for select to eurostruct_authority_backend using (true);
+create policy normative_confirmation_revocations_authority_read
+  on normative_rule_confirmation_revocations
   for select to eurostruct_authority_backend using (true);
 
 reset role;
@@ -1337,6 +1382,58 @@ begin
     raise exception
       'le backend authentifie n''a PAS recu INSERT: le sous-systeme serait '
       'ferme a tout le monde, y compris au chemin nominal.'
+      using errcode = 'insufficient_privilege';
+  end if;
+end;
+$$;
+
+-- UN PRIVILEGE SANS POLICY N'EST PAS UN PRIVILEGE — il est pire: il ressemble
+-- a un droit dans le catalogue, et se comporte comme un refus (INSERT) ou
+-- comme un mensonge (SELECT qui rend zero ligne). Aucune des deux formes n'est
+-- visible dans `has_table_privilege`, qui est precisement ce que l'assertion
+-- precedente interroge. On confronte donc, pour CHAQUE table sous FORCE RLS,
+-- le privilege detenu par le backend authentifie a l'existence d'une policy
+-- permissive qui le nomme. La migration echoue si l'un des deux manque.
+do $$
+declare
+  manquantes text[] := array[]::text[];
+  r record;
+begin
+  for r in
+    select c.oid, c.relname, x.priv, x.cmd
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+     cross join lateral (values ('SELECT', 'r'), ('INSERT', 'a')) as x(priv, cmd)
+     where n.nspname = 'public'
+       and c.relkind = 'r'
+       and c.relrowsecurity
+       and c.relforcerowsecurity
+       and has_table_privilege('eurostruct_authority_backend',
+                               c.oid, x.priv)
+  loop
+    if not exists (
+      select 1 from pg_policy p
+       where p.polrelid = r.oid
+         and p.polpermissive
+         and p.polcmd in (r.cmd, '*')
+         and (p.polroles = '{0}'::oid[]
+              or exists (
+                select 1 from unnest(p.polroles) as pr(oid)
+                 where pg_has_role('eurostruct_authority_backend',
+                                   pr.oid, 'USAGE')))
+    ) then
+      manquantes := manquantes || (r.relname || '.' || r.priv);
+    end if;
+  end loop;
+
+  if manquantes <> array[]::text[] then
+    raise exception
+      'privilege sans policy sur % : le backend authentifie detient le droit '
+      'mais AUCUNE policy permissive ne le nomme. Sous FORCE ROW LEVEL '
+      'SECURITY un INSERT serait refuse et un SELECT rendrait zero ligne — '
+      'donc une reponse fausse plutot qu''une erreur. Faire suivre la policy '
+      'au privilege, ou retirer le privilege.',
+      array_to_string(manquantes, ', ')
       using errcode = 'insufficient_privilege';
   end if;
 end;
