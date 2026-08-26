@@ -113,12 +113,26 @@ echoue()  { echo "      ECHEC: $*" >&2; KO=1; }
 detail()  { echo "                $*"; }
 
 adm()  { psql -X -q -d postgres "$@"; }
-MIG=""; CTL=""; SVC=""; BASE=""; MDP=""
+MIG=""; CTL=""; SVC=""; ORD=""; BASE=""; MDP=""
 mig()  { PGUSER="$MIG" PGPASSWORD="$MDP" psql -X -q -d "$BASE" "$@"; }
 ctl()  { PGUSER="$CTL" PGPASSWORD="$MDP" psql -X -q -d "$BASE" "$@"; }
 svc()  { PGUSER="$SVC" PGPASSWORD="$MDP" psql -X -q -d "$BASE" "$@"; }
+# LE ROLE APPLICATIF ORDINAIRE — ce dont dispose un attaquant qui tient une
+# connexion applicative, et rien de plus.
+ord()  { PGUSER="$ORD" PGPASSWORD="$MDP" psql -X -q -d "$BASE" "$@"; }
 ctlp() { PGUSER="$CTL" PGPASSWORD="$MDP" psql -X -q -d postgres "$@"; }
 admb() { psql -X -q -d "$BASE" "$@"; }
+
+# Trois identites metier. Elles n'ont AUCUN pouvoir en elles-memes: ce sont des
+# lignes dans `auth.users`, c'est-a-dire exactement ce dont un attaquant
+# dispose — des UUID.
+RACINE="11111111-1111-1111-1111-111111111111"
+COMPLICE="22222222-2222-2222-2222-222222222222"
+TIERS="33333333-3333-3333-3333-333333333333"
+# LE PRINCIPAL PREAUTORISE PAR LE MANDAT D'AMORCAGE. Depuis 0013, `p_grantee`
+# n'est plus un choix: la primitive le confronte au mandat DECLARE. Le decor
+# doit donc le declarer avant la phase 1, et c'est celui-la qui sera amorce.
+MANDAT_PRINCIPAL="$RACINE"
 
 # --------------------------------------------------------------------------
 # LE DECOR — meme forme que `authority_closure.sh`, mene jusqu'a ACTIVE
@@ -136,6 +150,12 @@ decor_poser() {
   local s="$1" f sortie
   MIG="${PREFIXE}_m${s}_${JETON}"; CTL="${PREFIXE}_c${s}_${JETON}"
   SVC="${PREFIXE}_s${s}_${JETON}"; BASE="${PREFIXE}_d${s}_${JETON}"
+  ORD="${PREFIXE}_o${s}_${JETON}"
+  # LE MANDAT D'AMORCAGE, FICTIF. Forme « <principal>:<empreinte> ». Il tient
+  # lieu, pour le test, de la decision prise hors du systeme; aucun document
+  # reel n'existe et aucun n'est invente — l'empreinte est litteralement
+  # marquee FICTIF.
+  MANDAT="${MANDAT_PRINCIPAL}:FICTIF-EMPREINTE-DE-MANDAT-${JETON}"
   MDP="FICTIF-rt-${s}-${JETON}"
 
   creer_role "$MIG" "login password '$MDP' createrole createdb" \
@@ -144,6 +164,8 @@ decor_poser() {
     || { echoue "decor: creation du plan de controle impossible"; return 1; }
   creer_role "$SVC" "login password '$MDP'" \
     || { echoue "decor: creation du role de service impossible"; return 1; }
+  creer_role "$ORD" "login password '$MDP'" \
+    || { echoue "decor: creation du role applicatif ordinaire"; return 1; }
   adm -c "grant \"$CTL\" to ${PGUSER:-postgres};" >/dev/null 2>&1
   creer_base "$BASE" "owner \"$MIG\"" \
     || { echoue "decor: creation de la base impossible"; return 1; }
@@ -175,6 +197,13 @@ SQL
   adm -c "alter database \"$BASE\" set eurostruct.token_roles = 'authenticated';" >/dev/null 2>&1
   adm -c "alter database \"$BASE\"
             set eurostruct.approved_service_logins = '$SVC';" >/dev/null 2>&1
+  # LES DEUX DECLARATIONS DE 6.3c, posees AVANT la phase 1: c'est 0013 qui les
+  # CONSTATE et les fige pendant la migration. Declarees apres, elles seraient
+  # lues par personne et tout le sous-systeme d'autorite resterait ferme.
+  adm -c "alter database \"$BASE\"
+            set eurostruct.authority_backend_logins = '$SVC';" >/dev/null 2>&1
+  adm -c "alter database \"$BASE\"
+            set eurostruct.bootstrap_mandate = '$MANDAT';" >/dev/null 2>&1
 
   # PHASE 1 — par le migrateur.
   for f in "$DB_DIR"/migrations/*.sql; do
@@ -206,10 +235,26 @@ SQL
   # attaques 4 a 14 se refuseraient toutes sur « permission denied to set
   # role », donc AVANT d'atteindre le moindre invariant d'autorite: onze faux
   # « surs » d'affilee.
+  # LE BACKEND AUTHENTIFIE recoit le role d'EXECUTION privilegie; le role
+  # ORDINAIRE ne recoit que `normative_backend`, qui depuis 0013 n'a plus
+  # INSERT sur les tables d'autorite. C'est la separation que 6.3c pose.
+  adm -c "grant eurostruct_authority_backend to \"$SVC\";" >/dev/null 2>&1
   adm -c "grant normative_backend to \"$SVC\";" >/dev/null 2>&1
-  if [[ "$(svc -tAc "set role normative_backend; select current_user" 2>&1 \
-           | tail -1 | tr -d ' ')" != "normative_backend" ]]; then
-    echoue "decor: le role de service n'atteint pas normative_backend."
+  adm -c "grant normative_backend to \"$ORD\";" >/dev/null 2>&1
+  if [[ "$(svc -tAc "select pg_has_role(session_user,
+             'eurostruct_authority_backend', 'USAGE')" 2>&1 \
+           | tail -1 | tr -d ' ')" != "t" ]]; then
+    echoue "decor: le backend de service n'atteint pas le role d'execution"
+    detail "privilegie: toutes les ecritures d'autorite seraient refusees pour"
+    detail "une raison etrangere a ce qui est mesure."
+    return 1
+  fi
+  if [[ "$(ord -tAc "select pg_has_role(session_user,
+             'eurostruct_authority_backend', 'USAGE')" 2>&1 \
+           | tail -1 | tr -d ' ')" != "f" ]]; then
+    echoue "decor: le role applicatif ORDINAIRE atteint le role d'execution"
+    detail "privilegie: la separation que 6.3c pose n'existe pas, et les"
+    detail "attaques d'identite mesureraient la mauvaise session."
     return 1
   fi
   return 0
@@ -349,7 +394,7 @@ sortie_propre() {
   adm -c "select pg_terminate_backend(pid) from pg_stat_activity
            where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
   detruire_bases_creees || NETTOYAGE_KO=1
-  for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL" "$SVC"; do
+  for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL" "$SVC" "$ORD"; do
     [[ -n "$r" ]] || continue
     adm -c "drop owned by \"$r\";"       >/dev/null 2>&1
     adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
@@ -357,7 +402,7 @@ sortie_propre() {
   done
   detruire_roles_crees || NETTOYAGE_KO=1
   harnais_postcondition_nettoyage "authority_root_of_trust.sh" \
-    "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL" "$SVC" \
+    "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL" "$SVC" "$ORD" \
     || NETTOYAGE_KO=1
   harnais_verrou_rendre
   [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
@@ -372,20 +417,22 @@ if ! decor_poser a; then
   exit 1
 fi
 
-# Trois identites metier. Elles n'ont AUCUN pouvoir en elles-memes: ce sont des
-# lignes dans `auth.users`, c'est-a-dire exactement ce dont un attaquant
-# dispose — des UUID.
-RACINE="11111111-1111-1111-1111-111111111111"
-COMPLICE="22222222-2222-2222-2222-222222222222"
-TIERS="33333333-3333-3333-3333-333333333333"
 admb -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
 insert into auth.users (id) values ('$RACINE'), ('$COMPLICE'), ('$TIERS')
 on conflict do nothing;
 SQL
 
-# `sql_svc <sql>` — sous le role de service, c'est-a-dire ce qu'un backend
-# applicatif possede reellement: UNE CONNEXION, et rien de plus.
+# DEUX CHEMINS, ET LA DIFFERENCE EST TOUT LE SUJET DE 6.3c.
+#
+# `sql_svc` — le BACKEND AUTHENTIFIE. Il herite de
+# `eurostruct_authority_backend`, seul role a detenir INSERT sur les tables
+# d'autorite depuis 0013. Il ne fait PAS `set role normative_backend`: cela
+# lui ferait perdre precisement le privilege qu'on veut exercer.
 sql_svc() { svc -tAc "$1" 2>&1; }
+# `sql_ord` — un role applicatif ORDINAIRE. C'est ce dont dispose un attaquant
+# qui tient une connexion applicative: il peut poser tous les parametres de
+# session qu'il veut, il n'a plus INSERT.
+sql_ord() { ord -tAc "set role normative_backend; $1" 2>&1; }
 est_uuid() {
   [[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
 }
@@ -480,7 +527,7 @@ fi
 # 2. AMORCAGE PAR UN ACTEUR NON AUTORISE
 # ==========================================================================
 echo "      -- 2. amorcage par un role sans eurostruct_deployment"
-R2="$(sql_svc "select bootstrap_normative_administrator(
+R2="$(sql_ord "select bootstrap_normative_administrator(
         '$TIERS'::uuid, 'FICTIF tiers', 'FICTIF non autorise')")"
 if est_uuid "$(tail -1 <<<"$R2" | tr -d ' ')"; then
   rouge "2. un role SANS eurostruct_deployment a pu amorcer la racine."
@@ -579,8 +626,7 @@ detail "octroi racine invoque par les delegations: $GRANT_RACINE"
 # declarer sures.
 CHAINE_OK=0
 GRANT_COMPLICE=""; GRANT_ED13=""; GRANT_C14=""
-sql_svc "set role normative_backend;
-         set request.jwt.claim.sub = '$ADMIN_ID';
+sql_svc "         set eurostruct.actor_id = '$ADMIN_ID';
          insert into normative_authorisation_grants
            (grantee_id, grantee_name, permission, country_code,
             standard_family, part, edition, reason, parent_grant_id)
@@ -626,8 +672,7 @@ fi
 # ON MESURE DONC L'EFFET, sur le chemin reel: une ecriture d'autorite, puis la
 # valeur que le SERVEUR a inscrite dans `granted_by`.
 echo "      -- 4. falsification de l'identite par SET request.jwt.claim.sub"
-R4="$(sql_svc "set role normative_backend;
-               set request.jwt.claim.sub = '$ADMIN_ID';
+R4="$(sql_svc "               set eurostruct.actor_id = '$ADMIN_ID';
                insert into normative_authorisation_grants
                  (grantee_id, grantee_name, permission, country_code,
                   standard_family, part, edition, reason, parent_grant_id)
@@ -647,16 +692,18 @@ if [[ "$G4" == "$ADMIN_ID" ]]; then
 elif [[ -n "$G4" ]]; then
   non_parcouru "4. granted_by inattendu (« $G4 »): resultat non interpretable."
 else
-  sur "4. l'ecriture sous identite declaree a ete refusee:"
-  detail "$(head -c 180 <<<"$R4")"
+  sur "4. un role applicatif ORDINAIRE qui declare une identite n'ecrit rien."
+  detail "non-vacuite: la chaine de delegation, elle, a bien ete posee plus"
+  detail "haut par le BACKEND AUTHENTIFIE, avec le meme acteur declare. Ce"
+  detail "n'est donc pas la valeur qui est refusee, c'est la SESSION."
+  detail "$(head -c 160 <<<"$R4")"
 fi
 
 # ==========================================================================
 # 5. ACTOR == GRANTEE — l'auto-attribution
 # ==========================================================================
 echo "      -- 5. auto-attribution (acteur == beneficiaire)"
-R5="$(sql_svc "set role normative_backend;
-               set request.jwt.claim.sub = '$ADMIN_ID';
+R5="$(sql_svc "               set eurostruct.actor_id = '$ADMIN_ID';
                insert into normative_authorisation_grants
                  (grantee_id, grantee_name, permission, country_code,
                   standard_family, part, edition, reason, parent_grant_id)
@@ -698,15 +745,14 @@ echo "      -- 6. deux paternites « independantes » depuis UNE connexion"
 if [[ $CHAINE_OK -eq 0 ]]; then
   non_parcouru "6. la chaine de delegation manque: chemin non parcouru."
 else
-R6="$(sql_svc "set role normative_backend;
-               set request.jwt.claim.sub = '$ADMIN_ID';
+R6="$(sql_svc "               set eurostruct.actor_id = '$ADMIN_ID';
                insert into normative_authorisation_grants
                  (grantee_id, grantee_name, permission, country_code,
                   standard_family, part, edition, reason, parent_grant_id)
                values ('$TIERS', 'FICTIF regard 1',
                        'can_validate_normative_reference',
                        'BE', 'EN 1992', '1-1', '2004', 'FICTIF regard 1', '$GRANT_RACINE');
-               set request.jwt.claim.sub = '$COMPLICE';
+               set eurostruct.actor_id = '$COMPLICE';
                insert into normative_authorisation_grants
                  (grantee_id, grantee_name, permission, country_code,
                   standard_family, part, edition, reason, parent_grant_id)
@@ -730,8 +776,30 @@ if [[ "$N6" == "2" ]]; then
   detail "INVARIANT ATTENDU (I-3): deux regards exigent deux principals"
   detail "AUTHENTIFIES distincts, pas deux valeurs declarees."
 elif [[ "$N6" == "0" ]]; then
-  non_parcouru "6. aucune des deux ecritures n'a abouti — chemin non atteint:"
-  detail "$(head -c 200 <<<"$R6")"
+  # AUCUNE ECRITURE N'A ABOUTI. Avant 0013 cela aurait ete un trou; ici c'est
+  # la garantie elle-meme, a condition que la SESSION AUTORISEE, elle, ecrive.
+  # C'est ce que le controle positif ci-dessous etablit — sans lui, un decor
+  # casse se lirait comme une protection.
+  TEMOIN6="$(sql_svc "set eurostruct.actor_id = '$ADMIN_ID';
+                      insert into normative_authorisation_grants
+                        (grantee_id, grantee_name, permission, country_code,
+                         standard_family, part, edition, reason,
+                         parent_grant_id)
+                      values ('$TIERS', 'FICTIF temoin 6',
+                              'can_validate_normative_reference',
+                              'BE', 'EN 1992', '1-1', '2099',
+                              'FICTIF temoin identite', '$GRANT_RACINE')")"
+  NT6="$(admb -tAc "select count(*) from normative_authorisation_grants
+                     where reason = 'FICTIF temoin identite'" 2>&1 | tr -d ' ')"
+  detail "6. controle positif — la meme ecriture par le backend authentifie: $NT6"
+  if [[ "$NT6" == "1" ]]; then
+    sur "6. deux identites declarees depuis UNE connexion ORDINAIRE ne"
+    detail "produisent AUCUNE paternite: le role applicatif n'a plus INSERT."
+    detail "non-vacuite: la meme ecriture aboutit depuis le backend authentifie."
+  else
+    non_parcouru "6. ni l'attaque ni le controle positif n'ecrivent: le decor"
+    detail "est en ecart, et le refus ne prouve rien. $(head -c 120 <<<"$TEMOIN6")"
+  fi
 else
   sur "6. le systeme n'a pas accepte deux paternites ainsi ($N6 distincte(s))"
   detail "$(head -c 180 <<<"$R6")"
@@ -752,8 +820,7 @@ echo "      -- 7. delegation hors du scope detenu par le grantor"
 if [[ $CHAINE_OK -eq 0 ]]; then
   non_parcouru "7. la chaine de delegation manque: chemin non parcouru."
 else
-sql_svc "set role normative_backend;
-         set request.jwt.claim.sub = '$COMPLICE';
+sql_svc "         set eurostruct.actor_id = '$COMPLICE';
          insert into normative_authorisation_grants
            (grantee_id, grantee_name, permission, country_code,
             standard_family, part, edition, reason, parent_grant_id)
@@ -768,8 +835,7 @@ if [[ "$TEMOIN7" != "1" ]]; then
   non_parcouru "7. le grantor ne parvient meme pas a deleguer DANS sa portee:"
   detail "un refus sur FR ne prouverait donc rien. Chemin non parcouru."
 else
-  R7="$(sql_svc "set role normative_backend;
-                 set request.jwt.claim.sub = '$COMPLICE';
+  R7="$(sql_svc "                 set eurostruct.actor_id = '$COMPLICE';
                  insert into normative_authorisation_grants
                    (grantee_id, grantee_name, permission, country_code,
                     standard_family, part, edition, reason, parent_grant_id)
@@ -807,8 +873,7 @@ GID="$(admb -tAc "select id from normative_authorisation_grants
 if ! est_uuid "$GID"; then
   non_parcouru "8. aucun octroi a revoquer: le chemin n'est pas exerce."
 else
-  REV8="$(sql_svc "set role normative_backend;
-                   set request.jwt.claim.sub = '$ADMIN_ID';
+  REV8="$(sql_svc "                   set eurostruct.actor_id = '$ADMIN_ID';
                    insert into normative_authorisation_revocations
                      (grant_id, reason)
                    values ('$GID', 'FICTIF revocation')")"
@@ -818,8 +883,7 @@ else
     non_parcouru "8. la revocation prealable a echoue — chemin non atteint:"
     detail "$(head -c 180 <<<"$REV8")"
   else
-    R8="$(sql_svc "set role normative_backend;
-                   set request.jwt.claim.sub = '$COMPLICE';
+    R8="$(sql_svc "                   set eurostruct.actor_id = '$COMPLICE';
                    insert into normative_authorisation_grants
                      (grantee_id, grantee_name, permission, country_code,
                       standard_family, part, edition, reason, parent_grant_id)
@@ -848,8 +912,7 @@ fi
 # `eurostruct_normative_writer`: c'est le SEUL producteur autorise d'evenements
 # « normative.* ». Si le role applicatif l'appelle, il FORGE une preuve.
 echo "      -- 9. invocation directe de log_normative_event par le role applicatif"
-R9="$(sql_svc "set role normative_backend;
-               select log_normative_event('normative.FICTIF.forge',
+R9="$(sql_svc "               select log_normative_event('normative.FICTIF.forge',
                  'normative_authorisation_grants', gen_random_uuid(),
                  '{}'::jsonb, null)")"
 N9="$(admb -tAc "select count(*) from audit_log
@@ -894,13 +957,11 @@ echo "      -- 10. UPDATE / DELETE directs sur les octrois"
 # reecrire ni effacer l'historique d'autorite.
 AVANT10="$(admb -tAc "select count(*) from normative_authorisation_grants" \
            2>&1 | tr -d ' ')"
-RU="$(sql_svc "set role normative_backend;
-               update normative_authorisation_grants
+RU="$(sql_svc "               update normative_authorisation_grants
                   set reason = 'FICTIF reecrit'")"
 EFFET_U="$(admb -tAc "select count(*) from normative_authorisation_grants
                        where reason = 'FICTIF reecrit'" 2>&1 | tr -d ' ')"
-RD="$(sql_svc "set role normative_backend;
-               delete from normative_authorisation_grants")"
+RD="$(sql_svc "               delete from normative_authorisation_grants")"
 RESTE_D="$(admb -tAc "select count(*) from normative_authorisation_grants" \
            2>&1 | tr -d ' ')"
 
@@ -939,8 +1000,7 @@ fi
 # 11. REJEU D'UNE DECISION
 # ==========================================================================
 echo "      -- 11. rejeu d'un octroi identique"
-SQL11="set role normative_backend;
-       set request.jwt.claim.sub = '$ADMIN_ID';
+SQL11="set eurostruct.actor_id = '$ADMIN_ID';
        insert into normative_authorisation_grants
          (grantee_id, grantee_name, permission, country_code, standard_family,
           part, edition, reason, parent_grant_id)
@@ -978,9 +1038,9 @@ if barriere_prendre "$BAR2"; then
     u="${cible%%:*}"; reste="${cible#*:}"; f="${reste%%:*}"; tag="${reste##*:}"
     ( exec {BAR_FD}>&-
       PGAPPNAME="FICTIF-c12-${tag}-${JETON}" \
-      svc -tAc "select pg_advisory_lock_shared($BAR2);
+      ord -tAc "select pg_advisory_lock_shared($BAR2);
                 set role normative_backend;
-                set request.jwt.claim.sub = '$ADMIN_ID';
+                set eurostruct.actor_id = '$ADMIN_ID';
                 insert into normative_authorisation_grants
                   (grantee_id, grantee_name, permission, country_code,
                    standard_family, part, edition, reason, parent_grant_id)
@@ -1001,7 +1061,10 @@ if barriere_prendre "$BAR2"; then
       detail "identite declaree: la concurrence ne cree pas deux regards"
       detail "independants, elle en DUPLIQUE un."
     elif [[ "$N12" == "0" ]]; then
-      non_parcouru "12. aucune des deux n'a abouti: la course n'a rien exerce."
+      sur "12. deux sessions ORDINAIRES concurrentes, relachees ensemble,"
+      detail "n'ont produit aucune approbation: la concurrence ne contourne"
+      detail "pas la frontiere. Non-vacuite: les deux ont ete OBSERVEES"
+      detail "bloquees sur la barriere, donc elles ont bien atteint la base."
     else
       sur "12. la concurrence n'a produit qu'une approbation ($N12)"
     fi
@@ -1034,8 +1097,7 @@ echo "      -- 13. confusion de portee (meme personne, autre edition)"
 # l'axe « edition », il faut donc un acteur dont la portee FIXE une edition —
 # sans quoi son NULL vaudrait « toutes » et l'axe ne serait jamais compare.
 PORTEUR13="$TIERS"
-sql_svc "set role normative_backend;
-         set request.jwt.claim.sub = '$ADMIN_ID';
+sql_svc "         set eurostruct.actor_id = '$ADMIN_ID';
          insert into normative_authorisation_grants
            (grantee_id, grantee_name, permission, country_code,
             standard_family, part, edition, reason, parent_grant_id)
@@ -1054,8 +1116,7 @@ if [[ "$ADM13" != "1" ]]; then
   detail "l'axe « edition » ne peut pas etre eprouve. Chemin non parcouru."
 else
   # CONTROLE POSITIF: dans l'edition detenue, la delegation doit passer.
-  sql_svc "set role normative_backend;
-           set request.jwt.claim.sub = '$PORTEUR13';
+  sql_svc "           set eurostruct.actor_id = '$PORTEUR13';
            insert into normative_authorisation_grants
              (grantee_id, grantee_name, permission, country_code,
               standard_family, part, edition, reason, parent_grant_id)
@@ -1071,8 +1132,7 @@ else
     non_parcouru "13. l'acteur ne delegue meme pas dans SON edition: un refus sur"
     detail "une autre edition ne prouverait rien. Chemin non parcouru."
   else
-    R13="$(sql_svc "set role normative_backend;
-                    set request.jwt.claim.sub = '$PORTEUR13';
+    R13="$(sql_svc "                    set eurostruct.actor_id = '$PORTEUR13';
                     insert into normative_authorisation_grants
                       (grantee_id, grantee_name, permission, country_code,
                        standard_family, part, edition, reason, parent_grant_id)
@@ -1143,8 +1203,7 @@ echo "      -- 14. consommation d'une autorite pendant sa revocation"
 # COMPLICE a deja ete revoquee en 8, et `unique (grant_id)` interdit de la
 # revoquer deux fois.
 GID14=""
-sql_svc "set role normative_backend;
-         set request.jwt.claim.sub = '$ADMIN_ID';
+sql_svc "         set eurostruct.actor_id = '$ADMIN_ID';
          insert into normative_authorisation_grants
            (grantee_id, grantee_name, permission, country_code,
             standard_family, part, edition, reason, parent_grant_id)
@@ -1167,8 +1226,7 @@ else
     # A — revoque, puis se parque SANS avoir valide, verrou de ligne en main.
     ( exec {BAR_FD}>&-
       PGAPPNAME="$APP_A" \
-      svc -tAc "set role normative_backend;
-                set request.jwt.claim.sub = '$ADMIN_ID';
+      svc -tAc "set eurostruct.actor_id = '$ADMIN_ID';
                 begin;
                 insert into normative_authorisation_revocations
                   (grant_id, reason)
@@ -1183,8 +1241,7 @@ else
       # B — consomme la MEME habilitation par le chemin atteignable.
       ( exec {BAR_FD}>&-
         PGAPPNAME="$APP_B" \
-        svc -tAc "set role normative_backend;
-                  set request.jwt.claim.sub = '$TIERS';
+        svc -tAc "set eurostruct.actor_id = '$TIERS';
                   insert into normative_authorisation_grants
                     (grantee_id, grantee_name, permission, country_code,
                      standard_family, part, edition, reason, parent_grant_id)
