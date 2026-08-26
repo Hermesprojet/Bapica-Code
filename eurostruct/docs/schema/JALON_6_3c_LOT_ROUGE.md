@@ -16,20 +16,44 @@ comme demandé, après la cartographie et l'obtention des preuves rouges.
 | `git status --porcelain` au départ | vide |
 | worktree adverse | `/tmp/esc-cablage`, jetable, détaché de `e11a62a` |
 
-### Verdict du delta `5d77933..3d1bd56`
+### La base réellement validée
+
+**Correction de méthode.** Le premier rapport ne comparait que
+`5d77933..3d1bd56` et présentait ce résultat comme la validation de la base de
+6.3c. C'était insuffisant : la branche ne part pas de `3d1bd56` mais de
+`e11a62a`, et deux commits séparent les deux. Le segment manquant est
+maintenant vérifié.
 
 ```
+$ git merge-base --is-ancestor 3d1bd56 e11a62a   →  code 0 (ancêtre confirmé)
+
+$ git diff --name-status 5d77933..3d1bd56
 M  eurostruct/docs/schema/JALON_6_3b6e_BARRIERE_DE_VIVACITE.md
+
+$ git diff --name-status 3d1bd56..e11a62a
+M  eurostruct/docs/schema/JALON_6_3b6e_BARRIERE_DE_VIVACITE.md
+A  eurostruct/docs/schema/JALON_6_3c_CARTOGRAPHIE_DE_CONFIANCE.md
+
+$ git log --oneline 3d1bd56..e11a62a
+e11a62a docs(6.3c): cartographie de la frontiere de confiance…
+d04abf0 docs: les deux verifications de cloture…
 ```
 
-**Un seul fichier, purement documentaire.** Aucun script, test, workflow ou
-fichier de configuration fonctionnelle ne diffère. Le seul endroit du dépôt qui
-le cite est un commentaire d'en-tête dans
-`db/test/gate_protocol_selftest.sh:32`, qui n'en consomme pas le contenu.
+| segment | fichiers | classement |
+|---|---|---|
+| `5d77933..3d1bd56` | 1 | **documentaire** |
+| `3d1bd56..e11a62a` | 2, tous deux sous `docs/schema/` | **documentaire** |
+| `e11a62a..43bf497` | harnais + câblage `run.sh` + 2 docs | **fonctionnel — introduit par 6.3c lui-même** |
 
-**Conclusion : pas de rejeu de la matrice.** La condition posée — « si un
-fichier exécutable, script, test, workflow ou configuration fonctionnelle
-diffère, la matrice entière doit être rejouée » — n'est pas remplie.
+La chaîne est **linéaire, sans fusion** (`git log --merges 5d77933..HEAD` est
+vide). Aucun fichier exécutable, script, test, workflow ou configuration
+fonctionnelle **préexistant** ne diffère entre le SHA de campagne et
+l'ouverture de 6.3c. Le seul endroit du dépôt qui cite le document modifié est
+un commentaire d'en-tête (`db/test/gate_protocol_selftest.sh:32`), qui n'en
+consomme pas le contenu.
+
+**Conclusion : pas de rejeu de la matrice de clôture 6.3b6e.** La condition
+posée n'est pas remplie sur les deux segments antérieurs à 6.3c.
 
 ---
 
@@ -124,7 +148,28 @@ chemin n'a pas été atteint — ni rouge, ni assurance, un trou.
 | 13 | confusion de portée (édition non détenue) | sûr | refusée ; **contrôle positif** : la même délégation dans l'édition détenue aboutit |
 | 14 | consommation pendant la révocation (TOCTOU) | sûr | B **observée bloquée** par la révocation en vol, puis refusée après relecture sous verrou |
 
-**Bilan : 4 ouvertures, 11 propriétés tenues, 0 chemin non parcouru.**
+**Bilan corrigé : 14 attaques = 4 rouges + 10 sûres + 0 non parcourue.**
+
+> **Correction d'une incohérence arithmétique.** Le premier rapport annonçait
+> « 4 rouges et 11 sûres » pour quatorze attaques — quinze verdicts. La cause :
+> l'attaque 10 bouclait sur `update` puis `delete` et **émettait un verdict par
+> tour**. Le compteur additionnait des *appels*, pas des *attaques*, et
+> l'arithmétique le disait à chaque exécution.
+>
+> Un compteur qui peut mentir sur son propre total n'atteste rien du produit.
+> La comptabilité est désormais **structurelle et partagée**
+> (`lib_harnais.sh`) : chaque contrôle est déclaré d'avance, rend **un** statut
+> — un second verdict pour le même identifiant est lui-même une faute — un
+> contrôle déclaré sans verdict est une faute, et l'égalité
+> `déclarés == exécutés == rouges + sûrs + non_parcourus` est **vérifiée en fin
+> de course**. Aucune de ces fautes n'est un avertissement : chacune force la
+> sortie en échec.
+>
+> Statut par attaque, tel que le harnais l'imprime désormais :
+>
+> | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | **R** | S | S | **R** | S | **R** | S | S | S | S | S | **R** | S | S |
 
 Les quatre rouges ne sont pas quatre défauts indépendants :
 

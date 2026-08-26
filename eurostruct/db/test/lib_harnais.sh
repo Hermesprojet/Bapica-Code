@@ -803,3 +803,117 @@ detruire_roles_crees() {
   HARNAIS_ROLES_CREES=()
   return $(( echecs > 0 ))
 }
+
+
+# ==========================================================================
+# LA COMPTABILITE DES VERDICTS — un statut UNIQUE par controle declare
+# ==========================================================================
+# CE QUI A ETE MESURE, ET QUI EST CORRIGE ICI. `authority_root_of_trust.sh`
+# comptait des APPELS, pas des controles: son attaque 10 bouclait sur `update`
+# puis `delete` et emettait DEUX verdicts. Quatorze attaques rendaient donc
+# « 4 rouges et 11 sures » — quinze. L'arithmetique le disait a chaque
+# execution, et personne ne l'avait lue.
+#
+# UN COMPTEUR QUI PEUT MENTIR SUR SON PROPRE TOTAL N'ATTESTE RIEN DU PRODUIT.
+# La comptabilite est donc structurelle, et partagee: un harnais ecrit demain
+# ne peut pas redemarrer la meme derive dans son coin.
+#
+#   * les controles sont DECLARES d'avance — `verdicts_declarer 1 2 3 ...`;
+#   * `verdict <id> <ROUGE|SUR|NON_PARCOURU> <texte>` en enregistre UN, et un
+#     seul: un second verdict pour le meme id est lui-meme une faute;
+#   * un controle declare qui ne rend aucun verdict est une faute;
+#   * un verdict pour un controle non declare est une faute;
+#   * et l'egalite est VERIFIEE en fin de course:
+#
+#         declares == executes == rouges + surs + non_parcourus
+#
+# Aucune de ces fautes n'est un avertissement: chacune force la sortie en
+# echec. Une sous-observation se COMBINE en un verdict unique avant d'etre
+# enregistree — c'est au harnais de trancher, pas au compteur de deviner.
+#
+# TROIS STATUTS, ET LEUR SENS EXACT
+#   ROUGE         l'attaque a ABOUTI. L'invariant vise n'est pas defendu.
+#   SUR           elle a ete REFUSEE, et le refus est attribue a la protection
+#                 visee — jamais a une autre.
+#   NON_PARCOURU  le chemin n'a pas ete ATTEINT. Ni rouge, ni assurance: un
+#                 trou. C'est la lecon de 6.3b6e — une surface non executee
+#                 n'est pas un verdict.
+VERDICTS_DECLARES=()
+declare -A VERDICTS=()
+VERDICTS_KO=0
+VERDICTS_ROUGES=0; VERDICTS_SURS=0; VERDICTS_NON_PARCOURUS=0
+VERDICTS_EXECUTES=0
+
+verdicts_declarer() { VERDICTS_DECLARES=("$@"); }
+
+verdict_faute() {
+  echo "      FAUTE DE COMPTABILITE: $*" >&2
+  VERDICTS_KO=1
+}
+
+verdict() {                # verdict <id> <statut> <texte...>
+  local id="$1" statut="$2"; shift 2
+  local connu=0 x
+  for x in "${VERDICTS_DECLARES[@]}"; do [[ "$x" == "$id" ]] && connu=1; done
+  if (( ! connu )); then
+    verdict_faute "verdict rendu pour « $id », qui n'est pas declare."
+    return 1
+  fi
+  if [[ -n "${VERDICTS[$id]:-}" ]]; then
+    verdict_faute "second verdict pour « $id » (« ${VERDICTS[$id]} » puis « $statut »)."
+    return 1
+  fi
+  VERDICTS[$id]="$statut"
+  case "$statut" in
+    ROUGE)        echo "      ROUGE ATTENDU (a fermer): $*" ;;
+    SUR)          echo "      deja sur: $*" ;;
+    NON_PARCOURU) echo "      NON PARCOURU: $*" >&2 ;;
+    *) verdict_faute "statut « $statut » inconnu pour « $id »"; return 1 ;;
+  esac
+  return 0
+}
+
+verdicts_verifier() {
+  local id
+  VERDICTS_ROUGES=0; VERDICTS_SURS=0; VERDICTS_NON_PARCOURUS=0; VERDICTS_EXECUTES=0
+  for id in "${VERDICTS_DECLARES[@]}"; do
+    case "${VERDICTS[$id]:-}" in
+      ROUGE)        VERDICTS_ROUGES=$((VERDICTS_ROUGES + 1)) ;;
+      SUR)          VERDICTS_SURS=$((VERDICTS_SURS + 1)) ;;
+      NON_PARCOURU) VERDICTS_NON_PARCOURUS=$((VERDICTS_NON_PARCOURUS + 1)) ;;
+      "") verdict_faute "« $id » est declare mais n'a rendu AUCUN verdict."; continue ;;
+    esac
+    VERDICTS_EXECUTES=$((VERDICTS_EXECUTES + 1))
+  done
+  local total=$(( VERDICTS_ROUGES + VERDICTS_SURS + VERDICTS_NON_PARCOURUS ))
+  if (( ${#VERDICTS_DECLARES[@]} != VERDICTS_EXECUTES )); then
+    verdict_faute "declares=${#VERDICTS_DECLARES[@]} != executes=$VERDICTS_EXECUTES"
+  fi
+  if (( VERDICTS_EXECUTES != total )); then
+    verdict_faute "executes=$VERDICTS_EXECUTES != rouges+surs+non_parcourus=$total"
+  fi
+  return $VERDICTS_KO
+}
+
+verdicts_resume() {        # verdicts_resume <titre>
+  local id
+  echo ""
+  echo "      statut de chacun des ${#VERDICTS_DECLARES[@]} controles declares:"
+  for id in "${VERDICTS_DECLARES[@]}"; do
+    printf '                %-28s %s\n' "$id" "${VERDICTS[$id]:-<AUCUN VERDICT>}"
+  done
+  echo ""
+  echo "================================================="
+  echo " ${1:-controles}:"
+  echo "   declares            ${#VERDICTS_DECLARES[@]}"
+  echo "   executes            $VERDICTS_EXECUTES"
+  echo "   dont rouges         $VERDICTS_ROUGES"
+  echo "   dont surs           $VERDICTS_SURS"
+  echo "   dont non parcourus  $VERDICTS_NON_PARCOURUS"
+  if (( VERDICTS_KO )); then
+    echo "   ARITHMETIQUE INVALIDE — voir les fautes de comptabilite ci-dessus"
+  else
+    echo "   invariant tenu: declares == executes == rouges + surs + non_parcourus"
+  fi
+  echo "================================================="
+}

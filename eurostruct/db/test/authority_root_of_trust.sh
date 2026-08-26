@@ -84,11 +84,33 @@ CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
 exiger_roles_absents "authority_root_of_trust.sh" \
   "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" || exit 2
 
-KO=0; ROUGES=0; SURS=0
-echoue() { echo "      ECHEC: $*" >&2; KO=1; }
-rouge()  { echo "      ROUGE ATTENDU (a fermer): $*"; ROUGES=$((ROUGES + 1)); }
-sur()    { echo "      deja sur: $*"; SURS=$((SURS + 1)); }
-detail() { echo "                $*"; }
+# --------------------------------------------------------------------------
+# LA COMPTABILITE DES VERDICTS — celle de `lib_harnais.sh`, et pas une copie
+# --------------------------------------------------------------------------
+# CE QUI A ETE MESURE ET QUI EST CORRIGE ICI. La premiere version comptait des
+# APPELS, pas des attaques: l'attaque 10 bouclait sur `update` puis `delete` et
+# emettait DEUX verdicts. Quatorze attaques rendaient donc « 4 rouges et
+# 11 sures » — quinze. L'arithmetique le disait a chaque execution.
+#
+# UN COMPTEUR QUI PEUT MENTIR SUR SON PROPRE TOTAL N'ATTESTE RIEN DU PRODUIT.
+# Le registre vit donc dans `lib_harnais.sh`, partage: un harnais ecrit demain
+# ne peut pas redemarrer la meme derive dans son coin. Voir l'en-tete de la
+# section « LA COMPTABILITE DES VERDICTS » de la bibliotheque pour les regles
+# exactes — declaration prealable, statut unique, egalite verifiee.
+ATTAQUES_DEFINIES=(1 2 3 4 5 6 7 8 9 10 11 12 13 14)
+verdicts_declarer "${ATTAQUES_DEFINIES[@]}"
+
+KO=0
+# Raccourcis lisibles sur les sites d'appel: l'identifiant de l'attaque est le
+# nombre en tete du texte, ce qui evite de le repeter et donc de le desaccorder.
+rouge()        { verdict "${1%%.*}" ROUGE        "$@"; }
+sur()          { verdict "${1%%.*}" SUR          "$@"; }
+non_parcouru() { verdict "${1%%.*}" NON_PARCOURU "$@"; KO=1; }
+# `echoue` reste pour les fautes de DECOR, qui ne sont le verdict d'aucune
+# attaque: un decor casse n'est pas un chemin non parcouru, c'est un harnais
+# qui n'a pas pu commencer.
+echoue()  { echo "      ECHEC: $*" >&2; KO=1; }
+detail()  { echo "                $*"; }
 
 adm()  { psql -X -q -d postgres "$@"; }
 MIG=""; CTL=""; SVC=""; BASE=""; MDP=""
@@ -395,6 +417,36 @@ select p.proname,
                      'normative_finalize_deployment')
  order by p.proname;
 SQL
+# LES PRIVILEGES DE TABLE, MESURES AUSSI — et pas seulement ceux des fonctions.
+#
+# POURQUOI CETTE LIGNE EXISTE. Une campagne de falsification a neutralise
+# l'immuabilite en ajoutant `grant update, delete ... to normative_backend` a la
+# fin de la migration. Le GRANT n'a RIEN accorde: a cet endroit du fichier la
+# table appartient deja a `eurostruct_normative_writer`, et PostgreSQL repond a
+# un GRANT sans droit par un WARNING, jamais par une erreur. La neutralisation
+# a donc echoue en silence, le test 10 est reste « sur », et cela se lisait
+# « la garde tient » alors que la garde n'avait pas ete touchee.
+#
+# C'est le meme faux vert que ce harnais traque, applique a la falsification
+# elle-meme: une neutralisation non verifiee ne prouve rien. Les privilege sont
+# donc AFFICHES a chaque execution — un volet de falsification qui ne les voit
+# pas changer sait qu'il n'a rien neutralise.
+detail "privileges de table de « normative_backend » sur les octrois:"
+admb -tA -F' | ' <<'SQL' 2>&1 | sed 's/^/                /'
+select 'select=' || has_table_privilege('normative_backend',
+          'normative_authorisation_grants', 'SELECT')::text
+    || ' insert=' || has_table_privilege('normative_backend',
+          'normative_authorisation_grants', 'INSERT')::text
+    || ' update=' || has_table_privilege('normative_backend',
+          'normative_authorisation_grants', 'UPDATE')::text
+    || ' delete=' || has_table_privilege('normative_backend',
+          'normative_authorisation_grants', 'DELETE')::text
+    || ' | proprietaire=' || pg_get_userbyid(c.relowner)
+    || ' rls=' || c.relrowsecurity::text
+    || ' force=' || c.relforcerowsecurity::text
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+ where n.nspname = 'public' and c.relname = 'normative_authorisation_grants';
+SQL
 
 # ==========================================================================
 # 1. AUTO-AMORCAGE — l'identite TECHNIQUE se convertit en autorite METIER
@@ -436,7 +488,7 @@ elif refus_de_droit "$R2"; then
   sur "2. refuse par l'ACL d'execution (REVOKE ALL FROM PUBLIC + GRANT cible)"
   detail "non-vacuite: le MEME appel aboutit sous « $CTL » (attaque 1)."
 else
-  echoue "2. refuse, mais pour une raison ETRANGERE a l'ACL — le chemin"
+  non_parcouru "2. refuse, mais pour une raison ETRANGERE a l'ACL — le chemin"
   detail "d'attaque n'a donc pas ete atteint: $(head -c 140 <<<"$R2")"
 fi
 
@@ -476,13 +528,15 @@ if barriere_prendre "$BAR1"; then
       detail "non-vacuite: les deux sessions ont ete OBSERVEES bloquees sur la"
       detail "barriere avant d'etre relachees ensemble."
     else
-      echoue "3. etat d'amorcage inattendu (total=$NB): verdict non concluant"
+      non_parcouru "3. etat d'amorcage inattendu (total=$NB): verdict non concluant"
     fi
   else
     barriere_lever; attendre_concurrents_termines
+    non_parcouru "3. la barriere n'a jamais ete franchie: aucune course."
   fi
 else
   barriere_lever
+  non_parcouru "3. la barriere n'a pas pu etre prise: aucune course."
 fi
 
 # L'ETAT DE REFERENCE pour la suite: un administrateur EXISTE.
@@ -494,6 +548,18 @@ if ! est_uuid "$ADMIN_ID"; then
   exit 1
 fi
 detail "administrateur normatif en place: $ADMIN_ID"
+
+# L'OCTROI RACINE, ET NON PLUS SEULEMENT SON TITULAIRE. Depuis 0012, une
+# delegation doit nommer l'habilitation PRECISE au titre de laquelle elle est
+# consentie: « qui » a consenti ne dit pas « au titre de quoi ». Toutes les
+# attaques qui deleguent le fournissent donc, faute de quoi elles se
+# refuseraient sur l'absence de provenance — un refus etranger a ce qu'elles
+# mesurent, et sept d'entre elles se sont effectivement declarees NON
+# PARCOURUES lors du premier passage sous 0012.
+GRANT_RACINE="$(admb -tAc "select id from normative_authorisation_grants
+                            where origin = 'bootstrap' order by granted_at limit 1" \
+                2>&1 | tr -d ' ')"
+detail "octroi racine invoque par les delegations: $GRANT_RACINE"
 
 # --------------------------------------------------------------------------
 # LA CHAINE DE DELEGATION, posee explicitement et VERIFIEE
@@ -512,21 +578,26 @@ detail "administrateur normatif en place: $ADMIN_ID"
 # echoue, les attaques concernees se declarent non parcourues au lieu de se
 # declarer sures.
 CHAINE_OK=0
+GRANT_COMPLICE=""; GRANT_ED13=""; GRANT_C14=""
 sql_svc "set role normative_backend;
          set request.jwt.claim.sub = '$ADMIN_ID';
          insert into normative_authorisation_grants
            (grantee_id, grantee_name, permission, country_code,
-            standard_family, part, edition, reason)
+            standard_family, part, edition, reason, parent_grant_id)
          values ('$COMPLICE', 'FICTIF complice',
                  'can_manage_normative_authorisations',
                  'BE', 'EN 1992', null, null,
-                 'FICTIF delegation bornee BE/EN 1992')" >/dev/null 2>&1
+                 'FICTIF delegation bornee BE/EN 1992', '$GRANT_RACINE')" >/dev/null 2>&1
 if [[ "$(admb -tAc "select count(*) from normative_authorisation_grants
                      where grantee_id = '$COMPLICE'
                        and permission = 'can_manage_normative_authorisations'" \
          2>&1 | tr -d ' ')" == "1" ]]; then
   CHAINE_OK=1
+  GRANT_COMPLICE="$(admb -tAc "select id from normative_authorisation_grants
+                                where reason = 'FICTIF delegation bornee BE/EN 1992'" \
+                    2>&1 | tr -d ' ')"
   detail "chaine posee: $ADMIN_ID (generique) -> $COMPLICE (BE / EN 1992)"
+  detail "habilitation de COMPLICE invoquee par 6, 7 et 8: $GRANT_COMPLICE"
 else
   echoue "la delegation bornee vers « $COMPLICE » n'a pas ete creee:"
   detail "les attaques 6, 7 et 8 ne seront pas parcourues."
@@ -559,11 +630,11 @@ R4="$(sql_svc "set role normative_backend;
                set request.jwt.claim.sub = '$ADMIN_ID';
                insert into normative_authorisation_grants
                  (grantee_id, grantee_name, permission, country_code,
-                  standard_family, part, edition, reason)
+                  standard_family, part, edition, reason, parent_grant_id)
                values ('$TIERS', 'FICTIF cible 4',
                        'can_validate_normative_reference',
                        'BE', 'EN 1990', '1-1', '2002',
-                       'FICTIF identite declaree')")"
+                       'FICTIF identite declaree', '$GRANT_RACINE')")"
 G4="$(admb -tAc "select granted_by from normative_authorisation_grants
                   where reason = 'FICTIF identite declaree'" 2>&1 | tr -d ' ')"
 if [[ "$G4" == "$ADMIN_ID" ]]; then
@@ -574,7 +645,7 @@ if [[ "$G4" == "$ADMIN_ID" ]]; then
   detail "INVARIANT ATTENDU (I-2): l'acteur provient d'un contexte que"
   detail "l'appelant ordinaire ne peut pas substituer."
 elif [[ -n "$G4" ]]; then
-  echoue "4. granted_by inattendu (« $G4 »): resultat non interpretable."
+  non_parcouru "4. granted_by inattendu (« $G4 »): resultat non interpretable."
 else
   sur "4. l'ecriture sous identite declaree a ete refusee:"
   detail "$(head -c 180 <<<"$R4")"
@@ -588,17 +659,17 @@ R5="$(sql_svc "set role normative_backend;
                set request.jwt.claim.sub = '$ADMIN_ID';
                insert into normative_authorisation_grants
                  (grantee_id, grantee_name, permission, country_code,
-                  standard_family, part, edition, reason)
+                  standard_family, part, edition, reason, parent_grant_id)
                values ('$ADMIN_ID', 'FICTIF auto',
                        'can_validate_normative_reference',
                        'BE', 'EN 1992', '1-1', '2004',
-                       'FICTIF auto-attribution')")"
+                       'FICTIF auto-attribution', '$GRANT_RACINE')")"
 if grep -qi 'auto-attribution refusee' <<<"$R5"; then
   sur "5. auto-attribution refusee par check_normative_grant()"
   detail "non-vacuite: le MEME insert vers un AUTRE beneficiaire est exerce"
   detail "en 6 et ne rencontre pas ce refus."
 elif erreur_sql "$R5"; then
-  echoue "5. refuse, mais PAS pour auto-attribution — chemin non atteint:"
+  non_parcouru "5. refuse, mais PAS pour auto-attribution — chemin non atteint:"
   detail "$(head -c 200 <<<"$R5")"
 else
   rouge "5. auto-attribution ACCEPTEE: un titulaire etend son propre pouvoir."
@@ -625,23 +696,23 @@ fi
 # machinerie ou l'erreur pourrait se cacher.
 echo "      -- 6. deux paternites « independantes » depuis UNE connexion"
 if [[ $CHAINE_OK -eq 0 ]]; then
-  echoue "6. la chaine de delegation manque: chemin non parcouru."
+  non_parcouru "6. la chaine de delegation manque: chemin non parcouru."
 else
 R6="$(sql_svc "set role normative_backend;
                set request.jwt.claim.sub = '$ADMIN_ID';
                insert into normative_authorisation_grants
                  (grantee_id, grantee_name, permission, country_code,
-                  standard_family, part, edition, reason)
+                  standard_family, part, edition, reason, parent_grant_id)
                values ('$TIERS', 'FICTIF regard 1',
                        'can_validate_normative_reference',
-                       'BE', 'EN 1992', '1-1', '2004', 'FICTIF regard 1');
+                       'BE', 'EN 1992', '1-1', '2004', 'FICTIF regard 1', '$GRANT_RACINE');
                set request.jwt.claim.sub = '$COMPLICE';
                insert into normative_authorisation_grants
                  (grantee_id, grantee_name, permission, country_code,
-                  standard_family, part, edition, reason)
+                  standard_family, part, edition, reason, parent_grant_id)
                values ('$TIERS', 'FICTIF regard 2',
                        'can_validate_normative_reference',
-                       'BE', 'EN 1992', '1-1', '2005', 'FICTIF regard 2')")"
+                       'BE', 'EN 1992', '1-1', '2005', 'FICTIF regard 2', '$GRANT_COMPLICE')")"
 N6="$(admb -tAc "select count(distinct granted_by)
                    from normative_authorisation_grants
                   where reason in ('FICTIF regard 1', 'FICTIF regard 2')" \
@@ -659,7 +730,7 @@ if [[ "$N6" == "2" ]]; then
   detail "INVARIANT ATTENDU (I-3): deux regards exigent deux principals"
   detail "AUTHENTIFIES distincts, pas deux valeurs declarees."
 elif [[ "$N6" == "0" ]]; then
-  echoue "6. aucune des deux ecritures n'a abouti — chemin non atteint:"
+  non_parcouru "6. aucune des deux ecritures n'a abouti — chemin non atteint:"
   detail "$(head -c 200 <<<"$R6")"
 else
   sur "6. le systeme n'a pas accepte deux paternites ainsi ($N6 distincte(s))"
@@ -679,33 +750,33 @@ fi
 # lirait comme un controle d'inclusion de portee.
 echo "      -- 7. delegation hors du scope detenu par le grantor"
 if [[ $CHAINE_OK -eq 0 ]]; then
-  echoue "7. la chaine de delegation manque: chemin non parcouru."
+  non_parcouru "7. la chaine de delegation manque: chemin non parcouru."
 else
 sql_svc "set role normative_backend;
          set request.jwt.claim.sub = '$COMPLICE';
          insert into normative_authorisation_grants
            (grantee_id, grantee_name, permission, country_code,
-            standard_family, part, edition, reason)
+            standard_family, part, edition, reason, parent_grant_id)
          values ('$TIERS', 'FICTIF temoin BE',
                  'can_validate_normative_reference',
-                 'BE', 'EN 1992', '1-1', '2006', 'FICTIF temoin de portee')" \
+                 'BE', 'EN 1992', '1-1', '2006', 'FICTIF temoin de portee', '$GRANT_COMPLICE')" \
   >/dev/null 2>&1
 TEMOIN7="$(admb -tAc "select count(*) from normative_authorisation_grants
                        where reason = 'FICTIF temoin de portee'" 2>&1 | tr -d ' ')"
 detail "7. controle positif — « $COMPLICE » delegue sur BE: $TEMOIN7 octroi"
 if [[ "$TEMOIN7" != "1" ]]; then
-  echoue "7. le grantor ne parvient meme pas a deleguer DANS sa portee:"
+  non_parcouru "7. le grantor ne parvient meme pas a deleguer DANS sa portee:"
   detail "un refus sur FR ne prouverait donc rien. Chemin non parcouru."
 else
   R7="$(sql_svc "set role normative_backend;
                  set request.jwt.claim.sub = '$COMPLICE';
                  insert into normative_authorisation_grants
                    (grantee_id, grantee_name, permission, country_code,
-                    standard_family, part, edition, reason)
+                    standard_family, part, edition, reason, parent_grant_id)
                  values ('$TIERS', 'FICTIF hors scope',
                          'can_validate_normative_reference',
                          'FR', 'EN 1992', '1-1', '2004',
-                         'FICTIF amplification')")"
+                         'FICTIF amplification', '$GRANT_COMPLICE')")"
   N7="$(admb -tAc "select count(*) from normative_authorisation_grants
                     where country_code = 'FR' and granted_by = '$COMPLICE'" \
         2>&1 | tr -d ' ')"
@@ -717,7 +788,7 @@ else
     detail "la portee vient d'aboutir (controle positif ci-dessus)."
     detail "$(grep -m1 -oiE '(ERROR|ERREUR)[^|]{0,120}' <<<"$R7")"
   else
-    echoue "7. ni ecriture ni erreur: resultat non interpretable."
+    non_parcouru "7. ni ecriture ni erreur: resultat non interpretable."
   fi
 fi
 fi
@@ -734,7 +805,7 @@ GID="$(admb -tAc "select id from normative_authorisation_grants
                      and permission = 'can_manage_normative_authorisations'
                    limit 1" 2>&1 | tr -d ' ')"
 if ! est_uuid "$GID"; then
-  echoue "8. aucun octroi a revoquer: le chemin n'est pas exerce."
+  non_parcouru "8. aucun octroi a revoquer: le chemin n'est pas exerce."
 else
   REV8="$(sql_svc "set role normative_backend;
                    set request.jwt.claim.sub = '$ADMIN_ID';
@@ -744,18 +815,18 @@ else
   EST_REV="$(admb -tAc "select count(*) from normative_authorisation_revocations
                          where grant_id = '$GID'" 2>&1 | tr -d ' ')"
   if [[ "$EST_REV" != "1" ]]; then
-    echoue "8. la revocation prealable a echoue — chemin non atteint:"
+    non_parcouru "8. la revocation prealable a echoue — chemin non atteint:"
     detail "$(head -c 180 <<<"$REV8")"
   else
     R8="$(sql_svc "set role normative_backend;
                    set request.jwt.claim.sub = '$COMPLICE';
                    insert into normative_authorisation_grants
                      (grantee_id, grantee_name, permission, country_code,
-                      standard_family, part, edition, reason)
+                      standard_family, part, edition, reason, parent_grant_id)
                    values ('$TIERS', 'FICTIF post-revocation',
                            'can_validate_normative_reference',
                            'BE', 'EN 1992', '1-1', '2004',
-                           'FICTIF apres revocation')")"
+                           'FICTIF apres revocation', '$GRANT_COMPLICE')")"
     N8="$(admb -tAc "select count(*) from normative_authorisation_grants
                       where reason = 'FICTIF apres revocation'" 2>&1 | tr -d ' ')"
     if [[ "$N8" != "0" ]]; then
@@ -765,7 +836,7 @@ else
       sur "8. delegation post-revocation refusee"
       detail "non-vacuite: l'octroi $GID porte bien une revocation."
     else
-      echoue "8. ni ecriture ni erreur: resultat non interpretable."
+      non_parcouru "8. ni ecriture ni erreur: resultat non interpretable."
     fi
   fi
 fi
@@ -791,45 +862,78 @@ elif refus_de_droit "$R9"; then
 elif erreur_sql "$R9"; then
   sur "9. l'appel direct est refuse: $(grep -m1 -oiE '(ERROR|ERREUR)[^|]{0,90}' <<<"$R9")"
 else
-  echoue "9. appel sans erreur ET sans trace: resultat non interpretable."
+  non_parcouru "9. appel sans erreur ET sans trace: resultat non interpretable."
 fi
 
 # ==========================================================================
 # 10. ECRITURE DIRECTE SUR L'HISTORIQUE D'AUTORITE
 # ==========================================================================
 echo "      -- 10. UPDATE / DELETE directs sur les octrois"
+#
+# UN SEUL VERDICT POUR DEUX SOUS-OBSERVATIONS. La premiere version bouclait sur
+# les deux ordres et emettait un verdict par tour: quatorze attaques rendaient
+# quinze verdicts, et « 4 rouges + 11 sures » n'additionnait pas a 14.
+#
+# LES DEUX ORDRES SONT SANS CLAUSE `WHERE`, ET C'EST LE POINT DELICAT.
+#
+# Une version intermediaire visait une ligne precise — `where id = '...'` — pour
+# isoler l'immuabilite de la cle etrangere. Elle a produit un refus, donc un
+# « sur », et la falsification n'arrivait pas a le rendre rouge meme apres avoir
+# leve le privilege, la RLS ET le declencheur. La matrice mesuree a tranche:
+#
+#     select=false insert=true update=true delete=true
+#
+# `normative_backend` n'a pas SELECT sur cette table. Or un `UPDATE ... WHERE`
+# doit LIRE la colonne du predicat: le « permission denied » venait du SELECT
+# implicite, pas de la garde d'immuabilite. Le test aurait continue de passer
+# au vert si UPDATE avait ete accorde par megarde — il ne mesurait pas ce qu'il
+# annoncait.
+#
+# Sans `WHERE`, l'ordre n'exige QUE le privilege d'ecriture. Un refus atteste
+# alors exactement ce qu'on veut atteste: le role applicatif ne peut ni
+# reecrire ni effacer l'historique d'autorite.
 AVANT10="$(admb -tAc "select count(*) from normative_authorisation_grants" \
            2>&1 | tr -d ' ')"
-for op in "update normative_authorisation_grants set reason = 'FICTIF reecrit'" \
-          "delete from normative_authorisation_grants"; do
-  verbe="${op%% *}"
-  R10="$(sql_svc "set role normative_backend; $op")"
-  if [[ "$verbe" == "update" ]]; then
-    EFFET="$(admb -tAc "select count(*) from normative_authorisation_grants
-                         where reason = 'FICTIF reecrit'" 2>&1 | tr -d ' ')"
-    [[ "$EFFET" == "0" ]] && EFFET="" || EFFET="$EFFET ligne(s) reecrite(s)"
-  else
-    RESTE="$(admb -tAc "select count(*) from normative_authorisation_grants" \
-             2>&1 | tr -d ' ')"
-    if [[ "$RESTE" == "$AVANT10" ]]; then EFFET=""
-    else EFFET="$((AVANT10 - RESTE)) ligne(s) supprimee(s)"; fi
-  fi
-  if [[ -n "$EFFET" ]]; then
-    rouge "10. « $verbe » accepte ($EFFET): l'historique d'autorite n'est"
-    detail "pas immuable pour le role applicatif."
-  elif refus_de_droit "$R10"; then
-    sur "10. « $verbe » refuse au role applicatif (privilege de table absent)"
-  elif erreur_sql "$R10"; then
-    sur "10. « $verbe » refuse: $(grep -m1 -oiE '(ERROR|ERREUR)[^|]{0,90}' <<<"$R10")"
-  else
-    # SANS ERREUR ET SANS EFFET: c'est la signature d'une RLS qui filtre a
-    # zero ligne. Le verdict n'est pas « sur »: l'ordre a ete ACCEPTE, et
-    # seule l'absence de ligne visible l'a rendu inoffensif.
-    echoue "10. « $verbe » accepte sans erreur mais sans effet visible:"
-    detail "probable filtrage RLS a zero ligne, et non un refus. La table"
-    detail "reste ecrivable pour toute ligne que la policy laisserait voir."
-  fi
-done
+RU="$(sql_svc "set role normative_backend;
+               update normative_authorisation_grants
+                  set reason = 'FICTIF reecrit'")"
+EFFET_U="$(admb -tAc "select count(*) from normative_authorisation_grants
+                       where reason = 'FICTIF reecrit'" 2>&1 | tr -d ' ')"
+RD="$(sql_svc "set role normative_backend;
+               delete from normative_authorisation_grants")"
+RESTE_D="$(admb -tAc "select count(*) from normative_authorisation_grants" \
+           2>&1 | tr -d ' ')"
+
+classer10() {              # classer10 <sortie> <effet: oui|non>
+  if [[ "$2" == "oui" ]]; then echo REECRIT
+  elif refus_de_droit "$1" || erreur_sql "$1"; then echo REFUS
+  else echo SANS_EFFET; fi
+}
+[[ "$EFFET_U" == "0" ]] && EU=non || EU=oui
+[[ "$RESTE_D" == "$AVANT10" ]] && ED=non || ED=oui
+CU="$(classer10 "$RU" "$EU")"
+CD="$(classer10 "$RD" "$ED")"
+detail "10. update -> $CU ($EFFET_U reecrite(s)) ; delete -> $CD ($AVANT10 -> $RESTE_D)"
+
+if [[ "$CU" == "REECRIT" || "$CD" == "REECRIT" ]]; then
+  rouge "10. l'historique d'autorite n'est pas immuable pour le role"
+  detail "applicatif (update=$CU, delete=$CD)."
+elif [[ "$CU" == "SANS_EFFET" || "$CD" == "SANS_EFFET" ]]; then
+  # SANS ERREUR ET SANS EFFET: signature d'une RLS qui filtre a zero ligne.
+  # L'ordre a ete ACCEPTE; seule l'absence de ligne visible l'a rendu
+  # inoffensif. Le lire comme un refus serait le faux vert que ce harnais
+  # existe pour eviter.
+  non_parcouru "10. ordre ACCEPTE sans erreur et sans effet visible"
+  detail "(update=$CU, delete=$CD): probable filtrage RLS a zero ligne, et"
+  detail "non un refus. La garde d'immuabilite n'a pas ete atteinte."
+else
+  sur "10. UPDATE et DELETE refuses au role applicatif, SANS clause WHERE"
+  detail "— donc sur le seul privilege d'ecriture, et non sur un SELECT"
+  detail "implicite. Non-vacuite: la matrice mesuree en 0 affiche les"
+  detail "privileges reels de « normative_backend » sur cette table."
+  detail "update: $(grep -m1 -oiE '(ERROR|ERREUR)[^|]{0,80}' <<<"$RU")"
+  detail "delete: $(grep -m1 -oiE '(ERROR|ERREUR)[^|]{0,80}' <<<"$RD")"
+fi
 
 # ==========================================================================
 # 11. REJEU D'UNE DECISION
@@ -839,9 +943,10 @@ SQL11="set role normative_backend;
        set request.jwt.claim.sub = '$ADMIN_ID';
        insert into normative_authorisation_grants
          (grantee_id, grantee_name, permission, country_code, standard_family,
-          part, edition, reason)
+          part, edition, reason, parent_grant_id)
        values ('$TIERS', 'FICTIF rejeu', 'can_validate_normative_reference',
-               'BE', 'EN 1997', '1-1', '2004', 'FICTIF rejeu')"
+               'BE', 'EN 1997', '1-1', '2004', 'FICTIF rejeu',
+               '$GRANT_RACINE')"
 P11="$(sql_svc "$SQL11")"
 R11="$(sql_svc "$SQL11")"
 N11="$(admb -tAc "select count(*) from normative_authorisation_grants
@@ -849,7 +954,7 @@ N11="$(admb -tAc "select count(*) from normative_authorisation_grants
        2>&1 | tr -d ' ')"
 detail "11. octrois identiques presents apres deux envois: $N11"
 if [[ "$N11" == "0" ]] || erreur_sql "$P11"; then
-  echoue "11. le PREMIER envoi n'a rien cree — le rejeu n'est pas exerce:"
+  non_parcouru "11. le PREMIER envoi n'a rien cree — le rejeu n'est pas exerce:"
   detail "$(head -c 180 <<<"$P11")"
 elif [[ "$N11" -ge 2 ]]; then
   rouge "11. le meme octroi existe $N11 fois: aucune cle d'idempotence ne"
@@ -878,11 +983,11 @@ if barriere_prendre "$BAR2"; then
                 set request.jwt.claim.sub = '$ADMIN_ID';
                 insert into normative_authorisation_grants
                   (grantee_id, grantee_name, permission, country_code,
-                   standard_family, part, edition, reason)
+                   standard_family, part, edition, reason, parent_grant_id)
                 values ('$u', 'FICTIF concurrent',
                         'can_validate_normative_reference',
                         'BE', 'EN 1993', '1-1', '2005',
-                        'FICTIF approbation concurrente');" >"$f" 2>&1 ) &
+                        'FICTIF approbation concurrente', '$GRANT_RACINE');" >"$f" 2>&1 ) &
     CONCURRENTS+=("$!")
   done
   if barriere_attendre_concurrents 2 "FICTIF-c12-%-${JETON}"; then
@@ -896,15 +1001,17 @@ if barriere_prendre "$BAR2"; then
       detail "identite declaree: la concurrence ne cree pas deux regards"
       detail "independants, elle en DUPLIQUE un."
     elif [[ "$N12" == "0" ]]; then
-      echoue "12. aucune des deux n'a abouti: la course n'a rien exerce."
+      non_parcouru "12. aucune des deux n'a abouti: la course n'a rien exerce."
     else
       sur "12. la concurrence n'a produit qu'une approbation ($N12)"
     fi
   else
     barriere_lever; attendre_concurrents_termines
+    non_parcouru "12. la barriere n'a jamais ete franchie: aucune course."
   fi
 else
   barriere_lever
+  non_parcouru "12. la barriere n'a pas pu etre prise: aucune course."
 fi
 
 # ==========================================================================
@@ -931,16 +1038,19 @@ sql_svc "set role normative_backend;
          set request.jwt.claim.sub = '$ADMIN_ID';
          insert into normative_authorisation_grants
            (grantee_id, grantee_name, permission, country_code,
-            standard_family, part, edition, reason)
+            standard_family, part, edition, reason, parent_grant_id)
          values ('$PORTEUR13', 'FICTIF admin edition 2004',
                  'can_manage_normative_authorisations',
                  'BE', 'EN 1998', '1-1', '2004',
-                 'FICTIF administration bornee a une edition')" >/dev/null 2>&1
+                 'FICTIF administration bornee a une edition', '$GRANT_RACINE')" >/dev/null 2>&1
 ADM13="$(admb -tAc "select count(*) from normative_authorisation_grants
                      where reason = 'FICTIF administration bornee a une edition'" \
          2>&1 | tr -d ' ')"
+GRANT_ED13="$(admb -tAc "select id from normative_authorisation_grants
+                          where reason = 'FICTIF administration bornee a une edition'" \
+              2>&1 | tr -d ' ')"
 if [[ "$ADM13" != "1" ]]; then
-  echoue "13. l'administration bornee a une edition n'a pas ete creee:"
+  non_parcouru "13. l'administration bornee a une edition n'a pas ete creee:"
   detail "l'axe « edition » ne peut pas etre eprouve. Chemin non parcouru."
 else
   # CONTROLE POSITIF: dans l'edition detenue, la delegation doit passer.
@@ -948,28 +1058,28 @@ else
            set request.jwt.claim.sub = '$PORTEUR13';
            insert into normative_authorisation_grants
              (grantee_id, grantee_name, permission, country_code,
-              standard_family, part, edition, reason)
+              standard_family, part, edition, reason, parent_grant_id)
            values ('$COMPLICE', 'FICTIF temoin edition',
                    'can_validate_normative_reference',
                    'BE', 'EN 1998', '1-1', '2004',
-                   'FICTIF temoin edition detenue')" >/dev/null 2>&1
+                   'FICTIF temoin edition detenue', '$GRANT_ED13')" >/dev/null 2>&1
   TEM13="$(admb -tAc "select count(*) from normative_authorisation_grants
                        where reason = 'FICTIF temoin edition detenue'" \
            2>&1 | tr -d ' ')"
   detail "13. controle positif — delegation dans l'edition 2004: $TEM13 octroi"
   if [[ "$TEM13" != "1" ]]; then
-    echoue "13. l'acteur ne delegue meme pas dans SON edition: un refus sur"
+    non_parcouru "13. l'acteur ne delegue meme pas dans SON edition: un refus sur"
     detail "une autre edition ne prouverait rien. Chemin non parcouru."
   else
     R13="$(sql_svc "set role normative_backend;
                     set request.jwt.claim.sub = '$PORTEUR13';
                     insert into normative_authorisation_grants
                       (grantee_id, grantee_name, permission, country_code,
-                       standard_family, part, edition, reason)
+                       standard_family, part, edition, reason, parent_grant_id)
                     values ('$COMPLICE', 'FICTIF autre edition',
                             'can_validate_normative_reference',
                             'BE', 'EN 1998', '1-1', '2099',
-                            'FICTIF edition non detenue')")"
+                            'FICTIF edition non detenue', '$GRANT_ED13')")"
     N13="$(admb -tAc "select count(*) from normative_authorisation_grants
                        where reason = 'FICTIF edition non detenue'" \
            2>&1 | tr -d ' ')"
@@ -983,7 +1093,7 @@ else
       detail "que la meme delegation dans l'edition detenue vient d'aboutir."
       detail "$(grep -m1 -oiE '(ERROR|ERREUR)[^|]{0,110}' <<<"$R13")"
     else
-      echoue "13. ni ecriture ni erreur: resultat non interpretable."
+      non_parcouru "13. ni ecriture ni erreur: resultat non interpretable."
     fi
   fi
 fi
@@ -1037,16 +1147,17 @@ sql_svc "set role normative_backend;
          set request.jwt.claim.sub = '$ADMIN_ID';
          insert into normative_authorisation_grants
            (grantee_id, grantee_name, permission, country_code,
-            standard_family, part, edition, reason)
+            standard_family, part, edition, reason, parent_grant_id)
          values ('$TIERS', 'FICTIF tiers admin',
                  'can_manage_normative_authorisations',
                  'BE', 'EN 1999', null, null,
-                 'FICTIF habilitation pour la course 14')" >/dev/null 2>&1
+                 'FICTIF habilitation pour la course 14', '$GRANT_RACINE')" >/dev/null 2>&1
 GID14="$(admb -tAc "select id from normative_authorisation_grants
                      where reason = 'FICTIF habilitation pour la course 14'" \
          2>&1 | tr -d ' ')"
+GRANT_C14="$GID14"
 if ! est_uuid "$GID14"; then
-  echoue "14. l'habilitation de course n'a pas ete creee: chemin non parcouru."
+  non_parcouru "14. l'habilitation de course n'a pas ete creee: chemin non parcouru."
 else
   BAR4=77000000004
   C1="$(mktemp -p "$CANAUX_RACINE")"; C2="$(mktemp -p "$CANAUX_RACINE")"
@@ -1076,11 +1187,11 @@ else
                   set request.jwt.claim.sub = '$TIERS';
                   insert into normative_authorisation_grants
                     (grantee_id, grantee_name, permission, country_code,
-                     standard_family, part, edition, reason)
+                     standard_family, part, edition, reason, parent_grant_id)
                   values ('$COMPLICE', 'FICTIF cible 14',
                           'can_validate_normative_reference',
                           'BE', 'EN 1999', '1-1', '2007',
-                          'FICTIF usage pendant revocation');" >"$C2" 2>&1 ) &
+                          'FICTIF usage pendant revocation', '$GRANT_C14');" >"$C2" 2>&1 ) &
       CONCURRENTS+=("$!")
       if attendre "la consommation est BLOQUEE par la revocation en vol" \
            "exists(select 1 from pg_stat_activity
@@ -1104,9 +1215,9 @@ else
            2>&1 | tr -d ' ')"
   detail "14. revocation validee: $REV14 ; consommation aboutie: $USG14 ; B bloquee: $BLOQUEE"
   if [[ "$BLOQUEE" == "-1" ]]; then
-    echoue "14. la course n'a pas pu etre montee: chemin non parcouru."
+    non_parcouru "14. la course n'a pas pu etre montee: chemin non parcouru."
   elif [[ "$REV14" != "1" ]]; then
-    echoue "14. la revocation n'a pas abouti — rien ne s'opposait a la"
+    non_parcouru "14. la revocation n'a pas abouti — rien ne s'opposait a la"
     detail "consommation: $(head -c 140 "$C1")"
   elif [[ "$BLOQUEE" == "0" ]]; then
     rouge "14. la consommation n'a JAMAIS attendu la revocation en vol:"
@@ -1126,8 +1237,10 @@ else
 fi
 
 # ==========================================================================
-# LE COMPTE RENDU
+# LE COMPTE RENDU — et la verification de sa propre arithmetique
 # ==========================================================================
+verdicts_verifier || true
+
 echo ""
 echo "      barrieres (mecanisme deterministe, aucun sleep d'ordonnancement):"
 if ((${#BARRIERES[@]} == 0)); then
@@ -1135,14 +1248,11 @@ if ((${#BARRIERES[@]} == 0)); then
 else
   printf '                %s\n' "${BARRIERES[@]}"
 fi
-echo ""
-echo "================================================="
-echo " 6.3c — racine de confiance:"
-echo "   $ROUGES ouverture(s) a fermer"
-echo "   $SURS propriete(s) deja tenue(s)"
-echo "   $KO chemin(s) non atteint(s) ou decor en ecart"
-echo "================================================="
-if [[ $KO -eq 0 && $ROUGES -eq 0 ]]; then
+
+verdicts_resume "6.3c — racine de confiance des autorites"
+
+if [[ $KO -eq 0 && $VERDICTS_KO -eq 0 && $VERDICTS_ROUGES -eq 0 \
+      && $VERDICTS_NON_PARCOURUS -eq 0 ]]; then
   echo " Aucune ouverture: la racine de confiance tient."
   exit 0
 fi
