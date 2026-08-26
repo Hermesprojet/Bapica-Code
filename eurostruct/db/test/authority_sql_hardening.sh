@@ -561,15 +561,26 @@ fi
 
 echo "      -- appartenance-declaree: les membres sont-ils ceux qu'on a declares ?"
 R="$(ctl -tAc "select assert_authority_backend_membership()" 2>&1)"
+# ON MESURE L'USAGE, PAS L'APPARTENANCE. Le plan de controle cree le role en
+# phase 0 et en est donc membre au catalogue, avec `inherit=f set=f`: il peut
+# l'ACCORDER, jamais l'utiliser. Compter les lignes de `pg_auth_members`
+# confondrait « peut administrer » et « peut agir ».
 MEMBRES="$(q "select coalesce(string_agg(m.rolname, ','), '(aucun)')
-                from pg_auth_members a
-                join pg_roles rr on rr.oid = a.roleid
-                join pg_roles m  on m.oid  = a.member
-               where rr.rolname = 'eurostruct_authority_backend'
-                 and not m.rolsuper")"
+                from pg_roles m
+               where not m.rolsuper
+                 and m.rolname <> 'eurostruct_authority_backend'
+                 and (pg_has_role(m.rolname,'eurostruct_authority_backend','USAGE')
+                      or pg_has_role(m.rolname,'eurostruct_authority_backend','SET'))")"
+ADMINS="$(q "select coalesce(string_agg(m.rolname, ','), '(aucun)')
+               from pg_auth_members a
+               join pg_roles rr on rr.oid = a.roleid
+               join pg_roles m  on m.oid  = a.member
+              where rr.rolname = 'eurostruct_authority_backend'
+                and a.admin_option and not a.inherit_option and not a.set_option")"
 DECL="$(q "select coalesce(valeur, '(vide)') from normative_authentication_contract
             where nom = 'eurostruct.authority_backend_logins'")"
-detail "membres reels: $MEMBRES ; declaration figee: $DECL"
+detail "roles qui ATTEIGNENT le backend: $MEMBRES ; declaration figee: $DECL"
+detail "administrateurs sans usage (legitime): $ADMINS"
 if grep -qi 'does not exist' <<<"$R"; then
   troue appartenance-declaree "le controle n'existe pas: la declaration reste"
   detail "decorative."

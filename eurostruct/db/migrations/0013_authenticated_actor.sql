@@ -1386,28 +1386,48 @@ begin
     -- membre present alors que RIEN n'est declare est une anomalie, pas un
     -- etat ferme: on le dit.
     for r in select m.rolname
-               from pg_auth_members a
-               join pg_roles rr on rr.oid = a.roleid
-               join pg_roles m  on m.oid  = a.member
-              where rr.rolname = 'eurostruct_authority_backend'
-                and not m.rolsuper
+               from pg_roles m
+              where not m.rolsuper
+                and m.rolname <> 'eurostruct_authority_backend'
+                and (pg_has_role(m.rolname, 'eurostruct_authority_backend', 'USAGE')
+                     or pg_has_role(m.rolname, 'eurostruct_authority_backend', 'SET'))
     loop
       ecarts := ecarts || format(
-        '« %s » est membre du backend d''autorite alors qu''AUCUN '
-        'authentificateur n''est declare', r.rolname);
+        '« %s » ATTEINT le backend d''autorite (usage ou SET) alors '
+        'qu''AUCUN authentificateur n''est declare', r.rolname);
     end loop;
   else
+    -- ADMINISTRER N'EST PAS UTILISER, ET LA DIFFERENCE EST TOUT LE SUJET.
+    --
+    -- Mesure sur PostgreSQL 16: `CREATE ROLE` par un role CREATEROLE cree une
+    -- appartenance avec `admin_option = t`, mais `inherit_option = f` et
+    -- `set_option = f`:
+    --
+    --   pg_has_role(createur, cible, 'USAGE')  -> f
+    --   pg_has_role(createur, cible, 'SET')    -> f
+    --   pg_has_role(createur, cible, 'MEMBER') -> t
+    --
+    -- Le plan de controle, qui cree le role en phase 0, en est donc membre au
+    -- sens du catalogue — et ne peut ni en heriter les privileges ni l'endosser.
+    -- C'est exactement ce qu'il faut: il doit pouvoir l'ACCORDER aux logins
+    -- declares, il n'a aucune raison d'ECRIRE sur les tables d'autorite.
+    --
+    -- Une premiere version comptait les lignes de `pg_auth_members` et
+    -- declarait donc le plan de controle en ecart. Elle confondait « peut
+    -- administrer » et « peut agir ». Ce qui doit etre refuse, c'est l'USAGE
+    -- non declare — pas l'administration.
     for r in select m.rolname
-               from pg_auth_members a
-               join pg_roles rr on rr.oid = a.roleid
-               join pg_roles m  on m.oid  = a.member
-              where rr.rolname = 'eurostruct_authority_backend'
-                and not m.rolsuper
+               from pg_roles m
+              where not m.rolsuper
+                and m.rolname <> 'eurostruct_authority_backend'
+                and (pg_has_role(m.rolname, 'eurostruct_authority_backend', 'USAGE')
+                     or pg_has_role(m.rolname, 'eurostruct_authority_backend', 'SET'))
                 and not (btrim(m.rolname) = any (
                           select btrim(x) from unnest(declares) as x))
     loop
       ecarts := ecarts || format(
-        '« %s » est membre du backend d''autorite sans etre declare',
+        '« %s » ATTEINT le backend d''autorite (usage ou SET) sans etre '
+        'declare',
         r.rolname);
     end loop;
   end if;

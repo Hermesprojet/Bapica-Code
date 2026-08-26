@@ -237,6 +237,8 @@ etape "fermeture de l'autorite" \
 #                         SET ROLE, BYPASSRLS, FORCE RLS
 #   filiation             une revocation eteint-elle ce qu'elle a delegue ?
 #   amorcage              la premiere autorite est-elle mandatee, ou choisie ?
+#   quatre-yeux           une decision porte-t-elle DEUX principals distincts,
+#                         et les DEUX sources d'autorite invoquees ?
 #
 # Toutes exigent un jeu canonique vierge, d'ou leur place ici, avant que la
 # base principale ne cree les six roles.
@@ -255,6 +257,10 @@ etape "filiation des delegations" \
 echo "==> contrat d'amorcage de la racine (6.3c)"
 etape "contrat d'amorcage de la racine" \
   "$HERE/authority_bootstrap_contract.sh" "${DB_NAME:0:20}bs"
+
+echo "==> quatre-yeux explicite (6.3c)"
+etape "quatre-yeux explicite" \
+  "$HERE/authority_four_eyes.sh" "${DB_NAME:0:20}fy"
 
 # --------------------------------------------------------------------------
 # LE CONTRAT DU SCEAU — la racine est-elle DEPLOYABLE ? (6.3b6d)
