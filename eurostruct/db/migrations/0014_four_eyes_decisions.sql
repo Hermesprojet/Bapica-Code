@@ -231,6 +231,66 @@ create trigger normative_decisions_are_not_deletable
 -- `p_country`, `p_edition` sont des DONNEES — ce sur quoi porte la decision —
 -- et n'ont aucune valeur probante; l'acteur, lui, est derive.
 
+-- ---------------------------------------------------------------------
+-- LE VERROU DE CHAINE, PARTAGE — sans lui, l'approbation et la consommation
+-- IGNORENT une revocation en vol
+-- ---------------------------------------------------------------------
+-- MESURE AVANT CORRECTION. Le controle `revocation-pendant-consommation` a
+-- ete observe ROUGE: une revocation parquee, transaction ouverte et verrou de
+-- ligne en main, n'a JAMAIS bloque la consommation d'une decision qui reposait
+-- sur l'habilitation en cours de retrait. La consommation relisait
+-- `normative_grant_is_effective()` — qui ne prend AUCUN verrou et lit un
+-- instantane ou la revocation non validee n'existe pas encore.
+--
+-- On pourrait plaider que l'ordre seriel « consommer puis revoquer » est
+-- explicable. 0010 a explicitement refuse ce raisonnement pour les
+-- confirmations: le declencheur de revocation prend un verrou consultatif
+-- EXCLUSIF sur `grantrow:<octroi>` precisement pour qu'une ecriture normative
+-- en vol ne puisse pas se glisser sous un etat intermediaire. Consommer une
+-- decision est une ecriture normative de meme poids qu'une confirmation. Le
+-- protocole doit donc etre le meme, sans quoi une porte reste ouverte a cote
+-- d'une porte fermee.
+--
+-- L'ORDRE DE PRISE EST CELUI DES IDENTIFIANTS, sur l'UNION des chaines, pour
+-- que deux consommations concurrentes ne prennent jamais les memes verrous
+-- dans deux ordres differents. On ne prend que des verrous CONSULTATIFS: ces
+-- tables n'accordent aucun UPDATE, donc aucun verrou de ligne n'y est
+-- disponible — c'est le fondement de leur immuabilite, et la raison pour
+-- laquelle 0010 avait deja fait ce choix. Aucun verrou de ligne n'est pris sur
+-- `organizations`: le deadlock corrige anterieurement n'est pas reintroduit.
+create or replace function normative_lock_grant_chains(variadic p_grants uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  a uuid;
+begin
+  for a in
+    with recursive chaine as (
+      select g.id, g.parent_grant_id from normative_authorisation_grants g
+       where g.id = any(p_grants)
+      union all
+      select p.id, p.parent_grant_id from normative_authorisation_grants p
+        join chaine c on p.id = c.parent_grant_id
+    )
+    select distinct id from chaine order by 1
+  loop
+    perform pg_advisory_xact_lock_shared(
+      hashtext('eurostruct.normative.grantrow:' || a::text));
+  end loop;
+end;
+$$;
+
+comment on function normative_lock_grant_chains is
+  'Prend le verrou consultatif PARTAGE sur toute la chaine d''ascendance des '
+  'octrois donnes, dans l''ordre des identifiants. C''est le pendant du verrou '
+  'EXCLUSIF que prend le declencheur de revocation: les deux ne peuvent donc '
+  'pas s''ignorer, et aucune decision ne se consomme sous une autorite qu''une '
+  'transaction concurrente est en train de retirer.';
+
+
 -- `normative_decision_propose` — A propose.
 create or replace function normative_decision_propose(
   p_subject_kind text,
@@ -350,6 +410,15 @@ begin
   -- LA SOURCE DU PROPOSANT DOIT ETRE ENCORE EFFICACE. Une proposition faite
   -- sous une autorite depuis revoquee n'est pas une proposition valide qu'un
   -- second regard viendrait completer: c'est une proposition sans autorite.
+  --
+  -- Le verrou de chaine est pris AVANT la relecture. `consume_normative_
+  -- authorisation` a deja verrouille la chaine de L'APPROBATEUR; celle du
+  -- PROPOSANT ne l'etait pas, et une revocation en vol y serait restee
+  -- invisible. Ces verrous sont PARTAGES: deux approbations concurrentes ne
+  -- s'interbloquent pas, et seule une revocation — qui prend l'exclusif —
+  -- s'oppose a elles.
+  perform normative_lock_grant_chains(d.proposal_source_grant_id);
+
   if not normative_grant_is_effective(d.proposal_source_grant_id) then
     raise exception
       'approbation refusee: l''habilitation % invoquee par le proposant n''est '
@@ -419,6 +488,11 @@ begin
   -- les deux autorites qui l'ont portee valent encore. L'inverse — « une fois
   -- approuvee, elle vaut pour toujours » — transformerait une approbation en
   -- droit acquis que la revocation ne rattraperait plus.
+  -- LE VERROU AVANT LA LECTURE, jamais apres. Relire l'efficacite sans verrou
+  -- revient a lire un instantane d'ou une revocation en vol est absente.
+  perform normative_lock_grant_chains(
+    d.proposal_source_grant_id, d.approval_source_grant_id);
+
   if not normative_grant_is_effective(d.proposal_source_grant_id) then
     raise exception
       'consommation refusee: l''habilitation % du proposant n''est plus '
@@ -493,6 +567,17 @@ revoke all on function normative_decision_propose(
   from public;
 revoke all on function normative_decision_approve(uuid) from public;
 revoke all on function normative_decision_consume(uuid) from public;
+-- Le verrou de chaine est un AUXILIAIRE des primitives, jamais une porte:
+-- PUBLIC n'en recoit rien et aucun role applicatif ne le recoit non plus. Il
+-- n'est appele que depuis les primitives SECURITY DEFINER, sous le writer.
+revoke all on function normative_lock_grant_chains(uuid[]) from public;
+-- LES DEUX DECLENCHEURS AUSSI. Ils ne sont pas SECURITY DEFINER, mais la regle
+-- posee en 0011 vaut pour eux comme pour les autres: une fonction que PUBLIC
+-- peut executer et que le MIGRATEUR peut remplacer n'est pas une garde, c'est
+-- une convention. Les laisser dehors aurait fait un trou dans l'enumeration
+-- que le harnais confronte.
+revoke all on function check_normative_decision_transition() from public;
+revoke all on function forbid_decision_delete() from public;
 
 alter function normative_decision_propose(
   text, text, uuid, country_code, text, text, text, normative_permission, text)
@@ -500,6 +585,12 @@ alter function normative_decision_propose(
 alter function normative_decision_approve(uuid)
   owner to eurostruct_normative_writer;
 alter function normative_decision_consume(uuid)
+  owner to eurostruct_normative_writer;
+alter function normative_lock_grant_chains(uuid[])
+  owner to eurostruct_normative_writer;
+alter function check_normative_decision_transition()
+  owner to eurostruct_normative_writer;
+alter function forbid_decision_delete()
   owner to eurostruct_normative_writer;
 
 grant execute on function normative_decision_propose(

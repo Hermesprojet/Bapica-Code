@@ -613,14 +613,16 @@ else
   if ! est_uuid "$D14"; then
     troue revocation-avant-approbation "la proposition n'a pas abouti."
   else
-    agir "$R" "insert into normative_authorisation_revocations (grant_id, reason)
-               values ('$GA2', 'FICTIF revocation du proposant')" >/dev/null 2>&1
+    REVOUT="$(agir "$R" "insert into normative_authorisation_revocations
+                           (grant_id, reason)
+                         values ('$GA2', 'FICTIF revocation du proposant')")"
     REV="$(q "select count(*) from normative_authorisation_revocations where grant_id='$GA2'")"
     R14="$(agir "$B" "select normative_decision_approve('$D14')")"
     ET="$(q "select state from normative_authority_decisions where id='$D14'")"
     detail "revocation enregistree=$REV ; etat apres approbation=$ET"
     if [[ "$REV" != "1" ]]; then
-      troue revocation-avant-approbation "la revocation n'a pas abouti."
+      troue revocation-avant-approbation \
+        "la revocation n'a pas abouti: $(tr '\n' ' ' <<<"$REVOUT" | head -c 160)"
     elif [[ "$ET" == "APPROVED" ]]; then
       rouge revocation-avant-approbation "une decision proposee sous une"
       detail "autorite depuis revoquee a ete approuvee."
@@ -662,8 +664,11 @@ else
                 insert into normative_authorisation_revocations (grant_id, reason)
                 values ('$GB3', 'FICTIF revocation en vol');
                 select pg_advisory_lock_shared($BAR3);
-                commit;" >/dev/null 2>&1 ) &
+                commit;" >"/tmp/4y-rev-$JETON.log" 2>&1 ) &
     CONCURRENTS+=("$!")
+    # LA SORTIE EST CONSERVEE, PAS JETEE. Quand la revocation echoue, elle ne
+    # se pare jamais sur la barriere et le controle devient NON_PARCOURU sans
+    # dire pourquoi: c'est ainsi qu'un refus RLS s'est cache une journee.
     if attendre "la revocation est EN VOL, parquee sur $BAR3" \
          "exists(select 1 from pg_stat_activity
                   where application_name='$APP_R' and wait_event_type='Lock')"; then
@@ -687,10 +692,13 @@ else
   REV="$(q "select count(*) from normative_authorisation_revocations where grant_id='$GB3'")"
   ET="$(q "select state from normative_authority_decisions where id='$D15'")"
   detail "revocation validee=$REV ; etat=$ET ; consommation bloquee=$BLOQ"
+  MOTIF="$(tr '\n' ' ' < "/tmp/4y-rev-$JETON.log" 2>/dev/null | head -c 160)"
   if [[ "$BLOQ" == "-1" ]]; then
-    troue revocation-pendant-consommation "la course n'a pas pu etre montee."
+    troue revocation-pendant-consommation \
+      "la course n'a pas pu etre montee: ${MOTIF:-<aucune sortie>}"
   elif [[ "$REV" != "1" ]]; then
-    troue revocation-pendant-consommation "la revocation n'a pas abouti."
+    troue revocation-pendant-consommation \
+      "la revocation n'a pas abouti: ${MOTIF:-<aucune sortie>}"
   elif [[ "$BLOQ" == "0" ]]; then
     rouge revocation-pendant-consommation "la consommation n'a JAMAIS attendu la"
     detail "revocation en vol: aucune exclusion mutuelle."
@@ -701,6 +709,7 @@ else
     sur revocation-pendant-consommation "la consommation a ete OBSERVEE bloquee,"
     detail "puis refusee: une source devenue inefficace arrete l'effet."
   fi
+  rm -f "/tmp/4y-rev-$JETON.log"
 fi
 
 # ==========================================================================
