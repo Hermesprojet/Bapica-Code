@@ -1771,7 +1771,13 @@ t_active() {
                  >>"$COPIE/db/migrations/$M5" ;;
     disparue)  mv "$COPIE/db/migrations/$M5" \
                   "$COPIE/db/migrations/0005_renommee_active.sql" ;;
-    suffixe)   cat >"$COPIE/db/migrations/0011_ajout_sur_active.sql" <<'SQL'
+    # 9999 ET NON 0011, POUR LA MEME RAISON QU'EN T11: « 0011_... » trie AVANT
+    # `0011_authority_hardening.sql`, donc s'INSERE dans le prefixe deja
+    # applique au lieu de s'y ajouter. Le refus obtenu etait alors
+    # MIGRATION_HISTORY_DIVERGENCE (code 1) et non
+    # ACTIVE_SCHEMA_UPGRADE_REQUIRED (code 9): un refus, mais pas celui que ce
+    # scenario existe pour prouver.
+    suffixe)   cat >"$COPIE/db/migrations/9999_ajout_sur_active.sql" <<'SQL'
 -- FICTIF — migration ajoutee alors que la base est deja ACTIVE.
 begin;
 comment on schema public is 'ajout sur base active (harnais)';
@@ -1802,7 +1808,7 @@ SQL
         echo "      ok: $nom. migration en suffixe sur ACTIVE: refus nomme, zero mutation"
       else
         rouge "$nom. une migration ajoutee sur une base ACTIVE n'est pas nommee."
-        detail "    code $code (9 attendu), $apres ligne(s) au registre (10 attendues)"
+        detail "    code $code (9 attendu), $apres ligne(s) au registre ($MIGRATIONS_ATTENDUES attendues)"
         detail "    $(grep -m1 -E '^(ECHEC|ACTIVE_|MIGRATION_)' <<<"$SORTIE_CMD" | cut -c1-140)"
         detail "    Sans ce refus, la commande annonce une relance reussie et"
         detail "    ignore silencieusement une migration du depot."

@@ -482,8 +482,36 @@ declare
   nouvel_id uuid;
   m_principal uuid;
   m_empreinte text;
+  etat text;
 begin
-  -- LE VERROU D'ABORD, comme avant: il serialise le controle d'existence.
+  -- L'ETAT DU DEPLOIEMENT EST LA PREMIERE QUESTION POSEE, ET C'EST 0010 QUI
+  -- L'EXIGE — pas une preference de style.
+  --
+  -- 0010 nomme deliberement ses declencheurs `normative_activation_required_*`
+  -- pour qu'ils passent AVANT les controles de contenu, et ecrit pourquoi: un
+  -- refus qui ne nomme pas l'etat n'en est pas un, il disparaitrait des que le
+  -- contenu deviendrait acceptable. La topologie s'appuie sur cette phrase
+  -- pour n'exiger son bloc A qu'en ACTIVE.
+  --
+  -- MESURE: 6.3c avait casse cet ordre. Sur une base PENDING sans mandat
+  -- declare, l'amorcage echouait sur BOOTSTRAP_AUTHORITY_NOT_CONFIGURED —
+  -- vrai, mais hors sujet: il repondait sur le CONTENU (« quel mandat ? »)
+  -- alors que la bonne reponse est « ce deploiement n'est pas finalise ».
+  -- `finalisation_contract.sh` l'a rendu rouge: 1 ecriture normative sur 5
+  -- n'etait plus refusee au motif de l'etat.
+  --
+  -- Le declencheur de table refuse toujours, mais il ne s'execute qu'a
+  -- l'INSERT, donc apres le mandat. La question de l'etat remonte donc ici.
+  etat := normative_activation_state();
+  if etat <> 'ACTIVE' then
+    raise exception
+      'amorcage refuse: le deploiement n''est pas finalise (etat « % »). '
+      'Aucune ecriture normative n''est engagee tant que la base est PENDING: '
+      'finaliser le deploiement d''abord.', etat
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  -- LE VERROU ENSUITE: il serialise le controle d'existence.
   perform pg_advisory_xact_lock(hashtext('eurostruct.normative.administration'));
 
   -- LE MANDAT ENSUITE. Il leve BOOTSTRAP_AUTHORITY_NOT_CONFIGURED si rien
