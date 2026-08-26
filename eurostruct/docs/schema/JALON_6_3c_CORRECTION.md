@@ -202,6 +202,47 @@ Deux autres pièges du même genre, mesurés et documentés dans les fichiers :
 
 ---
 
+## 7 bis. État mesuré des suites ciblées
+
+Cluster jetable, quatre harnais, chacun avec son propre décor mené jusqu'à
+`ACTIVE`, chacun rendant son invariant de comptabilité.
+
+| harnais | déclarés | sûrs | rouges | non parcourus | code |
+|---|---|---|---|---|---|
+| `authority_root_of_trust.sh` | 14 | **14** | 0 | 0 | **0** |
+| `authority_sql_hardening.sh` | 14 | **14** | 0 | 0 | **0** |
+| `authority_delegation_lineage.sh` | 15 | **15** | 0 | 0 | **0** |
+| `authority_bootstrap_contract.sh` | 8 | **8** | 0 | 0 | **0** |
+| **total** | **51** | **51** | **0** | **0** | — |
+
+`déclarés == exécutés == rouges + sûrs + non_parcourus` tenu dans les quatre.
+
+### Les quatre ouvertures du lot rouge, fermées
+
+| # | ce qui était mesuré avant | ce qui est mesuré maintenant |
+|---|---|---|
+| 1 | un membre de `eurostruct_deployment` nommait librement la première autorité | l'amorçage n'aboutit qu'au principal **désigné par le mandat**, et le consomme |
+| 4 | le serveur inscrivait dans `granted_by` la valeur déclarée par la session | un rôle applicatif **ordinaire** qui déclare une identité **n'écrit rien** |
+| 6 | deux paternités distinctes depuis une connexion, par deux `SET` | deux identités déclarées depuis une connexion ordinaire ne produisent **aucune** paternité |
+| 12 | la même chose en concurrence | deux sessions ordinaires concurrentes, **observées bloquées** puis relâchées ensemble, n'aboutissent pas |
+
+La non-vacuité de 4, 6 et 12 est établie par **contrôle positif** : la même
+écriture, par le **backend authentifié**, aboutit. Ce n'est donc pas la valeur
+qui est refusée — c'est la **session**.
+
+### Un défaut trouvé par le harnais, et non par la lecture
+
+`authority_delegation_lineage.sh` a déclaré trois contrôles **NON PARCOURUS**
+là où un compteur moins strict les aurait rendus « sûrs ». La cause était un
+défaut réel laissé par `0012` : le contrôle d'unicité de portée utilisait
+encore `normative_grant_is_active` (« aucune révocation ne vise *cette* ligne »)
+au lieu de `normative_grant_is_effective`. Un octroi devenu inefficace parce
+qu'un **ancêtre** avait été révoqué bloquait donc un nouvel octroi de même
+portée : la révocation éteignait le pouvoir **et** interdisait de le
+reconstituer par une chaîne explicite — l'inverse de ce que `0012` promettait.
+
+---
+
 ## 8. Ce qui reste ouvert
 
 Cette section est la plus importante du rapport, et elle n'est pas une liste
