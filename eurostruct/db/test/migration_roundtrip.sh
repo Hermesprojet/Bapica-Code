@@ -153,6 +153,31 @@ SQL
   return 0
 }
 
+# LE DEMONTAGE, COMME DANS LES AUTRES HARNAIS DE CETTE SUITE. Sans lui la base
+# survit au harnais, et le suivant refuse de demarrer sur « des bases
+# etrangeres a ces tests » — mesure faite, en une seule execution.
+NETTOYAGE_KO=0
+sortie_propre() {
+  local r
+  adm -c "select pg_terminate_backend(pid) from pg_stat_activity
+           where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
+  detruire_bases_creees || NETTOYAGE_KO=1
+  for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL" "$SVC"; do
+    [[ -n "$r" ]] || continue
+    adm -c "drop owned by \"$r\";"       >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+    registre_role "$r"
+  done
+  detruire_roles_crees || NETTOYAGE_KO=1
+  harnais_postcondition_nettoyage "migration_roundtrip.sh" \
+    "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL" "$SVC" \
+    || NETTOYAGE_KO=1
+  harnais_verrou_rendre
+  [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
+}
+trap sortie_propre EXIT
+harnais_piege_signaux
+
 if ! decor_poser; then
   echoue "le decor n'a pas pu etre pose: AUCUN controle n'est evalue."
   troue aller           "decor absent."
@@ -211,7 +236,7 @@ else
   detail "REJOUEES au prochain deploiement, et sont applicables hors du runner."
   ABSENTES="$(admb -tAc "select coalesce(string_agg(f, ', '), '(aucune)')
     from unnest(array[$(printf "'%s'," "${FICHIERS[@]##*/}" | sed 's/,$//')]) as f
-   where f not in (select id from normative_migration_ledger)" 2>&1)"
+   where f not in (select migration_id from normative_migration_ledger)" 2>&1)"
   detail "absentes: $(head -c 200 <<<"$ABSENTES")"
 fi
 
