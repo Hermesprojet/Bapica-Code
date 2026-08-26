@@ -215,25 +215,45 @@ etape "fermeture de l'autorite" \
   "$HERE/authority_closure.sh" "${DB_NAME:0:20}ac"
 
 # --------------------------------------------------------------------------
-# LA RACINE DE CONFIANCE DES AUTORITES (6.3c) — ROUGE ATTENDU
+# LES QUATRE SURFACES D'AUTORITE DE 6.3c
 # --------------------------------------------------------------------------
-# ATTENTION, CE N'EST PAS UN OUBLI: CETTE ETAPE EST ROUGE, ET ELLE DOIT L'ETRE.
-# C'est le lot de contre-exemples de 6.3c, ecrit AVANT tout correctif. Il sort
-# en 1 tant qu'il reste une ouverture, et il en reste quatre. Une CI verte a ce
-# stade signifierait que le harnais ne mesure plus rien.
+# AUCUNE N'EST « ROUGE ATTENDU », ET C'EST DELIBERE. Le premier cablage de
+# 6.3c annoncait l'etape comme telle, parce qu'elle portait un lot de
+# contre-exemples ecrit avant tout correctif. Ce dispositif etait TRANSITOIRE
+# par construction: un mecanisme qui accepte durablement un rouge finit par
+# accepter aussi la regression qui s'y glisse.
 #
-# `authority_closure.sh` demande « le MIGRATEUR est-il contenu ? ». Celui-ci
-# pose la question d'apres, qui ne porte plus sur un role technique mais sur
-# une personne: « l'IDENTITE METIER qui octroie, revoque et confirme est-elle
-# seulement AUTHENTIFIEE ? ». La reponse mesuree est non — `auth.uid()` lit un
-# GUC que toute session peut poser, et le serveur inscrit la valeur declaree
-# dans `granted_by`.
+# Les correctifs sont poses (0011 durcissement, 0012 filiation, 0013 frontiere
+# authentifiee). Les quatre surfaces sont donc des etapes ORDINAIRES: elles
+# doivent etre vertes, et toute regression fait echouer la suite.
 #
-# Il exige lui aussi un jeu canonique vierge, d'ou sa place ici, avant que la
+# `authority_closure.sh` demande « le MIGRATEUR est-il contenu ? ». Celles-ci
+# posent les questions d'apres:
+#
+#   racine de confiance   l'identite metier qui octroie et confirme est-elle
+#                         hors de portee d'un role applicatif ?
+#   surface SQL           PUBLIC, proprietaires, search_path, appartenances,
+#                         SET ROLE, BYPASSRLS, FORCE RLS
+#   filiation             une revocation eteint-elle ce qu'elle a delegue ?
+#   amorcage              la premiere autorite est-elle mandatee, ou choisie ?
+#
+# Toutes exigent un jeu canonique vierge, d'ou leur place ici, avant que la
 # base principale ne cree les six roles.
-echo "==> racine de confiance des autorites (6.3c, ROUGE ATTENDU)"
-etape "racine de confiance des autorites (6.3c, ROUGE ATTENDU)" \
+echo "==> racine de confiance des autorites (6.3c)"
+etape "racine de confiance des autorites" \
   "$HERE/authority_root_of_trust.sh" "${DB_NAME:0:20}rt"
+
+echo "==> surface SQL de l'autorite (6.3c)"
+etape "surface SQL de l'autorite" \
+  "$HERE/authority_sql_hardening.sh" "${DB_NAME:0:20}hd"
+
+echo "==> filiation des delegations (6.3c)"
+etape "filiation des delegations" \
+  "$HERE/authority_delegation_lineage.sh" "${DB_NAME:0:20}ln"
+
+echo "==> contrat d'amorcage de la racine (6.3c)"
+etape "contrat d'amorcage de la racine" \
+  "$HERE/authority_bootstrap_contract.sh" "${DB_NAME:0:20}bs"
 
 # --------------------------------------------------------------------------
 # LE CONTRAT DU SCEAU — la racine est-elle DEPLOYABLE ? (6.3b6d)

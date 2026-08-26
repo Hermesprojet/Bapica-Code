@@ -503,24 +503,51 @@ SQL
 # identite technique — celle qui applique un schema — choisit seule qui devient
 # la premiere autorite NORMATIVE, et rien ne relie ce choix a une decision
 # tracee hors du systeme.
-echo "      -- 1. auto-amorcage: l'identite technique nomme le premier administrateur"
-# LE BENEFICIAIRE EST « RACINE », ET CE CHOIX N'EST PAS COSMETIQUE. Une
-# premiere version amorcait « COMPLICE », qui sert aussi de delegataire aux
-# attaques 6 a 8: l'administrateur et l'un des deux delegataires etaient alors
-# la MEME personne, et les attaques 6, 7, 8 et 12 se refusaient toutes sur
-# « auto-attribution refusee » — quatre chemins non parcourus, dont trois se
-# lisaient « deja sur ». Les trois roles metier doivent rester distincts.
+echo "      -- 1. auto-amorcage: l'identite technique choisit-elle l'autorite ?"
+#
+# CE QUE CETTE ATTAQUE MESURAIT AVANT 0013, ET CE QU'ELLE MESURE MAINTENANT.
+#
+# Avant: `p_grantee` etait LIBRE. Un membre de `eurostruct_deployment` nommait
+# qui il voulait premiere autorite normative, et l'attaque aboutissait — rouge.
+#
+# Apres 0013, `p_grantee` n'est plus un choix mais une ASSERTION confrontee au
+# MANDAT declare. Le declenchement par le deploiement reste normal — c'est son
+# travail — donc « l'amorcage a abouti » n'est plus en soi un defaut.
+#
+# L'INVARIANT I-1 SE REFORMULE DONC, et c'est le point delicat: ce qu'on refuse
+# n'est pas l'amorcage, c'est qu'une identite TECHNIQUE en choisisse le
+# beneficiaire. Le rouge est donc « un amorcage a abouti pour un beneficiaire
+# QUE LE MANDAT NE DESIGNE PAS ». Le decor declare un mandat FICTIF sur
+# « $MANDAT_PRINCIPAL »; l'attaque demande ce meme principal, et le verdict
+# porte sur la CONFRONTATION, pas sur le succes.
+#
+# Le contrat complet de l'amorcage — absence de mandat, beneficiaire different,
+# rejeu, concurrence, appel par un role ordinaire — est eprouve par
+# `authority_bootstrap_contract.sh`, qui pose deux decors dont un SANS mandat.
 R1="$(ctl -tAc "select bootstrap_normative_administrator(
-        '$RACINE'::uuid, 'FICTIF racine', 'FICTIF auto-amorcage')" 2>&1)"
+        '$RACINE'::uuid, 'FICTIF racine', 'FICTIF amorcage mandate')" 2>&1)"
 D1="$(tail -1 <<<"$R1" | tr -d ' ')"
-if est_uuid "$D1"; then
-  rouge "1. « $CTL », membre de eurostruct_deployment, a nomme « $RACINE »"
-  detail "premier administrateur normatif, sans aucune preuve de mandat."
-  detail "INVARIANT ATTENDU (I-1): une racine de confiance TECHNIQUE ne se"
-  detail "convertit pas en autorite PROFESSIONNELLE par le seul choix d'un"
-  detail "parametre. Octroi cree: $D1"
+MANDATE_EN_BASE="$(admb -tAc "select count(*) from normative_bootstrap_mandate_use" \
+                   2>&1 | tr -d ' ')"
+BENEF="$(admb -tAc "select grantee_id from normative_authorisation_grants
+                     where origin = 'bootstrap' limit 1" 2>&1 | tr -d ' ')"
+detail "1. amorcage: $D1 ; consommations de mandat: $MANDATE_EN_BASE"
+detail "1. beneficiaire amorce: $BENEF ; principal mandate: $MANDAT_PRINCIPAL"
+if est_uuid "$D1" && [[ "$BENEF" != "$MANDAT_PRINCIPAL" ]]; then
+  rouge "1. un amorcage a abouti pour « $BENEF », que le mandat ne designe"
+  detail "pas ($MANDAT_PRINCIPAL). Une racine de confiance TECHNIQUE se"
+  detail "convertit en autorite PROFESSIONNELLE par le choix d'un parametre."
+elif est_uuid "$D1" && [[ "$MANDATE_EN_BASE" == "1" ]]; then
+  sur "1. l'amorcage n'aboutit qu'au principal DESIGNE PAR LE MANDAT, et"
+  detail "consomme celui-ci. Le deploiement EXECUTE une decision prise"
+  detail "ailleurs; il ne la prend pas."
+  detail "non-vacuite: un beneficiaire different est refuse — mesure par"
+  detail "authority_bootstrap_contract.sh, qui pose aussi un decor SANS mandat."
+elif est_uuid "$D1"; then
+  non_parcouru "1. amorcage abouti mais sans consommation de mandat"
+  detail "($MANDATE_EN_BASE): l'etat n'est pas interpretable."
 else
-  sur "1. l'amorcage a ete refuse: $(head -c 140 <<<"$R1")"
+  sur "1. l'amorcage a ete refuse: $(head -c 160 <<<"$R1")"
 fi
 
 # ==========================================================================

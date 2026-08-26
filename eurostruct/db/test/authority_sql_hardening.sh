@@ -459,8 +459,10 @@ fi
 # `assert_authority_surface_hardened()` existe pour refuser une base derivee.
 # UNE GARDE QUI N'EST JAMAIS APPELEE N'EN EST PAS UNE: on l'appelle.
 echo "      -- controle-de-derive: assert_authority_surface_hardened() passe-t-elle ?"
-R="$(ctl -tAc "set role eurostruct_normative_writer;
-               select assert_authority_surface_hardened()" 2>&1)"
+# APPELEE SANS `SET ROLE`, et c'est le point: le plan de controle est membre
+# de `eurostruct_deployment`, qui recoit EXECUTE. Exiger un endossement de role
+# d'autorite reviendrait a exiger la capacite que le controle verifie absente.
+R="$(ctl -tAc "select assert_authority_surface_hardened()" 2>&1)"
 if grep -qiE 'ERROR|ERREUR' <<<"$R"; then
   if grep -qi 'does not exist' <<<"$R"; then
     troue controle-de-derive "la fonction n'existe pas: le controle n'est pas pose."

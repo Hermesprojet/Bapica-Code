@@ -174,9 +174,19 @@ revoke all on function log_deliverable_transition()     from public;
 -- ELLE NE REND PAS UN BOOLEEN. Un booleen se lit « faux » et se range; une
 -- exception nomme l'objet, le defaut et le role fautif. La difference se
 -- mesure le jour ou le controle rougit sur une base qu'on ne connait pas.
+-- SECURITY DEFINER, ET C'EST INDISPENSABLE. Sans cela, l'appelant devrait
+-- endosser un role d'autorite pour la lancer — or aucun role ne le peut, et
+-- c'est precisement ce que le durcissement garantit. Un controle qui exige,
+-- pour s'executer, la capacite qu'il verifie absente n'est pas appelable.
+-- Mesure: le harnais recevait « permission denied to set role
+-- eurostruct_normative_writer » et lisait ce refus comme une derive.
+--
+-- Elle ne lit que des catalogues et n'ecrit rien: le definisseur n'ouvre donc
+-- aucune surface d'ecriture.
 create or replace function assert_authority_surface_hardened() returns void
 language plpgsql
 stable
+security definer
 set search_path = public, pg_temp
 as $$
 declare
@@ -256,7 +266,7 @@ alter function assert_authority_surface_hardened()
 revoke all on function assert_authority_surface_hardened() from public;
 grant execute on function assert_authority_surface_hardened()
   to eurostruct_normative_writer, eurostruct_normative_bootstrap,
-     normative_governance;
+     normative_governance, eurostruct_deployment;
 
 comment on function assert_authority_surface_hardened is
   'Refuse une base dont la surface d''autorite a derive: fonction revenue a '
