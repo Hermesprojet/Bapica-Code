@@ -72,7 +72,7 @@ exiger_roles_absents "authority_closure.sh" "${CANONIQUES[@]}" "${HARNAIS_ROLES_
 
 KO=0; ROUGES=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
-rouge()  { echo "      ROUGE ATTENDU (a fermer): $*"; ROUGES=$((ROUGES + 1)); }
+rouge()  { echo "      ROUGE: $*"; ROUGES=$((ROUGES + 1)); }
 
 adm() { psql -X -q -d postgres "$@"; }
 

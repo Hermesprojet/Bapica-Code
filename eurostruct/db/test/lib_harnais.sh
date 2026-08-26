@@ -865,7 +865,7 @@ verdict() {                # verdict <id> <statut> <texte...>
   fi
   VERDICTS[$id]="$statut"
   case "$statut" in
-    ROUGE)        echo "      ROUGE ATTENDU (a fermer): $*" ;;
+    ROUGE)        echo "      ROUGE: $*" ;;
     SUR)          echo "      deja sur: $*" ;;
     NON_PARCOURU) echo "      NON PARCOURU: $*" >&2 ;;
     *) verdict_faute "statut « $statut » inconnu pour « $id »"; return 1 ;;

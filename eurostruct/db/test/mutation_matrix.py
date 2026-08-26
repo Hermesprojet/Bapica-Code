@@ -777,8 +777,14 @@ def essayer(nom, point, fichier, paires, redondant=False,
     # Les points se subdivisent (« 2a. », « 8b. », « A1. »): un rouge sur une
     # sous-verification EST un rouge du point.
     base = re.match(r"[0-9A-Z]+", point).group(0)
-    rougit = re.search(rf"^ *(ROUGE ATTENDU \(a fermer\)|ECHEC): {base}[0-9a-z]?\.",
-                       sortie, re.M) is not None
+    # Deux libelles cohabitent, et c'est voulu. Les harnais de 6.3c disent
+    # « ROUGE: » tout court: « ROUGE ATTENDU (a fermer) » laissait entendre
+    # qu'un rouge pouvait etre accepte, ce qui n'est jamais le cas — un rouge
+    # fait echouer la suite. Les harnais anterieurs gardent leur libelle plutot
+    # que de subir un remplacement global.
+    rougit = re.search(
+        rf"^ *(ROUGE ATTENDU \(a fermer\)|ROUGE|ECHEC): {base}[0-9a-z]?\.",
+        sortie, re.M) is not None
     if redondant:
         if code == 0:
             print(f"  ok    {nom}\n        -> reste vert: la seconde garantie couvre (redondance voulue)")

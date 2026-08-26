@@ -73,7 +73,7 @@ verdicts_declarer \
   appartenances set-role bypassrls proprietaire-rls force-rls \
   controle-de-derive \
   auto-enrolement-guc auto-enrolement-role migrateur-non-membre \
-  appartenance-declaree
+  appartenance-declaree policy-suit-privilege surface-du-backend
 
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
@@ -213,7 +213,17 @@ PRIMITIVES="'bootstrap_normative_administrator','consume_normative_authorisation
             'reserve_normative_audit_namespace','forbid_normative_audit_mutation',
             'log_normative_event','check_normative_grant',
             'check_normative_grant_revocation','check_normative_confirmation',
-            'check_normative_confirmation_revocation'"
+            'check_normative_confirmation_revocation',
+            'normative_grant_is_effective','normative_grant_descendants',
+            'check_normative_grant_lineage',
+            'normative_authenticated_actor','normative_authenticated_actor_or_null',
+            'normative_authentication_configured','normative_bootstrap_mandate',
+            'normative_constater_authentification',
+            'assert_authority_backend_membership',
+            'assert_authority_surface_hardened',
+            'normative_decision_propose','normative_decision_approve',
+            'normative_decision_consume','normative_lock_grant_chains',
+            'check_normative_decision_transition','forbid_decision_delete'"
 DEFINERS="'is_org_member','has_org_role','can_write',
           'check_validator_is_authorised','open_retention_period',
           'log_deliverable_transition'"
@@ -311,25 +321,72 @@ fi
 # ==========================================================================
 # 5. EXECUTE DIRECT PAR LE ROLE APPLICATIF
 # ==========================================================================
-echo "      -- execute-direct: le role de service atteint-il une primitive ?"
+echo "      -- execute-direct: le role applicatif ORDINAIRE atteint-il une primitive ?"
+# QUI EST « LE ROLE APPLICATIF » ICI. Le decor pose DEUX logins applicatifs, et
+# les confondre a deja produit une mesure fausse: `$SVC` est membre de
+# `eurostruct_authority_backend` (ligne 175) — c'est le BACKEND AUTHENTIFIE, et
+# il DOIT atteindre les trois primitives de decision, sans quoi le chemin
+# nominal n'existe pas. `$ORD` n'est membre que de `normative_backend`: c'est
+# ce dont dispose un attaquant qui tient une connexion applicative.
+#
+# Ce controle mesure donc `$ORD` et `normative_backend`, qui doivent atteindre
+# ZERO. La surface legitime du backend est mesuree separement, et bornee.
 N="$(q "select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
         where n.nspname = 'public' and p.proname in ($PRIMITIVES)
-          and has_function_privilege('$SVC', p.oid, 'EXECUTE')")"
+          and has_function_privilege('$ORD', p.oid, 'EXECUTE')")"
 NB="$(q "select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
          where n.nspname = 'public' and p.proname in ($PRIMITIVES)
            and has_function_privilege('normative_backend', p.oid, 'EXECUTE')")"
-detail "atteintes par « $SVC »: $N ; par normative_backend: $NB"
+ATTEINTES="$(q "select coalesce(string_agg(distinct p.proname, ', '), '(aucune)')
+                  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname='public' and p.proname in ($PRIMITIVES)
+                   and has_function_privilege('$ORD', p.oid, 'EXECUTE')")"
+detail "atteintes par le role ordinaire « $ORD »: $N ($ATTEINTES)"
+detail "atteintes par normative_backend: $NB"
 # `bootstrap_normative_administrator` est accordee a `eurostruct_deployment`
 # A DESSEIN (6.3b5): c'est le chemin de deploiement. Elle n'est PAS accordee
 # aux roles applicatifs, et c'est cela qu'on verifie ici.
 if [[ "$N" == "0" && "$NB" == "0" ]]; then
-  sur execute-direct "aucune primitive n'est executable par le role applicatif."
+  sur execute-direct "aucune primitive n'est executable par le role applicatif"
+  detail "ordinaire ni par normative_backend."
   detail "non-vacuite: eurostruct_deployment, lui, en atteint"
   detail "$(q "select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                where n.nspname='public' and p.proname in ($PRIMITIVES)
                  and has_function_privilege('eurostruct_deployment', p.oid,'EXECUTE')") — la surface n'est donc pas vide."
 else
-  rouge execute-direct "le role applicatif atteint des primitives (svc=$N, backend=$NB)."
+  rouge execute-direct "le role applicatif ordinaire atteint des primitives"
+  detail "(ord=$N: $ATTEINTES ; normative_backend=$NB)."
+fi
+
+echo "      -- surface-du-backend: ce que le backend authentifie atteint, et rien de plus"
+# UNE SURFACE OUVERTE SE MESURE PAR SON CONTENU, PAS PAR SON EXISTENCE. Le
+# backend authentifie doit atteindre EXACTEMENT six fonctions: les trois
+# primitives de decision, les deux derivations d'acteur, et la lecture
+# d'efficacite. Compter « au moins trois » laisserait un septieme GRANT passer
+# sans que rien ne le dise — c'est precisement ainsi qu'une porte s'ajoute.
+# SANS ESPACES: `q()` normalise en retirant les blancs, et comparer une chaine
+# espacee a une chaine compactee produisait un rouge sur deux ensembles
+# IDENTIQUES — un faux rouge est aussi trompeur qu'un faux vert.
+ATTENDUES="normative_authenticated_actor,normative_authenticated_actor_or_null,normative_decision_approve,normative_decision_consume,normative_decision_propose,normative_grant_is_effective"
+OUVERTES="$(q "select coalesce(string_agg(distinct p.proname, ', '
+                                 order by p.proname), '(aucune)')
+                 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'public'
+                  and has_function_privilege('eurostruct_authority_backend',
+                                             p.oid, 'EXECUTE')
+                  and not has_function_privilege('public', p.oid, 'EXECUTE')")"
+detail "atteintes par eurostruct_authority_backend: $OUVERTES"
+if [[ "$OUVERTES" == "$ATTENDUES" ]]; then
+  sur surface-du-backend "le backend authentifie atteint exactement les six"
+  detail "fonctions prevues — les trois primitives de decision, les deux"
+  detail "derivations d'acteur, la lecture d'efficacite. Ni plus, ni moins."
+elif [[ "$OUVERTES" == "(aucune)" ]]; then
+  rouge surface-du-backend "le backend authentifie n'atteint RIEN: le chemin"
+  detail "nominal du quatre-yeux n'existe pas."
+else
+  rouge surface-du-backend "la surface du backend authentifie a change."
+  detail "attendu: $ATTENDUES"
+  detail "mesure : $OUVERTES"
 fi
 
 # ==========================================================================
@@ -591,6 +648,67 @@ else
   sur appartenance-declaree "les membres du backend d'autorite sont exactement"
   detail "ceux que le deploiement a declares. La declaration n'est pas"
   detail "decorative: elle est confrontee."
+fi
+
+echo "      -- policy-suit-privilege: un droit sans policy est un mensonge"
+# CE QUE CE CONTROLE MESURE, ET POURQUOI IL EXISTE.
+#
+# Mesure du 26/08: 0013 avait deplace INSERT de `normative_backend` vers
+# `eurostruct_authority_backend` sur QUATRE tables, et n'avait fait suivre la
+# policy que sur la premiere. Les trois autres restaient `to normative_backend`.
+# Sous FORCE ROW LEVEL SECURITY, le backend authentifie detenait donc le
+# privilege sans aucune policy qui le nomme:
+#   * en INSERT, chaque ligne etait refusee — le chemin de revocation et le
+#     chemin de confirmation etaient morts POUR TOUT LE MONDE;
+#   * en SELECT, la table repond ZERO LIGNE au lieu d'une erreur, et
+#     `normative_grant_is_effective()` — qui est `language sql`, donc DROITS DE
+#     L'APPELANT — declarait EFFICACE une habilitation revoquee.
+#
+# `has_table_privilege` repond « oui » dans les deux cas. C'est exactement ce
+# qui rend l'ecart invisible: le catalogue des droits est vert, la policy
+# manque, et le systeme repond faux sans se plaindre.
+CIBLES="$(q "select coalesce(string_agg(t, ', '), '(aucune)') from (
+  select c.relname || '.' || x.priv as t
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+   cross join lateral (values ('SELECT','r'), ('INSERT','a')) as x(priv, cmd)
+   where n.nspname = 'public' and c.relkind = 'r'
+     and c.relrowsecurity and c.relforcerowsecurity
+     and has_table_privilege('eurostruct_authority_backend', c.oid, x.priv)
+     and not exists (
+       select 1 from pg_policy p
+        where p.polrelid = c.oid and p.polpermissive
+          and p.polcmd in (x.cmd, '*')
+          and (p.polroles = '{0}'::oid[]
+               or exists (select 1 from unnest(p.polroles) as pr(oid)
+                           where pg_has_role('eurostruct_authority_backend',
+                                             pr.oid, 'USAGE'))))
+   order by 1) s")"
+COUVERTS="$(q "select count(*) from pg_policy p
+                join pg_class c on c.oid = p.polrelid
+               where p.polpermissive and p.polcmd in ('a','*')
+                 and c.relname in ('normative_authorisation_grants',
+                       'normative_authorisation_revocations',
+                       'normative_rule_confirmations',
+                       'normative_rule_confirmation_revocations')
+                 and exists (select 1 from unnest(p.polroles) as pr(oid)
+                              where pg_has_role('eurostruct_authority_backend',
+                                                pr.oid, 'USAGE'))")"
+detail "privileges sans policy: $CIBLES"
+detail "tables d'ecriture normative couvertes par une policy INSERT: $COUVERTS/4"
+if [[ "$CIBLES" != "(aucune)" ]]; then
+  rouge policy-suit-privilege "le backend d'autorite detient des droits que"
+  detail "AUCUNE policy ne nomme: $CIBLES."
+  detail "Sous FORCE RLS un INSERT y est refuse et un SELECT y rend zero ligne."
+elif [[ "$COUVERTS" != "4" ]]; then
+  rouge policy-suit-privilege "les quatre ecritures normatives ne sont pas"
+  detail "toutes couvertes par une policy INSERT nommant le backend d'autorite"
+  detail "($COUVERTS/4): une porte du chemin nominal est murée."
+else
+  sur policy-suit-privilege "chaque privilege du backend d'autorite est"
+  detail "accompagne d'une policy qui le nomme, et les quatre ecritures"
+  detail "normatives sont ouvertes a ce seul role. Non-vacuite: le compte"
+  detail "des tables couvertes est mesure, pas suppose."
 fi
 
 # ==========================================================================
