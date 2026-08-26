@@ -56,6 +56,27 @@
 -- lieu de laisser croire que `auth.uid()` l'etablissait.
 -- =====================================================================
 
+-- ---------------------------------------------------------------------
+-- UNE SEULE TRANSACTION, ET UNE INSCRIPTION AU REGISTRE
+-- ---------------------------------------------------------------------
+-- MESURE DU 26/08, roundtrip sur base ephemere: 10 migrations sur 14 etaient
+-- constatees « deja appliquee » au second passage, et CES QUATRE etaient
+-- REJOUEES. Elles n'appelaient pas `normative_migration_applied()`, donc le
+-- registre n'en gardait aucune trace. Deux consequences, l'une et l'autre
+-- serieuses:
+--
+--   * tout deploiement ulterieur les rejoue. Ce ne sont pas des scripts
+--     idempotents par construction: elles transferent des proprietes, posent
+--     des policies et retirent des droits;
+--   * la protection « on ne peut pas les appliquer hors du runner » disparait.
+--     C'est la substitution de `:'esc_migration_id'` qui la porte: sans elle,
+--     `psql -f` les avale sans rien exiger.
+--
+-- Et sans `begin`/`commit`, une erreur au milieu du fichier laissait la moitie
+-- des changements en place — les dix migrations precedentes s'en gardent
+-- toutes.
+begin;
+
 grant create on schema public
   to eurostruct_normative_writer, eurostruct_normative_bootstrap;
 
@@ -1599,3 +1620,12 @@ select normative_constater_authentification();
 
 revoke create on schema public
   from eurostruct_normative_writer, eurostruct_normative_bootstrap;
+
+-- L'INSCRIPTION AU REGISTRE, DANS LA MEME TRANSACTION QUE CE QUI PRECEDE.
+-- Les deux variables sont posees par `db/apply_migration.sh`, seul chemin
+-- d'application. Sans elles, psql laisse `:'...'` tel quel et la migration
+-- echoue sur une erreur de syntaxe: on ne peut donc pas l'appliquer par
+-- accident hors du runner.
+select normative_migration_applied(:'esc_migration_id', :'esc_migration_sum');
+
+commit;
