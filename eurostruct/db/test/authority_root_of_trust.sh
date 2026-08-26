@@ -698,8 +698,8 @@ fi
 #
 # ON MESURE DONC L'EFFET, sur le chemin reel: une ecriture d'autorite, puis la
 # valeur que le SERVEUR a inscrite dans `granted_by`.
-echo "      -- 4. falsification de l'identite par SET request.jwt.claim.sub"
-R4="$(sql_svc "               set eurostruct.actor_id = '$ADMIN_ID';
+echo "      -- 4. falsification de l'identite par un role ORDINAIRE"
+R4="$(sql_ord "set eurostruct.actor_id = '$ADMIN_ID';
                insert into normative_authorisation_grants
                  (grantee_id, grantee_name, permission, country_code,
                   standard_family, part, edition, reason, parent_grant_id)
@@ -711,7 +711,7 @@ G4="$(admb -tAc "select granted_by from normative_authorisation_grants
                   where reason = 'FICTIF identite declaree'" 2>&1 | tr -d ' ')"
 if [[ "$G4" == "$ADMIN_ID" ]]; then
   rouge "4. le serveur a inscrit granted_by = « $ADMIN_ID » alors que la"
-  detail "session n'a fourni que « SET request.jwt.claim.sub ». L'identite est"
+  detail "session n'a fourni que « SET eurostruct.actor_id ». L'identite est"
   detail "DECLAREE par la session, jamais prouvee, et tout le modele en derive:"
   detail "granted_by, revoked_by, verifier_id, et le decompte a quatre yeux."
   detail "INVARIANT ATTENDU (I-2): l'acteur provient d'un contexte que"
@@ -772,7 +772,7 @@ echo "      -- 6. deux paternites « independantes » depuis UNE connexion"
 if [[ $CHAINE_OK -eq 0 ]]; then
   non_parcouru "6. la chaine de delegation manque: chemin non parcouru."
 else
-R6="$(sql_svc "               set eurostruct.actor_id = '$ADMIN_ID';
+R6="$(sql_ord "set eurostruct.actor_id = '$ADMIN_ID';
                insert into normative_authorisation_grants
                  (grantee_id, grantee_name, permission, country_code,
                   standard_family, part, edition, reason, parent_grant_id)

@@ -718,6 +718,18 @@ begin
   --
   -- La comparaison passe par IS NOT DISTINCT FROM: deux NULL designent la
   -- meme portee « tous », alors que `=` les dirait differents.
+  -- `is_effective` ET NON `is_active`, ET C'EST UN DEFAUT QUE 0012 AVAIT
+  -- LAISSE. Le controle de doublon refuse « un octroi actif de meme portee
+  -- existe deja ». Avec la seule notion LOCALE (`is_active` = « aucune
+  -- revocation ne vise CETTE ligne »), un octroi devenu INEFFICACE parce qu'un
+  -- ancetre a ete revoque continuait de bloquer un nouvel octroi de meme
+  -- portee. Mesure: apres avoir revoque A->B, A ne pouvait plus octroyer
+  -- directement a C ce que B lui avait octroye — la revocation eteignait le
+  -- pouvoir ET interdisait de le reconstituer par une chaine explicite.
+  --
+  -- C'est bien un doublon d'octrois UTILISABLES que l'on refuse, pas un
+  -- doublon de lignes: deux octrois efficaces de portee identique rendraient
+  -- la resolution ambigue, un octroi eteint ne rend rien ambigu.
   if exists (
     select 1 from normative_authorisation_grants g
      where g.grantee_id = new.grantee_id
@@ -726,10 +738,10 @@ begin
        and g.standard_family is not distinct from new.standard_family
        and g.part            is not distinct from new.part
        and g.edition         is not distinct from new.edition
-       and normative_grant_is_active(g.id)
+       and normative_grant_is_effective(g.id)
   ) then
     raise exception
-      'un octroi actif de meme portee existe deja pour % (%). Le revoquer '
+      'un octroi EFFICACE de meme portee existe deja pour % (%). Le revoquer '
       'd''abord si la portee doit changer: deux octrois identiques actifs '
       'rendraient le snapshot d''audit indeterminable.',
       new.grantee_id, new.permission
