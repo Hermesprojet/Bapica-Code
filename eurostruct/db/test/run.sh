@@ -194,6 +194,18 @@ etape "deploiement en deux phases" \
   "$HERE/two_phase_deployment.sh" "${DB_NAME}_2p"
 
 # --------------------------------------------------------------------------
+# LE ROUNDTRIP DES MIGRATIONS — l'ALLER etait couvert, le RETOUR non
+# --------------------------------------------------------------------------
+# Chaque harnais part d'une base NEUVE: repasser sur les memes fichiers n'etait
+# donc eprouve nulle part. Mesure du 26/08: quatre migrations sur quatorze
+# etaient REJOUEES au second passage, faute de s'inscrire au registre — et
+# elles transferent des proprietes, posent des policies et retirent des droits.
+# Rien, dans cette suite, ne pouvait le voir.
+echo "==> roundtrip des migrations (aller-retour, registre, empreinte)"
+etape "roundtrip des migrations" \
+  "$HERE/migration_roundtrip.sh" "${DB_NAME:0:20}rt"
+
+# --------------------------------------------------------------------------
 # LE CONTRAT DE FINALISATION — huit tentatives de contournement
 # --------------------------------------------------------------------------
 # `two_phase_deployment.sh` verifie que la finalisation MARCHE. Celui-ci

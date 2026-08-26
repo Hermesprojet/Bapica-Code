@@ -523,9 +523,10 @@ begin;
 select set_config('request.jwt.claim.sub', '$ADMIN', true);
 select set_config('eurostruct.actor_id', '$ADMIN', true);
 insert into normative_authorisation_grants
-  (id, grantee_id, grantee_name, permission, reason)
+  (id, grantee_id, grantee_name, permission, reason, parent_grant_id)
 values ('c0000000-0000-0000-0000-0000000000bb', '$ADMIN_B', 'FICTIF Admin B',
-        'can_manage_normative_authorisations', 'FICTIF — second administrateur');
+        'can_manage_normative_authorisations', 'FICTIF — second administrateur',
+        (select id from normative_authorisation_grants where origin = 'bootstrap'));
 commit;
 SQL
 GRANT_A=$("${PSQL[@]}" -X -q -tAc "
