@@ -270,6 +270,23 @@ SQL
 "${ADMIN[@]}" -q -c \
   "alter database $DB set eurostruct.approved_service_logins = '$MIGRATEUR';" \
   >/dev/null 2>&1
+# LES DEUX DECLARATIONS DE 6.3c, ICI AUSSI, ET AVANT LA PHASE 1.
+#
+# C'est 0013 qui les constate et les fige pendant la migration. Sans elles,
+# `normative_authenticated_actor()` leve BLOCKED_BY_REAL_AUTH et l'amorcage
+# leve BOOTSTRAP_AUTHORITY_NOT_CONFIGURED: ce harnais echouait sur les deux,
+# et c'est bien ce que 6.3c a voulu — un sous-systeme qui refuse tant que
+# personne n'a declare qui authentifie.
+#
+# LE PRINCIPAL DU MANDAT EST CELUI QUE LA SECTION 4 AMORCE. En nommer un
+# autre ne rendrait pas le test « plus general »: il refuserait l'amorcage.
+"${ADMIN[@]}" -q -c \
+  "alter database $DB set eurostruct.authority_backend_logins = '$MIGRATEUR';" \
+  >/dev/null 2>&1
+"${ADMIN[@]}" -q -c \
+  "alter database $DB set eurostruct.bootstrap_mandate =
+     '11111111-1111-1111-1111-111111111111:FICTIF-EMPREINTE-NONSUPER';" \
+  >/dev/null 2>&1
 
 # PRECONDITION DE CE FICHIER, DESORMAIS DITE (6.3b6a).
 #
@@ -534,6 +551,11 @@ fi
 # reel. Le migrateur s'y rattache le temps du test, ce qu'un deploiement fait
 # de toute facon pour son backend.
 "${ADMIN[@]}" -q -c "grant normative_backend to $MIGRATEUR;" >/dev/null 2>&1
+# ET LE ROLE D'EXECUTION PRIVILEGIE. Depuis 0013, `normative_backend` n'a plus
+# INSERT sur les tables d'autorite: le chemin d'ecriture reel passe par
+# `eurostruct_authority_backend`, accorde au login declare. Sans ce
+# rattachement, le parcours echoue sur « permission denied for table ».
+"${ADMIN[@]}" -q -c "grant eurostruct_authority_backend to $MIGRATEUR;" >/dev/null 2>&1
 # `authenticated` sert au controle de RLS plus bas: le migrateur doit pouvoir
 # l'endosser pour verifier ce que voit un porteur de jeton.
 "${ADMIN[@]}" -q -c "grant authenticated to $MIGRATEUR;" >/dev/null 2>&1
@@ -545,17 +567,24 @@ fi
 # `approved_service_logins` est declare AVANT la finalisation (section 2): pose
 # ici, il serait sans effet — la topologie lit desormais la valeur FIGEE.
 
+# PAS DE `set role normative_backend` ICI: endosser ce role FERAIT PERDRE
+# l'heritage d'`eurostruct_authority_backend`, et donc le droit d'ecrire. Le
+# backend authentifie agit avec ses roles herites, comme en production.
 PARCOURS=$(mig -X -q -tAc "
-set role normative_backend;
 select set_config('request.jwt.claim.sub',
+                  '11111111-1111-1111-1111-111111111111', true);
+select set_config('eurostruct.actor_id',
                   '11111111-1111-1111-1111-111111111111', true);
 insert into normative_authorisation_grants
   (grantee_id, grantee_name, permission, country_code, standard_family, part,
-   edition, reason)
+   edition, reason, parent_grant_id)
 values ('22222222-2222-2222-2222-222222222222', 'FICTIF Relecteur Non-Super',
         'can_validate_normative_reference', 'BE', 'EN 1992', '1-1', '2010',
-        'FICTIF — habilitation du parcours non superutilisateur.');
+        'FICTIF — habilitation du parcours non superutilisateur.',
+        (select id from normative_authorisation_grants where origin = 'bootstrap'));
 select set_config('request.jwt.claim.sub',
+                  '22222222-2222-2222-2222-222222222222', true);
+select set_config('eurostruct.actor_id',
                   '22222222-2222-2222-2222-222222222222', true);
 insert into normative_rule_confirmations (
   country_code, standard_family, part, rule_id,
@@ -593,8 +622,9 @@ fi
 
 # Revocation de la confirmation, par son auteur.
 REVOC=$(mig -X -q -tAc "
-set role normative_backend;
 select set_config('request.jwt.claim.sub',
+                  '22222222-2222-2222-2222-222222222222', true);
+select set_config('eurostruct.actor_id',
                   '22222222-2222-2222-2222-222222222222', true);
 insert into normative_rule_confirmation_revocations (confirmation_id, reason)
 select id, 'FICTIF — retrait de ma propre lecture.'

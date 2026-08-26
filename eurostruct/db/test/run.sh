@@ -506,11 +506,27 @@ SQL
   # amorce. Un mandat qui nommerait quelqu'un d'autre ne serait pas « un
   # mandat quelconque »: il refuserait l'amorcage, ce qui est exactement ce
   # que le mandat doit faire.
+  # ET `approved_service_logins`, SANS QUOI LA TOPOLOGIE REFUSE — a juste
+  # titre. Mesure: la base de mise a niveau a refuse 0010 sur « le role
+  # connectable eurostruct_test_svc atteint le service
+  # eurostruct_authority_backend sans approbation ». L'appartenance a un role
+  # est CLUSTER-WIDE: des que la base principale accorde le role d'execution au
+  # login de service, TOUTES les bases du cluster le voient. Declarer le login
+  # dans une seule base ne suffit donc pas.
+  adm -c "alter database \"$b\"
+            set eurostruct.approved_service_logins = '$SVC_R';" >/dev/null 2>&1
   adm -c "alter database \"$b\"
             set eurostruct.authority_backend_logins = '$SVC_R';" >/dev/null 2>&1
+  # LE PRINCIPAL DU MANDAT DEPEND DE LA BASE, et il le faut. Chaque base de
+  # cette suite amorce SA racine: la base principale amorce 4444..., celle de
+  # concurrence c000...1, celle du contrat croise a100...1. Un mandat unique
+  # code en dur refuserait les deux dernieres — et le refus serait juste, ce
+  # qui rendrait le diagnostic trompeur. L'appelant pose donc
+  # `MANDAT_PRINCIPAL` avant d'appeler `deployer`; a defaut, c'est celui de la
+  # base principale.
   adm -c "alter database \"$b\"
             set eurostruct.bootstrap_mandate =
-              '44444444-4444-4444-4444-444444444444:FICTIF-EMPREINTE-SUITE-CANONIQUE';" \
+              '${MANDAT_PRINCIPAL:-44444444-4444-4444-4444-444444444444}:FICTIF-EMPREINTE-SUITE-CANONIQUE';" \
     >/dev/null 2>&1
   # PHASE 0 — LE SCEAU, par le plan de controle.
   echo "    control_plane/0001_normative_seal.sql (phase 0)"
@@ -614,6 +630,8 @@ CONC_DB="${DB_NAME}_conc"
 echo "==> concurrence multi-connexion"
 adm -c "drop database if exists $CONC_DB;" >/dev/null
 registre_base "$CONC_DB"
+# La base de concurrence amorce « c0000000-...-0001 » (voir concurrency.sh).
+MANDAT_PRINCIPAL='c0000000-0000-0000-0000-000000000001' \
 deployer "$CONC_DB" "$DB_DIR"/migrations/*.sql \
   || { echo "ECHEC: la base de concurrence n'a pas pu etre deployee" >&2; exit 1; }
 
@@ -654,6 +672,8 @@ XC_DB="${DB_NAME}_contract"
 echo "==> base vierge: racine de confiance et contrat croise"
 adm -c "drop database if exists $XC_DB;" >/dev/null
 registre_base "$XC_DB"
+# La base vierge amorce « a1000000-...-0001 » (voir cross_contract_insert.sql).
+MANDAT_PRINCIPAL='a1000000-0000-0000-0000-000000000001' \
 deployer "$XC_DB" "$DB_DIR"/migrations/*.sql \
   || { echo "ECHEC: la base vierge n'a pas pu etre deployee" >&2; exit 1; }
 

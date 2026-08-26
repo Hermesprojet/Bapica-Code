@@ -151,6 +151,15 @@ SQL
   adm -c "alter database \"$BASE\" set eurostruct.token_roles = 'authenticated';" >/dev/null 2>&1
   adm -c "alter database \"$BASE\"
             set eurostruct.approved_service_logins = '$SVC';" >/dev/null 2>&1
+  # LES DEUX DE 6.3c, ICI AUSSI. Sans elles le sous-systeme d'autorite reste
+  # ferme — c'est le fail-closed voulu — et le decor B ne peut fabriquer
+  # aucune preuve VRAIE a detruire.
+  adm -c "alter database \"$BASE\"
+            set eurostruct.authority_backend_logins = '$SVC';" >/dev/null 2>&1
+  adm -c "alter database \"$BASE\"
+            set eurostruct.bootstrap_mandate =
+              'b0000000-0000-0000-0000-0000000000b1:FICTIF-EMPREINTE-CLOSURE';" \
+    >/dev/null 2>&1
 
   # PHASE 1 — par le migrateur, et sans 0000 qui appartient a la phase 0.
   for f in "$DB_DIR"/migrations/*.sql; do
@@ -370,6 +379,10 @@ fi
 # Elle est ecrite AVANT toute desactivation: une preuve forgee ne prouverait
 # rien, c'est une preuve VRAIE qu'on doit pouvoir detruire.
 adm -c "grant normative_backend to \"$SVC\";" >/dev/null 2>&1
+# ET LE ROLE D'EXECUTION PRIVILEGIE: depuis 0013, `normative_backend` n'a plus
+# INSERT sur les tables d'autorite. Par le plan de controle, qui a cree le role
+# en phase 0 et en detient donc seul l'ADMIN.
+ctlp -c "grant eurostruct_authority_backend to \"$SVC\";" >/dev/null 2>&1
 admb -c "grant usage on schema auth to normative_backend;
          grant select on auth.users to normative_backend;" >/dev/null 2>&1
 admb >/dev/null 2>&1 <<'SQL'
@@ -386,19 +399,23 @@ ctl -tAc "select bootstrap_normative_administrator(
 # le declencheur refuse « aucune identite authentifiee » (mesure).
 svc -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<'SQL'
 begin;
-set local role normative_backend;
+-- PAS DE `set local role normative_backend`: l'endosser FERAIT PERDRE
+-- l'heritage d'`eurostruct_authority_backend`, donc le droit d'ecrire.
 select set_config('request.jwt.claim.sub','b0000000-0000-0000-0000-0000000000b1',true);
+select set_config('eurostruct.actor_id','b0000000-0000-0000-0000-0000000000b1',true);
 insert into normative_authorisation_grants
-  (grantee_id, grantee_name, permission, country_code, standard_family, part, edition, reason)
+  (grantee_id, grantee_name, permission, country_code, standard_family, part, edition, reason,
+   parent_grant_id)
 values ('b0000000-0000-0000-0000-0000000000b2','FICTIF Relecteur',
         'can_validate_normative_reference','BE','EN 1992','1-1','2010',
-        'FICTIF — habilitation legitime du decor B.');
+        'FICTIF — habilitation legitime du decor B.',
+        (select id from normative_authorisation_grants where origin = 'bootstrap'));
 commit;
 SQL
 svc -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<'SQL'
 begin;
-set local role normative_backend;
 select set_config('request.jwt.claim.sub','b0000000-0000-0000-0000-0000000000b2',true);
+select set_config('eurostruct.actor_id','b0000000-0000-0000-0000-0000000000b2',true);
 insert into normative_rule_confirmations (
   country_code, standard_family, part, rule_id,
   stack_digest, normative_spec_digest, implementation_digest, evidence_digest,

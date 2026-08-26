@@ -238,10 +238,20 @@ select bootstrap_normative_administrator(
 select t_attendre_bloquee('$APP_B');
 commit;
 SQL
+# LES DEUX CANDIDATS NOMMENT LE MEME PRINCIPAL, ET C'EST LA CORRECTION.
+#
+# Depuis 6.3c, l'amorcage exige un MANDAT preautorise: un second candidat
+# portant un autre principal serait refuse par le mandat, AVANT tout verrou.
+# La course serait alors gagnee par la declaration, pas par la serialisation —
+# et ce fichier ne mesurerait plus rien de la concurrence. Les deux
+# transactions nomment donc le principal mandate; ce qui les departage est la
+# singularite de l'amorcage et le verrou d'administration, ce qu'on veut
+# eprouver ici. Qu'un principal ETRANGER au mandat soit refuse est etabli
+# ailleurs, sequentiellement.
 cat > "$TMP/conc_boot_2.sql" <<SQL
 begin;
 select bootstrap_normative_administrator(
-  '$R2', 'FICTIF Racine 2', 'FICTIF — amorcage concurrent 2');
+  '$R1', 'FICTIF Racine 2', 'FICTIF — amorcage concurrent 2');
 commit;
 SQL
 PGAPPNAME="$APP_A" "${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f $TMP/conc_boot_1.sql \

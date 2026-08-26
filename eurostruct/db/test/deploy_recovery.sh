@@ -1736,6 +1736,15 @@ fi
 #
 # T16 EST LE CAS POSITIF, et il n'est pas decoratif: sans lui, un controle qui
 # refuserait toute relance sur une base ACTIVE passerait pour correct.
+# LE NOMBRE DE MIGRATIONS SE COMPTE, IL NE S'ECRIT PAS EN DUR.
+#
+# Ces quatre scenarios exigeaient « dix inscrites ». Le chiffre etait juste par
+# accident: 0011 a 0014 ne s'inscrivaient PAS au registre — c'etait le defaut
+# corrige dans ce meme lot — et le decompte n'a bouge qu'une fois qu'elles ont
+# commence a s'y inscrire. Un attendu code en dur transforme une correction en
+# regression apparente, et se serait re-perime a la migration suivante.
+MIGRATIONS_ATTENDUES="$(ls "$DB_DIR"/migrations/*.sql | wc -l | tr -d ' ')"
+
 t_active() {
   local nom="$1" geste="$2" code
   local M5="0005_validation_workflow.sql"
@@ -1745,8 +1754,8 @@ t_active() {
   local etat inscrites
   etat=$(admb -tAc "select normative_activation_state()" 2>&1)
   inscrites=$(admb -tAc "select count(*) from normative_migration_ledger" 2>&1)
-  if [[ "$etat" != "ACTIVE" || "$inscrites" != "10" ]]; then
-    echoue "$nom. le decor n'est pas ACTIVE avec dix migrations (« $etat »,"
+  if [[ "$etat" != "ACTIVE" || "$inscrites" != "$MIGRATIONS_ATTENDUES" ]]; then
+    echoue "$nom. le decor n'est pas ACTIVE avec $MIGRATIONS_ATTENDUES migrations (« $etat »,"
     echoue "    $inscrites inscrite(s)); scenario non evalue"
     decor_deposer; return 1
   fi
@@ -1773,7 +1782,7 @@ SQL
 
   case "$geste" in
     identique)
-      if [[ $code -eq 0 && "$apres" == "10" ]]; then
+      if [[ $code -eq 0 && "$apres" == "$MIGRATIONS_ATTENDUES" ]]; then
         echo "      ok: $nom. depot identique: la relance idempotente est permise"
       else
         rouge "$nom. une relance sur une base ACTIVE intacte est refusee."
@@ -1783,7 +1792,7 @@ SQL
     suffixe)
       if [[ $code -eq 9 ]] \
          && grep -qF "ACTIVE_SCHEMA_UPGRADE_REQUIRED" <<<"$SORTIE_CMD" \
-         && [[ "$apres" == "10" ]]; then
+         && [[ "$apres" == "$MIGRATIONS_ATTENDUES" ]]; then
         echo "      ok: $nom. migration en suffixe sur ACTIVE: refus nomme, zero mutation"
       else
         rouge "$nom. une migration ajoutee sur une base ACTIVE n'est pas nommee."
@@ -1796,7 +1805,7 @@ SQL
       local jeton="MIGRATION_CHECKSUM_MISMATCH"
       [[ "$geste" == "disparue" ]] && jeton="MIGRATION_HISTORY_DIVERGENCE"
       if [[ $code -ne 0 ]] && grep -qF "$jeton" <<<"$SORTIE_CMD" \
-         && [[ "$apres" == "10" ]]; then
+         && [[ "$apres" == "$MIGRATIONS_ATTENDUES" ]]; then
         echo "      ok: $nom. divergence detectee sur une base ACTIVE ($jeton)"
       else
         rouge "$nom. une base ACTIVE divergente du depot n'est pas detectee."
