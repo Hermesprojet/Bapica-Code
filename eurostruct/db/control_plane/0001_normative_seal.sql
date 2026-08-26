@@ -233,6 +233,27 @@ begin
                   where rolname = 'eurostruct_deployment') then
     create role eurostruct_deployment nologin;
   end if;
+  -- SEPTIEME ROLE, 6.3c: LE BACKEND D'AUTORITE.
+  --
+  -- IL EST CREE ICI ET NON PAR LA MIGRATION, ET C'EST UN CORRECTIF, PAS UN
+  -- RANGEMENT. La migration 0013 le creait; or `CREATE ROLE` par un role
+  -- CREATEROLE donne au createur l'ADMIN OPTION sur le role cree. Le
+  -- MIGRATEUR se retrouvait donc capable d'enroler qui il voulait dans le
+  -- role qui detient INSERT sur les tables d'autorite — y compris lui-meme.
+  --
+  -- Mesure sur une base deployee: les membres reels de
+  -- `eurostruct_authority_backend` etaient « le migrateur », alors que la
+  -- declaration nommait le login de service. Un GRANT emis par le migrateur
+  -- vers un login ordinaire aboutissait, et conferait `INSERT` sur
+  -- `normative_authorisation_grants`.
+  --
+  -- C'est exactement la contenance que 6.3b6c avait fermee, rouverte par la
+  -- porte d'a cote. Le plan de controle le cree, donc lui seul en detient
+  -- l'ADMIN.
+  if not exists (select 1 from pg_roles
+                  where rolname = 'eurostruct_authority_backend') then
+    create role eurostruct_authority_backend nologin;
+  end if;
 end
 $$;
 
@@ -1070,7 +1091,8 @@ declare
   autorites text[] := array['eurostruct_normative_writer',
                             'eurostruct_normative_bootstrap',
                             'eurostruct_normative_activator'];
-  services  text[] := array['normative_backend', 'normative_governance'];
+  services  text[] := array['normative_backend', 'normative_governance',
+                            'eurostruct_authority_backend'];
   note text;
 begin
   -- ------------------------------------------------------------------

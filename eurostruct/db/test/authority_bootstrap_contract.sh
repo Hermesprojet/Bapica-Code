@@ -56,7 +56,8 @@ harnais_valider_identifiant "prefixe" "$PREFIXE" || exit 2
 JETON="$(harnais_jeton)"
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator normative_backend
-            normative_governance eurostruct_deployment)
+            normative_governance eurostruct_deployment
+            eurostruct_authority_backend)
 exiger_roles_absents "authority_bootstrap_contract.sh" \
   "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" || exit 2
 
@@ -148,7 +149,10 @@ SQL
       | sed 's/^/              /' >&2
     return 1
   fi
-  adm -c "grant eurostruct_authority_backend to \"$SVC\";" >/dev/null 2>&1
+  # PAR LE PLAN DE CONTROLE, qui detient l'ADMIN depuis que la phase 0 cree
+  # le role. En superutilisateur, on masquerait le fait qu'il en est capable —
+  # et c'est precisement ce que le controle « migrateur-non-membre » oppose.
+  ctlp -c "grant eurostruct_authority_backend to \"$SVC\";" >/dev/null 2>&1
   adm -c "grant normative_backend to \"$SVC\";" >/dev/null 2>&1
   adm -c "grant normative_backend to \"$ORD\";" >/dev/null 2>&1
   admb -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL

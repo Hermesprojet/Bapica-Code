@@ -62,7 +62,8 @@ harnais_valider_identifiant "prefixe" "$PREFIXE" || exit 2
 JETON="$(harnais_jeton)"
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator normative_backend
-            normative_governance eurostruct_deployment)
+            normative_governance eurostruct_deployment
+            eurostruct_authority_backend)
 exiger_roles_absents "authority_sql_hardening.sh" \
   "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" || exit 2
 
@@ -70,7 +71,9 @@ verdicts_declarer \
   public-execute definer-public proprietaires search-path \
   execute-direct insert update delete \
   appartenances set-role bypassrls proprietaire-rls force-rls \
-  controle-de-derive
+  controle-de-derive \
+  auto-enrolement-guc auto-enrolement-role migrateur-non-membre \
+  appartenance-declaree
 
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
@@ -166,7 +169,10 @@ SQL
   # LE BACKEND AUTHENTIFIE recoit le role d'EXECUTION privilegie; le role
   # ORDINAIRE ne recoit que `normative_backend`, qui depuis 0013 n'a plus
   # INSERT sur les tables d'autorite. C'est la separation que 6.3c pose.
-  adm -c "grant eurostruct_authority_backend to \"$SVC\";" >/dev/null 2>&1
+  # PAR LE PLAN DE CONTROLE, qui detient l'ADMIN depuis que la phase 0 cree
+  # le role. En superutilisateur, on masquerait le fait qu'il en est capable —
+  # et c'est precisement ce que le controle « migrateur-non-membre » oppose.
+  ctlp -c "grant eurostruct_authority_backend to \"$SVC\";" >/dev/null 2>&1
   adm -c "grant normative_backend to \"$SVC\";" >/dev/null 2>&1
   adm -c "grant normative_backend to \"$ORD\";" >/dev/null 2>&1
   return 0
@@ -473,6 +479,107 @@ if grep -qiE 'ERROR|ERREUR' <<<"$R"; then
   fi
 else
   sur controle-de-derive "le controle de derive accepte la base telle que deployee."
+fi
+
+# ==========================================================================
+# 15-18. L'AUTO-ENROLEMENT — mesure, pas lecture
+# ==========================================================================
+# CE QUE CES QUATRE CONTROLES EXISTENT POUR EMPECHER. Une sonde a mesure, sur
+# une base deployee, que le role qui detient INSERT sur les tables d'autorite
+# avait pour MEMBRE REEL le migrateur, alors que la declaration nommait le
+# login de service. Un GRANT emis par le migrateur vers un login ordinaire
+# aboutissait, et conferait INSERT.
+#
+# La cause n'etait pas `pg_db_role_setting` — qui, lui, tient: un login
+# ordinaire ne peut pas poser ces parametres, et `normative_declared_setting`
+# filtre `setrole = 0`, donc ne lit QUE les reglages de base. La cause etait
+# que la migration CREAIT le role, ce qui donne au createur l'ADMIN dessus.
+#
+# `pg_db_role_setting` peut transporter une CONFIGURATION. Il ne constitue
+# jamais une AUTHENTIFICATION, et ces controles verifient les deux moities:
+# qu'on ne peut pas s'y declarer, et que la declaration est confrontee aux
+# appartenances reelles.
+
+echo "      -- auto-enrolement-guc: un login ordinaire peut-il se declarer ?"
+R="$(ord -tAc "alter role current_user
+                 set eurostruct.authority_backend_logins = '$ORD'" 2>&1)"
+N="$(q "select count(*) from pg_db_role_setting s join pg_roles r on r.oid = s.setrole
+         where r.rolname = '$ORD'")"
+# NON-VACUITE PAR RECONNEXION: `ord` ouvre une nouvelle connexion a chaque
+# appel, donc la lecture ci-dessous est bien POST-RECONNEXION. Une
+# auto-declaration qui ne prendrait effet qu'apres reconnexion serait vue.
+LU="$(q "select normative_declared_setting('eurostruct.authority_backend_logins')")"
+detail "ALTER ROLE CURRENT_USER SET -> $(head -c 70 <<<"$R" | tr '\n' ' ')"
+detail "lignes pg_db_role_setting pour ce login: $N ; valeur lue par le produit: « $LU »"
+if [[ "$N" != "0" ]] && [[ "$LU" == *"$ORD"* ]]; then
+  rouge auto-enrolement-guc "un login ordinaire s'est declare authentificateur,"
+  detail "et le produit LIT sa declaration apres reconnexion."
+elif [[ "$N" != "0" ]]; then
+  sur auto-enrolement-guc "l'auto-declaration est ECRITE mais jamais LUE:"
+  detail "normative_declared_setting filtre setrole = 0, donc les seuls"
+  detail "reglages de BASE. Valeur lue: « $LU »."
+elif grep -qiE 'permission denied' <<<"$R"; then
+  sur auto-enrolement-guc "l'auto-declaration est refusee a l'ecriture, et la"
+  detail "valeur lue reste celle du deploiement: « $LU »."
+else
+  troue auto-enrolement-guc "ni ecriture ni refus explicite: non interpretable."
+fi
+
+echo "      -- auto-enrolement-role: le login ordinaire peut-il s'enroler ?"
+R="$(ord -tAc "grant eurostruct_authority_backend to current_user" 2>&1)"
+A="$(q "select pg_has_role('$ORD', 'eurostruct_authority_backend', 'USAGE')")"
+detail "GRANT par lui-meme -> $(head -c 80 <<<"$R" | tr '\n' ' ') ; atteint: $A"
+if [[ "$A" == "t" ]]; then
+  rouge auto-enrolement-role "le login ordinaire atteint le backend d'autorite."
+elif grep -qiE 'permission denied|must have admin' <<<"$R"; then
+  sur auto-enrolement-role "un login ordinaire ne peut pas s'enroler."
+  detail "non-vacuite: le backend de service declare, lui, l'atteint ->"
+  detail "$(q "select pg_has_role('$SVC','eurostruct_authority_backend','USAGE')")"
+else
+  troue auto-enrolement-role "refuse pour une raison inattendue: $(head -c 80 <<<"$R")"
+fi
+
+echo "      -- migrateur-non-membre: le migrateur enrole-t-il qui il veut ?"
+# LE COEUR DU DEFAUT MESURE. Le migrateur ne doit ni etre membre, ni pouvoir
+# enroler: le role est cree par le PLAN DE CONTROLE en phase 0, precisement
+# pour que le createur — donc le detenteur de l'ADMIN — ne soit pas lui.
+MM="$(q "select pg_has_role('$MIG', 'eurostruct_authority_backend', 'USAGE')")"
+R="$(mig -tAc "grant eurostruct_authority_backend to \"$ORD\"" 2>&1)"
+A="$(q "select pg_has_role('$ORD', 'eurostruct_authority_backend', 'USAGE')")"
+detail "migrateur membre: $MM ; GRANT par le migrateur -> $(head -c 70 <<<"$R" | tr '\n' ' ') ; enrole: $A"
+if [[ "$MM" == "t" || "$A" == "t" ]]; then
+  rouge migrateur-non-membre "le migrateur est membre du backend d'autorite ou"
+  detail "peut y enroler un tiers. La contenance fermee en 6.3b6c est rouverte:"
+  detail "il obtient INSERT sur les tables d'autorite par la porte d'a cote."
+elif grep -qiE 'permission denied|must have admin' <<<"$R"; then
+  sur migrateur-non-membre "le migrateur n'est pas membre et ne peut pas enroler."
+  detail "non-vacuite: le plan de controle, qui a cree le role en phase 0, le"
+  detail "peut — c'est lui qui detient l'ADMIN."
+else
+  troue migrateur-non-membre "resultat non interpretable: $(head -c 80 <<<"$R")"
+fi
+
+echo "      -- appartenance-declaree: les membres sont-ils ceux qu'on a declares ?"
+R="$(ctl -tAc "select assert_authority_backend_membership()" 2>&1)"
+MEMBRES="$(q "select coalesce(string_agg(m.rolname, ','), '(aucun)')
+                from pg_auth_members a
+                join pg_roles rr on rr.oid = a.roleid
+                join pg_roles m  on m.oid  = a.member
+               where rr.rolname = 'eurostruct_authority_backend'
+                 and not m.rolsuper")"
+DECL="$(q "select coalesce(valeur, '(vide)') from normative_authentication_contract
+            where nom = 'eurostruct.authority_backend_logins'")"
+detail "membres reels: $MEMBRES ; declaration figee: $DECL"
+if grep -qi 'does not exist' <<<"$R"; then
+  troue appartenance-declaree "le controle n'existe pas: la declaration reste"
+  detail "decorative."
+elif grep -qiE 'ERROR|ERREUR' <<<"$R"; then
+  rouge appartenance-declaree "des membres ne sont pas declares:"
+  grep -m2 -oiE '(ERROR|ERREUR|DETAIL)[^|]{0,110}' <<<"$R" | sed 's/^/                  /'
+else
+  sur appartenance-declaree "les membres du backend d'autorite sont exactement"
+  detail "ceux que le deploiement a declares. La declaration n'est pas"
+  detail "decorative: elle est confrontee."
 fi
 
 # ==========================================================================

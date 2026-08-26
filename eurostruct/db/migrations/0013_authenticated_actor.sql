@@ -151,11 +151,35 @@ create trigger auth_contract_is_immutable
 --
 -- Il est NOLOGIN: personne ne s'y connecte. Il s'obtient par appartenance, et
 -- seulement pour les logins declares au point A.
+-- IL N'EST PLUS CREE ICI, ET C'EST LE CORRECTIF D'UN DEFAUT MESURE.
+--
+-- Une premiere version le creait depuis cette migration. Or `CREATE ROLE` par
+-- un role CREATEROLE confere au createur l'ADMIN OPTION sur le role cree: le
+-- MIGRATEUR devenait donc capable d'enroler qui il voulait dans le role qui
+-- detient INSERT sur les tables d'autorite — y compris lui-meme.
+--
+-- Sonde sur une base deployee, avant correction:
+--
+--   membres reels de eurostruct_authority_backend : <le migrateur>
+--   declaration figee                             : <le login de service>
+--   GRANT par le migrateur vers un login ordinaire: ABOUTIT
+--   INSERT du login ordinaire sur les octrois     : t
+--
+-- C'est la contenance que 6.3b6c avait fermee, rouverte par la porte d'a
+-- cote. Le role est desormais cree par le PLAN DE CONTROLE, en phase 0, comme
+-- les six roles canoniques. Cette migration se contente d'exiger sa presence:
+-- l'absence signale un sceau trop ancien, et un deploiement muet vaut mieux
+-- qu'un deploiement qui recree le trou.
 do $$
 begin
   if not exists (select 1 from pg_roles
                   where rolname = 'eurostruct_authority_backend') then
-    create role eurostruct_authority_backend nologin;
+    raise exception
+      'le role « eurostruct_authority_backend » est absent. Il est cree par la '
+      'PHASE 0 (control_plane/0001_normative_seal.sql). Le creer ici donnerait '
+      'au migrateur l''ADMIN sur le role qui detient INSERT sur les tables '
+      'd''autorite: appliquer un sceau a jour avant cette migration.'
+      using errcode = 'insufficient_privilege';
   end if;
 end;
 $$;
@@ -1317,6 +1341,97 @@ begin
   end if;
 end;
 $$;
+
+
+-- ---------------------------------------------------------------------
+-- F-bis. LA DECLARATION EST CONFRONTEE AUX MEMBRES REELS
+-- ---------------------------------------------------------------------
+-- SANS CE CONTROLE, LA DECLARATION EST DECORATIVE. Mesure avant correction:
+-- la liste declaree nommait le login de service, et le membre reel etait le
+-- migrateur. Personne ne comparait les deux — le produit lisait la
+-- declaration pour decider s'il etait « configure », puis laissait
+-- l'appartenance decider de qui agit reellement.
+--
+-- Deux choses distinctes, qu'il ne faut pas confondre:
+--   * `normative_authentication_configured()` repond « un authentificateur
+--     est-il DECLARE ? » — c'est la question du fail-closed;
+--   * la fonction ci-dessous repond « les membres du role d'execution
+--     sont-ils EXACTEMENT ceux qui ont ete declares ? » — c'est la question
+--     de la frontiere.
+--
+-- ELLE NE REND PAS UN BOOLEEN: elle nomme l'ecart. Un booleen se lit « faux »
+-- et se range; « le migrateur est membre alors qu'il n'est pas declare » se
+-- corrige.
+create or replace function assert_authority_backend_membership() returns void
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  declares text[];
+  r record;
+  ecarts text[] := array[]::text[];
+begin
+  select coalesce(
+           string_to_array(
+             btrim((select valeur from normative_authentication_contract
+                     where nom = 'eurostruct.authority_backend_logins')), ','),
+           array[]::text[])
+    into declares;
+
+  if declares = array[]::text[] then
+    -- Rien de declare: le sous-systeme est ferme de toute facon
+    -- (`normative_authenticated_actor()` leve BLOCKED_BY_REAL_AUTH). Mais un
+    -- membre present alors que RIEN n'est declare est une anomalie, pas un
+    -- etat ferme: on le dit.
+    for r in select m.rolname
+               from pg_auth_members a
+               join pg_roles rr on rr.oid = a.roleid
+               join pg_roles m  on m.oid  = a.member
+              where rr.rolname = 'eurostruct_authority_backend'
+                and not m.rolsuper
+    loop
+      ecarts := ecarts || format(
+        '« %s » est membre du backend d''autorite alors qu''AUCUN '
+        'authentificateur n''est declare', r.rolname);
+    end loop;
+  else
+    for r in select m.rolname
+               from pg_auth_members a
+               join pg_roles rr on rr.oid = a.roleid
+               join pg_roles m  on m.oid  = a.member
+              where rr.rolname = 'eurostruct_authority_backend'
+                and not m.rolsuper
+                and not (btrim(m.rolname) = any (
+                          select btrim(x) from unnest(declares) as x))
+    loop
+      ecarts := ecarts || format(
+        '« %s » est membre du backend d''autorite sans etre declare',
+        r.rolname);
+    end loop;
+  end if;
+
+  if array_length(ecarts, 1) > 0 then
+    raise exception
+      'frontiere d''autorite: appartenance non declaree — %',
+      array_to_string(ecarts, E'\n  - ')
+      using errcode = 'insufficient_privilege';
+  end if;
+end;
+$$;
+
+alter function assert_authority_backend_membership()
+  owner to eurostruct_normative_writer;
+revoke all on function assert_authority_backend_membership() from public;
+grant execute on function assert_authority_backend_membership()
+  to eurostruct_normative_writer, eurostruct_normative_bootstrap,
+     normative_governance, eurostruct_deployment;
+
+comment on function assert_authority_backend_membership is
+  'Confronte les MEMBRES reels du backend d''autorite a la liste DECLAREE. '
+  'Sans elle la declaration est decorative: le produit lisait la declaration '
+  'pour se dire configure, et laissait l''appartenance decider de qui agit.';
 
 
 -- ---------------------------------------------------------------------
