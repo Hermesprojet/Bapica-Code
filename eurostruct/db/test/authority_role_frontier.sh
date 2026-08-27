@@ -72,8 +72,8 @@ verdicts_declarer \
   role-deploiement proprietaire-base transitivite reconnexion \
   rejeu-des-migrations ecriture-reelle admin-option-borne \
   egalite-declaree-reelle \
-  postcondition-membre-en-trop postcondition-admin-en-chaine \
-  postcondition-declare-absent
+  postcondition-membre-en-trop postcondition-admin-direct \
+  postcondition-admin-en-chaine postcondition-declare-absent
 
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
@@ -527,33 +527,83 @@ else
   detail "« membre SUPPLEMENTAIRE », et le retrait rend le vert."
 fi
 
-echo "      -- postcondition-admin-en-chaine: l'ADMIN transitif est-il vu ?"
-# LE PONT NE DETIENT NI INHERIT NI SET SUR LA CIBLE. `pg_has_role('USAGE')` et
-# `pg_has_role('SET')` repondent donc « false » — et c'est precisement la
-# lecture sur laquelle s'arretait la version precedente de l'assertion.
-creer_role "$PONT" "nologin" >/dev/null 2>&1
-ctlp -c "grant $CIBLE to \"$PONT\" with admin option, inherit false, set false;" \
+echo "      -- postcondition-admin-direct: l'ADMIN seul, en ligne directe"
+# LA CONTRIBUTION PROPRE DE LA LECTURE LIGNE A LIGNE, isolee. Ce membre-ci
+# detient l'ADMIN et RIEN d'autre: `pg_has_role('USAGE')` et `('SET')`
+# repondent « false », donc les deux boucles anterieures ne le voient pas —
+# et il n'y a aucune chaine, donc la couche transitive ne le voit pas non
+# plus. Si ce cas passe, c'est exactement le chemin par lequel la contenance
+# s'etait rouverte: administrer sans utiliser, puis s'octroyer l'usage.
+ctlp -c "grant $CIBLE to \"$ORD\" with admin option, inherit false, set false;" \
   >/dev/null 2>&1
+PA_VU="$(atteint "$ORD")"
+PA_ADM="$(a_admin "$ORD")"
+PA="$(postcondition)"
+ctlp -c "revoke $CIBLE from \"$ORD\";" >/dev/null 2>&1
+PA_APRES="$(postcondition)"
+detail "« $ORD » usage/set/member=$PA_VU ; admin=$PA_ADM"
+detail "refus: $(head -c 90 <<<"$PA" | tr '\n' ' ')"
+if [[ "$PA_ADM" != "true" ]]; then
+  troue postcondition-admin-direct "l'ADMIN n'a pas ete accorde: le scenario"
+  detail "n'a pas ete pose, rien n'a ete eprouve."
+elif ! grep -q "sans etre le plan de controle fige" <<<"$PA"; then
+  rouge postcondition-admin-direct "PC4. un porteur d'ADMIN en ligne directe, sans"
+  detail "INHERIT ni SET, n'a PAS ete refuse: $(head -c 130 <<<"$PA")"
+elif grep -qiE "ERROR|ERREUR" <<<"$PA_APRES"; then
+  rouge postcondition-admin-direct "PC4. apres retrait, la postcondition refuse"
+  detail "toujours: $(head -c 110 <<<"$PA_APRES")"
+else
+  sur postcondition-admin-direct "l'ADMIN seul est refuse, et le diagnostic"
+  detail "renvoie au plan de controle fige. usage/set le disaient absent."
+fi
+
+echo "      -- postcondition-admin-en-chaine: l'ADMIN transitif est-il vu ?"
+# CE CONTROLE A ETE CORRIGE APRES MESURE, ET LA CORRECTION EST LE SUJET.
+#
+# Premiere version: on accordait le backend a un PONT « with admin option,
+# inherit false, set false », et on constatait un refus. Le refus etait bien
+# la — mais il venait de la lecture LIGNE A LIGNE, qui voit ce porteur
+# directement. La couche TRANSITIVE n'etait pas atteinte, et une mutation qui
+# la retire aurait survecu. Le nom du controle disait « en chaine »; le
+# scenario ne posait aucune chaine.
+#
+# CE QUI FAIT UNE VRAIE CHAINE. Un chemin transitif exige un role R qui
+# detient l'ADMIN en ligne directe, plus quelqu'un qui est membre de R. Or le
+# seul detenteur legitime est le PLAN DE CONTROLE — celui que la lecture
+# ligne a ligne EXEMPTE. Enroler un tiers dans le plan de controle lui donne
+# donc l'ADMIN sur le backend SANS aucune ligne qui le nomme: c'est le seul
+# cas que la couche transitive attrape et que l'autre laisse passer.
+#
+# C'est aussi une porte reelle: qui entre dans le plan de controle peut
+# enroler qui il veut dans le role qui detient INSERT sur les tables
+# d'autorite.
+creer_role "$PONT" "nologin" >/dev/null 2>&1
+adm -c "grant \"$CTL\" to \"$PONT\" with inherit true, set true;" >/dev/null 2>&1
 PC_ATT="$(q "select pg_has_role('$PONT','$CIBLE','MEMBER WITH ADMIN OPTION')::text")"
-PC_VU="$(q "select pg_has_role('$PONT','$CIBLE','USAGE')::text || '/' ||
-                   pg_has_role('$PONT','$CIBLE','SET')::text")"
+PC_LIGNE="$(q "select count(*) from pg_auth_members a
+                 join pg_roles r on r.oid = a.roleid
+                 join pg_roles m on m.oid = a.member
+                where r.rolname='$CIBLE' and m.rolname='$PONT'")"
 PC="$(postcondition)"
-ctlp -c "revoke $CIBLE from \"$PONT\";" >/dev/null 2>&1
+adm -c "revoke \"$CTL\" from \"$PONT\";" >/dev/null 2>&1
 PC_APRES="$(postcondition)"
-detail "le pont detient l'ADMIN: $PC_ATT ; usage/set: $PC_VU"
+detail "le pont atteint l'ADMIN transitivement: $PC_ATT ;"
+detail "lignes de pg_auth_members qui le nomment sur le backend: $PC_LIGNE (0 attendu)"
 detail "refus: $(head -c 90 <<<"$PC" | tr '\n' ' ')"
-if [[ "$PC_ATT" != "true" ]]; then
-  troue postcondition-admin-en-chaine "le pont n'a pas recu l'ADMIN: le"
-  detail "scenario n'a pas ete pose, rien n'a donc ete eprouve."
-elif ! grep -qiE "ENROLER|ADMIN OPTION" <<<"$PC"; then
-  rouge postcondition-admin-en-chaine "PC2. un porteur d'ADMIN non declare n'a PAS"
-  detail "ete refuse: $(head -c 140 <<<"$PC")"
+if [[ "$PC_ATT" != "true" || "$PC_LIGNE" != "0" ]]; then
+  troue postcondition-admin-en-chaine "la chaine n'a pas ete posee comme"
+  detail "annonce (transitif=$PC_ATT, lignes directes=$PC_LIGNE): rien n'a"
+  detail "ete eprouve, et surtout pas la couche transitive."
+elif ! grep -q "par une chaine" <<<"$PC"; then
+  rouge postcondition-admin-en-chaine "PC2. un porteur d'ADMIN par CHAINE n'a PAS"
+  detail "ete refuse par la couche transitive: $(head -c 140 <<<"$PC")"
 elif grep -qiE "ERROR|ERREUR" <<<"$PC_APRES"; then
   rouge postcondition-admin-en-chaine "PC2. apres retrait, la postcondition refuse"
   detail "toujours: $(head -c 110 <<<"$PC_APRES")"
 else
-  sur postcondition-admin-en-chaine "un porteur d'ADMIN sans INHERIT ni SET est"
-  detail "refuse — alors que usage/set le disent absent ($PC_VU)."
+  sur postcondition-admin-en-chaine "un ADMIN atteint par une CHAINE est refuse,"
+  detail "alors qu'AUCUNE ligne de pg_auth_members ne nomme ce role sur le"
+  detail "backend. La lecture ligne a ligne ne pouvait pas le voir."
 fi
 
 echo "      -- postcondition-declare-absent: une declaration decorative est-elle vue ?"

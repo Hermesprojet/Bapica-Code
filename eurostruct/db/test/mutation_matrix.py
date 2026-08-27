@@ -1520,6 +1520,18 @@ CAS_POSTCONDITION = [
                        'MEMBER WITH ADMIN OPTION')
        and p.rolname <> all (admins)""",
        "       and false  -- H2 neutralise par mutation")], False),
+    # LA BRANCHE D'ADMIN DE H1, isolee elle aussi. Un porteur d'ADMIN en
+    # LIGNE DIRECTE, sans INHERIT ni SET, n'est vu ni par les deux boucles
+    # `pg_has_role('USAGE'/'SET')` — elles repondent « false » — ni par la
+    # couche transitive, puisqu'il n'y a aucune chaine. C'est le chemin exact
+    # par lequel la contenance s'etait rouverte.
+    ("PM4 l'ADMIN en ligne directe n'est plus confronte au plan", "PC4", A13,
+     [("""      if normative_activation_state() = 'ACTIVE'
+         and not coalesce(r.membre_oid = normative_control_plane_oid()
+                          and r.rolname = normative_control_plane(), false)
+      then""",
+       """      if false
+      then""")], False),
     # H3 est le seul sens « declare mais absent », et il n'est exige qu'en
     # ACTIVE. Le neutraliser ne peut donc rien casser d'autre.
     ("PM3 la declaration decorative n'est plus vue", "PC3", A13,
