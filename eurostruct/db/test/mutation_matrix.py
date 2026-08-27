@@ -1515,6 +1515,32 @@ TOTAL = sum(len(cas) for cas, _ in LOTS)
 # IL N'ARRETE RIEN. Il annonce, et laisse la campagne mesurer tout ce qui est
 # encore mesurable: un controle perime ne doit pas priver les 63 autres de leur
 # verdict.
+def _doublons(lots):
+    """Les identifiants portes par PLUS D'UN controle, sur la matrice ENTIERE.
+
+    Deux controles portant le meme code rendraient DEUX verdicts sous UN nom.
+    Le compte global n'y verrait rien — `defini == tente` tiendrait, puisque
+    les deux sont bien tentes — mais le tableau par controle n'afficherait
+    qu'une ligne, et c'est la ligne SURVIVANTE qui disparaitrait la moitie du
+    temps. Un compte juste sur un tableau faux est pire qu'un compte faux:
+    il rassure.
+
+    Le controle porte sur TOUS les codes definis, pas seulement les retenus:
+    un doublon hors filtre reste un doublon des que le filtre tombe, et la
+    campagne complete n'a pas de filtre.
+    """
+    vus = {}
+    for cas, _ in lots:
+        for c in cas:
+            vus.setdefault(_code(c[0]), []).append(c[0])
+    return [
+        f"identifiant EN DOUBLE « {cc} » — {len(noms)} controles le portent: "
+        f"{', '.join(n[:40] for n in noms)}. Deux verdicts sous un nom font "
+        "disparaitre une ligne du tableau"
+        for cc, noms in sorted(vus.items()) if len(noms) > 1
+    ]
+
+
 def _prevol():
     """PROUVE ce qu'il avance, et INVALIDE la campagne avant tout lancement.
 
@@ -1523,7 +1549,7 @@ def _prevol():
     garantie cessait donc d'etre verifiee sans que rien ne rougisse — c'est
     arrive au controle 7, et personne ne l'a vu pendant un passage complet.
 
-    Six preuves, par controle retenu:
+    Sept preuves — six par controle retenu, une sur la matrice entiere:
 
       1. le fichier cible est lisible;
       2. chaque motif y figure EXACTEMENT une fois — zero est une cible
@@ -1535,11 +1561,13 @@ def _prevol():
       5. si le controle est declare redondant, son controle COMBINE est
          declare ET retenu dans cette campagne;
       6. si le controle est declare intercepte a l'installation, un diagnostic
-         attendu est declare.
+         attendu est declare;
+      7. aucun identifiant n'est porte par deux controles — sur la matrice
+         ENTIERE, filtre ou non.
 
     Tout manquement est un STALE, et un seul STALE invalide la campagne.
     """
-    stale = []
+    stale = list(_doublons(LOTS))
     retenus = {_code(c[0]) for cas, _ in LOTS for c in cas if retenu(c)}
     for cas, kw in LOTS:
         for c in cas:
@@ -1665,7 +1693,8 @@ try:
                   "la campagne serait INVALIDE.")
             sys.exit(2)
         print(f"PRE-VOL: {len(PLAT)} controle(s) retenus, tous exercables.")
-        print("         stale 0 | ambiguous 0 | missing_combined_control 0")
+        print("         stale 0 | ambiguous 0 | missing_combined_control 0 "
+              "| duplicate_id 0")
         print("         Aucun controle n'a ete lance (--prevol-seulement).")
         sys.exit(0)
     if PERIMES_PREVOL:

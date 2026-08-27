@@ -60,11 +60,25 @@ exec(compile(src[debut:fin], str(MOD), "exec"), ns)
 # `_cibles` vit plus bas; on le recupere aussi.
 try:
     d2 = src.index("def _cibles(fichier, paires):")
-    f2 = src.index("def _code(nom):")
+    # BORNE APRES `_code`, ET NON AVANT: `_doublons` s'en sert, et une
+    # extraction qui s'arrete juste avant produit un `NameError` au premier
+    # appel — un auto-test qui plante n'est pas un auto-test qui refuse.
+    f2 = src.index("\n\n\n", src.index("def _code(nom):"))
 except ValueError:
     sys.exit("AUTO-TEST DU MOTEUR: `_cibles`/`_code` introuvables dans "
              "mutation_matrix.py — l'auto-test ne s'applique plus.")
 exec(compile(src[d2:f2], str(MOD), "exec"), ns)
+# `_doublons` est extraite pour elle-meme: elle decide si une campagne part ou
+# non, et l'eprouver en dupliquant un vrai controle de la matrice reviendrait a
+# modifier l'instrument pour le mesurer.
+try:
+    d3 = src.index("def _doublons(lots):")
+    f3 = src.index("def _prevol():")
+except ValueError:
+    sys.exit("AUTO-TEST DU MOTEUR: `_doublons` introuvable dans "
+             "mutation_matrix.py — la campagne pourrait partir avec deux "
+             "verdicts sous un nom, et l'auto-test ne s'applique plus.")
+exec(compile(src[d3:f3], str(MOD), "exec"), ns)
 
 tmp = pathlib.Path(tempfile.mkdtemp())
 ns["ESPACE"] = str(tmp)
@@ -147,6 +161,31 @@ muter("a.sql", [("garde alpha", "garde alpha")])
 verifier("diff vide: le contenu est inchange apres une mutation identique",
          A.read_text() == ORIG_A)
 restaurer("a.sql")
+
+# 8. LES IDENTIFIANTS EN DOUBLE ARRETENT LA CAMPAGNE AVANT SON DEPART.
+#    Deux controles portant le meme code rendent DEUX verdicts sous UN nom:
+#    le compte global tient — les deux sont bien tentes — mais le tableau par
+#    controle perd une ligne, et c'est la SURVIVANTE qui disparait une fois
+#    sur deux. Un compte juste sur un tableau faux rassure a tort.
+_doublons = ns["_doublons"]
+_sain = [([("A  un controle", "A", "f.sql", [("x", "y")], False),
+           ("B  un autre", "B", "f.sql", [("z", "w")], False)], {})]
+_double = [([("A  un controle", "A", "f.sql", [("x", "y")], False)], {}),
+           ([("A  le meme code, ailleurs", "A", "g.sql", [("z", "w")], False)],
+            {})]
+verifier("doublons: une matrice saine n'en signale aucun",
+         _doublons(_sain) == [], f"rendu={_doublons(_sain)!r}")
+_vu = _doublons(_double)
+verifier("doublons: un code porte deux fois est signale", len(_vu) == 1,
+         f"rendu={_vu!r}")
+verifier("doublons: le message NOMME le code et les deux controles",
+         len(_vu) == 1 and "« A »" in _vu[0]
+         and "un controle" in _vu[0] and "ailleurs" in _vu[0],
+         f"rendu={_vu!r}")
+verifier("doublons: le controle porte sur TOUS les codes, filtre ou non",
+         _doublons([([("A  x", "A", "f.sql", [("x", "y")], False)] * 3, {})])
+         and len(_doublons([([("A  x", "A", "f.sql", [("x", "y")], False)] * 3,
+                             {})])) == 1)
 
 shutil.rmtree(tmp, ignore_errors=True)
 print()
