@@ -71,6 +71,28 @@ le créateur d'un rôle reçoit `admin=t, inherit=f, set=f`, donné par `postgre
 Cet ADMIN est **toléré pour lui seul**, jamais avec `SET` ni `USAGE`, et son
 identité est figée à l'installation par **OID et par nom**.
 
+#### Le plan de contrôle est un point de concentration, et cela se dit
+
+Puisqu'il détient l'`ADMIN OPTION` sur `eurostruct_authority_backend`, **qui
+entre dans le rôle du plan de contrôle peut enrôler qui il veut** dans le rôle
+qui détient `INSERT` sur les tables d'autorité — sans qu'aucune ligne de
+`pg_auth_members` ne nomme cette personne sur le backend.
+
+Ce chemin est **transitif et invisible à une lecture ligne à ligne**. Il a été
+trouvé en écrivant la falsification du contrôle censé le couvrir : le scénario
+posait un porteur d'`ADMIN` en ligne **directe**, que la lecture ligne à ligne
+voit déjà — la couche transitive n'était donc jamais atteinte, et une mutation
+qui l'aurait retirée aurait survécu.
+
+Ce qui le contient aujourd'hui : `assert_authority_backend_membership()`
+interroge `pg_has_role(..., 'MEMBER WITH ADMIN OPTION')`, qui est transitive
+par construction, et refuse tout porteur qui n'est pas le résidu de
+provisionnement lui-même. Contrôle `postcondition-admin-en-chaine`,
+falsification `PM2`.
+
+Ce qui ne le contient pas : rien n'empêche un superutilisateur d'enrôler
+quelqu'un dans le plan de contrôle. C'est cohérent avec la ligne suivante.
+
 ### Superutilisateur — hors modèle, explicitement
 
 Un superutilisateur PostgreSQL peut désactiver n'importe quel déclencheur,
