@@ -1367,6 +1367,49 @@ revoke all on function check_normative_confirmation_revocation() from public;
 --
 -- Le sceau le documente depuis 6.3b6d: « GRANT n'echoue pas quand celui qui
 -- l'execute n'a pas le GRANT OPTION ». Il fallait le lire une fois de plus.
+-- PRECONDITION DE CETTE SECTION, ET ELLE NOMME CE QU'ELLE EXIGE.
+--
+-- Tout ce qui suit s'execute SOUS `eurostruct_normative_writer` et suppose
+-- qu'il POSSEDE les quatre tables d'autorite: retirer un privilege exige la
+-- propriete, poser une policy aussi. Si 0010 n'a pas transfere la propriete,
+-- PostgreSQL refuse — mais il refuse par « must be owner of relation », qui
+-- ne dit pas QUELLE garantie manque ni OU la chercher.
+--
+-- Mesure du 27/08: une mutation retirant le transfert de propriete de 0010
+-- faisait echouer 0013 sur exactement ce message, a 30 lignes d'ici. Un refus
+-- qui ne nomme pas l'invariant perdu coute l'heure qu'il devait faire gagner
+-- — c'est la doctrine de 0010 sur l'ordre des declencheurs, appliquee ici.
+--
+-- La transaction qui encadre 0013 garantit qu'un refus ici n'ecrit RIEN: ni
+-- objet de schema, ni ligne de registre.
+do $$
+declare t text; o text;
+begin
+  foreach t in array array['normative_authorisation_grants',
+                           'normative_authorisation_revocations',
+                           'normative_rule_confirmations',
+                           'normative_rule_confirmation_revocations'] loop
+    select pg_get_userbyid(c.relowner) into o
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relname = t;
+    if o is null then
+      raise exception
+        'PRECONDITION 0013: la table % est introuvable dans public.', t
+        using errcode = 'undefined_table';
+    end if;
+    if o <> 'eurostruct_normative_writer' then
+      raise exception
+        'PRECONDITION 0013: la table % appartient a « % » et non a '
+        '« eurostruct_normative_writer ». 0013 ne peut ni retirer un '
+        'privilege ni poser une policy sur une table qu''il ne possede pas, '
+        'et la frontiere d''autorite resterait donc ouverte. Verifier le '
+        'transfert de propriete de 0010.', t, o
+        using errcode = 'insufficient_privilege';
+    end if;
+  end loop;
+end;
+$$;
+
 set role eurostruct_normative_writer;
 
 revoke insert on normative_authorisation_grants          from normative_backend;
