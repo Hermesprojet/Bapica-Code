@@ -63,6 +63,7 @@ verdicts_declarer \
   double-consommation-concurrente rejeu-apres-consommation \
   revocation-avant-approbation revocation-pendant-consommation \
   invocation-sql-directe sources-conservees audit-correlation \
+  objet-fige transition-interdite approbation-non-rejouee suppression-refusee \
   deux-authentifications
 
 KO=0
@@ -828,7 +829,151 @@ else
 fi
 
 # ==========================================================================
-# 19. DEUX AUTHENTIFICATIONS INDEPENDANTES — ce que le depot ne peut pas prouver
+# 19. LE SOCLE EST FIGE — objet, portee, proposant, source, correlation
+# ==========================================================================
+# CES QUATRE CONTROLES INTERROGENT LES DECLENCHEURS, PAS LES PRIVILEGES, et
+# c'est pourquoi ils s'executent sous le SUPERUTILISATEUR. Le modele de
+# menace place les superutilisateurs hors perimetre pour les PRIVILEGES: ils
+# satisfont `pg_has_role` partout et contournent RLS. Un declencheur, lui,
+# s'applique a eux — et c'est exactement la garantie qu'on veut isoler ici.
+#
+# CE QU'ILS AJOUTENT. `check_normative_decision_transition()` et
+# `forbid_decision_delete()` existaient depuis le premier jet de 0014, et
+# AUCUN controle ne les exercait: quinze scenarios passaient par les trois
+# primitives, qui ne tentent jamais ce que les declencheurs refusent. Une
+# garantie que rien n'exerce ne se distingue plus d'une garantie perdue.
+echo "      -- objet-fige"
+DF="$(proposer s19 2004)"
+if ! est_uuid "$DF"; then
+  troue objet-fige "aucune decision a eprouver: $(head -c 100 <<<"$DF")"
+else
+  # AVANT: la photographie complete du socle. On la reprend APRES les six
+  # tentatives, et on exige l'egalite — un refus qui laisserait passer une
+  # colonne serait un refus qui ne protege rien.
+  SOCLE_AV="$(q "select subject_kind||'|'||subject_id||'|'||coalesce(org_id::text,'-')
+                      ||'|'||country_code||'|'||standard_family||'|'||part
+                      ||'|'||edition||'|'||proposer_id||'|'||proposal_source_grant_id
+                      ||'|'||correlation_id||'|'||reason
+                   from normative_authority_decisions where id='$DF'")"
+  OF_REFUS=0; OF_PASSE=""
+  for col in "subject_id = 's19-modifie'" \
+             "org_id = gen_random_uuid()" \
+             "edition = '2099'" \
+             "country_code = 'FR'::country_code" \
+             "proposer_id = '$B'" \
+             "correlation_id = gen_random_uuid()"; do
+    RO="$(admb -tAc "update normative_authority_decisions set $col
+                      where id='$DF'" 2>&1)"
+    if grep -q "figes a la creation" <<<"$RO"; then
+      OF_REFUS=$((OF_REFUS + 1))
+    else
+      OF_PASSE="$OF_PASSE [$col -> $(head -c 60 <<<"$RO" | tr '\n' ' ')]"
+    fi
+  done
+  SOCLE_AP="$(q "select subject_kind||'|'||subject_id||'|'||coalesce(org_id::text,'-')
+                      ||'|'||country_code||'|'||standard_family||'|'||part
+                      ||'|'||edition||'|'||proposer_id||'|'||proposal_source_grant_id
+                      ||'|'||correlation_id||'|'||reason
+                   from normative_authority_decisions where id='$DF'")"
+  detail "six tentatives sur le socle, refusees: $OF_REFUS/6"
+  if [[ $OF_REFUS -ne 6 ]]; then
+    rouge objet-fige "une colonne du socle a ete modifiable:$OF_PASSE"
+  elif [[ "$SOCLE_AV" != "$SOCLE_AP" ]]; then
+    rouge objet-fige "le socle a change malgre les refus:"
+    detail "avant « $SOCLE_AV »"
+    detail "apres « $SOCLE_AP »"
+  else
+    sur objet-fige "objet, organisation, portee, edition, proposant, source et"
+    detail "correlation sont figes — et le socle est identique apres les six"
+    detail "tentatives. Le refus nomme la colonne, il ne dit pas seulement non."
+  fi
+fi
+
+echo "      -- transition-interdite"
+# LES DEUX SENS EXIGENT DEUX DECISIONS D'ETATS DIFFERENTS. Sans la CONSUMED,
+# seule la moitie du cycle serait eprouvee — et « il ne remonte pas » est
+# precisement la moitie qu'on ne peut pas deduire de l'autre.
+if ! est_uuid "$DF" || ! est_uuid "${D11:-}"; then
+  troue transition-interdite "il manque une decision PENDING ou CONSUMED:"
+  detail "PENDING=${DF:-(aucune)} ; CONSUMED=${D11:-(aucune)}"
+else
+  ET_AV="$(q "select state from normative_authority_decisions where id='$DF'")"
+  # PENDING -> CONSUMED saute l'approbation: c'est la forme qui produirait une
+  # decision consommee que PERSONNE n'a approuvee.
+  T1="$(admb -tAc "update normative_authority_decisions
+                      set state='CONSUMED'::normative_decision_state,
+                          approver_id='$B'::uuid,
+                          approval_source_grant_id='$GB'::uuid,
+                          approved_at=now(), consumed_at=now()
+                    where id='$DF'" 2>&1)"
+  # CONSUMED -> APPROVED remonterait le cycle: une decision deja produite
+  # redeviendrait consommable.
+  T2="$(admb -tAc "update normative_authority_decisions
+                      set state='APPROVED'::normative_decision_state,
+                          consumed_at=null
+                    where id='$D11'" 2>&1)"
+  ET_AP="$(q "select state from normative_authority_decisions where id='$DF'")"
+  ET11="$(q "select state from normative_authority_decisions where id='$D11'")"
+  detail "PENDING->CONSUMED: $(grep -m1 -oiE 'interdite|figes a la creation|ERROR[^|]{0,40}' <<<"$T1" | head -1)"
+  detail "CONSUMED->APPROVED: $(grep -m1 -oiE 'interdite|figes a la creation|ERROR[^|]{0,40}' <<<"$T2" | head -1)"
+  detail "etats apres: $DF=$ET_AP (avant $ET_AV) ; $D11=$ET11"
+  if [[ "$ET_AP" != "PENDING" || "$ET11" != "CONSUMED" ]]; then
+    rouge transition-interdite "un etat a ete force: $DF=$ET_AP, $D11=$ET11"
+  elif grep -q "interdite" <<<"$T1" && grep -q "interdite" <<<"$T2"; then
+    sur transition-interdite "le cycle ne se saute pas et ne remonte pas: les"
+    detail "deux transitions illegales sont refusees et nommees."
+  else
+    troue transition-interdite "refus non interpretables:"
+    detail "$(head -c 100 <<<"$T1") / $(head -c 100 <<<"$T2")"
+  fi
+fi
+
+echo "      -- approbation-non-rejouee"
+if ! est_uuid "$D1"; then
+  troue approbation-non-rejouee "aucune decision APPROVED a eprouver."
+else
+  AP_AV="$(q "select approver_id||'|'||approval_source_grant_id
+                from normative_authority_decisions where id='$D1'")"
+  RA="$(admb -tAc "update normative_authority_decisions
+                      set state='CONSUMED'::normative_decision_state,
+                          consumed_at=now(), approver_id='$C'::uuid
+                    where id='$D1'" 2>&1)"
+  AP_AP="$(q "select approver_id||'|'||approval_source_grant_id
+                from normative_authority_decisions where id='$D1'")"
+  ET1="$(q "select state from normative_authority_decisions where id='$D1'")"
+  detail "tentative: $(grep -m1 -oiE 'ne modifie pas l.{0,3}approbation|ERROR[^|]{0,50}' <<<"$RA" | head -1)"
+  detail "approbation avant « $AP_AV » ; apres « $AP_AP » ; etat=$ET1"
+  if [[ "$AP_AV" != "$AP_AP" || "$ET1" == "CONSUMED" ]]; then
+    rouge approbation-non-rejouee "la consommation a pu reecrire l'approbation."
+  elif grep -qi "ne modifie pas l" <<<"$RA"; then
+    sur approbation-non-rejouee "la consommation ne reecrit pas l'approbation:"
+    detail "changer d'approbateur en consommant est refuse, et nomme."
+  else
+    troue approbation-non-rejouee "refus non interpretable: $(head -c 110 <<<"$RA")"
+  fi
+fi
+
+echo "      -- suppression-refusee"
+if ! est_uuid "$DF"; then
+  troue suppression-refusee "aucune decision a eprouver."
+else
+  NAV="$(q "select count(*) from normative_authority_decisions")"
+  RD="$(admb -tAc "delete from normative_authority_decisions where id='$DF'" 2>&1)"
+  NAP="$(q "select count(*) from normative_authority_decisions")"
+  detail "lignes avant=$NAV apres=$NAP ; $(grep -m1 -oiE 'ne s.{0,3}efface pas|ERROR[^|]{0,50}' <<<"$RD" | head -1)"
+  if [[ "$NAV" != "$NAP" ]]; then
+    rouge suppression-refusee "une decision a ete effacee: la preuve de ce qui"
+    detail "a ete engage disparait avec elle."
+  elif grep -qi "efface pas" <<<"$RD"; then
+    sur suppression-refusee "une decision ne s'efface pas, meme par le"
+    detail "superutilisateur: le declencheur s'applique a lui aussi."
+  else
+    troue suppression-refusee "refus non interpretable: $(head -c 110 <<<"$RD")"
+  fi
+fi
+
+# ==========================================================================
+# 20. DEUX AUTHENTIFICATIONS INDEPENDANTES — ce que le depot ne peut pas prouver
 # ==========================================================================
 # CE CONTROLE NE SE DECLARE PAS VERT PAR COMPLAISANCE, ET NE SE DECLARE PAS
 # ROUGE NON PLUS. Tout ce qui precede a ete obtenu avec un contexte d'acteur
