@@ -396,6 +396,20 @@ défaut qu'il prétend corriger. Il est porté au suivi, avec sa mesure.
 * Une table sous `FORCE ROW LEVEL SECURITY` sans policy applicable rend **zéro
   ligne** en lecture — une réponse, pas une erreur.
 * `text[] || 'littéral'` est ambigu ; le littéral doit être typé.
+* `REVOKE <rôle> FROM <membre>` émis par un **non-donneur** produit
+  `WARNING: role "X" has not been granted membership in role "Y" by role
+  "postgres"` et **n'a aucun effet** : le membre reste. Révoquer en tant que
+  donneur réel fonctionne. C'est la cinquième occurrence de la famille
+  « WARNING sans effet » dans ce jalon, et elle avait produit un faux rouge —
+  le contrôle concluait que retirer l'`ADMIN OPTION` ne fermait pas la porte,
+  alors que c'était la révocation elle-même qui n'avait rien fait.
+* Après `REVOKE ADMIN OPTION FOR <rôle> FROM <ex-admin>`, un `GRANT` du même
+  rôle par l'ex-admin est refusé avec
+  `DETAIL: Only roles with the ADMIN option on role "Y" may grant this role.`
+  L'`ADMIN OPTION` **est** la capacité d'enrôler, et son retrait la ferme :
+  mesuré dans les deux sens, avant et après.
+* `pg_has_role(...)::text` rend `true`/`false`, **pas** `t`/`f`. Comparer à
+  `f` rendait dix contrôles rouges alors que rien n'était ouvert.
 
 ---
 
