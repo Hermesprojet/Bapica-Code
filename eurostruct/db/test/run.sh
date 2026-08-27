@@ -228,6 +228,23 @@ etape "fermeture de l'autorite" \
   "$HERE/authority_closure.sh" "${DB_NAME:0:20}ac"
 
 # --------------------------------------------------------------------------
+# LA FRONTIERE DES ROLES POSTGRESQL, MESUREE DANS LE CATALOGUE
+# --------------------------------------------------------------------------
+# `authority_closure.sh` demande si le migrateur peut ECRIRE. Celui-ci demande
+# s'il peut S'OCTROYER LE DROIT d'ecrire — question distincte, et la seule des
+# deux qu'un audit precedent avait manquee: il mesurait `pg_db_role_setting`,
+# c'est-a-dire une CONFIGURATION, la ou le chemin reel passait par
+# l'APPARTENANCE. `CREATE ROLE` par un role CREATEROLE laisse au createur
+# `admin_option=t` — il n'herite ni n'endosse, mais il ENROLE QUI IL VEUT.
+#
+# ADMINISTRER N'EST PAS UTILISER, MAIS ADMINISTRER SUFFIT A S'OCTROYER
+# L'USAGE: mesurer USAGE et SET et s'arreter la laisserait passer exactement
+# ce chemin. Quatorze controles, chacun avec son verdict nomme.
+echo "==> frontiere des roles postgresql"
+etape "frontiere des roles postgresql" \
+  "$HERE/authority_role_frontier.sh" "${DB_NAME:0:20}rf"
+
+# --------------------------------------------------------------------------
 # LES QUATRE SURFACES D'AUTORITE DE 6.3c
 # --------------------------------------------------------------------------
 # AUCUNE N'EST « ROUGE ATTENDU », ET C'EST DELIBERE. Le premier cablage de

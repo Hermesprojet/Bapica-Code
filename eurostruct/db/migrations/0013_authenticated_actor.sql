@@ -1592,6 +1592,8 @@ declare
   declares text[];
   r record;
   ecarts text[] := array[]::text[];
+  admins text[] := array[]::text[];
+  une_declaration text;
 begin
   select coalesce(
            string_to_array(
@@ -1652,6 +1654,161 @@ begin
     end loop;
   end if;
 
+  -- ------------------------------------------------------------------
+  -- H1. AUCUN MEMBRE EN TROP — et l'ADMIN COMPTE COMME UN MEMBRE
+  -- ------------------------------------------------------------------
+  -- LES DEUX BOUCLES CI-DESSUS NE SUFFISENT PAS, et il a fallu le mesurer
+  -- pour le voir. Elles interrogent `pg_has_role(..., 'USAGE'/'SET')`: un
+  -- role qui detient l'ADMIN OPTION **sans** INHERIT ni SET y repond `false`
+  -- aux deux, et passe donc entierement au travers.
+  --
+  -- Or ce role peut s'accorder INHERIT et SET quand il veut — c'est
+  -- precisement ce que l'ADMIN OPTION signifie. Fait mesure sur PG16
+  -- (harnais `authority_role_frontier.sh`, controle `migrateur-sans-admin`,
+  -- non-vacuite etablie): avec l'ADMIN, le GRANT reussit; l'ADMIN retire, le
+  -- MEME GRANT est refuse. L'ADMIN EST DONC LA CAPACITE, pas une trace.
+  --
+  -- L'ABSENCE D'INHERIT ET DE SET NE VAUT PAS FERMETURE. On enumere donc les
+  -- LIGNES de `pg_auth_members`, et non plus la seule question « atteint-il ».
+  for r in
+    select m.rolname, m.oid as membre_oid, m.rolsuper,
+           x.admin_option, x.inherit_option, x.set_option
+      from pg_auth_members x
+      join pg_roles m on m.oid = x.member
+     where x.roleid = (select oid from pg_roles
+                        where rolname = 'eurostruct_authority_backend')
+  loop
+    -- Les superutilisateurs sont hors perimetre — ils satisfont `pg_has_role`
+    -- pour tout role sans avoir besoin d'une appartenance. Le dire ici evite
+    -- de faire croire que la ligne a ete jugee.
+    continue when r.rolsuper;
+
+    if r.rolname = any (array['eurostruct_normative_writer',
+                              'eurostruct_normative_bootstrap',
+                              'normative_backend', 'normative_governance',
+                              'eurostruct_deployment']) then
+      -- LA REGRESSION REELLE, NOMMEE. `0013` creait autrefois le role: PG16
+      -- donne l'ADMIN OPTION au createur, et le MIGRATEUR se retrouvait
+      -- capable d'enroler qui il voulait — y compris lui-meme — dans le role
+      -- qui detient INSERT sur les tables d'autorite.
+      ecarts := ecarts || format(
+        'le role applicatif « %s » est MEMBRE du backend d''autorite '
+        '(admin=%s, inherit=%s, set=%s). Aucun role applicatif ne doit y '
+        'figurer, meme sans INHERIT ni SET: l''ADMIN suffit a se reaccorder '
+        'le reste',
+        r.rolname, r.admin_option, r.inherit_option, r.set_option);
+
+    elsif btrim(r.rolname) = any (select btrim(x) from unnest(declares) as x)
+    then
+      -- UN LOGIN DECLARE AGIT, IL N'ENROLE PAS. L'authentificateur externe
+      -- decide qui agit; un login qui peut s'adjoindre des pairs remplacerait
+      -- cette decision par la sienne.
+      if r.admin_option then
+        ecarts := ecarts || format(
+          'le login declare « %s » detient l''ADMIN OPTION sur le backend '
+          'd''autorite: il peut enroler un tiers, et la liste declaree cesse '
+          'alors de decrire qui agit', r.rolname);
+      end if;
+
+    elsif r.admin_option and not r.inherit_option and not r.set_option then
+      -- LE RESIDU DE PROVISIONNEMENT, ET LUI SEUL. PostgreSQL donne l'ADMIN
+      -- a qui cree le role (fait F1): il existe forcement quelqu'un, et le
+      -- nier rendrait la topologie irrealisable. Ce qui est exige, c'est
+      -- qu'il soit SEUL, sans INHERIT ni SET, et — une fois le plan de
+      -- controle fige — qu'il SOIT ce plan, par OID **ET** par nom.
+      admins := admins || r.rolname;
+      if normative_activation_state() = 'ACTIVE'
+         and not coalesce(r.membre_oid = normative_control_plane_oid()
+                          and r.rolname = normative_control_plane(), false)
+      then
+        ecarts := ecarts || format(
+          '« %s » detient l''ADMIN OPTION sur le backend d''autorite sans '
+          'etre le plan de controle fige (approuve: %s, oid %s). Le nom seul '
+          'ne suffit pas: un role neuf qui reprend l''etiquette heriterait de '
+          'l''exemption sans avoir jamais rien approuve',
+          r.rolname, coalesce(normative_control_plane(), 'AUCUN'),
+          coalesce(normative_control_plane_oid()::text, 'AUCUN'));
+      end if;
+
+    else
+      -- L'EGALITE EXACTE, DANS LE SENS QUI OUVRE UNE PORTE. Un membre qui
+      -- n'est ni declare, ni le residu de provisionnement, est un membre
+      -- SUPPLEMENTAIRE: il agit sans que rien ne l'ait autorise.
+      ecarts := ecarts || format(
+        'membre SUPPLEMENTAIRE « %s » (admin=%s, inherit=%s, set=%s): il '
+        'n''est ni declare dans « eurostruct.authority_backend_logins », ni '
+        'le residu d''ADMIN que PostgreSQL impose au createur du role',
+        r.rolname, r.admin_option, r.inherit_option, r.set_option);
+    end if;
+  end loop;
+
+  -- ------------------------------------------------------------------
+  -- H2. L'ADMIN EST BORNE A UN SEUL PORTEUR, ET IL EST TRANSITIF
+  -- ------------------------------------------------------------------
+  -- H1 lit des LIGNES; une chaine ne s'y voit pas. Si un role accorde le
+  -- backend a un pont AVEC l'ADMIN, puis accorde le pont a un tiers, aucune
+  -- ligne ne nomme le tiers — et il enrole pourtant qui il veut.
+  -- `pg_has_role(..., 'MEMBER WITH ADMIN OPTION')` est transitive et fait
+  -- autorite; on la prend telle quelle plutot que de refaire la fermeture.
+  for r in
+    select p.rolname
+      from pg_roles p
+     where not p.rolsuper
+       and p.rolname <> 'eurostruct_authority_backend'
+       and pg_has_role(p.rolname, 'eurostruct_authority_backend',
+                       'MEMBER WITH ADMIN OPTION')
+       and p.rolname <> all (admins)
+  loop
+    ecarts := ecarts || format(
+      '« %s » peut ENROLER dans le backend d''autorite par une chaine '
+      'd''appartenances, sans y figurer en ligne directe. L''ADMIN se '
+      'transmet: le borner ligne a ligne ne le borne pas', r.rolname);
+  end loop;
+
+  if array_length(admins, 1) > 1 then
+    ecarts := ecarts || format(
+      'l''ADMIN OPTION sur le backend d''autorite est detenu par %s roles '
+      '(%s). Le residu de provisionnement est SINGULIER par construction: '
+      'plusieurs porteurs signifient qu''un GRANT explicite l''a elargi',
+      array_length(admins, 1), array_to_string(admins, ', '));
+  end if;
+
+  -- ------------------------------------------------------------------
+  -- H3. L'AUTRE SENS DE L'EGALITE — declare, mais pas membre
+  -- ------------------------------------------------------------------
+  -- CE SENS N'OUVRE AUCUNE PORTE, ET C'EST POURQUOI IL N'EST EXIGE QU'EN
+  -- ACTIVE. Un login declare qui n'est pas membre ne peut RIEN: l'etat est
+  -- ferme, pas ouvert. Pendant la migration il est meme l'etat NORMAL —
+  -- `0013` installe le schema, l'enrolement vient apres, du plan de controle.
+  -- L'exiger en PENDING reviendrait a exiger que la migration ait deja fait
+  -- ce qui la suit.
+  --
+  -- EN ACTIVE, EN REVANCHE, IL DIT QUELQUE CHOSE. Le deploiement est
+  -- termine: une liste qui nomme un login incapable d'agir decrit un systeme
+  -- qui n'existe pas. On ne saurait plus laquelle des deux sources dit vrai,
+  -- et c'est exactement la confusion qui a produit le defaut d'origine —
+  -- lire la declaration pour se croire configure, et laisser l'appartenance
+  -- decider de qui agit.
+  if normative_activation_state() = 'ACTIVE' then
+    foreach une_declaration in array declares loop
+      continue when btrim(une_declaration) = '';
+      if not exists (select 1 from pg_roles m
+                      where m.rolname = btrim(une_declaration)
+                        and (pg_has_role(m.rolname,
+                                         'eurostruct_authority_backend', 'USAGE')
+                             or pg_has_role(m.rolname,
+                                            'eurostruct_authority_backend', 'SET')))
+      then
+        ecarts := ecarts || format(
+          'le login « %s » est DECLARE mais n''atteint pas le backend '
+          'd''autorite (role absent, ou membre sans USAGE ni SET). La base '
+          'est ACTIVE: la declaration nomme donc un acteur qui ne peut pas '
+          'agir, et plus rien ne dit laquelle des deux sources fait foi',
+          btrim(une_declaration));
+      end if;
+    end loop;
+  end if;
+
   if array_length(ecarts, 1) > 0 then
     raise exception
       'frontiere d''autorite: appartenance non declaree — %',
@@ -1669,9 +1826,13 @@ grant execute on function assert_authority_backend_membership()
      normative_governance, eurostruct_deployment;
 
 comment on function assert_authority_backend_membership is
-  'Confronte les MEMBRES reels du backend d''autorite a la liste DECLAREE. '
-  'Sans elle la declaration est decorative: le produit lisait la declaration '
-  'pour se dire configure, et laissait l''appartenance decider de qui agit.';
+  'Confronte les MEMBRES reels du backend d''autorite a la liste DECLAREE, '
+  'ligne a ligne dans pg_auth_members et non par pg_has_role seul: un role '
+  'qui detient l''ADMIN OPTION sans INHERIT ni SET repond « false » aux deux '
+  'et se reaccorde le reste quand il veut. Exige aussi que l''ADMIN soit '
+  'chez UN SEUL porteur, qu''aucune chaine d''appartenances ne mene au role, '
+  'et — en ACTIVE seulement — que tout login declare atteigne reellement le '
+  'backend. Appelee en postcondition par 0013.';
 
 
 -- ---------------------------------------------------------------------
@@ -1718,6 +1879,35 @@ comment on function normative_constater_authentification is
 -- reste vide et tout le sous-systeme d'autorite est FERME — c'est l'etat
 -- attendu sur une base ou aucun authentificateur n'existe.
 select normative_constater_authentification();
+
+-- ---------------------------------------------------------------------
+-- POSTCONDITION DE CATALOGUE — apres TOUS les GRANT, REVOKE et transferts
+-- ---------------------------------------------------------------------
+-- UNE ASSERTION QUI N'EST APPELEE PAR PERSONNE N'ASSERTE RIEN.
+-- `assert_authority_backend_membership()` existait depuis le premier jet de
+-- cette migration, et seuls DEUX HARNAIS l'invoquaient. Une garantie que le
+-- produit ne verifie jamais lui-meme ne se distingue plus d'une garantie
+-- perdue: elle tient tant que quelqu'un pense a lancer le test.
+--
+-- ELLE EST DONC POSEE ICI, EN POSTCONDITION, et pour une raison mesuree:
+-- PostgreSQL 16 n'ECHOUE PAS sur un GRANT ou un REVOKE emis sans le droit
+-- requis — il emet un WARNING et ne fait rien (fait mesure quatre fois dans
+-- ce jalon, sur `grant`, sur `revoke`, et sur `revoke ... from` emis par un
+-- non-donneur). `psql -v ON_ERROR_STOP=1` ne s'arrete pas sur un WARNING:
+-- la migration se serait donc terminee « avec succes » en laissant la
+-- frontiere exactement dans l'etat qu'elle pretendait avoir corrige.
+--
+-- CE QUI EST EXIGE ICI, ET QUI EST VERIFIABLE A CET INSTANT: aucun membre
+-- au-dela des autorises, aucun role applicatif dans le role d'execution,
+-- l'ADMIN OPTION chez UN SEUL porteur et sans INHERIT ni SET, et aucune
+-- chaine d'appartenances qui y mene.
+--
+-- CE QUI NE L'EST PAS: l'egalite dans l'autre sens — « tout login declare est
+-- membre ». A cet instant elle est FAUSSE PAR CONSTRUCTION et doit l'etre:
+-- la migration installe le schema, l'enrolement des logins est posterieur et
+-- releve du plan de controle. La fonction l'exige en etat ACTIVE, ou elle a
+-- un sens; les harnais l'y exercent apres activation.
+select assert_authority_backend_membership();
 
 
 revoke create on schema public
