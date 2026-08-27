@@ -632,6 +632,175 @@ decor_deposer
 fi
 
 # ==========================================================================
+# D2. LA RELECTURE APRES LE VERROU — ce que voit le PERDANT d'une course
+# ==========================================================================
+# CE SCENARIO EXISTE PARCE QU'UN TROU DE TEST A ETE MESURE, PAS SUPPOSE.
+#
+# `normative_finalize_deployment` compare le manifeste a DEUX endroits, et les
+# deux blocs sont textuellement identiques:
+#
+#   1. le chemin rapide d'IDEMPOTENCE, AVANT le verrou — atteint quand la base
+#      est deja ACTIVE au moment de l'appel. C'est ce que la section D
+#      ci-dessus eprouve, sequentiellement;
+#   2. la RELECTURE APRES le verrou — « tout l'objet du verrou », dit le code.
+#      Elle n'est atteinte que par le PERDANT d'une course: il entre alors que
+#      la base est PENDING, attend derriere le verrou, et decouvre en le
+#      recevant que la base est devenue ACTIVE.
+#
+# Aucun test n'atteignait le second chemin: la matrice de mutation, dont la
+# cible etait ambigue, mutait toujours le premier. En neutralisant le second
+# separement, elle a montre que RIEN ne rougissait. Ce n'est PAS un defaut du
+# candidat — la garde post-verrou est bien presente et fonctionne; c'est un
+# defaut de COUVERTURE, et il se ferme ici.
+#
+# LA CAUSALITE EST CONSTATEE, JAMAIS ESPEREE. Aucun `sleep` ne sert de
+# synchronisation: A retient sa transaction jusqu'a AVOIR VU B bloquee sur un
+# verrou, et c'est cette observation qui autorise le commit.
+echo "      -- D2. la relecture apres le verrou (course sur manifeste)"
+
+# La fonction d'attente vit dans la base du decor: elle purge l'instantane de
+# `pg_stat_activity`, sans quoi une session en transaction relit indefiniment
+# l'etat d'avant le blocage qu'elle attend.
+d2_outils() {
+  admb -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<'SQL'
+create or replace function t_attendre_bloquee(
+  p_app text, p_secondes numeric default 60
+) returns void language plpgsql as $fn$
+declare fin timestamptz := clock_timestamp() + (p_secondes || ' s')::interval;
+begin
+  loop
+    perform pg_stat_clear_snapshot();
+    if exists (select 1 from pg_stat_activity
+                where application_name = p_app and wait_event_type = 'Lock') then
+      return;
+    end if;
+    if clock_timestamp() > fin then
+      raise exception 'barriere: % ne s''est jamais bloquee', p_app;
+    end if;
+  end loop;
+end $fn$;
+SQL
+}
+
+# d2_course <manifeste-du-perdant> <etiquette>
+# Rend, sur stdout: "<code-perdant>|<sortie-perdant>"
+d2_course() {
+  local mb="$1" etq="$2" appa appb ma
+  appa="FICTIF-d2-A-$$-$etq"; appb="FICTIF-d2-B-$$-$etq"
+  ma=$(ctl -tAc "select normative_settings_manifest()" 2>&1 | tr -d ' ')
+  [[ -n "$mb" ]] || mb="$ma"
+  cat > "$TMP_D2/a.sql" <<SQL
+begin;
+select normative_finalize_deployment('$ma');
+select t_attendre_bloquee('$appb');
+commit;
+SQL
+  cat > "$TMP_D2/b.sql" <<SQL
+begin;
+select normative_finalize_deployment('$mb');
+commit;
+SQL
+  PGAPPNAME="$appa" PGUSER="$CTL" PGPASSWORD="$MDP"     psql -X -q -v ON_ERROR_STOP=1 -d "$BASE" -f "$TMP_D2/a.sql"     >"$TMP_D2/a.log" 2>&1 &
+  local pa=$!
+  # A DETIENT LE VERROU AVANT QUE B PARTE. Sans cette attente, B pourrait
+  # gagner la course, prendre le verrou en premier, et le scenario mesurerait
+  # l'inverse de ce qu'il annonce.
+  d2_attendre "$appa" "detient" || { wait $pa; return 1; }
+  # `ON_ERROR_STOP` EST INDISPENSABLE ICI, et son absence a produit un FAUX
+  # ROUGE — mesure du 27/08. Le script du perdant est
+  # « begin; select ...; commit; »: sans cette option psql poursuit apres
+  # l'erreur, le `commit` final reussit (il annule), et psql sort avec le
+  # code 0. Le scenario concluait que le perdant avait ete ACCEPTE avec un
+  # manifeste different, alors que la garde post-verrou l'avait refuse par
+  # MANIFEST_MISMATCH. Un test qui juge sur le code de sortie d'un script SQL
+  # non arrete a l'erreur ne mesure pas ce qu'il croit mesurer.
+  PGAPPNAME="$appb" PGUSER="$CTL" PGPASSWORD="$MDP" psql -X -q -v ON_ERROR_STOP=1 -d "$BASE" -f "$TMP_D2/b.sql" >"$TMP_D2/b.log" 2>&1 &
+  local pb=$!
+  wait $pa; local ca=$?
+  wait $pb; local cb=$?
+  D2_CODE_A=$ca; D2_CODE_B=$cb
+  D2_SORTIE_B="$(cat "$TMP_D2/b.log" 2>/dev/null)"
+  return 0
+}
+
+d2_attendre() {  # d2_attendre <app> <detient|bloquee>
+  local app="$1" quoi="$2" i pred
+  if [[ "$quoi" == "detient" ]]; then
+    pred="exists(select 1 from pg_locks l join pg_stat_activity a on a.pid = l.pid
+                  where l.locktype='advisory' and l.granted
+                    and a.application_name='$app')"
+  else
+    pred="exists(select 1 from pg_stat_activity
+                  where application_name='$app' and wait_event_type='Lock')"
+  fi
+  for ((i = 0; i < 600; i++)); do
+    [[ "$(admb -tAc "select pg_stat_clear_snapshot(); select $pred" 2>/dev/null           | tail -1 | tr -d ' ')" == "t" ]] && return 0
+  done
+  echoue "D2. la session $app n'a jamais ete observee « $quoi »"
+  return 1
+}
+
+TMP_D2="$(mktemp -d)"
+if ! decor_poser g2; then
+  echoue "le decor D2 n'a pas pu etre pose"
+else
+  suivre_decor
+  d2_outils
+  # --- le PERDANT presente un manifeste DIFFERENT: il doit etre refuse -----
+  if d2_course "$(printf '0%.0s' $(seq 1 64))" "diff"; then
+    ETAT_D2=$(ctl -tAc "select normative_activation_state()" 2>&1 | tr -d ' ')
+    if [[ "$D2_CODE_A" -ne 0 ]]; then
+      echoue "D2. le gagnant n'a pas finalise (code $D2_CODE_A): scenario non evalue"
+    elif [[ "$ETAT_D2" != "ACTIVE" ]]; then
+      echoue "D2. la base n'est pas ACTIVE apres le gagnant (« $ETAT_D2 »)"
+    elif grep -qiE "MANIFEST_MISMATCH|ne correspond|manifeste" <<<"$D2_SORTIE_B"; then
+      echo "      ok: D2. le perdant, debloque apres le commit du gagnant,"
+      echo "             relit ACTIVE et REFUSE son manifeste different"
+      echo "             ($(grep -m1 -oiE '(ERROR|ERREUR)[^|]{0,90}' <<<"$D2_SORTIE_B" | cut -c1-90))"
+    elif [[ "$D2_CODE_B" -eq 0 ]]; then
+      rouge "D2. le PERDANT a obtenu un succes avec un manifeste DIFFERENT:"
+      rouge "    la relecture apres le verrou n'a pas compare le manifeste."
+      rouge "    sortie du perdant: $(tr '\n' ' ' <<<"$D2_SORTIE_B" | cut -c1-200)"
+    else
+      echoue "D2. le perdant a echoue pour une AUTRE raison que le manifeste:"
+      echoue "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$D2_SORTIE_B" | cut -c1-140)"
+    fi
+    # L'ETAT PERSISTANT EST CELUI DU GAGNANT, et rien d'autre.
+    MOK=$(ctl -tAc "select normative_finalize_deployment(
+            normative_settings_manifest())" 2>&1)
+    grep -q "deja finalise" <<<"$MOK"       || echoue "D2. l'etat persistant n'est plus celui du gagnant: $(head -1 <<<"$MOK")"
+  fi
+  decor_deposer
+fi
+
+# --- LE JUMEAU POSITIF: meme manifeste, resultat idempotent ---------------
+# Sans lui, la garde serait satisfaite par un systeme qui refuse TOUTE
+# finalisation concurrente — et le refus ci-dessus ne dirait plus rien.
+if ! decor_poser g3; then
+  echoue "le decor D2+ n'a pas pu etre pose"
+else
+  suivre_decor
+  d2_outils
+  if d2_course "" "meme"; then
+    if [[ "$D2_CODE_A" -ne 0 ]]; then
+      echoue "D2+. le gagnant n'a pas finalise (code $D2_CODE_A)"
+    elif [[ "$D2_CODE_B" -ne 0 ]]; then
+      rouge "D2+. le perdant a ete REFUSE alors qu'il presentait le MEME"
+      rouge "     manifeste: la course rend la finalisation non idempotente."
+      rouge "     $(grep -m1 -iE 'ERROR|ERREUR' <<<"$D2_SORTIE_B" | cut -c1-120)"
+    elif grep -q "deja finalise" "$TMP_D2/b.log"; then
+      echo "      ok: D2+. le perdant, avec le MEME manifeste, obtient le"
+      echo "              resultat idempotent apres le verrou"
+    else
+      echoue "D2+. le perdant a reussi sans annoncer l'idempotence:"
+      echoue "     $(head -1 "$TMP_D2/b.log" | cut -c1-120)"
+    fi
+  fi
+  decor_deposer
+fi
+rm -rf "$TMP_D2"
+
+# ==========================================================================
 # E. LES EXEMPTIONS DE SERVICE COMPARENT LE NOM SEUL
 # ==========================================================================
 # Le bloc des roles d'AUTORITE compare `m.oid` ET `m.rolname`. Les deux
