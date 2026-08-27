@@ -329,6 +329,15 @@ etape "restauration inter-cluster" \
 # CET AUTO-TEST N'A BESOIN D'AUCUNE BASE: il tue la matrice avant qu'elle n'en
 # demande une. Il est ici parce que c'est ici que passe la CI, et non parce
 # qu'il aurait quoi que ce soit a faire d'un cluster.
+# L'INSTRUMENT DE PREUVE EST LUI AUSSI EPROUVE, et avant de s'en servir.
+# `mutation_matrix.py` decide si une garantie porte quelque chose: un
+# instrument fausse ne rend pas un verdict faux de temps en temps, il le rend
+# SILENCIEUSEMENT. L'auto-test ne touche aucune base et dure quelques
+# millisecondes — il n'a aucune raison d'etre saute.
+echo "==> auto-test du moteur de mutations"
+etape "auto-test du moteur de mutations" \
+  python3 "$HERE/mutation_engine_selftest.py"
+
 echo "==> isolation de la matrice de mutation"
 etape "isolation de la matrice de mutation" \
   "$HERE/mutation_isolation_selftest.sh"

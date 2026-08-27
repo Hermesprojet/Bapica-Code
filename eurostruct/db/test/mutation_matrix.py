@@ -1655,6 +1655,19 @@ try:
     # UN SEUL STALE ARRETE TOUT, ET AVANT LE PREMIER LANCEMENT. Laisser partir
     # une campagne dont un controle ne peut pas etre exerce, c'est produire un
     # compte rendu qui additionne des mesures et des absences de mesure.
+    # PRE-VOL SEUL. La consigne peut etre « eprouve l'instrument, ne lance pas
+    # encore la campagne »: sans ce mode il faudrait lancer 67 harnais pour
+    # savoir si les 67 cibles tiennent encore.
+    if "--prevol-seulement" in sys.argv:
+        nettoyer_espace()
+        if PERIMES_PREVOL:
+            print(f"PRE-VOL: {len(PERIMES_PREVOL)} controle(s) STALE — "
+                  "la campagne serait INVALIDE.")
+            sys.exit(2)
+        print(f"PRE-VOL: {len(PLAT)} controle(s) retenus, tous exercables.")
+        print("         stale 0 | ambiguous 0 | missing_combined_control 0")
+        print("         Aucun controle n'a ete lance (--prevol-seulement).")
+        sys.exit(0)
     if PERIMES_PREVOL:
         nettoyer_espace()
         print(f"MUTATIONS: campagne INVALIDE — {len(PERIMES_PREVOL)} controle(s) "
