@@ -878,12 +878,19 @@ create policy normative_activation_ecriture on normative_activation
   for insert to eurostruct_normative_activator with check (true);""",
        """create policy normative_activation_activateur on normative_activation
   for all to eurostruct_normative_activator using (true) with check (true);""")], False),
+    # LE TEXTE MUTE SUIT LE CODE, SINON LE CONTROLE MEURT EN SILENCE. Mesure
+    # du 27/08: ce controle etait PERIME depuis que `eurostruct_authority_backend`
+    # a rejoint le jeu canonique de `run.sh` — la matrice le comptait « non
+    # execute », donc la garantie « l'activator doit figurer au jeu canonique »
+    # n'etait plus verifiee par mutation, sans que rien ne rougisse.
     ("7  l'activator quitte le jeu canonique", "7", R,
      [("""CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator
-            normative_backend normative_governance eurostruct_deployment)""",
+            normative_backend normative_governance eurostruct_deployment
+            eurostruct_authority_backend)""",
        """CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
-            normative_backend normative_governance eurostruct_deployment)""")], False),
+            normative_backend normative_governance eurostruct_deployment
+            eurostruct_authority_backend)""")], False),
     ("8  la separation plan/migrateur est retiree", "8b", S,
      [("  if d_oid = m_oid or d_nom = m_nom then", "  if false then")], False),
 ]
