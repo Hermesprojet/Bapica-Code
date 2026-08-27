@@ -317,7 +317,18 @@ remplace l'autre, et il serait faux de compter les 65 comme couvrant 6.3c.
 
 ---
 
-## 5 bis. La campagne complète de mutations, exécutée sur le SHA gelé
+## 5 bis. La campagne de mutations du 27/08 — NON RETENUE COMME CLÔTURE
+
+> **RECTIFICATION.** Ce paragraphe décrivait une campagne « sur le SHA gelé ».
+> Ce statut est **retiré** : `ea72f73` n'est pas — et n'a jamais pu être — un
+> SHA de clôture, parce que `56777d1` a ensuite modifié `mutation_matrix.py`,
+> c'est-à-dire l'outil de preuve lui-même. Un delta qui touche la chaîne de
+> preuve compte, fût-il minuscule. Cette campagne est de surcroît invalide
+> comme clôture pour quatre raisons cumulées : le contrôle 7 était périmé
+> *pendant* le passage complet, sa correction n'a été vérifiée qu'en exécution
+> filtrée, le contrôle B n'a pas reçu de statut causal satisfaisant, et aucune
+> campagne complète n'a été rejouée après correction. Elle est conservée ici
+> comme **mesure historique**, jamais comme preuve de clôture.
 
 Lancée après le gel, avec 195 minutes disponibles contre les 100 exigées.
 Espace isolé : worktree détaché sur `ea72f73`.
@@ -392,8 +403,13 @@ défaut qu'il prétend corriger. Il est porté au suivi, avec sa mesure.
 
 ### 7.1 Ce qui est mesuré vert
 
-**SHA gelé : `ea72f73`.** Les quatre étages ont été exécutés dans l'ordre exigé,
-sur ce SHA, avec l'arbre propre et sans aucune édition pendant l'exécution.
+**AUCUN SHA N'EST GELÉ.** Les quatre étages ci-dessous ont été exécutés sur
+`ea72f73`, arbre propre, sans édition pendant l'exécution — mais `ea72f73` a
+été **dégelé** : `56777d1` a modifié `mutation_matrix.py` après coup, et l'outil
+de preuve appartient à la chaîne de preuve. Ces résultats valent donc pour
+`ea72f73` et pour lui seul ; le candidat de clôture devra être un SHA unique
+contenant le code, les migrations, les tests, les harnais **et** leurs
+corrections.
 
 | Étage | Résultat |
 |---|---|
