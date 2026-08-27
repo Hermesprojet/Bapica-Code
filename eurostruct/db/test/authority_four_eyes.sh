@@ -877,9 +877,9 @@ else
                    from normative_authority_decisions where id='$DF'")"
   detail "six tentatives sur le socle, refusees: $OF_REFUS/6"
   if [[ $OF_REFUS -ne 6 ]]; then
-    rouge objet-fige "une colonne du socle a ete modifiable:$OF_PASSE"
+    rouge objet-fige "X1. une colonne du socle a ete modifiable:$OF_PASSE"
   elif [[ "$SOCLE_AV" != "$SOCLE_AP" ]]; then
-    rouge objet-fige "le socle a change malgre les refus:"
+    rouge objet-fige "X1. le socle a change malgre les refus:"
     detail "avant « $SOCLE_AV »"
     detail "apres « $SOCLE_AP »"
   else
@@ -918,7 +918,7 @@ else
   detail "CONSUMED->APPROVED: $(grep -m1 -oiE 'interdite|figes a la creation|ERROR[^|]{0,40}' <<<"$T2" | head -1)"
   detail "etats apres: $DF=$ET_AP (avant $ET_AV) ; $D11=$ET11"
   if [[ "$ET_AP" != "PENDING" || "$ET11" != "CONSUMED" ]]; then
-    rouge transition-interdite "un etat a ete force: $DF=$ET_AP, $D11=$ET11"
+    rouge transition-interdite "X2. un etat a ete force: $DF=$ET_AP, $D11=$ET11"
   elif grep -q "interdite" <<<"$T1" && grep -q "interdite" <<<"$T2"; then
     sur transition-interdite "le cycle ne se saute pas et ne remonte pas: les"
     detail "deux transitions illegales sont refusees et nommees."
@@ -944,7 +944,7 @@ else
   detail "tentative: $(grep -m1 -oiE 'ne modifie pas l.{0,3}approbation|ERROR[^|]{0,50}' <<<"$RA" | head -1)"
   detail "approbation avant « $AP_AV » ; apres « $AP_AP » ; etat=$ET1"
   if [[ "$AP_AV" != "$AP_AP" || "$ET1" == "CONSUMED" ]]; then
-    rouge approbation-non-rejouee "la consommation a pu reecrire l'approbation."
+    rouge approbation-non-rejouee "X3. la consommation a pu reecrire l'approbation."
   elif grep -qi "ne modifie pas l" <<<"$RA"; then
     sur approbation-non-rejouee "la consommation ne reecrit pas l'approbation:"
     detail "changer d'approbateur en consommant est refuse, et nomme."
@@ -962,7 +962,7 @@ else
   NAP="$(q "select count(*) from normative_authority_decisions")"
   detail "lignes avant=$NAV apres=$NAP ; $(grep -m1 -oiE 'ne s.{0,3}efface pas|ERROR[^|]{0,50}' <<<"$RD" | head -1)"
   if [[ "$NAV" != "$NAP" ]]; then
-    rouge suppression-refusee "une decision a ete effacee: la preuve de ce qui"
+    rouge suppression-refusee "X4. une decision a ete effacee: la preuve de ce qui"
     detail "a ete engage disparait avec elle."
   elif grep -qi "efface pas" <<<"$RD"; then
     sur suppression-refusee "une decision ne s'efface pas, meme par le"

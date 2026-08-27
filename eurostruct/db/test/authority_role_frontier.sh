@@ -516,10 +516,10 @@ ctlp -c "revoke $CIBLE from \"$ORD\";" >/dev/null 2>&1
 PT_APRES="$(postcondition)"
 detail "avec « $ORD » enrole: $(head -c 100 <<<"$PT" | tr '\n' ' ')"
 if ! grep -q "SUPPLEMENTAIRE" <<<"$PT"; then
-  rouge postcondition-membre-en-trop "un membre non declare n'a PAS ete refuse:"
+  rouge postcondition-membre-en-trop "PC1. un membre non declare n'a PAS ete refuse:"
   detail "$(head -c 140 <<<"$PT")"
 elif grep -qiE "ERROR|ERREUR" <<<"$PT_APRES"; then
-  rouge postcondition-membre-en-trop "apres retrait, la postcondition refuse"
+  rouge postcondition-membre-en-trop "PC1. apres retrait, la postcondition refuse"
   detail "toujours: le refus ci-dessus ne prouve donc rien."
   detail "$(head -c 110 <<<"$PT_APRES")"
 else
@@ -546,10 +546,10 @@ if [[ "$PC_ATT" != "true" ]]; then
   troue postcondition-admin-en-chaine "le pont n'a pas recu l'ADMIN: le"
   detail "scenario n'a pas ete pose, rien n'a donc ete eprouve."
 elif ! grep -qiE "ENROLER|ADMIN OPTION" <<<"$PC"; then
-  rouge postcondition-admin-en-chaine "un porteur d'ADMIN non declare n'a PAS"
+  rouge postcondition-admin-en-chaine "PC2. un porteur d'ADMIN non declare n'a PAS"
   detail "ete refuse: $(head -c 140 <<<"$PC")"
 elif grep -qiE "ERROR|ERREUR" <<<"$PC_APRES"; then
-  rouge postcondition-admin-en-chaine "apres retrait, la postcondition refuse"
+  rouge postcondition-admin-en-chaine "PC2. apres retrait, la postcondition refuse"
   detail "toujours: $(head -c 110 <<<"$PC_APRES")"
 else
   sur postcondition-admin-en-chaine "un porteur d'ADMIN sans INHERIT ni SET est"
@@ -591,10 +591,10 @@ elif [[ "$PD_ATT" != "$FERME" ]]; then
   troue postcondition-declare-absent "le retrait de l'appartenance n'a pas pris"
   detail "($PD_ATT): l'ecart n'a donc jamais existe, rien n'a ete eprouve."
 elif ! grep -q "DECLARE mais n" <<<"$PD"; then
-  rouge postcondition-declare-absent "une declaration sans appartenance passe:"
+  rouge postcondition-declare-absent "PC3. une declaration sans appartenance passe:"
   detail "$(head -c 140 <<<"$PD")"
 elif grep -qiE "ERROR|ERREUR" <<<"$PD_APRES"; then
-  rouge postcondition-declare-absent "apres remise de l'appartenance, la"
+  rouge postcondition-declare-absent "PC3. apres remise de l'appartenance, la"
   detail "postcondition refuse toujours: $(head -c 100 <<<"$PD_APRES")"
 else
   sur postcondition-declare-absent "un login declare qui n'atteint pas le"

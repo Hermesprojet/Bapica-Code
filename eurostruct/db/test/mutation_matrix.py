@@ -58,6 +58,7 @@ import time
 RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 M = "db/migrations/0010_normative_confirmation.sql"
 A13 = "db/migrations/0013_authenticated_actor.sql"
+A14 = "db/migrations/0014_four_eyes_decisions.sql"
 S = "db/control_plane/0001_normative_seal.sql"
 R = "db/test/run.sh"
 H = "db/test/authority_closure.sh"
@@ -1489,6 +1490,67 @@ if RECOPIES:
         print(f"             ... et {len(RECOPIES) - 12} autre(s)")
 if FILTRE:
     print(f"         (filtre: {' '.join(FILTRE)} — execution PARTIELLE)")
+# --------------------------------------------------------------------------
+# LA POSTCONDITION D'APPARTENANCE (0013) — trois couches, trois mutations
+# --------------------------------------------------------------------------
+# CES TROIS GARANTIES ONT ETE AJOUTEES SANS FALSIFICATION, et c'est
+# precisement ce que cette matrice existe pour empecher. Une postcondition
+# ecrite le meme jour que le controle qui la mesure n'a jamais ete eprouvee
+# CONTRE quoi que ce soit: rien ne dit que le vert vienne d'elle.
+#
+# Chaque couche est retiree SEPAREMENT. Les retirer ensemble dirait « l'une
+# des trois porte quelque chose » — ce qui est vrai de n'importe quel triplet
+# dont un membre travaille.
+CAS_POSTCONDITION = [
+    # H1 lit les LIGNES de `pg_auth_members`. Sans elle, il ne reste que les
+    # deux boucles `pg_has_role('USAGE'/'SET')` — et un membre declare-moins
+    # avec USAGE y serait vu... mais un membre EN TROP avec USAGE l'est aussi.
+    # On neutralise donc la branche qui NOMME le membre supplementaire.
+    ("PM1 le membre supplementaire n'est plus nomme", "PC1", A13,
+     [("""      ecarts := ecarts || format(
+        'membre SUPPLEMENTAIRE « %s » (admin=%s, inherit=%s, set=%s): il '
+        'n''est ni declare dans « eurostruct.authority_backend_logins », ni '
+        'le residu d''ADMIN que PostgreSQL impose au createur du role',
+        r.rolname, r.admin_option, r.inherit_option, r.set_option);""",
+       "      null;  -- H1 neutralise par mutation")], False),
+    # H2 est la seule couche transitive. Sans elle, un porteur d'ADMIN atteint
+    # par une CHAINE ne figure dans aucune ligne directe et passe entierement.
+    ("PM2 la chaine d'ADMIN n'est plus suivie", "PC2", A13,
+     [("""       and pg_has_role(p.rolname, 'eurostruct_authority_backend',
+                       'MEMBER WITH ADMIN OPTION')
+       and p.rolname <> all (admins)""",
+       "       and false  -- H2 neutralise par mutation")], False),
+    # H3 est le seul sens « declare mais absent », et il n'est exige qu'en
+    # ACTIVE. Le neutraliser ne peut donc rien casser d'autre.
+    ("PM3 la declaration decorative n'est plus vue", "PC3", A13,
+     [("""  if normative_activation_state() = 'ACTIVE' then
+    foreach une_declaration in array declares loop""",
+       """  if false then
+    foreach une_declaration in array declares loop""")], False),
+]
+
+# --------------------------------------------------------------------------
+# LES DECLENCHEURS DE 0014 — le socle fige et l'effacement interdit
+# --------------------------------------------------------------------------
+# MEME RAISON: ils existaient depuis le premier jet de 0014 et n'etaient
+# exerces par AUCUN controle jusqu'a ce lot. Les mesurer une fois ne dit pas
+# qu'ils portent quelque chose; les retirer et voir rougir, si.
+CAS_DECLENCHEURS_0014 = [
+    ("DT1 le socle d'une decision n'est plus fige", "X1", A14,
+     [("""    raise exception
+      'decision %: son objet, sa portee, son proposant, sa source et sa '
+      'correlation sont figes a la creation. Seul l''etat progresse.', old.id
+      using errcode = 'insufficient_privilege';""",
+       "    null;  -- garde du socle retiree par mutation")], False),
+    ("DT2 une decision redevient effacable", "X4", A14,
+     [("""  raise exception
+    'une decision d''autorite ne s''efface pas: elle explique ce qui a ete '
+    'engage, et l''effacer effacerait la preuve de la decision.'
+    using errcode = 'insufficient_privilege';""",
+       "  return old;  -- interdiction d'effacement retiree par mutation")],
+     False),
+]
+
 LOTS = [
     (CAS, {}),
     (CAS_AUTORITE, dict(harnais="db/test/authority_closure.sh", prefixe="mv")),
@@ -1500,6 +1562,10 @@ LOTS = [
     (CAS_ACL_SCEAU, dict(harnais="db/test/seal_contract.sh", prefixe="mw")),
     (CAS_BARRIERE,
      dict(harnais="db/test/gate_protocol_selftest.sh", prefixe="mb")),
+    (CAS_POSTCONDITION,
+     dict(harnais="db/test/authority_role_frontier.sh", prefixe="mr")),
+    (CAS_DECLENCHEURS_0014,
+     dict(harnais="db/test/authority_four_eyes.sh", prefixe="mq")),
 ]
 
 TOTAL = sum(len(cas) for cas, _ in LOTS)
