@@ -273,6 +273,41 @@ begin
     end if;
   end loop;
 
+  -- LE DROIT DE CREATE SUR `public`, VERIFIE ET NON ESPERE.
+  --
+  -- CETTE MIGRATION LE REVOQUE, ET NE VERIFIAIT PAS QU'IL SOIT PARTI.
+  -- Mesure, endossement du donneur neutralise dans une copie jetable:
+  --
+  --   apres 0010 : pg_database_owner -> eurostruct_normative_writer
+  --   apres 0011 : pg_database_owner -> eurostruct_normative_writer  (RESTE)
+  --   apres 0012 : (parti — son endossement, lui, etait intact)
+  --
+  -- `0011` passait donc au vert en laissant le privilege en place. La
+  -- provenance qui produit cela est asymetrique et silencieuse: l'octroi est
+  -- pose SOUS `pg_database_owner`, et la revocation emise par un role qui
+  -- detient un `CREATE ... WITH GRANT OPTION` explicite est resolue sous CE
+  -- role-la — lequel n'a jamais rien accorde. PostgreSQL ne trouve rien a
+  -- retirer, et ne le dit pas.
+  for r in
+    select g.rolname,
+           string_agg(distinct pg_get_userbyid(a.grantor), ', ') as donneurs
+      from pg_namespace n, aclexplode(n.nspacl) a
+      join pg_roles g on g.oid = a.grantee
+     where n.nspname = 'public' and a.privilege_type = 'CREATE'
+       and g.rolname in ('eurostruct_normative_writer',
+                         'eurostruct_normative_bootstrap',
+                         'eurostruct_normative_activator',
+                         'eurostruct_authority_backend',
+                         'normative_backend', 'normative_governance')
+     group by g.rolname
+  loop
+    ecarts := ecarts || format(
+      'AUTHORITY_0011_SCHEMA_CREATE_RETAINED: le role d''autorite « %s » '
+      'conserve CREATE sur le schema public (donneur: %s). La revocation de '
+      'cette migration n''a pas pris — un octroi ne se retire que sous son '
+      'donneur.', r.rolname, r.donneurs);
+  end loop;
+
   if array_length(ecarts, 1) > 0 then
     -- UN IDENTIFIANT D'INVARIANT STABLE, ET NON UNE PHRASE.
     --
