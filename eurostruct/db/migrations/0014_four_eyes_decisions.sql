@@ -1026,6 +1026,44 @@ begin
     end if;
   end loop;
 
+  -- A-bis. LES PRIMITIVES NOMMEES APPARTIENNENT A UNE AUTORITE.
+  --
+  -- CE CONTROLE EXISTE PARCE QUE LE BALAYAGE CI-DESSUS EST DEFINI PAR LA
+  -- PROPRIETE, et qu'un critere qui se definit par ce qu'il mesure ne mesure
+  -- plus rien quand la chose bouge: une fonction dont le proprietaire derive
+  -- SORT du balayage, en silence, et l'assertion continue de rendre vert.
+  -- Defaut mesure en ecrivant le harnais de derive — `alter function ...
+  -- owner to <migrateur>` ne produisait aucun ecart.
+  --
+  -- La liste est donc NOMMEE. Elle ne remplace pas le balayage: elle lui
+  -- donne un point fixe.
+  for r in
+    select unnest(array[
+             'resolve_normative_authorisation', 'consume_normative_authorisation',
+             'normative_grant_is_effective', 'normative_grant_descendants',
+             'check_normative_grant_lineage', 'normative_lock_grant_chains',
+             'normative_decision_propose', 'normative_decision_approve',
+             'normative_decision_consume', 'check_normative_decision_transition',
+             'forbid_decision_delete', 'normative_authenticated_actor',
+             'bootstrap_normative_administrator']) as attendue
+  loop
+    if not exists (
+      select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public' and p.proname = r.attendue
+         and pg_get_userbyid(p.proowner) in ('eurostruct_normative_writer',
+                                             'eurostruct_normative_bootstrap',
+                                             'eurostruct_normative_activator'))
+    then
+      ecarts := ecarts || format(
+        'AUTHORITY_COMPOSITION_OWNER_MISMATCH: %s est absente ou n''appartient '
+        'plus a un role d''autorite (proprietaire actuel: %s)', r.attendue,
+        coalesce((select pg_get_userbyid(p.proowner) from pg_proc p
+                    join pg_namespace n on n.oid = p.pronamespace
+                   where n.nspname = 'public' and p.proname = r.attendue
+                   limit 1), 'AUCUN — fonction absente'));
+    end if;
+  end loop;
+
   -- B. LES CINQ TABLES D'AUTORITE: proprietaire, RLS, FORCE RLS.
   foreach nom in array tables_autorite loop
     if not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace

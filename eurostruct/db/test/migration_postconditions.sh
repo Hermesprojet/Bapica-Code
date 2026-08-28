@@ -67,7 +67,10 @@ exiger_roles_absents "migration_postconditions.sh" \
 verdicts_declarer \
   m0011-verte m0011-privilege-sans-effet m0011-appel-neutralise m0011-atomicite \
   m0012-verte m0012-privilege-sans-effet m0012-appel-neutralise m0012-atomicite \
-  m0014-verte m0014-privilege-sans-effet m0014-appel-neutralise m0014-atomicite
+  m0014-verte m0014-privilege-sans-effet m0014-appel-neutralise m0014-atomicite \
+  derive-proprietaire derive-public-execute derive-search-path \
+  derive-trigger-desactive derive-policy-absente derive-policy-mauvais-role \
+  derive-ecriture-directe derive-force-rls derive-revoke-sans-effet
 
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
@@ -373,6 +376,178 @@ select assert_authority_composition();" \
   "select (select count(*) = 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
             where n.nspname='public' and c.relname='normative_authority_decisions')" \
   "normative_authority_decisions"
+
+# ==========================================================================
+# LES DERIVES D'APRES-DEPLOIEMENT — une autre question, et il faut le dire
+# ==========================================================================
+# CE QUI PRECEDE ETABLIT QUE LA MIGRATION SE VERIFIE ELLE-MEME. Cela ne dit
+# rien de ce qui arrive APRES: un declencheur desactive a la main, une policy
+# supprimee, un search_path relache. La migration a deja tourne; elle ne peut
+# rien voir.
+#
+# ICI, L'ASSERTION EST DONC APPELEE DIRECTEMENT, ET C'EST ASSUME. La question
+# posee n'est plus « le produit l'execute-t-il ? » — elle a sa reponse plus
+# haut — mais « detecte-t-elle la derive, et la NOMME-t-elle ? ». C'est la
+# question qu'un controle de readiness pose sur une base en service.
+#
+# CHAQUE DERIVE EST DEFAITE ENSUITE, et le vert doit revenir. Sans ce retour,
+# un refus pourrait n'etre qu'une base cassee.
+if ! decor_poser; then
+  for v in derive-proprietaire derive-public-execute derive-search-path \
+           derive-trigger-desactive derive-policy-absente \
+           derive-policy-mauvais-role derive-ecriture-directe \
+           derive-force-rls derive-revoke-sans-effet; do
+    troue "$v" "decor impossible"
+  done
+else
+  DERIVE_PRETE=1
+  for f in "$DB_DIR"/migrations/*.sql; do
+    esc_appliquer_migration "$f" mig >/dev/null 2>&1 || {
+      echoue "decor des derives: $(basename "$f") a echoue"; DERIVE_PRETE=0; break; }
+  done
+
+  # eprouver_derive <verdict> <identifiant> <assertion> <sql-derive> <sql-retour>
+  eprouver_derive() {
+    local v="$1" ident="$2" assertion="$3" derive="$4" retour="$5"
+    local avant apres pendant
+    if [[ "$DERIVE_PRETE" -ne 1 ]]; then
+      troue "$v" "le decor des derives n'a pas ete pose"; return
+    fi
+    avant="$(admb -tAc "select $assertion" 2>&1)"
+    if grep -qiE "ERROR|ERREUR" <<<"$avant"; then
+      troue "$v" "l'assertion refuse DEJA avant la derive: rien n'est eprouve"
+      detail "$(head -c 120 <<<"$avant")"
+      return
+    fi
+    if ! admb -q -v ON_ERROR_STOP=1 -c "$derive" >/dev/null 2>&1; then
+      troue "$v" "la derive n'a pas pu etre posee: scenario non joue"
+      return
+    fi
+    pendant="$(admb -tAc "select $assertion" 2>&1)"
+    admb -q -c "$retour" >/dev/null 2>&1
+    apres="$(admb -tAc "select $assertion" 2>&1)"
+    if ! grep -qF "$ident" <<<"$pendant"; then
+      rouge "$v" "la derive n'est PAS detectee, ou pas nommee « $ident »:"
+      detail "$(head -c 150 <<<"$pendant")"
+    elif grep -qiE "ERROR|ERREUR" <<<"$apres"; then
+      rouge "$v" "apres retour en arriere l'assertion refuse toujours:"
+      detail "le refus ci-dessus ne prouve donc rien. $(head -c 110 <<<"$apres")"
+    else
+      sur "$v" "detectee et nommee « $ident »; le retour rend le vert."
+    fi
+  }
+
+  echo "      -- les neuf derives"
+
+  # L'ASSERTION AGREGEE, ET NON LA LOCALE DE 0012 — mesure a l'appui.
+  # `assert_0012_lineage_surface()` decrit l'etat A LA FIN DE 0012, ou
+  # `normative_grant_is_effective` n'est pas encore accordee au backend
+  # d'autorite; sur une base COMPLETEMENT deployee elle refuse donc a juste
+  # titre, et ne peut pas servir de detecteur de derive. C'est precisement le
+  # role de l'agregee.
+  eprouver_derive derive-proprietaire "AUTHORITY_COMPOSITION_OWNER_MISMATCH" \
+    "assert_authority_composition()" \
+    "alter function normative_grant_descendants(uuid) owner to \"$MIG\"" \
+    "alter function normative_grant_descendants(uuid) owner to eurostruct_normative_writer"
+
+  eprouver_derive derive-public-execute "AUTHORITY_0014_PUBLIC_EXECUTE" \
+    "assert_0014_decisions_surface()" \
+    "grant execute on function normative_decision_consume(uuid) to public" \
+    "revoke execute on function normative_decision_consume(uuid) from public"
+
+  eprouver_derive derive-search-path "AUTHORITY_0014_SEARCH_PATH_UNPINNED" \
+    "assert_0014_decisions_surface()" \
+    "alter function normative_decision_propose(text, text, uuid, country_code,
+       text, text, text, normative_permission, text) reset search_path" \
+    "alter function normative_decision_propose(text, text, uuid, country_code,
+       text, text, text, normative_permission, text) set search_path = public, pg_temp"
+
+  eprouver_derive derive-trigger-desactive "AUTHORITY_0014_TRIGGER_NOT_ENABLED" \
+    "assert_0014_decisions_surface()" \
+    "alter table normative_authority_decisions
+       disable trigger normative_decisions_are_not_deletable" \
+    "alter table normative_authority_decisions
+       enable trigger normative_decisions_are_not_deletable"
+
+  eprouver_derive derive-policy-absente "AUTHORITY_0014_POLICY_MISMATCH" \
+    "assert_0014_decisions_surface()" \
+    "drop policy decisions_governance_read on normative_authority_decisions" \
+    "create policy decisions_governance_read on normative_authority_decisions
+       for select to normative_governance using (true)"
+
+  # LE MAUVAIS ROLE DANS UNE POLICY EST LE PIRE DES TROIS: la policy EXISTE,
+  # elle est permissive, elle porte le bon nom et la bonne commande. Seul le
+  # role change — et sous FORCE RLS, celui qui n'est plus nomme lit ZERO LIGNE
+  # au lieu de recevoir une erreur.
+  eprouver_derive derive-policy-mauvais-role "AUTHORITY_0014_POLICY_MISMATCH" \
+    "assert_0014_decisions_surface()" \
+    "drop policy decisions_governance_read on normative_authority_decisions;
+     create policy decisions_governance_read on normative_authority_decisions
+       for select to normative_backend using (true)" \
+    "drop policy decisions_governance_read on normative_authority_decisions;
+     create policy decisions_governance_read on normative_authority_decisions
+       for select to normative_governance using (true)"
+
+  eprouver_derive derive-ecriture-directe "AUTHORITY_0014_DIRECT_WRITE_GRANTED" \
+    "assert_0014_decisions_surface()" \
+    "grant insert on normative_authority_decisions to normative_governance" \
+    "revoke insert on normative_authority_decisions from normative_governance"
+
+  eprouver_derive derive-force-rls "AUTHORITY_0014_FORCE_RLS_DISABLED" \
+    "assert_0014_decisions_surface()" \
+    "alter table normative_authority_decisions no force row level security" \
+    "alter table normative_authority_decisions force row level security"
+
+  # ------------------------------------------------------------------------
+  # LE PIEGE D'ORIGINE, JOUE POUR DE VRAI: un REVOKE emis par un role qui n'a
+  # pas le droit de le faire. PostgreSQL emet un WARNING, ne fait RIEN, et
+  # rend le code 0. C'est ce silence qui a rendu toutes les postconditions
+  # ci-dessus necessaires; il est ici constate, pas suppose.
+  echo "      -- derive-revoke-sans-effet: le WARNING qui ne fait rien"
+  if [[ "$DERIVE_PRETE" -ne 1 ]]; then
+    troue derive-revoke-sans-effet "decor des derives non pose"
+  else
+    admb -q -c "grant execute on function normative_decision_consume(uuid) to public" \
+      >/dev/null 2>&1
+    AV="$(q "select count(*) from aclexplode((select proacl from pg_proc p
+              join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and p.proname='normative_decision_consume')) a
+             where a.grantee = 0 and a.privilege_type='EXECUTE'")"
+    # Le service n'est NI proprietaire NI porteur du droit: son REVOKE ne peut
+    # rien faire — et PostgreSQL ne le lui dira pas autrement que par un
+    # WARNING.
+    SORTIE_RV="$(PGUSER="$SVC" PGPASSWORD="$MDP" psql -X -q -v ON_ERROR_STOP=1 \
+      -d "$BASE" -c "revoke execute on function normative_decision_consume(uuid) from public" 2>&1)"
+    CODE_RV=$?
+    AP="$(q "select count(*) from aclexplode((select proacl from pg_proc p
+              join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and p.proname='normative_decision_consume')) a
+             where a.grantee = 0 and a.privilege_type='EXECUTE'")"
+    VU="$(admb -tAc "select assert_0014_decisions_surface()" 2>&1)"
+    admb -q -c "revoke execute on function normative_decision_consume(uuid) from public" \
+      >/dev/null 2>&1
+    detail "PUBLIC avant le REVOKE: $AV ; apres: $AP ; code psql: $CODE_RV"
+    detail "$(head -c 120 <<<"$SORTIE_RV" | tr '\n' ' ')"
+    if [[ "$AV" != "1" ]]; then
+      troue derive-revoke-sans-effet "PUBLIC n'a pas recu le droit: scenario non pose"
+    elif [[ "$AP" != "1" ]]; then
+      rouge derive-revoke-sans-effet "le REVOKE d'un non-ayant-droit a PRIS:"
+      detail "le piege n'existe pas sur ce cluster, et les postconditions"
+      detail "reposent sur une premisse fausse."
+    elif [[ "$CODE_RV" -ne 0 ]]; then
+      troue derive-revoke-sans-effet "psql a rendu $CODE_RV: ce n'est pas le"
+      detail "silence attendu, le scenario mesure autre chose."
+    elif grep -qF "AUTHORITY_0014_PUBLIC_EXECUTE" <<<"$VU"; then
+      sur derive-revoke-sans-effet "le REVOKE d'un non-ayant-droit ne fait RIEN,"
+      detail "psql rend 0, et seule la postcondition voit que PUBLIC execute"
+      detail "encore. C'est tout le motif de ce lot, mesure sur pieces."
+    else
+      rouge derive-revoke-sans-effet "la postcondition ne voit pas le PUBLIC"
+      detail "restant: $(head -c 120 <<<"$VU")"
+    fi
+  fi
+  decor_deposer
+fi
 
 # ==========================================================================
 verdicts_verifier || true
