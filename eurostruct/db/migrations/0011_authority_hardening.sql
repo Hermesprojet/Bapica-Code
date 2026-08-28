@@ -335,6 +335,26 @@ do $$
 declare
   donneur text;
   appelant text := current_user;
+  -- L'ENSEMBLE DES DONNEURS ADMISSIBLES EST EXPLICITE, ET CONFRONTE AU
+  -- CATALOGUE — jamais l'inverse.
+  --
+  -- Endosser un role parce qu'il apparait dans `pg_auth_members.grantor`,
+  -- c'est laisser le CATALOGUE choisir sous quelle identite la migration
+  -- s'execute. Un octroi pose par un tiers suffirait alors a faire endosser
+  -- ce tiers. Trois donneurs sont attendus ici, et aucun autre:
+  --
+  --   * `pg_database_owner`  — le proprietaire implicite de `public`;
+  --   * l'appelant lui-meme  — ses propres octrois;
+  --   * le proprietaire de la base, quand il differe de l'appelant.
+  --
+  -- Tout autre donneur ARRETE la migration. Ce n'est pas une precaution
+  -- theorique: le privilege resterait, et c'est exactement ce que personne
+  -- ne voyait avant que la postcondition n'existe.
+  admissibles text[] := array[
+    'pg_database_owner',
+    current_user,
+    pg_get_userbyid((select datdba from pg_database
+                      where datname = current_database()))];
 begin
   for donneur in
     select distinct pg_get_userbyid(a.grantor)
@@ -344,9 +364,7 @@ begin
        -- TOUS LES ROLES D'AUTORITE, ET PAS SEULEMENT LES DEUX QUE CETTE
        -- MIGRATION A ELLE-MEME SERVIS. Mesure: l'ACTIVATEUR conservait lui
        -- aussi CREATE — le sceau le lui accorde en phase 0 et croit le
-       -- retirer a la fin, avec la meme revocation inefficace. Une migration
-       -- qui s'appelle « durcissement de la surface » ne peut pas laisser
-       -- l'ecart chez le voisin en disant qu'il n'est pas a elle.
+       -- retirer a la fin, avec la meme revocation inefficace.
        and a.grantee in ('eurostruct_normative_writer'::regrole::oid,
                          'eurostruct_normative_bootstrap'::regrole::oid,
                          'eurostruct_normative_activator'::regrole::oid,
@@ -354,16 +372,44 @@ begin
                          'normative_backend'::regrole::oid,
                          'normative_governance'::regrole::oid)
   loop
-    -- ON N'AVALE PAS L'ECHEC. Si le donneur n'est pas endossable, la
-    -- migration doit le dire: le privilege resterait, et c'est precisement
-    -- ce que personne ne voyait avant.
-    execute format('set local role %I', donneur);
-    execute 'revoke create on schema public from '
-            'eurostruct_normative_writer, eurostruct_normative_bootstrap, '
-            'eurostruct_normative_activator, eurostruct_authority_backend, '
-            'normative_backend, normative_governance';
-    execute format('set local role %I', appelant);
+    if not (donneur = any (admissibles)) then
+      raise exception
+        'AUTHORITY_0011_GRANTOR_NOT_ADMISSIBLE: le donneur « % » de CREATE sur '
+        'public n''est pas dans l''ensemble admissible {%}. La migration '
+        'refuse de l''endosser: le catalogue ne choisit pas sous quelle '
+        'identite elle s''execute.',
+        donneur, array_to_string(admissibles, ', ')
+        using errcode = 'insufficient_privilege';
+    end if;
+    -- `format('%I')` QUOTE L'IDENTIFIANT. Aucune concatenation libre: le nom
+    -- vient du catalogue, et un nom de role peut contenir n'importe quoi.
+    begin
+      execute format('set local role %I', donneur);
+      execute 'revoke create on schema public from '
+              'eurostruct_normative_writer, eurostruct_normative_bootstrap, '
+              'eurostruct_normative_activator, eurostruct_authority_backend, '
+              'normative_backend, normative_governance';
+      execute format('set local role %I', appelant);
+    exception when others then
+      -- LE ROLE EST RENDU SUR LE CHEMIN D'ERREUR AUSSI. Sans cela, la
+      -- commande suivante s'executerait sous le role endosse — une fuite
+      -- d'identite au milieu d'une migration.
+      execute format('set local role %I', appelant);
+      raise exception
+        'AUTHORITY_0011_SCHEMA_CREATE_REVOKE_FAILED: la revocation sous le '
+        'donneur « % » a echoue (%). Le privilege CREATE resterait, et rien '
+        'd''autre ne le dirait.', donneur, sqlerrm
+        using errcode = 'insufficient_privilege';
+    end;
   end loop;
+
+  -- LE RETOUR AU ROLE INITIAL EST CONSTATE, PAS SUPPOSE.
+  if current_user <> appelant then
+    raise exception
+      'AUTHORITY_0011_ROLE_NOT_RESTORED: la migration s''execute encore sous '
+      '« % » au lieu de « % » apres la revocation.', current_user, appelant
+      using errcode = 'insufficient_privilege';
+  end if;
 end
 $$;
 

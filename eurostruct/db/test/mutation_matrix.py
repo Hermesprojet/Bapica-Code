@@ -1582,13 +1582,21 @@ select assert_authority_composition();""",
        "-- appels retires par mutation")], False),
     # LA BRANCHE, ET NON L'APPEL. L'appel demeure; l'assertion ne regarde plus
     # PUBLIC. C'est la forme qui survit a une relecture rapide du diff.
-    ("MC4 la branche PUBLIC EXECUTE de 0014 ne regarde plus rien", "Y5", A14,
-     [("""    if exists (select 1 from aclexplode(f_acl) a
-                where a.grantee = 0 and a.privilege_type = 'EXECUTE') then
-      ecarts := ecarts || format(
-        'AUTHORITY_0014_PUBLIC_EXECUTE: %s accorde EXECUTE a PUBLIC', nom);
-    end if;""",
-       "    -- branche PUBLIC neutralisee par mutation")], False),
+    # MC4 ET AC1 NE VISENT PAS LA MEME DEFAILLANCE, et il a fallu la
+    # reecriture du controle PUBLIC pour que la distinction devienne nette:
+    #
+    #   AC1  la CONDITION n'est plus evaluee — on ne regarde plus;
+    #   MC4  la condition est evaluee, et l'ECART N'EST PAS ENREGISTRE — on
+    #        regarde, on voit, et on se tait. C'est la forme qui survit le
+    #        mieux a une relecture du diff.
+    ("MC4 l'ecart PUBLIC EXECUTE de 0014 n'est plus enregistre", "Y5", A14,
+     [("""      ecarts := ecarts || format(
+        'AUTHORITY_0014_PUBLIC_EXECUTE: PUBLIC detient EXECUTE sur %s '
+        '(proacl %s). Verifie par le privilege EFFECTIF, qui couvre le cas '
+        'de l''ACL absente', nom,
+        case when f_acl is null then 'NULL — droits par defaut, donc =X'
+             else 'explicite' end);""",
+       "      null;  -- ecart non enregistre par mutation")], False),
     ("MC5 la branche du declencheur desactive ne regarde plus tgenabled", "Y7",
      A14,
      [("""       and not t.tgisinternal and t.tgenabled = 'O')""",
@@ -1622,6 +1630,33 @@ select assert_authority_composition();""",
     # ne retire RIEN — sans erreur ni WARNING visible. La correction endosse
     # le donneur avant de revoquer. Retirer cet endossement remet exactement
     # le defaut d'origine, et la postcondition doit le voir.
+    # L'ACL `NULL` RELUE COMME UNE ABSENCE DE PRIVILEGE.
+    #
+    # C'est l'erreur que la mesure a rendue impossible a commettre par
+    # inadvertance, et qu'il faut donc rendre impossible a commettre tout
+    # court. `acldefault('f', owner)` vaut `{=X/owner, owner=X/owner}`:
+    # l'entree `=X` EST PUBLIC. Interroger `aclexplode(proacl)` seul rend un
+    # ensemble VIDE quand `proacl` est NULL — soit exactement la lecture
+    # inverse de la verite.
+    ("AC1 le privilege EFFECTIF de PUBLIC n'est plus interroge", "AC1", A14,
+     [("""    if has_function_privilege('public', f_oid, 'EXECUTE') then""",
+       """    if false then""")], False),
+    # LA FONCTION DECLENCHEUR SORTIE DE TOUT CONTROLE PRIVILEGIE. Elle ne
+    # s'appelle pas directement; elle s'execute a CHAQUE ECRITURE, avec le
+    # search_path de l'ecrivain. L'exempter du controle PUBLIC est mesure et
+    # justifie; l'exempter de tout ne l'est pas.
+    ("AC3 la fonction declencheur sort du balayage prive", "AC5", A14,
+     [("""     where n.nspname = 'public'
+       and pg_get_userbyid(p.proowner) in ('eurostruct_normative_writer',
+                                           'eurostruct_normative_bootstrap',
+                                           'eurostruct_normative_activator')
+  loop""",
+       """     where n.nspname = 'public'
+       and p.prorettype <> 'trigger'::regtype
+       and pg_get_userbyid(p.proowner) in ('eurostruct_normative_writer',
+                                           'eurostruct_normative_bootstrap',
+                                           'eurostruct_normative_activator')
+  loop""")], False),
     # LA BRANCHE QUI CONSTATE LE PRIVILEGE RESTANT, plutot que la commande
     # qui le retire — et il faut dire pourquoi.
     #

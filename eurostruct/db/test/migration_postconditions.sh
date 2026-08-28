@@ -71,7 +71,10 @@ verdicts_declarer \
   derive-proprietaire derive-public-execute derive-search-path \
   derive-trigger-desactive derive-policy-absente derive-policy-mauvais-role \
   derive-ecriture-directe derive-force-rls derive-revoke-sans-effet \
-  derive-schema-create
+  derive-schema-create \
+  acl-nulle-fonction-appelable acl-revoquee-effective \
+  acl-explicite-sans-public acl-fonction-declencheur \
+  derive-declencheur-search-path
 
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
@@ -513,6 +516,178 @@ else
     "assert_authority_composition()" \
     "grant create on schema public to eurostruct_normative_writer" \
     "revoke create on schema public from eurostruct_normative_writer" "Y13"
+
+  # ========================================================================
+  # LA SEMANTIQUE DE L'ACL `NULL`, MESUREE PAR CATEGORIE D'OBJET
+  # ========================================================================
+  # UNE ACL ABSENTE N'EST PAS UNE ABSENCE DE PRIVILEGE, et confondre les deux
+  # est l'erreur la plus facile a commettre ici — parce qu'elle est SANS
+  # CONSEQUENCE pour trois categories sur six.
+  #
+  # Mesure sur PostgreSQL 16 (sonde dediee, appels reels sous un role
+  # ordinaire):
+  #
+  #   acldefault('f', owner) = {=X/owner, owner=X/owner}   <- `=X` EST PUBLIC
+  #   fonction ordinaire, proacl NULL  -> select f() rend 1
+  #   fonction SECURITY DEFINER, NULL  -> select f() rend 2, sous l'owner
+  #   fonction trigger, NULL           -> privilege PRESENT, invocation
+  #                                       refusee (SQLSTATE 0A000)
+  #   table    (r) NULL -> {owner=arwdDxt/owner}   PUBLIC: rien
+  #   sequence (S) NULL -> {owner=U/owner}         PUBLIC: rien
+  #   schema   (n) NULL -> {owner=UC/owner}        PUBLIC: rien
+  #
+  # Les quatre controles ci-dessous fixent cette semantique dans la suite,
+  # pour qu'un changement de version ou de convention la fasse rougir plutot
+  # que de la faire glisser.
+  echo "      -- la semantique de l'ACL NULL, par categorie"
+
+  # 1. FONCTION PRIVILEGIEE CREEE SANS `REVOKE`: proacl NULL, PUBLIC execute
+  #    REELLEMENT, et la postcondition doit rougir.
+  ACL_N_AVANT="$(q "select coalesce(proacl::text,'NULL') from pg_proc p
+                      join pg_namespace n on n.oid=p.pronamespace
+                     where n.nspname='public' and p.proname='normative_decision_consume'")"
+  admb -q -c "alter function normative_decision_consume(uuid) owner to eurostruct_normative_writer;
+              revoke all on function normative_decision_consume(uuid) from public;
+              grant execute on function normative_decision_consume(uuid)
+                to eurostruct_normative_writer, eurostruct_authority_backend;" \
+    >/dev/null 2>&1
+  # On REMET l'etat « jamais revoque » en supprimant l'ACL: c'est exactement
+  # ce que produit un CREATE FUNCTION sans REVOKE.
+  admb -q -c "update pg_proc set proacl = null
+               where proname = 'normative_decision_consume'
+                 and pronamespace = 'public'::regnamespace" >/dev/null 2>&1
+  ACL_N="$(q "select coalesce(proacl::text,'NULL') from pg_proc p
+                join pg_namespace n on n.oid=p.pronamespace
+               where n.nspname='public' and p.proname='normative_decision_consume'")"
+  ACL_N_PUB="$(q "select has_function_privilege('public','normative_decision_consume(uuid)','EXECUTE')::text")"
+  ACL_N_VU="$(admb -tAc "select assert_0014_decisions_surface()" 2>&1)"
+  admb -q -c "revoke all on function normative_decision_consume(uuid) from public;
+              grant execute on function normative_decision_consume(uuid)
+                to eurostruct_normative_writer, eurostruct_authority_backend;" \
+    >/dev/null 2>&1
+  ACL_N_APRES="$(admb -tAc "select assert_0014_decisions_surface()" 2>&1)"
+  detail "proacl remis a NULL: « $ACL_N » ; PUBLIC EXECUTE effectif: $ACL_N_PUB"
+  detail "refus: $(head -c 90 <<<"$ACL_N_VU" | tr '\n' ' ')"
+  if [[ "$ACL_N" != "NULL" ]]; then
+    troue acl-nulle-fonction-appelable "l'ACL n'a pas pu etre remise a NULL:"
+    detail "le scenario n'a pas ete pose (vu « $ACL_N »)."
+  elif [[ "$ACL_N_PUB" != "true" ]]; then
+    rouge acl-nulle-fonction-appelable "AC1. une ACL NULL ne donne PAS EXECUTE"
+    detail "a PUBLIC sur ce serveur: la premisse des assertions est fausse,"
+    detail "et il faut refaire la mesure avant de conclure quoi que ce soit."
+  elif ! grep -q "AUTHORITY_0014_PUBLIC_EXECUTE" <<<"$ACL_N_VU"; then
+    rouge acl-nulle-fonction-appelable "AC1. PUBLIC execute reellement, et la"
+    detail "postcondition ne le voit pas: $(head -c 120 <<<"$ACL_N_VU")"
+  elif grep -qiE "ERROR|ERREUR" <<<"$ACL_N_APRES"; then
+    rouge acl-nulle-fonction-appelable "AC1. apres restauration de l'ACL, la"
+    detail "postcondition refuse toujours: $(head -c 100 <<<"$ACL_N_APRES")"
+  else
+    sur acl-nulle-fonction-appelable "une ACL NULL laisse PUBLIC EXECUTE, la"
+    detail "postcondition le voit, et la restauration rend le vert."
+  fi
+
+  # 2. `REVOKE EXECUTE FROM PUBLIC` REELLEMENT APPLIQUE: privilege effectif
+  #    absent, postcondition verte. C'est le pendant positif du precedent:
+  #    sans lui, une assertion qui refuse TOUT serait aussi « verte » en 1.
+  ACL_R_PUB="$(q "select has_function_privilege('public','normative_decision_consume(uuid)','EXECUTE')::text")"
+  ACL_R_ACL="$(q "select coalesce(proacl::text,'NULL') from pg_proc p
+                    join pg_namespace n on n.oid=p.pronamespace
+                   where n.nspname='public' and p.proname='normative_decision_consume'")"
+  ACL_R_VU="$(admb -tAc "select assert_0014_decisions_surface()" 2>&1)"
+  detail "apres REVOKE: proacl « $(head -c 60 <<<"$ACL_R_ACL") »"
+  detail "PUBLIC EXECUTE effectif: $ACL_R_PUB"
+  if [[ "$ACL_R_ACL" == "NULL" ]]; then
+    troue acl-revoquee-effective "l'ACL est restee NULL: le REVOKE n'a pas ete"
+    detail "applique, et le scenario n'eprouve rien."
+  elif [[ "$ACL_R_PUB" != "false" ]]; then
+    rouge acl-revoquee-effective "AC2. PUBLIC conserve EXECUTE apres un REVOKE"
+    detail "reellement applique: $ACL_R_ACL"
+  elif grep -qiE "ERROR|ERREUR" <<<"$ACL_R_VU"; then
+    rouge acl-revoquee-effective "AC2. la postcondition refuse alors que le"
+    detail "privilege effectif est absent: $(head -c 110 <<<"$ACL_R_VU")"
+  else
+    sur acl-revoquee-effective "un REVOKE applique retire le privilege EFFECTIF,"
+    detail "l'ACL devient explicite, et la postcondition passe."
+  fi
+
+  # 3. ACL EXPLICITE SANS `PUBLIC`: comportement mesure, et AUCUNE exception
+  #    liee a `array[]::aclitem[]`. C'est le piege qui avait fait lever
+  #    « ACL arrays must be one-dimensional » en posant un coalesce defensif.
+  ACL_V_EXPL="$(q "select coalesce(array_length(proacl,1)::text,'0') from pg_proc p
+                     join pg_namespace n on n.oid=p.pronamespace
+                    where n.nspname='public' and p.proname='normative_decision_consume'")"
+  ACL_V_NUL="$(admb -tAc "select count(*) from aclexplode(null::aclitem[])" 2>&1 | tr -d ' ')"
+  ACL_V_VIDE="$(admb -tAc "select count(*) from aclexplode(array[]::aclitem[])" 2>&1)"
+  ACL_V_VU="$(admb -tAc "select assert_authority_composition()" 2>&1)"
+  detail "entrees d'ACL explicites: $ACL_V_EXPL ; aclexplode(NULL) rend: $ACL_V_NUL ligne(s)"
+  detail "aclexplode(array vide): $(head -c 60 <<<"$ACL_V_VIDE" | tr '\n' ' ')"
+  if [[ "$ACL_V_NUL" != "0" ]]; then
+    rouge acl-explicite-sans-public "AC3. aclexplode(NULL) ne rend pas zero"
+    detail "ligne ($ACL_V_NUL): la lecture des ACL repose sur une premisse fausse."
+  elif ! grep -qi "one-dimensional" <<<"$ACL_V_VIDE"; then
+    troue acl-explicite-sans-public "aclexplode(array vide) n'a pas leve"
+    detail "« one-dimensional »: le piege mesure n'existe pas ici, et le"
+    detail "controle n'etablit donc pas ce qu'il annonce."
+  elif grep -qiE "ERROR|ERREUR" <<<"$ACL_V_VU"; then
+    rouge acl-explicite-sans-public "AC3. l'agregee refuse sur une ACL explicite"
+    detail "sans PUBLIC: $(head -c 110 <<<"$ACL_V_VU")"
+  else
+    sur acl-explicite-sans-public "une ACL explicite sans PUBLIC passe, et les"
+    detail "deux formes limites sont mesurees: aclexplode(NULL) rend zero"
+    detail "ligne, aclexplode(array vide) LEVE. Le coalesce « defensif » vers"
+    detail "un tableau vide etait donc la panne, pas la protection."
+  fi
+
+  # 4. FONCTION DECLENCHEUR: l'invocation directe est refusee par PostgreSQL,
+  #    mais owner, SECURITY DEFINER et search_path restent verifies. Ne pas
+  #    confondre « on ne peut pas l'appeler » et « elle est inoffensive »:
+  #    elle s'execute a chaque ecriture, avec le search_path de l'ecrivain.
+  TRG_PUB="$(q "select has_function_privilege('public','forbid_decision_delete()','EXECUTE')::text")"
+  TRG_APPEL="$(admb -tAc "select forbid_decision_delete()" 2>&1 | head -1)"
+  TRG_OWNER="$(q "select pg_get_userbyid(proowner) from pg_proc p
+                    join pg_namespace n on n.oid=p.pronamespace
+                   where n.nspname='public' and p.proname='forbid_decision_delete'")"
+  TRG_CFG="$(q "select coalesce(array_to_string(proconfig,','),'(aucun)') from pg_proc p
+                  join pg_namespace n on n.oid=p.pronamespace
+                 where n.nspname='public' and p.proname='forbid_decision_delete'")"
+  detail "PUBLIC EXECUTE sur la fonction declencheur: $TRG_PUB"
+  detail "appel direct: $(head -c 70 <<<"$TRG_APPEL" | tr '\n' ' ')"
+  detail "owner: $TRG_OWNER ; proconfig: $TRG_CFG"
+  if ! grep -qi "can only be called as triggers" <<<"$TRG_APPEL"; then
+    rouge acl-fonction-declencheur "AC4. l'invocation directe n'est PAS refusee"
+    detail "par PostgreSQL: $(head -c 110 <<<"$TRG_APPEL")"
+  elif [[ "$TRG_OWNER" != "eurostruct_normative_writer" ]]; then
+    rouge acl-fonction-declencheur "AC4. la fonction declencheur appartient a"
+    detail "« $TRG_OWNER »: l'impossibilite de l'appeler ne la rend pas"
+    detail "inoffensive — elle s'execute a chaque ecriture."
+  elif [[ "$TRG_CFG" != *search_path* ]]; then
+    rouge acl-fonction-declencheur "AC4. la fonction declencheur n'a pas de"
+    detail "search_path fixe: elle herite de celui de l'ecrivain."
+  else
+    sur acl-fonction-declencheur "l'invocation directe est refusee (0A000), et"
+    detail "owner et search_path sont NEANMOINS verifies."
+    detail "PUBLIC EXECUTE vaut ici $TRG_PUB parce que l'ACL est EXPLICITE."
+    detail "Sur une fonction declencheur a ACL NULL il vaudrait « true » —"
+    detail "mesure faite — sans etre pour autant une capacite: l'agregee"
+    detail "l'exempte donc du controle PUBLIC, et d'AUCUN autre."
+  fi
+
+  # LA COUVERTURE DE L'AGREGEE SUR LES FONCTIONS DECLENCHEUR.
+  #
+  # Le controle precedent interroge la fonction declencheur DIRECTEMENT. Il
+  # etablit donc son etat, et rien sur ce que l'assertion en fait — mesure a
+  # l'appui: exclure les declencheurs du balayage de l'agregee a SURVECU a la
+  # mutation, parce qu'aucun controle ne passait par elle.
+  #
+  # Une fonction declencheur ne s'appelle pas, mais elle S'EXECUTE a chaque
+  # ecriture, avec le search_path de l'ecrivain. Relacher le sien est donc une
+  # ouverture reelle, et c'est l'agregee qui doit la nommer.
+  eprouver_derive derive-declencheur-search-path \
+    "AUTHORITY_COMPOSITION_SEARCH_PATH_UNPINNED" \
+    "assert_authority_composition()" \
+    "alter function forbid_decision_delete() reset search_path" \
+    "alter function forbid_decision_delete() set search_path = public, pg_temp" \
+    "AC5"
 
   # ------------------------------------------------------------------------
   # LE PIEGE D'ORIGINE, JOUE POUR DE VRAI: un REVOKE emis par un role qui n'a

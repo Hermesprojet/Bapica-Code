@@ -562,7 +562,8 @@ declare
   ];
   i int; n_match int; donneurs record;
   nom text; secdef_attendu boolean; roles_attendus text[];
-  f_oid oid; f_owner text; f_secdef boolean; f_cfg text[]; f_acl aclitem[];
+  f_oid oid; f_owner_oid oid;
+  f_owner text; f_secdef boolean; f_cfg text[]; f_acl aclitem[];
   reels text[];
 begin
   for i in 1 .. array_length(attendus, 1) loop
@@ -587,8 +588,9 @@ begin
       continue;
     end if;
 
-    select p.oid, pg_get_userbyid(p.proowner), p.prosecdef, p.proconfig, p.proacl
-      into f_oid, f_owner, f_secdef, f_cfg, f_acl
+    select p.oid, p.proowner, pg_get_userbyid(p.proowner), p.prosecdef,
+           p.proconfig, p.proacl
+      into f_oid, f_owner_oid, f_owner, f_secdef, f_cfg, f_acl
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public' and p.proname = nom;
 
@@ -616,20 +618,52 @@ begin
 
     -- `proacl` NULL signifie « droits par defaut »: PUBLIC execute. Un
     -- `revoke ... from public` sans effet laisse exactement cet etat.
-    if f_acl is null then
+    -- L'ACL `NULL` N'EST PAS « AUCUN PRIVILEGE », ET LA DIFFERENCE EST TOUT.
+    --
+    -- Mesure sur PostgreSQL 16, sonde dediee:
+    --
+    --   acldefault('f', owner) = {=X/owner, owner=X/owner}
+    --
+    -- L'entree `=X` EST `PUBLIC EXECUTE`. Une fonction dont `proacl` vaut
+    -- NULL est donc executable par tout le monde — verifie en appelant
+    -- reellement `select f_ordinaire()` sous un role ordinaire: elle rend 1.
+    -- Pour une table, une sequence ou un schema, la valeur par defaut ne
+    -- donne rien a PUBLIC; la meme lecture y serait sans consequence, et
+    -- c'est precisement ce qui rend l'erreur facile a commettre.
+    --
+    -- ON N'INTERROGE DONC JAMAIS `aclexplode(proacl)` SEUL pour conclure que
+    -- PUBLIC ne detient rien. Deux lectures, chacune a sa place:
+    --
+    --   * PUBLIC          -> `has_function_privilege('public', ...)`, qui est
+    --                        le privilege EFFECTIF et couvre le cas NULL.
+    --                        La propriete ne fausse pas la reponse: PUBLIC ne
+    --                        possede rien;
+    --   * roles nommes    -> les lignes d'ACL, avec les droits par defaut
+    --                        DEVELOPPES par `acldefault`. `has_*_privilege`
+    --                        y repondrait « oui » pour le proprietaire sans
+    --                        qu'aucun octroi n'existe.
+    if has_function_privilege('public', f_oid, 'EXECUTE') then
       ecarts := ecarts || format(
-        'AUTHORITY_0012_PUBLIC_EXECUTE: %s a proacl NULL — les droits par '
-        'defaut s''appliquent, donc PUBLIC execute. Le REVOKE n''a pas pris',
-        nom);
-      continue;
+        'AUTHORITY_0012_PUBLIC_EXECUTE: PUBLIC detient EXECUTE sur %s '
+        '(proacl %s). Verifie par le privilege EFFECTIF, qui couvre le cas '
+        'de l''ACL absente', nom,
+        case when f_acl is null then 'NULL — droits par defaut, donc =X'
+             else 'explicite' end);
     end if;
 
-    if exists (select 1 from aclexplode(f_acl) a
-                where a.grantee = 0 and a.privilege_type = 'EXECUTE') then
-      ecarts := ecarts || format(
-        'AUTHORITY_0012_PUBLIC_EXECUTE: %s accorde EXECUTE a PUBLIC', nom);
-    end if;
-
+    -- LE DEVELOPPEMENT PAR `acldefault` A ETE RETIRE, ET C'EST UNE MESURE.
+    --
+    -- Il y figurait pour qu'une ACL NULL ne se lise pas « aucun octroi ». Or
+    -- sa neutralisation a SURVECU a la mutation, et l'examen dit pourquoi:
+    -- avec le developpement, une ACL NULL rend {proprietaire}; sans lui, elle
+    -- rend {}. Les DEUX different de l'ensemble attendu, donc les deux
+    -- produisent le meme ecart. Le developpement ne changeait rien
+    -- d'observable — et l'ecart PUBLIC, lui, est deja porte par le controle
+    -- du privilege EFFECTIF juste au-dessus.
+    --
+    -- Garder du code qu'aucune mutation ne peut falsifier, c'est garder une
+    -- garantie qu'on ne verifie plus. On le retire donc, et on ecrit
+    -- pourquoi plutot que de le laisser rassurer.
     select coalesce(array_agg(g.rolname::text order by g.rolname), array[]::text[])
       into reels
       from aclexplode(f_acl) a
@@ -754,6 +788,26 @@ do $$
 declare
   donneur text;
   appelant text := current_user;
+  -- L'ENSEMBLE DES DONNEURS ADMISSIBLES EST EXPLICITE, ET CONFRONTE AU
+  -- CATALOGUE — jamais l'inverse.
+  --
+  -- Endosser un role parce qu'il apparait dans `pg_auth_members.grantor`,
+  -- c'est laisser le CATALOGUE choisir sous quelle identite la migration
+  -- s'execute. Un octroi pose par un tiers suffirait alors a faire endosser
+  -- ce tiers. Trois donneurs sont attendus ici, et aucun autre:
+  --
+  --   * `pg_database_owner`  — le proprietaire implicite de `public`;
+  --   * l'appelant lui-meme  — ses propres octrois;
+  --   * le proprietaire de la base, quand il differe de l'appelant.
+  --
+  -- Tout autre donneur ARRETE la migration. Ce n'est pas une precaution
+  -- theorique: le privilege resterait, et c'est exactement ce que personne
+  -- ne voyait avant que la postcondition n'existe.
+  admissibles text[] := array[
+    'pg_database_owner',
+    current_user,
+    pg_get_userbyid((select datdba from pg_database
+                      where datname = current_database()))];
 begin
   for donneur in
     select distinct pg_get_userbyid(a.grantor)
@@ -763,9 +817,7 @@ begin
        -- TOUS LES ROLES D'AUTORITE, ET PAS SEULEMENT LES DEUX QUE CETTE
        -- MIGRATION A ELLE-MEME SERVIS. Mesure: l'ACTIVATEUR conservait lui
        -- aussi CREATE — le sceau le lui accorde en phase 0 et croit le
-       -- retirer a la fin, avec la meme revocation inefficace. Une migration
-       -- qui s'appelle « durcissement de la surface » ne peut pas laisser
-       -- l'ecart chez le voisin en disant qu'il n'est pas a elle.
+       -- retirer a la fin, avec la meme revocation inefficace.
        and a.grantee in ('eurostruct_normative_writer'::regrole::oid,
                          'eurostruct_normative_bootstrap'::regrole::oid,
                          'eurostruct_normative_activator'::regrole::oid,
@@ -773,16 +825,44 @@ begin
                          'normative_backend'::regrole::oid,
                          'normative_governance'::regrole::oid)
   loop
-    -- ON N'AVALE PAS L'ECHEC. Si le donneur n'est pas endossable, la
-    -- migration doit le dire: le privilege resterait, et c'est precisement
-    -- ce que personne ne voyait avant.
-    execute format('set local role %I', donneur);
-    execute 'revoke create on schema public from '
-            'eurostruct_normative_writer, eurostruct_normative_bootstrap, '
-            'eurostruct_normative_activator, eurostruct_authority_backend, '
-            'normative_backend, normative_governance';
-    execute format('set local role %I', appelant);
+    if not (donneur = any (admissibles)) then
+      raise exception
+        'AUTHORITY_0012_GRANTOR_NOT_ADMISSIBLE: le donneur « % » de CREATE sur '
+        'public n''est pas dans l''ensemble admissible {%}. La migration '
+        'refuse de l''endosser: le catalogue ne choisit pas sous quelle '
+        'identite elle s''execute.',
+        donneur, array_to_string(admissibles, ', ')
+        using errcode = 'insufficient_privilege';
+    end if;
+    -- `format('%I')` QUOTE L'IDENTIFIANT. Aucune concatenation libre: le nom
+    -- vient du catalogue, et un nom de role peut contenir n'importe quoi.
+    begin
+      execute format('set local role %I', donneur);
+      execute 'revoke create on schema public from '
+              'eurostruct_normative_writer, eurostruct_normative_bootstrap, '
+              'eurostruct_normative_activator, eurostruct_authority_backend, '
+              'normative_backend, normative_governance';
+      execute format('set local role %I', appelant);
+    exception when others then
+      -- LE ROLE EST RENDU SUR LE CHEMIN D'ERREUR AUSSI. Sans cela, la
+      -- commande suivante s'executerait sous le role endosse — une fuite
+      -- d'identite au milieu d'une migration.
+      execute format('set local role %I', appelant);
+      raise exception
+        'AUTHORITY_0012_SCHEMA_CREATE_REVOKE_FAILED: la revocation sous le '
+        'donneur « % » a echoue (%). Le privilege CREATE resterait, et rien '
+        'd''autre ne le dirait.', donneur, sqlerrm
+        using errcode = 'insufficient_privilege';
+    end;
   end loop;
+
+  -- LE RETOUR AU ROLE INITIAL EST CONSTATE, PAS SUPPOSE.
+  if current_user <> appelant then
+    raise exception
+      'AUTHORITY_0012_ROLE_NOT_RESTORED: la migration s''execute encore sous '
+      '« % » au lieu de « % » apres la revocation.', current_user, appelant
+      using errcode = 'insufficient_privilege';
+  end if;
 end
 $$;
 
