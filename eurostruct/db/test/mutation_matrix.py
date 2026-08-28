@@ -59,6 +59,8 @@ RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 M = "db/migrations/0010_normative_confirmation.sql"
 A13 = "db/migrations/0013_authenticated_actor.sql"
 A14 = "db/migrations/0014_four_eyes_decisions.sql"
+A11 = "db/migrations/0011_authority_hardening.sql"
+A12 = "db/migrations/0012_delegation_lineage.sql"
 S = "db/control_plane/0001_normative_seal.sql"
 R = "db/test/run.sh"
 H = "db/test/authority_closure.sh"
@@ -1501,6 +1503,73 @@ if FILTRE:
 # Chaque couche est retiree SEPAREMENT. Les retirer ensemble dirait « l'une
 # des trois porte quelque chose » — ce qui est vrai de n'importe quel triplet
 # dont un membre travaille.
+# --------------------------------------------------------------------------
+# LES POSTCONDITIONS DE MIGRATION — l'appel, les branches, le diagnostic
+# --------------------------------------------------------------------------
+# CES GARANTIES VIENNENT D'ETRE AJOUTEES, ET C'EST EXACTEMENT LE MOMENT DE LES
+# FALSIFIER. Une postcondition ecrite le meme jour que le controle qui la
+# mesure n'a jamais ete eprouvee CONTRE quoi que ce soit.
+#
+# Quatre formes, et elles ne se recouvrent pas:
+#   * l'APPEL produit est retire — l'assertion existe encore, et ne sert plus
+#     a rien. C'est litteralement l'etat mesure AVANT ce lot;
+#   * une BRANCHE de l'assertion est neutralisee — l'appel demeure, mais il ne
+#     voit plus ce qu'il regardait;
+#   * le DIAGNOSTIC est remplace par un identifiant etranger — le refus a bien
+#     lieu, et plus personne ne peut le distinguer d'une panne quelconque;
+#   * l'assertion est presente mais JAMAIS ATTEINTE — cas particulier du
+#     premier, et le plus difficile a voir a la lecture.
+CAS_POSTCONDITIONS_MIGRATION = [
+    ("MC1 l'appel produit a la postcondition de 0011 est retire", "Y1", A11,
+     [("select assert_authority_surface_hardened();",
+       "-- appel retire par mutation")], False),
+    ("MC2 l'appel produit a la postcondition de 0012 est retire", "Y2", A12,
+     [("select assert_0012_lineage_surface();",
+       "-- appel retire par mutation")], False),
+    # LES DEUX APPELS DE 0014 ENSEMBLE, et c'est mesure: l'appel local seul
+    # retire, l'assertion AGREGEE attrape le meme ecart et la migration echoue
+    # toujours. Ne muter que le local mesurerait donc la defense en
+    # profondeur, pas l'appel.
+    ("MC3 les deux appels produits de 0014 sont retires", "Y3", A14,
+     [("""select assert_0014_decisions_surface();
+select assert_authority_composition();""",
+       "-- appels retires par mutation")], False),
+    # LA BRANCHE, ET NON L'APPEL. L'appel demeure; l'assertion ne regarde plus
+    # PUBLIC. C'est la forme qui survit a une relecture rapide du diff.
+    ("MC4 la branche PUBLIC EXECUTE de 0014 ne regarde plus rien", "Y5", A14,
+     [("""    if exists (select 1 from aclexplode(f_acl) a
+                where a.grantee = 0 and a.privilege_type = 'EXECUTE') then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_PUBLIC_EXECUTE: %s accorde EXECUTE a PUBLIC', nom);
+    end if;""",
+       "    -- branche PUBLIC neutralisee par mutation")], False),
+    ("MC5 la branche du declencheur desactive ne regarde plus tgenabled", "Y7",
+     A14,
+     [("""       and not t.tgisinternal and t.tgenabled = 'O')""",
+       """       and not t.tgisinternal)""")], False),
+    ("MC6 la branche des policies ne compare plus roles ni commande", "Y8", A14,
+     [("""       and pol.polname = 'decisions_governance_read'
+       and pol.polcmd = 'r' and pol.polpermissive
+       and (select array_agg(rr.rolname::text order by rr.rolname) from pg_roles rr
+             where rr.oid = any(pol.polroles))
+           = array['normative_governance'])""",
+       """       and pol.polname = 'decisions_governance_read')""")], False),
+    # LE POINT FIXE NOMME de l'assertion agregee. Sans lui, le balayage est
+    # defini par la propriete, donc aveugle a une derive de propriete.
+    ("MC7 le point fixe nomme de l'agregee est retire", "Y4", A14,
+     [("""             'normative_decision_consume', 'check_normative_decision_transition',
+             'forbid_decision_delete', 'normative_authenticated_actor',
+             'bootstrap_normative_administrator']) as attendue""",
+       """             'normative_decision_consume']) as attendue
+     where false""")], False),
+    # LE DIAGNOSTIC REMPLACE PAR UN IDENTIFIANT ETRANGER. Le refus a bien lieu;
+    # le controle ne peut plus le reconnaitre, et un refus qu'on ne reconnait
+    # pas ne se distingue pas d'une panne.
+    ("MC8 le diagnostic de 0011 devient un identifiant etranger", "Y1", A11,
+     [("'AUTHORITY_0011_SURFACE_NOT_HARDENED: surface d''autorite non durcie: %',",
+       "'ERREUR_QUELCONQUE: surface d''autorite non durcie: %',")], False),
+]
+
 CAS_POSTCONDITION = [
     # H1 lit les LIGNES de `pg_auth_members`. Sans elle, il ne reste que les
     # deux boucles `pg_has_role('USAGE'/'SET')` — et un membre declare-moins
@@ -1578,6 +1647,8 @@ LOTS = [
      dict(harnais="db/test/authority_role_frontier.sh", prefixe="mr")),
     (CAS_DECLENCHEURS_0014,
      dict(harnais="db/test/authority_four_eyes.sh", prefixe="mq")),
+    (CAS_POSTCONDITIONS_MIGRATION,
+     dict(harnais="db/test/migration_postconditions.sh", prefixe="mn")),
 ]
 
 TOTAL = sum(len(cas) for cas, _ in LOTS)

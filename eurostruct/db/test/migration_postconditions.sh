@@ -211,7 +211,7 @@ PY
 # (rien de partiel), apres la reapplication propre il doit rendre « t ».
 eprouver() {
   local fichier="$1" ident="$2" mot_priv="$3" mot_appel="$4"
-  local temoin="$5" temoin_desc="$6"
+  local temoin="$5" temoin_desc="$6" pt="$7"
   local base_nom; base_nom="$(basename "$fichier")"
   local court="${base_nom:0:4}"
   local mute mute2 sortie lignes vu
@@ -230,10 +230,10 @@ eprouver() {
       sur "m$court-verte" "sur un catalogue correct, la migration passe et"
       detail "$temoin_desc est en place."
     else
-      rouge "m$court-verte" "la migration passe mais $temoin_desc manque."
+      rouge "m$court-verte" "$pt. la migration passe mais $temoin_desc manque."
     fi
   else
-    rouge "m$court-verte" "la migration est refusee sur une base correcte:"
+    rouge "m$court-verte" "$pt. la migration est refusee sur une base correcte:"
     detail "$(grep -m1 -oiE 'ERROR[^|]{0,120}' <<<"$ESC_MIGRATION_SORTIE")"
   fi
   decor_deposer
@@ -253,7 +253,7 @@ eprouver() {
     decor_deposer; return
   fi
   if esc_appliquer_migration "$mute" mig >/dev/null 2>&1; then
-    rouge "m$court-privilege-sans-effet" "une commande de privilege sans effet"
+    rouge "m$court-privilege-sans-effet" "$pt. une commande de privilege sans effet"
     detail "a PASSE: la postcondition ne voit pas le catalogue."
     ATOMICITE_APPLICABLE=0
   else
@@ -263,7 +263,7 @@ eprouver() {
       detail "et le refus nomme l'invariant « $ident »."
       ATOMICITE_APPLICABLE=1
     else
-      rouge "m$court-privilege-sans-effet" "refusee, mais SANS nommer"
+      rouge "m$court-privilege-sans-effet" "$pt. refusee, mais SANS nommer"
       detail "« $ident »: un refus etranger ne prouve pas la postcondition."
       detail "$(grep -m1 -oiE 'ERROR[^|]{0,110}' <<<"$sortie")"
       ATOMICITE_APPLICABLE=0
@@ -276,10 +276,10 @@ eprouver() {
                   where migration_id = '$base_nom'")"
     vu="$(q "$temoin")"
     if [[ "$lignes" != "0" ]]; then
-      rouge "m$court-atomicite" "une ligne de registre subsiste pour une"
+      rouge "m$court-atomicite" "$pt. une ligne de registre subsiste pour une"
       detail "migration refusee ($lignes ligne(s)): un redeploiement la sauterait."
     elif [[ "$vu" == "t" ]]; then
-      rouge "m$court-atomicite" "$temoin_desc est en place apres un REFUS:"
+      rouge "m$court-atomicite" "$pt. $temoin_desc est en place apres un REFUS:"
       detail "la transaction n'a pas ete annulee entierement."
     else
       # LA REAPPLICATION PROPRE FAIT PARTIE DE L'ATOMICITE. Une base qu'un
@@ -292,7 +292,7 @@ eprouver() {
         detail "aucun objet a demi pose, et le fichier INTACT s'applique"
         detail "proprement ensuite."
       else
-        rouge "m$court-atomicite" "la migration intacte ne se reapplique pas"
+        rouge "m$court-atomicite" "$pt. la migration intacte ne se reapplique pas"
         detail "apres un refus: la base reste inutilisable."
       fi
     fi
@@ -331,7 +331,7 @@ PY
     detail "passe: c'est bien l'appel a la postcondition qui refusait, et"
     detail "non un mecanisme voisin."
   else
-    rouge "m$court-appel-neutralise" "l'appel retire, la migration echoue"
+    rouge "m$court-appel-neutralise" "$pt. l'appel retire, la migration echoue"
     detail "quand meme: le refus mesure en (2) ne vient pas de la"
     detail "postcondition. $(grep -m1 -oiE 'ERROR[^|]{0,100}' <<<"$ESC_MIGRATION_SORTIE")"
   fi
@@ -350,7 +350,7 @@ eprouver "$DB_DIR/migrations/0011_authority_hardening.sql" \
   "select assert_authority_surface_hardened();" \
   "select (select count(*) = 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
             where n.nspname='public' and p.proname='assert_authority_surface_hardened')" \
-  "assert_authority_surface_hardened()"
+  "assert_authority_surface_hardened()" "Y1"
 
 # --------------------------------------------------------------------------
 # 0012 — le privilege neutralise est le REVOKE de PUBLIC sur la filiation.
@@ -362,7 +362,7 @@ eprouver "$DB_DIR/migrations/0012_delegation_lineage.sql" \
   "select assert_0012_lineage_surface();" \
   "select (select count(*) = 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
             where n.nspname='public' and p.proname='normative_grant_descendants')" \
-  "normative_grant_descendants()"
+  "normative_grant_descendants()" "Y2"
 
 # --------------------------------------------------------------------------
 # 0014 — le privilege neutralise est le REVOKE de PUBLIC sur la consommation.
@@ -375,7 +375,7 @@ eprouver "$DB_DIR/migrations/0014_four_eyes_decisions.sql" \
 select assert_authority_composition();" \
   "select (select count(*) = 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
             where n.nspname='public' and c.relname='normative_authority_decisions')" \
-  "normative_authority_decisions"
+  "normative_authority_decisions" "Y3"
 
 # ==========================================================================
 # LES DERIVES D'APRES-DEPLOIEMENT — une autre question, et il faut le dire
@@ -408,7 +408,7 @@ else
 
   # eprouver_derive <verdict> <identifiant> <assertion> <sql-derive> <sql-retour>
   eprouver_derive() {
-    local v="$1" ident="$2" assertion="$3" derive="$4" retour="$5"
+    local v="$1" ident="$2" assertion="$3" derive="$4" retour="$5" pt="$6"
     local avant apres pendant
     if [[ "$DERIVE_PRETE" -ne 1 ]]; then
       troue "$v" "le decor des derives n'a pas ete pose"; return
@@ -427,10 +427,10 @@ else
     admb -q -c "$retour" >/dev/null 2>&1
     apres="$(admb -tAc "select $assertion" 2>&1)"
     if ! grep -qF "$ident" <<<"$pendant"; then
-      rouge "$v" "la derive n'est PAS detectee, ou pas nommee « $ident »:"
+      rouge "$v" "$pt. la derive n'est PAS detectee, ou pas nommee « $ident »:"
       detail "$(head -c 150 <<<"$pendant")"
     elif grep -qiE "ERROR|ERREUR" <<<"$apres"; then
-      rouge "$v" "apres retour en arriere l'assertion refuse toujours:"
+      rouge "$v" "$pt. apres retour en arriere l'assertion refuse toujours:"
       detail "le refus ci-dessus ne prouve donc rien. $(head -c 110 <<<"$apres")"
     else
       sur "$v" "detectee et nommee « $ident »; le retour rend le vert."
@@ -448,32 +448,32 @@ else
   eprouver_derive derive-proprietaire "AUTHORITY_COMPOSITION_OWNER_MISMATCH" \
     "assert_authority_composition()" \
     "alter function normative_grant_descendants(uuid) owner to \"$MIG\"" \
-    "alter function normative_grant_descendants(uuid) owner to eurostruct_normative_writer"
+    "alter function normative_grant_descendants(uuid) owner to eurostruct_normative_writer" "Y4"
 
   eprouver_derive derive-public-execute "AUTHORITY_0014_PUBLIC_EXECUTE" \
     "assert_0014_decisions_surface()" \
     "grant execute on function normative_decision_consume(uuid) to public" \
-    "revoke execute on function normative_decision_consume(uuid) from public"
+    "revoke execute on function normative_decision_consume(uuid) from public" "Y5"
 
   eprouver_derive derive-search-path "AUTHORITY_0014_SEARCH_PATH_UNPINNED" \
     "assert_0014_decisions_surface()" \
     "alter function normative_decision_propose(text, text, uuid, country_code,
        text, text, text, normative_permission, text) reset search_path" \
     "alter function normative_decision_propose(text, text, uuid, country_code,
-       text, text, text, normative_permission, text) set search_path = public, pg_temp"
+       text, text, text, normative_permission, text) set search_path = public, pg_temp" "Y6"
 
   eprouver_derive derive-trigger-desactive "AUTHORITY_0014_TRIGGER_NOT_ENABLED" \
     "assert_0014_decisions_surface()" \
     "alter table normative_authority_decisions
        disable trigger normative_decisions_are_not_deletable" \
     "alter table normative_authority_decisions
-       enable trigger normative_decisions_are_not_deletable"
+       enable trigger normative_decisions_are_not_deletable" "Y7"
 
   eprouver_derive derive-policy-absente "AUTHORITY_0014_POLICY_MISMATCH" \
     "assert_0014_decisions_surface()" \
     "drop policy decisions_governance_read on normative_authority_decisions" \
     "create policy decisions_governance_read on normative_authority_decisions
-       for select to normative_governance using (true)"
+       for select to normative_governance using (true)" "Y8"
 
   # LE MAUVAIS ROLE DANS UNE POLICY EST LE PIRE DES TROIS: la policy EXISTE,
   # elle est permissive, elle porte le bon nom et la bonne commande. Seul le
@@ -486,17 +486,17 @@ else
        for select to normative_backend using (true)" \
     "drop policy decisions_governance_read on normative_authority_decisions;
      create policy decisions_governance_read on normative_authority_decisions
-       for select to normative_governance using (true)"
+       for select to normative_governance using (true)" "Y9"
 
   eprouver_derive derive-ecriture-directe "AUTHORITY_0014_DIRECT_WRITE_GRANTED" \
     "assert_0014_decisions_surface()" \
     "grant insert on normative_authority_decisions to normative_governance" \
-    "revoke insert on normative_authority_decisions from normative_governance"
+    "revoke insert on normative_authority_decisions from normative_governance" "Y10"
 
   eprouver_derive derive-force-rls "AUTHORITY_0014_FORCE_RLS_DISABLED" \
     "assert_0014_decisions_surface()" \
     "alter table normative_authority_decisions no force row level security" \
-    "alter table normative_authority_decisions force row level security"
+    "alter table normative_authority_decisions force row level security" "Y11"
 
   # ------------------------------------------------------------------------
   # LE PIEGE D'ORIGINE, JOUE POUR DE VRAI: un REVOKE emis par un role qui n'a
@@ -531,7 +531,7 @@ else
     if [[ "$AV" != "1" ]]; then
       troue derive-revoke-sans-effet "PUBLIC n'a pas recu le droit: scenario non pose"
     elif [[ "$AP" != "1" ]]; then
-      rouge derive-revoke-sans-effet "le REVOKE d'un non-ayant-droit a PRIS:"
+      rouge derive-revoke-sans-effet "Y12. le REVOKE d'un non-ayant-droit a PRIS:"
       detail "le piege n'existe pas sur ce cluster, et les postconditions"
       detail "reposent sur une premisse fausse."
     elif [[ "$CODE_RV" -ne 0 ]]; then
@@ -542,7 +542,7 @@ else
       detail "psql rend 0, et seule la postcondition voit que PUBLIC execute"
       detail "encore. C'est tout le motif de ce lot, mesure sur pieces."
     else
-      rouge derive-revoke-sans-effet "la postcondition ne voit pas le PUBLIC"
+      rouge derive-revoke-sans-effet "Y12. la postcondition ne voit pas le PUBLIC"
       detail "restant: $(head -c 120 <<<"$VU")"
     fi
   fi
