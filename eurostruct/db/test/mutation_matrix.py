@@ -786,6 +786,7 @@ def _code(nom):
 # pour le dire: elle le comptait « creux », c'est-a-dire l'inverse de la
 # verite. On exige donc le diagnostic NOMME, pas un echec quelconque.
 INSTALL_ASSERTION = {
+    "TP1": "AUTHORITY_MANIFEST_SEARCH_PATH",
     "B": "PRECONDITION 0013: la table normative_authorisation_grants "
          "appartient a",
     # L'ASSERTION AGREGEE, AJOUTEE AU LOT PRECEDENT, INTERCEPTE DESORMAIS
@@ -1847,6 +1848,36 @@ CAS_DECLENCHEURS_0014 = [
 #
 # Chaque mutation retire UNE des quatre proprietes du manifeste.
 CAS_MANIFESTE = [
+    # ----------------------------------------------------------------------
+    # LE CONTEXTE D'EXECUTION DES DECLENCHEURS — deux couches, deux mutations
+    # ----------------------------------------------------------------------
+    # CE QUI EST EN JEU, MESURE LE 28/08 SUR DECOR VERIFIE. Une garde
+    # declencheur sans `search_path` epingle est CONTOURNABLE: il suffit de
+    # creer une table temporaire homonyme de celle qu'elle interroge, et `TEMP`
+    # est accorde a PUBLIC par defaut. Verdict = valeur ECRITE:
+    #
+    #   aucun search_path              -> CONTOURNEE
+    #   public, pg_temp                -> tient
+    #   pg_catalog, public, pg_temp    -> tient
+    #   pg_catalog, public             -> CONTOURNEE
+    #   pg_temp, pg_catalog, public    -> CONTOURNEE
+    #
+    # OMETTRE `pg_temp` NE LE FERME PAS: omis, il est consulte EN PREMIER pour
+    # les relations. Seule sa presence EN DERNIERE POSITION ferme le vecteur.
+    #
+    # LES DEUX MUTATIONS NE SONT PAS REDONDANTES, et c'est le point:
+    #
+    #   TP1  retire le chemin -> le MANIFESTE le voit (booleen chemin_epingle)
+    #        et 0015 refuse de s'installer;
+    #   TP1p garde un chemin mais DEPLACE pg_temp -> le booleen du manifeste ne
+    #        voit RIEN (le chemin existe), et seul le controle de POSITION
+    #        rougit. Une seule des deux couches ne suffirait pas.
+    ("TP1  le chemin d'une garde atteignable est retire", "TP1", A15,
+     [("alter function forbid_mutation()                       set search_path = pg_catalog, public, pg_temp;",
+       "-- chemin retire par mutation")], False),
+    ("TP1p pg_temp quitte la derniere position", "TP1", S,
+     [("alter function forbid_activation_mutation()         set search_path = pg_catalog, public, pg_temp;",
+       "alter function forbid_activation_mutation()         set search_path = pg_catalog, public;")], False),
     # MF3 — le sens realite -> manifeste. Sans lui, une fonction ajoutee au
     # perimetre sans etre declaree passe inapercue: le manifeste ne parle plus
     # que de ce qu'il connait deja.

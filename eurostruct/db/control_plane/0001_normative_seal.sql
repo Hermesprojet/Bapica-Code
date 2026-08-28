@@ -2768,4 +2768,53 @@ begin
 end
 $$;
 
+
+-- ---------------------------------------------------------------------
+-- LE CONTEXTE D'EXECUTION DES CINQ GARDES POSEES ICI
+-- ---------------------------------------------------------------------
+-- CE QUI A ETE MESURE, ET QUI JUSTIFIE CES CINQ LIGNES.
+--
+-- Une fonction declencheur SANS `search_path` epingle s'execute avec le chemin
+-- de CELUI QUI DECLENCHE l'ecriture. Experience faite le 28/08 sur base
+-- jetable, sur la forme exacte d'une de ces gardes:
+--
+--   * sans manipulation, la garde REFUSE — « le calcul est fige »;
+--   * apres `create temporary table validations (...)` dans la meme session,
+--     la meme commande passe: `UPDATE 1`.
+--
+-- `pg_temp` est consulte EN PREMIER pour les relations quand il n'est pas
+-- nomme explicitement, et `TEMP` est accorde a PUBLIC par defaut — mesure sur
+-- la base deployee: `datacl = {=Tc/<migrateur>, ...}`. N'importe quel role
+-- capable de se connecter peut donc creer la relation qui masque celle que la
+-- garde interroge.
+--
+-- LES CINQ GARDES CI-DESSOUS N'INTERROGENT AUCUNE RELATION: leur corps ne
+-- contient qu'un `raise exception`, et pour l'une d'elles un `txid_current()`.
+-- Le vecteur `pg_temp` n'a donc rien a masquer chez elles. Mais un SECOND
+-- vecteur existe: un schema nomme EXPLICITEMENT avant `pg_catalog` peut
+-- masquer une fonction integree — mesure: `txid_current()` a rendu 1 au lieu
+-- de l'identifiant reel. Ce vecteur exige `CREATE` sur la base, qu'AUCUN role
+-- d'autorite ne detient (mesure: `has_database_privilege(..., 'CREATE') = f`
+-- pour les sept roles canoniques).
+--
+-- On epingle quand meme. Un contexte d'execution qui depend de deux mesures
+-- favorables n'est pas une garantie: c'est une coincidence qu'on documente.
+--
+-- `pg_temp` EST NOMME EXPLICITEMENT, ET EN DERNIER. C'est contre-intuitif et
+-- c'est mesure: OMETTRE `pg_temp` NE LE FERME PAS, il est alors consulte EN
+-- PREMIER pour les relations. Table mesuree le 28/08 sur la garde reelle:
+--
+--   search_path = pg_catalog, public            -> UPDATE 1   (contourne)
+--   search_path = pg_catalog, public, pg_temp   -> REFUSE     (la garde tient)
+--   search_path = pg_temp, pg_catalog, public   -> UPDATE 1   (contourne)
+--
+-- Seule la troisieme position ferme le vecteur. Une premiere version de ce
+-- correctif ecrivait « pg_catalog, public » en croyant fermer par omission:
+-- elle ne fermait rien.
+alter function forbid_seal_metadata_mutation()      set search_path = pg_catalog, public, pg_temp;
+alter function forbid_activation_mutation()         set search_path = pg_catalog, public, pg_temp;
+alter function forbid_approved_settings_mutation()  set search_path = pg_catalog, public, pg_temp;
+alter function forbid_control_plane_mutation()      set search_path = pg_catalog, public, pg_temp;
+alter function forbid_finalization_intent_mutation() set search_path = pg_catalog, public, pg_temp;
+
 commit;

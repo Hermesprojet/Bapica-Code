@@ -74,6 +74,7 @@ verdicts_declarer \
   controle-de-derive \
   manifeste-egale-realite manifeste-derive-proprietaire \
   manifeste-non-declaree manifeste-public-vs-temoin \
+  declencheurs-epingles declencheur-pg-temp-ferme \
   auto-enrolement-guc auto-enrolement-role migrateur-non-membre \
   appartenance-declaree policy-suit-privilege surface-du-backend
 
@@ -638,6 +639,156 @@ else
       "MF4. un octroi a un role ordinaire n'est vu ni comme elargissement ni"
     detail "autrement: le controle ne porte rien."
   fi
+fi
+
+# --------------------------------------------------------------------------
+# LE CONTEXTE D'EXECUTION DES DECLENCHEURS — deux controles
+# --------------------------------------------------------------------------
+# CE QUI A ETE MESURE, ET QUI A CHANGE LE CORRECTIF EN COURS DE ROUTE.
+#
+# Une fonction declencheur sans `search_path` epingle s'execute avec le chemin
+# de CELUI QUI DECLENCHE l'ecriture. Sur la forme exacte de
+# `forbid_validated_calculation_mutation`, base jetable, 28/08:
+#
+#   sans manipulation                                -> la garde REFUSE
+#   apres `create temporary table validations (...)` -> « UPDATE 1 »
+#
+# La garde d'immuabilite decennale etait donc contournable par toute session
+# capable de creer une table temporaire — c'est-a-dire toutes, `TEMP` etant
+# accorde a PUBLIC par defaut.
+#
+# ET LE PREMIER CORRECTIF NE FERMAIT RIEN. Ecrire `set search_path =
+# pg_catalog, public` en croyant fermer par OMISSION de `pg_temp` laisse
+# celui-ci consulte EN PREMIER pour les relations. Table mesuree:
+#
+#   pg_catalog, public            -> UPDATE 1   (contourne)
+#   pg_catalog, public, pg_temp   -> REFUSE     (la garde tient)
+#   pg_temp, pg_catalog, public   -> UPDATE 1   (contourne)
+#
+# Seule la troisieme position ferme le vecteur. Le controle ci-dessous exige
+# donc la POSITION, pas la seule presence d'un `search_path`.
+echo "      -- declencheurs-epingles: chaque garde a-t-elle un chemin, et pg_temp en dernier ?"
+NON_EPINGLES=$(ctl -tAc "
+  select coalesce(string_agg(p.oid::regprocedure::text, ', '), '')
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.prorettype = 'trigger'::regtype
+     and (p.proname like 'forbid\_%' or p.proname like 'check\_normative\_%'
+       or p.proname like 'normative\_%')
+     and (p.proconfig is null
+          or not exists (select 1 from unnest(p.proconfig) c
+                          where c like 'search\_path=%'))" 2>&1)
+MAL_PLACES=$(ctl -tAc "
+  select coalesce(string_agg(p.oid::regprocedure::text || ' [' || c || ']', ', '), '')
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace,
+         lateral unnest(p.proconfig) c
+   where n.nspname = 'public' and p.prorettype = 'trigger'::regtype
+     and (p.proname like 'forbid\_%' or p.proname like 'check\_normative\_%'
+       or p.proname like 'normative\_%')
+     and c like 'search\_path=%'
+     and c not like '%pg\_temp'" 2>&1)
+if [[ -n "$NON_EPINGLES" ]]; then
+  rouge declencheurs-epingles "TP1. des gardes s'executent avec le chemin de l'appelant:"
+  detail "$NON_EPINGLES"
+elif [[ -n "$MAL_PLACES" ]]; then
+  rouge declencheurs-epingles "TP1. des gardes ne terminent pas leur chemin par pg_temp:"
+  detail "$MAL_PLACES"
+  detail "Omettre pg_temp ne le ferme pas: il est alors consulte EN PREMIER."
+else
+  sur declencheurs-epingles \
+    "toutes les gardes ont un chemin epingle terminant par pg_temp."
+fi
+
+echo "      -- declencheur-pg-temp-ferme: le masquage par pg_temp est-il REELLEMENT ferme ?"
+# ON EPROUVE LE MECANISME, PAS SA DECLARATION. Un `proconfig` correct ne prouve
+# pas que PostgreSQL se comporte comme on le croit — et cette croyance a ete
+# fausse DEUX FOIS en ecrivant ce controle:
+#
+#   1. « omettre pg_temp le ferme » — faux: omis, il est consulte EN PREMIER;
+#   2. un premier decor rendait `old` depuis un BEFORE UPDATE, ce qui ANNULE
+#      l'ecriture quoi que la garde decide: la ligne restait inchangee et le
+#      controle concluait « la garde tient » pour les cinq variantes, y compris
+#      la fonction nue. Le verdict portait sur un fait que rien ne produisait.
+#
+# Table finale, mesuree sur decor verifie, verdict = VALEUR ECRITE:
+#
+#   aucun search_path              -> CONTOURNEE
+#   public, pg_temp                -> tient
+#   pg_catalog, public, pg_temp    -> tient
+#   pg_catalog, public             -> CONTOURNEE
+#   pg_temp, pg_catalog, public    -> CONTOURNEE
+#
+# Le decor est autonome — deux tables, deux gardes — pour que le controle
+# mesure la SEMANTIQUE du serveur et non l'etat du produit.
+TP_ERR=$(admb -q -v ON_ERROR_STOP=1 2>&1 <<'SQL'
+create table tp_preuves (cible uuid);
+create table tp_objets  (id uuid primary key, val int);
+create function tp_garde_nue() returns trigger language plpgsql as $$
+begin
+  if exists (select 1 from tp_preuves p where p.cible = old.id) then
+    raise exception 'TP: fige' using errcode = 'restrict_violation';
+  end if;
+  return new;
+end; $$;
+create function tp_garde_epinglee() returns trigger language plpgsql
+  set search_path = pg_catalog, public, pg_temp as $$
+begin
+  if exists (select 1 from tp_preuves p where p.cible = old.id) then
+    raise exception 'TP: fige' using errcode = 'restrict_violation';
+  end if;
+  return new;
+end; $$;
+insert into tp_objets  values ('11111111-1111-1111-1111-111111111111', 1);
+insert into tp_preuves values ('11111111-1111-1111-1111-111111111111');
+SQL
+)
+if [[ -n "$TP_ERR" ]]; then
+  troue declencheur-pg-temp-ferme "le decor du controle n'a pas pu etre pose:"
+  detail "${TP_ERR:0:120}"
+else
+  tp_tenter() {   # tp_tenter <fonction> <valeur> -> imprime la valeur ecrite
+    # `create trigger <nom> BEFORE ... ON <table>`, et non « ON ... BEFORE ».
+    # Mesure: la forme inverse est refusee, le declencheur n'existe pas, et les
+    # deux variantes rendent alors « contournee » — un rouge fabrique par une
+    # faute de syntaxe du controle lui-meme. On VERIFIE donc sa presence.
+    admb -q -c "create trigger tp before update on tp_objets for each row
+                  execute function $1()" >/dev/null 2>&1
+    if [[ "$(admb -tAc "select count(*) from pg_trigger
+                         where tgname='tp' and not tgisinternal")" != "1" ]]; then
+      echo "DECLENCHEUR-ABSENT"; return 0
+    fi
+    admb -q >/dev/null 2>&1 <<SQL
+create temporary table tp_preuves (cible uuid);
+update tp_objets set val = $2;
+SQL
+    admb -q -c "drop trigger tp on tp_objets" >/dev/null 2>&1
+    # LE VERDICT EST LA VALEUR ECRITE. psql poursuit apres une erreur dans un
+    # heredoc: la derniere ligne de sortie ne dit rien de ce qui a eu lieu.
+    admb -tAc "select val from tp_objets"
+  }
+  admb -q -c "update tp_objets set val = 1" >/dev/null 2>&1
+  TP_NUE=$(tp_tenter tp_garde_nue 2)
+  admb -q -c "update tp_objets set val = 1" >/dev/null 2>&1
+  TP_EPI=$(tp_tenter tp_garde_epinglee 3)
+  if [[ "$TP_NUE" == "DECLENCHEUR-ABSENT" || "$TP_EPI" == "DECLENCHEUR-ABSENT" ]]; then
+    troue declencheur-pg-temp-ferme \
+      "le declencheur du decor n'a pas pu etre pose: le controle ne mesure rien."
+  elif [[ "$TP_NUE" != "2" ]]; then
+    troue declencheur-pg-temp-ferme \
+      "le vecteur pg_temp ne se reproduit pas sur ce serveur (garde nue:"
+    detail "valeur $TP_NUE, attendu 2). Le controle ne mesurerait rien."
+  elif [[ "$TP_EPI" != "1" ]]; then
+    rouge declencheur-pg-temp-ferme \
+      "TP2. la garde EPINGLEE est contournee par pg_temp (valeur $TP_EPI):"
+    detail "le chemin ne ferme pas ce qu'il pretend fermer."
+  else
+    sur declencheur-pg-temp-ferme \
+      "garde nue contournee (valeur $TP_NUE), garde epinglee refuse — le"
+    detail "vecteur est ferme par la POSITION de pg_temp, et c'est mesure."
+  fi
+  admb -q >/dev/null 2>&1 <<'SQL'
+drop function if exists tp_garde_nue(); drop function if exists tp_garde_epinglee();
+drop table if exists tp_objets; drop table if exists tp_preuves;
+SQL
 fi
 
 # ==========================================================================

@@ -111,6 +111,79 @@ grant create on schema public to eurostruct_normative_writer;
 
 
 -- ---------------------------------------------------------------------
+-- LE CONTEXTE D'EXECUTION DES ONZE GARDES ANTERIEURES
+-- ---------------------------------------------------------------------
+-- CE QUI A ETE MESURE. Une fonction declencheur sans `search_path` epingle
+-- s'execute avec le chemin de CELUI QUI DECLENCHE l'ecriture. Experience du
+-- 28/08 sur base jetable, sur la forme exacte de
+-- `forbid_validated_calculation_mutation`:
+--
+--   sans manipulation                                -> la garde REFUSE
+--   apres `create temporary table validations (...)` -> « UPDATE 1 »
+--
+-- La garde d'immuabilite decennale etait donc CONTOURNABLE par toute session
+-- capable de creer une table temporaire — c'est-a-dire toutes: `TEMP` est
+-- accorde a PUBLIC par defaut, mesure sur la base deployee
+-- (`datacl = {=Tc/<migrateur>, ...}`). `pg_temp` est consulte EN PREMIER pour
+-- les relations lorsqu'il n'est pas nomme explicitement.
+--
+-- QUATRE de ces onze fonctions interrogent une relation NON QUALIFIEE et
+-- etaient donc reellement exposees:
+--
+--   forbid_validated_calculation_mutation -> validations
+--   forbid_validated_child_mutation       -> validations
+--   forbid_final_deliverable_mutation     -> validations
+--   forbid_annex_rewrite                  -> national_annex_parameters
+--
+-- CES QUATRE-LA SONT HORS DU PERIMETRE D'AUTORITE DE 6.3c, ET C'EST PROUVE:
+-- aucune primitive de proposition, approbation, consommation, delegation,
+-- revocation ou amorcage ne nomme `calculations`, `results`, `deliverables`,
+-- `national_annexes`, `national_annex_parameters`, `ndp_review_decisions`,
+-- `projects`, `national_annex_parameter_variants` ni `validations` — verifie
+-- par balayage de `prosrc` sur les douze primitives, zero correspondance.
+--
+-- Elles sont corrigees ICI QUAND MEME. Un contournement DEMONTRE de la garde
+-- de conservation decennale ne se documente pas en attendant le jalon qui
+-- gouverne ces tables: le correctif tient en une ligne par fonction et ne
+-- change aucun comportement legitime.
+--
+-- LES SEPT AUTRES SONT DANS LE PERIMETRE D'AUTORITE — elles se declenchent sur
+-- les tables de preuve, sur l'activation, sur le plan de controle, sur
+-- l'intention de finalisation, sur le registre de migrations et sur les
+-- metadonnees du sceau. Leur corps n'interroge AUCUNE relation: le vecteur
+-- `pg_temp` n'a rien a masquer chez elles. Un second vecteur existe — un
+-- schema nomme explicitement avant `pg_catalog` masque une fonction integree,
+-- mesure: `txid_current()` a rendu 1 — mais il exige `CREATE` sur la base,
+-- qu'aucun role d'autorite ne detient (mesure:
+-- `has_database_privilege(..., 'CREATE') = f` pour les sept roles canoniques).
+-- On epingle quand meme: un contexte d'execution qui repose sur deux mesures
+-- favorables n'est pas une garantie, c'est une coincidence qu'on documente.
+--
+-- `pg_temp` EST NOMME EXPLICITEMENT, ET EN DERNIER. C'est contre-intuitif et
+-- c'est mesure: OMETTRE `pg_temp` NE LE FERME PAS, il est alors consulte EN
+-- PREMIER pour les relations. Table mesuree le 28/08 sur la garde reelle:
+--
+--   search_path = pg_catalog, public            -> UPDATE 1   (contourne)
+--   search_path = pg_catalog, public, pg_temp   -> REFUSE     (la garde tient)
+--   search_path = pg_temp, pg_catalog, public   -> UPDATE 1   (contourne)
+--
+-- Seule la troisieme position ferme le vecteur. Une premiere version de ce
+-- correctif ecrivait « pg_catalog, public » en croyant fermer par omission:
+-- elle ne fermait rien.
+alter function forbid_mutation()                       set search_path = pg_catalog, public, pg_temp;
+alter function forbid_migration_ledger_mutation()      set search_path = pg_catalog, public, pg_temp;
+alter function forbid_annex_rewrite()                  set search_path = pg_catalog, public, pg_temp;
+alter function forbid_ndp_value_rewrite()              set search_path = pg_catalog, public, pg_temp;
+alter function forbid_variant_rewrite()                set search_path = pg_catalog, public, pg_temp;
+alter function forbid_review_decision_rewrite()        set search_path = pg_catalog, public, pg_temp;
+alter function forbid_purge_within_retention()         set search_path = pg_catalog, public, pg_temp;
+alter function forbid_validated_calculation_mutation() set search_path = pg_catalog, public, pg_temp;
+alter function forbid_validated_child_mutation()       set search_path = pg_catalog, public, pg_temp;
+alter function forbid_validated_deliverable_mutation() set search_path = pg_catalog, public, pg_temp;
+alter function forbid_final_deliverable_mutation()     set search_path = pg_catalog, public, pg_temp;
+
+
+-- ---------------------------------------------------------------------
 -- LE MANIFESTE — ce qui DOIT exister, et avec quelles proprietes
 -- ---------------------------------------------------------------------
 create or replace function normative_authority_manifest()
@@ -141,26 +214,26 @@ as $$
     ('check_normative_grant_lineage()', 'eurostruct_normative_writer', true, true, false, 'eurostruct_normative_writer'),
     ('check_normative_grant_revocation()', 'eurostruct_normative_writer', true, true, false, 'eurostruct_normative_writer'),
     ('consume_normative_authorisation(uuid,normative_permission,country_code,text,text,text)', 'eurostruct_normative_writer', true, true, false, 'eurostruct_normative_writer'),
-    ('forbid_activation_mutation()', '@PLAN', false, false, true, '@PLAN'),
-    ('forbid_annex_rewrite()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
-    ('forbid_approved_settings_mutation()', '@PLAN', false, false, true, '@PLAN'),
+    ('forbid_activation_mutation()', '@PLAN', false, true, true, '@PLAN'),
+    ('forbid_annex_rewrite()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
+    ('forbid_approved_settings_mutation()', '@PLAN', false, true, true, '@PLAN'),
     ('forbid_auth_contract_mutation()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
-    ('forbid_control_plane_mutation()', '@PLAN', false, false, true, '@PLAN'),
+    ('forbid_control_plane_mutation()', '@PLAN', false, true, true, '@PLAN'),
     ('forbid_decision_delete()', 'eurostruct_normative_writer', false, true, false, 'eurostruct_normative_writer'),
-    ('forbid_final_deliverable_mutation()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
-    ('forbid_finalization_intent_mutation()', '@PLAN', false, false, true, '@PLAN'),
-    ('forbid_migration_ledger_mutation()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
-    ('forbid_mutation()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
-    ('forbid_ndp_value_rewrite()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
+    ('forbid_final_deliverable_mutation()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
+    ('forbid_finalization_intent_mutation()', '@PLAN', false, true, true, '@PLAN'),
+    ('forbid_migration_ledger_mutation()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
+    ('forbid_mutation()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
+    ('forbid_ndp_value_rewrite()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
     ('forbid_normative_audit_mutation()', 'eurostruct_normative_writer', false, true, false, 'eurostruct_normative_writer'),
     ('forbid_normative_write_while_pending()', 'eurostruct_normative_activator', true, true, false, 'eurostruct_normative_activator,eurostruct_normative_bootstrap,eurostruct_normative_writer'),
-    ('forbid_purge_within_retention()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
-    ('forbid_review_decision_rewrite()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
-    ('forbid_seal_metadata_mutation()', '@PLAN', false, false, true, '@PLAN'),
-    ('forbid_validated_calculation_mutation()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
-    ('forbid_validated_child_mutation()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
-    ('forbid_validated_deliverable_mutation()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
-    ('forbid_variant_rewrite()', '@MIGRATEUR', false, false, true, '@MIGRATEUR'),
+    ('forbid_purge_within_retention()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
+    ('forbid_review_decision_rewrite()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
+    ('forbid_seal_metadata_mutation()', '@PLAN', false, true, true, '@PLAN'),
+    ('forbid_validated_calculation_mutation()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
+    ('forbid_validated_child_mutation()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
+    ('forbid_validated_deliverable_mutation()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
+    ('forbid_variant_rewrite()', '@MIGRATEUR', false, true, true, '@MIGRATEUR'),
     ('normative_activation_state()', 'eurostruct_normative_activator', true, true, false, 'authenticated,eurostruct_deployment,eurostruct_normative_activator,eurostruct_normative_bootstrap,eurostruct_normative_writer,normative_backend,normative_governance'),
     ('normative_approved_manifest()', 'eurostruct_normative_activator', true, true, false, 'eurostruct_deployment,eurostruct_normative_activator'),
     ('normative_authenticated_actor()', 'eurostruct_normative_writer', true, true, false, 'eurostruct_authority_backend,eurostruct_normative_bootstrap,eurostruct_normative_writer'),
