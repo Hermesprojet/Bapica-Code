@@ -1547,7 +1547,13 @@ select assert_authority_composition();""",
      A14,
      [("""       and not t.tgisinternal and t.tgenabled = 'O')""",
        """       and not t.tgisinternal)""")], False),
-    ("MC6 la branche des policies ne compare plus roles ni commande", "Y8", A14,
+    # LE POINT EST « Y9 », ET NON « Y8 » — MESURE. La mutation laisse la
+    # branche EXIGER L'EXISTENCE de la policy: le controle « policy absente »
+    # (Y8) reste donc rouge de lui-meme, et la mutation a SURVECU au premier
+    # passage. Le seul controle qui la tue est « mauvais role » (Y9), ou la
+    # policy existe et ou seul le role a change — exactement ce que la
+    # mutation cesse de regarder.
+    ("MC6 la branche des policies ne compare plus roles ni commande", "Y9", A14,
      [("""       and pol.polname = 'decisions_governance_read'
        and pol.polcmd = 'r' and pol.polpermissive
        and (select array_agg(rr.rolname::text order by rr.rolname) from pg_roles rr

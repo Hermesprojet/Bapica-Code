@@ -307,6 +307,26 @@ echo "==> contrat d'amorcage de la racine (6.3c)"
 etape "contrat d'amorcage de la racine" \
   "$HERE/authority_bootstrap_contract.sh" "${DB_NAME:0:20}bs"
 
+# --------------------------------------------------------------------------
+# LE CONTRAT DU PROVIDER — la frontiere d'identite, cote applicatif
+# --------------------------------------------------------------------------
+# `authority_four_eyes.sh` etablit que la BASE refuse deux fois le meme
+# principal. Celui-ci pose la question d'a cote, et elle n'a pas de reponse
+# dans PostgreSQL: QUI pose l'identite, et disparait-elle ensuite ?
+#
+# Un `SET` de session survit a la connexion rendue au pool: le locataire
+# suivant heriterait de l'identite du precedent. `SET LOCAL` meurt avec la
+# transaction. C'est toute la difference entre « l'acteur est pose pour cette
+# unite de travail » et « l'acteur traine », et elle ne se verifie que contre
+# un vrai serveur.
+#
+# SANS PILOTE POSTGRESQL, LE HARNAIS REND 4 — NON EXECUTE, compte comme une
+# surface manquante. Une garantie qu'on n'a pas pu verifier ne doit pas passer
+# pour verte.
+echo "==> contrat du provider (frontiere d'identite)"
+etape "contrat du provider" \
+  "$HERE/provider_contract.sh" "${DB_NAME:0:20}pv"
+
 echo "==> quatre-yeux explicite (6.3c)"
 etape "quatre-yeux explicite" \
   "$HERE/authority_four_eyes.sh" "${DB_NAME:0:20}fy"

@@ -142,6 +142,22 @@ jobs:
       - name: Moteur (requis par le contrat croise)
         run: pip install -e engine
 
+      # LE PILOTE POSTGRESQL, POUR LE CONTRAT DU PROVIDER.
+      #
+      # `db/test/provider_contract.sh` eprouve des proprietes qui n'existent
+      # que contre un vrai serveur: `SET LOCAL` meurt-il avec la transaction,
+      # une connexion reprise porte-t-elle encore l'identite precedente. Sans
+      # pilote, il rend 4 (NON EXECUTE) et `run.sh` le compte comme une
+      # surface manquante, donc rouge — c'est voulu, et cette etape existe
+      # pour que le rouge ne soit jamais du a l'outillage.
+      #
+      # LE PAQUET N'EST PAS UNE DEPENDANCE DU MOTEUR, et ne doit pas le
+      # devenir: `postgres_provider.py` n'importe aucun pilote — il recoit une
+      # connexion qui satisfait un Protocol. Le moteur reste donc installable
+      # sans base, et `engine/tests` continue de le prouver.
+      - name: Pilote PostgreSQL (contrat du provider)
+        run: pip install psycopg2-binary
+
       # La preuve, AVANT de laisser les harnais toucher le cluster: leurs
       # barrieres refusent-elles vraiment ? L'auto-test les met en echec seize
       # fois, avec des temoins portant les noms canoniques, et verifie qu'ils
