@@ -73,7 +73,9 @@ verdicts_declarer \
   rejeu-des-migrations ecriture-reelle admin-option-borne \
   egalite-declaree-reelle \
   postcondition-membre-en-trop postcondition-admin-direct \
-  postcondition-admin-en-chaine postcondition-declare-absent
+  postcondition-admin-en-chaine postcondition-declare-absent \
+  graphe-cartographie admin-non-vacuite createrole-ne-reintegre-pas \
+  plan-racine-externe
 
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
@@ -650,6 +652,150 @@ else
   sur postcondition-declare-absent "un login declare qui n'atteint pas le"
   detail "backend est refuse quand la base est ACTIVE, et la remise de"
   detail "l'appartenance rend le vert."
+fi
+
+# ==========================================================================
+# LE GRAPHE ADMIN, EN ENTIER — et ce que chaque arete confere REELLEMENT
+# ==========================================================================
+# CE QUI PRECEDE INTERROGE DES ROLES UN PAR UN. Une frontiere ne se lit pas
+# role par role: elle se lit sur le GRAPHE. Une arete anodine — « X est membre
+# de Y » — devient une capacite des que Y detient l'ADMIN sur le backend, et
+# aucun controle vise sur X ne le voit.
+#
+# LA CARTOGRAPHIE PORTE LE DONNEUR. `pg_auth_members.grantor` decide qui peut
+# REVOQUER: un octroi pose par A ne se retire que par A (fait mesure dans ce
+# jalon, cinquieme forme du piege « WARNING sans effet »). Une carte qui
+# l'omet ne permet pas de repondre a « comment defait-on ceci ? ».
+echo "      -- graphe-cartographie: toutes les aretes, et leur portee reelle"
+CARTE="$(admb -tA <<SQL
+select coalesce(string_agg(l, E'\n' order by l), '(aucune arete)') from (
+  select m.rolname || ' -> ' || r.rolname
+         || ' | donneur=' || pg_get_userbyid(a.grantor)
+         || ' | admin=' || a.admin_option::text
+         || ' inherit=' || a.inherit_option::text
+         || ' set=' || a.set_option::text
+         || ' | atteint le backend: usage=' 
+         || pg_has_role(m.rolname, '$CIBLE', 'USAGE')::text
+         || ' set=' || pg_has_role(m.rolname, '$CIBLE', 'SET')::text
+         || ' admin=' || pg_has_role(m.rolname, '$CIBLE',
+                                     'MEMBER WITH ADMIN OPTION')::text as l
+    from pg_auth_members a
+    join pg_roles r on r.oid = a.roleid
+    join pg_roles m on m.oid = a.member
+   where not m.rolsuper
+) s
+SQL
+)"
+echo "$CARTE" | sed 's/^/                /'
+# L'ENSEMBLE TRANSITIF EFFECTIF — celui qui compte, et non les lignes qui
+# nomment directement le backend.
+TRANSITIF="$(q "select coalesce(string_agg(p.rolname, ',' order by p.rolname), '(personne)')
+                  from pg_roles p
+                 where not p.rolsuper and p.rolname <> '$CIBLE'
+                   and (pg_has_role(p.rolname,'$CIBLE','USAGE')
+                        or pg_has_role(p.rolname,'$CIBLE','SET')
+                        or pg_has_role(p.rolname,'$CIBLE','MEMBER WITH ADMIN OPTION'))")"
+detail "ensemble TRANSITIF atteignant le backend: $TRANSITIF"
+ATTENDU_TRANSITIF="$(printf '%s\n' "$CTL" "$DECL2" "$SVC" | sort | paste -sd, -)"
+detail "attendu: le plan de controle (ADMIN residuel) + les logins declares"
+detail "         soit « $ATTENDU_TRANSITIF »"
+if [[ "$TRANSITIF" == "$ATTENDU_TRANSITIF" ]]; then
+  sur graphe-cartographie "l'ensemble TRANSITIF est exactement le plan de"
+  detail "controle et les logins declares. Aucune arete detournee, aucun"
+  detail "chemin indirect."
+else
+  rouge graphe-cartographie "GC1. l'ensemble transitif differe de l'attendu:"
+  detail "reel     « $TRANSITIF »"
+  detail "attendu  « $ATTENDU_TRANSITIF »"
+fi
+
+# --------------------------------------------------------------------------
+# LA NON-VACUITE DU GRAPHE: un vrai ADMIN enrole-t-il vraiment ?
+# --------------------------------------------------------------------------
+# SANS CE CONTROLE, TOUT CE QUI PRECEDE POURRAIT ETRE VERT SUR UNE SCENE OU
+# L'ADMIN NE CONFERE RIEN. « Personne ne peut enroler » et « enroler est
+# impossible ici » se ressemblent beaucoup dans un journal, et ne disent pas
+# du tout la meme chose.
+echo "      -- admin-non-vacuite: un detenteur d'ADMIN enrole-t-il un tiers ?"
+NV1="$(ctlp -tAc "grant $CIBLE to \"$TIERS\"" 2>&1)"
+NV_APRES="$(atteint "$TIERS")"
+ctlp -c "revoke $CIBLE from \"$TIERS\";" >/dev/null 2>&1
+NV_RETOUR="$(atteint "$TIERS")"
+detail "le plan de controle enrole « $TIERS »: $(head -c 60 <<<"$NV1" | tr '\n' ' ')"
+detail "apres l'octroi: $NV_APRES ; apres retrait: $NV_RETOUR"
+if [[ "$NV_APRES" == "$FERME" ]]; then
+  rouge admin-non-vacuite "AN1. le detenteur de l'ADMIN n'a PAS pu enroler:"
+  detail "la scene ne confere aucun pouvoir, et tous les refus mesures"
+  detail "ci-dessus sont donc sans valeur."
+elif [[ "$NV_RETOUR" != "$FERME" ]]; then
+  rouge admin-non-vacuite "AN1. le retrait n'a pas pris: $NV_RETOUR"
+else
+  sur admin-non-vacuite "l'ADMIN confere REELLEMENT le pouvoir d'enroler:"
+  detail "le plan de controle enrole un tiers ($NV_APRES), et le retire."
+  detail "Les refus mesures plus haut portent donc sur un pouvoir reel."
+fi
+
+# --------------------------------------------------------------------------
+# CREATEROLE NE REINTEGRE PAS LE PLAN DE CONTROLE
+# --------------------------------------------------------------------------
+# LE CHEMIN LE PLUS TENTANT, ET LE PLUS DISCRET. Le migrateur a CREATEROLE. Il
+# ne peut pas s'accorder le backend — mesure plus haut. Mais peut-il entrer
+# dans le PLAN DE CONTROLE, qui detient l'ADMIN ? Et, a defaut, creer un role
+# neuf et l'y faire entrer ? Les deux mettraient l'ADMIN a un pas.
+echo "      -- createrole-ne-reintegre-pas: le migrateur peut-il rejoindre le plan ?"
+CR1="$(migp -tAc "grant \"$CTL\" to \"$MIG\"" 2>&1)"
+CR_A="$(q "select pg_has_role('$MIG','$CTL','MEMBER')::text")"
+CR_FILS="${JETON}_cr"
+migp -tAc "create role \"$CR_FILS\" nologin" >/dev/null 2>&1
+CR2="$(migp -tAc "grant \"$CTL\" to \"$CR_FILS\"" 2>&1)"
+CR_B="$(q "select coalesce((select pg_has_role('$CR_FILS','$CTL','MEMBER')), false)::text")"
+CR_BACKEND="$(q "select coalesce((select pg_has_role('$CR_FILS','$CIBLE','MEMBER WITH ADMIN OPTION')), false)::text")"
+migp -tAc "drop role \"$CR_FILS\"" >/dev/null 2>&1
+detail "auto-entree dans le plan: $(head -c 60 <<<"$CR1" | tr '\n' ' ') -> membre=$CR_A"
+detail "role neuf entre dans le plan: $(head -c 60 <<<"$CR2" | tr '\n' ' ') -> membre=$CR_B"
+detail "ce role neuf atteint-il l'ADMIN du backend ? $CR_BACKEND"
+if [[ "$CR_A" == "true" || "$CR_B" == "true" || "$CR_BACKEND" == "true" ]]; then
+  rouge createrole-ne-reintegre-pas "CR1. CREATEROLE permet de rejoindre le"
+  detail "plan de controle, donc d'atteindre l'ADMIN du backend a un pas."
+  detail "LE POINT EST BLOQUANT: la racine cesse d'etre externe."
+else
+  sur createrole-ne-reintegre-pas "CREATEROLE ne suffit ni a rejoindre le plan"
+  detail "de controle, ni a y faire entrer un role neuf: PostgreSQL 16 exige"
+  detail "l'ADMIN sur le role accorde, et le migrateur ne l'a pas sur le plan."
+fi
+
+# --------------------------------------------------------------------------
+# LE PLAN DE CONTROLE EST UNE RACINE TECHNIQUE EXTERNE
+# --------------------------------------------------------------------------
+# CE QU'IL FAUT ETABLIR: son identite ne se decide pas depuis l'interieur. Ni
+# un reglage de base, ni un role applicatif, ni le migrateur ne peuvent la
+# designer ou la deplacer. Elle est FIGEE a la finalisation, par OID ET par
+# nom, et le constat en est immuable.
+echo "      -- plan-racine-externe: qui a fige le plan, et peut-on le deplacer ?"
+PLAN_NOM="$(q "select coalesce(normative_control_plane(), '(aucun)')")"
+PLAN_OID="$(q "select coalesce(normative_control_plane_oid()::text, '(aucun)')")"
+PLAN_ATTENDU_OID="$(q "select oid::text from pg_roles where rolname = '$CTL'")"
+# Le migrateur essaie de deplacer la racine par le seul chemin qui existerait:
+# ecrire dans la table qui la porte.
+PR1="$(mig -tAc "update normative_control_plane set role_name = '$MIG'" 2>&1)"
+PR2="$(mig -tAc "insert into normative_control_plane (role_name) values ('$MIG')" 2>&1)"
+PLAN_APRES="$(q "select coalesce(normative_control_plane(), '(aucun)')")"
+detail "plan fige: « $PLAN_NOM » (oid $PLAN_OID) ; oid du role CTL: $PLAN_ATTENDU_OID"
+detail "tentative UPDATE par le migrateur: $(head -c 70 <<<"$PR1" | tr '\n' ' ')"
+detail "tentative INSERT par le migrateur: $(head -c 70 <<<"$PR2" | tr '\n' ' ')"
+if [[ "$PLAN_NOM" != "$CTL" || "$PLAN_OID" != "$PLAN_ATTENDU_OID" ]]; then
+  rouge plan-racine-externe "PE1. le plan fige n'est pas le role qui a"
+  detail "reellement pose le sceau: « $PLAN_NOM » (oid $PLAN_OID)."
+elif [[ "$PLAN_APRES" != "$PLAN_NOM" ]]; then
+  rouge plan-racine-externe "PE1. la racine a ete DEPLACEE par le migrateur:"
+  detail "« $PLAN_NOM » -> « $PLAN_APRES »"
+elif ! grep -qiE "denied|refus|interdit|immuable|ERROR" <<<"$PR1$PR2"; then
+  troue plan-racine-externe "ni deplacement ni refus interpretable: le"
+  detail "scenario n'a rien etabli."
+else
+  sur plan-racine-externe "la racine est figee par OID ET par nom sur le role"
+  detail "qui a reellement pose le sceau, et le migrateur ne peut ni la"
+  detail "deplacer ni en designer une autre."
 fi
 
 # ==========================================================================
