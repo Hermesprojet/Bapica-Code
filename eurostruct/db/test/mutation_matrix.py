@@ -787,6 +787,12 @@ INSTALL_ASSERTION = {
     # (zero ligne de registre, aucune table posee).
     "B'": "AUTHORITY_COMPOSITION_FORCE_RLS_MISSING",
     "B=": "AUTHORITY_COMPOSITION_TABLE_OWNER_MISMATCH",
+    # L'ENDOSSEMENT DU DONNEUR, ENFIN FALSIFIABLE. Il avait SURVECU deux
+    # fois — mute dans 0012 puis dans 0011 — parce que `0011` revoquait
+    # CREATE sans jamais verifier que la revocation avait pris: le seul
+    # controle capable de le voir arrivait deux migrations plus tard, quand
+    # une autre revocation, elle intacte, avait deja nettoye.
+    "GR1": "AUTHORITY_0011_SCHEMA_CREATE_RETAINED",
 }
 
 # LES REDONDANCES VOULUES ET LEUR PREUVE COMBINEE.
@@ -1630,6 +1636,25 @@ select assert_authority_composition();""",
     # ne retire RIEN — sans erreur ni WARNING visible. La correction endosse
     # le donneur avant de revoquer. Retirer cet endossement remet exactement
     # le defaut d'origine, et la postcondition doit le voir.
+    # L'ENDOSSEMENT DU DONNEUR EST RETIRE — et cette fois il est TUE.
+    #
+    # Provenance mesuree, endossement neutralise dans une copie jetable:
+    #
+    #   apres 0010 : pg_database_owner -> eurostruct_normative_writer
+    #   apres 0011 : pg_database_owner -> eurostruct_normative_writer (RESTE)
+    #
+    # L'octroi est pose SOUS `pg_database_owner`; la revocation emise par un
+    # role detenant un `CREATE ... WITH GRANT OPTION` explicite est resolue
+    # sous CE role, qui n'a jamais rien accorde. PostgreSQL ne trouve rien a
+    # retirer, et ne le dit pas.
+    #
+    # Le refus est desormais celui de `0011` elle-meme, avec son identifiant,
+    # et sans aucune ligne de registre: KILLED_INSTALL_ASSERTION.
+    ("GR1 l'endossement du donneur est retire de 0011", "Y1", A11,
+     [("""      execute format('set local role %I', donneur);
+      execute 'revoke create on schema public from '""",
+       """      execute 'revoke create on schema public from '""")], False),
+
     # L'ACL `NULL` RELUE COMME UNE ABSENCE DE PRIVILEGE.
     #
     # C'est l'erreur que la mesure a rendue impossible a commettre par

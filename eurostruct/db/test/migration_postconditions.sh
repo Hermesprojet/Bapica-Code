@@ -243,6 +243,10 @@ eprouver() {
   else
     rouge "m$court-verte" "$pt. la migration est refusee sur une base correcte:"
     detail "$(grep -m1 -oiE 'ERROR[^|]{0,120}' <<<"$ESC_MIGRATION_SORTIE")"
+    # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE: sans lui, un refus a
+    # l'installation ne se distingue pas d'une panne quelconque.
+    grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$ESC_MIGRATION_SORTIE" | sort -u \
+      | head -4 | sed 's/^/                invariant: /'
   fi
   decor_deposer
 
