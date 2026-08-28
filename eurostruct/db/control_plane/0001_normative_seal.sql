@@ -2644,6 +2644,39 @@ begin
       using errcode = 'insufficient_privilege';
   end if;
 
+  -- ------------------------------------------------------------------
+  -- LE MANIFESTE EST REEVALUE ICI, ET C'EST LE SEUL ENDROIT QUI COMPTE
+  -- ------------------------------------------------------------------
+  -- POURQUOI UNE VERIFICATION EN PHASE 1 NE SUFFIT PAS. `0015` confronte le
+  -- manifeste a la realite AU MOMENT OU ELLE S'APPLIQUE — c'est-a-dire avant
+  -- la finalisation, quand `normative_control_plane` est encore VIDE. En phase
+  -- 1, le symbole `@PLAN` est donc resolu par le proprietaire d'un objet du
+  -- sceau, et si le migrateur et le plan se confondent, la distinction
+  -- @MIGRATEUR/@PLAN est RELACHEE.
+  --
+  -- Ce relachement n'est acceptable que si l'etat confondu ne peut jamais
+  -- atteindre ACTIVE. C'est vrai — la garde de separation ci-dessus le refuse
+  -- — mais cela fait reposer une propriete du manifeste sur une garde
+  -- ETRANGERE. Si cette garde disparaissait, rien ne reevaluerait le
+  -- manifeste avec les symboles definitifs.
+  --
+  -- Cet appel ferme la boucle: a cet instant, la separation est etablie, le
+  -- plan de controle definitif existe, et le manifeste est confronte une
+  -- SECONDE fois — avec des symboles qui ne sont plus relaches. Une surface
+  -- qui ne correspond pas a son manifeste n'atteint pas ACTIVE.
+  --
+  -- L'APPEL EST TOLERANT A L'ABSENCE, ET SEULEMENT A ELLE. Le sceau (phase 0)
+  -- precede `0015` (phase 1): sur une base ou 0015 n'est pas encore appliquee,
+  -- la fonction n'existe pas et la finalisation ne peut pas l'exiger. Toute
+  -- AUTRE erreur remonte et annule la transaction.
+  begin
+    perform assert_authority_manifest();
+  exception
+    when undefined_function then
+      raise notice 'manifeste non reevalue: assert_authority_manifest() absente '
+                   '(base anterieure a 0015)';
+  end;
+
   return normative_record_activation();
 end;
 $$;

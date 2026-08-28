@@ -1875,6 +1875,25 @@ CAS_MANIFESTE = [
     ("TP1  le chemin d'une garde atteignable est retire", "TP1", A15,
      [("alter function forbid_mutation()                       set search_path = pg_catalog, public, pg_temp;",
        "-- chemin retire par mutation")], False),
+    # ----------------------------------------------------------------------
+    # LA SEPARATION MIGRATEUR / PLAN DE CONTROLE — ou repose-t-elle vraiment ?
+    # ----------------------------------------------------------------------
+    # `0015` RELACHE la distinction @MIGRATEUR/@PLAN quand les deux symboles se
+    # confondent. Ce relachement n'est acceptable que si l'etat confondu ne
+    # peut JAMAIS atteindre ACTIVE. Falsification combinee du 28/08 — symboles
+    # confondus, relaxation active, gardes de finalisation retirees une a une:
+    #
+    #   garde retiree                        ce qui refuse ensuite
+    #   -----------------------------------  ----------------------------------
+    #   raise exception d_oid = m_oid        la CHECK finalization_intent_
+    #                                        separates_roles
+    #   + la CHECK                           l'assertion de capacite residuelle
+    #                                        (« conserve 2 capacite(s) »)
+    #
+    # TROIS couches independantes, toutes a la finalisation. L'etat n'est
+    # jamais devenu ACTIVE. La defense repose donc bien la, et non sur le
+    # manifeste — qui, lui, ne prouve pas la separation et ne pretend pas le
+    # faire.
     ("TP1p pg_temp quitte la derniere position", "TP1", S,
      [("alter function forbid_activation_mutation()         set search_path = pg_catalog, public, pg_temp;",
        "alter function forbid_activation_mutation()         set search_path = pg_catalog, public;")], False),
@@ -1915,10 +1934,23 @@ CAS_MANIFESTE = [
 ]
 
 
+CAS_SEPARATION = [
+    ("SEP1 la garde de separation du plan est retiree", "A", S,
+     [("""  if d_oid = m_oid or d_nom = m_nom then
+    raise exception
+      'le plan de controle derive est le migrateur lui-meme (« % »). '""",
+       """  if false then
+    raise exception
+      'le plan de controle derive est le migrateur lui-meme (« % »). '""")], False),
+]
+
+
 LOTS = [
     (CAS, {}),
     (CAS_MANIFESTE,
      dict(harnais="db/test/authority_sql_hardening.sh", prefixe="mf")),
+    (CAS_SEPARATION,
+     dict(harnais="db/test/two_phase_deployment.sh", prefixe="ms2")),
     (CAS_AUTORITE, dict(harnais="db/test/authority_closure.sh", prefixe="mv")),
     (CAS_SCEAU, dict(harnais="db/test/seal_contract.sh", prefixe="ms")),
     (CAS_RESTAURATION,
