@@ -154,7 +154,10 @@ SQL
   # PHASE 0 — LE SCEAU, POSE PAR LE PLAN DE CONTROLE.
   # C'est elle qui cree les six roles canoniques ET la racine de confiance.
   # Le migrateur n'y participe pas: c'est tout l'objet de 6.3b6c.
-  if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
+  # `ESC_DECOR_SCEAU` est un JOINT DE HARNAIS, comme `ESC_DECOR_MIGRATIONS_DIR`
+  # ci-dessous: il vaut le sceau reel sauf pendant H5, qui doit provoquer un
+  # VRAI refus de phase 0 pour observer ce que le teardown fait ensuite.
+  if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "${ESC_DECOR_SCEAU:-$HARNAIS_SCEAU}" 2>&1); then
     echoue "decor $s: phase 0 refusee:"
     esc_diag_rapporter "decor $s / phase 0 (sceau)" "$sortie"
     esc_decor_abandonner
@@ -995,22 +998,34 @@ fi
 # UNE CONTAMINATION DU SCENARIO SUIVANT EST UNE ERREUR D'INFRASTRUCTURE, PAS
 # UNE MISE A MORT. Ce scenario est la pour que la distinction reste vraie.
 #
-# LES DIX ETAPES, DANS L'ORDRE, ET CHACUNE EST OBSERVEE:
-#    1. premier decor volontairement refuse PENDANT `0014`
-#    2. la transaction de migration est annulee
-#    3. le teardown s'execute MALGRE l'echec
-#    4. zero role canonique residuel
-#    5. zero role de harnais residuel
-#    6. zero base temporaire residuelle
-#    7. zero appartenance residuelle
-#    8. zero verrou consultatif residuel
-#    9. second decor lance IMMEDIATEMENT
-#   10. second decor entierement parcouru, et independant du premier
+# LES DIX ETAPES EXIGEES, ET LE POINT QUI LES OBSERVE:
+#    1. premier decor volontairement refuse PENDANT `0014`     -> H1
+#    2. la transaction de migration est annulee                -> H2
+#    3. le teardown s'execute MALGRE l'echec                   -> H3
+#    4. zero role canonique residuel                           -> H3
+#    5. zero role de harnais residuel                          -> H3
+#    6. zero base temporaire residuelle                        -> H3
+#    7. zero appartenance residuelle                           -> H3
+#    8. zero verrou consultatif supplementaire                 -> H3
+#    9. second decor lance IMMEDIATEMENT                       -> H4
+#   10. second decor entierement parcouru, et independant      -> H4
 #
-# LE REFUS EST VRAI, PAS SIMULE. On copie les migrations et on injecte dans la
-# copie de `0014` une exception levee A L'INTERIEUR de sa transaction. C'est la
-# forme exacte d'un refus d'assertion produit — ce qui permet d'observer, a
-# l'etape 2, que la transaction est bien annulee.
+# PUIS LE MEME CYCLE SUR UN REFUS DE PHASE 0: H5, H6, H7. Cette seconde moitie
+# n'etait pas la, et la campagne du 28/08 l'a dit: la mutation qui retire le
+# teardown du refus de PHASE 0 a SURVECU, faute qu'aucun scenario ne provoque
+# jamais ce refus-la.
+#
+# LES ETIQUETTES SONT ATTRIBUABLES, et ce n'est pas cosmetique. La campagne
+# rattache une mise a mort en cherchant `ROUGE: <point>.` dans la sortie. Les
+# premieres etiquettes disaient `H3-H8.` et `H9-H10.`: le harnais ROUGISSAIT
+# correctement sous mutation, et la campagne comptait quand meme SURVIVED
+# faute de pouvoir lire le point. Mesure du 28/08 — la sortie du controle GC3
+# contenait bien « ROUGE: H3-H8. le refus a laisse 12 residu(s) ».
+#
+# LES REFUS SONT VRAIS, PAS SIMULES. On copie le fichier vise — les migrations
+# pour H1, le sceau pour H5 — et on injecte dans la copie une exception levee A
+# L'INTERIEUR de sa transaction. C'est la forme exacte d'un refus d'assertion
+# produit, ce qui permet d'observer que la transaction est bien annulee.
 echo ""
 echo "    H. un refus d'installation ne contamine pas le scenario suivant"
 
@@ -1108,13 +1123,14 @@ if (( H_KO == 0 )); then
                            and pid <> coalesce(nullif('${EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE:-}', ''), '0')::int")
   [[ "$H_VERROUS" == "0" ]] || H_RESIDUS+=("$H_VERROUS verrou(s) consultatif(s) supplementaire(s)")
   if [[ ${#H_RESIDUS[@]} -eq 0 ]]; then
-    echo "      ok: H3-H8. teardown execute malgre l'echec — zero role canonique,"
-    echo "             zero role de harnais, zero base, zero appartenance, zero verrou"
+    echo "      ok: H3. teardown execute malgre l'echec (etapes 3 a 8) — zero role"
+    echo "             canonique, zero role de harnais, zero base, zero appartenance,
+             zero verrou supplementaire"
   else
-    rouge "H3-H8. le refus a laisse ${#H_RESIDUS[@]} residu(s):"
+    rouge "H3. le refus de phase 1 a laisse ${#H_RESIDUS[@]} residu(s):"
     printf '             %s\n' "${H_RESIDUS[@]}"
-    rouge "       C'est exactement la contamination qui fait lire « rien d'evalue »"
-    rouge "       comme un survivant dans une campagne de mutation."
+    rouge "    C'est exactement la contamination qui fait lire « rien"
+    rouge "    d'evalue » comme un survivant dans une campagne de mutation."
     H_KO=1
   fi
 fi
@@ -1125,8 +1141,8 @@ fi
 # registre de migrations ne connait rien du premier.
 if (( H_KO == 0 )); then
   if ! decor_poser h2; then
-    rouge "H9-H10. le second decor ne se pose pas apres un refus: le harnais"
-    rouge "        est contamine, et tout ce qui suit un refus est illisible."
+    rouge "H4. le second decor ne se pose pas apres un refus de phase 1:"
+    rouge "    le harnais est contamine, et tout ce qui suit est illisible."
     H_KO=1
   else
     H_ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
@@ -1134,19 +1150,103 @@ if (( H_KO == 0 )); then
     H_A_0014=$(mig -tAc "select count(*) from normative_migration_ledger
                           where migration_id like '0014%'" 2>&1)
     if [[ "$H_ETAT" != "PENDING" ]]; then
-      rouge "H9-H10. le second decor n'atteint pas PENDING (obtenu: $H_ETAT)."
+      rouge "H4. le second decor n'atteint pas PENDING (obtenu: $H_ETAT)."
       H_KO=1
     elif [[ "$H_A_0014" != "1" ]]; then
-      rouge "H9-H10. le second decor n'a pas applique 0014 ($H_A_0014 ligne(s))."
+      rouge "H4. le second decor n'a pas applique 0014 ($H_A_0014 ligne(s))."
       H_KO=1
     else
-      echo "      ok: H9-H10. second decor lance immediatement, entierement"
-      echo "             parcouru ($H_APPLIQUEES migrations, dont 0014), en PENDING"
+      echo "      ok: H4. second decor lance immediatement (etapes 9 et 10),"
+      echo "             entierement parcouru ($H_APPLIQUEES migrations, dont"
+      echo "             0014), en PENDING"
     fi
     suivre_decor; esc_decor_fermer
   fi
 fi
 rm -rf "$H_MIGS"
+
+# --- H5 a H7: LE MEME CYCLE, MAIS SUR UN REFUS DE PHASE 0 ----------------
+# CE QUI A ETE MESURE, ET POURQUOI CETTE SECONDE MOITIE EXISTE. La campagne du
+# 28/08 a laisse SURVIVRE la mutation qui retire le teardown du refus de PHASE
+# 0: H1 a H4 n'eprouvent que la phase 1, et aucun scenario ne provoquait jamais
+# un refus du sceau. Une garantie que rien n'exerce est indiscernable d'une
+# garantie perdue — y compris quand c'est mon propre scenario qui ne l'exerce
+# pas.
+#
+# Le refus est vrai, comme en phase 1: une exception levee A L'INTERIEUR de la
+# transaction du sceau.
+H_SCEAU_DIR="$(mktemp -d "${TMPDIR:-/tmp}/esc_h0_XXXXXX")"
+H_SCEAU="$H_SCEAU_DIR/$(basename "$HARNAIS_SCEAU")"
+cp "$HARNAIS_SCEAU" "$H_SCEAU" 2>/dev/null
+if [[ ! -f "$H_SCEAU" ]]; then
+  echoue "H5. le sceau n'a pas pu etre copie: le refus delibere est impossible."
+  H_KO=1
+else
+  cat >>"$H_SCEAU" <<'SQL'
+do $$
+begin
+  raise exception 'HARNAIS_REFUS_DELIBERE_SCEAU: refus injecte par authority_closure.sh scenario H'
+    using errcode = 'raise_exception';
+end $$;
+SQL
+fi
+
+H_ROLES0=("${PREFIXE}_mh3_${JETON}" "${PREFIXE}_ch3_${JETON}" "${PREFIXE}_sh3_${JETON}")
+H_BASE0="${PREFIXE}_dh3_${JETON}"
+if (( H_KO == 0 )); then
+  REFUS_ATTENDU="H5, refus injecte dans le sceau"
+  ESC_DECOR_SCEAU="$H_SCEAU" decor_poser h3 && H_POSE0=0 || H_POSE0=$?
+  REFUS_ATTENDU=""
+  if [[ "${H_POSE0:-0}" == "0" ]]; then
+    rouge "H5. le decor a ete POSE malgre le refus injecte dans le sceau:"
+    rouge "    H6 et H7 ne prouveraient rien."
+    H_KO=1
+    esc_decor_fermer
+  else
+    echo "      ok: H5. decor refuse pendant la phase 0 (code $H_POSE0)"
+  fi
+fi
+
+if (( H_KO == 0 )); then
+  H_RESIDUS0=()
+  for r in "${CANONIQUES[@]}"; do
+    [[ "$(adm -tAc "select count(*) from pg_roles where rolname = '$r'")" == "0" ]] \
+      || H_RESIDUS0+=("role canonique $r")
+  done
+  for r in "${H_ROLES0[@]}"; do
+    [[ "$(adm -tAc "select count(*) from pg_roles where rolname = '$r'")" == "0" ]] \
+      || H_RESIDUS0+=("role de harnais $r")
+  done
+  [[ "$(adm -tAc "select count(*) from pg_database where datname = '$H_BASE0'")" == "0" ]] \
+    || H_RESIDUS0+=("base $H_BASE0")
+  if [[ ${#H_RESIDUS0[@]} -eq 0 ]]; then
+    echo "      ok: H6. teardown execute malgre le refus de phase 0 — zero"
+    echo "             role canonique, zero role de harnais, zero base"
+  else
+    rouge "H6. le refus de phase 0 a laisse ${#H_RESIDUS0[@]} residu(s):"
+    printf '             %s\n' "${H_RESIDUS0[@]}"
+    H_KO=1
+  fi
+fi
+
+if (( H_KO == 0 )); then
+  if ! decor_poser h4; then
+    rouge "H7. aucun decor ne se pose apres un refus de phase 0: le harnais"
+    rouge "    est contamine."
+    H_KO=1
+  else
+    H_ETAT0=$(ctl -tAc "select normative_activation_state()" 2>&1)
+    if [[ "$H_ETAT0" != "PENDING" ]]; then
+      rouge "H7. le decor suivant n'atteint pas PENDING (obtenu: $H_ETAT0)."
+      H_KO=1
+    else
+      echo "      ok: H7. decor suivant lance immediatement apres un refus de"
+      echo "             phase 0, entierement parcouru, en PENDING"
+    fi
+    suivre_decor; esc_decor_fermer
+  fi
+fi
+rm -rf "$H_SCEAU_DIR"
 # PAS DE SECOND COMPTAGE ICI. `rouge` incremente deja `ROUGES`; ajouter une
 # unite de plus est la faute de comptabilite que la bibliotheque de verdicts
 # existe pour interdire — un compteur qui ment sur son propre total n'atteste

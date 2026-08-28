@@ -1201,15 +1201,25 @@ revoke insert on normative_authorisation_grants          from normative_backend;
     #
     # Le scenario H de `authority_closure.sh` est ce qui les tue. Mesure du
     # 28/08 sur base jetable, en retirant `esc_decor_abandonner` du refus de
-    # phase 1: H3-H8 rougit sur 12 residus — sept roles canoniques, trois roles
-    # de harnais, une base, neuf appartenances.
-    ("GC1 le refus de phase 1 ne rend plus le decor", "GC1", H,
+    # phase 1: H3 rougit sur 12 residus — sept roles canoniques, trois roles de
+    # harnais, une base, neuf appartenances.
+    #
+    # LE POINT EST CELUI QUE LE HARNAIS IMPRIME, pas un identifiant de mutation.
+    # Premiere version: points « GC1 », « GC2 », « GC3 » — la campagne cherche
+    # `ROUGE: <point>.` et le harnais ecrivait `ROUGE: H3-H8.`. Les trois ont
+    # ete comptees SURVIVED alors que la sortie contenait le rouge. Les
+    # etiquettes du harnais ET les points de la matrice ont ete alignes.
+    #
+    # GC2 VISE UN AUTRE POINT QUE GC1, et ce n'est pas un detail: le refus de
+    # phase 0 et celui de phase 1 sont deux chemins distincts. GC2 survivait
+    # aussi parce qu'aucun scenario ne provoquait jamais un refus du sceau.
+    ("GC1 le refus de phase 1 ne rend plus le decor", "H3", H,
      [("""      esc_diag_rapporter "decor $s / phase 1 / $(basename "$f")" "$sortie"
       esc_decor_abandonner
       return 1""",
        """      esc_diag_rapporter "decor $s / phase 1 / $(basename "$f")" "$sortie"
       return 1""")], False),
-    ("GC2 le refus de phase 0 ne rend plus le decor", "GC2", H,
+    ("GC2 le refus de phase 0 ne rend plus le decor", "H6", H,
      [("""    esc_diag_rapporter "decor $s / phase 0 (sceau)" "$sortie"
     esc_decor_abandonner
     return 1""",
@@ -1218,7 +1228,7 @@ revoke insert on normative_authorisation_grants          from normative_backend;
     # LA COUCHE BIBLIOTHEQUE. `GC1` et `GC2` retirent l'APPEL; `GC3` vide la
     # fonction appelee. Les deux preuves sont distinctes: un harnais peut
     # appeler correctement un helper qui ne fait rien.
-    ("GC3 esc_decor_abandonner ne ferme plus le decor", "GC3", LIB,
+    ("GC3 esc_decor_abandonner ne ferme plus le decor", "H3", LIB,
      [("""esc_decor_abandonner() {
   local code="${1:-1}"
   esc_decor_fermer
