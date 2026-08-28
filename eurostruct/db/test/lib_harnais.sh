@@ -665,6 +665,13 @@ EOF
 }
 
 harnais_verrou_rendre() {
+  # LA CAPTURE DE DIAGNOSTIC MEURT ICI, ET DANS AUCUN HARNAIS EN PARTICULIER.
+  # C'est le dernier geste de teardown que TOUS partagent: la placer ailleurs
+  # reviendrait a la recopier vingt-cinq fois, ce qui est exactement la
+  # divergence que `esc_diag_rapporter` existe pour supprimer. Les identifiants
+  # ont deja atteint stderr au moment du refus; ce qui disparait ici est le
+  # fichier, pas l'information.
+  esc_diag_capture_fermer
   [[ -n "${HARNAIS_VERROU_PID:-}" ]] || return 0
   # Fermer l'entree du co-processus termine `psql`, donc la session, donc le
   # verrou. Aucun `pg_advisory_unlock` explicite: on veut que la liberation
@@ -802,6 +809,189 @@ detruire_roles_crees() {
   done
   HARNAIS_ROLES_CREES=()
   return $(( echecs > 0 ))
+}
+
+
+# ==========================================================================
+# LE DIAGNOSTIC D'INSTALLATION — LA SOURCE DE VERITE N'EST JAMAIS TRONQUEE
+# ==========================================================================
+# CE QUI A ETE MESURE. Douze sites de harnais rapportaient un refus
+# d'installation ainsi:
+#
+#     grep -m1 ERROR <<<"$sortie" | cut -c1-200
+#     grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$sortie" | head -4
+#
+# La premiere ligne est un affichage — legitime. Mais la sortie complete
+# n'etait conservee NULLE PART: le tampon `$sortie` mourait avec le scenario.
+# Deux mutations (B' et B=) ont ete comptees SURVIVED parce que
+# `AUTHORITY_COMPOSITION_*` tombait au-dela du 200e caractere de la ligne
+# ERROR, et rien ne subsistait pour contredire l'affichage. Corriger le seul
+# affichage aurait recree la divergence au treizieme site: ils passent tous
+# par cette fonction.
+#
+# LE CONTRAT
+#   * la totalite de la sortie est ecrite dans un fichier de capture, sans
+#     aucune coupe — c'est la source de verite;
+#   * les identifiants sont extraits DE CE FICHIER, jamais d'un tampon coupe;
+#   * le raccourcissement ne concerne QUE la ligne lue par un humain;
+#   * le fichier est supprime au teardown, pas avant: un diagnostic detruit
+#     avant d'etre lu ne vaut pas mieux qu'un diagnostic tronque.
+#
+# CE QU'IL NE FAIT PAS: deviner. Si aucun identifiant n'apparait, il le DIT —
+# « aucun identifiant d'invariant » est une information, pas un silence.
+ESC_DIAG_MOTIF='(AUTHORITY|PRECONDITION|NORMATIVE|MIGRATION|HARNAIS)_[A-Z0-9_]{4,}'
+ESC_DIAG_LARGEUR=200        # affichage humain seulement
+ESC_DIAG_IDS_MAX=12         # affichage humain seulement; la capture les a tous
+ESC_DIAG_CAPTURE=""
+ESC_DIAG_APPELS=0
+
+esc_diag_capture_ouvrir() {
+  [[ -n "$ESC_DIAG_CAPTURE" && -f "$ESC_DIAG_CAPTURE" ]] && return 0
+  ESC_DIAG_CAPTURE="$(mktemp "${TMPDIR:-/tmp}/esc_diag_XXXXXXXX")" || {
+    ESC_DIAG_CAPTURE=""; return 1; }
+  return 0
+}
+
+# Supprime la capture. A appeler au TEARDOWN — jamais entre deux controles:
+# le fichier est ce qui reste quand l'affichage a menti.
+esc_diag_capture_fermer() {
+  [[ -n "$ESC_DIAG_CAPTURE" ]] || return 0
+  rm -f "$ESC_DIAG_CAPTURE"
+  ESC_DIAG_CAPTURE=""
+  return 0
+}
+
+# esc_diag_rapporter <etiquette> <sortie-integrale>
+#
+# N'emet PAS le « ECHEC: » — l'appelant garde son propre `echoue`, qui porte
+# la comptabilite du harnais. Celle-ci n'ecrit que le corps du diagnostic.
+esc_diag_rapporter() {
+  local etiquette="$1" contenu="${2-}" debut ids n=0 id
+  ESC_DIAG_APPELS=$((ESC_DIAG_APPELS + 1))
+  if esc_diag_capture_ouvrir; then
+    debut=$(( $(wc -c <"$ESC_DIAG_CAPTURE" 2>/dev/null || echo 0) + 1 ))
+    printf '=== %s ===\n%s\n' "$etiquette" "$contenu" >>"$ESC_DIAG_CAPTURE"
+    # L'EXTRACTION LIT LE FICHIER, PAS UN TAMPON. `tail -c +N` borne la
+    # lecture a ce que CET appel vient d'ecrire: la capture est cumulative,
+    # les identifiants rapportes ne le sont pas.
+    ids=$(tail -c "+$debut" "$ESC_DIAG_CAPTURE" | grep -oE "$ESC_DIAG_MOTIF" | sort -u)
+  else
+    # Sans fichier on extrait quand meme du contenu INTEGRAL en memoire.
+    # Degradation de la tracabilite, jamais de la detection.
+    ids=$(grep -oE "$ESC_DIAG_MOTIF" <<<"$contenu" | sort -u)
+    echo "              (capture indisponible: diagnostic en memoire seule)" >&2
+  fi
+
+  # 1. LA LIGNE HUMAINE — raccourcie, et elle seule.
+  grep -m1 -iE 'ERROR|ERREUR|FATAL|REFUS' <<<"$contenu" \
+    | cut -c1-"$ESC_DIAG_LARGEUR" | sed 's/^/              /' >&2
+
+  # 2. LES IDENTIFIANTS — issus du contenu integral.
+  if [[ -z "$ids" ]]; then
+    echo "              aucun identifiant d'invariant dans la sortie" >&2
+  else
+    while IFS= read -r id; do
+      [[ -n "$id" ]] || continue
+      n=$((n + 1))
+      if (( n <= ESC_DIAG_IDS_MAX )); then
+        echo "              invariant: $id" >&2
+      fi
+    done <<<"$ids"
+    if (( n > ESC_DIAG_IDS_MAX )); then
+      echo "              ... et $(( n - ESC_DIAG_IDS_MAX )) autre(s), tous dans la capture" >&2
+    fi
+  fi
+
+  # 3. OU EST LA VERITE.
+  [[ -n "$ESC_DIAG_CAPTURE" ]] \
+    && echo "              capture integrale: $ESC_DIAG_CAPTURE" >&2
+  return 0
+}
+
+
+# ==========================================================================
+# LE CYCLE DE VIE D'UN DECOR — le teardown s'execute sur TOUS les chemins
+# ==========================================================================
+# CE QUI A ETE MESURE. Dans `authority_closure.sh`, `decor_poser` rendait 1
+# sur six chemins de refus — creation des trois roles, creation de la base,
+# phase 0, phase 1, etat final — et AUCUN n'appelait `decor_deposer`. Un seul
+# refus a l'installation laissait donc les six roles canoniques dans le
+# cluster; le decor suivant echouait en « phase 0 refusee », puis tous les
+# autres, et le harnais rendait « rien d'evalue » — ce qu'une campagne de
+# mutation lit comme un SURVIVANT. Une contamination du scenario suivant est
+# une erreur d'infrastructure, jamais une mise a mort.
+#
+# LE MECANISME EST DANS LA BIBLIOTHEQUE, et pas recopie dans chaque harnais,
+# pour la meme raison que le diagnostic: douze recopies divergent, une seule
+# se corrige.
+#
+#   esc_decor_ouvrir <nom> <fonction-de-teardown>
+#   esc_decor_fermer                       -> teardown, UNE SEULE FOIS
+#   esc_decor_abandonner [<code>]          -> teardown puis rend <code> (1)
+#
+# CINQ CHEMINS DE SORTIE, ET LE TEARDOWN LES COUVRE TOUS:
+#   1. succes                  -> `esc_decor_fermer` explicite
+#   2. erreur SQL              -> refus d'installation, `esc_decor_abandonner`
+#   3. erreur shell            -> le trap EXIT du harnais appelle `fermer`
+#   4. interruption            -> trap dedie TERM/INT/HUP, pose par `ouvrir`
+#   5. echec DANS le teardown  -> signale, jamais avale: `ESC_DECOR_TEARDOWN_KO`
+#                                 passe a 1 et le harnais sort en « non
+#                                 executee », pas en « vert ».
+#
+# IDEMPOTENT PAR CONSTRUCTION: `fermer` appele deux fois n'execute qu'un
+# teardown. Sans cela le trap EXIT redetruirait un decor deja rendu et le
+# second passage rapporterait des echecs de nettoyage imaginaires.
+ESC_DECOR_NOM=""
+ESC_DECOR_TEARDOWN=""
+ESC_DECOR_ARME=0
+ESC_DECOR_TEARDOWN_KO=0
+ESC_DECOR_FERMETURES=0
+
+esc_decor_ouvrir() {       # esc_decor_ouvrir <nom> <fonction>
+  local nom="${1:?usage: esc_decor_ouvrir <nom> <fonction>}"
+  local fn="${2:?usage: esc_decor_ouvrir <nom> <fonction>}"
+  if ! declare -F "$fn" >/dev/null 2>&1; then
+    echo "REFUS: « $fn » n'est pas une fonction: le teardown ne serait" >&2
+    echo "       jamais execute, et le decor « $nom » fuirait." >&2
+    return 2
+  fi
+  if (( ESC_DECOR_ARME )); then
+    # Un decor ouvert par-dessus un autre masquerait le teardown du premier.
+    echo "REFUS: le decor « $ESC_DECOR_NOM » est encore ouvert." >&2
+    return 2
+  fi
+  ESC_DECOR_NOM="$nom"; ESC_DECOR_TEARDOWN="$fn"; ESC_DECOR_ARME=1
+  # SON PROPRE TRAP. Il ne remplace pas le trap EXIT du harnais: il s'ajoute,
+  # rend le decor, puis sort avec le code conventionnel du signal.
+  trap 'trap "" TERM INT HUP; esc_decor_fermer; exit 143' TERM
+  trap 'trap "" TERM INT HUP; esc_decor_fermer; exit 130' INT
+  trap 'trap "" TERM INT HUP; esc_decor_fermer; exit 129' HUP
+  return 0
+}
+
+esc_decor_fermer() {
+  (( ESC_DECOR_ARME )) || return 0
+  local fn="$ESC_DECOR_TEARDOWN" nom="$ESC_DECOR_NOM"
+  # DESARME D'ABORD: si le teardown lui-meme echoue ou est interrompu, on ne
+  # le relance pas en boucle depuis son propre trap.
+  ESC_DECOR_ARME=0; ESC_DECOR_TEARDOWN=""; ESC_DECOR_NOM=""
+  ESC_DECOR_FERMETURES=$((ESC_DECOR_FERMETURES + 1))
+  if ! "$fn"; then
+    ESC_DECOR_TEARDOWN_KO=1
+    echo "      ECHEC NETTOYAGE: le teardown du decor « $nom » a echoue." >&2
+    echo "              L'execution suivante partirait d'un etat qu'elle" >&2
+    echo "              croirait propre." >&2
+  fi
+  harnais_piege_signaux
+  return 0
+}
+
+# Le chemin de refus: rend le decor PUIS le code d'echec, en un seul geste,
+# pour qu'aucun `return 1` ne puisse a nouveau oublier le teardown.
+esc_decor_abandonner() {
+  local code="${1:-1}"
+  esc_decor_fermer
+  return "$code"
 }
 
 

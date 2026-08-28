@@ -152,13 +152,7 @@ SQL
   for f in "$DB_DIR"/migrations/*.sql; do
     if ! esc_appliquer_migration "$f" mig; then
       echoue "decor: phase 1 sur $(basename "$f"):"
-      grep -m1 ERROR <<<"$ESC_MIGRATION_SORTIE" | cut -c1-200 \
-        | sed 's/^/              /' >&2
-      # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE. Mesure:
-      # `cut -c1-200` coupait juste avant `AUTHORITY_*`, et deux mutations
-      # ont ete comptees SURVIVED faute que le nom atteigne le lecteur.
-      grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$ESC_MIGRATION_SORTIE" | sort -u \
-        | head -4 | sed 's/^/              invariant: /' >&2
+      esc_diag_rapporter "decor / phase 1 / $(basename "$f")" "$ESC_MIGRATION_SORTIE"
       return 1
     fi
   done
@@ -167,8 +161,7 @@ SQL
   etat=$(ctl -tAc "select normative_activation_state()" 2>&1)
   if [[ "$etat" != "ACTIVE" ]]; then
     echoue "decor: finalisation -> $etat"
-    grep -m1 -iE 'ERROR|ERREUR' <<<"$sortie" | cut -c1-200 \
-      | sed 's/^/              /' >&2
+    esc_diag_rapporter "decor / finalisation" "$sortie"
     return 1
   fi
   ctlp -c "grant eurostruct_authority_backend to \"$SVC\";" >/dev/null 2>&1

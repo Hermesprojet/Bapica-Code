@@ -71,7 +71,20 @@ AUTORITES=(eurostruct_normative_writer eurostruct_normative_bootstrap
 exiger_roles_absents "authority_closure.sh" "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" || exit 2
 
 KO=0; ROUGES=0
-echoue() { echo "      ECHEC: $*" >&2; KO=1; }
+# `REFUS_ATTENDU` — une attente DECLAREE, jamais un masquage. Le scenario H
+# provoque un vrai refus d'installation: sans ce commutateur, le diagnostic
+# emis par `decor_poser` compterait comme un ecart de decor et le harnais
+# sortirait en echec en ayant tout prouve. Il porte le NOM de l'attente, ce
+# nom est affiche, et il est remis a vide immediatement apres l'appel — une
+# attente qui resterait armee masquerait les refus suivants.
+REFUS_ATTENDU=""
+echoue() {
+  if [[ -n "$REFUS_ATTENDU" ]]; then
+    echo "      (refus attendu — $REFUS_ATTENDU): $*" >&2
+    return 0
+  fi
+  echo "      ECHEC: $*" >&2; KO=1
+}
 rouge()  { echo "      ROUGE: $*"; ROUGES=$((ROUGES + 1)); }
 
 adm() { psql -X -q -d postgres "$@"; }
@@ -104,16 +117,24 @@ decor_poser() {
   BASE="${PREFIXE}_d${s}_${JETON}"
   MDP="FICTIF-ac-${s}-${JETON}"
 
+  # LE TEARDOWN EST ARME AVANT LA PREMIERE CREATION, pas apres la derniere.
+  # Mesure a l'origine: les six chemins de refus ci-dessous rendaient 1 sans
+  # rien defaire. Un seul refus d'installation laissait les roles canoniques
+  # dans le cluster, et TOUS les decors suivants echouaient en « phase 0
+  # refusee » — le harnais rendait alors « rien d'evalue », que la campagne
+  # de mutation lit comme un survivant.
+  esc_decor_ouvrir "$s" decor_deposer || { echoue "decor $s: armement refuse"; return 1; }
+
   creer_role "$MIG" "login password '$MDP' createrole createdb" \
-    || { echoue "decor $s: creation du migrateur impossible"; return 1; }
+    || { echoue "decor $s: creation du migrateur impossible"; esc_decor_abandonner; return 1; }
   creer_role "$CTL" "login password '$MDP' createrole" \
-    || { echoue "decor $s: creation du plan de controle impossible"; return 1; }
+    || { echoue "decor $s: creation du plan de controle impossible"; esc_decor_abandonner; return 1; }
   creer_role "$SVC" "login password '$MDP'" \
-    || { echoue "decor $s: creation du role de service impossible"; return 1; }
+    || { echoue "decor $s: creation du role de service impossible"; esc_decor_abandonner; return 1; }
   adm -c "grant \"$CTL\" to ${PGUSER:-postgres};" >/dev/null 2>&1
 
   creer_base "$BASE" "owner \"$MIG\"" \
-    || { echoue "decor $s: creation de la base impossible"; return 1; }
+    || { echoue "decor $s: creation de la base impossible"; esc_decor_abandonner; return 1; }
   registre_base "$BASE"
 
   admb -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
@@ -135,13 +156,8 @@ SQL
   # Le migrateur n'y participe pas: c'est tout l'objet de 6.3b6c.
   if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
     echoue "decor $s: phase 0 refusee:"
-    grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
-    # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE.
-    # Mesure: `cut -c1-200` coupait juste avant
-    # `AUTHORITY_*`, et deux mutations ont ete comptees
-    # SURVIVED faute que le nom atteigne le lecteur.
-    grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$sortie" | sort -u | head -4 \
-      | sed 's/^/              invariant: /' >&2
+    esc_diag_rapporter "decor $s / phase 0 (sceau)" "$sortie"
+    esc_decor_abandonner
     return 1
   fi
   adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
@@ -168,17 +184,18 @@ SQL
     >/dev/null 2>&1
 
   # PHASE 1 — par le migrateur, et sans 0000 qui appartient a la phase 0.
-  for f in "$DB_DIR"/migrations/*.sql; do
+  #
+  # `ESC_DECOR_MIGRATIONS_DIR` est un JOINT DE HARNAIS, pas une route produit:
+  # il vaut le repertoire reel sauf pendant le scenario `h`, qui doit pouvoir
+  # provoquer un VRAI refus d'installation a l'interieur de `0014` pour
+  # observer ce que le teardown fait ensuite. Aucun appelant produit ne le
+  # positionne, et sa valeur par defaut est celle du depot.
+  for f in "${ESC_DECOR_MIGRATIONS_DIR:-$DB_DIR/migrations}"/*.sql; do
     if ! esc_appliquer_migration "$f" mig; then
       sortie="$ESC_MIGRATION_SORTIE"
       echoue "decor $s: phase 1 refusee sur $(basename "$f"):"
-      grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
-      # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE.
-      # Mesure: `cut -c1-200` coupait juste avant
-      # `AUTHORITY_*`, et deux mutations ont ete comptees
-      # SURVIVED faute que le nom atteigne le lecteur.
-      grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$sortie" | sort -u | head -4 \
-        | sed 's/^/              invariant: /' >&2
+      esc_diag_rapporter "decor $s / phase 1 / $(basename "$f")" "$sortie"
+      esc_decor_abandonner
       return 1
     fi
   done
@@ -186,6 +203,7 @@ SQL
   etat=$(ctl -tAc "select normative_activation_state()" 2>&1)
   if [[ "$etat" != "PENDING" ]]; then
     echoue "decor $s: phase 1 ne se termine pas en PENDING (obtenu: $etat)"
+    esc_decor_abandonner
     return 1
   fi
   return 0
@@ -203,16 +221,23 @@ decor_finaliser() {
   return 0
 }
 
+# REND 1 QUAND IL N'A PAS TOUT DEFAIT. `esc_decor_fermer` lit ce code: un
+# teardown qui echoue en silence est la meme faute qu'un teardown absent — la
+# preuve suivante partirait d'un etat qu'elle croit propre.
 decor_deposer() {
-  local r
+  local r ko=0
   adm -c "select pg_terminate_backend(pid) from pg_stat_activity
            where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
-  detruire_bases_creees || NETTOYAGE_KO=1
+  detruire_bases_creees || { NETTOYAGE_KO=1; ko=1; }
   for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL" "$SVC"; do
     [[ -n "$r" ]] || continue
+    # `drop owned by` echoue quand le role n'existe pas — cas NORMAL ici, la
+    # liste est fixe et la plupart des roles canoniques n'ont jamais ete crees.
+    # Seul le `drop role` fait foi.
     adm -c "drop owned by \"$r\";"       >/dev/null 2>&1
-    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1 || ko=1
   done
+  return $ko
 }
 
 NETTOYAGE_KO=0
@@ -220,13 +245,21 @@ TOUS_ROLES=()
 suivre_decor() { TOUS_ROLES+=("$MIG" "$CTL" "$SVC"); }
 sortie_propre() {
   local r
-  decor_deposer
+  # CHEMIN DE SORTIE 3 ET 5 (erreur shell, echec dans le teardown): le decor
+  # peut etre encore arme ici. `esc_decor_fermer` est idempotent — s'il a deja
+  # ete appele, il ne refait rien; sinon c'est LUI qui rend le decor.
+  esc_decor_fermer
+  (( ESC_DECOR_TEARDOWN_KO == 0 )) || NETTOYAGE_KO=1
+  decor_deposer || NETTOYAGE_KO=1
   for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "${TOUS_ROLES[@]}"; do
     registre_role "$r"
   done
   detruire_roles_crees || NETTOYAGE_KO=1
   harnais_postcondition_nettoyage "authority_closure.sh" \
     "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "${TOUS_ROLES[@]}" || NETTOYAGE_KO=1
+  # LA CAPTURE MEURT ICI, ET PAS PLUS TOT. Entre deux controles elle est la
+  # seule chose qui survive a un affichage raccourci.
+  esc_diag_capture_fermer
   harnais_verrou_rendre
   [[ $NETTOYAGE_KO -eq 0 ]] || exit 3
 }
@@ -338,7 +371,7 @@ SQL
   fi
 fi
 [[ $A_OUVERT -eq 0 ]] && echo "      ok: A. le migrateur est contenu pendant PENDING"
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -352,7 +385,7 @@ if ! decor_poser b; then
   echoue "le decor B n'a pas pu etre pose: le scenario B n'est pas evalue"
 elif ! decor_finaliser; then
   echoue "le decor B n'a pas pu etre finalise: le scenario B n'est pas evalue"
-  suivre_decor; decor_deposer
+  suivre_decor; esc_decor_fermer
 else
 suivre_decor
 RESTE=$(adm -tAc "select count(*) from unnest(array['${AUTORITES[0]}','${AUTORITES[1]}','${AUTORITES[2]}']) a(r)
@@ -521,7 +554,7 @@ else
     fi
   fi
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -581,7 +614,7 @@ else
   rouge "    La branche « deja prepare » ne relit jamais les declarations: le"
   rouge "    manifeste est compare a lui-meme, pas au monde."
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # --- C2. PARCOURS B: l'activation hors finaliseur --------------------------
@@ -607,7 +640,7 @@ else
   rouge "    record. Le verrou de finalisation n'a jamais ete pris et"
   rouge "    l'ensemble n'a jamais ete atomique."
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -621,7 +654,7 @@ if ! decor_poser f; then
   echoue "le decor D n'a pas pu etre pose"
 elif ! decor_finaliser; then
   echoue "le decor D n'a pas pu etre finalise"
-  suivre_decor; decor_deposer
+  suivre_decor; esc_decor_fermer
 else
 suivre_decor
 M=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
@@ -640,7 +673,7 @@ for cas in "AUTRE:$(printf '0%.0s' $(seq 1 64))" "VIDE:" "MAL FORME:pas-un-diges
   fi
 done
 [[ $D_OUVERT -eq 0 ]] && echo "      ok: D. l'idempotence exige le bon manifeste"
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -782,7 +815,7 @@ else
             normative_settings_manifest())" 2>&1)
     grep -q "deja finalise" <<<"$MOK"       || echoue "D2. l'etat persistant n'est plus celui du gagnant: $(head -1 <<<"$MOK")"
   fi
-  decor_deposer
+  esc_decor_fermer
 fi
 
 # --- LE JUMEAU POSITIF: meme manifeste, resultat idempotent ---------------
@@ -808,7 +841,7 @@ else
       echoue "     $(head -1 "$TMP_D2/b.log" | cut -c1-120)"
     fi
   fi
-  decor_deposer
+  esc_decor_fermer
 fi
 rm -rf "$TMP_D2"
 
@@ -868,7 +901,7 @@ if ! decor_poser g; then
   echoue "le decor F n'a pas pu etre pose"
 elif ! decor_finaliser; then
   echoue "le decor F n'a pas pu etre finalise"
-  suivre_decor; decor_deposer
+  suivre_decor; esc_decor_fermer
 else
 suivre_decor
 INSCRIT=$(admb -tAc "select topology_digest from normative_activation" 2>&1)
@@ -903,7 +936,7 @@ elif [[ $F_OUVERT -eq 0 ]]; then
   echo "             une derive autorisee change la photo ($(cut -c1-12 <<<"$AVANT_F")"
   echo "             -> $(cut -c1-12 <<<"$APRES_F")) sans faire refuser la topologie"
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -947,6 +980,177 @@ else
   rouge "   un refus qui se lit — jamais une acceptation silencieuse, et jamais"
   rouge "   un OID qu'on pourrait reecrire pour « reparer »."
 fi
+
+# ==========================================================================
+# H. UN REFUS D'INSTALLATION NE CONTAMINE PAS LE SCENARIO SUIVANT
+# ==========================================================================
+# CE QUI A ETE MESURE, ET CE QUE CE SCENARIO EMPECHE DE REVENIR. `decor_poser`
+# rendait 1 sur six chemins de refus sans jamais appeler `decor_deposer`. Un
+# seul refus a l'installation laissait donc les sept roles canoniques dans le
+# cluster; le decor suivant echouait en « phase 0 refusee », puis tous les
+# autres, et le harnais rendait « rien d'evalue ». Une campagne de mutation
+# lit cela comme un SURVIVANT — une garantie declaree perdue alors qu'elle
+# n'avait meme pas ete exercee.
+#
+# UNE CONTAMINATION DU SCENARIO SUIVANT EST UNE ERREUR D'INFRASTRUCTURE, PAS
+# UNE MISE A MORT. Ce scenario est la pour que la distinction reste vraie.
+#
+# LES DIX ETAPES, DANS L'ORDRE, ET CHACUNE EST OBSERVEE:
+#    1. premier decor volontairement refuse PENDANT `0014`
+#    2. la transaction de migration est annulee
+#    3. le teardown s'execute MALGRE l'echec
+#    4. zero role canonique residuel
+#    5. zero role de harnais residuel
+#    6. zero base temporaire residuelle
+#    7. zero appartenance residuelle
+#    8. zero verrou consultatif residuel
+#    9. second decor lance IMMEDIATEMENT
+#   10. second decor entierement parcouru, et independant du premier
+#
+# LE REFUS EST VRAI, PAS SIMULE. On copie les migrations et on injecte dans la
+# copie de `0014` une exception levee A L'INTERIEUR de sa transaction. C'est la
+# forme exacte d'un refus d'assertion produit — ce qui permet d'observer, a
+# l'etape 2, que la transaction est bien annulee.
+echo ""
+echo "    H. un refus d'installation ne contamine pas le scenario suivant"
+
+H_KO=0
+H_MIGS="$(mktemp -d "${TMPDIR:-/tmp}/esc_h_XXXXXX")"
+cp "$DB_DIR"/migrations/*.sql "$H_MIGS/" 2>/dev/null
+H_CIBLE=$(ls "$H_MIGS"/0014_*.sql 2>/dev/null | head -1)
+if [[ -z "$H_CIBLE" ]]; then
+  echoue "H. 0014 introuvable: le refus delibere ne peut pas etre pose."
+  H_KO=1
+else
+  # DANS la transaction de 0014, apres son travail, avant son `commit`: c'est
+  # la position d'une assertion produit qui refuse.
+  cat >>"$H_CIBLE" <<'SQL'
+do $$
+begin
+  raise exception 'HARNAIS_REFUS_DELIBERE_0014: refus injecte par authority_closure.sh scenario H'
+    using errcode = 'raise_exception';
+end $$;
+SQL
+fi
+
+# --- ETAPE 1: le premier decor est refuse pendant 0014 -------------------
+H_ROLES=("${PREFIXE}_mh1_${JETON}" "${PREFIXE}_ch1_${JETON}" "${PREFIXE}_sh1_${JETON}")
+H_BASE="${PREFIXE}_dh1_${JETON}"
+if (( H_KO == 0 )); then
+  REFUS_ATTENDU="H1, refus injecte dans 0014"
+  ESC_DECOR_MIGRATIONS_DIR="$H_MIGS" decor_poser h1 && H_POSE=0 || H_POSE=$?
+  REFUS_ATTENDU=""
+  if [[ "${H_POSE:-0}" == "0" ]]; then
+    rouge "H1. le decor a ete POSE malgre le refus injecte dans 0014:"
+    rouge "    le refus n'a pas eu lieu, et les etapes 2 a 10 ne prouveraient rien."
+    H_KO=1
+    esc_decor_fermer
+  else
+    echo "      ok: H1. premier decor refuse pendant 0014 (code $H_POSE)"
+  fi
+fi
+
+# --- ETAPE 2: la transaction de migration a ete ANNULEE ------------------
+# Si `0014` s'etait committee malgre l'exception, la base porterait encore ses
+# objets. Elle est detruite par le teardown — on interroge donc le registre
+# AVANT: le fait observable est que la base n'existe plus du tout (etape 6),
+# et que la sortie du refus nomme l'exception injectee, preuve que c'est bien
+# `0014` qui a rendu la main et non une panne anterieure.
+if (( H_KO == 0 )); then
+  if grep -q "HARNAIS_REFUS_DELIBERE_0014" <<<"${ESC_MIGRATION_SORTIE:-}"; then
+    echo "      ok: H2. le refus provient de 0014, sa transaction est annulee"
+  else
+    rouge "H2. le refus ne provient pas de l'exception injectee dans 0014."
+    rouge "    Obtenu: $(grep -m1 -iE 'ERROR|ERREUR' <<<"${ESC_MIGRATION_SORTIE:-}" | cut -c1-140)"
+    H_KO=1
+  fi
+fi
+
+# --- ETAPES 3 a 8: le teardown a eu lieu, et il n'a rien laisse ----------
+# Le fait observable du teardown n'est pas qu'on l'ait appele: c'est qu'il ne
+# reste RIEN. Chaque objet est nomme; aucun nettoyage par motif.
+if (( H_KO == 0 )); then
+  H_RESIDUS=()
+  for r in "${CANONIQUES[@]}"; do
+    [[ "$(adm -tAc "select count(*) from pg_roles where rolname = '$r'")" == "0" ]] \
+      || H_RESIDUS+=("role canonique $r")
+  done
+  for r in "${H_ROLES[@]}"; do
+    [[ "$(adm -tAc "select count(*) from pg_roles where rolname = '$r'")" == "0" ]] \
+      || H_RESIDUS+=("role de harnais $r")
+  done
+  [[ "$(adm -tAc "select count(*) from pg_database where datname = '$H_BASE'")" == "0" ]] \
+    || H_RESIDUS+=("base $H_BASE")
+  # APPARTENANCES: un role detruit emporte ses appartenances, mais un role
+  # SURVIVANT en conserve — et c'est precisement ce qui faisait echouer le
+  # decor suivant en « phase 0 refusee ».
+  #
+  # `string_to_array`, ET NON UN LITTERAL CONSTRUIT PAR `printf`/`sed`. Mesure
+  # faite ici meme: la construction du tableau produisait « syntax error at or
+  # near "eurostruct_normative_writer" », `H_MEMB` recevait le texte de
+  # l'erreur, et le controle se declarait rouge sur sa propre requete.
+  H_LISTE=$(printf '%s,' "${CANONIQUES[@]}"); H_LISTE="${H_LISTE%,}"
+  H_MEMB=$(adm -tAc "select count(*) from pg_auth_members m
+                       join pg_roles r on r.oid = m.roleid
+                       join pg_roles g on g.oid = m.member
+                      where r.rolname = any (string_to_array('$H_LISTE', ','))
+                         or g.rolname = any (string_to_array('$H_LISTE', ','))")
+  [[ "$H_MEMB" == "0" ]] || H_RESIDUS+=("$H_MEMB appartenance(s) canonique(s)")
+  # VERROUS CONSULTATIFS. Le harnais en detient UN, legitimement, pris par
+  # `harnais_verrou_prendre` dans une session co-processus dont le pid n'est
+  # pas celui du backend courant. Mesure: l'exclure par `pg_backend_pid()`
+  # seul comptait ce verrou-la comme un residu, et le controle accusait le
+  # teardown d'une fuite qui etait la sienne. Ce qu'on cherche est un verrou
+  # SUPPLEMENTAIRE, laisse par le decor abandonne.
+  H_VERROUS=$(adm -tAc "select count(*) from pg_locks
+                         where locktype = 'advisory'
+                           and pid <> pg_backend_pid()
+                           and pid <> coalesce(nullif('${EUROSTRUCT_HARNAIS_VERROU_PROPRIETAIRE:-}', ''), '0')::int")
+  [[ "$H_VERROUS" == "0" ]] || H_RESIDUS+=("$H_VERROUS verrou(s) consultatif(s) supplementaire(s)")
+  if [[ ${#H_RESIDUS[@]} -eq 0 ]]; then
+    echo "      ok: H3-H8. teardown execute malgre l'echec — zero role canonique,"
+    echo "             zero role de harnais, zero base, zero appartenance, zero verrou"
+  else
+    rouge "H3-H8. le refus a laisse ${#H_RESIDUS[@]} residu(s):"
+    printf '             %s\n' "${H_RESIDUS[@]}"
+    rouge "       C'est exactement la contamination qui fait lire « rien d'evalue »"
+    rouge "       comme un survivant dans une campagne de mutation."
+    H_KO=1
+  fi
+fi
+
+# --- ETAPES 9 et 10: le second decor, immediatement, et independant ------
+# « Immediatement »: aucune reprise, aucun nettoyage manuel entre les deux.
+# « Independant »: il va jusqu'a PENDING avec les migrations REELLES, et son
+# registre de migrations ne connait rien du premier.
+if (( H_KO == 0 )); then
+  if ! decor_poser h2; then
+    rouge "H9-H10. le second decor ne se pose pas apres un refus: le harnais"
+    rouge "        est contamine, et tout ce qui suit un refus est illisible."
+    H_KO=1
+  else
+    H_ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
+    H_APPLIQUEES=$(mig -tAc "select count(*) from normative_migration_ledger" 2>&1)
+    H_A_0014=$(mig -tAc "select count(*) from normative_migration_ledger
+                          where migration_id like '0014%'" 2>&1)
+    if [[ "$H_ETAT" != "PENDING" ]]; then
+      rouge "H9-H10. le second decor n'atteint pas PENDING (obtenu: $H_ETAT)."
+      H_KO=1
+    elif [[ "$H_A_0014" != "1" ]]; then
+      rouge "H9-H10. le second decor n'a pas applique 0014 ($H_A_0014 ligne(s))."
+      H_KO=1
+    else
+      echo "      ok: H9-H10. second decor lance immediatement, entierement"
+      echo "             parcouru ($H_APPLIQUEES migrations, dont 0014), en PENDING"
+    fi
+    suivre_decor; esc_decor_fermer
+  fi
+fi
+rm -rf "$H_MIGS"
+# PAS DE SECOND COMPTAGE ICI. `rouge` incremente deja `ROUGES`; ajouter une
+# unite de plus est la faute de comptabilite que la bibliotheque de verdicts
+# existe pour interdire — un compteur qui ment sur son propre total n'atteste
+# rien. `H_KO` ne sert qu'a enchainer les etapes, jamais a compter.
 
 echo ""
 echo "================================================="

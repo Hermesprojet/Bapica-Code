@@ -108,15 +108,21 @@ admb()   { psql -X -q -d "$BASE" "$@"; }
 
 decor_poser() {
   local suffixe="$1" mode="$2" f sortie provisionneur
+  # LE TEARDOWN EST ARME AVANT LA PREMIERE CREATION. Mesure faite sur
+  # `authority_closure.sh`: les chemins de refus ci-dessous rendaient 1 sans
+  # rien defaire, un seul refus laissait les roles canoniques dans le cluster,
+  # et TOUS les decors suivants echouaient en « phase 0 refusee ».
+  esc_decor_ouvrir "$suffixe" decor_deposer || { echoue "decor: armement refuse"; return 1; }
+
   MIG="${PREFIXE}_m${suffixe}_${JETON}"; MIG_MDP="FICTIF-fc-mig-$suffixe-$JETON"
   CTL="${PREFIXE}_c${suffixe}_${JETON}"; CTL_MDP="FICTIF-fc-ctl-$suffixe-$JETON"
   BASE="${PREFIXE}_d${suffixe}_${JETON}"
 
   creer_role "$MIG" "login password '$MIG_MDP' createrole createdb" \
-    || { echoue "decor $suffixe: creation du migrateur impossible"; return 1; }
+    || { echoue "decor $suffixe: creation du migrateur impossible"; esc_decor_abandonner; return 1; }
   if [[ "$mode" == "separe" ]]; then
     creer_role "$CTL" "login password '$CTL_MDP' createrole" \
-      || { echoue "decor $suffixe: creation du plan de controle impossible"; return 1; }
+      || { echoue "decor $suffixe: creation du plan de controle impossible"; esc_decor_abandonner; return 1; }
     provisionneur=ctl_pg
     # L'administrateur doit pouvoir rendre la main sur les roles que le plan de
     # controle aura crees, pour le nettoyage.
@@ -129,7 +135,7 @@ decor_poser() {
   fi
 
   creer_base "$BASE" "owner \"$MIG\"" \
-    || { echoue "decor $suffixe: creation de la base impossible"; return 1; }
+    || { echoue "decor $suffixe: creation de la base impossible"; esc_decor_abandonner; return 1; }
   registre_base "$BASE"
 
   admb -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
@@ -156,14 +162,8 @@ SQL
   esac
   if ! sortie=$($phase0 -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
     echoue "decor $suffixe: phase 0 refusee:"
-    grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
-    # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE.
-    # Mesure: `cut -c1-200` coupait juste avant
-    # `AUTHORITY_*`, et deux mutations ont ete comptees
-    # SURVIVED faute que le nom atteigne le lecteur.
-    grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$sortie" | sort -u | head -4 \
-      | sed 's/^/              invariant: /' >&2
-    return 1
+    esc_diag_rapporter "decor $suffixe / phase 0 (sceau)" "$sortie"
+    esc_decor_abandonner; return 1
   fi
   adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
   # L'EMPRUNT: DEUX ROLES. L'activateur n'est plus jamais prete.
@@ -185,14 +185,8 @@ SQL
     if ! esc_appliquer_migration "$f" mig; then
       sortie="$ESC_MIGRATION_SORTIE"
       echoue "decor $suffixe: phase 1 refusee sur $(basename "$f"):"
-      grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
-      # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE.
-      # Mesure: `cut -c1-200` coupait juste avant
-      # `AUTHORITY_*`, et deux mutations ont ete comptees
-      # SURVIVED faute que le nom atteigne le lecteur.
-      grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$sortie" | sort -u | head -4 \
-        | sed 's/^/              invariant: /' >&2
-      return 1
+      esc_diag_rapporter "decor $suffixe / phase 1 / $(basename "$f")" "$sortie"
+      esc_decor_abandonner; return 1
     fi
   done
 
@@ -200,7 +194,7 @@ SQL
   etat=$(ctl -tAc "select normative_activation_state()" 2>&1)
   if [[ "$etat" != "PENDING" ]]; then
     echoue "decor $suffixe: phase 1 ne se termine pas en PENDING (obtenu: $etat)"
-    return 1
+    esc_decor_abandonner; return 1
   fi
   return 0
 }
@@ -209,19 +203,23 @@ mig_pg() { PGUSER="$MIG" PGPASSWORD="$MIG_MDP" psql -X -q -d postgres "$@"; }
 # `decor_deposer` rend le jeu canonique au cluster. Les roles d'autorite sont
 # globaux: sans cela, le scenario suivant se refuserait sur `exiger_roles_absents`.
 decor_deposer() {
-  local r
+  local r ko=0
   adm -c "select pg_terminate_backend(pid) from pg_stat_activity
            where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
-  detruire_bases_creees || NETTOYAGE_KO=1
+  detruire_bases_creees || { NETTOYAGE_KO=1; ko=1; }
   for r in "${CANONIQUES[@]}" "${STUB_ROLES[@]}"; do
     adm -c "drop owned by \"$r\";"      >/dev/null 2>&1
-    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1 || ko=1
   done
   for r in "$MIG" "$CTL"; do
     [[ -n "$r" ]] || continue
     adm -c "drop owned by \"$r\";"      >/dev/null 2>&1
-    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1 || ko=1
   done
+  # REND SON CODE. `esc_decor_fermer` le lit: un teardown qui echoue en
+  # silence est la meme faute qu'un teardown absent. Seul le `drop role` fait
+  # foi — `drop owned by` echoue normalement sur un role canonique jamais cree.
+  return $ko
 }
 
 NETTOYAGE_KO=0
@@ -229,6 +227,11 @@ TOUS_ROLES=()
 sortie_propre() {
   local r
   decor_deposer
+  # CHEMINS DE SORTIE 3 ET 5 (erreur shell, echec dans le teardown): un decor
+  # peut etre encore arme ici. `esc_decor_fermer` est idempotent — s'il a deja
+  # ete appele il ne refait rien; sinon c'est LUI qui rend le decor.
+  esc_decor_fermer
+  (( ESC_DECOR_TEARDOWN_KO == 0 )) || NETTOYAGE_KO=1
   for r in "${CANONIQUES[@]}" "${STUB_ROLES[@]}"; do registre_role "$r"; done
   for r in "${TOUS_ROLES[@]}"; do registre_role "$r"; done
   detruire_roles_crees || NETTOYAGE_KO=1
@@ -355,7 +358,7 @@ else
   echo "      ok: 6. l'activation est append-only (declencheur + policies)"
 fi
 
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -445,7 +448,7 @@ elif [[ $DEUX -eq 0 ]]; then
   echo "      ok: 2. l'ecriture de confiance ne recoit aucune identite, refuse"
   echo "             sans preparation, et refuse sans restitution"
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -539,7 +542,7 @@ else
     rouge "   $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-140)"
   fi
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -735,7 +738,7 @@ else
     rouge "   permet de constater la substitution apres coup."
   fi
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -763,7 +766,7 @@ else
   rouge "    pas: etat = $ETAT, capacites residuelles du migrateur = $RESTE"
   rouge "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-140)"
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -790,7 +793,7 @@ else
   rouge "8b. le refus n'est pas motive par la separation plan/migrateur:"
   rouge "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-160)"
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================

@@ -100,6 +100,11 @@ NETTOYAGE_KO=0
 sortie_propre() {
   local r
   rm -rf "$TMP"
+  # CHEMINS DE SORTIE 3 ET 5 (erreur shell, echec dans le teardown): un decor
+  # peut etre encore arme ici. `esc_decor_fermer` est idempotent — s'il a deja
+  # ete appele il ne refait rien; sinon c'est LUI qui rend le decor.
+  esc_decor_fermer
+  (( ESC_DECOR_TEARDOWN_KO == 0 )) || NETTOYAGE_KO=1
   adm -c "select pg_terminate_backend(pid) from pg_stat_activity
            where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
   detruire_bases_creees || NETTOYAGE_KO=1
@@ -126,11 +131,17 @@ echo "    6.3c: les postconditions de migration sont-elles ATTEINTES ?"
 # ==========================================================================
 decor_poser() {
   local sortie
-  creer_role "$MIG" "login password '$MDP' createrole createdb" || return 1
-  creer_role "$CTL" "login password '$MDP' createrole"          || return 1
-  creer_role "$SVC" "login password '$MDP'"                     || return 1
+  # LE TEARDOWN EST ARME AVANT LA PREMIERE CREATION. Mesure faite sur
+  # `authority_closure.sh`: les chemins de refus ci-dessous rendaient 1 sans
+  # rien defaire, un seul refus laissait les roles canoniques dans le cluster,
+  # et TOUS les decors suivants echouaient en « phase 0 refusee ».
+  esc_decor_ouvrir "$BASE" decor_deposer || { echoue "decor: armement refuse"; return 1; }
+
+  creer_role "$MIG" "login password '$MDP' createrole createdb" || { esc_decor_abandonner; return 1; }
+  creer_role "$CTL" "login password '$MDP' createrole"          || { esc_decor_abandonner; return 1; }
+  creer_role "$SVC" "login password '$MDP'"                     || { esc_decor_abandonner; return 1; }
   adm -c "grant \"$CTL\" to ${PGUSER:-postgres};" >/dev/null 2>&1
-  creer_base "$BASE" "owner \"$MIG\"" || return 1
+  creer_base "$BASE" "owner \"$MIG\"" || { esc_decor_abandonner; return 1; }
   registre_base "$BASE"
   admb -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
   admb >/dev/null 2>&1 <<SQL
@@ -147,7 +158,7 @@ grant usage on schema auth to "$CTL";
 SQL
   if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
     echoue "decor: phase 0 refusee: $(grep -m1 ERROR <<<"$sortie" | cut -c1-160)"
-    return 1
+    esc_decor_abandonner; return 1
   fi
   adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
   ctlp -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
@@ -167,14 +178,18 @@ SQL
 }
 
 decor_deposer() {
-  local r
+  local r ko=0
   adm -c "select pg_terminate_backend(pid) from pg_stat_activity
            where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
   adm -c "drop database if exists \"$BASE\";" >/dev/null 2>&1
   for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL" "$SVC"; do
     adm -c "drop owned by \"$r\";"       >/dev/null 2>&1
-    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1 || ko=1
   done
+  # REND SON CODE. `esc_decor_fermer` le lit: un teardown qui echoue en
+  # silence est la meme faute qu'un teardown absent. Seul le `drop role` fait
+  # foi — `drop owned by` echoue normalement sur un role canonique jamais cree.
+  return $ko
 }
 
 # appliquer_jusqu_a <nom-de-fichier-exclu> — applique tout ce qui precede
@@ -230,7 +245,7 @@ eprouver() {
   if ! decor_poser; then troue "m$court-verte" "decor impossible"; return; fi
   if ! appliquer_jusqu_a "$base_nom"; then
     troue "m$court-verte" "les migrations anterieures n'ont pas abouti"
-    decor_deposer; return
+    esc_decor_fermer; return
   fi
   if esc_appliquer_migration "$fichier" mig >/dev/null 2>&1; then
     vu="$(q "$temoin")"
@@ -242,13 +257,9 @@ eprouver() {
     fi
   else
     rouge "m$court-verte" "$pt. la migration est refusee sur une base correcte:"
-    detail "$(grep -m1 -oiE 'ERROR[^|]{0,120}' <<<"$ESC_MIGRATION_SORTIE")"
-    # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE: sans lui, un refus a
-    # l'installation ne se distingue pas d'une panne quelconque.
-    grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$ESC_MIGRATION_SORTIE" | sort -u \
-      | head -4 | sed 's/^/                invariant: /'
+    esc_diag_rapporter "m$court-verte / $pt" "$ESC_MIGRATION_SORTIE"
   fi
-  decor_deposer
+  esc_decor_fermer
 
   # -------------------------------------- (2) PRIVILEGE RENDU SANS EFFET
   # C'est la forme EXACTE du piege PostgreSQL: la commande est emise, elle
@@ -257,12 +268,12 @@ eprouver() {
   if ! decor_poser; then troue "m$court-privilege-sans-effet" "decor impossible"; return; fi
   if ! appliquer_jusqu_a "$base_nom"; then
     troue "m$court-privilege-sans-effet" "migrations anterieures KO"
-    decor_deposer; return
+    esc_decor_fermer; return
   fi
   if ! mute="$(copie_mutee "$fichier" "$mot_priv" "-- commande sans effet (WARNING PostgreSQL)")"; then
     troue "m$court-privilege-sans-effet" "le motif de privilege n'est pas unique"
     detail "le scenario n'a pas pu etre pose; rien n'a ete eprouve."
-    decor_deposer; return
+    esc_decor_fermer; return
   fi
   if esc_appliquer_migration "$mute" mig >/dev/null 2>&1; then
     rouge "m$court-privilege-sans-effet" "$pt. une commande de privilege sans effet"
@@ -311,7 +322,7 @@ eprouver() {
   else
     troue "m$court-atomicite" "aucun refus exploitable a examiner."
   fi
-  decor_deposer
+  esc_decor_fermer
 
   # ------------------------------------------ (3) L'APPEL EST NEUTRALISE
   # MEME CATALOGUE FAUTIF, APPEL RETIRE. Si la migration passe alors, c'est
@@ -319,7 +330,7 @@ eprouver() {
   if ! decor_poser; then troue "m$court-appel-neutralise" "decor impossible"; return; fi
   if ! appliquer_jusqu_a "$base_nom"; then
     troue "m$court-appel-neutralise" "migrations anterieures KO"
-    decor_deposer; return
+    esc_decor_fermer; return
   fi
   mute2="$TMP/appel_$(basename "$fichier")"
   python3 - "$fichier" "$mute2" "$mot_priv" "$mot_appel" <<'PY'
@@ -334,7 +345,7 @@ open(dst, "w").write(t)
 PY
   if [[ $? -ne 0 ]]; then
     troue "m$court-appel-neutralise" "motifs non uniques: scenario non pose"
-    decor_deposer; return
+    esc_decor_fermer; return
   fi
   # LE NOM DE BASE CHANGE ICI, ET C'EST VOULU: cette copie ne doit pas
   # partager l'identifiant de registre de la migration reelle.
@@ -347,7 +358,7 @@ PY
     detail "quand meme: le refus mesure en (2) ne vient pas de la"
     detail "postcondition. $(grep -m1 -oiE 'ERROR[^|]{0,100}' <<<"$ESC_MIGRATION_SORTIE")"
   fi
-  decor_deposer
+  esc_decor_fermer
 }
 
 # --------------------------------------------------------------------------
@@ -741,7 +752,7 @@ else
       detail "restant: $(head -c 120 <<<"$VU")"
     fi
   fi
-  decor_deposer
+  esc_decor_fermer
 fi
 
 # ==========================================================================

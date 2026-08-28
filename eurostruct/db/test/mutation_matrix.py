@@ -64,6 +64,7 @@ A12 = "db/migrations/0012_delegation_lineage.sql"
 S = "db/control_plane/0001_normative_seal.sql"
 R = "db/test/run.sh"
 H = "db/test/authority_closure.sh"
+LIB = "db/test/lib_harnais.sh"
 CMD = "tools/deploy_eurostruct.sh"
 # LES TROIS CIBLES DE 6.3b6e. Le registre vit dans la premiere migration,
 # l'applicateur au-dessus d'elle, et `0002` sert de temoin au controle statique
@@ -1178,6 +1179,46 @@ revoke insert on normative_authorisation_grants          from normative_backend;
      [("-- RESTAURATION INTER-CLUSTER — le cas le plus probable de ce refus.",
        "-- Transport de base — le cas le plus probable de ce refus."),
       ("CAS COURANT: RESTAURATION INTER-CLUSTER", "CAS COURANT: transport de base")], False),
+
+    # ----------------------------------------------------------------------
+    # LE CYCLE DE VIE DU DECOR — trois mutations, trois couches distinctes
+    # ----------------------------------------------------------------------
+    # CE QUI EST EN JEU. Un refus a l'installation qui ne rend pas le decor
+    # laisse les roles canoniques dans le cluster; tous les scenarios suivants
+    # echouent alors en « phase 0 refusee », le harnais rend « rien d'evalue »,
+    # et CETTE campagne lit ce silence comme un SURVIVANT. La contamination du
+    # scenario suivant est une erreur d'infrastructure, jamais une mise a mort:
+    # ces trois controles existent pour que la distinction reste verifiee.
+    #
+    # Le scenario H de `authority_closure.sh` est ce qui les tue. Mesure du
+    # 28/08 sur base jetable, en retirant `esc_decor_abandonner` du refus de
+    # phase 1: H3-H8 rougit sur 12 residus — sept roles canoniques, trois roles
+    # de harnais, une base, neuf appartenances.
+    ("GC1 le refus de phase 1 ne rend plus le decor", "GC1", H,
+     [("""      esc_diag_rapporter "decor $s / phase 1 / $(basename "$f")" "$sortie"
+      esc_decor_abandonner
+      return 1""",
+       """      esc_diag_rapporter "decor $s / phase 1 / $(basename "$f")" "$sortie"
+      return 1""")], False),
+    ("GC2 le refus de phase 0 ne rend plus le decor", "GC2", H,
+     [("""    esc_diag_rapporter "decor $s / phase 0 (sceau)" "$sortie"
+    esc_decor_abandonner
+    return 1""",
+       """    esc_diag_rapporter "decor $s / phase 0 (sceau)" "$sortie"
+    return 1""")], False),
+    # LA COUCHE BIBLIOTHEQUE. `GC1` et `GC2` retirent l'APPEL; `GC3` vide la
+    # fonction appelee. Les deux preuves sont distinctes: un harnais peut
+    # appeler correctement un helper qui ne fait rien.
+    ("GC3 esc_decor_abandonner ne ferme plus le decor", "GC3", LIB,
+     [("""esc_decor_abandonner() {
+  local code="${1:-1}"
+  esc_decor_fermer
+  return "$code"
+}""",
+       """esc_decor_abandonner() {
+  local code="${1:-1}"
+  return "$code"
+}""")], False),
 ]
 
 

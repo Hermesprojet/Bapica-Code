@@ -91,16 +91,22 @@ INTRUS="99999999-8888-7777-6666-555555555555"
 # `decor_poser <suffixe> <mandat-ou-vide>`
 decor_poser() {
   local s="$1" mandat="$2" f sortie m etat
+  # LE TEARDOWN EST ARME AVANT LA PREMIERE CREATION. Mesure faite sur
+  # `authority_closure.sh`: les chemins de refus ci-dessous rendaient 1 sans
+  # rien defaire, un seul refus laissait les roles canoniques dans le cluster,
+  # et TOUS les decors suivants echouaient en « phase 0 refusee ».
+  esc_decor_ouvrir "$s" decor_deposer || { echoue "decor: armement refuse"; return 1; }
+
   MIG="${PREFIXE}_m${s}_${JETON}"; CTL="${PREFIXE}_c${s}_${JETON}"
   SVC="${PREFIXE}_s${s}_${JETON}"; ORD="${PREFIXE}_o${s}_${JETON}"
   BASE="${PREFIXE}_d${s}_${JETON}"; MDP="FICTIF-bs-${s}-${JETON}"
 
-  creer_role "$MIG" "login password '$MDP' createrole createdb" || return 1
-  creer_role "$CTL" "login password '$MDP' createrole"          || return 1
-  creer_role "$SVC" "login password '$MDP'"                     || return 1
-  creer_role "$ORD" "login password '$MDP'"                     || return 1
+  creer_role "$MIG" "login password '$MDP' createrole createdb" || { esc_decor_abandonner; return 1; }
+  creer_role "$CTL" "login password '$MDP' createrole"          || { esc_decor_abandonner; return 1; }
+  creer_role "$SVC" "login password '$MDP'"                     || { esc_decor_abandonner; return 1; }
+  creer_role "$ORD" "login password '$MDP'"                     || { esc_decor_abandonner; return 1; }
   adm -c "grant \"$CTL\" to ${PGUSER:-postgres};" >/dev/null 2>&1
-  creer_base "$BASE" "owner \"$MIG\"" || return 1
+  creer_base "$BASE" "owner \"$MIG\"" || { esc_decor_abandonner; return 1; }
   registre_base "$BASE"
   admb -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
   admb >/dev/null 2>&1 <<SQL
@@ -113,7 +119,7 @@ grant usage on schema auth to "$CTL";
 SQL
   if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
     echoue "decor $s: phase 0: $(grep -m1 ERROR <<<"$sortie" | cut -c1-160)"
-    return 1
+    esc_decor_abandonner; return 1
   fi
   adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
   ctlp -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
@@ -135,14 +141,8 @@ SQL
   for f in "$DB_DIR"/migrations/*.sql; do
     if ! esc_appliquer_migration "$f" mig; then
       echoue "decor $s: phase 1 sur $(basename "$f"):"
-      grep -m1 ERROR <<<"$ESC_MIGRATION_SORTIE" | cut -c1-200 \
-        | sed 's/^/              /' >&2
-      # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE. Mesure:
-      # `cut -c1-200` coupait juste avant `AUTHORITY_*`, et deux mutations
-      # ont ete comptees SURVIVED faute que le nom atteigne le lecteur.
-      grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$ESC_MIGRATION_SORTIE" | sort -u \
-        | head -4 | sed 's/^/              invariant: /' >&2
-      return 1
+      esc_diag_rapporter "decor $s / phase 1 / $(basename "$f")" "$ESC_MIGRATION_SORTIE"
+      esc_decor_abandonner; return 1
     fi
   done
   m=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
@@ -150,9 +150,8 @@ SQL
   etat=$(ctl -tAc "select normative_activation_state()" 2>&1)
   if [[ "$etat" != "ACTIVE" ]]; then
     echoue "decor $s: finalisation -> $etat"
-    grep -m1 -iE 'ERROR|ERREUR' <<<"$sortie" | cut -c1-200 \
-      | sed 's/^/              /' >&2
-    return 1
+    esc_diag_rapporter "decor $s / finalisation" "$sortie"
+    esc_decor_abandonner; return 1
   fi
   # PAR LE PLAN DE CONTROLE, qui detient l'ADMIN depuis que la phase 0 cree
   # le role. En superutilisateur, on masquerait le fait qu'il en est capable —
@@ -168,16 +167,20 @@ SQL
 }
 
 decor_deposer() {
-  local r
+  local r ko=0
   adm -c "select pg_terminate_backend(pid) from pg_stat_activity
            where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
-  detruire_bases_creees || NETTOYAGE_KO=1
+  detruire_bases_creees || { NETTOYAGE_KO=1; ko=1; }
   for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL" "$SVC" "$ORD"; do
     [[ -n "$r" ]] || continue
     adm -c "drop owned by \"$r\";"       >/dev/null 2>&1
-    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1 || ko=1
     TOUS+=("$r")
   done
+  # REND SON CODE. `esc_decor_fermer` le lit: un teardown qui echoue en
+  # silence est la meme faute qu'un teardown absent. Seul le `drop role` fait
+  # foi — `drop owned by` echoue normalement sur un role canonique jamais cree.
+  return $ko
 }
 
 NETTOYAGE_KO=0
@@ -231,6 +234,11 @@ sortie_propre() {
   [[ -z "$BAR_PID" ]] || kill "$BAR_PID" 2>/dev/null
   rm -rf "$CANAUX_RACINE"
   decor_deposer
+  # CHEMINS DE SORTIE 3 ET 5 (erreur shell, echec dans le teardown): un decor
+  # peut etre encore arme ici. `esc_decor_fermer` est idempotent — s'il a deja
+  # ete appele il ne refait rien; sinon c'est LUI qui rend le decor.
+  esc_decor_fermer
+  (( ESC_DECOR_TEARDOWN_KO == 0 )) || NETTOYAGE_KO=1
   for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "${TOUS[@]}"; do
     [[ -n "$r" ]] && registre_role "$r"
   done
@@ -269,7 +277,7 @@ else
     troue sans-mandat "refuse, mais SANS l'etat explicite attendu:"
     detail "$(head -c 180 <<<"$R")"
   fi
-  decor_deposer
+  esc_decor_fermer
 fi
 
 # ==========================================================================

@@ -430,7 +430,7 @@ else
     echo "             migrateur serait son propre plan de controle"
   else
     echoue "A: la finalisation refuse, mais pas au motif de la separation:"
-    echoue "  $(grep -m1 -iE 'ERROR|ERREUR' <<<"$FIN" | cut -c1-200)"
+    esc_diag_rapporter "A / finalisation" "$FIN"
   fi
 fi
 raz; creer_acteurs || { echoue "recreation des acteurs impossible"; exit 1; }
@@ -465,7 +465,7 @@ if appliquer "$BASE_B" admin_db "$MIGRATEUR,$PROPRIETAIRE"; then
               or pg_has_role('$MIGRATEUR', a.rolname, 'MEMBER WITH ADMIN OPTION'))")
     if [[ "$ETAT" != "ACTIVE" ]]; then
       echoue "B: la finalisation n'a pas abouti (etat $ETAT):"
-      echoue "  $(grep -m1 -iE 'ERROR|ERREUR' <<<"$FIN" | cut -c1-200)"
+      esc_diag_rapporter "B / finalisation" "$FIN"
     elif [[ "$CAP" != "0" ]]; then
       echoue "B activee mais le migrateur conserve $CAP capacite(s) sur les"
       echoue "  roles d'autorite: il peut encore forger une origine normative."
@@ -543,7 +543,7 @@ if appliquer "$BASE_C" plan "$MIGRATEUR,$PLAN"; then
               or pg_has_role('$MIGRATEUR', a.rolname, 'MEMBER WITH ADMIN OPTION'))")
     if [[ "$ETAT" != "ACTIVE" ]]; then
       echoue "C: la finalisation par « $PLAN » n'a pas abouti (etat $ETAT):"
-      echoue "  $(grep -m1 -iE 'ERROR|ERREUR' <<<"$FIN" | cut -c1-200)"
+      esc_diag_rapporter "C / finalisation" "$FIN"
     elif [[ "$CAP" != "0" ]]; then
       echoue "C activee mais le migrateur conserve $CAP capacite(s)."
     elif [[ "$FIGE" != "$PLAN" || "$FIGE_OID" != "$OID_PLAN" ]]; then

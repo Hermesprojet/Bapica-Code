@@ -202,7 +202,7 @@ adm -c "alter database \"$BASE\"
 adm -c "alter database \"$BASE\" set eurostruct.token_roles = 'authenticated';" >/dev/null 2>&1
 
 if ! SORTIE=$(ctl -v ON_ERROR_STOP=1 -f "$SCEAU" 2>&1); then
-  echoue "phase 0 refusee: $(grep -m1 ERROR <<<"$SORTIE" | cut -c1-180)"; exit 1
+  echoue "phase 0 refusee:"; esc_diag_rapporter "phase 0 (sceau)" "$SORTIE"; exit 1
 fi
 adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
 ctlp -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
@@ -213,7 +213,8 @@ for f in "$DB_DIR"/migrations/*.sql; do
   [[ "$f" == "$SCEAU" ]] && continue
   if ! esc_appliquer_migration "$f" mig; then
     SORTIE="$ESC_MIGRATION_SORTIE"
-    echoue "phase 1 refusee sur $(basename "$f"): $(grep -m1 ERROR <<<"$SORTIE" | cut -c1-180)"
+    echoue "phase 1 refusee sur $(basename "$f"):"
+    esc_diag_rapporter "phase 1 / $(basename "$f")" "$SORTIE"
     exit 1
   fi
 done

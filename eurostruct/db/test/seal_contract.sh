@@ -126,6 +126,12 @@ admb()  { psql -X -q -d "$BASE" "$@"; }
 # `decor_roles <suffixe>` — les trois acteurs et la base, sans phase 0 ni 1.
 decor_roles() {
   local s="$1"
+  # LE TEARDOWN EST ARME AVANT LA PREMIERE CREATION. Mesure faite sur
+  # `authority_closure.sh`: les chemins de refus ci-dessous rendaient 1 sans
+  # rien defaire, un seul refus laissait les roles canoniques dans le cluster,
+  # et TOUS les decors suivants echouaient en « phase 0 refusee ».
+  esc_decor_ouvrir "$s" decor_deposer || { echoue "decor: armement refuse"; return 1; }
+
   MIG="${PREFIXE}_m${s}_${JETON}"
   CTL="${PREFIXE}_c${s}_${JETON}"
   DEL="${PREFIXE}_g${s}_${JETON}"
@@ -133,16 +139,16 @@ decor_roles() {
   MDP="FICTIF-sc-${s}-${JETON}"
 
   creer_role "$MIG" "login password '$MDP' createrole createdb" \
-    || { echoue "decor $s: creation du migrateur impossible"; return 1; }
+    || { echoue "decor $s: creation du migrateur impossible"; esc_decor_abandonner; return 1; }
   creer_role "$CTL" "login password '$MDP' createrole" \
-    || { echoue "decor $s: creation du plan de controle impossible"; return 1; }
+    || { echoue "decor $s: creation du plan de controle impossible"; esc_decor_abandonner; return 1; }
   creer_role "$DEL" "login password '$MDP' createrole" \
-    || { echoue "decor $s: creation du delegue impossible"; return 1; }
+    || { echoue "decor $s: creation du delegue impossible"; esc_decor_abandonner; return 1; }
   adm -c "grant \"$CTL\" to ${PGUSER:-postgres};" >/dev/null 2>&1
   adm -c "grant \"$DEL\" to ${PGUSER:-postgres};" >/dev/null 2>&1
 
   creer_base "$BASE" "owner \"$MIG\"" \
-    || { echoue "decor $s: creation de la base impossible"; return 1; }
+    || { echoue "decor $s: creation de la base impossible"; esc_decor_abandonner; return 1; }
   registre_base "$BASE"
 
   admb -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
@@ -173,7 +179,7 @@ decor_phase_1() {
     if ! esc_appliquer_migration "$f" mig; then
       sortie="$ESC_MIGRATION_SORTIE"
       echoue "decor $s: phase 1 refusee sur $(basename "$f"):"
-      grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
+      esc_diag_rapporter "decor $s / phase 1 / $(basename "$f")" "$sortie"
       return 1
     fi
   done < <(migrations_de_phase_1)
@@ -184,38 +190,45 @@ decor_phase_1() {
 # le sceau, prete les deux roles d'autorite au migrateur, phase 1, PENDING.
 decor_poser() {
   local s="$1" sortie etat
+  # `decor_roles` a DEJA rendu le decor en cas de refus: il ne reste rien a
+  # defaire ici, et un second abandon serait une fermeture sur un decor non
+  # arme — inoffensive, mais elle brouillerait le compte des fermetures.
   decor_roles "$s" || return 1
 
   if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$SCEAU" 2>&1); then
     echoue "decor $s: phase 0 refusee:"
-    grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
-    return 1
+    esc_diag_rapporter "decor $s / phase 0 (sceau)" "$sortie"
+    esc_decor_abandonner; return 1
   fi
   adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
   ctlp -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
 grant eurostruct_normative_writer    to "$MIG" with admin option;
 grant eurostruct_normative_bootstrap to "$MIG" with admin option;
 SQL
-  decor_phase_1 "$s" || return 1
+  decor_phase_1 "$s" || { esc_decor_abandonner; return 1; }
 
   etat=$(ctl -tAc "select normative_activation_state()" 2>&1)
   if [[ "$etat" != "PENDING" ]]; then
     echoue "decor $s: phase 1 ne se termine pas en PENDING (obtenu: $etat)"
-    return 1
+    esc_decor_abandonner; return 1
   fi
   return 0
 }
 
 decor_deposer() {
-  local r
+  local r ko=0
   adm -c "select pg_terminate_backend(pid) from pg_stat_activity
            where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
-  detruire_bases_creees || NETTOYAGE_KO=1
+  detruire_bases_creees || { NETTOYAGE_KO=1; ko=1; }
   for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "$MIG" "$CTL" "$DEL"; do
     [[ -n "$r" ]] || continue
     adm -c "drop owned by \"$r\";"       >/dev/null 2>&1
-    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1 || ko=1
   done
+  # REND SON CODE. `esc_decor_fermer` le lit: un teardown qui echoue en
+  # silence est la meme faute qu'un teardown absent. Seul le `drop role` fait
+  # foi — `drop owned by` echoue normalement sur un role canonique jamais cree.
+  return $ko
 }
 
 NETTOYAGE_KO=0
@@ -224,6 +237,11 @@ suivre_decor() { TOUS_ROLES+=("$MIG" "$CTL" "$DEL"); }
 sortie_propre() {
   local r
   decor_deposer
+  # CHEMINS DE SORTIE 3 ET 5 (erreur shell, echec dans le teardown): un decor
+  # peut etre encore arme ici. `esc_decor_fermer` est idempotent — s'il a deja
+  # ete appele il ne refait rien; sinon c'est LUI qui rend le decor.
+  esc_decor_fermer
+  (( ESC_DECOR_TEARDOWN_KO == 0 )) || NETTOYAGE_KO=1
   for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" "${TOUS_ROLES[@]}"; do
     registre_role "$r"
   done
@@ -340,7 +358,7 @@ else
   rouge "H4. la phase 1 appliquee sans sceau ne produit pas de refus nomme:"
   detail "    $(grep -m1 -E 'ERROR|FATAL' <<<"$SORTIE_H4" | cut -c1-160)"
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -391,7 +409,7 @@ SQL
       detail "    $(grep -m1 -E 'ERROR|FATAL' <<<"$SORTIE_I2B" | cut -c1-150)"
     fi
   fi
-  decor_deposer
+  esc_decor_fermer
 fi
 rm -f "$SCEAU_AUTRE"
 
@@ -532,7 +550,7 @@ else
   detail "    Une racine a moitie posee doit etre un refus fail-closed, jamais"
   detail "    une reparation silencieuse."
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -606,7 +624,7 @@ SQL
     fi
   fi
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -748,7 +766,7 @@ else
   detail "    donnent le meme resultat. Une divergence signifie que l'un des"
   detail "    deux applique une contrainte que l'autre n'applique pas."
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -780,7 +798,7 @@ if grep -qF "SUPERUTILISATEUR" <<<"$SORTIE_M"; then
 else
   echoue "M. la phase 0 superutilisateur n'a pas emis son notice; scenario non evalue"
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -867,7 +885,7 @@ if [[ "$ETAT_W" == "PENDING" ]]; then
 else
   echoue "W4. la phase 1 ne s'est pas appliquee (etat « $ETAT_W »)"
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 echo ""

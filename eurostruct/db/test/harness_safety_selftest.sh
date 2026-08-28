@@ -818,6 +818,165 @@ else
   echo "      ok: 6. aucune URL de connexion en argument de psql"
 fi
 
+# --------------------------------------------------------------------------
+# 16. LE DIAGNOSTIC NE TRONQUE PAS LA SOURCE DE VERITE
+# --------------------------------------------------------------------------
+# CE QUI EST MESURE ICI, ET POURQUOI CE CONTROLE EXISTE. Deux mutations (B'
+# et B=) ont ete comptees SURVIVED lors de la campagne du 82: elles TUAIENT
+# bien, a l'installation, mais l'identifiant `AUTHORITY_COMPOSITION_*` tombait
+# au-dela du 200e caractere de la ligne ERROR et rien ne le rapportait.
+#
+# On fabrique donc une sortie ou l'identifiant est DELIBEREMENT place tres
+# au-dela de la coupe d'affichage, et on exige qu'il atteigne quand meme le
+# lecteur. Le controle est plus exigeant que le defaut d'origine: 500
+# caracteres de bourrage, la ou la coupe etait a 200.
+BOURRAGE="$(printf 'x%.0s' $(seq 1 500))"
+FAUX_ERREUR="psql:0014_four_eyes_decisions.sql:812: ERROR:  $BOURRAGE AUTHORITY_COMPOSITION_FORCE_RLS_MISSING: la table normative_authority_decisions n'a pas FORCE ROW LEVEL SECURITY
+CONTEXT:  PL/pgSQL function assert_authority_composition() line 214 at RAISE"
+POSITION=$(awk -v s="$FAUX_ERREUR" 'BEGIN{ print index(s, "AUTHORITY_COMPOSITION_FORCE_RLS_MISSING") }')
+# REDIRECTION, ET NON `$( ... )`. Mesure faite en ecrivant ce controle: la
+# substitution de commande execute la fonction dans un SOUS-SHELL, et
+# `ESC_DIAG_CAPTURE` — qui y est cree — ne revenait pas au parent. Le controle
+# se declarait alors rouge sur « aucune capture », en accusant le helper d'un
+# defaut qui etait dans sa propre mesure.
+DIAG_SORTIE="$(mktemp "${TMPDIR:-/tmp}/esc_ct16_XXXXXX")"
+esc_diag_rapporter "auto-test 16" "$FAUX_ERREUR" 2>"$DIAG_SORTIE"
+DIAG_VU="$(cat "$DIAG_SORTIE")"
+rm -f "$DIAG_SORTIE"
+if (( POSITION <= 500 )); then
+  echoue "16. l'auto-test est trop faible: l'identifiant est au caractere"
+  echoue "    $POSITION, en deca des 500 exiges — il ne prouverait rien."
+elif ! grep -q "invariant: AUTHORITY_COMPOSITION_FORCE_RLS_MISSING" <<<"$DIAG_VU"; then
+  echoue "16. l'identifiant place au caractere $POSITION n'atteint PAS le"
+  echoue "    lecteur. Un refus d'installation redeviendrait indiscernable"
+  echoue "    d'une panne, et la mutation correspondante compterait SURVIVED."
+  sed 's/^/              /' <<<"$DIAG_VU" >&2
+elif [[ ! -f "${ESC_DIAG_CAPTURE:-/inexistant}" ]]; then
+  echoue "16. aucune capture integrale n'existe: la source de verite n'est"
+  echoue "    conservee nulle part."
+elif ! grep -q "$BOURRAGE" "$ESC_DIAG_CAPTURE"; then
+  echoue "16. la capture ne contient pas la sortie INTEGRALE."
+else
+  echo "      ok: 16. identifiant au caractere $POSITION — rapporte, et la"
+  echo "             capture integrale conserve $(wc -c <"$ESC_DIAG_CAPTURE") octets"
+fi
+
+# --------------------------------------------------------------------------
+# 17. LE TEARDOWN D'UN DECOR S'EXECUTE SUR LES CINQ CHEMINS DE SORTIE
+# --------------------------------------------------------------------------
+# CE QUI A ETE MESURE. `decor_poser` rendait 1 sur six chemins de refus sans
+# jamais appeler `decor_deposer`. Le premier refus laissait les roles
+# canoniques dans le cluster; tous les decors suivants echouaient en « phase 0
+# refusee », et le harnais rendait « rien d'evalue » — ce qu'une campagne de
+# mutation lit comme un SURVIVANT. La contamination du scenario suivant est
+# une erreur d'infrastructure, jamais une mise a mort.
+#
+# LES CHEMINS SONT EXERCES DANS DES SOUS-PROCESSUS, chacun avec SON PROPRE
+# piege: un seul processus ne peut pas mourir six fois. Le teardown ecrit un
+# temoin sur disque — c'est le seul fait qui survive a un `exit`, a un signal,
+# ou a un shell qui s'effondre.
+#
+# CE QUE LE TRAP DEDIE APPORTE, MESURE ET NON SUPPOSE. En ecrivant ce
+# controle, la premiere version du chemin « interruption » restait verte quand
+# on retirait le trap de `esc_decor_ouvrir`: bash execute le piege EXIT meme
+# lorsqu'un signal fatal l'emporte, et c'est LUI qui rendait le decor. La
+# table mesuree:
+#
+#                        trap dedie    pas de trap dedie
+#     sans piege EXIT     temoin 1        temoin 0
+#     avec piege EXIT     temoin 1        temoin 1
+#
+# Le trap dedie porte donc exactement un cas: celui ou aucun piege EXIT ne
+# couvre le decor. Ce cas n'est pas theorique — bash n'a qu'UN seul piege
+# EXIT, et tout scenario qui pose le sien efface silencieusement celui du
+# harnais. Le chemin 6 l'exerce, et c'est lui qui rend le trap dedie
+# falsifiable au lieu de decoratif.
+#
+# AUCUN OBJET POSTGRESQL ICI. Le contrat exerce est celui du cycle de vie, et
+# il doit tenir meme quand la base n'est pas la cause.
+TEMOINS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/esc_cycle_XXXXXX")"
+chemin_de_sortie() {                 # chemin_de_sortie <nom> <corps-bash> [sans-exit]
+  local nom="$1" corps="$2" sans_exit="${3:-}" pose_piege="trap sortie_globale EXIT" code=0
+  [[ -n "$sans_exit" ]] && pose_piege=":"
+  bash -c '
+    set -uo pipefail
+    source "'"$HERE"'/lib_harnais.sh"
+    TEMOIN="'"$TEMOINS_DIR"'/'"$nom"'"
+    teardown() { echo "rendu" >>"$TEMOIN"; return "${TEARDOWN_CODE:-0}"; }
+    sortie_globale() { esc_decor_fermer; }
+    '"$pose_piege"'
+    esc_decor_ouvrir "'"$nom"'" teardown || exit 9
+    '"$corps"'
+  ' >/dev/null 2>"$TEMOINS_DIR/$nom.err" || code=$?
+  echo "$code"
+}
+
+# 1. SUCCES — fermeture explicite, un seul teardown.
+C1=$(chemin_de_sortie succes 'esc_decor_fermer; exit 0')
+# 2. ERREUR SQL — la forme du refus d'installation: abandon puis code 1.
+C2=$(chemin_de_sortie erreur_sql 'esc_decor_abandonner || exit 1')
+# 3. ERREUR SHELL — commande inexistante, puis sortie par le trap EXIT.
+C3=$(chemin_de_sortie erreur_shell 'commande_qui_nexiste_pas_du_tout; exit 127')
+# 4. INTERRUPTION — le processus se tue lui-meme; seul le trap dedie peut
+#    encore rendre le decor.
+C4=$(chemin_de_sortie interruption 'kill -TERM $$; sleep 5; exit 0')
+# 5. ECHEC DANS LE TEARDOWN LUI-MEME — il rend 1; le harnais doit le
+#    SIGNALER et non l'avaler.
+C5=$(chemin_de_sortie teardown_ko \
+     'TEARDOWN_CODE=1; esc_decor_fermer
+      (( ESC_DECOR_TEARDOWN_KO == 1 )) || exit 8
+      exit 0')
+# 6. INTERRUPTION SANS AUCUN PIEGE EXIT — le seul cas ou le trap dedie est
+#    LOAD-BEARING. Sans lui, mesure faite: temoin 0.
+C6=$(chemin_de_sortie interruption_seule 'kill -TERM $$; sleep 5; exit 0' sans-exit)
+# 7. REFUS D'INSTALLATION SANS PIEGE EXIT — la forme EXACTE de `decor_poser`:
+#    le chemin de refus doit se rendre LUI-MEME, sans compter sur la fin du
+#    harnais. Mesure: avec un piege EXIT, un `esc_decor_abandonner` qui ne
+#    ferme rien reste invisible — c'est ce masquage qui a laisse six chemins
+#    de refus fuir pendant toute la campagne du 82.
+C7=$(chemin_de_sortie erreur_sql_seule 'esc_decor_abandonner || exit 1' sans-exit)
+
+CYCLE_KO=0
+for cas in succes erreur_sql erreur_shell interruption teardown_ko \
+           interruption_seule erreur_sql_seule; do
+  n=$(wc -l <"$TEMOINS_DIR/$cas" 2>/dev/null || echo 0)
+  if [[ "$n" == "0" ]]; then
+    echoue "17. chemin « $cas »: le teardown ne s'est PAS execute."
+    CYCLE_KO=1
+  elif [[ "$n" != "1" ]]; then
+    # L'idempotence compte autant que l'execution: un teardown joue deux fois
+    # rapporterait des echecs de nettoyage imaginaires au second passage.
+    echoue "17. chemin « $cas »: teardown execute $n fois, attendu 1."
+    CYCLE_KO=1
+  fi
+  # « SIGNALE, JAMAIS AVALE » A UN REVERS: pas de plainte imaginaire non plus.
+  # Mesure: en cassant l'idempotence, le second passage appelait une fonction
+  # de teardown vidée et rapportait un echec de nettoyage qui n'existait pas.
+  # Le temoin restait a 1 et le controle ne voyait rien.
+  # `grep -c` IMPRIME DEJA « 0 » ET REND 1 quand il ne trouve rien: le
+  # `|| echo 0` reflexe produisait « 0\n0 » et le controle se declarait rouge
+  # sur sa propre mesure. Mesure faite en ecrivant ces lignes.
+  plaintes=$(grep -c "ECHEC NETTOYAGE" "$TEMOINS_DIR/$cas.err" 2>/dev/null || true)
+  [[ -n "$plaintes" ]] || plaintes=0
+  attendu=0; [[ "$cas" == "teardown_ko" ]] && attendu=1
+  if [[ "$plaintes" != "$attendu" ]]; then
+    echoue "17. chemin « $cas »: $plaintes plainte(s) « ECHEC NETTOYAGE »,"
+    echoue "    attendu $attendu."
+    CYCLE_KO=1
+  fi
+done
+# Les codes de sortie sont eux aussi le contrat: un refus qui rendrait 0
+# laisserait le harnais croire que le decor est pose.
+[[ "$C1" == "0"   ]] || { echoue "17. succes rend $C1, attendu 0"; CYCLE_KO=1; }
+[[ "$C2" == "1"   ]] || { echoue "17. erreur SQL rend $C2, attendu 1"; CYCLE_KO=1; }
+[[ "$C3" == "127" ]] || { echoue "17. erreur shell rend $C3, attendu 127"; CYCLE_KO=1; }
+[[ "$C4" == "143" ]] || { echoue "17. interruption rend $C4, attendu 143 (TERM)"; CYCLE_KO=1; }
+[[ "$C5" == "0"   ]] || { echoue "17. teardown en echec rend $C5, attendu 0 (signale, pas avale)"; CYCLE_KO=1; }
+[[ "$C6" == "143" ]] || { echoue "17. interruption sans piege EXIT rend $C6, attendu 143"; CYCLE_KO=1; }
+[[ "$C7" == "1"   ]] || { echoue "17. refus sans piege EXIT rend $C7, attendu 1"; CYCLE_KO=1; }
+(( CYCLE_KO )) || echo "      ok: 17. sept chemins de sortie, sept teardowns, un chacun"
+rm -rf "$TEMOINS_DIR"
+
 echo ""
 if [[ $KO -eq 0 ]]; then
   echo "================================================="
