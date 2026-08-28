@@ -65,6 +65,9 @@ S = "db/control_plane/0001_normative_seal.sql"
 R = "db/test/run.sh"
 H = "db/test/authority_closure.sh"
 LIB = "db/test/lib_harnais.sh"
+FACT = "engine/src/eurostruct_engine/ndp/provider_factory.py"
+BARR = "db/test/barriere_provider.py"
+PROV = "db/test/provider_contract.py"
 A15 = "db/migrations/0015_authority_manifest.sql"
 CMD = "tools/deploy_eurostruct.sh"
 # LES TROIS CIBLES DE 6.3b6e. Le registre vit dans la premiere migration,
@@ -1934,6 +1937,54 @@ CAS_MANIFESTE = [
 ]
 
 
+# --------------------------------------------------------------------------
+# LA FACTORY ET SA BARRIERE (L3) — cinq garanties, cinq mutations
+# --------------------------------------------------------------------------
+# CE QUI EST EN JEU. Aucun consommateur produit n'existe: ces controles ne
+# prouvent pas qu'une route est sure, ils prouvent que la SEULE composition
+# offerte est fail-closed. Chacun retire une des cinq garanties.
+CAS_FACTORY = [
+    # F1 — le crochet n'est plus appele. Il existait deja et rien ne
+    # l'appelait hors des tests: c'est exactement l'etat qu'on quitte.
+    ("F1 la factory n'appelle plus le crochet de production", "D3", FACT,
+     [("    assert_provider_is_usable_in_production(provider)",
+       "    pass  # crochet retire par mutation")], False),
+    # F2 — la conformite de la connexion n'est plus exigee.
+    #
+    # PREMIERE VERSION REJETEE, ET LA RAISON COMPTE: elle remplacait la PROSE
+    # du message de refus (« il n'existe aucun repli memoire »). Le motif
+    # etait bien unique, mais muter un texte ne change AUCUN comportement:
+    # `D4` serait reste vert et le controle aurait SURVECU sans rien apprendre.
+    # Une mutation doit retirer une garantie, pas une phrase.
+    ("F2 la conformite de la connexion n'est plus exigee", "D5", FACT,
+     [("    if connexion is None or not isinstance(connexion, Connexion):",
+       "    if False:")], False),
+    # F3 — l'authentificateur fictif n'est plus refuse par la factory.
+    ("F3 la factory accepte un authentificateur fictif", "D3", FACT,
+     [('    if getattr(authentificateur, "est_fictif", True):',
+       '    if False:')], False),
+    # F4 — la barriere ne suit plus les alias d'import. Un grep naif se
+    # contourne en une ligne; l'AST ne doit pas retomber a ce niveau.
+    ("F4 la barriere ne suit plus les alias d'import", "D8", BARR,
+     [("            return self.alias.get(f.id, f.id)",
+       "            return f.id")], False),
+    # F5 — la barriere accepte de conclure sur zero module. Mesure: `rglob`
+    # sur un fichier ne rend rien, et elle annoncait « aucun manquement ».
+    ("F5 la barriere conclut sur zero module", "D8", BARR,
+     [("""    if not fichiers:
+        print("REFUS: aucun module Python a inspecter — un controle qui ne "
+              "regarde rien ne vaut pas un controle reussi.", file=sys.stderr)
+        return 2""",
+       """    if False:
+        pass""")], False),
+    # F6 — un pilote manquant redevient un extincteur general. Il eteignait
+    # AUSSI la factory et la barriere, qui n'en ont pas besoin.
+    ("F6 un pilote absent eteint la couche Python", "D1", PROV,
+     [("""    if not PILOTE_PRESENT:""",
+       """    if PILOTE_PRESENT is None:""")], False),
+]
+
+
 CAS_SEPARATION = [
     ("SEP1 la garde de separation du plan est retiree", "A", S,
      [("""  if d_oid = m_oid or d_nom = m_nom then
@@ -1951,6 +2002,8 @@ LOTS = [
      dict(harnais="db/test/authority_sql_hardening.sh", prefixe="mf")),
     (CAS_SEPARATION,
      dict(harnais="db/test/two_phase_deployment.sh", prefixe="ms2")),
+    (CAS_FACTORY,
+     dict(harnais="db/test/provider_contract.sh", prefixe="mfa")),
     (CAS_AUTORITE, dict(harnais="db/test/authority_closure.sh", prefixe="mv")),
     (CAS_SCEAU, dict(harnais="db/test/seal_contract.sh", prefixe="ms")),
     (CAS_RESTAURATION,
