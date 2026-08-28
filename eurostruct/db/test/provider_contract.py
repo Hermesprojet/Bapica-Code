@@ -138,6 +138,106 @@ class ConnexionEspionne:
         self.requetes.append("ROLLBACK")
 
 
+# ---------------------------------------------------------------------------
+# D. LA FACTORY DE PRODUCTION — sept refus, une seule issue
+# ---------------------------------------------------------------------------
+def proprietes_factory() -> None:
+    """Eprouve `creer_provider_de_production`, sans pilote ni base.
+
+    AUCUN CONSOMMATEUR PRODUIT N'EXISTE — mesure sur le depot entier. Ces
+    proprietes ne prouvent donc pas qu'une route est sure: elles prouvent que
+    la SEULE composition offerte est fail-closed, pour que le jour ou une route
+    existera, le chemin sur soit deja le seul praticable.
+    """
+    from eurostruct_engine.ndp.provider_factory import (
+        ConfigurationProviderInvalide,
+        PiloteIndisponible,
+        creer_provider_de_production,
+    )
+    from eurostruct_engine.ndp.postgres_provider import AuthentificationRequise
+
+    class AuthReel:
+        identite_de_l_authentificateur = "FICTIF-mais-declare-reel"
+        est_fictif = False
+        def authentifier(self, preuve):  # noqa: D102
+            raise AssertionError("jamais appele par la factory")
+
+    class AuthFictif(AuthReel):
+        est_fictif = True
+
+    class ConnexionMuette:
+        def cursor(self): raise AssertionError("jamais appele")
+        def commit(self): raise AssertionError("jamais appele")
+        def rollback(self): raise AssertionError("jamais appele")
+
+    def attendre(nom, exception_attendue, appel):
+        try:
+            appel()
+        except exception_attendue:
+            verifier(nom, True)
+        except Exception as e:  # noqa: BLE001
+            verifier(nom, False, f"levee inattendue: {type(e).__name__}: {e}")
+        else:
+            verifier(nom, False, "aucun refus: la factory a rendu un provider")
+
+    # D1. AUCUNE FABRIQUE DE CONNEXION -> refus, pas d'ouverture implicite.
+    attendre("D1. sans fabrique de connexion, refus",
+             ConfigurationProviderInvalide,
+             lambda: creer_provider_de_production(
+                 fabrique_de_connexion=None, authentificateur=AuthReel()))
+
+    # D2. AUCUN AUTHENTIFICATEUR -> refus AVANT toute connexion.
+    attendre("D2. sans authentificateur, refus",
+             AuthentificationRequise,
+             lambda: creer_provider_de_production(
+                 fabrique_de_connexion=lambda: ConnexionMuette(),
+                 authentificateur=None))
+
+    # D3. AUTHENTIFICATEUR FICTIF -> refus par la factory, avant construction.
+    attendre("D3. un authentificateur fictif est refuse",
+             ConfigurationProviderInvalide,
+             lambda: creer_provider_de_production(
+                 fabrique_de_connexion=lambda: ConnexionMuette(),
+                 authentificateur=AuthFictif()))
+
+    # D4. PILOTE ABSENT -> refus, JAMAIS un repli memoire.
+    def fabrique_qui_echoue():
+        raise ImportError("no module named 'psycopg2'")
+    attendre("D4. un pilote absent est un refus, pas un repli",
+             PiloteIndisponible,
+             lambda: creer_provider_de_production(
+                 fabrique_de_connexion=fabrique_qui_echoue,
+                 authentificateur=AuthReel()))
+
+    # D5. CONNEXION NON CONFORME -> refus.
+    attendre("D5. une connexion non conforme est refusee",
+             PiloteIndisponible,
+             lambda: creer_provider_de_production(
+                 fabrique_de_connexion=lambda: object(),
+                 authentificateur=AuthReel()))
+
+    # D6. APPEL POSITIONNEL -> impossible. Inverser connexion et
+    #     authentificateur placerait l'authentification du mauvais cote.
+    try:
+        creer_provider_de_production(ConnexionMuette(), AuthReel())  # type: ignore[misc]
+        verifier("D6. l'appel positionnel est refuse", False, "il a ete accepte")
+    except TypeError:
+        verifier("D6. l'appel positionnel est refuse", True)
+    except Exception as e:  # noqa: BLE001
+        verifier("D6. l'appel positionnel est refuse", False, f"{type(e).__name__}")
+
+    # D7. LE CHEMIN NOMINAL REND UN PROVIDER, et il a traverse le crochet.
+    try:
+        p = creer_provider_de_production(
+            fabrique_de_connexion=lambda: ConnexionMuette(),
+            authentificateur=AuthReel())
+        verifier("D7. le chemin nominal rend un provider non fictif",
+                 p.is_fictional is False, f"is_fictional={p.is_fictional}")
+    except Exception as e:  # noqa: BLE001
+        verifier("D7. le chemin nominal rend un provider non fictif", False,
+                 f"{type(e).__name__}: {e}")
+
+
 def main() -> int:
     if len(sys.argv) < 8:
         print("usage: provider_contract.py <base> <login> <mdp> <A> <B> "
@@ -462,103 +562,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
-
-# ---------------------------------------------------------------------------
-# D. LA FACTORY DE PRODUCTION — sept refus, une seule issue
-# ---------------------------------------------------------------------------
-def proprietes_factory() -> None:
-    """Eprouve `creer_provider_de_production`, sans pilote ni base.
-
-    AUCUN CONSOMMATEUR PRODUIT N'EXISTE — mesure sur le depot entier. Ces
-    proprietes ne prouvent donc pas qu'une route est sure: elles prouvent que
-    la SEULE composition offerte est fail-closed, pour que le jour ou une route
-    existera, le chemin sur soit deja le seul praticable.
-    """
-    from eurostruct_engine.ndp.provider_factory import (
-        ConfigurationProviderInvalide,
-        PiloteIndisponible,
-        creer_provider_de_production,
-    )
-    from eurostruct_engine.ndp.postgres_provider import AuthentificationRequise
-
-    class AuthReel:
-        identite_de_l_authentificateur = "FICTIF-mais-declare-reel"
-        est_fictif = False
-        def authentifier(self, preuve):  # noqa: D102
-            raise AssertionError("jamais appele par la factory")
-
-    class AuthFictif(AuthReel):
-        est_fictif = True
-
-    class ConnexionMuette:
-        def cursor(self): raise AssertionError("jamais appele")
-        def commit(self): raise AssertionError("jamais appele")
-        def rollback(self): raise AssertionError("jamais appele")
-
-    def attendre(nom, exception_attendue, appel):
-        try:
-            appel()
-        except exception_attendue:
-            verifier(nom, True)
-        except Exception as e:  # noqa: BLE001
-            verifier(nom, False, f"levee inattendue: {type(e).__name__}: {e}")
-        else:
-            verifier(nom, False, "aucun refus: la factory a rendu un provider")
-
-    # D1. AUCUNE FABRIQUE DE CONNEXION -> refus, pas d'ouverture implicite.
-    attendre("D1. sans fabrique de connexion, refus",
-             ConfigurationProviderInvalide,
-             lambda: creer_provider_de_production(
-                 fabrique_de_connexion=None, authentificateur=AuthReel()))
-
-    # D2. AUCUN AUTHENTIFICATEUR -> refus AVANT toute connexion.
-    attendre("D2. sans authentificateur, refus",
-             AuthentificationRequise,
-             lambda: creer_provider_de_production(
-                 fabrique_de_connexion=lambda: ConnexionMuette(),
-                 authentificateur=None))
-
-    # D3. AUTHENTIFICATEUR FICTIF -> refus par la factory, avant construction.
-    attendre("D3. un authentificateur fictif est refuse",
-             ConfigurationProviderInvalide,
-             lambda: creer_provider_de_production(
-                 fabrique_de_connexion=lambda: ConnexionMuette(),
-                 authentificateur=AuthFictif()))
-
-    # D4. PILOTE ABSENT -> refus, JAMAIS un repli memoire.
-    def fabrique_qui_echoue():
-        raise ImportError("no module named 'psycopg2'")
-    attendre("D4. un pilote absent est un refus, pas un repli",
-             PiloteIndisponible,
-             lambda: creer_provider_de_production(
-                 fabrique_de_connexion=fabrique_qui_echoue,
-                 authentificateur=AuthReel()))
-
-    # D5. CONNEXION NON CONFORME -> refus.
-    attendre("D5. une connexion non conforme est refusee",
-             PiloteIndisponible,
-             lambda: creer_provider_de_production(
-                 fabrique_de_connexion=lambda: object(),
-                 authentificateur=AuthReel()))
-
-    # D6. APPEL POSITIONNEL -> impossible. Inverser connexion et
-    #     authentificateur placerait l'authentification du mauvais cote.
-    try:
-        creer_provider_de_production(ConnexionMuette(), AuthReel())  # type: ignore[misc]
-        verifier("D6. l'appel positionnel est refuse", False, "il a ete accepte")
-    except TypeError:
-        verifier("D6. l'appel positionnel est refuse", True)
-    except Exception as e:  # noqa: BLE001
-        verifier("D6. l'appel positionnel est refuse", False, f"{type(e).__name__}")
-
-    # D7. LE CHEMIN NOMINAL REND UN PROVIDER, et il a traverse le crochet.
-    try:
-        p = creer_provider_de_production(
-            fabrique_de_connexion=lambda: ConnexionMuette(),
-            authentificateur=AuthReel())
-        verifier("D7. le chemin nominal rend un provider non fictif",
-                 p.is_fictional is False, f"is_fictional={p.is_fictional}")
-    except Exception as e:  # noqa: BLE001
-        verifier("D7. le chemin nominal rend un provider non fictif", False,
-                 f"{type(e).__name__}: {e}")
