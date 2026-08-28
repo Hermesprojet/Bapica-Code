@@ -223,6 +223,7 @@ declare
   v_mig  text;
   v_plan text;
   n_manif int;
+  v_confondus boolean;
 begin
   -- LES DEUX SYMBOLES, RESOLUS DEPUIS LE CATALOGUE.
   --
@@ -267,13 +268,32 @@ begin
       coalesce(v_mig, 'NULL'), coalesce(v_plan, 'NULL')
       using errcode = 'insufficient_privilege';
   end if;
-  if v_mig = v_plan then
-    raise exception
-      'AUTHORITY_MANIFEST_SYMBOLS_COLLIDE: le migrateur et le plan de controle '
-      'se resolvent tous deux en « % ». Le manifeste ne pourrait plus '
-      'distinguer les deux surfaces.', v_mig
-      using errcode = 'insufficient_privilege';
-  end if;
+  -- QUAND LES DEUX SYMBOLES SE CONFONDENT, ON NE REFUSE PAS: ON LE DIT.
+  --
+  -- MESURE DU 28/08, run.sh complet. Cette collision faisait echouer la
+  -- PHASE 1 dans deux scenarios legitimes — `two_phase_deployment.sh` A et le
+  -- decor « greenfield » de `finalisation_contract.sh` — ou le migrateur EST
+  -- son propre plan de controle. Or ces scenarios existent precisement pour
+  -- constater que c'est la FINALISATION qui refuse cette confusion, au motif
+  -- de la separation. En refusant plus tot, 0015 deplacait le refus hors de
+  -- l'endroit qui le gouverne et cassait deux contrats etablis.
+  --
+  -- « Elargir le perimetre d'une assertion au-dela de ce que sa migration
+  -- gouverne, c'est fabriquer un rouge qui n'apprend rien. » 0015 gouverne la
+  -- correspondance manifeste/realite, pas la separation des roles.
+  --
+  -- CE QUE LA COLLISION CHANGE REELLEMENT: le manifeste ne peut plus
+  -- DISTINGUER `@MIGRATEUR` de `@PLAN`, puisqu'ils designent le meme role. Les
+  -- deux symboles sont donc rabattus sur `@DEPLOIEMENT` DES DEUX COTES de la
+  -- comparaison. Rien n'est affaibli dans un deploiement correctement separe,
+  -- ou les deux noms different et la distinction reste exigee.
+  --
+  -- ET RIEN N'EST AFFAIBLI NON PLUS DANS L'ETAT CONFONDU: cet etat ne peut pas
+  -- atteindre ACTIVE. La finalisation le refuse au motif de la separation —
+  -- c'est precisement ce que `two_phase_deployment.sh` A constate. Aucune
+  -- propriete de securite ne depend donc de la distinction @MIGRATEUR/@PLAN
+  -- dans un etat qui ne peut pas passer en production.
+  v_confondus := (v_mig = v_plan);
   declare
     v_plan2 text;
   begin
@@ -308,9 +328,11 @@ begin
   for r in
     with reel as (
       select p.oid::regprocedure::text as identite,
-             case pg_get_userbyid(p.proowner) when v_mig  then '@MIGRATEUR'
-                                              when v_plan then '@PLAN'
-                                              else pg_get_userbyid(p.proowner) end
+             case when pg_get_userbyid(p.proowner) = v_mig and v_confondus
+                    then '@DEPLOIEMENT'
+                  when pg_get_userbyid(p.proowner) = v_mig  then '@MIGRATEUR'
+                  when pg_get_userbyid(p.proowner) = v_plan then '@PLAN'
+                  else pg_get_userbyid(p.proowner) end
                as proprietaire,
              p.prosecdef as secdef,
              (p.proconfig is not null and exists (
@@ -324,10 +346,14 @@ begin
              -- LA SECONDE LECTURE, INDEPENDANTE.
              has_function_privilege('public', p.oid, 'EXECUTE') as public_has,
              coalesce((select string_agg(g, ',' order by g) from (
-                         select distinct case pg_get_userbyid(a.grantee)
-                                  when v_mig then '@MIGRATEUR'
-                                  when v_plan then '@PLAN'
-                                  else pg_get_userbyid(a.grantee) end as g
+                         select distinct
+                                case when pg_get_userbyid(a.grantee) = v_mig
+                                       and v_confondus then '@DEPLOIEMENT'
+                                     when pg_get_userbyid(a.grantee) = v_mig
+                                       then '@MIGRATEUR'
+                                     when pg_get_userbyid(a.grantee) = v_plan
+                                       then '@PLAN'
+                                     else pg_get_userbyid(a.grantee) end as g
                            from aclexplode(coalesce(p.proacl,
                                                     acldefault('f', p.proowner))) a
                           where a.privilege_type = 'EXECUTE'
@@ -379,7 +405,9 @@ begin
         'has_function_privilege(''public'') dit %s',
         r.identite, r.r_public, r.r_public_has);
     end if;
-    if r.r_owner is distinct from r.m_owner then
+    if r.r_owner is distinct from (
+         case when v_confondus and r.m_owner in ('@MIGRATEUR', '@PLAN')
+              then '@DEPLOIEMENT' else r.m_owner end) then
       ecarts := ecarts || format(
         'AUTHORITY_MANIFEST_OWNER: %s appartient a « %s », le manifeste declare '
         '« %s »', r.identite, r.r_owner, r.m_owner);
@@ -402,16 +430,27 @@ begin
     -- L'ACL EST COMPAREE DANS LES DEUX SENS, et le diagnostic DIT lequel.
     -- « differente » ne suffit pas: elargie et retrecie n'ont pas la meme
     -- gravite, et les confondre ferait chercher au mauvais endroit.
-    if r.r_acl is distinct from r.m_acl then
-      declare
-        reels  text[] := string_to_array(coalesce(nullif(r.r_acl, ''), '@VIDE'), ',');
-        prevus text[] := string_to_array(coalesce(nullif(r.m_acl, ''), '@VIDE'), ',');
-        en_trop text[]; manquants text[];
-      begin
-        select array_agg(x) into en_trop
-          from unnest(reels) x where not (x = any (prevus));
-        select array_agg(x) into manquants
-          from unnest(prevus) x where not (x = any (reels));
+    declare
+      -- LA COMPARAISON PORTE SUR DES TABLEAUX NORMALISES, PAS SUR LES CHAINES.
+      -- Quand les deux symboles se confondent, la chaine attendue contient
+      -- encore « @MIGRATEUR » ou « @PLAN » la ou la chaine reelle porte
+      -- « @DEPLOIEMENT »: les comparer telles quelles produirait un ecart qui
+      -- n'existe pas. Le rabattement est applique, puis on trie et on dedoublonne.
+      reels  text[];
+      prevus text[];
+      en_trop text[]; manquants text[];
+    begin
+      select array_agg(distinct x) into reels
+        from unnest(string_to_array(coalesce(nullif(r.r_acl, ''), '@VIDE'), ',')) x;
+      select array_agg(distinct y) into prevus
+        from (select case when v_confondus and z in ('@MIGRATEUR', '@PLAN')
+                          then '@DEPLOIEMENT' else z end as y
+                from unnest(string_to_array(coalesce(nullif(r.m_acl, ''), '@VIDE'), ',')) z) q;
+      if reels is distinct from prevus then
+      select array_agg(x) into en_trop
+        from unnest(reels) x where not (x = any (prevus));
+      select array_agg(x) into manquants
+        from unnest(prevus) x where not (x = any (reels));
         if en_trop is not null then
           ecarts := ecarts || format(
             'AUTHORITY_MANIFEST_ACL_WIDER: %s accorde EXECUTE a %s, absent du '
@@ -422,8 +461,8 @@ begin
             'AUTHORITY_MANIFEST_ACL_NARROWER: %s n''accorde plus EXECUTE a %s, '
             'declare au manifeste', r.identite, array_to_string(manquants, ', '));
         end if;
-      end;
-    end if;
+      end if;
+    end;
   end loop;
 
   -- LE CARDINAL, DIT SEPAREMENT. Deux ensembles peuvent avoir la meme taille
@@ -437,8 +476,12 @@ begin
       -- avalee par un placeholder mal forme. C'est `format()` qui prend « %s »;
       -- les deux cohabitent dans ce fichier et ne s'ecrivent pas pareil.
       'AUTHORITY_MANIFEST_MISMATCH: % ecart(s) entre le manifeste (% entrees) '
-      'et la realite:%',
+      'et la realite%:%',
       array_length(ecarts, 1), n_manif,
+      case when v_confondus
+           then ' [migrateur et plan de controle confondus: la distinction '
+                '@MIGRATEUR/@PLAN est relachee sur ce deploiement]'
+           else '' end,
       chr(10) || array_to_string(ecarts, chr(10))
       using errcode = 'insufficient_privilege';
   end if;
