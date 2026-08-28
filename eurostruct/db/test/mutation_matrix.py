@@ -79,7 +79,8 @@ SCRATCH = os.environ.get("TMPDIR", "/tmp")
 
 def _git(*args, cwd=None, check=True):
     return subprocess.run(["git", *args], cwd=cwd or DEPOT,
-                          capture_output=True, text=True, check=check)
+                          capture_output=True, text=True, errors="replace",
+                          check=check)
 
 
 DEPOT = _git("rev-parse", "--show-toplevel",
@@ -620,9 +621,17 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
         # les FIFO dans tous les cas. Voir le commentaire dans l'enveloppe.
         barriere = tempfile.mkdtemp(prefix="esc-barriere-", dir=SCRATCH)
         env["ESC_BARRIERE"] = barriere
+    # `errors="replace"` N'EST PAS DE LA COMPLAISANCE. Mesure du 28/08: un
+    # harnais avait emis un octet UTF-8 orphelin — `cut -c` travaille en octets
+    # sous `LC_CTYPE=POSIX` et avait coupe un tiret cadratin en deux — et
+    # `communicate()` levait `UnicodeDecodeError`. La campagne mourait sans
+    # rendre le moindre verdict: quatre-vingt-dix garanties perdues sur un
+    # octet d'affichage. Le harnais a ete corrige a la source; ce filet est la
+    # pour que la MESURE ne depende jamais de la propriete typographique de ce
+    # qu'elle observe.
     p = subprocess.Popen(argv, cwd=ESPACE, env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True, start_new_session=True)
+                         text=True, errors="replace", start_new_session=True)
     ENFANT = p
     try:
         sortie, erreur = p.communicate()

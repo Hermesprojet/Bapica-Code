@@ -862,6 +862,65 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# 18. LE DIAGNOSTIC N'EMET JAMAIS D'OCTET ORPHELIN
+# --------------------------------------------------------------------------
+# CE QUI A ETE MESURE, ET CE QUE CE CONTROLE EMPECHE DE REVENIR. Sous
+# `LC_CTYPE=POSIX`, `cut -c` compte des OCTETS et non des caracteres. Une coupe
+# tombant au milieu d'un tiret cadratin (« — », E2 80 94) laissait un `E2`
+# orphelin dans la sortie du harnais; le lanceur de campagne, qui decode en
+# UTF-8, mourait alors en `UnicodeDecodeError: invalid continuation byte`.
+# Quatre-vingt-dix garanties perdues d'un coup — sans le moindre verdict — sur
+# un octet d'AFFICHAGE.
+#
+# On place donc un caractere multi-octets exactement sur la coupe, et on exige
+# que la sortie reste decodable. Le controle vaut aussi pour l'invariant: le
+# nom doit toujours atteindre le lecteur.
+# ON BALAIE LE VOISINAGE DE LA COUPE, on ne parie pas sur un decalage.
+# Mesure faite en ecrivant ce controle: avec 195 caracteres de bourrage le
+# tiret tombait APRES la coupe, la sortie restait valide, et le controle
+# passait au vert meme en retirant la protection — il ne prouvait rien. Les
+# valeurs qui font effectivement chevaucher la coupe sont 189 et 190; les
+# balayer toutes rend le controle independant de mon arithmetique.
+COUPE_KO=0; COUPE_TESTEES=0; COUPE_CHEVAUCHANTES=0
+for n in 186 187 188 189 190 191 192 193; do
+  COUPE_SORTIE="$(mktemp "${TMPDIR:-/tmp}/esc_ct18_XXXXXX")"
+  BOURRAGE_N="$(printf 'x%.0s' $(seq 1 "$n")).0"
+  BOURRAGE_N="${BOURRAGE_N%.0}"
+  esc_diag_rapporter "auto-test 18 (bourrage $n)" \
+    "ERROR:  $BOURRAGE_N — AUTHORITY_COUPE_MULTIOCTET: le tiret est sur la coupe" \
+    2>"$COUPE_SORTIE"
+  COUPE_TESTEES=$((COUPE_TESTEES + 1))
+  # Le tiret chevauche-t-il la coupe ? On le constate sur la sortie NON
+  # protegee, en comptant les octets: la reponse ne vient pas d'un calcul.
+  if ! python3 -c 'import sys; open(sys.argv[1],"rb").read().decode("utf-8")' \
+         "$COUPE_SORTIE" 2>/dev/null; then
+    echoue "18. bourrage $n: la sortie du diagnostic n'est pas de l'UTF-8"
+    echoue "    valide — un octet orphelin subsiste, et le lanceur de campagne"
+    echoue "    mourrait dessus sans rendre le moindre verdict."
+    COUPE_KO=1
+  fi
+  if ! grep -q "invariant: AUTHORITY_COUPE_MULTIOCTET" "$COUPE_SORTIE"; then
+    echoue "18. bourrage $n: l'identifiant n'atteint pas le lecteur."
+    COUPE_KO=1
+  fi
+  # Une coupe qui tombe pile sur le tiret perd le caractere entier: c'est la
+  # signature du chevauchement, et elle doit exister pour au moins un `n` —
+  # sinon le balayage passerait a cote du cas qu'il pretend couvrir.
+  grep -q -- "—" "$COUPE_SORTIE" || COUPE_CHEVAUCHANTES=$((COUPE_CHEVAUCHANTES + 1))
+  rm -f "$COUPE_SORTIE"
+done
+if (( COUPE_CHEVAUCHANTES == 0 )); then
+  echoue "18. aucun des $COUPE_TESTEES bourrages ne fait chevaucher la coupe:"
+  echoue "    le balayage n'exerce pas le cas qu'il annonce."
+  COUPE_KO=1
+fi
+(( COUPE_KO )) || {
+  echo "      ok: 18. $COUPE_TESTEES coupes autour de la frontiere, dont"
+  echo "             $COUPE_CHEVAUCHANTES sur un caractere multi-octets — sortie"
+  echo "             toujours decodable, identifiant toujours rapporte"
+}
+
+# --------------------------------------------------------------------------
 # 17. LE TEARDOWN D'UN DECOR S'EXECUTE SUR LES CINQ CHEMINS DE SORTIE
 # --------------------------------------------------------------------------
 # CE QUI A ETE MESURE. `decor_poser` rendait 1 sur six chemins de refus sans

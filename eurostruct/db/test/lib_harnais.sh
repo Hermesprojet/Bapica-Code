@@ -883,8 +883,17 @@ esc_diag_rapporter() {
   fi
 
   # 1. LA LIGNE HUMAINE — raccourcie, et elle seule.
+  #
+  # `iconv -c` N'EST PAS DECORATIF. Mesure faite en rejouant la campagne:
+  # `LC_CTYPE=POSIX` fait travailler `cut -c` en OCTETS, pas en caracteres. Une
+  # coupe au milieu d'un tiret cadratin (« — », E2 80 94) laissait un `E2`
+  # orphelin dans la sortie, et le lanceur de campagne mourait en
+  # `UnicodeDecodeError: invalid continuation byte` — une campagne entiere
+  # perdue sur un octet d'affichage. `-c` supprime la sequence incomplete.
   grep -m1 -iE 'ERROR|ERREUR|FATAL|REFUS' <<<"$contenu" \
-    | cut -c1-"$ESC_DIAG_LARGEUR" | sed 's/^/              /' >&2
+    | cut -c1-"$ESC_DIAG_LARGEUR" \
+    | { iconv -c -f UTF-8 -t UTF-8 2>/dev/null || cat; } \
+    | sed 's/^/              /' >&2
 
   # 2. LES IDENTIFIANTS — issus du contenu integral.
   if [[ -z "$ids" ]]; then
