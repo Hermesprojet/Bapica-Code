@@ -560,7 +560,7 @@ declare
     ['consume_normative_authorisation', 'true',
      'eurostruct_normative_writer']
   ];
-  i int; n_match int;
+  i int; n_match int; donneurs record;
   nom text; secdef_attendu boolean; roles_attendus text[];
   f_oid oid; f_owner text; f_secdef boolean; f_cfg text[]; f_acl aclitem[];
   reels text[];
@@ -680,14 +680,25 @@ begin
     select unnest(array['eurostruct_normative_writer',
                         'eurostruct_normative_bootstrap']) as rolname
   loop
-    if exists (select 1 from pg_namespace n, aclexplode(n.nspacl) a
-                where n.nspname = 'public'
-                  and a.grantee = r.rolname::regrole::oid
-                  and a.privilege_type = 'CREATE') then
+    -- LE DIAGNOSTIC NOMME LE DONNEUR, et ce n'est pas un ornement: un octroi
+    -- ne se revoque QUE par celui qui l'a pose (fait mesure dans ce jalon).
+    -- « CREATE est reste » n'indique aucune action; « CREATE est reste, pose
+    -- par X » dit exactement quoi faire, et par qui.
+    for donneurs in
+      select string_agg(distinct pg_get_userbyid(a.grantor), ', ') as liste
+        from pg_namespace n, aclexplode(n.nspacl) a
+       where n.nspname = 'public'
+         and a.grantee = r.rolname::regrole::oid
+         and a.privilege_type = 'CREATE'
+      having count(*) > 0
+    loop
       ecarts := ecarts || format(
         'AUTHORITY_0012_SCHEMA_CREATE_RETAINED: « %s » conserve CREATE sur le '
-        'schema public', r.rolname);
-    end if;
+        'schema public, accorde par {%s}. Un octroi ne se revoque que par son '
+        'donneur: si celui-ci n''est pas le role qui applique la migration, '
+        'le REVOKE emis ici n''a produit qu''un WARNING',
+        r.rolname, donneurs.liste);
+    end loop;
   end loop;
 
   if array_length(ecarts, 1) > 0 then
@@ -713,8 +724,67 @@ comment on function assert_0012_lineage_surface is
   'identifiant stable AUTHORITY_0012_*.';
 
 
-revoke create on schema public
-  from eurostruct_normative_writer, eurostruct_normative_bootstrap;
+-- ---------------------------------------------------------------------
+-- LE DROIT DE CREATE REPART — ET IL FAUT LE VERIFIER, PAS L'ESPERER
+-- ---------------------------------------------------------------------
+-- UN `REVOKE` SUR `public` N'EST PAS UNE COMMANDE, C'EST UN VOEU.
+--
+-- Fait mesure sur PostgreSQL 16, dans la forme de deploiement ou le migrateur
+-- possede la base ET detient un `CREATE ... WITH GRANT OPTION` explicite:
+--
+--   * un octroi fait PAR LE PROPRIETAIRE de la base est enregistre au nom de
+--     `pg_database_owner`, et non au nom du role;
+--   * `REVOKE create on schema public FROM eurostruct_normative_writer` emis
+--     par ce meme role ne retire RIEN — pas d'erreur, pas meme un WARNING
+--     visible, et `ON_ERROR_STOP=1` ne s'arrete pas;
+--   * consequence mesuree: apres `0010`, `eurostruct_normative_writer` — le
+--     proprietaire de TOUTES les tables d'autorite — conservait `CREATE` sur
+--     `public` pour toute la vie de la base. Personne ne le voyait, parce que
+--     personne ne verifiait le RESULTAT de la revocation.
+--
+-- ON REVOQUE DONC SOUS LE DONNEUR REEL, celui que le catalogue nomme. C'est
+-- la seule forme qui prend, et elle ne suppose rien de la forme du
+-- deploiement.
+--
+-- `GRANTED BY` NE SUFFIT PAS: PostgreSQL 16 rend « grantor must be current
+-- user ». Il faut donc ENDOSSER le donneur — ce que le proprietaire de la
+-- base peut faire pour `pg_database_owner`, dont il est membre. `SET LOCAL`
+-- meurt avec la transaction, comme partout ailleurs dans ce schema.
+do $$
+declare
+  donneur text;
+  appelant text := current_user;
+begin
+  for donneur in
+    select distinct pg_get_userbyid(a.grantor)
+      from pg_namespace n, aclexplode(n.nspacl) a
+     where n.nspname = 'public'
+       and a.privilege_type = 'CREATE'
+       -- TOUS LES ROLES D'AUTORITE, ET PAS SEULEMENT LES DEUX QUE CETTE
+       -- MIGRATION A ELLE-MEME SERVIS. Mesure: l'ACTIVATEUR conservait lui
+       -- aussi CREATE — le sceau le lui accorde en phase 0 et croit le
+       -- retirer a la fin, avec la meme revocation inefficace. Une migration
+       -- qui s'appelle « durcissement de la surface » ne peut pas laisser
+       -- l'ecart chez le voisin en disant qu'il n'est pas a elle.
+       and a.grantee in ('eurostruct_normative_writer'::regrole::oid,
+                         'eurostruct_normative_bootstrap'::regrole::oid,
+                         'eurostruct_normative_activator'::regrole::oid,
+                         'eurostruct_authority_backend'::regrole::oid,
+                         'normative_backend'::regrole::oid,
+                         'normative_governance'::regrole::oid)
+  loop
+    -- ON N'AVALE PAS L'ECHEC. Si le donneur n'est pas endossable, la
+    -- migration doit le dire: le privilege resterait, et c'est precisement
+    -- ce que personne ne voyait avant.
+    execute format('set local role %I', donneur);
+    execute 'revoke create on schema public from '
+            'eurostruct_normative_writer, eurostruct_normative_bootstrap, '
+            'eurostruct_normative_activator, eurostruct_authority_backend, '
+            'normative_backend, normative_governance';
+    execute format('set local role %I', appelant);
+  end loop;
+end
+$$;
 
 -- LA POSTCONDITION EST APPELEE PAR LA MIGRATION, apres TOUS les changements
 -- de catalogue et AVANT l'inscription au registre. Une migration refusee ne

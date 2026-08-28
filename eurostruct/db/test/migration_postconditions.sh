@@ -70,7 +70,8 @@ verdicts_declarer \
   m0014-verte m0014-privilege-sans-effet m0014-appel-neutralise m0014-atomicite \
   derive-proprietaire derive-public-execute derive-search-path \
   derive-trigger-desactive derive-policy-absente derive-policy-mauvais-role \
-  derive-ecriture-directe derive-force-rls derive-revoke-sans-effet
+  derive-ecriture-directe derive-force-rls derive-revoke-sans-effet \
+  derive-schema-create
 
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
@@ -134,7 +135,11 @@ grant usage on schema auth to "$MIG" with grant option;
 grant select, insert, references on auth.users to "$MIG" with grant option;
 grant execute on function auth.uid() to "$MIG" with grant option;
 grant create on database "$BASE" to "$MIG";
-grant create on schema public to "$CTL" with grant option;
+-- LE MIGRATEUR RECOIT AUSSI `CREATE ... WITH GRANT OPTION`, et ce n'est pas
+-- un detail de decor: c'est la forme dans laquelle le defaut de revocation
+-- existait. Sans elle, ce harnais eprouverait une surface ou le REVOKE marche
+-- de toute facon, et ne dirait rien du chemin reel.
+grant create on schema public to "$MIG", "$CTL" with grant option;
 grant usage on schema auth to "$CTL";
 SQL
   if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
@@ -497,6 +502,17 @@ else
     "assert_0014_decisions_surface()" \
     "alter table normative_authority_decisions no force row level security" \
     "alter table normative_authority_decisions force row level security" "Y11"
+
+  # LE PRIVILEGE QUI A REELLEMENT TRAINE. Ce n'est pas une derive imaginee:
+  # jusqu'a ce lot, `eurostruct_normative_writer` — proprietaire de toutes les
+  # tables d'autorite — conservait CREATE sur `public` pour toute la vie de la
+  # base, parce qu'un REVOKE emis par un non-donneur ne fait rien et ne le dit
+  # pas. On le repose ici a la main, et l'assertion agregee doit le voir.
+  eprouver_derive derive-schema-create \
+    "AUTHORITY_COMPOSITION_SCHEMA_CREATE_RETAINED" \
+    "assert_authority_composition()" \
+    "grant create on schema public to eurostruct_normative_writer" \
+    "revoke create on schema public from eurostruct_normative_writer" "Y13"
 
   # ------------------------------------------------------------------------
   # LE PIEGE D'ORIGINE, JOUE POUR DE VRAI: un REVOKE emis par un role qui n'a

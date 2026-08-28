@@ -1568,6 +1568,36 @@ select assert_authority_composition();""",
              'bootstrap_normative_administrator']) as attendue""",
        """             'normative_decision_consume']) as attendue
      where false""")], False),
+    # LA REVOCATION DE `CREATE` SUR `public`, RENDUE INEFFICACE.
+    #
+    # Ce controle porte sur un DEFAUT REEL, mesure dans ce lot: un octroi fait
+    # par le proprietaire de la base est enregistre au nom de
+    # `pg_database_owner`, et un `REVOKE` emis sous l'identite propre du role
+    # ne retire RIEN — sans erreur ni WARNING visible. La correction endosse
+    # le donneur avant de revoquer. Retirer cet endossement remet exactement
+    # le defaut d'origine, et la postcondition doit le voir.
+    # LA BRANCHE QUI CONSTATE LE PRIVILEGE RESTANT, plutot que la commande
+    # qui le retire — et il faut dire pourquoi.
+    #
+    # Le correctif de la revocation (endosser le donneur avant de revoquer)
+    # n'est INDISPENSABLE que dans la forme ou l'octroi vient d'un autre role
+    # que celui qui applique la migration. Mutee dans `0012` puis dans `0011`,
+    # sa neutralisation a SURVECU deux fois: dans les decors disponibles au
+    # moment ou ces migrations tournent, la revocation simple aboutit de toute
+    # facon. Le correctif est prouve par MESURE — `two_phase_deployment.sh` et
+    # `finalisation_contract.sh` etaient rouges, ils sont verts — et NON par
+    # une mutation. C'est dit ici plutot que masque par un controle qui
+    # viserait a cote.
+    #
+    # Ce qui EST falsifiable, c'est la branche qui CONSTATE le privilege
+    # restant. Sans elle, le privilege revient sans que rien ne l'annonce.
+    ("MC9 le CREATE restant sur public n'est plus constate", "Y13", A14,
+     [("""    ecarts := ecarts || format(
+      'AUTHORITY_COMPOSITION_SCHEMA_CREATE_RETAINED: le role d''autorite '
+      '« %s » conserve CREATE sur le schema public (donneur: %s). Il peut y '
+      'creer des objets pour toute la vie de la base',
+      r.rolname, r.donneurs);""",
+       "    null;  -- constat neutralise par mutation")], False),
     # LE DIAGNOSTIC REMPLACE PAR UN IDENTIFIANT ETRANGER. Le refus a bien lieu;
     # le controle ne peut plus le reconnaitre, et un refus qu'on ne reconnait
     # pas ne se distingue pas d'une panne.
