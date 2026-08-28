@@ -359,7 +359,7 @@ grant usage on schema auth to "$MIGRATEUR" with grant option;
 grant select, insert, references on auth.users to "$MIGRATEUR" with grant option;
 grant execute on function auth.uid() to "$MIGRATEUR" with grant option;
 grant create on database $base to "$MIGRATEUR";
--- L'acteur de la phase 0 cree des objets dans `public` et les transfere a
+-- L'acteur de la phase 0 cree des objets dans « public » et les transfere a
 -- l'activateur: CREATE avec GRANT OPTION. Les deux acteurs possibles le
 -- recoivent, l'administrateur l'a deja.
 grant create on schema public to "$MIGRATEUR", "$PLAN" with grant option;

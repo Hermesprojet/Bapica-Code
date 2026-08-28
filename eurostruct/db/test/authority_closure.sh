@@ -144,7 +144,7 @@ grant select, insert, references on auth.users to "$MIG" with grant option;
 grant execute on function auth.uid() to "$MIG" with grant option;
 grant create on database "$BASE" to "$MIG";
 -- LE PLAN DE CONTROLE CREE LES OBJETS DE LA PHASE 0. Il lui faut donc CREATE
--- sur `public`, et l'option de le retransmettre a l'activateur qui deviendra
+-- sur « public », et l'option de le retransmettre a l'activateur qui deviendra
 -- proprietaire de ces objets. C'est un prerequis de deploiement, pose par la
 -- plateforme — voir docs/DEPLOIEMENT_PREREQUIS.md.
 grant create on schema public to "$CTL" with grant option;

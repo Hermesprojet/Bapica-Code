@@ -1005,6 +1005,77 @@ esc_decor_abandonner() {
 
 
 # ==========================================================================
+# L'INSTRUMENT — un appel SQL qui ne peut pas mentir en silence
+# ==========================================================================
+# CE QUI A ETE MESURE, ET QUI JUSTIFIE CE SOCLE. Quatre fautes d'instrument ont
+# produit, dans ce jalon, des conclusions FAUSSES sur le produit:
+#
+#   1. `create trigger <nom> ON <table> BEFORE ...` est refuse. Envoyee vers
+#      /dev/null, la DDL echouait, le declencheur n'existait pas, et les cinq
+#      variantes de `search_path` rendaient « contournee ». Conclusion fausse.
+#   2. `return old` depuis un BEFORE UPDATE ANNULE l'ecriture. Le verdict
+#      « la ligne n'a pas change » etait vrai quoi que la garde decide: le
+#      controle mesurait un fait que rien ne produisait.
+#   3. psql POURSUIT apres une erreur dans un heredoc sans ON_ERROR_STOP. Le
+#      verdict tire de la DERNIERE LIGNE voyait le `select` final reussir et
+#      declarait « passe » alors que la commande testee avait echoue.
+#   4. Un heredoc NON QUOTE execute les backticks qu'il contient. Mesure:
+#      « -- voir `whoami` pour le detail » fait parvenir « -- voir root pour le
+#      detail » a psql. Ce qui ressemble a de la prose SQL est du shell.
+#
+# LE CONTRAT DE `esc_sql`
+#   * `ON_ERROR_STOP=1` TOUJOURS: la premiere erreur arrete le lot;
+#   * stdout ET stderr sont captures, jamais jetes;
+#   * le code rendu est celui de psql, jamais celui d'un `tail` ou d'un `grep`;
+#   * la sortie integrale reste dans `ESC_SQL_SORTIE`, lisible par l'appelant;
+#   * un echec passe par `esc_diag_rapporter`: l'identifiant d'invariant
+#     atteint le lecteur meme si le message est long.
+ESC_SQL_SORTIE=""
+ESC_SQL_CODE=0
+
+# esc_sql <raccourci-psql> <etiquette>   — le SQL est lu sur STDIN
+esc_sql() {
+  local raccourci="${1:?usage: esc_sql <raccourci> <etiquette>}"
+  local etiquette="${2:-sql}"
+  local entree; entree="$(cat)"
+  ESC_SQL_SORTIE="$("$raccourci" -v ON_ERROR_STOP=1 <<<"$entree" 2>&1)"
+  ESC_SQL_CODE=$?
+  if (( ESC_SQL_CODE != 0 )); then
+    esc_diag_rapporter "$etiquette" "$ESC_SQL_SORTIE"
+  fi
+  return $ESC_SQL_CODE
+}
+
+# esc_sql_valeur <raccourci> <etiquette> <requete>  — une valeur scalaire.
+# Rend 1 si la requete echoue; la valeur est dans `ESC_SQL_SORTIE`.
+esc_sql_valeur() {
+  local raccourci="$1" etiquette="$2" requete="$3"
+  ESC_SQL_SORTIE="$("$raccourci" -v ON_ERROR_STOP=1 -tAc "$requete" 2>&1)"
+  ESC_SQL_CODE=$?
+  (( ESC_SQL_CODE == 0 )) || esc_diag_rapporter "$etiquette" "$ESC_SQL_SORTIE"
+  return $ESC_SQL_CODE
+}
+
+# esc_catalogue_exige <raccourci> <etiquette> <requete-de-comptage> <attendu>
+#
+# UNE DDL N'EST PAS TENUE POUR POSEE PARCE QU'ELLE A ETE ENVOYEE. C'est la
+# faute n. 1 ci-dessus: le catalogue est la seule preuve. Rend 1 et diagnostique
+# si le compte differe.
+esc_catalogue_exige() {
+  local raccourci="$1" etiquette="$2" requete="$3" attendu="$4"
+  esc_sql_valeur "$raccourci" "$etiquette" "$requete" || return 1
+  if [[ "$ESC_SQL_SORTIE" != "$attendu" ]]; then
+    echo "      POSTCONDITION DE DECOR NON TENUE ($etiquette):" >&2
+    echo "              attendu « $attendu », catalogue « $ESC_SQL_SORTIE »" >&2
+    echo "              La DDL a ete ENVOYEE, pas posee. Tout scenario qui" >&2
+    echo "              suivrait mesurerait autre chose que ce qu'il annonce." >&2
+    return 1
+  fi
+  return 0
+}
+
+
+# ==========================================================================
 # LA COMPTABILITE DES VERDICTS — un statut UNIQUE par controle declare
 # ==========================================================================
 # CE QUI A ETE MESURE, ET QUI EST CORRIGE ICI. `authority_root_of_trust.sh`

@@ -159,7 +159,7 @@ create or replace function t_attendre_bloquee(
 declare fin timestamptz := clock_timestamp() + (p_secondes || ' s')::interval;
 begin
   loop
-    -- INDISPENSABLE. `pg_stat_activity` est mis en cache POUR LA DUREE DE LA
+    -- INDISPENSABLE. « pg_stat_activity » est mis en cache POUR LA DUREE DE LA
     -- TRANSACTION: sans cette purge, la session appelante relit indefiniment
     -- l'instantane pris a sa premiere lecture — donc un etat anterieur au
     -- blocage qu'elle attend. Verifie: la barriere expirait au bout de 60 s

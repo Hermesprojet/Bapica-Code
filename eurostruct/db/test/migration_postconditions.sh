@@ -149,7 +149,7 @@ grant usage on schema auth to "$MIG" with grant option;
 grant select, insert, references on auth.users to "$MIG" with grant option;
 grant execute on function auth.uid() to "$MIG" with grant option;
 grant create on database "$BASE" to "$MIG";
--- LE MIGRATEUR RECOIT AUSSI `CREATE ... WITH GRANT OPTION`, et ce n'est pas
+-- LE MIGRATEUR RECOIT AUSSI « CREATE ... WITH GRANT OPTION », et ce n'est pas
 -- un detail de decor: c'est la forme dans laquelle le defaut de revocation
 -- existait. Sans elle, ce harnais eprouverait une surface ou le REVOKE marche
 -- de toute facon, et ne dirait rien du chemin reel.
@@ -157,7 +157,8 @@ grant create on schema public to "$MIG", "$CTL" with grant option;
 grant usage on schema auth to "$CTL";
 SQL
   if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
-    echoue "decor: phase 0 refusee: $(grep -m1 ERROR <<<"$sortie" | cut -c1-160)"
+    echoue "decor: phase 0 refusee:"
+    esc_diag_rapporter "decor / phase 0 (sceau)" "$sortie"
     esc_decor_abandonner; return 1
   fi
   adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
@@ -523,7 +524,7 @@ else
 
   # LE PRIVILEGE QUI A REELLEMENT TRAINE. Ce n'est pas une derive imaginee:
   # jusqu'a ce lot, `eurostruct_normative_writer` — proprietaire de toutes les
-  # tables d'autorite — conservait CREATE sur `public` pour toute la vie de la
+  # tables d'autorite — conservait CREATE sur « public » pour toute la vie de la
   # base, parce qu'un REVOKE emis par un non-donneur ne fait rien et ne le dit
   # pas. On le repose ici a la main, et l'assertion agregee doit le voir.
   eprouver_derive derive-schema-create \

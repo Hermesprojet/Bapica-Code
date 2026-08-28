@@ -1036,6 +1036,117 @@ done
 (( CYCLE_KO )) || echo "      ok: 17. sept chemins de sortie, sept teardowns, un chacun"
 rm -rf "$TEMOINS_DIR"
 
+# --------------------------------------------------------------------------
+# 19. L'INSTRUMENT LUI-MEME — huit facons de mentir, huit refus
+# --------------------------------------------------------------------------
+# CE QUE CE CONTROLE EXISTE POUR EMPECHER. Quatre fautes d'instrument ont
+# produit dans ce jalon des conclusions FAUSSES sur le produit — pas des tests
+# rouges a tort, des tests VERTS a tort, ce qui est pire. Elles sont toutes
+# reproduites ici, en petit, et l'instrument doit les refuser.
+INST_BASE="esc_instr_$(harnais_jeton)"
+INST_KO=0
+inst_verdict() {   # inst_verdict <numero> <libelle> <ok|diagnostic>
+  if [[ "$3" == "ok" ]]; then
+    echo "      ok: 19.$1 $2"
+  else
+    echoue "19.$1 $2 — obtenu: $3"; INST_KO=1
+  fi
+}
+if ! psql -X -q -d postgres -v ON_ERROR_STOP=1 \
+       -c "create database \"$INST_BASE\"" >/dev/null 2>&1; then
+  echoue "19. la base de l'auto-test d'instrument n'a pas pu etre creee."
+  INST_KO=1
+else
+  registre_base "$INST_BASE"
+  inst() { psql -X -q -d "$INST_BASE" "$@"; }
+  inst -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<'SQL19'
+create table t19 (id int);
+create function f19() returns trigger language plpgsql as $$ begin return new; end $$;
+SQL19
+
+  # 19.1 DDL SYNTAXIQUEMENT INVALIDE -> rouge. Forme EXACTE de la faute
+  #      mesuree: « create trigger <nom> ON <table> BEFORE ... », refusee par
+  #      PostgreSQL et jusqu'ici envoyee vers /dev/null.
+  if esc_sql inst "19.1 DDL invalide" >/dev/null 2>&1 <<'SQL19'
+create trigger tr19 on t19 before insert for each row execute function f19();
+SQL19
+  then inst_verdict 1 "une DDL invalide fait rougir" "esc_sql a rendu 0"
+  else inst_verdict 1 "une DDL invalide fait rougir" ok; fi
+
+  # 19.2 DECLENCHEUR ABSENT -> constate AVANT le scenario, par le CATALOGUE.
+  if esc_catalogue_exige inst "19.2 declencheur" \
+       "select count(*) from pg_trigger where tgname='tr19' and not tgisinternal" 1 \
+       >/dev/null 2>&1
+  then inst_verdict 2 "un declencheur absent est constate" "la postcondition a passe"
+  else inst_verdict 2 "un declencheur absent est constate" ok; fi
+
+  # 19.3 ERREUR SQL SUIVIE D'UN SELECT REUSSI -> le lot reste rouge. Sans
+  #      ON_ERROR_STOP, psql poursuit et la derniere ligne dit « tout va bien ».
+  if esc_sql inst "19.3 erreur puis succes" >/dev/null 2>&1 <<'SQL19'
+select 1 / 0;
+select 'tout va bien';
+SQL19
+  then inst_verdict 3 "une erreur suivie d'un succes reste rouge" "esc_sql a rendu 0"
+  else inst_verdict 3 "une erreur suivie d'un succes reste rouge" ok; fi
+
+  # 19.4 PIPELINE MASQUANT UN CODE NON NUL.
+  INST_P=0; ( set -o pipefail; false | tail -1 ) >/dev/null 2>&1 || INST_P=$?
+  if (( INST_P != 0 )); then inst_verdict 4 "un pipeline ne masque pas le code amont" ok
+  else inst_verdict 4 "un pipeline ne masque pas le code amont" "pipefail inoperant"; fi
+
+  # 19.5 HEREDOC A SUBSTITUTION -> aucune execution shell dans un flux SQL.
+  #      Mesure: « -- voir `whoami` » fait parvenir « -- voir root » a psql.
+  INST_HD="$(python3 "$HERE/verifier_heredocs.py" "$HERE" 2>&1)"
+  if [[ -z "$INST_HD" ]]; then
+    inst_verdict 5 "aucun heredoc non quote ne porte de substitution" ok
+  else
+    inst_verdict 5 "aucun heredoc non quote ne porte de substitution" \
+      "$(tr '\n' ' ' <<<"$INST_HD")"
+  fi
+
+  # 19.6 SORTIE MULTIOCTET -> capturee sans dommage, identifiant preserve.
+  if esc_sql inst "19.6 multioctet" >/dev/null 2>&1 <<'SQL19'
+do $$ begin raise exception 'AUTHORITY_ESSAI_UNICODE: — tirets et accents crees'; end $$;
+SQL19
+  then inst_verdict 6 "une sortie multioctet ne passe pas pour un succes" "code 0"
+  elif printf '%s' "$ESC_SQL_SORTIE" \
+       | python3 -c 'import sys; sys.stdin.buffer.read().decode("utf-8")' 2>/dev/null; then
+    inst_verdict 6 "une sortie multioctet est capturee sans dommage" ok
+  else
+    inst_verdict 6 "une sortie multioctet est capturee sans dommage" "octets invalides"
+  fi
+
+  # 19.7 OBJET CREE SOUS UN MAUVAIS SCHEMA -> refus par le catalogue.
+  inst -q -c "create schema s19" >/dev/null 2>&1
+  inst -q -c "create table s19.t19bis (id int)" >/dev/null 2>&1
+  if esc_catalogue_exige inst "19.7 schema" \
+       "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
+         where c.relname='t19bis' and n.nspname='public'" 1 >/dev/null 2>&1
+  then inst_verdict 7 "un objet cree sous un mauvais schema est refuse" "la postcondition a passe"
+  else inst_verdict 7 "un objet cree sous un mauvais schema est refuse" ok; fi
+
+  # 19.8 NON-VACUITE: un effet observable IMPOSSIBLE doit etre detecte.
+  #      « return old » depuis un BEFORE UPDATE annule l'ecriture: « la ligne
+  #      n'a pas change » devient vrai quoi que la garde decide.
+  inst -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<'SQL19'
+create table t19b (id int primary key, val int);
+insert into t19b values (1, 1);
+create function f19b() returns trigger language plpgsql as $$ begin return old; end $$;
+create trigger tr19b before update on t19b for each row execute function f19b();
+SQL19
+  inst -q -c "update t19b set val = 42" >/dev/null 2>&1
+  INST_VAL="$(inst -tAc "select val from t19b" 2>/dev/null)"
+  if [[ "$INST_VAL" == "1" ]]; then
+    inst_verdict 8 "un effet observable impossible est detecte (return old)" ok
+  else
+    inst_verdict 8 "un effet observable impossible est detecte (return old)" \
+      "la valeur a change ($INST_VAL): le piege ne se reproduit pas"
+  fi
+
+  psql -X -q -d postgres -c "drop database if exists \"$INST_BASE\"" >/dev/null 2>&1
+fi
+(( INST_KO )) || echo "      ok: 19. l'instrument refuse les huit facons de mentir"
+
 echo ""
 if [[ $KO -eq 0 ]]; then
   echo "================================================="

@@ -145,7 +145,7 @@ grant select, insert, references on auth.users to "$MIG" with grant option;
 grant execute on function auth.uid() to "$MIG" with grant option;
 grant create on database "$BASE" to "$MIG";
 -- LE PROVISIONNEUR APPLIQUE LA PHASE 0: il cree des tables et des fonctions
--- dans `public`, et les transfere a l'activateur. D'ou CREATE avec GRANT
+-- dans « public », et les transfere a l'activateur. D'ou CREATE avec GRANT
 -- OPTION. Prerequis de deploiement — voir docs/DEPLOIEMENT_PREREQUIS.md.
 grant create on schema public to "$CTL" with grant option;
 grant usage on schema auth to "$CTL";

@@ -157,7 +157,7 @@ grant usage on schema auth to "$MIG" with grant option;
 grant select, insert, references on auth.users to "$MIG" with grant option;
 grant execute on function auth.uid() to "$MIG" with grant option;
 grant create on database "$BASE" to "$MIG";
--- LE POSEUR DU SCEAU cree des objets dans `public` et les transfere a
+-- LE POSEUR DU SCEAU cree des objets dans « public » et les transfere a
 -- l'activateur: CREATE avec GRANT OPTION. Prerequis de deploiement, voir
 -- docs/DEPLOIEMENT_PREREQUIS.md.
 grant create on schema public to "$CTL" with grant option;
@@ -807,7 +807,7 @@ fi
 # `normative_seal_metadata` a d'abord ete accordee en lecture a `PUBLIC`
 # (6.3b6d), au motif que la garde de reexecution s'execute sous un poseur dont
 # le nom n'est pas connu a l'avance. C'etait une facilite, et elle avait un
-# cout: dans un schema `public` expose par PostgREST — la forme Supabase —, un
+# cout: dans un schema « public » expose par PostgREST — la forme Supabase —, un
 # utilisateur ANONYME lisait le nom du role d'installation, son OID,
 # l'horodatage et le niveau d'assurance.
 #
@@ -827,7 +827,7 @@ suivre_decor
 # il rendait une erreur que le scenario prenait pour une fuite. Un `and exists`
 # ne suffisait pas: SQL ne garantit pas l'ordre d'evaluation des conjonctions,
 # et la fonction etait appelee quand meme. Partir du catalogue supprime la
-# question. `public` est traite a part: ce n'est pas un role de `pg_roles`.
+# question. « public » est traite a part: ce n'est pas un role de `pg_roles`.
 FUITE_W=$(admb -tAc "
   select coalesce(string_agg(nom, ', ' order by nom), '') from (
     select rolname as nom from pg_roles
