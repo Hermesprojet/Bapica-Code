@@ -777,6 +777,16 @@ def _code(nom):
 INSTALL_ASSERTION = {
     "B": "PRECONDITION 0013: la table normative_authorisation_grants "
          "appartient a",
+    # L'ASSERTION AGREGEE, AJOUTEE AU LOT PRECEDENT, INTERCEPTE DESORMAIS
+    # DEUX MUTATIONS QUI ATTEIGNAIENT AUPARAVANT LA COUCHE D'EXECUTION.
+    #
+    # Elles ont ete comptees SURVIVED dans la campagne de `85e3aea`, et le
+    # moteur avait raison de refuser de les dire tuees: rien ne lui disait
+    # qu'un refus a l'installation valait mise a mort. Le diagnostic exact a
+    # ete reproduit dans deux worktrees jetables, avec la preuve d'atomicite
+    # (zero ligne de registre, aucune table posee).
+    "B'": "AUTHORITY_COMPOSITION_FORCE_RLS_MISSING",
+    "B=": "AUTHORITY_COMPOSITION_TABLE_OWNER_MISMATCH",
 }
 
 # LES REDONDANCES VOULUES ET LEUR PREUVE COMBINEE.
@@ -1073,6 +1083,42 @@ revoke insert on normative_authorisation_grants          from normative_backend;
               """-- set role neutralise: le migrateur possede les tables
 
 revoke insert on normative_authorisation_grants          from normative_backend;""")])],
+     None, False),
+    # LES DEUX COUCHES DE « B' » ET DE « B= », comme pour « B ».
+    #
+    # L'interception a l'installation est la mise a mort la plus precoce, et
+    # elle est reelle. Mais elle MASQUE la couche d'execution: `B1` — « apres
+    # activation, le migrateur ne possede plus les tables, RLS forcee » — ne
+    # serait plus exerce par aucune mutation. On neutralise donc AUSSI la
+    # branche de l'agregee qui intercepte, pour que le schema s'installe et
+    # que le chemin aval soit parcouru.
+    ("B'= la RLS n'est plus forcee, agregee neutralisee", "B1",
+     [(M, [("alter table normative_authorisation_grants          force row level security;",
+            "-- FORCE retire par mutation")]),
+      (A14, [("""      if not (r.relrowsecurity and r.relforcerowsecurity) then
+        ecarts := ecarts || format(
+          'AUTHORITY_COMPOSITION_FORCE_RLS_MISSING: %s a rls=%s force=%s',
+          nom, r.relrowsecurity, r.relforcerowsecurity);
+      end if;""",
+              "      null;  -- branche FORCE RLS neutralisee par mutation")])],
+     None, False),
+    ("B== la propriete reste au migrateur, agregee neutralisee aussi", "B1",
+     [(M, [("alter table normative_authorisation_grants          owner to eurostruct_normative_writer;",
+            "-- transfert retire par mutation")]),
+      (A13, [("    if o <> 'eurostruct_normative_writer' then",
+              "    if false then"),
+             ("""set role eurostruct_normative_writer;
+
+revoke insert on normative_authorisation_grants          from normative_backend;""",
+              """-- set role neutralise: le migrateur possede les tables
+
+revoke insert on normative_authorisation_grants          from normative_backend;""")]),
+      (A14, [("""      if r.proprietaire <> 'eurostruct_normative_writer' then
+        ecarts := ecarts || format(
+          'AUTHORITY_COMPOSITION_TABLE_OWNER_MISMATCH: %s appartient a « %s »',
+          nom, r.proprietaire);
+      end if;""",
+              "      null;  -- branche proprietaire neutralisee par mutation")])],
      None, False),
     ("C  un seul des deux refus de composition", "C2", S,
      [MUT_TXID], True),

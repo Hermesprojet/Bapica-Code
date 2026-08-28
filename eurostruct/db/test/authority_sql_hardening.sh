@@ -154,6 +154,11 @@ SQL
       echoue "decor: phase 1 refusee sur $(basename "$f"):"
       grep -m1 ERROR <<<"$ESC_MIGRATION_SORTIE" | cut -c1-200 \
         | sed 's/^/              /' >&2
+      # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE. Mesure:
+      # `cut -c1-200` coupait juste avant `AUTHORITY_*`, et deux mutations
+      # ont ete comptees SURVIVED faute que le nom atteigne le lecteur.
+      grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$ESC_MIGRATION_SORTIE" | sort -u \
+        | head -4 | sed 's/^/              invariant: /' >&2
       return 1
     fi
   done

@@ -136,6 +136,12 @@ SQL
   if ! sortie=$(ctl -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
     echoue "decor $s: phase 0 refusee:"
     grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
+    # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE.
+    # Mesure: `cut -c1-200` coupait juste avant
+    # `AUTHORITY_*`, et deux mutations ont ete comptees
+    # SURVIVED faute que le nom atteigne le lecteur.
+    grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$sortie" | sort -u | head -4 \
+      | sed 's/^/              invariant: /' >&2
     return 1
   fi
   adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
@@ -167,6 +173,12 @@ SQL
       sortie="$ESC_MIGRATION_SORTIE"
       echoue "decor $s: phase 1 refusee sur $(basename "$f"):"
       grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
+      # L'IDENTIFIANT D'INVARIANT SURVIT A LA TRONCATURE.
+      # Mesure: `cut -c1-200` coupait juste avant
+      # `AUTHORITY_*`, et deux mutations ont ete comptees
+      # SURVIVED faute que le nom atteigne le lecteur.
+      grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$sortie" | sort -u | head -4 \
+        | sed 's/^/              invariant: /' >&2
       return 1
     fi
   done
