@@ -274,8 +274,15 @@ begin
   end loop;
 
   if array_length(ecarts, 1) > 0 then
+    -- UN IDENTIFIANT D'INVARIANT STABLE, ET NON UNE PHRASE.
+    --
+    -- Un test qui reconnait une mise a mort sur « surface d'autorite non
+    -- durcie » reconnait une PHRASE: elle se reformule, se traduit, se
+    -- reindente, et le test cesse alors de distinguer un refus attendu d'une
+    -- panne quelconque — sans rien dire. Le prefixe ci-dessous est un
+    -- CONTRAT: il ne change pas quand le texte change.
     raise exception
-      'surface d''autorite non durcie: %',
+      'AUTHORITY_0011_SURFACE_NOT_HARDENED: surface d''autorite non durcie: %',
       array_to_string(ecarts, E'\n  - ')
       using errcode = 'insufficient_privilege';
   end if;
@@ -286,8 +293,7 @@ alter function assert_authority_surface_hardened()
   owner to eurostruct_normative_writer;
 revoke all on function assert_authority_surface_hardened() from public;
 grant execute on function assert_authority_surface_hardened()
-  to eurostruct_normative_writer, eurostruct_normative_bootstrap,
-     normative_governance, eurostruct_deployment;
+  to eurostruct_normative_writer, eurostruct_deployment;
 
 comment on function assert_authority_surface_hardened is
   'Refuse une base dont la surface d''autorite a derive: fonction revenue a '
@@ -301,6 +307,28 @@ comment on function assert_authority_surface_hardened is
 -- ---------------------------------------------------------------------
 revoke create on schema public
   from eurostruct_normative_writer, eurostruct_normative_bootstrap;
+
+-- ---------------------------------------------------------------------
+-- POSTCONDITION DE 0011 — appelee par la MIGRATION, pas par un harnais
+-- ---------------------------------------------------------------------
+-- UNE ASSERTION QUE SEULS LES TESTS APPELLENT NE PROTEGE RIEN.
+-- `assert_authority_surface_hardened()` existait depuis le premier jet de
+-- cette migration et AUCUN chemin produit ne l'executait: seul
+-- `authority_sql_hardening.sh` l'invoquait, c'est-a-dire quelqu'un qui pense
+-- a lancer la suite. Un deploiement reel ne la rencontrait jamais.
+--
+-- CE QUE CELA COUTAIT, MESURE CINQ FOIS DANS CE JALON: PostgreSQL 16
+-- n'echoue pas sur un GRANT ou un REVOKE emis sans le droit requis — il emet
+-- un WARNING et ne fait rien — et `psql -v ON_ERROR_STOP=1` ne s'arrete pas
+-- sur un WARNING. Chacun des treize GRANT/REVOKE ci-dessus pouvait donc
+-- n'avoir aucun effet, et la migration se terminer « avec succes » en
+-- laissant la surface exactement dans l'etat qu'elle pretendait durcir.
+--
+-- SA PLACE EST ICI, ET PAS AILLEURS: apres TOUS les changements de
+-- catalogue — transferts de propriete, revocations, octrois, retrait de
+-- CREATE — et AVANT l'inscription au registre. Une migration refusee ne doit
+-- pas laisser de ligne disant qu'elle a ete appliquee.
+select assert_authority_surface_hardened();
 
 -- L'INSCRIPTION AU REGISTRE, DANS LA MEME TRANSACTION QUE CE QUI PRECEDE.
 -- Les deux variables sont posees par `db/apply_migration.sh`, seul chemin

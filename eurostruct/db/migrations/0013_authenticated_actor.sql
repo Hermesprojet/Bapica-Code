@@ -1822,8 +1822,7 @@ alter function assert_authority_backend_membership()
   owner to eurostruct_normative_writer;
 revoke all on function assert_authority_backend_membership() from public;
 grant execute on function assert_authority_backend_membership()
-  to eurostruct_normative_writer, eurostruct_normative_bootstrap,
-     normative_governance, eurostruct_deployment;
+  to eurostruct_normative_writer, eurostruct_deployment;
 
 comment on function assert_authority_backend_membership is
   'Confronte les MEMBRES reels du backend d''autorite a la liste DECLAREE, '

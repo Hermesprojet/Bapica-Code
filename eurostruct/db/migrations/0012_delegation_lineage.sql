@@ -502,8 +502,224 @@ comment on function consume_normative_authorisation is
 -- ---------------------------------------------------------------------
 -- LE DROIT DE CREATE REPART, comme il etait venu
 -- ---------------------------------------------------------------------
+-- ---------------------------------------------------------------------
+-- POSTCONDITION DE 0012 — le catalogue, lu, et non les commandes, supposees
+-- ---------------------------------------------------------------------
+-- POURQUOI ELLE EXISTE. PostgreSQL 16 n'echoue pas sur un GRANT ou un REVOKE
+-- emis sans le droit requis: il emet un WARNING et ne fait rien. `psql -v
+-- ON_ERROR_STOP=1` ne s'arrete pas sur un WARNING. Chacun des huit
+-- GRANT/REVOKE de cette migration pouvait donc etre sans effet, et la
+-- migration se terminer « avec succes » en laissant la surface ouverte.
+--
+-- ELLE LIT `pg_proc.proacl`, PAS `has_function_privilege()`. Le proprietaire
+-- d'une fonction repond « oui » a `has_function_privilege` meme quand AUCUN
+-- octroi n'a ete pose — la propriete suffit. Poser la question ainsi rendrait
+-- donc « tout va bien » sur une surface ou rien n'a ete accorde ni revoque.
+-- Les ACL et les lignes de catalogue, elles, disent ce qui EST.
+--
+-- ELLE DECRIT L'ETAT A LA FIN DE 0012, ET PAS L'ETAT FINAL. `0013` ajoutera
+-- `eurostruct_authority_backend` sur `normative_grant_is_effective`. Une
+-- postcondition par migration decrit CE QUE SA MIGRATION A FAIT; anticiper la
+-- suivante la ferait echouer sur une base correcte, et masquerait ensuite
+-- l'octroi qu'elle etait censee surveiller.
+--
+-- CHAQUE ECART PORTE UN IDENTIFIANT STABLE. Un test qui reconnait une mise a
+-- mort sur une phrase reconnait une phrase: elle se reformule, et le test
+-- cesse de distinguer un refus attendu d'une panne quelconque.
+create or replace function assert_0012_lineage_surface() returns void
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  r record;
+  ecarts text[] := array[]::text[];
+  -- LE NOM SUFFIT A DESIGNER, ET IL EN DIT PLUS QU'UNE SIGNATURE.
+  --
+  -- Une premiere version comparait `pg_get_function_identity_arguments()` a
+  -- une signature ecrite a la main. Elle rendait « fonction absente » pour
+  -- QUATRE fonctions bien presentes: cette primitive rend les NOMS des
+  -- parametres (« p_grant_id uuid »), pas seulement leurs types. Un
+  -- diagnostic faux sur une base correcte est pire qu'aucun diagnostic.
+  --
+  -- On exige donc EXACTEMENT UNE fonction de ce nom dans `public`. C'est plus
+  -- simple, et plus strict: une surcharge introduite par ailleurs — qui
+  -- porterait ses propres ACL, invisibles a un controle vise sur une seule
+  -- signature — devient un ecart nomme.
+  attendus text[][] := array[
+    -- fonction                         | secdef | roles EXECUTE
+    ['normative_grant_is_effective',    'false',
+     'eurostruct_normative_writer,eurostruct_normative_bootstrap'],
+    ['normative_grant_descendants',     'false',
+     'eurostruct_normative_writer'],
+    ['check_normative_grant_lineage',   'true',
+     'eurostruct_normative_writer'],
+    ['resolve_normative_authorisation', 'false',
+     'eurostruct_normative_writer'],
+    ['consume_normative_authorisation', 'true',
+     'eurostruct_normative_writer']
+  ];
+  i int; n_match int;
+  nom text; secdef_attendu boolean; roles_attendus text[];
+  f_oid oid; f_owner text; f_secdef boolean; f_cfg text[]; f_acl aclitem[];
+  reels text[];
+begin
+  for i in 1 .. array_length(attendus, 1) loop
+    nom := attendus[i][1];
+    secdef_attendu := attendus[i][2]::boolean;
+    roles_attendus := string_to_array(attendus[i][3], ',');
+
+    select count(*) into n_match
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = nom;
+
+    if n_match = 0 then
+      ecarts := ecarts || format(
+        'AUTHORITY_0012_FUNCTION_MISSING: %s est absente du schema public',
+        nom);
+      continue;
+    elsif n_match > 1 then
+      ecarts := ecarts || format(
+        'AUTHORITY_0012_FUNCTION_AMBIGUOUS: %s existe en %s exemplaires dans '
+        'public; chacun porte ses propres ACL et ce controle n''en verrait '
+        'qu''un', nom, n_match);
+      continue;
+    end if;
+
+    select p.oid, pg_get_userbyid(p.proowner), p.prosecdef, p.proconfig, p.proacl
+      into f_oid, f_owner, f_secdef, f_cfg, f_acl
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = nom;
+
+    if f_owner <> 'eurostruct_normative_writer' then
+      ecarts := ecarts || format(
+        'AUTHORITY_0012_OWNER_MISMATCH: %s appartient a « %s », attendu '
+        '« eurostruct_normative_writer »', nom, f_owner);
+    end if;
+
+    if f_secdef is distinct from secdef_attendu then
+      ecarts := ecarts || format(
+        'AUTHORITY_0012_SECURITY_DEFINER_MISMATCH: %s a prosecdef=%s, '
+        'attendu %s', nom, f_secdef, secdef_attendu);
+    end if;
+
+    -- `search_path` FIXE. Absent, la fonction herite de celui de l'appelant,
+    -- qui peut alors la detourner vers ses propres objets.
+    if f_cfg is null
+       or not exists (select 1 from unnest(f_cfg) c where c like 'search\_path=%')
+    then
+      ecarts := ecarts || format(
+        'AUTHORITY_0012_SEARCH_PATH_UNPINNED: %s n''a pas de search_path fixe '
+        'dans proconfig', nom);
+    end if;
+
+    -- `proacl` NULL signifie « droits par defaut »: PUBLIC execute. Un
+    -- `revoke ... from public` sans effet laisse exactement cet etat.
+    if f_acl is null then
+      ecarts := ecarts || format(
+        'AUTHORITY_0012_PUBLIC_EXECUTE: %s a proacl NULL — les droits par '
+        'defaut s''appliquent, donc PUBLIC execute. Le REVOKE n''a pas pris',
+        nom);
+      continue;
+    end if;
+
+    if exists (select 1 from aclexplode(f_acl) a
+                where a.grantee = 0 and a.privilege_type = 'EXECUTE') then
+      ecarts := ecarts || format(
+        'AUTHORITY_0012_PUBLIC_EXECUTE: %s accorde EXECUTE a PUBLIC', nom);
+    end if;
+
+    select coalesce(array_agg(g.rolname::text order by g.rolname), array[]::text[])
+      into reels
+      from aclexplode(f_acl) a
+      join pg_roles g on g.oid = a.grantee
+     where a.privilege_type = 'EXECUTE';
+
+    -- EGALITE EXACTE, dans les deux sens. Un role en trop est une surface
+    -- ouverte; un role en moins est un octroi qui n'a pas pris.
+    if reels <> (select array_agg(x order by x) from unnest(roles_attendus) x) then
+      ecarts := ecarts || format(
+        'AUTHORITY_0012_EXECUTE_ACL_MISMATCH: %s accorde EXECUTE a {%s}, '
+        'attendu {%s}', nom, array_to_string(reels, ','),
+        array_to_string(roles_attendus, ','));
+    end if;
+  end loop;
+
+  -- LE DECLENCHEUR DE FILIATION, PRESENT **ET** ACTIVE. `ALTER TABLE ...
+  -- DISABLE TRIGGER` laisse la ligne dans `pg_trigger` avec `tgenabled='D'`:
+  -- chercher seulement l'existence declarerait vert un declencheur eteint.
+  if not exists (
+    select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+     where c.relname = 'normative_authorisation_grants'
+       and t.tgname = 'normative_grants_lineage_is_checked'
+       and not t.tgisinternal and t.tgenabled = 'O')
+  then
+    ecarts := ecarts || 'AUTHORITY_0012_TRIGGER_NOT_ENABLED: '
+      'normative_grants_lineage_is_checked est absent ou desactive sur '
+      'normative_authorisation_grants';
+  end if;
+
+  -- LA FILIATION EST UNE CLE ETRANGERE **VALIDEE**. `NOT VALID` laisserait
+  -- passer les lignes deja presentes, et la colonne ne garantirait plus rien
+  -- du passe qu'elle est censee decrire.
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'normative_authorisation_grants'::regclass
+       and conname = 'normative_authorisation_grants_parent_grant_id_fkey'
+       and contype = 'f' and convalidated)
+  then
+    ecarts := ecarts || 'AUTHORITY_0012_FOREIGN_KEY_MISSING: '
+      'la cle etrangere parent_grant_id est absente ou non validee';
+  end if;
+
+  -- LE DROIT DE CREATE EST REPARTI. Il a ete accorde en tete de migration
+  -- pour poser des fonctions; le laisser serait laisser au writer de quoi
+  -- fabriquer un objet dans `public` apres coup.
+  for r in
+    select unnest(array['eurostruct_normative_writer',
+                        'eurostruct_normative_bootstrap']) as rolname
+  loop
+    if exists (select 1 from pg_namespace n, aclexplode(n.nspacl) a
+                where n.nspname = 'public'
+                  and a.grantee = r.rolname::regrole::oid
+                  and a.privilege_type = 'CREATE') then
+      ecarts := ecarts || format(
+        'AUTHORITY_0012_SCHEMA_CREATE_RETAINED: « %s » conserve CREATE sur le '
+        'schema public', r.rolname);
+    end if;
+  end loop;
+
+  if array_length(ecarts, 1) > 0 then
+    raise exception
+      'AUTHORITY_0012_POSTCONDITION_FAILED: la surface posee par 0012 n''est '
+      'pas celle qui a ete demandee — %',
+      array_to_string(ecarts, E'\n  - ')
+      using errcode = 'insufficient_privilege';
+  end if;
+end;
+$$;
+
+alter function assert_0012_lineage_surface()
+  owner to eurostruct_normative_writer;
+revoke all on function assert_0012_lineage_surface() from public;
+grant execute on function assert_0012_lineage_surface()
+  to eurostruct_normative_writer, eurostruct_deployment;
+
+comment on function assert_0012_lineage_surface is
+  'Postcondition de 0012: confronte le CATALOGUE a ce que la migration a '
+  'demande. Lit proacl et pg_trigger, jamais has_function_privilege() seul — '
+  'la propriete rendrait la reponse trompeuse. Chaque ecart porte un '
+  'identifiant stable AUTHORITY_0012_*.';
+
+
 revoke create on schema public
   from eurostruct_normative_writer, eurostruct_normative_bootstrap;
+
+-- LA POSTCONDITION EST APPELEE PAR LA MIGRATION, apres TOUS les changements
+-- de catalogue et AVANT l'inscription au registre. Une migration refusee ne
+-- doit laisser aucune ligne disant qu'elle a ete appliquee.
+select assert_0012_lineage_surface();
 
 -- L'INSCRIPTION AU REGISTRE, DANS LA MEME TRANSACTION QUE CE QUI PRECEDE.
 -- Les deux variables sont posees par `db/apply_migration.sh`, seul chemin

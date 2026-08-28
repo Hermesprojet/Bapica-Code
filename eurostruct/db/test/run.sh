@@ -212,6 +212,26 @@ etape "roundtrip des migrations" \
 # verifie qu'elle ne peut pas etre CONTOURNEE, et il le fait en essayant. Il
 # exige lui aussi un jeu canonique vierge — chacun de ses six decors le pose et
 # le rend — et passe donc ici, avant la base principale.
+# --------------------------------------------------------------------------
+# LES POSTCONDITIONS DE MIGRATION SONT-ELLES ATTEINTES ?
+# --------------------------------------------------------------------------
+# `migration_roundtrip.sh` etablit que les migrations s'appliquent et ne se
+# rejouent pas. Celui-ci pose la question d'a cote: quand le catalogue N'EST
+# PAS celui qu'elles ont demande, s'en apercoivent-elles ?
+#
+# LA REPONSE ETAIT NON JUSQU'A CE LOT. `assert_authority_surface_hardened()`
+# existait depuis 0011, refusait correctement, et AUCUN chemin produit ne
+# l'appelait — seul un harnais le faisait. Une assertion que le produit
+# n'execute jamais ne protege rien: elle tient tant que quelqu'un pense a
+# lancer la suite.
+#
+# Trois observations par migration, et la troisieme est celle qui compte:
+# l'appel retire, le meme catalogue fautif doit PASSER. Sans elle, le refus
+# mesure ne dit pas d'ou il vient.
+echo "==> postconditions de migration"
+etape "postconditions de migration" \
+  "$HERE/migration_postconditions.sh" "${DB_NAME:0:20}mp"
+
 echo "==> contrat de finalisation"
 etape "contrat de finalisation" \
   "$HERE/finalisation_contract.sh" "${DB_NAME:0:20}fc"

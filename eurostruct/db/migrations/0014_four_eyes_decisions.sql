@@ -697,8 +697,464 @@ end;
 $$;
 
 
+-- ---------------------------------------------------------------------
+-- POSTCONDITION DE 0014 — la surface des decisions, lue dans le catalogue
+-- ---------------------------------------------------------------------
+-- MEME RAISON QUE POUR 0012: PostgreSQL 16 n'echoue pas sur un GRANT ou un
+-- REVOKE emis sans le droit requis, il emet un WARNING et ne fait rien. Les
+-- douze commandes de privilege de cette migration pouvaient donc etre sans
+-- effet, et la migration se declarer appliquee.
+--
+-- ELLE LIT LES ACL ET LES LIGNES DE CATALOGUE. `has_table_privilege()` seul
+-- serait trompeur: le proprietaire repond « oui » sans qu'aucun octroi
+-- n'existe, et une policy manquante ne se voit pas du tout dans une reponse
+-- de privilege — sous FORCE RLS elle rend zero ligne, c'est-a-dire une
+-- reponse, pas une erreur.
+create or replace function assert_0014_decisions_surface() returns void
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  ecarts text[] := array[]::text[];
+  attendus text[][] := array[
+    -- fonction                            | secdef | roles EXECUTE
+    ['normative_decision_propose',           'true',
+     'eurostruct_authority_backend,eurostruct_normative_writer'],
+    ['normative_decision_approve',           'true',
+     'eurostruct_authority_backend,eurostruct_normative_writer'],
+    ['normative_decision_consume',           'true',
+     'eurostruct_authority_backend,eurostruct_normative_writer'],
+    ['normative_lock_grant_chains',          'true',
+     'eurostruct_normative_writer'],
+    ['check_normative_decision_transition',  'false',
+     'eurostruct_normative_writer'],
+    ['forbid_decision_delete',               'false',
+     'eurostruct_normative_writer']
+  ];
+  declencheurs text[] := array['normative_decisions_are_not_deletable',
+                               'normative_decisions_transitions_are_checked'];
+  contraintes text[] := array['decision_is_motivated',
+                              'decision_state_is_complete',
+                              'decision_two_distinct_principals'];
+  i int; n_match int;
+  nom text; secdef_attendu boolean; roles_attendus text[];
+  f_owner text; f_secdef boolean; f_cfg text[]; f_acl aclitem[];
+  reels text[];
+  t_owner text; t_rls boolean; t_force boolean; t_acl aclitem[];
+  r record;
+begin
+  -- ---------------- A. LES SIX FONCTIONS ----------------
+  for i in 1 .. array_length(attendus, 1) loop
+    nom := attendus[i][1];
+    secdef_attendu := attendus[i][2]::boolean;
+    roles_attendus := string_to_array(attendus[i][3], ',');
+
+    select count(*) into n_match
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = nom;
+    if n_match = 0 then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_FUNCTION_MISSING: %s est absente du schema public', nom);
+      continue;
+    elsif n_match > 1 then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_FUNCTION_AMBIGUOUS: %s existe en %s exemplaires; '
+        'chacun porte ses propres ACL', nom, n_match);
+      continue;
+    end if;
+
+    select pg_get_userbyid(p.proowner), p.prosecdef, p.proconfig, p.proacl
+      into f_owner, f_secdef, f_cfg, f_acl
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = nom;
+
+    if f_owner <> 'eurostruct_normative_writer' then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_OWNER_MISMATCH: %s appartient a « %s », attendu '
+        '« eurostruct_normative_writer »', nom, f_owner);
+    end if;
+    if f_secdef is distinct from secdef_attendu then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_SECURITY_DEFINER_MISMATCH: %s a prosecdef=%s, attendu %s',
+        nom, f_secdef, secdef_attendu);
+    end if;
+    if f_cfg is null
+       or not exists (select 1 from unnest(f_cfg) c where c like 'search\_path=%')
+    then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_SEARCH_PATH_UNPINNED: %s n''a pas de search_path fixe', nom);
+    end if;
+    if f_acl is null then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_PUBLIC_EXECUTE: %s a proacl NULL — droits par defaut, '
+        'donc PUBLIC execute; le REVOKE n''a pas pris', nom);
+      continue;
+    end if;
+    if exists (select 1 from aclexplode(f_acl) a
+                where a.grantee = 0 and a.privilege_type = 'EXECUTE') then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_PUBLIC_EXECUTE: %s accorde EXECUTE a PUBLIC', nom);
+    end if;
+    select coalesce(array_agg(g.rolname::text order by g.rolname), array[]::text[])
+      into reels
+      from aclexplode(f_acl) a join pg_roles g on g.oid = a.grantee
+     where a.privilege_type = 'EXECUTE';
+    if reels <> (select array_agg(x order by x) from unnest(roles_attendus) x) then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_EXECUTE_ACL_MISMATCH: %s accorde EXECUTE a {%s}, '
+        'attendu {%s}', nom, array_to_string(reels, ','),
+        array_to_string(roles_attendus, ','));
+    end if;
+  end loop;
+
+  -- ---------------- B. LA TABLE DES DECISIONS ----------------
+  select pg_get_userbyid(c.relowner), c.relrowsecurity, c.relforcerowsecurity,
+         c.relacl
+    into t_owner, t_rls, t_force, t_acl
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relname = 'normative_authority_decisions';
+
+  if t_owner is null then
+    ecarts := ecarts || 'AUTHORITY_0014_TABLE_MISSING: '
+      'normative_authority_decisions est absente';
+  else
+    if t_owner <> 'eurostruct_normative_writer' then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_TABLE_OWNER_MISMATCH: la table appartient a « %s »',
+        t_owner);
+    end if;
+    if not t_rls then
+      ecarts := ecarts || 'AUTHORITY_0014_RLS_DISABLED: '
+        'row level security n''est pas activee sur la table des decisions';
+    end if;
+    -- FORCE, ET PAS SEULEMENT ENABLE. Sans FORCE, le PROPRIETAIRE echappe aux
+    -- policies — et le proprietaire est precisement le role sous lequel les
+    -- primitives SECURITY DEFINER s'executent.
+    if not t_force then
+      ecarts := ecarts || 'AUTHORITY_0014_FORCE_RLS_DISABLED: '
+        'FORCE ROW LEVEL SECURITY n''est pas posee: le proprietaire echappe '
+        'aux policies, or c''est sous lui que tournent les primitives';
+    end if;
+
+    -- AUCUNE ECRITURE DIRECTE POUR UN ROLE ORDINAIRE. Tout passe par les
+    -- trois primitives; un INSERT direct rouvrirait le chemin que 0013 ferme.
+    for r in
+      select g.rolname, string_agg(distinct a.privilege_type, ',' order by
+                                   a.privilege_type) as privs
+        from aclexplode(t_acl) a
+        left join pg_roles g on g.oid = a.grantee
+       where a.privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE')
+         and coalesce(g.rolname, 'PUBLIC') <> 'eurostruct_normative_writer'
+       group by g.rolname
+    loop
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_DIRECT_WRITE_GRANTED: « %s » detient {%s} en direct '
+        'sur normative_authority_decisions; seules les trois primitives '
+        'doivent ecrire', coalesce(r.rolname, 'PUBLIC'), r.privs);
+    end loop;
+  end if;
+
+  -- ---------------- C. LES POLICIES, ROLES ET COMMANDES EXACTS -----------
+  -- UNE POLICY MANQUANTE NE SE VOIT PAS DANS UN PRIVILEGE. Sous FORCE RLS,
+  -- une table sans policy applicable rend ZERO LIGNE — une reponse, pas une
+  -- erreur (fait mesure). C'est pourquoi elles sont verifiees ici, une a une,
+  -- avec leur commande et leur role.
+  if not exists (
+    select 1 from pg_policy pol join pg_class c on c.oid = pol.polrelid
+     where c.relname = 'normative_authority_decisions'
+       and pol.polname = 'decisions_writer'
+       and pol.polcmd = '*' and pol.polpermissive
+       and (select array_agg(rr.rolname::text order by rr.rolname) from pg_roles rr
+             where rr.oid = any(pol.polroles))
+           = array['eurostruct_normative_writer'])
+  then
+    ecarts := ecarts || 'AUTHORITY_0014_POLICY_MISMATCH: '
+      'decisions_writer absente, non permissive, d''une autre commande que ALL, '
+      'ou portant d''autres roles que eurostruct_normative_writer';
+  end if;
+  if not exists (
+    select 1 from pg_policy pol join pg_class c on c.oid = pol.polrelid
+     where c.relname = 'normative_authority_decisions'
+       and pol.polname = 'decisions_governance_read'
+       and pol.polcmd = 'r' and pol.polpermissive
+       and (select array_agg(rr.rolname::text order by rr.rolname) from pg_roles rr
+             where rr.oid = any(pol.polroles))
+           = array['normative_governance'])
+  then
+    ecarts := ecarts || 'AUTHORITY_0014_POLICY_MISMATCH: '
+      'decisions_governance_read absente, non permissive, d''une autre '
+      'commande que SELECT, ou portant d''autres roles que normative_governance';
+  end if;
+
+  -- ---------------- D. DECLENCHEURS PRESENTS **ET** ACTIVES ---------------
+  foreach nom in array declencheurs loop
+    if not exists (
+      select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+       where c.relname = 'normative_authority_decisions' and t.tgname = nom
+         and not t.tgisinternal and t.tgenabled = 'O')
+    then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_TRIGGER_NOT_ENABLED: %s est absent ou desactive '
+        '(ALTER TABLE ... DISABLE TRIGGER laisse la ligne en place avec '
+        'tgenabled <> ''O'')', nom);
+    end if;
+  end loop;
+
+  -- ---------------- E. CONTRAINTES ET CLES ETRANGERES VALIDEES ------------
+  foreach nom in array contraintes loop
+    if not exists (
+      select 1 from pg_constraint
+       where conrelid = 'normative_authority_decisions'::regclass
+         and conname = nom and contype = 'c' and convalidated)
+    then
+      ecarts := ecarts || format(
+        'AUTHORITY_0014_CHECK_CONSTRAINT_MISSING: %s est absente ou non '
+        'validee', nom);
+    end if;
+  end loop;
+  -- CINQ CLES ETRANGERES, TOUTES VALIDEES. `NOT VALID` laisserait passer les
+  -- lignes deja presentes: la contrainte cesserait de decrire le passe.
+  if (select count(*) from pg_constraint
+       where conrelid = 'normative_authority_decisions'::regclass
+         and contype = 'f' and convalidated) <> 5 then
+    ecarts := ecarts || format(
+      'AUTHORITY_0014_FOREIGN_KEY_MISMATCH: %s cle(s) etrangere(s) validee(s), '
+      '5 attendues (proposant, approbateur, deux sources, organisation)',
+      (select count(*) from pg_constraint
+        where conrelid = 'normative_authority_decisions'::regclass
+          and contype = 'f' and convalidated));
+  end if;
+
+  if array_length(ecarts, 1) > 0 then
+    raise exception
+      'AUTHORITY_0014_POSTCONDITION_FAILED: la surface posee par 0014 n''est '
+      'pas celle qui a ete demandee — %',
+      array_to_string(ecarts, E'\n  - ')
+      using errcode = 'insufficient_privilege';
+  end if;
+end;
+$$;
+
+alter function assert_0014_decisions_surface()
+  owner to eurostruct_normative_writer;
+revoke all on function assert_0014_decisions_surface() from public;
+grant execute on function assert_0014_decisions_surface()
+  to eurostruct_normative_writer, eurostruct_deployment;
+
+comment on function assert_0014_decisions_surface is
+  'Postcondition de 0014: fonctions, table, policies, declencheurs et '
+  'contraintes lus dans le catalogue. Chaque ecart porte un identifiant '
+  'stable AUTHORITY_0014_*.';
+
+
+-- ---------------------------------------------------------------------
+-- L'ASSERTION AGREGEE — les locales defendent chacune sa migration,
+-- celle-ci defend leur COMPOSITION
+-- ---------------------------------------------------------------------
+-- CE QU'AUCUNE POSTCONDITION LOCALE NE PEUT VOIR. Chacune decrit l'etat a la
+-- fin de SA migration, et doit s'y tenir: `0012` ne peut pas exiger l'octroi
+-- que `0013` posera. Mais personne, alors, ne verifie l'etat FINAL — celui
+-- sous lequel la base tournera. Une migration ulterieure qui elargit une ACL,
+-- rend une fonction a PUBLIC ou relache un search_path passerait entre les
+-- deux: sa propre postcondition ne connait pas les objets des autres, et
+-- celles des autres ont deja tourne.
+create or replace function assert_authority_composition() returns void
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  ecarts text[] := array[]::text[];
+  r record;
+  tables_autorite text[] := array[
+    'normative_authorisation_grants', 'normative_authorisation_revocations',
+    'normative_rule_confirmations', 'normative_rule_confirmation_revocations',
+    'normative_authority_decisions'];
+  nom text;
+begin
+  -- A. AUCUNE FONCTION DU SOUS-SYSTEME N'EST EXECUTABLE PAR PUBLIC, et
+  --    aucune n'a perdu son search_path. Balayage, et non liste: une
+  --    fonction ajoutee demain est couverte sans que personne y pense.
+  -- LE PERIMETRE EST CELUI DE LA PROPRIETE, PAS CELUI DES NOMS.
+  --
+  -- Une premiere version balayait par prefixe (`normative_%`, `forbid_%`,
+  -- ...). Elle attrapait dix-sept fonctions declencheur POSEES PAR DES
+  -- MIGRATIONS ANTERIEURES a 6.3c, que ce jalon n'a ni creees ni durcies, et
+  -- refusait donc une base correcte. Elargir le perimetre d'une assertion
+  -- au-dela de ce que sa migration gouverne, c'est fabriquer un rouge qui
+  -- n'apprend rien et qu'on finira par contourner.
+  --
+  -- La propriete est le bon critere: elle designe exactement la surface
+  -- d'autorite, elle suit une fonction ajoutee demain sans qu'on y pense, et
+  -- si un transfert de propriete echoue, c'est la postcondition LOCALE de la
+  -- migration concernee qui le dit — pas celle-ci.
+  for r in
+    select p.proname, p.proacl is null as par_defaut,
+           p.proconfig,
+           p.prorettype = 'trigger'::regtype as est_declencheur,
+           exists (select 1 from aclexplode(p.proacl) a
+                    where a.grantee = 0 and a.privilege_type = 'EXECUTE') as publique
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and pg_get_userbyid(p.proowner) in ('eurostruct_normative_writer',
+                                           'eurostruct_normative_bootstrap',
+                                           'eurostruct_normative_activator')
+  loop
+    -- UN EXECUTE SUR UNE FONCTION DECLENCHEUR N'EST PAS UNE CAPACITE, et
+    -- c'est mesure: `perform forbid_mutation()` rend
+    -- « trigger functions can only be called as triggers » (SQLSTATE 0A000),
+    -- quel que soit le droit detenu. Le compter comme une ouverture aurait
+    -- produit treize rouges sans qu'aucun pouvoir n'existe derriere.
+    -- Le `search_path`, lui, compte pour elles AUSSI: un declencheur
+    -- s'execute avec le chemin de celui qui declenche l'ecriture.
+    if (r.par_defaut or r.publique) and not r.est_declencheur then
+      ecarts := ecarts || format(
+        'AUTHORITY_COMPOSITION_PUBLIC_EXECUTE: %s est executable par PUBLIC '
+        '(%s)', r.proname,
+        case when r.par_defaut then 'proacl NULL, droits par defaut'
+             else 'entree PUBLIC dans proacl' end);
+    end if;
+    if r.proconfig is null
+       or not exists (select 1 from unnest(r.proconfig) c where c like 'search\_path=%')
+    then
+      ecarts := ecarts || format(
+        'AUTHORITY_COMPOSITION_SEARCH_PATH_UNPINNED: %s n''a pas de '
+        'search_path fixe', r.proname);
+    end if;
+  end loop;
+
+  -- B. LES CINQ TABLES D'AUTORITE: proprietaire, RLS, FORCE RLS.
+  foreach nom in array tables_autorite loop
+    if not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+                    where n.nspname='public' and c.relname=nom) then
+      ecarts := ecarts || format(
+        'AUTHORITY_COMPOSITION_TABLE_MISSING: %s est absente', nom);
+      continue;
+    end if;
+    for r in
+      select pg_get_userbyid(c.relowner) as proprietaire,
+             c.relrowsecurity, c.relforcerowsecurity
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relname = nom
+    loop
+      if r.proprietaire <> 'eurostruct_normative_writer' then
+        ecarts := ecarts || format(
+          'AUTHORITY_COMPOSITION_TABLE_OWNER_MISMATCH: %s appartient a « %s »',
+          nom, r.proprietaire);
+      end if;
+      if not (r.relrowsecurity and r.relforcerowsecurity) then
+        ecarts := ecarts || format(
+          'AUTHORITY_COMPOSITION_FORCE_RLS_MISSING: %s a rls=%s force=%s',
+          nom, r.relrowsecurity, r.relforcerowsecurity);
+      end if;
+    end loop;
+  end loop;
+
+  -- C. LES ROLES D'AUTORITE NE SE CONNECTENT PAS. Un role d'autorite
+  --    connectable est un mot de passe de plus a perdre, et la separation
+  --    entre « ce que le schema possede » et « qui se connecte » disparait.
+  for r in
+    select rolname, rolcanlogin from pg_roles
+     where rolname in ('eurostruct_normative_writer',
+                       'eurostruct_normative_bootstrap',
+                       'eurostruct_normative_activator',
+                       'eurostruct_authority_backend')
+       and rolcanlogin
+  loop
+    ecarts := ecarts || format(
+      'AUTHORITY_COMPOSITION_ROLE_CAN_LOGIN: le role d''autorite « %s » est '
+      'connectable; il doit rester NOLOGIN', r.rolname);
+  end loop;
+
+  -- D. LES ASSERTIONS ELLES-MEMES SONT SOUS CONTROLE. Une assertion qui
+  --    subsiste apres la migration est du code privilegie: si PUBLIC pouvait
+  --    l'executer, n'importe qui lirait la topologie d'autorite.
+  for r in
+    select p.proname,
+           coalesce((select array_agg(g.rolname::text order by g.rolname)
+                       from aclexplode(p.proacl) a
+                       left join pg_roles g on g.oid = a.grantee
+                      where a.privilege_type = 'EXECUTE'),
+                    array[]::text[]) as porteurs,
+           coalesce((select bool_or(a.grantee = 0)
+                       from aclexplode(p.proacl) a
+                      where a.privilege_type = 'EXECUTE'), false)
+             or p.proacl is null as porteurs_publics
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname like 'assert\_%'
+  loop
+    -- LA LISTE DES ADMIS N'EST PAS ECRITE EN DUR, ET ELLE NE PEUT PAS L'ETRE.
+    --
+    -- `assert_normative_topology()` est appelee par la finalisation et par la
+    -- readiness, qui s'executent sous le PLAN DE CONTROLE — dont le nom
+    -- depend du deploiement et n'est pas connaissable a l'ecriture de cette
+    -- migration. Une premiere version l'omettait et refusait donc une base
+    -- correcte, en nommant un role de harnais comme s'il etait intrus.
+    --
+    -- La source est celle que le produit utilise deja pour cette question:
+    -- `eurostruct.approved_deployment_roles`, declaree sur la base. Elle dit
+    -- qui a le droit de deployer; qui deploie execute les assertions.
+    -- PUBLIC, lui, n'y figure jamais — c'est ce que ce controle protege.
+    if not (r.porteurs <@ (array['eurostruct_normative_writer',
+                                 'eurostruct_normative_bootstrap',
+                                 'eurostruct_normative_activator',
+                                 'normative_governance',
+                                 'eurostruct_deployment']
+                           || (select coalesce(array_agg(btrim(x)), array[]::text[])
+                                 from unnest(string_to_array(btrim(coalesce(
+                                        normative_effective_setting(
+                                          'eurostruct.approved_deployment_roles'),
+                                        '')), ',')) x
+                                where btrim(x) <> ''))) then
+      ecarts := ecarts || format(
+        'AUTHORITY_COMPOSITION_ASSERTION_ACL_WIDENED: %s est executable par '
+        '{%s}; seuls les roles d''autorite, la gouvernance, le deploiement et '
+        'les roles declares dans eurostruct.approved_deployment_roles sont '
+        'admis', r.proname, array_to_string(r.porteurs, ','));
+    end if;
+    -- PUBLIC EST REFUSE SEPAREMENT, et sans exception possible: une assertion
+    -- lisible par tous expose la topologie d'autorite a qui la lit.
+    if r.porteurs_publics then
+      ecarts := ecarts || format(
+        'AUTHORITY_COMPOSITION_ASSERTION_PUBLIC: %s est executable par PUBLIC',
+        r.proname);
+    end if;
+  end loop;
+
+  if array_length(ecarts, 1) > 0 then
+    raise exception
+      'AUTHORITY_COMPOSITION_FAILED: la surface d''autorite COMPOSEE n''est '
+      'pas celle qu''aucune migration prise isolement ne pouvait garantir — %',
+      array_to_string(ecarts, E'\n  - ')
+      using errcode = 'insufficient_privilege';
+  end if;
+end;
+$$;
+
+alter function assert_authority_composition()
+  owner to eurostruct_normative_writer;
+revoke all on function assert_authority_composition() from public;
+grant execute on function assert_authority_composition()
+  to eurostruct_normative_writer, eurostruct_deployment;
+
+comment on function assert_authority_composition is
+  'Assertion AGREGEE de la surface d''autorite, posee apres 0014. Les '
+  'postconditions locales defendent chacune sa migration et ne peuvent pas '
+  'voir l''etat final; celle-ci defend leur composition. Balaye les fonctions '
+  'plutot que de les lister: une fonction ajoutee demain est couverte.';
+
+
 revoke create on schema public
   from eurostruct_normative_writer, eurostruct_normative_bootstrap;
+
+-- LES DEUX POSTCONDITIONS, APPELEES PAR LA MIGRATION. Apres tous les
+-- changements de catalogue, avant l'inscription au registre: une migration
+-- refusee ne doit laisser aucune ligne disant qu'elle a ete appliquee.
+select assert_0014_decisions_surface();
+select assert_authority_composition();
 
 -- L'INSCRIPTION AU REGISTRE, DANS LA MEME TRANSACTION QUE CE QUI PRECEDE.
 -- Les deux variables sont posees par `db/apply_migration.sh`, seul chemin
