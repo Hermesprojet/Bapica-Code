@@ -72,6 +72,8 @@ verdicts_declarer \
   execute-direct insert update delete \
   appartenances set-role bypassrls proprietaire-rls force-rls \
   controle-de-derive \
+  manifeste-egale-realite manifeste-derive-proprietaire \
+  manifeste-non-declaree manifeste-public-vs-temoin \
   auto-enrolement-guc auto-enrolement-role migrateur-non-membre \
   appartenance-declaree policy-suit-privilege surface-du-backend
 
@@ -534,6 +536,108 @@ if grep -qiE 'ERROR|ERREUR' <<<"$R"; then
   fi
 else
   sur controle-de-derive "le controle de derive accepte la base telle que deployee."
+fi
+
+# --------------------------------------------------------------------------
+# LE MANIFESTE — quatre controles, dont trois par FALSIFICATION
+# --------------------------------------------------------------------------
+# CE QUE `assert_authority_manifest()` APPORTE que l'agregee n'a pas.
+# `assert_authority_composition()` balaie `pg_proc` EN FILTRANT PAR LE
+# PROPRIETAIRE ATTENDU: une fonction dont le proprietaire derive SORT du
+# balayage, et l'assertion devient aveugle a la derive qu'elle existe pour
+# detecter. Le manifeste decouvre par un critere orthogonal — le vocabulaire —
+# et compare les deux ensembles dans les DEUX SENS.
+#
+# Les trois falsifications ci-dessous sont posees puis DEFAITES sur la base du
+# decor. Elles ne prouvent rien sur le produit livre; elles prouvent que le
+# controle qui, lui, porte sur le produit, sait rougir.
+echo "      -- manifeste-egale-realite: le manifeste decrit-il la base deployee ?"
+R="$(ctl -tAc "select assert_authority_manifest()" 2>&1)"
+if grep -qiE 'ERROR|ERREUR' <<<"$R"; then
+  if grep -qi 'does not exist' <<<"$R"; then
+    troue manifeste-egale-realite "la fonction n'existe pas: le controle n'est pas pose."
+  else
+    rouge manifeste-egale-realite "MF1. le manifeste ne decrit PAS la base deployee:"
+    grep -m4 -oiE 'AUTHORITY_MANIFEST_[A-Z_]+[^|]{0,110}' <<<"$R" \
+      | sed 's/^/                  /'
+  fi
+else
+  sur manifeste-egale-realite "manifeste == realite sur la base telle que deployee."
+fi
+
+echo "      -- manifeste-derive-proprietaire: une derive de proprietaire est-elle VUE ?"
+# C'EST LE CAS QUE L'AGREGEE NE PEUT PAS VOIR. En changeant le proprietaire, la
+# fonction sort du balayage de `assert_authority_composition()` — qui filtre
+# justement par proprietaire attendu — et son silence ne veut plus rien dire.
+# LA DERIVE EST POSEE PAR LE SUPERUTILISATEUR SUR LA BASE DU DECOR, et c'est
+# la seule facon honnete. Mesure: le plan de controle ne PEUT PAS changer le
+# proprietaire d'une fonction qu'il ne possede pas — c'est le confinement qui
+# marche — et le controle se rendait NON_PARCOURU, un trou, pas un vert.
+# Le superutilisateur est hors modele de menace: on ne lui demande pas de
+# prouver une capacite, on l'utilise pour FABRIQUER l'etat derive.
+if ! admb -q -c "alter function normative_decision_approve(uuid)
+                  owner to eurostruct_normative_activator" >/dev/null 2>&1; then
+  troue manifeste-derive-proprietaire "la derive n'a pas pu etre posee."
+else
+  R="$(ctl -tAc "select assert_authority_manifest()" 2>&1)"
+  A="$(ctl -tAc "select assert_authority_composition()" 2>&1)"
+  admb -q -c "alter function normative_decision_approve(uuid)
+               owner to eurostruct_normative_writer" >/dev/null 2>&1
+  if grep -q 'AUTHORITY_MANIFEST_OWNER' <<<"$R"; then
+    if grep -qiE 'ERROR|ERREUR' <<<"$A"; then
+      sur manifeste-derive-proprietaire \
+        "la derive de proprietaire est vue par le manifeste ET par l'agregee."
+    else
+      sur manifeste-derive-proprietaire \
+        "la derive de proprietaire est vue par le manifeste; l'agregee ne la"
+      detail "voit pas — c'est exactement l'angle mort que le manifeste ferme."
+    fi
+  else
+    rouge manifeste-derive-proprietaire \
+      "MF2. une derive de proprietaire n'est vue par AUCUNE des deux assertions."
+  fi
+fi
+
+echo "      -- manifeste-non-declaree: une fonction ajoutee au perimetre est-elle VUE ?"
+if ! admb -q -c "create function normative_intruse_du_harnais() returns int
+                  language sql as 'select 1'" >/dev/null 2>&1; then
+  troue manifeste-non-declaree "l'intruse n'a pas pu etre creee."
+else
+  R="$(ctl -tAc "select assert_authority_manifest()" 2>&1)"
+  admb -q -c "drop function if exists normative_intruse_du_harnais()" >/dev/null 2>&1
+  if grep -q 'AUTHORITY_MANIFEST_UNDECLARED' <<<"$R"; then
+    sur manifeste-non-declaree \
+      "une fonction du perimetre non declaree au manifeste est signalee."
+  else
+    rouge manifeste-non-declaree \
+      "MF3. une fonction ajoutee au perimetre passe inapercue: le sens"
+    detail "realite -> manifeste ne porte rien."
+  fi
+fi
+
+echo "      -- manifeste-public-vs-temoin: PUBLIC est-il lu par l'ACL, pas par un temoin ?"
+# LA DIRECTION DU FAUX POSITIF. Mesure sur PG16: un role ORDINAIRE peut detenir
+# EXECUTE sur une fonction ou PUBLIC ne l'a PAS. Prendre un role temoin pour
+# temoigner de PUBLIC rapporterait donc une ouverture qui n'existe pas.
+if ! admb -q -c "grant execute on function normative_decision_approve(uuid)
+                  to normative_backend" >/dev/null 2>&1; then
+  troue manifeste-public-vs-temoin "l'octroi au temoin n'a pas pu etre pose."
+else
+  R="$(ctl -tAc "select assert_authority_manifest()" 2>&1)"
+  admb -q -c "revoke execute on function normative_decision_approve(uuid)
+               from normative_backend" >/dev/null 2>&1
+  if grep -q 'AUTHORITY_MANIFEST_PUBLIC_EXECUTE' <<<"$R"; then
+    rouge manifeste-public-vs-temoin \
+      "MF4. un role ORDINAIRE est rapporte comme PUBLIC: la semantique ACL"
+    detail "grantee public n'est pas celle qui est lue."
+  elif grep -q 'AUTHORITY_MANIFEST_ACL_WIDER' <<<"$R"; then
+    sur manifeste-public-vs-temoin \
+      "un role ordinaire est rapporte ACL_WIDER, jamais PUBLIC."
+  else
+    rouge manifeste-public-vs-temoin \
+      "MF4. un octroi a un role ordinaire n'est vu ni comme elargissement ni"
+    detail "autrement: le controle ne porte rien."
+  fi
 fi
 
 # ==========================================================================

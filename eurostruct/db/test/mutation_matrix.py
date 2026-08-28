@@ -65,6 +65,7 @@ S = "db/control_plane/0001_normative_seal.sql"
 R = "db/test/run.sh"
 H = "db/test/authority_closure.sh"
 LIB = "db/test/lib_harnais.sh"
+A15 = "db/migrations/0015_authority_manifest.sql"
 CMD = "tools/deploy_eurostruct.sh"
 # LES TROIS CIBLES DE 6.3b6e. Le registre vit dans la premiere migration,
 # l'applicateur au-dessus d'elle, et `0002` sert de temoin au controle statique
@@ -1834,8 +1835,59 @@ CAS_DECLENCHEURS_0014 = [
      False),
 ]
 
+# --------------------------------------------------------------------------
+# LE MANIFESTE (L3) — quatre garanties, quatre mutations
+# --------------------------------------------------------------------------
+# CE QUI EST EN JEU. `assert_authority_composition()` balaie `pg_proc` EN
+# FILTRANT PAR LE PROPRIETAIRE ATTENDU: une fonction dont le proprietaire
+# derive SORT du balayage, et l'assertion devient aveugle a la derive qu'elle
+# existe pour detecter. Mesure du 28/08 sur base jetable, en changeant le
+# proprietaire de `normative_decision_approve(uuid)`: le manifeste le voit,
+# l'agregee ne le voit pas.
+#
+# Chaque mutation retire UNE des quatre proprietes du manifeste.
+CAS_MANIFESTE = [
+    # MF3 — le sens realite -> manifeste. Sans lui, une fonction ajoutee au
+    # perimetre sans etre declaree passe inapercue: le manifeste ne parle plus
+    # que de ce qu'il connait deja.
+    ("MF3 le sens realite -> manifeste disparait", "MF3", A15,
+     [("""    if r.non_declaree then""",
+       """    if false then""")], False),
+    # MF2 — la decouverte se remet a filtrer par le proprietaire ATTENDU.
+    # C'est le defaut d'origine, reintroduit tel quel.
+    ("MF2 la decouverte filtre par le proprietaire attendu", "MF2", A15,
+     [("""        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public'
+         and (p.proname like 'normative\\_%' or p.proname like 'assert\\_%'""",
+       """        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public'
+         and pg_get_userbyid(p.proowner) in ('eurostruct_normative_writer',
+                                             'eurostruct_normative_bootstrap',
+                                             'eurostruct_normative_activator')
+         and (p.proname like 'normative\\_%' or p.proname like 'assert\\_%'""")], False),
+    # MF4 — PUBLIC lu par un role temoin au lieu du grantee 0. Mesure sur
+    # PG16: un role ordinaire peut detenir EXECUTE la ou PUBLIC ne l'a pas;
+    # le temoin rapporte alors une ouverture qui n'existe pas.
+    ("MF4 PUBLIC est lu par un role temoin", "MF4", A15,
+     [("""             exists (select 1
+                       from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                      where a.grantee = 0 and a.privilege_type = 'EXECUTE')
+               as public_acl,""",
+       """             has_function_privilege('normative_backend', p.oid, 'EXECUTE')
+               as public_acl,""")], False),
+    # MF1 — l'assertion ne leve plus. Le manifeste devient un document.
+    ("MF1 l'assertion ne refuse plus", "MF1", A15,
+     [("""  if array_length(ecarts, 1) > 0 then
+    raise exception""",
+       """  if false then
+    raise exception""")], False),
+]
+
+
 LOTS = [
     (CAS, {}),
+    (CAS_MANIFESTE,
+     dict(harnais="db/test/authority_sql_hardening.sh", prefixe="mf")),
     (CAS_AUTORITE, dict(harnais="db/test/authority_closure.sh", prefixe="mv")),
     (CAS_SCEAU, dict(harnais="db/test/seal_contract.sh", prefixe="ms")),
     (CAS_RESTAURATION,
