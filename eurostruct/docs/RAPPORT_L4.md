@@ -18,18 +18,18 @@ tout seul.
 6.3c n'est ni `CLOSED`, ni `DEPLOYABLE`, ni `PRODUCTION_READY`. `3d0acc2`
 n'est pas un candidat final.
 
-## Validation ordonnée — `1eb57ab`
+## Validation ordonnée — `5140436`
 
     30 surfaces, 0 rouge, 0 non exécutée
     « Toutes les surfaces de db/test sont vertes. »
 
-Lancée en capturant le PID exact (28885), attendue sur ce PID — jamais par
-`pgrep -f`, qui reconnaît sa propre ligne de commande.
+Lancée en capturant le PID exact (14139), attendue sur ce PID — jamais par
+`pgrep -f`, qui reconnaît sa propre ligne de commande. Durée mesurée :
+~18,5 min.
 
-Elle a été **relancée** sur `1eb57ab` après l'ajout du contrôle 19.9. Une
-première exécution verte portait sur `96df869` ; s'en prévaloir pour un arbre
-modifié depuis aurait été rattacher une preuve à un état qui n'existe plus.
-Durée mesurée : ~18,5 min.
+Elle a été **relancée trois fois**, sur `96df869`, `1eb57ab` puis `5140436`.
+Se prévaloir d'une exécution verte pour un arbre modifié depuis serait
+rattacher une preuve à un état qui n'existe plus.
 
 **Ce que cette exécution ne dit pas** : elle établit que les trente surfaces
 passent, pas que les garanties qu'elles portent sont irremplaçables. Seule la
@@ -63,8 +63,9 @@ plutôt que lancée et laissée inachevée.
 | `04e89a1` | la matrice de séparation mesurée : cinq couches, pas trois |
 | `96df869` | le scanner voit les deux défauts de composition SQL |
 | `1eb57ab` | 19.9 — le scanner doit voir sa propre cécité |
+| `5140436` | les 31 recollages clos, par doublement des apostrophes |
 
-## Les deux résultats qui comptent
+## Les trois résultats qui comptent
 
 ### La séparation tient par cinq couches, et j'en annonçais trois
 
@@ -83,42 +84,39 @@ correspondant n'existe donc pas. Travail ouvert, pas résultat.
 Détail dans `MATRICE_SEPARATION.md`, avec les trois défauts de banc qui ont
 chacun produit un diagnostic sans rapport avec la cause.
 
-### J'ai généralisé une mesure faite sur un heredoc à `-c`
+### Les 31 recollages sont clos — mais pas par la route évidente
 
-Trente et un sites lisent une valeur **dans la base** — avec `2>&1`, donc en
-cas d'échec la variable porte un message d'erreur français plein
-d'apostrophes — et la recollent dans un littéral SQL. La valeur casse alors
-l'instruction, et le harnais lit une erreur de syntaxe **comme s'il lisait un
-refus**.
+Trente et un sites lisaient le manifeste **dans la base** — avec `2>&1`, donc
+en cas d'échec la variable portait un message d'erreur français plein
+d'apostrophes — et le recollaient dans un littéral SQL. La valeur cassait
+l'instruction, et le harnais lisait une **erreur de syntaxe** comme s'il
+lisait un **refus**.
 
-J'ai converti les trente-deux sites en variables psql, ayant mesuré `:'m'`
-dans un **heredoc**. `run.sh` est devenu rouge sur trois surfaces. La mesure
-que j'aurais dû faire d'abord :
+J'ai d'abord converti vers la variable psql, ayant mesuré `:'m'` dans un
+**heredoc**. `run.sh` est devenu rouge sur trois surfaces. La mesure que
+j'aurais dû faire d'abord :
 
     psql -tA -v v="abc'def" -c    "select :'v'"   -> ERROR: syntax error at ":"
     psql -tA -v v="abc'def"     <<<"select :'v'"  -> abc'def
 
-**psql n'interpole pas ses variables dans une chaîne `-c`.** Vingt-sept des
-trente-deux sites sont des `-c`. Et le passage à l'entrée standard change la
-sémantique d'échec :
+**psql n'interpole pas ses variables dans une chaîne `-c`**, et vingt-sept des
+trente et un sites en sont. Y passer imposerait l'entrée standard, donc
+`ON_ERROR_STOP` — sans lui une erreur SQL rend **zéro**, et des contrôles qui
+doivent rougir seraient devenus verts — et ferait passer le code de sortie de
+1 à 3 sur quinze harnais.
 
-    psql -tAc "select 1/0"                       -> rc=1
-    psql -tA       <<<"select 1/0"               -> rc=0   (!)
-    psql -tA -v ON_ERROR_STOP=1 <<<"select 1/0"  -> rc=3
+La route retenue est le **doublement des apostrophes** (`esc_litteral`), qui
+ne change *rien* à l'invocation : même drapeau, même code de sortie, même
+capture. Elle est complète parce que `standard_conforming_strings` vaut `on`
+— lu, non supposé. Aller-retour mesuré sur une valeur portant apostrophe,
+barre oblique inverse et guillemets français : identique octet pour octet.
 
-Sans `ON_ERROR_STOP`, la conversion aurait rendu **verts des contrôles qui
-doivent être rouges**. Vingt-sept sites, quinze harnais, aucune exécution
-disponible pour valider ce changement : la conversion est **reprise**, pas
-faite à moitié. Le défaut reste nommé, compté à 31, sous un cliquet qui ne
-peut que baisser.
+Les quatre sites en heredoc ou en `-f` composent le littéral **avant** le
+corps, dans une variable : y écrire `$(esc_litteral …)` aurait fermé le
+défaut 2 en ouvrant le défaut 1.
 
-Ce qui reste et qui vaut : le scanner voit les deux défauts sur tous les
-véhicules et non les seuls heredocs ; il accepte un chemin de fichier ; il
-refuse de conclure sur zéro fichier ; onze selftests l'éprouvent sur des cas
-**fabriqués** — dont le cas 10, qui *mesure* qu'une forme échappée arrive
-littérale à l'écriture et s'évalue chez la couche cible (c'était le trou
-connu), et le cas 8, qui fixe la seule forme de correction qui marche pour
-qu'aucune relecture ne reprenne la mienne.
+Le plafond passe à zéro. Le cliquet a d'ailleurs fonctionné **sur lui-même** :
+il a refusé le plafond périmé de 31 en nommant la valeur à inscrire.
 
 ### Le scanner est lui-même falsifiable, et c'est mesuré
 
@@ -174,8 +172,6 @@ tout à zéro. C'est le prochain pas, nommé, pas un acquis.
 * la campagne complète des 104 contrôles — `FULL_MUTATION_PENDING` ;
 * inscrire S1–S5 au registre de mutations, ce qui suppose de donner au
   contrôle 19.9 un point attribuable par le canal plutôt que par la prose ;
-* la conversion des 31 recollages, qui exige de valider un changement de
-  sémantique d'échec harnais par harnais ;
 * le contre-exemple complet de la séparation : neutraliser les **cinq**
   couches, et le test permanent qui en découle ;
 * l'intégration du provider : aucun consommateur produit — `BLOCKED_BY_REAL_AUTH` ;
