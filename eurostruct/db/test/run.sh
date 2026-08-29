@@ -645,7 +645,7 @@ SQL
     echo "ECHEC: $b ne se termine pas en PENDING (obtenu: $etat)" >&2; return 1
   fi
   manif=$(plan_db "$b" -tAc 'select normative_settings_manifest()' 2>&1)
-  out=$(plan_db "$b" -v esc_v="$manif" -tAc "select normative_finalize_deployment(:'esc_v')" 2>&1)
+  out=$(plan_db "$b" -tAc "select normative_finalize_deployment('$manif')" 2>&1)
   etat=$(plan_db "$b" -tAc 'select normative_activation_state()' 2>&1)
   if [[ "$etat" != "ACTIVE" ]]; then
     echo "ECHEC: phase 2 refusee sur $b (etat $etat):" >&2

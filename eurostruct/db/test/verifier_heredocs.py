@@ -47,21 +47,49 @@ la valeur lui-meme. Mesure : psql N'INTERPOLE PAS ``:nom`` dans un litteral
 simple deja ecrit (``select 'avant :nom apres'`` rend ``avant :nom apres``),
 donc la conversion ne peut pas deranger les corps existants.
 
-CE QUI A ETE CONVERTI, ET LE CLIQUET QUI RESTE
------------------------------------------------
-Trente-deux sites preexistaient, dans quinze harnais. Tous sont convertis :
-la valeur passe desormais par ``-v esc_v="$VAR"`` et le SQL porte
-``:'esc_v'``. Le plafond vaut donc ZERO, et il est conserve comme cliquet :
+POURQUOI LA CONVERSION N'EST PAS MECANIQUE — ET N'A PAS ETE FAITE
+------------------------------------------------------------------
+J'ai converti les trente-deux sites, puis j'ai tout repris. La raison est une
+mesure que j'aurais du faire AVANT, et le defaut de raisonnement est exactement
+celui que ce fichier denonce : j'avais prouve ``:'m'`` avec un HEREDOC, puis
+generalise a ``-c``, que je n'avais jamais eprouve.
 
-  * un site de plus  -> rouge (la dette reapparait) ;
-  * un plafond non nul alors que le compte a baisse -> rouge aussi, avec la
-    valeur a inscrire (un plafond perime ne mesure plus rien).
+Mesure du 29/08, PostgreSQL 16.13 :
 
-Le compte tel que le scanner le voit vaut 31, non 32 : ``$mb``, dans la course
-D2 de ``authority_closure.sh``, est un PARAMETRE de fonction, pas une variable
-affectee depuis la base. Il a ete converti avec les autres — la valeur qu'il
-porte vient de la base par ``$ma`` — mais le scanner ne pouvait pas le
-designer. Ce que le scanner ne voit pas est ecrit ici plutot que suppose.
+    psql -tA -v v="abc'def" -c "select :'v'"   -> ERROR: syntax error at ":"
+    psql -tA -v v="abc'def"    <<<"select :'v'" -> abc'def
+
+**psql n'interpole pas ses variables dans une chaine ``-c``.** Seules
+l'entree standard et ``-f`` passent par l'analyseur qui les substitue. Vingt-
+sept des trente-deux sites sont des ``-c`` : la conversion les a tous casses,
+et `run.sh` l'a montre en trois surfaces rouges.
+
+Passer ces sites a l'entree standard change leur semantique, et la mesure le
+dit :
+
+    psql -tAc "select 1/0"                        -> rc=1
+    psql -tA        <<<"select 1/0"               -> rc=0   (!)
+    psql -tA -v ON_ERROR_STOP=1 <<<"select 1/0"   -> rc=3
+
+Sans ``ON_ERROR_STOP``, une erreur SQL rend ZERO : la conversion aurait rendu
+VERTS des controles qui doivent etre rouges. Avec, le code passe de 1 a 3.
+C'est un changement de semantique sur vingt-sept sites, dans quinze harnais,
+qu'aucune execution disponible dans ce lot ne pouvait valider. Il n'est pas
+fait ici.
+
+LE CLIQUET
+-----------
+Le plafond vaut donc le compte MESURE, 31, et il ne peut que baisser :
+
+  * un site de plus  -> rouge (la dette augmente) ;
+  * un site de moins -> rouge aussi, avec la valeur a inscrire (un plafond
+    perime ne mesure plus rien).
+
+Ce n'est pas une exemption : le defaut reste nomme, compte, et sa reduction
+verifiee. Le compte vaut 31 et non 32 parce que ``$mb``, dans la course D2 de
+``authority_closure.sh``, est un PARAMETRE de fonction et non une variable
+affectee depuis la base — la valeur qu'il porte vient pourtant bien de la base,
+par ``$ma``. Ce que le scanner ne voit pas est ecrit ici plutot que suppose.
 
 Rend 0 si rien n'est trouve, 1 sinon, 2 s'il n'a rien regarde.
 """
@@ -80,8 +108,8 @@ LUES_DANS_LA_BASE = (
     "normative_authority_manifest",
 )
 
-#: Dette payee le 29/08 sur `db/test`. NE PEUT QUE BAISSER.
-PLAFOND_RECOLLAGE = 0
+#: Dette MESUREE le 29/08 sur `db/test`. NE PEUT QUE BAISSER.
+PLAFOND_RECOLLAGE = 31
 
 
 def _corps_heredocs(lignes: list[str]):
@@ -187,22 +215,45 @@ def main(argv: list[str]) -> int:
             sites.append((f.name, ligne, nom))
 
     n = len(sites)
-    if n > PLAFOND_RECOLLAGE:
-        print(f"REFUS: {n} recollage(s) d'une valeur lue dans la base dans un "
-              f"litteral SQL, plafond {PLAFOND_RECOLLAGE}. Les nouveaux sites "
-              f"doivent passer par une variable psql (-v m=\"$V\" puis :'m').",
-              file=sys.stderr)
+
+    def lister() -> None:
+        """Les sites ne sont listes QUE si le verdict est rouge: trente et une
+        lignes a chaque execution verte seraient du bruit, et le bruit finit
+        par etre saute."""
         for nom, ligne, v in sites:
             print(f"    {nom}:{ligne}  ${v}", file=sys.stderr)
-    elif n < PLAFOND_RECOLLAGE:
-        print(f"REFUS: {n} recollage(s) alors que le plafond en annonce "
-              f"{PLAFOND_RECOLLAGE}. Un plafond perime ne mesure plus rien : "
-              f"inscrire PLAFOND_RECOLLAGE = {n}.", file=sys.stderr)
 
-    if total_h == 0 and n == PLAFOND_RECOLLAGE:
+    # LE PLAFOND EST UN INVARIANT DE CORPUS, PAS DE FICHIER.
+    #
+    # Applique par fichier, il rendait ROUGE tout cas fabrique — zero
+    # recollage y est LU comme « plafond perime ». Les selftests l'ont montre
+    # aussitot: quatre cas conformes declares en faute. Un fichier nomme se
+    # juge donc sur ce qu'il contient (aucun recollage), un repertoire sur
+    # l'ecart au plafond.
+    corpus = all(r.is_dir() for r in racines)
+    if corpus:
+        if n > PLAFOND_RECOLLAGE:
+            print(f"REFUS: {n} recollage(s), plafond {PLAFOND_RECOLLAGE}. Un "
+                  f"nouveau site doit passer par l'entree standard et une "
+                  f"variable psql — JAMAIS par -c, qui n'interpole pas.",
+                  file=sys.stderr)
+            lister()
+        elif n < PLAFOND_RECOLLAGE:
+            print(f"REFUS: {n} recollage(s) alors que le plafond en annonce "
+                  f"{PLAFOND_RECOLLAGE}. Un plafond perime ne mesure plus "
+                  f"rien : inscrire PLAFOND_RECOLLAGE = {n}.", file=sys.stderr)
+            lister()
+        conforme = n == PLAFOND_RECOLLAGE
+        resume = f"{n} recollage(s) connu(s) au plafond"
+    else:
+        conforme = n == 0
+        resume = f"{n} recollage(s)"
+        if not conforme:
+            lister()
+
+    if total_h == 0 and conforme:
         print(f"composition du SQL: {len(fichiers)} fichier(s), aucune "
-              f"substitution en heredoc non quote, {n} recollage(s) connu(s) "
-              f"au plafond.")
+              f"substitution en heredoc non quote, {resume}.")
         return 0
     return 1
 

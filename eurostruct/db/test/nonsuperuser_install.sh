@@ -470,7 +470,7 @@ echo "      ok: phase 1 terminee, etat PENDING"
 
 PLAN_DB=(env PGUSER="$PLAN" PGPASSWORD="$MDP" psql -X -q -d "$DB")
 MANIF=$("${PLAN_DB[@]}" -tAc 'select normative_settings_manifest()' 2>&1)
-FIN=$("${PLAN_DB[@]}" -v esc_v="$MANIF" -tAc "select normative_finalize_deployment(:'esc_v')" 2>&1)
+FIN=$("${PLAN_DB[@]}" -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
 ETAT=$("${PLAN_DB[@]}" -tAc 'select normative_activation_state()' 2>&1)
 if [[ "$ETAT" != "ACTIVE" ]]; then
   echoue "la finalisation par « $PLAN » a echoue (etat $ETAT):"

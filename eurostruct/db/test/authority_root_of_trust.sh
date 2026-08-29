@@ -218,7 +218,7 @@ SQL
   # PHASE 2 — la finalisation, par le plan de controle.
   local m etat
   m=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-  sortie=$(ctl -v esc_v="$m" -tAc "select normative_finalize_deployment(:'esc_v')" 2>&1)
+  sortie=$(ctl -tAc "select normative_finalize_deployment('$m')" 2>&1)
   etat=$(ctl -tAc "select normative_activation_state()" 2>&1)
   if [[ "$etat" != "ACTIVE" ]]; then
     echoue "decor: la finalisation n'aboutit pas a ACTIVE (obtenu: $etat)"

@@ -56,10 +56,16 @@ CAS: list[tuple[str, str, bool]] = [
      'M=$(ctl -tAc "select normative_settings_manifest()" 2>&1)\n'
      'S=$(ctl -tAc "select normative_finalize_deployment(\'$M\')" 2>&1)\n', True),
 
-    ("8. le meme site, converti en variable psql",
+    # LA FORME SURE PASSE PAR L'ENTREE STANDARD, JAMAIS PAR `-c`.
+    # Mesure du 29/08: `psql -c "select :'v'"` rend une erreur de syntaxe —
+    # psql n'interpole pas ses variables dans une chaine `-c`. Et sans
+    # ON_ERROR_STOP, l'entree standard rend ZERO sur une erreur SQL. Ce cas
+    # fixe donc la seule forme qui marche, pour qu'aucune relecture ne prenne
+    # `-c` + `:'v'` pour la correction.
+    ("8. le meme site, en entree standard avec ON_ERROR_STOP",
      'M=$(ctl -tAc "select normative_settings_manifest()" 2>&1)\n'
-     'S=$(ctl -v esc_v="$M" -tAc '
-     '"select normative_finalize_deployment(:\'esc_v\')" 2>&1)\n', False),
+     'S=$(ctl -v ON_ERROR_STOP=1 -v esc_v="$M" -tA '
+     '<<<"select normative_finalize_deployment(:\'esc_v\')" 2>&1)\n', False),
 
     ("9. recollage dans un HEREDOC (meme defaut, autre vehicule)",
      'M=$(ctl -tAc "select normative_settings_manifest()" 2>&1)\n'

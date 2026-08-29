@@ -417,7 +417,7 @@ else
   mig postgres -q -c "grant $DEPLOIEMENT to \"$MIGRATEUR\" with inherit true;" \
     >/dev/null 2>&1
   MANIF=$(mig "$BASE_A" -q -tAc 'select normative_settings_manifest()' 2>&1)
-  FIN=$(mig "$BASE_A" -v esc_v="$MANIF" -q -tAc "select normative_finalize_deployment(:'esc_v')" 2>&1)
+  FIN=$(mig "$BASE_A" -q -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
   APRES=$(admin_db "$BASE_A" -tAc 'select normative_activation_state()' 2>&1)
   if [[ "$ETAT" != "PENDING" ]]; then
     echoue "A: la phase 1 ne se termine pas en PENDING (obtenu: $ETAT)."
@@ -455,7 +455,7 @@ if appliquer "$BASE_B" admin_db "$MIGRATEUR,$PROPRIETAIRE"; then
     # PHASE 2, exercee par le DONNEUR — ici le superutilisateur qui a
     # provisionne. Il presente le MANIFESTE des declarations qu'il a revues.
     MANIF=$(admin_db "$BASE_B" -tAc 'select normative_settings_manifest()' 2>&1)
-    FIN=$(admin_db "$BASE_B" -v esc_v="$MANIF" -tAc "select normative_finalize_deployment(:'esc_v')" 2>&1)
+    FIN=$(admin_db "$BASE_B" -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
     ETAT=$(admin_db "$BASE_B" -tAc 'select normative_activation_state()' 2>&1)
     CAP=$(adm -tAc "
       select count(*) from pg_roles a
@@ -476,7 +476,7 @@ if appliquer "$BASE_B" admin_db "$MIGRATEUR,$PROPRIETAIRE"; then
       echoue "B activee mais topologie refusee: $(head -1 <<<"$TOPO")"
     else
       # IDEMPOTENCE: une seconde finalisation constate, elle ne reecrit pas.
-      FIN2=$(admin_db "$BASE_B" -v esc_v="$MANIF" -tAc "select normative_finalize_deployment(:'esc_v')" 2>&1)
+      FIN2=$(admin_db "$BASE_B" -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
       if grep -q 'deja finalise' <<<"$FIN2"; then
         echo "      ok: B PENDING -> ACTIVE par le donneur, migrateur sans capacite,"
         echo "             seconde finalisation idempotente"
@@ -530,7 +530,7 @@ if appliquer "$BASE_C" plan "$MIGRATEUR,$PLAN"; then
     # PHASE 2 PAR LE PLAN DE CONTROLE, qui est le donneur (F3) — et le seul a
     # pouvoir revoquer. Il presente le manifeste des declarations revues.
     MANIF=$(plan "$BASE_C" -q -tAc 'select normative_settings_manifest()' 2>&1)
-    FIN=$(plan "$BASE_C" -v esc_v="$MANIF" -q -tAc "select normative_finalize_deployment(:'esc_v')" 2>&1)
+    FIN=$(plan "$BASE_C" -q -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
     ETAT=$(plan "$BASE_C" -q -tAc 'select normative_activation_state()' 2>&1)
     FIGE=$(plan "$BASE_C" -q -tAc 'select normative_control_plane()' 2>&1)
     FIGE_OID=$(plan "$BASE_C" -q -tAc 'select normative_control_plane_oid()' 2>&1)
