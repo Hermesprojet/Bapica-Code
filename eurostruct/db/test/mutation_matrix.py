@@ -929,6 +929,38 @@ def _tracer(nom, fichier):
         time.sleep(pause)
 
 
+def _diagnostiquer_survivant(sortie, point_attendu):
+    """Un survivant dont le harnais a ROUGI est presque toujours une faute
+    d'attribution, pas une garantie perdue.
+
+    NE CHANGE AUCUN VERDICT. Le survivant reste SURVIVED — un reclassement
+    par commentaire est precisement ce qu'on s'interdit. Ceci NOMME seulement
+    les points qui ont rougi, pour que le diagnostic causal parte d'un fait
+    au lieu d'une relecture a la main.
+
+    Mesure du 29/08: `2b` a survecu sur `a24e514` alors que le harnais avait
+    imprime « ROUGE ATTENDU (a fermer): 2b. ». Le registre attendait le point
+    « 2 ». Sept des onze survivants de `3d0acc2` etaient de la meme famille.
+    """
+    vus = []
+    for ligne in sortie.splitlines():
+        for forme in canal_lecture._FORMES:
+            m = forme.match(ligne)
+            if m and m.group("point") not in vus:
+                vus.append(m.group("point"))
+    if not vus:
+        print(f"        DIAGNOSTIC: aucun point n'a rougi — la garantie "
+              f"semble reellement perdue.")
+        return
+    autres = [v for v in vus if v != point_attendu]
+    print(f"        DIAGNOSTIC: le harnais a rougi sur {vus}, on attendait "
+          f"« {point_attendu} ».")
+    if autres:
+        print(f"        Un point rouge NON attendu suggere une faute "
+              f"d'ATTRIBUTION, pas une garantie perdue. A verifier, pas a "
+              f"reclasser.")
+
+
 def essayer(nom, point, fichier, paires, redondant=False,
             harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     """Rend UN statut terminal. Jamais deux, jamais aucun."""
@@ -1063,6 +1095,7 @@ def essayer(nom, point, fichier, paires, redondant=False,
         marque, valeur = etiquettes[statut]
         print(f"  {marque} {nom}\n        -> {motif} (code {code})")
         if valeur is SURVIVED:
+            _diagnostiquer_survivant(sortie, point)
             for ligne in sortie.splitlines():
                 if re.match(r"^ *(ok|ROUGE|ECHEC)", ligne):
                     print("        " + ligne.strip()[:140])
@@ -1178,7 +1211,20 @@ CAS = [
      [("  if courant is distinct from p_manifeste then", "  if false then")], False),
     ("2  un seul des trois refus d'ecriture directe", "2", S,
      [MUT_INTENT], True),
-    ("2b LES TROIS refus d'ecriture directe", "2", S,
+    # LE POINT ATTENDU EST « 2b », PAS « 2 », ET LA CONFUSION A COUTE UN
+    # SURVIVANT. La campagne du 29/08 sur `a24e514` a rendu `2b` SURVIVED
+    # alors que le harnais avait bel et bien rougi:
+    #
+    #   ROUGE ATTENDU (a fermer): 2b. l'appel direct sans preparation n'est
+    #       pas refuse pour ce motif:
+    #       ERROR: null value in column "role_oid" ... not-null constraint
+    #
+    # Les trois gardes retirees, l'ecriture reste refusee — mais par une
+    # contrainte NOT NULL incidente, pas par la garde visee. Le harnais le
+    # dit; le registre cherchait le point « 2 » quand le harnais etiquette
+    # « 2b ». Verifie: ce rouge est ABSENT de la validation ordonnee verte,
+    # il ne parle donc que sous mutation.
+    ("2b LES TROIS refus d'ecriture directe", "2b", S,
      [MUT_INTENT, MUT_TXID, MUT_VERROU_RECORD], False),
     ("3  un seul des deux controles d'identite du plan", "3", S,
      [MUT_EXEMPTION], True),
