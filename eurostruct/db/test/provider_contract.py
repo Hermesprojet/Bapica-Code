@@ -193,12 +193,21 @@ def proprietes_factory() -> None:
                  fabrique_de_connexion=lambda: ConnexionMuette(),
                  authentificateur=None))
 
-    # D3. AUTHENTIFICATEUR FICTIF -> refus par la factory, avant construction.
-    attendre("D3. un authentificateur fictif est refuse",
-             ConfigurationProviderInvalide,
-             lambda: creer_provider_de_production(
-                 fabrique_de_connexion=lambda: ConnexionMuette(),
-                 authentificateur=AuthFictif()))
+    # D3. AUTHENTIFICATEUR FICTIF -> REFUSE. Le type de l'exception n'est PAS
+    #     le critere, et c'est une correction mesuree: la premiere version
+    #     exigeait `ConfigurationProviderInvalide`, si bien qu'en retirant la
+    #     verification precoce le controle rougissait — non parce que le
+    #     fictif passait, mais parce que le CROCHET l'avait refuse avec une
+    #     autre exception. Un controle qui rougit quand la garantie tient
+    #     encore mesure la forme du refus, pas le refus.
+    try:
+        creer_provider_de_production(
+            fabrique_de_connexion=lambda: ConnexionMuette(),
+            authentificateur=AuthFictif())
+        verifier("D3. un authentificateur fictif est refuse", False,
+                 "il a ete ACCEPTE: un provider fictif serait utilisable")
+    except Exception:
+        verifier("D3. un authentificateur fictif est refuse", True)
 
     # D4. PILOTE ABSENT -> refus, JAMAIS un repli memoire.
     def fabrique_qui_echoue():
@@ -333,6 +342,35 @@ def main() -> int:
     verifier("D8. aucun module produit ne contourne la factory",
              bar.returncode == 0,
              (bar.stdout + bar.stderr).strip()[:200])
+
+    # D9. LA BARRIERE EST-ELLE MISE EN DIFFICULTE ?
+    #
+    # `D8` la lance sur l'arbre PRODUIT, qui est conforme: elle n'y rencontre
+    # ni alias trompeur ni repertoire vide. La campagne des 103 a laisse
+    # survivre F4 et F5 pour cette raison exacte — retirer le suivi des alias
+    # ne changeait rien a ce que D8 observait. On lui fabrique donc des arbres
+    # REELLEMENT non conformes, un par manquement, plus un conforme qui passe.
+    ici = os.path.dirname(os.path.abspath(__file__))
+    fix = subprocess.run(
+        [sys.executable, os.path.join(ici, "fixtures_barriere.py"),
+         os.path.join(ici, "barriere_provider.py")],
+        capture_output=True, text=True, errors="replace")
+    verifier("D9. la barriere juge correctement dix arbres fabriques",
+             fix.returncode == 0,
+             (fix.stdout + fix.stderr).strip()[-220:])
+
+    # D10. L'ABSENCE DE PILOTE EST-ELLE REELLEMENT EPROUVEE ?
+    #
+    # F6 a survecu parce que le pilote est INSTALLE ici: la mutation y est
+    # inerte. On fabrique l'absence dans un sous-processus isole — sans rien
+    # desinstaller d'un environnement partage — et on exige un refus nomme.
+    sp = subprocess.run(
+        [sys.executable, os.path.join(ici, "sans_pilote.py"),
+         os.path.join(os.path.dirname(os.path.dirname(ici)), "engine", "src")],
+        capture_output=True, text=True, errors="replace")
+    verifier("D10. sans pilote, la factory refuse (et le refus est nomme)",
+             sp.returncode == 0,
+             (sp.stdout + sp.stderr).strip()[-220:])
 
     # ----------------------------------------------------------------------
     # B. LES PROPRIETES SQL — un vrai serveur, une vraie transaction

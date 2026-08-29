@@ -831,6 +831,12 @@ COMBINEE = {
     "J'":  "J",
     "P2":  "P2b",
     "T4'": "T4",
+    # LES DEUX COUCHES DU REFUS DU FICTIF, ET LEUR COMBINEE. Mesure du 29/08:
+    # retirer la verification precoce laisse le crochet refuser; retirer le
+    # crochet laisse la verification precoce refuser. Seule `F1=` fait passer
+    # un authentificateur fictif.
+    "F1":  "F1=",
+    "F3":  "F1=",
 }
 
 
@@ -2032,9 +2038,9 @@ CAS_MANIFESTE = [
 CAS_FACTORY = [
     # F1 — le crochet n'est plus appele. Il existait deja et rien ne
     # l'appelait hors des tests: c'est exactement l'etat qu'on quitte.
-    ("F1 la factory n'appelle plus le crochet de production", "D3", FACT,
+    ("F1 le crochet de production n'est plus appele", "D3", FACT,
      [("    assert_provider_is_usable_in_production(provider)",
-       "    pass  # crochet retire par mutation")], False),
+       "    pass  # crochet retire par mutation")], True),
     # F2 — la conformite de la connexion n'est plus exigee.
     #
     # PREMIERE VERSION REJETEE, ET LA RAISON COMPTE: elle remplacait la PROSE
@@ -2046,17 +2052,27 @@ CAS_FACTORY = [
      [("    if connexion is None or not isinstance(connexion, Connexion):",
        "    if False:")], False),
     # F3 — l'authentificateur fictif n'est plus refuse par la factory.
-    ("F3 la factory accepte un authentificateur fictif", "D3", FACT,
+    # F1 ET F3 SONT DEUX COUCHES REDONDANTES, ET C'EST MESURE. La factory
+    # refuse un authentificateur fictif DEUX FOIS: une verification precoce —
+    # pour ne pas ouvrir de connexion vers un objet deja irrecevable — puis le
+    # crochet `assert_provider_is_usable_in_production`. Retirer l'une laisse
+    # l'autre refuser; seule la mutation COMBINEE fait passer le fictif.
+    ("F3 la verification precoce du fictif est retiree", "D3", FACT,
      [('    if getattr(authentificateur, "est_fictif", True):',
-       '    if False:')], False),
+       '    if False:')], True),
+    ("F1= la verification precoce ET le crochet sont retires", "D3", FACT,
+     [('    if getattr(authentificateur, "est_fictif", True):',
+       '    if False:'),
+      ("    assert_provider_is_usable_in_production(provider)",
+       "    pass  # crochet retire par mutation")], False),
     # F4 — la barriere ne suit plus les alias d'import. Un grep naif se
     # contourne en une ligne; l'AST ne doit pas retomber a ce niveau.
-    ("F4 la barriere ne suit plus les alias d'import", "D8", BARR,
+    ("F4 la barriere ne suit plus les alias d'import", "D9", BARR,
      [("            return self.alias.get(f.id, f.id)",
        "            return f.id")], False),
     # F5 — la barriere accepte de conclure sur zero module. Mesure: `rglob`
     # sur un fichier ne rend rien, et elle annoncait « aucun manquement ».
-    ("F5 la barriere conclut sur zero module", "D8", BARR,
+    ("F5 la barriere conclut sur zero module", "D9", BARR,
      [("""    if not fichiers:
         print("REFUS: aucun module Python a inspecter — un controle qui ne "
               "regarde rien ne vaut pas un controle reussi.", file=sys.stderr)
@@ -2065,7 +2081,7 @@ CAS_FACTORY = [
         pass""")], False),
     # F6 — un pilote manquant redevient un extincteur general. Il eteignait
     # AUSSI la factory et la barriere, qui n'en ont pas besoin.
-    ("F6 un pilote absent eteint la couche Python", "D1", PROV,
+    ("F6 un pilote absent eteint la couche Python", "D10", PROV,
      [("""    if not PILOTE_PRESENT:""",
        """    if PILOTE_PRESENT is None:""")], False),
 ]

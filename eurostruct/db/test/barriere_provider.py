@@ -76,7 +76,22 @@ class Inspecteur(ast.NodeVisitor):
                 self.passe_par_la_factory = True
             module = noeud.module or ""
             # UN AUTHENTIFICATEUR DE FIXTURE N'ENTRE PAS DANS UN MODULE PRODUIT.
-            if "test" in module.split(".") or module.endswith("_fixtures"):
+            #
+            # LA REGLE ETAIT TROP ETROITE, ET LES FIXTURES L'ONT MONTRE. Elle
+            # exigeait le segment EXACT « test » ou le suffixe « _fixtures »:
+            # `ndp.test_doubles` passait. Ma falsification manuelle avait pris
+            # par hasard la seule convention couverte — c'est exactement la
+            # faute qui a produit les onze survivants, prouver une garantie
+            # avec l'exemple qu'elle couvre deja.
+            #
+            # On reconnait desormais les conventions reellement employees.
+            segments = module.split(".")
+            suspect = any(
+                s.startswith("test") or s.endswith("_test")
+                or any(m in s for m in ("fixture", "double", "stub", "fake",
+                                        "mock", "leurre", "factice"))
+                for s in segments)
+            if suspect:
                 self.manquements.append(
                     f"{self.fichier}:{noeud.lineno}: import depuis un module de "
                     f"test ({module}.{a.name})")
