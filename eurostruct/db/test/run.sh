@@ -492,6 +492,15 @@ etape "canal machine d'attribution" \
   python3 "$HERE/canal_selftest.py"
 etape "composition du SQL par le shell" \
   python3 "$HERE/scanner_selftest.py"
+# LES CINQ COUCHES DE SEPARATION, ET LEUR CONTRE-EXEMPLE COMPLET.
+#
+# Cette surface est la seule qui prouve que la relaxation de `0015` — rabattre
+# `@MIGRATEUR` et `@PLAN` sur `@DEPLOIEMENT` quand les deux symboles se
+# confondent — est acceptable: elle ne l'est que si l'etat confondu ne peut
+# jamais atteindre `ACTIVE`. Elle le montre en NEUTRALISANT les cinq couches
+# une a une, et en obtenant `ACTIVE` seulement quand les CINQ tombent.
+etape "les cinq couches de separation" \
+  "$HERE/separation_layers.sh"
 etape "terminaison de la matrice sur signal" \
   "$HERE/mutation_signal_selftest.sh"
 
