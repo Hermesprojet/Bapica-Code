@@ -94,6 +94,62 @@ sys.exit(6)
 '''
 
 
+#: Second volet : le HARNAIS lui-meme, prive de pilote.
+#:
+#: `F6` mute `provider_contract.py` pour qu'un pilote absent n'y declenche plus
+#: la sortie en code 4. Le premier volet ne pouvait pas la tuer: il eprouve la
+#: FACTORY, qui ne lit jamais `PILOTE_PRESENT`. Le temoin doit donc lancer le
+#: harnais lui-meme dans l'environnement sans pilote, et exiger:
+#:
+#:   * que les proprietes structurelles et de factory s'executent QUAND MEME —
+#:     un pilote absent ne doit pas devenir un laissez-passer pour la couche
+#:     Python;
+#:   * que le harnais rende 4 — « non executee » n'est pas « verte ».
+HARNAIS = r"""
+import sys, os, runpy
+
+class RefusDePilote:
+    INTERDITS = {"psycopg2", "psycopg2cffi", "psycopg", "pg8000", "asyncpg"}
+    def find_spec(self, nom, chemin=None, cible=None):
+        if nom.split(".")[0] in self.INTERDITS:
+            raise ImportError(f"no module named {nom!r} (interdit par le test)")
+        return None
+
+sys.meta_path.insert(0, RefusDePilote())
+for mod in list(sys.modules):
+    if mod.split(".")[0] in RefusDePilote.INTERDITS:
+        del sys.modules[mod]
+
+try:
+    import psycopg2   # noqa: F401
+    print("VACUITE: le pilote reste importable")
+    sys.exit(3)
+except ImportError:
+    pass
+
+sys.argv = ["provider_contract.py", "base", "login", "mdp", "A", "B", "gA", "gB"]
+try:
+    runpy.run_path(os.environ["ESC_HARNAIS"], run_name="__main__")
+except SystemExit as e:
+    sys.exit(e.code if isinstance(e.code, int) else 1)
+"""
+
+
+def eprouver_harnais(harnais: str, moteur_src: str) -> tuple[int, str]:
+    """Lance `provider_contract.py` sans pilote. Rend (code, sortie)."""
+    import os
+    r = subprocess.run([sys.executable, "-c", HARNAIS],
+                       capture_output=True, text=True, errors="replace",
+                       env={**os.environ, "ESC_HARNAIS": harnais,
+                            "PYTHONPATH": moteur_src,
+                            # COUPE LA RECURSION. `provider_contract` lance ce
+                            # fichier en D10; sans ce marqueur il se relance
+                            # lui-meme sans fin. Mesure: le second volet ne
+                            # rendait jamais la main.
+                            "ESC_SANS_PILOTE_IMBRIQUE": "1"})
+    return r.returncode, r.stdout + r.stderr
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print("usage: sans_pilote.py <chemin-engine/src>", file=sys.stderr)
@@ -115,7 +171,31 @@ def main(argv: list[str]) -> int:
     for l in sortie.split("\n")[:3]:
         if l.strip():
             print(f"         {l[:100]}")
-    return 0 if r.returncode == 0 else 1
+    if r.returncode != 0:
+        return 1
+
+    # SECOND VOLET: le harnais lui-meme, prive de pilote.
+    import os
+    harnais = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "provider_contract.py")
+    code, sortie2 = eprouver_harnais(harnais, argv[1])
+    a_execute = sum(1 for l in sortie2.split("\n")
+                    if l.strip().startswith("ok: D")
+                    or l.strip().startswith("ok: A"))
+    if code == 3:
+        print("  ECHEC le pilote reste importable dans le second volet")
+        return 1
+    if a_execute == 0:
+        print("  ECHEC un pilote absent ETEINT la couche Python: "
+              f"0 propriete executee (code {code})")
+        return 1
+    if code != 4:
+        print(f"  ECHEC sans pilote le harnais rend {code}, attendu 4 "
+              "(« non executee » n'est pas « verte »)")
+        return 1
+    print(f"  ok    le harnais prive de pilote execute {a_execute} propriete(s) "
+          f"puis rend 4")
+    return 0
 
 
 if __name__ == "__main__":

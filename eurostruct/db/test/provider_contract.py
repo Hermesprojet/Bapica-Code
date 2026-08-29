@@ -343,34 +343,47 @@ def main() -> int:
              bar.returncode == 0,
              (bar.stdout + bar.stderr).strip()[:200])
 
-    # D9. LA BARRIERE EST-ELLE MISE EN DIFFICULTE ?
+    # D9 ET D10 NE S'EXECUTENT PAS SOUS EUX-MEMES. `sans_pilote.py` relance ce
+    # harnais dans un environnement sans pilote; sans ce garde, D10 le
+    # relancerait a son tour, sans fin.
     #
-    # `D8` la lance sur l'arbre PRODUIT, qui est conforme: elle n'y rencontre
-    # ni alias trompeur ni repertoire vide. La campagne des 103 a laisse
-    # survivre F4 et F5 pour cette raison exacte — retirer le suivi des alias
-    # ne changeait rien a ce que D8 observait. On lui fabrique donc des arbres
-    # REELLEMENT non conformes, un par manquement, plus un conforme qui passe.
-    ici = os.path.dirname(os.path.abspath(__file__))
-    fix = subprocess.run(
-        [sys.executable, os.path.join(ici, "fixtures_barriere.py"),
-         os.path.join(ici, "barriere_provider.py")],
-        capture_output=True, text=True, errors="replace")
-    verifier("D9. la barriere juge correctement dix arbres fabriques",
-             fix.returncode == 0,
-             (fix.stdout + fix.stderr).strip()[-220:])
+    # LE GARDE NE REND PAS LA MAIN, IL SAUTE DEUX CONTROLES. Une premiere
+    # version faisait `return 4 if not PILOTE_PRESENT else 0` ici meme: elle
+    # court-circuitait la ligne que la mutation F6 vise, et le temoin devenait
+    # aveugle — il rendait 4 par MON garde, jamais par celui qu'on eprouve.
+    imbrique = bool(os.environ.get("ESC_SANS_PILOTE_IMBRIQUE"))
 
-    # D10. L'ABSENCE DE PILOTE EST-ELLE REELLEMENT EPROUVEE ?
-    #
-    # F6 a survecu parce que le pilote est INSTALLE ici: la mutation y est
-    # inerte. On fabrique l'absence dans un sous-processus isole — sans rien
-    # desinstaller d'un environnement partage — et on exige un refus nomme.
-    sp = subprocess.run(
-        [sys.executable, os.path.join(ici, "sans_pilote.py"),
-         os.path.join(os.path.dirname(os.path.dirname(ici)), "engine", "src")],
-        capture_output=True, text=True, errors="replace")
-    verifier("D10. sans pilote, la factory refuse (et le refus est nomme)",
-             sp.returncode == 0,
-             (sp.stdout + sp.stderr).strip()[-220:])
+    if imbrique:
+        pass       # D9 et D10 sautes: on eprouve le RESTE du harnais
+    else:
+        # D9. LA BARRIERE EST-ELLE MISE EN DIFFICULTE ?
+        #
+        # `D8` la lance sur l'arbre PRODUIT, qui est conforme: elle n'y rencontre
+        # ni alias trompeur ni repertoire vide. La campagne des 103 a laisse
+        # survivre F4 et F5 pour cette raison exacte — retirer le suivi des alias
+        # ne changeait rien a ce que D8 observait. On lui fabrique donc des arbres
+        # REELLEMENT non conformes, un par manquement, plus un conforme qui passe.
+        ici = os.path.dirname(os.path.abspath(__file__))
+        fix = subprocess.run(
+            [sys.executable, os.path.join(ici, "fixtures_barriere.py"),
+             os.path.join(ici, "barriere_provider.py")],
+            capture_output=True, text=True, errors="replace")
+        verifier("D9. la barriere juge correctement dix arbres fabriques",
+                 fix.returncode == 0,
+                 (fix.stdout + fix.stderr).strip()[-220:])
+
+        # D10. L'ABSENCE DE PILOTE EST-ELLE REELLEMENT EPROUVEE ?
+        #
+        # F6 a survecu parce que le pilote est INSTALLE ici: la mutation y est
+        # inerte. On fabrique l'absence dans un sous-processus isole — sans rien
+        # desinstaller d'un environnement partage — et on exige un refus nomme.
+        sp = subprocess.run(
+            [sys.executable, os.path.join(ici, "sans_pilote.py"),
+             os.path.join(os.path.dirname(os.path.dirname(ici)), "engine", "src")],
+            capture_output=True, text=True, errors="replace")
+        verifier("D10. sans pilote, la factory refuse (et le refus est nomme)",
+                 sp.returncode == 0,
+                 (sp.stdout + sp.stderr).strip()[-220:])
 
     # ----------------------------------------------------------------------
     # B. LES PROPRIETES SQL — un vrai serveur, une vraie transaction
