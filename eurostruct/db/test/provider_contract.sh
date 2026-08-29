@@ -145,7 +145,7 @@ for f in "$DB_DIR"/migrations/*.sql; do
   fi
 done
 M=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-ctl -tAc "select normative_finalize_deployment('$M')" >/dev/null 2>&1
+ctl -tAc "select normative_finalize_deployment($(esc_litteral "$M"))" >/dev/null 2>&1
 ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1 | tr -d ' ')
 if [[ "$ETAT" != "ACTIVE" ]]; then
   echo "      ECHEC: la base n'est pas ACTIVE ($ETAT)" >&2

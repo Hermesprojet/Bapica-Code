@@ -47,49 +47,51 @@ la valeur lui-meme. Mesure : psql N'INTERPOLE PAS ``:nom`` dans un litteral
 simple deja ecrit (``select 'avant :nom apres'`` rend ``avant :nom apres``),
 donc la conversion ne peut pas deranger les corps existants.
 
-POURQUOI LA CONVERSION N'EST PAS MECANIQUE — ET N'A PAS ETE FAITE
-------------------------------------------------------------------
-J'ai converti les trente-deux sites, puis j'ai tout repris. La raison est une
-mesure que j'aurais du faire AVANT, et le defaut de raisonnement est exactement
-celui que ce fichier denonce : j'avais prouve ``:'m'`` avec un HEREDOC, puis
-generalise a ``-c``, que je n'avais jamais eprouve.
+LA CONVERSION, ET LA ROUTE QU'ELLE N'A PAS PRISE
+-------------------------------------------------
+Les trente et un sites sont convertis. La forme retenue est le doublement des
+apostrophes, par `esc_litteral` (`lib_harnais.sh`) :
 
-Mesure du 29/08, PostgreSQL 16.13 :
+    ctl -tAc "select f($(esc_litteral "$M"))"
 
-    psql -tA -v v="abc'def" -c "select :'v'"   -> ERROR: syntax error at ":"
-    psql -tA -v v="abc'def"    <<<"select :'v'" -> abc'def
+Ce N'EST PAS la variable psql, et la raison est mesuree. J'avais d'abord
+converti vers `:'m'`, ayant prouve cette forme dans un HEREDOC, puis
+generalise a `-c` sans jamais l'eprouver — le defaut de raisonnement que ce
+fichier denonce. `run.sh` est devenu rouge sur trois surfaces :
 
-**psql n'interpole pas ses variables dans une chaine ``-c``.** Seules
-l'entree standard et ``-f`` passent par l'analyseur qui les substitue. Vingt-
-sept des trente-deux sites sont des ``-c`` : la conversion les a tous casses,
-et `run.sh` l'a montre en trois surfaces rouges.
+    psql -tA -v v="abc'def" -c    "select :'v'"   -> ERROR: syntax error at ":"
+    psql -tA -v v="abc'def"     <<<"select :'v'"  -> abc'def
 
-Passer ces sites a l'entree standard change leur semantique, et la mesure le
-dit :
+psql n'interpole pas ses variables dans une chaine ``-c``, et vingt-sept des
+trente et un sites en sont. Y passer imposerait l'entree standard, donc
+``ON_ERROR_STOP`` — sans lui une erreur SQL rend ZERO, et des controles qui
+doivent rougir seraient devenus VERTS — et le code de sortie passerait de 1 a
+3 sur quinze harnais :
 
-    psql -tAc "select 1/0"                        -> rc=1
-    psql -tA        <<<"select 1/0"               -> rc=0   (!)
-    psql -tA -v ON_ERROR_STOP=1 <<<"select 1/0"   -> rc=3
+    psql -tAc "select 1/0"                       -> rc=1
+    psql -tA       <<<"select 1/0"               -> rc=0   (!)
+    psql -tA -v ON_ERROR_STOP=1 <<<"select 1/0"  -> rc=3
 
-Sans ``ON_ERROR_STOP``, une erreur SQL rend ZERO : la conversion aurait rendu
-VERTS des controles qui doivent etre rouges. Avec, le code passe de 1 a 3.
-C'est un changement de semantique sur vingt-sept sites, dans quinze harnais,
-qu'aucune execution disponible dans ce lot ne pouvait valider. Il n'est pas
-fait ici.
+Le doublement des apostrophes ne change RIEN a l'invocation: meme drapeau,
+meme code de sortie, meme capture. Il est complet parce que
+``standard_conforming_strings`` vaut ``on`` — lu, non suppose — donc la barre
+oblique inverse est litterale. Aller-retour mesure sur une valeur portant
+apostrophe, barre oblique et guillemets francais: identique octet pour octet.
+
+DANS UN HEREDOC, LE LITTERAL SE COMPOSE AVANT
+----------------------------------------------
+Quatre sites ecrivent leur SQL dans un heredoc non quote ou dans un fichier
+joue par ``-f``. Y ecrire ``$(esc_litteral ...)`` serait le DEFAUT 1 — on
+echapperait un defaut en en creant un autre. La valeur y est donc composee
+AVANT, dans une variable (``MANIFESTE_Q``, ``maq``, ``mbq``), et le corps ne
+porte plus qu'un nom.
 
 LE CLIQUET
 -----------
-Le plafond vaut donc le compte MESURE, 31, et il ne peut que baisser :
+Le plafond vaut ZERO, et il ne peut que baisser :
 
-  * un site de plus  -> rouge (la dette augmente) ;
-  * un site de moins -> rouge aussi, avec la valeur a inscrire (un plafond
-    perime ne mesure plus rien).
-
-Ce n'est pas une exemption : le defaut reste nomme, compte, et sa reduction
-verifiee. Le compte vaut 31 et non 32 parce que ``$mb``, dans la course D2 de
-``authority_closure.sh``, est un PARAMETRE de fonction et non une variable
-affectee depuis la base — la valeur qu'il porte vient pourtant bien de la base,
-par ``$ma``. Ce que le scanner ne voit pas est ecrit ici plutot que suppose.
+  * un site de plus  -> rouge (la dette reapparait) ;
+  * un plafond perime -> rouge aussi, avec la valeur a inscrire.
 
 Rend 0 si rien n'est trouve, 1 sinon, 2 s'il n'a rien regarde.
 """
@@ -108,8 +110,8 @@ LUES_DANS_LA_BASE = (
     "normative_authority_manifest",
 )
 
-#: Dette MESUREE le 29/08 sur `db/test`. NE PEUT QUE BAISSER.
-PLAFOND_RECOLLAGE = 31
+#: Dette PAYEE le 29/08 sur `db/test`. NE PEUT QUE BAISSER.
+PLAFOND_RECOLLAGE = 0
 
 
 def _corps_heredocs(lignes: list[str]):

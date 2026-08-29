@@ -214,7 +214,7 @@ if [[ "$ALLER_OK" != "1" ]]; then
 fi
 
 M=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-ctl -tAc "select normative_finalize_deployment('$M')" >/dev/null 2>&1
+ctl -tAc "select normative_finalize_deployment($(esc_litteral "$M"))" >/dev/null 2>&1
 ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1 | tr -d ' ')
 detail "activation: $ETAT"
 if [[ "$ETAT" != "ACTIVE" ]]; then

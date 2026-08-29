@@ -161,7 +161,7 @@ SQL
     fi
   done
   m=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-  sortie=$(ctl -tAc "select normative_finalize_deployment('$m')" 2>&1)
+  sortie=$(ctl -tAc "select normative_finalize_deployment($(esc_litteral "$m"))" 2>&1)
   etat=$(ctl -tAc "select normative_activation_state()" 2>&1)
   if [[ "$etat" != "ACTIVE" ]]; then
     echoue "decor: finalisation -> $etat"

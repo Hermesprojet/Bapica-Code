@@ -67,6 +67,15 @@ CAS: list[tuple[str, str, bool]] = [
      'S=$(ctl -v ON_ERROR_STOP=1 -v esc_v="$M" -tA '
      '<<<"select normative_finalize_deployment(:\'esc_v\')" 2>&1)\n', False),
 
+    # LA FORME EFFECTIVEMENT RETENUE DANS L'ARBRE. `-c` ne pouvant pas
+    # interpoler les variables psql, c'est le doublement des apostrophes qui
+    # ferme le defaut. Ce cas empeche qu'une relecture la reprenne pour un
+    # recollage.
+    ("8bis. le meme site, par esc_litteral (forme retenue)",
+     'M=$(ctl -tAc "select normative_settings_manifest()" 2>&1)\n'
+     'S=$(ctl -tAc "select normative_finalize_deployment('
+     '$(esc_litteral \"$M\"))" 2>&1)\n', False),
+
     ("9. recollage dans un HEREDOC (meme defaut, autre vehicule)",
      'M=$(ctl -tAc "select normative_settings_manifest()" 2>&1)\n'
      'ctl <<SQL\nselect normative_finalize_deployment(\'$M\');\nSQL\n', True),

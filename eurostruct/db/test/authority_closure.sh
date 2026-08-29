@@ -216,7 +216,7 @@ SQL
 decor_finaliser() {
   local m sortie
   m=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-  sortie=$(ctl -tAc "select normative_finalize_deployment('$m')" 2>&1)
+  sortie=$(ctl -tAc "select normative_finalize_deployment($(esc_litteral "$m"))" 2>&1)
   if [[ "$(ctl -tAc "select normative_activation_state()" 2>&1)" != "ACTIVE" ]]; then
     echoue "la finalisation a echoue: $(grep -m1 -iE 'ERROR|ERREUR' <<<"$sortie" | cut -c1-160)"
     return 1
@@ -578,11 +578,11 @@ if ! decor_poser c; then
 else
 suivre_decor
 M1=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-PREP=$(ctl -tAc "select normative_prepare_activation('$M1')" 2>&1)
+PREP=$(ctl -tAc "select normative_prepare_activation($(esc_litteral "$M1"))" 2>&1)
 adm -c "alter database \"$BASE\"
           set eurostruct.token_roles = 'authenticated,anon,FICTIF_apres_prepare';" >/dev/null 2>&1
 M2=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-SORTIE=$(ctl -tAc "select normative_finalize_deployment('$M1')" 2>&1)
+SORTIE=$(ctl -tAc "select normative_finalize_deployment($(esc_litteral "$M1"))" 2>&1)
 ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
 FIGE=$(admb -tAc "select valeur from normative_approved_settings
                    where nom = 'eurostruct.token_roles'" 2>&1)
@@ -629,7 +629,7 @@ if ! decor_poser e; then
 else
 suivre_decor
 M=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-ctl -tAc "select normative_prepare_activation('$M')" >/dev/null 2>&1
+ctl -tAc "select normative_prepare_activation($(esc_litteral "$M"))" >/dev/null 2>&1
 ctlp -c "revoke ${AUTORITES[0]}, ${AUTORITES[1]}, ${AUTORITES[2]}
          from \"$MIG\";" >/dev/null 2>&1
 SORTIE=$(ctl -tAc "select normative_record_activation()" 2>&1)
@@ -661,7 +661,7 @@ elif ! decor_finaliser; then
 else
 suivre_decor
 M=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-MEME=$(ctl -tAc "select normative_finalize_deployment('$M')" 2>&1)
+MEME=$(ctl -tAc "select normative_finalize_deployment($(esc_litteral "$M"))" 2>&1)
 D_OUVERT=0
 grep -q "deja finalise" <<<"$MEME" \
   || { echoue "D. le meme manifeste n'est plus idempotent: $(head -1 <<<"$MEME")"; }
@@ -733,19 +733,23 @@ SQL
 # d2_course <manifeste-du-perdant> <etiquette>
 # Rend, sur stdout: "<code-perdant>|<sortie-perdant>"
 d2_course() {
-  local mb="$1" etq="$2" appa appb ma
+  local mb="$1" etq="$2" appa appb ma maq mbq
   appa="FICTIF-d2-A-$$-$etq"; appb="FICTIF-d2-B-$$-$etq"
   ma=$(ctl -tAc "select normative_settings_manifest()" 2>&1 | tr -d ' ')
   [[ -n "$mb" ]] || mb="$ma"
+  # LE LITTERAL EST COMPOSE AVANT LE HEREDOC, PAS DEDANS. Un `$( )` dans un
+  # heredoc non quote est precisement le defaut 1 que le scanner refuse: on
+  # echapperait un defaut en en creant un autre.
+  maq=$(esc_litteral "$ma"); mbq=$(esc_litteral "$mb")
   cat > "$TMP_D2/a.sql" <<SQL
 begin;
-select normative_finalize_deployment('$ma');
+select normative_finalize_deployment($maq);
 select t_attendre_bloquee('$appb');
 commit;
 SQL
   cat > "$TMP_D2/b.sql" <<SQL
 begin;
-select normative_finalize_deployment('$mb');
+select normative_finalize_deployment($mbq);
 commit;
 SQL
   PGAPPNAME="$appa" PGUSER="$CTL" PGPASSWORD="$MDP"     psql -X -q -v ON_ERROR_STOP=1 -d "$BASE" -f "$TMP_D2/a.sql"     >"$TMP_D2/a.log" 2>&1 &

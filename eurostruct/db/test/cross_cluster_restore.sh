@@ -219,7 +219,7 @@ for f in "$DB_DIR"/migrations/*.sql; do
   fi
 done
 MANIF=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-ctl -tAc "select normative_finalize_deployment('$MANIF')" >/dev/null 2>&1
+ctl -tAc "select normative_finalize_deployment($(esc_litteral "$MANIF"))" >/dev/null 2>&1
 ETAT_A=$(ctl -tAc "select normative_activation_state()" 2>&1)
 if [[ "$ETAT_A" != "ACTIVE" ]]; then
   echoue "le cluster A ne se termine pas en ACTIVE (obtenu: $ETAT_A)"; exit 1
@@ -326,7 +326,7 @@ fi
 # l'exploitant executer une procedure inexistante ne protege pas mieux qu'un
 # refus muet: il fait perdre du temps et suggere qu'une issue existe.
 MANIF_B=$(b -d "$BASE" -tAc "select normative_settings_manifest()" 2>&1)
-REFI=$(b -d "$BASE" -tAc "select normative_finalize_deployment('$MANIF_B')" 2>&1)
+REFI=$(b -d "$BASE" -tAc "select normative_finalize_deployment($(esc_litteral "$MANIF_B"))" 2>&1)
 PROMET=$(grep -oiE "refinalis[a-z]*( sur place)?" <<<"$TOPO_B" | head -1)
 REUSSI=0
 [[ "$(b -d "$BASE" -tAc "select assert_normative_topology()" 2>&1)" != *ERROR* ]] && REUSSI=1

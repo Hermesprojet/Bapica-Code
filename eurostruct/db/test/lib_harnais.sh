@@ -1108,6 +1108,46 @@ esc_evt_trou()  { esc_evt "$1" NON_PARCOURU "${2:-runtime}" "${@:3}"; }
 esc_evt_infra() { esc_evt "$1" INFRA   "${2:-runtime}" "${@:3}"; }
 
 # ==========================================================================
+# UNE VALEUR LUE DANS LA BASE NE SE RECOLLE PAS DANS DU SQL
+# ==========================================================================
+# Trente et un sites lisaient une valeur DANS LA BASE — le manifeste — et la
+# recollaient dans un litteral SQL. Avec `2>&1`, ce qui est PIRE: en cas
+# d'echec la variable porte un message d'erreur francais, plein d'apostrophes.
+# La valeur casse alors l'instruction, et le harnais lit une ERREUR DE SYNTAXE
+# comme s'il lisait un REFUS. Mesure sur PostgreSQL 16.13:
+#
+#     V="ERROR:  le plan « x » n'est pas separe"
+#     select '$V'   ->  ERROR: syntax error at or near "est"
+#
+# POURQUOI PAS LA VARIABLE psql, QUI SERAIT LA FORME CANONIQUE. Parce qu'elle
+# ne marche pas ici, et c'est mesure:
+#
+#     psql -tA -v v="abc'def" -c    "select :'v'"   -> ERROR: syntax error
+#     psql -tA -v v="abc'def"     <<<"select :'v'"  -> abc'def
+#
+# psql N'INTERPOLE PAS ses variables dans une chaine `-c`, et vingt-sept des
+# trente et un sites sont des `-c`. Y passer imposerait l'entree standard,
+# donc `ON_ERROR_STOP` — sans lui une erreur SQL rend ZERO — et le code de
+# sortie passerait de 1 a 3 sur quinze harnais. Changement de semantique
+# d'echec, pour un gain nul: on double donc les apostrophes ici.
+#
+# C'EST COMPLET, ET SEULEMENT PARCE QUE `standard_conforming_strings` VAUT
+# `on` — lu, non suppose (PostgreSQL 16.13). Sous cette condition la barre
+# oblique inverse est litterale, et doubler l'apostrophe est la seule
+# echappement necessaire. Mesure d'aller-retour, valeur portant apostrophe,
+# barre oblique et guillemets francais: identique a l'original, octet pour
+# octet.
+#
+#     esc_litteral "$M"   ->   'valeur''citee'
+#
+# Rend le litteral AVEC ses quotes: on ecrit `f($(esc_litteral "$M"))`, jamais
+# `f('$(esc_litteral "$M")')`.
+esc_litteral() {
+  local v="${1-}"
+  printf "'%s'" "${v//\'/\'\'}"
+}
+
+# ==========================================================================
 # L'INSTRUMENT — un appel SQL qui ne peut pas mentir en silence
 # ==========================================================================
 # CE QUI A ETE MESURE, ET QUI JUSTIFIE CE SOCLE. Quatre fautes d'instrument ont

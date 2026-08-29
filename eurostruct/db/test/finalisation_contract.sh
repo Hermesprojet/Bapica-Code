@@ -419,7 +419,7 @@ grep -qiE "intention|preparation|prepar|verrou de finalisation" <<<"$SANS_PREP" 
 #     d'appel, c'est l'ETAT qu'elle exige » — et qui etait fausse. On la
 #     verifie: on prepare pour de bon, puis on saute la revocation.
 MANIFESTE=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-PREP=$(ctl -tAc "select normative_prepare_activation('$MANIFESTE')" 2>&1)
+PREP=$(ctl -tAc "select normative_prepare_activation($(esc_litteral "$MANIFESTE"))" 2>&1)
 if grep -qiE "verrou de finalisation|n'est pas une operation autonome" <<<"$PREP"; then
   # LA PREPARATION ISOLEE N'EXISTE PLUS (6.3b6c). Elle exige le verrou de
   # finalisation, que seul le finaliseur prend: il n'y a plus d'etat
@@ -511,7 +511,7 @@ if [[ "$AVANT_REVUE" == "$APRES" ]]; then
 else
   # LA FINALISATION EST DEMANDEE AVEC LE MANIFESTE REVU, et non avec l'etat
   # courant: c'est exactement ce qu'un plan de controle honnete presente.
-  SORTIE=$(ctl -tAc "select normative_finalize_deployment('$MANIFESTE_REVU')" 2>&1)
+  SORTIE=$(ctl -tAc "select normative_finalize_deployment($(esc_litteral "$MANIFESTE_REVU"))" 2>&1)
   ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
   # La valeur FIGEE est lue dans la table, sous un role qui contourne la RLS.
   FIGE=$(admb -tAc "select valeur from normative_approved_settings
@@ -566,12 +566,14 @@ suivre_decor
 # Deux vraies connexions, et un recouvrement force: A tient sa transaction
 # ouverte pendant que B entre. Pas de sequence deguisee en concurrence.
 MANIFESTE=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
+# Compose AVANT le heredoc: un `$( )` dedans serait le defaut 1.
+MANIFESTE_Q=$(esc_litteral "$MANIFESTE")
 SORTIE_A="$(mktemp -p "${TMPDIR:-/tmp}" fc4a.XXXXXX)"
 SORTIE_B="$(mktemp -p "${TMPDIR:-/tmp}" fc4b.XXXXXX)"
 (
   PGUSER="$CTL" PGPASSWORD="$CTL_MDP" psql -X -q -d "$BASE" -tA >"$SORTIE_A" 2>&1 <<SQL
 begin;
-select 'A:' || normative_finalize_deployment('$MANIFESTE');
+select 'A:' || normative_finalize_deployment($MANIFESTE_Q);
 select pg_sleep(3);
 commit;
 SQL
@@ -598,7 +600,7 @@ done
 (
   PGUSER="$CTL" PGPASSWORD="$CTL_MDP" psql -X -q -d "$BASE" -tA >"$SORTIE_B" 2>&1 <<SQL
 begin;
-select 'B:' || normative_finalize_deployment('$MANIFESTE');
+select 'B:' || normative_finalize_deployment($MANIFESTE_Q);
 commit;
 SQL
 ) &
@@ -752,7 +754,7 @@ if ! decor_poser 5 separe; then
 else
 suivre_decor
 MANIFESTE=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-SORTIE=$(ctl -tAc "select normative_finalize_deployment('$MANIFESTE')" 2>&1)
+SORTIE=$(ctl -tAc "select normative_finalize_deployment($(esc_litteral "$MANIFESTE"))" 2>&1)
 ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
 RESTE=$(adm -tAc "select count(*) from unnest(array['eurostruct_normative_writer',
                     'eurostruct_normative_bootstrap','eurostruct_normative_activator']) a(r)
@@ -781,7 +783,7 @@ if ! decor_poser 6 greenfield; then
 else
 suivre_decor
 MANIFESTE=$(mig -tAc "select normative_settings_manifest()" 2>&1)
-SORTIE=$(mig -tAc "select normative_finalize_deployment('$MANIFESTE')" 2>&1)
+SORTIE=$(mig -tAc "select normative_finalize_deployment($(esc_litteral "$MANIFESTE"))" 2>&1)
 ETAT=$(mig -tAc "select normative_activation_state()" 2>&1)
 if [[ "$ETAT" == "ACTIVE" ]]; then
   rouge "8b. UN SEUL ROLE A PU FINALISER: le migrateur est son propre plan de"
