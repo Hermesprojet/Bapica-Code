@@ -853,6 +853,11 @@ def _code(nom):
 # possible — rien ne s'installe —, et l'ancienne matrice n'avait pas de mot
 # pour le dire: elle le comptait « creux », c'est-a-dire l'inverse de la
 # verite. On exige donc le diagnostic NOMME, pas un echec quelconque.
+#: Lignes NON VIDES du refus d'un harnais qu'on reproduit dans le compte rendu.
+#: Six et non trois: les diagnostics de cette suite ouvrent par un titre, puis
+#: une phrase, et ne nomment la cause qu'ensuite. Trois s'arretait avant.
+LIGNES_DIAGNOSTIC = 6
+
 INSTALL_ASSERTION = {
     "TP1": "AUTHORITY_MANIFEST_SEARCH_PATH",
     "B": "PRECONDITION 0013: la table normative_authorisation_grants "
@@ -1019,9 +1024,29 @@ def essayer(nom, point, fichier, paires, redondant=False,
     if code in (2, 3, 4):
         print(f"  INFRA {nom}\n        -> le harnais a refuse (code {code}), "
               f"aucune conclusion possible:")
-        for ligne in sortie.splitlines()[:3]:
-            if ligne.strip():
-                print("        " + ligne.strip()[:120])
+        # ON FILTRE D'ABORD, ON TRONQUE ENSUITE — ET DANS CET ORDRE.
+        #
+        # La redaction precedente etait `sortie.splitlines()[:3]` puis
+        # `if ligne.strip()`: les lignes VIDES consommaient le budget sans rien
+        # afficher. Mesure du 29/08, refus du verrou de `provider_contract.sh`:
+        #
+        #   1  NON EXECUTE: ... n'a pas pu interroger le verrou de harnais.
+        #   2  (vide — comptee, non affichee)
+        #   3  La session du verrou n'a rendu ni « true » ni « false », mais:
+        #   4  psql: error: ... FATAL: role "root" does not exist   <-- LA CAUSE
+        #
+        # Le diagnostic s'arretait sur « mais: » — la ligne d'AVANT la cause.
+        # Il a fallu deux rejeux complets pour retrouver ce que la ligne 4
+        # disait deja. Un diagnostic tronque juste avant sa cause coute plus
+        # cher que pas de diagnostic: il donne l'illusion d'avoir ete lu.
+        utiles = [x.strip() for x in sortie.splitlines() if x.strip()]
+        for ligne in utiles[:LIGNES_DIAGNOSTIC]:
+            print("        " + ligne[:160])
+        # LA TRONCATURE EST DITE. Sinon on ne peut pas distinguer « le harnais
+        # n'en a pas dit plus » de « on a coupe avant la fin ».
+        if len(utiles) > LIGNES_DIAGNOSTIC:
+            print(f"        ... {len(utiles) - LIGNES_DIAGNOSTIC} ligne(s) de "
+                  f"plus (sortie complete dans le canal du lanceur)")
         return INFRA_FAILURE
 
     # MISE A MORT A L'INSTALLATION. On exige le diagnostic NOMME, sinon un
