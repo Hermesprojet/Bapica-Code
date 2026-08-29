@@ -13,6 +13,7 @@
  * d'ingénierie. L'interface affiche ce que le moteur a décidé.
  */
 import type {
+  BeamSectionDrawingRequest,
   Ec2BeamFlexureRequest,
   Ec2BeamFlexureResponse,
   EngineErrorDTO,
@@ -80,9 +81,52 @@ export async function verifierFlexion(
   return { type: "panne", message: `reponse ${reponse.status} illisible` };
 }
 
-/** URL de téléchargement du DXF. Le fichier est le corps, pas un champ. */
+/** URL de l'endpoint DXF. Le fichier est le corps de la réponse, pas un champ. */
 export function urlDxf(): string {
   return `${BASE}/v1/calculations/ec2/beam-section.dxf`;
 }
 
-export type { Ec2BeamFlexureRequest, EngineErrorDTO };
+/**
+ * Demande le DXF et déclenche son téléchargement.
+ *
+ * LE FERRAILLAGE EST SAISI, JAMAIS DEDUIT DU CALCUL. `As_required` dit
+ * combien d'acier il faut ; il ne dit pas en combien de barres, de quel
+ * diamètre, ni comment elles sont disposées. Choisir à la place de
+ * l'ingénieur produirait un plan que personne n'a décidé.
+ */
+export async function telechargerDxf(
+  requete: BeamSectionDrawingRequest,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  let reponse: Response;
+  try {
+    reponse = await fetch(urlDxf(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requete),
+    });
+  } catch (cause) {
+    return { ok: false, message: `l'API n'a pas repondu (${String(cause)}).` };
+  }
+  if (!reponse.ok) {
+    const corps: unknown = await reponse.json().catch(() => null);
+    const detail =
+      corps && typeof corps === "object" && "detail" in corps
+        ? String((corps as { detail: unknown }).detail)
+        : `reponse ${reponse.status}`;
+    return { ok: false, message: detail };
+  }
+
+  const blob = await reponse.blob();
+  const url = URL.createObjectURL(blob);
+  const lien = document.createElement("a");
+  lien.href = url;
+  lien.download = `${requete.element || "section"}.dxf`;
+  document.body.appendChild(lien);
+  lien.click();
+  lien.remove();
+  // LIBERER L'URL. Sans cela le blob reste en memoire tant que l'onglet vit.
+  URL.revokeObjectURL(url);
+  return { ok: true };
+}
+
+export type { BeamSectionDrawingRequest, Ec2BeamFlexureRequest, EngineErrorDTO };

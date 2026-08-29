@@ -38,8 +38,6 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-pytestmark = pytest.mark.postgres
-
 DSN = os.environ.get("EUROSTRUCT_E2E_DSN", "")
 #: DSN D'OBSERVATION SEULEMENT. Le login de service n'a aucun privilege de
 #: table — tout passe par les trois primitives SECURITY DEFINER, et c'est
@@ -49,12 +47,27 @@ DSN_OBS = os.environ.get("EUROSTRUCT_E2E_DSN_OBS", "")
 ACTEUR_A = os.environ.get("EUROSTRUCT_E2E_ACTEUR_A", "")
 ACTEUR_B = os.environ.get("EUROSTRUCT_E2E_ACTEUR_B", "")
 
-if not (DSN and ACTEUR_A and ACTEUR_B):
-    pytest.skip(
-        "decor absent: ce module se lance par db/test/api_e2e.sh, qui pose la "
-        "base deployee et fournit la DSN par l'environnement.",
-        allow_module_level=True,
-    )
+#: ON SAUTE PAR MARQUEUR, PAS AU NIVEAU DU MODULE.
+#:
+#: `pytest.skip(allow_module_level=True)` empeche la COLLECTE: pytest rend
+#: alors « 0 collecte, 1 execute » pour ce fichier, et `run_tests.sh` — qui
+#: compare les deux, precisement pour reperer les tests qui disparaissent —
+#: signalait « 32 collectes mais 33 executes ». L'instrument avait raison de
+#: se plaindre: un module non collecte est un module dont on ne sait plus
+#: combien de cas il porte.
+#:
+#: Avec un marqueur, les dix cas sont COLLECTES puis sautes: les deux comptes
+#: coincident, et le nombre de cas reste visible meme sans decor.
+DECOR_PRESENT = bool(DSN and DSN_OBS and ACTEUR_A and ACTEUR_B)
+
+pytestmark = [
+    pytest.mark.postgres,
+    pytest.mark.skipif(
+        not DECOR_PRESENT,
+        reason=("decor absent: ce module se lance par db/test/api_e2e.sh, qui "
+                "pose la base deployee et fournit les DSN par l'environnement."),
+    ),
+]
 
 ISSUER = "https://fictif.e2e.test/auth/v1"
 AUDIENCE = "authenticated"

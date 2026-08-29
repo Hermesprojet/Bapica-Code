@@ -18,7 +18,8 @@
  */
 import { useState } from "react";
 import type { BlockingParameterDTO } from "@contracts/generated/engine";
-import { urlDxf, verifierFlexion, type Issue } from "@/lib/api";
+import { telechargerDxf, verifierFlexion, type Issue } from "@/lib/api";
+import { authDisponible, ouvrirSession, type Session } from "@/lib/session";
 
 type Champs = {
   b: string; h: string; d: string; M_Ed: string;
@@ -67,6 +68,8 @@ export default function Page() {
       <p className="sous-titre">
         Vérification ELU selon EN 1992-1-1 et son Annexe Nationale.
       </p>
+
+      <Connexion />
 
       <form onSubmit={soumettre}>
         <fieldset>
@@ -157,6 +160,89 @@ export default function Page() {
         ingénieur.
       </p>
     </main>
+  );
+}
+
+/**
+ * La connexion Supabase, quand elle est configurée.
+ *
+ * ELLE NE GARDE PAS LE CALCUL. Le calcul EC2 est déterministe et ne consulte
+ * aucune donnée d'autorité : le protéger derrière une authentification
+ * n'apporterait rien, et rendrait la tranche inutilisable pour évaluer le
+ * moteur. Ce sont les **décisions d'autorité** qui exigent une identité, et
+ * elles ne sont pas dans cet écran.
+ *
+ * Quand la configuration est absente, ce bloc dit pourquoi, et n'affiche
+ * aucun formulaire dont on saurait d'avance qu'il refusera.
+ */
+function Connexion() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [courriel, setCourriel] = useState("");
+  const [motDePasse, setMotDePasse] = useState("");
+  const [refus, setRefus] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState(false);
+
+  if (!authDisponible()) {
+    return (
+      <div className="bandeau alerte" role="status">
+        <strong>Authentification non configurée</strong>
+        Le calcul ci-dessous fonctionne : il est déterministe et ne consulte
+        aucune donnée d&apos;autorité. Les décisions d&apos;autorité, elles,
+        exigent une identité vérifiée — voir <code>eurostruct/api/.env.example</code>.
+        <div style={{ marginTop: ".35rem" }}>
+          <code>SUPABASE_UNVERIFIED</code>
+        </div>
+      </div>
+    );
+  }
+
+  if (session) {
+    return (
+      <div className="bandeau ok" role="status">
+        <strong>Session ouverte</strong>
+        Le jeton vit en mémoire dans cet onglet, jamais dans{" "}
+        <code>localStorage</code>.
+      </div>
+    );
+  }
+
+  async function connecter(e: React.FormEvent) {
+    e.preventDefault();
+    setEnCours(true);
+    setRefus(null);
+    const issue = await ouvrirSession(courriel, motDePasse);
+    if (issue.type === "session") setSession(issue.valeur);
+    else setRefus(issue.message);
+    setEnCours(false);
+  }
+
+  return (
+    <form onSubmit={connecter}>
+      <fieldset>
+        <legend>Connexion</legend>
+        <div className="grille">
+          <div>
+            <label htmlFor="courriel">Courriel</label>
+            <input id="courriel" type="email" autoComplete="username"
+                   value={courriel}
+                   onChange={(e) => setCourriel(e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="mdp">Mot de passe</label>
+            <input id="mdp" type="password" autoComplete="current-password"
+                   value={motDePasse}
+                   onChange={(e) => setMotDePasse(e.target.value)} />
+          </div>
+        </div>
+        <button type="submit" className="secondaire" disabled={enCours}
+                style={{ marginTop: ".8rem" }}>
+          {enCours ? "Connexion…" : "Se connecter"}
+        </button>
+        {refus && (
+          <p className="clause" style={{ marginTop: ".6rem" }}>{refus}</p>
+        )}
+      </fieldset>
+    </form>
   );
 }
 
@@ -268,12 +354,74 @@ function Resultat({ issue }: { issue: Extract<Issue, { type: "resultat" }> }) {
         </>
       )}
 
-      <h2>Plan de ferraillage</h2>
-      <p className="clause">
-        Le DXF est servi par <code>{urlDxf()}</code>. Le tracé exige un
-        ferraillage choisi ; il n&apos;est pas déduit du calcul.
-      </p>
+      <Ferraillage element={r.element} />
     </section>
+  );
+}
+
+/**
+ * Le plan de section.
+ *
+ * LE FERRAILLAGE EST SAISI, PAS DEDUIT. `As_required` dit combien d'acier il
+ * faut ; il ne dit pas en combien de barres, de quel diamètre, ni comment
+ * elles sont disposées. Choisir à la place de l'ingénieur produirait un plan
+ * que personne n'a décidé.
+ */
+function Ferraillage({ element }: { element: string }) {
+  const [nb, setNb] = useState("3");
+  const [diam, setDiam] = useState("16");
+  const [enrobage, setEnrobage] = useState("30");
+  const [etat, setEtat] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState(false);
+
+  async function telecharger() {
+    setEnCours(true);
+    setEtat(null);
+    const issue = await telechargerDxf({
+      project: "DEMO-001",
+      element,
+      b: 300, h: 500,
+      cover: Number(enrobage),
+      link_diameter: 8,
+      bottom: [{ count: Number(nb), diameter: Number(diam), mark: "A1" }],
+      top: [{ count: 2, diameter: 12, mark: "A2" }],
+      link_spacing: 200,
+    } as never);
+    setEtat(issue.ok ? "DXF telecharge." : issue.message);
+    setEnCours(false);
+  }
+
+  return (
+    <>
+      <h2>Plan de section (DXF)</h2>
+      <p className="clause">
+        Le ferraillage est <strong>choisi</strong>, pas déduit du calcul : la
+        section d&apos;acier requise ne dit ni le nombre de barres ni leur
+        diamètre.
+      </p>
+      <div className="grille" style={{ marginBottom: ".75rem" }}>
+        <div>
+          <label htmlFor="nb">Barres inférieures</label>
+          <input id="nb" inputMode="numeric" value={nb}
+                 onChange={(e) => setNb(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="diam">Diamètre (mm)</label>
+          <input id="diam" inputMode="decimal" value={diam}
+                 onChange={(e) => setDiam(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="enr">Enrobage c<sub>nom</sub> (mm)</label>
+          <input id="enr" inputMode="decimal" value={enrobage}
+                 onChange={(e) => setEnrobage(e.target.value)} />
+        </div>
+      </div>
+      <button type="button" className="secondaire" onClick={telecharger}
+              disabled={enCours}>
+        {enCours ? "Génération…" : "Télécharger le DXF"}
+      </button>
+      {etat && <p className="clause" style={{ marginTop: ".6rem" }}>{etat}</p>}
+    </>
   );
 }
 
