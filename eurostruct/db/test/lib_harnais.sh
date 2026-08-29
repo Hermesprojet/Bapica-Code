@@ -1005,6 +1005,109 @@ esc_decor_abandonner() {
 
 
 # ==========================================================================
+# LE CANAL MACHINE — l'attribution ne se lit plus dans la prose
+# ==========================================================================
+# CE QUI A ETE MESURE, ET QUI CONDAMNE L'ANCIEN MECANISME. La campagne des 103
+# controles sur `3d0acc2` a rendu ONZE survivants. Six d'entre eux n'etaient
+# pas des garanties perdues: le harnais AVAIT rougi, et le lanceur n'avait pas
+# su le rattacher, parce qu'il cherchait la chaine « ROUGE: <point>. » dans une
+# sortie destinee a un humain.
+#
+#   SEP1  le harnais ecrit « ECHEC: A: ... »      -> deux-points, pas un point
+#   F2    le harnais ecrit « ROUGE: PR. D5. ... » -> un prefixe avant le point
+#   F3    idem
+#   MF2   la mutation tue A L'INSTALLATION        -> aucun point d'execution
+#   MF4   idem
+#   MF1   la mutation eteint MF1 et fait rougir MF2, MF3 et MF4
+#
+# Une ponctuation decide donc si une garantie compte comme defendue. C'est
+# inacceptable: le verdict d'une campagne ne peut pas dependre de la mise en
+# forme d'un message.
+#
+# LE PRINCIPE: DEUX CANAUX, JAMAIS UN SEUL.
+#   * la SORTIE HUMAINE reste libre — prose, accents, longueur, ponctuation;
+#   * le CANAL MACHINE est un JSONL strict, versionne, que seul le lanceur lit.
+#
+# Rien de ce qui est ecrit pour l'humain n'entre dans le calcul du verdict.
+ESC_CANAL_PROTOCOLE=1
+ESC_CANAL="${ESC_CANAL:-}"
+
+# esc_evt <point_id> <statut> <phase> [cle=valeur ...]
+#
+#   statut : ROUGE | SUR | NON_PARCOURU | INFRA
+#   phase  : installation | runtime | teardown
+#
+# Cles reconnues: scenario, chemin, invariant, diagnostic, code, effet,
+# terminal (« oui »/« non », defaut « oui »).
+#
+# L'ECHAPPEMENT EST FAIT PAR PYTHON, PAS A LA MAIN. Un `sed` d'echappement
+# JSON echoue sur les guillemets, les barres obliques inverses, les sauts de
+# ligne et l'UTF-8 — c'est-a-dire sur exactement ce que les diagnostics
+# PostgreSQL contiennent. Un evenement mal forme invalide la campagne entiere;
+# il ne doit donc jamais etre produit par negligence de citation.
+esc_evt() {
+  [[ -n "$ESC_CANAL" ]] || return 0
+  local point="${1:?esc_evt <point_id> <statut> <phase> [cle=valeur ...]}"
+  local statut="${2:?statut}" phase="${3:?phase}"
+  shift 3
+  ESC_EVT_POINT="$point" ESC_EVT_STATUT="$statut" ESC_EVT_PHASE="$phase" \
+  ESC_EVT_PROTO="$ESC_CANAL_PROTOCOLE" ESC_EVT_FICHIER="$ESC_CANAL" \
+  python3 - "$@" <<'FINPY'
+import json, os, sys
+
+evt = {
+    "protocole": int(os.environ["ESC_EVT_PROTO"]),
+    "point_id":  os.environ["ESC_EVT_POINT"],
+    "statut":    os.environ["ESC_EVT_STATUT"],
+    "phase":     os.environ["ESC_EVT_PHASE"],
+    "scenario_id": None, "chemin": None, "invariant": None,
+    "diagnostic": None, "code": None, "effet": None, "terminal": True,
+}
+CLES = {"scenario": "scenario_id", "chemin": "chemin", "invariant": "invariant",
+        "diagnostic": "diagnostic", "code": "code", "effet": "effet",
+        "terminal": "terminal"}
+for arg in sys.argv[1:]:
+    if "=" not in arg:
+        print(f"esc_evt: argument sans « = »: {arg!r}", file=sys.stderr)
+        sys.exit(2)
+    cle, _, valeur = arg.partition("=")
+    if cle not in CLES:
+        print(f"esc_evt: cle inconnue {cle!r}", file=sys.stderr)
+        sys.exit(2)
+    champ = CLES[cle]
+    if champ == "terminal":
+        evt[champ] = valeur.strip().lower() in {"oui", "true", "1"}
+    elif champ == "code":
+        try:
+            evt[champ] = int(valeur)
+        except ValueError:
+            evt[champ] = None
+    else:
+        evt[champ] = valeur
+
+if evt["statut"] not in {"ROUGE", "SUR", "NON_PARCOURU", "INFRA"}:
+    print(f"esc_evt: statut invalide {evt['statut']!r}", file=sys.stderr)
+    sys.exit(2)
+if evt["phase"] not in {"installation", "runtime", "teardown"}:
+    print(f"esc_evt: phase invalide {evt['phase']!r}", file=sys.stderr)
+    sys.exit(2)
+
+# UNE SEULE LIGNE, TOUJOURS. `ensure_ascii=False` garde l'UTF-8 lisible; les
+# sauts de ligne des diagnostics sont echappes par `json.dumps` lui-meme.
+ligne = json.dumps(evt, ensure_ascii=False, separators=(",", ":"))
+assert "\n" not in ligne, "un evenement ne peut pas contenir de saut de ligne"
+with open(os.environ["ESC_EVT_FICHIER"], "a", encoding="utf-8") as f:
+    f.write(ligne + "\n")
+FINPY
+}
+
+# esc_evt_rouge / esc_evt_sur — raccourcis de lisibilite, meme protocole.
+esc_evt_rouge() { esc_evt "$1" ROUGE   "${2:-runtime}" "${@:3}"; }
+esc_evt_sur()   { esc_evt "$1" SUR     "${2:-runtime}" "${@:3}"; }
+esc_evt_trou()  { esc_evt "$1" NON_PARCOURU "${2:-runtime}" "${@:3}"; }
+esc_evt_infra() { esc_evt "$1" INFRA   "${2:-runtime}" "${@:3}"; }
+
+# ==========================================================================
 # L'INSTRUMENT — un appel SQL qui ne peut pas mentir en silence
 # ==========================================================================
 # CE QUI A ETE MESURE, ET QUI JUSTIFIE CE SOCLE. Quatre fautes d'instrument ont

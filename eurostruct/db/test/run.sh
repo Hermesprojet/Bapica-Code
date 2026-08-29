@@ -478,6 +478,7 @@ adm -c "drop database if exists $NS_DB;" >/dev/null 2>&1
 # qu'il ait disparu apres.
 echo "==> terminaison de la matrice de mutation sur signal"
 etape "terminaison de la matrice sur signal" \
+  python3 "$HERE/canal_selftest.py"
   "$HERE/mutation_signal_selftest.sh"
 
 # --------------------------------------------------------------------------

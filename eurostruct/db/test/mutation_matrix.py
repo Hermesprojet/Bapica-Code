@@ -51,6 +51,10 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import canal_lecture  # noqa: E402
 
 # `.../eurostruct/db/test/mutation_matrix.py` -> `.../eurostruct`: TROIS
 # remontees. Deux laissaient RACINE sur `.../db`, ou `git status -- db/...` ne
@@ -353,6 +357,9 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     # refusent — a juste titre — et la matrice conclurait sur des executions
     # qui n'ont pas eu lieu.
     env["EUROSTRUCT_CLUSTER_JETABLE"] = "oui-cluster-jetable-et-isole"
+    # LE CANAL MACHINE — un fichier par execution, jamais partage.
+    canal = os.path.join(SCRATCH, f"canal_{uuid.uuid4().hex}.jsonl")
+    env["ESC_CANAL"] = canal
     # PRISE DE TEST: substitue le harnais. Elle sert au contre-exemple du
     # harnais qui sort IMMEDIATEMENT — precisement le cas ou le temoin retenait
     # les pipes. Inerte quand la variable est absente.
@@ -714,7 +721,7 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
         finally:
             if _masque is not None:
                 signal.pthread_sigmask(signal.SIG_SETMASK, _masque)
-    return p.returncode, sortie + erreur
+    return p.returncode, sortie + erreur, canal
 
 
 # ==========================================================================
@@ -896,7 +903,7 @@ def essayer(nom, point, fichier, paires, redondant=False,
     try:
         for f, _ in cibles:
             _tracer(nom, f)
-        code, sortie = lancer(harnais, prefixe)
+        code, sortie, canal = lancer(harnais, prefixe)
     finally:
         for f, _ in cibles:
             restaurer(f)
@@ -930,15 +937,89 @@ def essayer(nom, point, fichier, paires, redondant=False,
                 print("        " + ligne.strip()[:140])
         return SURVIVED
 
-    # Les points se subdivisent (« 2a. », « 8b. », « A1. »): un rouge sur une
-    # sous-verification EST un rouge du point.
-    base = re.match(r"[0-9A-Z]+", point).group(0)
-    # Deux libelles cohabitent, et c'est voulu. Les harnais de 6.3c disent
-    # « ROUGE: » tout court; les anterieurs gardent « ROUGE ATTENDU (a fermer) »
-    # plutot que de subir un remplacement global.
-    rougit = re.search(
-        rf"^ *(ROUGE ATTENDU \(a fermer\)|ROUGE|ECHEC): {base}[0-9a-z]?\.",
-        sortie, re.M) is not None
+    # ----------------------------------------------------------------------
+    # L'ATTRIBUTION VIENT DU CANAL MACHINE, PLUS DE LA PROSE
+    # ----------------------------------------------------------------------
+    # CE QUI EST REMPLACE, ET POURQUOI. L'ancien mecanisme cherchait la chaine
+    # « ROUGE: <point>. » dans une sortie ECRITE POUR UN HUMAIN:
+    #
+    #     base = re.match(r"[0-9A-Z]+", point).group(0)
+    #     rougit = re.search(rf"^ *(ROUGE|ECHEC): {base}[0-9a-z]?\.", sortie, re.M)
+    #
+    # La campagne des 103 sur `3d0acc2` a rendu ONZE survivants. SEPT n'etaient
+    # pas des garanties perdues — le harnais avait rougi, et le lanceur n'avait
+    # pas su le rattacher:
+    #
+    #   SEP1  « ECHEC: A: ... »            deux-points au lieu d'un point
+    #   F2    « ROUGE: PR. D5. ... »       un prefixe humain avant le point
+    #   F3    idem
+    #   MF2   tuee A L'INSTALLATION        aucun point d'execution a trouver
+    #   MF4   idem
+    #   K1    idem
+    #   MF1   la prose nommait MF2, MF3, MF4 — jamais MF1
+    #
+    # Une ponctuation decidait si une garantie comptait comme defendue.
+    #
+    # LE CANAL EST LA SEULE AUTORITE DES QU'IL PORTE UN EVENEMENT. Un canal
+    # VIDE ne veut pas dire « rien n'a rougi »: il veut dire « ce harnais
+    # n'emet pas encore », et le controle devient NOT_RUN. C'est
+    # deliberement inconfortable — cela force la migration au lieu de la
+    # rendre facultative, et un controle non migre apparait pour ce qu'il est:
+    # non mesure.
+    try:
+        lec = canal_lecture.lire(canal, {point})
+    except canal_lecture.CanalInvalide as e:
+        print(f"  INFRA {nom}\n        -> canal machine invalide: {e}")
+        return INFRA_FAILURE
+    if lec.fautes:
+        print(f"  INFRA {nom}\n        -> comptabilite du canal fautive:")
+        for f in lec.fautes[:3]:
+            print(f"        {f}")
+        return INFRA_FAILURE
+    if lec.evenements:
+        statut, motif = canal_lecture.verdict_du_point(lec, point)
+        etiquettes = {
+            "KILLED_RUNTIME": ("ok   ", KILLED_RUNTIME),
+            "KILLED_INSTALL_ASSERTION": ("ok   ", KILLED_INSTALL_ASSERTION),
+            "SURVIVED": ("ECHEC", SURVIVED),
+            "NOT_RUN": ("INFRA", INFRA_FAILURE),
+            "INFRA_FAILURE": ("INFRA", INFRA_FAILURE),
+        }
+        marque, valeur = etiquettes[statut]
+        print(f"  {marque} {nom}\n        -> {motif} (code {code})")
+        if valeur is SURVIVED:
+            for ligne in sortie.splitlines():
+                if re.match(r"^ *(ok|ROUGE|ECHEC)", ligne):
+                    print("        " + ligne.strip()[:140])
+        return valeur
+
+    # CANAL VIDE: le harnais n'emet pas encore. On ne bascule PAS sur un
+    # second mecanisme d'attribution — on ALIMENTE l'unique mecanisme par un
+    # traducteur d'entree, teste sur les formes exactes qui ont coute des
+    # survivants (« A: », « PR. D5. », refus d'installation).
+    #
+    # La difference n'est pas cosmetique. Deux mecanismes rendraient le verdict
+    # dependant de celui des deux qui a parle; un adaptateur alimente le seul
+    # mecanisme, et ses defauts se voient dans les evenements produits.
+    traduits = canal_lecture.traduire_prose(sortie, point)
+    if traduits:
+        lec.evenements.extend(traduits)
+        for e in traduits:
+            if e.get("terminal", True):
+                lec.terminaux.setdefault(e["point_id"], e["statut"])
+        statut, motif = canal_lecture.verdict_du_point(lec, point)
+        etiquettes = {
+            "KILLED_RUNTIME": ("ok   ", KILLED_RUNTIME),
+            "KILLED_INSTALL_ASSERTION": ("ok   ", KILLED_INSTALL_ASSERTION),
+            "SURVIVED": ("ECHEC", SURVIVED),
+            "NOT_RUN": ("INFRA", INFRA_FAILURE),
+            "INFRA_FAILURE": ("INFRA", INFRA_FAILURE),
+        }
+        marque, valeur = etiquettes[statut]
+        print(f"  {marque} {nom}\n        -> {motif} [traduit] (code {code})")
+        return valeur
+
+    rougit = False
     if redondant:
         if code == 0:
             print(f"  ok    {nom}\n        -> reste vert: la seconde garantie "
