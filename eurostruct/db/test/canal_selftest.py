@@ -294,21 +294,89 @@ def cas_emetteur() -> None:
              (r.returncode != 0, os.path.getsize(h.name)), (True, 0))
 
 
-#: Mutations du LECTEUR. Chacune doit faire ECHOUER cet auto-test.
+#: Mutations du LECTEUR ou de L'EMETTEUR. Chacune doit faire ECHOUER cet
+#: auto-test. Le fichier est nomme: le canal a deux bouts, et neutraliser
+#: l'emission est aussi grave que neutraliser la lecture.
 PREUVES_NEGATIVES = [
-    ("N1 le rejet des evenements d'un autre run/sha est retire",
+    ("N4 l'emission d'un point declare est neutralisee", "lib_harnais.sh",
+     '  esc_evt "$pt" ROUGE runtime',
+     '  : neutralise'),
+    ("N1 le rejet des evenements d'un autre run/sha est retire", "canal_lecture.py",
      '''        if (run_id is not None and evt["run_id"] != run_id) or \\
            (sha is not None and evt["sha"] != sha):''',
      '''        if False:'''),
     ("N2 le traducteur accepte n'importe quel harnais (repli textuel rouvert)",
+     "canal_lecture.py",
      '''    if harnais not in HARNAIS_NON_MIGRES:''',
      '''    if False:'''),
-    ("N3 les champs inconnus ne sont plus refuses",
+    ("N3 les champs inconnus ne sont plus refuses", "canal_lecture.py",
      '''    inconnus = set(evt) - CHAMPS
     if inconnus:''',
      '''    inconnus = set()
     if False:'''),
 ]
+
+
+def cas_migration() -> None:
+    """Les primitives sur lesquelles repose un harnais MIGRE.
+
+    UN HARNAIS MIGRE NE PEUT PLUS RETOMBER SUR LA PROSE. Ces cas eprouvent les
+    deux fonctions dont depend cette propriete — `esc_point_rouge` et
+    `esc_conclure` — et le refus du traducteur pour un harnais migre.
+
+    Ils sont RAPIDES a dessein: eprouver la migration en relancant
+    `finalisation_contract.sh` couterait dix minutes par cas, et un controle
+    trop cher finit par etre saute.
+    """
+    lib = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "lib_harnais.sh")
+
+    def emettre(script: str, attendu: str = "2b") -> list[dict]:
+        f = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False,
+                                        dir=espace())
+        f.close()
+        subprocess.run(
+            ["bash", "-c", f'source "{lib}"; {script}'],
+            env={**os.environ, "ESC_CANAL": f.name, "ESC_RUN_ID": RUN,
+                 "ESC_SHA": SHA, "ESC_CONTROLE_ID": "MIG",
+                 "ESC_POINT_ATTENDU": attendu},
+            capture_output=True, text=True)
+        return [json.loads(l) for l in open(f.name, encoding="utf-8") if l.strip()]
+
+    # 34. LE POINT EST DECLARE, PAS EXTRAIT DE LA PROSE.
+    e = emettre('esc_point_rouge 2b nature=t detail="peu importe le texte"')
+    verifier("34. esc_point_rouge declare le point et le rend terminal",
+             (len(e), e[0]["point_id"], e[0]["statut"], e[0]["terminal"])
+             if e else None, (1, "2b", "ROUGE", True))
+
+    # 35. UN AUTRE POINT EST ENREGISTRE, MAIS N'ATTRIBUE RIEN.
+    e = emettre('esc_point_rouge 2a nature=t detail="autre point"')
+    verifier("35. un point autre que l'attendu n'est pas terminal",
+             (len(e), e[0]["terminal"]) if e else None, (1, False))
+
+    # 36. LE POINT QUI PASSE PRODUIT UN SUR — jamais un silence.
+    # Sans cela le lanceur lirait NOT_RUN — « pas mesure » — la ou il faut
+    # lire SURVIVED — « la garantie a ete retiree et rien n'a rougi ».
+    e = emettre('esc_conclure')
+    verifier("36. esc_conclure rend SUR quand le point attendu n'a pas rougi",
+             (len(e), e[0]["statut"], e[0]["point_id"], e[0]["terminal"])
+             if e else None, (1, "SUR", "2b", True))
+
+    # 37. ET N'ECRASE PAS UN ROUGE DEJA RENDU.
+    e = emettre('esc_point_rouge 2b nature=t detail="rouge"; esc_conclure')
+    verifier("37. esc_conclure n'ecrase pas un rouge deja rendu",
+             [(x["statut"], x["terminal"]) for x in e], [("ROUGE", True)])
+
+    # 38. LE TRADUCTEUR REFUSE UN HARNAIS MIGRE.
+    try:
+        cl_local = cl.traduire_prose(
+            "ROUGE: 2b.", "2b", point="2b",
+            harnais="db/test/finalisation_contract.sh", run_id=RUN, sha=SHA)
+        r = "traduit"
+    except cl.TraducteurRefuse:
+        r = "REFUSE"
+    verifier("38. finalisation_contract.sh migre: le traducteur refuse",
+             r, "REFUSE")
 
 
 def cas_preuve_negative() -> None:
@@ -319,13 +387,13 @@ def cas_preuve_negative() -> None:
     prouver une garantie avec l'exemple qu'elle couvre deja.
     """
     ici = pathlib.Path(__file__).resolve().parent
-    for nom, avant, apres in PREUVES_NEGATIVES:
+    for nom, fichier, avant, apres in PREUVES_NEGATIVES:
         with tempfile.TemporaryDirectory() as d:
             dd = pathlib.Path(d)
             shutil.copy(ici / "canal_lecture.py", dd / "canal_lecture.py")
             shutil.copy(ici / "canal_selftest.py", dd / "canal_selftest.py")
             shutil.copy(ici / "lib_harnais.sh", dd / "lib_harnais.sh")
-            cible = dd / "canal_lecture.py"
+            cible = dd / fichier
             texte = cible.read_text(encoding="utf-8")
             if texte.count(avant) != 1:
                 verifier(nom, f"ancre absente ({texte.count(avant)})", "1 occurrence")
@@ -348,6 +416,7 @@ def _corps() -> int:
     print("    le canal machine: la ponctuation ne decide plus d'un verdict")
     cas_protocole()
     cas_emetteur()
+    cas_migration()
     if not IMBRIQUE:
         print("      --- preuve negative: le lecteur neutralise doit rougir ---")
         cas_preuve_negative()

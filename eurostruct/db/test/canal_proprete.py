@@ -62,10 +62,10 @@ SELFTEST = ICI / "canal_selftest.py"
 LECTURE = ICI / "canal_lecture.py"
 LIB = ICI / "lib_harnais.sh"
 
-#: Le chemin complet en parcourt 37 (34 quand les preuves negatives sont
+#: Le chemin complet en parcourt 43 (38 quand les preuves negatives sont
 #: sautees). On exige le compte du chemin complet: un selftest ampute
 #: rendrait moins, et ce controle doit le voir.
-CAS_MINIMUM = 37
+CAS_MINIMUM = 43
 
 ECHECS: list[str] = []
 

@@ -90,7 +90,6 @@ HARNAIS_NON_MIGRES = {
     "db/test/authority_sql_hardening.sh",
     "db/test/cross_cluster_restore.sh",
     "db/test/deploy_recovery.sh",
-    "db/test/finalisation_contract.sh",
     "db/test/gate_protocol_selftest.sh",
     "db/test/migration_postconditions.sh",
     "db/test/migration_roundtrip.sh",

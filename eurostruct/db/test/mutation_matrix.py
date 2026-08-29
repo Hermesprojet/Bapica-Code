@@ -1094,6 +1094,23 @@ def essayer(nom, point, fichier, paires, redondant=False,
             "INFRA_FAILURE": ("INFRA", INFRA_FAILURE),
         }
         marque, valeur = etiquettes[statut]
+        # LA REDONDANCE SE DECIDE ICI DESORMAIS, ET C'EST UNE CORRECTION.
+        #
+        # La branche `if redondant:` vivait APRES le canal et le traducteur.
+        # Elle n'etait donc atteinte que par un harnais MUET. Des que
+        # `finalisation_contract.sh` s'est mis a emettre, les controles `2` et
+        # `3` — declares redondants, couverts par `2b` et `3b` — sont passes de
+        # REDUNDANT_PROVEN a SURVIVED. La garantie n'avait pas bouge; le
+        # chemin qui la lisait, si.
+        #
+        # « Le point attendu n'a pas rougi » est exactement ce que
+        # `redondant=True` annonce: retirer UNE couche ne doit pas rougir,
+        # c'est le controle COMBINE qui prouve. Le canal le dit plus
+        # precisement que le code de sortie ne le disait.
+        if valeur is SURVIVED and redondant:
+            print(f"  ok    {nom}\n        -> reste vert: la seconde garantie "
+                  f"couvre; « {COMBINEE.get(code_court, '?')} » prouve le combine")
+            return REDUNDANT_PROVEN
         print(f"  {marque} {nom}\n        -> {motif} (code {code})")
         if valeur is SURVIVED:
             _diagnostiquer_survivant(sortie, point)
@@ -1137,6 +1154,23 @@ def essayer(nom, point, fichier, paires, redondant=False,
             "INFRA_FAILURE": ("INFRA", INFRA_FAILURE),
         }
         marque, valeur = etiquettes[statut]
+        # LA REDONDANCE SE DECIDE ICI DESORMAIS, ET C'EST UNE CORRECTION.
+        #
+        # La branche `if redondant:` vivait APRES le canal et le traducteur.
+        # Elle n'etait donc atteinte que par un harnais MUET. Des que
+        # `finalisation_contract.sh` s'est mis a emettre, les controles `2` et
+        # `3` — declares redondants, couverts par `2b` et `3b` — sont passes de
+        # REDUNDANT_PROVEN a SURVIVED. La garantie n'avait pas bouge; le
+        # chemin qui la lisait, si.
+        #
+        # « Le point attendu n'a pas rougi » est exactement ce que
+        # `redondant=True` annonce: retirer UNE couche ne doit pas rougir,
+        # c'est le controle COMBINE qui prouve. Le canal le dit plus
+        # precisement que le code de sortie ne le disait.
+        if valeur is SURVIVED and redondant:
+            print(f"  ok    {nom}\n        -> reste vert: la seconde garantie "
+                  f"couvre; « {COMBINEE.get(code_court, '?')} » prouve le combine")
+            return REDUNDANT_PROVEN
         print(f"  {marque} {nom}\n        -> {motif} [traduit] (code {code})")
         return valeur
 

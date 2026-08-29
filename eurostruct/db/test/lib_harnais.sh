@@ -1154,6 +1154,43 @@ with open(os.environ["ESC_EVT_FICHIER"], "a", encoding="utf-8") as f:
 FINPY
 }
 
+# ==========================================================================
+# LA MIGRATION D'UN HARNAIS VERS LE CANAL — deux primitives, et c'est tout
+# ==========================================================================
+# CE QUE CES DEUX FONCTIONS REMPLACENT: le traducteur de prose. Un harnais
+# migre DECLARE son point au moment ou il rend son verdict, au lieu de laisser
+# quelqu'un le deviner ensuite dans une sortie destinee a un humain.
+#
+# LE POINT EST UN ARGUMENT, PAS UNE EXTRACTION. Le lire dans le texte du
+# message serait le meme mecanisme qu'avant, deplace d'un cran: le harnais
+# CONNAIT son point, il n'a pas a le relire.
+#
+# `esc_conclure` FERME LE CAS OU RIEN N'A ROUGI. Sans elle, un point qui passe
+# ne produirait AUCUN evenement, et le lanceur conclurait NOT_RUN — « pas
+# mesure » — la ou il faut lire SURVIVED — « la garantie a ete retiree et rien
+# n'a rougi ». Les deux sont des echecs, mais ils ne se corrigent pas de la
+# meme facon, et les confondre efface la distinction.
+ESC_POINTS_ROUGES=""
+
+# esc_point_rouge <point> [cle=valeur ...]
+esc_point_rouge() {
+  local pt="${1:?esc_point_rouge <point> [cle=valeur ...]}"
+  shift
+  ESC_POINTS_ROUGES="$ESC_POINTS_ROUGES $pt "
+  esc_evt "$pt" ROUGE runtime "$@"
+}
+
+# esc_conclure — a appeler une fois, avant de sortir.
+esc_conclure() {
+  [[ -n "${ESC_CANAL:-}" ]] || return 0
+  [[ -n "${ESC_POINT_ATTENDU:-}" ]] || return 0
+  case "$ESC_POINTS_ROUGES" in
+    *" $ESC_POINT_ATTENDU "*) return 0 ;;
+  esac
+  esc_evt "$ESC_POINT_ATTENDU" SUR runtime nature=point_non_rouge \
+    detail="le point attendu n'a pas rougi: la garantie retiree n'a rien casse"
+}
+
 # esc_evt_rouge / esc_evt_sur — raccourcis de lisibilite, meme protocole.
 esc_evt_rouge() { esc_evt "$1" ROUGE   "${2:-runtime}" "${@:3}"; }
 esc_evt_sur()   { esc_evt "$1" SUR     "${2:-runtime}" "${@:3}"; }
