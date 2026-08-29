@@ -317,6 +317,34 @@ reste dans le bloc-notes de session, non versionné.
    porteur des rôles canoniques ;
 4. **`$3` non lié** sous `set -u` dans la fonction d'assertion du même harnais.
 
+## Arrêt propre — vérifications
+
+| point | constat |
+|---|---|
+| processus et descendants | aucun |
+| bases temporaires | 0 |
+| rôles non canoniques | 0 |
+| appartenances | 3, toutes internes à PostgreSQL (`pg_monitor`) |
+| verrous consultatifs | 0 |
+| fichiers temporaires du harnais | aucun |
+| captures JSONL | une seule, dans le bloc-notes de session, hors dépôt |
+| worktrees | un seul, `/tmp/esc-fix` — les deux worktrees gelés retirés |
+| `git status --porcelain` | vide |
+| HEAD local / distant | identiques |
+
+## Ce qui n'a PAS été entrepris, et pourquoi
+
+Après la campagne, il restait environ 3 h 35. Migrer un harnais vers le canal
+— la plus grosse dette restante — demandait ~20 min de travail, 16 min de
+validation ordonnée et ~2 h 30 de campagne, soit ~3 h 06 pour 3 h 35
+disponibles, avec une durée de campagne qui a varié de 2 h 29 à 2 h 39 entre
+les deux exécutions.
+
+Une marge de dix-neuf minutes sur un chantier qui **invalide** la campagne
+concluante n'est pas une marge. Le travail n'a donc pas été commencé : mieux
+vaut un état clos et prouvé qu'un `HEAD` en avance sur le dernier SHA
+démontré.
+
 ## Reste ouvert
 
 * migrer les dix-huit harnais encore tributaires du traducteur ; chacun est
