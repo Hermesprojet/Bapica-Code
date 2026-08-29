@@ -462,7 +462,7 @@ SHA.
 | processus de harnais ou de campagne | aucun vivant (vérifié par **PID exact**, jamais par motif) |
 | bases non canoniques | 0 |
 | rôles non systèmes | 0 |
-| appartenances résiduelles | 0 |
+| appartenances résiduelles | 0 — `pg_auth_members` compte 3 lignes, et ce sont les trois de la hiérarchie `pg_monitor` livrée par PostgreSQL, présentes sur tout cluster neuf. Le chiffre brut est donné pour qu'un lecteur qui interroge la table ne croie pas le rapport en défaut |
 | verrous consultatifs | 0 |
 | sessions clientes | 0 |
 | arbre git | propre, local == distant == `d6b54a2` |
