@@ -52,11 +52,32 @@ class FabriqueConnexionPostgres:
         # `creer_provider_de_production` enveloppe cette exception dans
         # `PiloteIndisponible`, qui est un refus explicite.
         connexion = psycopg2.connect(self._dsn)
-        # AUTOCOMMIT COTE PILOTE, TRANSACTION EXPLICITE COTE UNITE DE TRAVAIL.
-        # `_UniteDeTravail` emet `begin` lui-meme; laisser psycopg2 ouvrir sa
-        # propre transaction implicite en superposerait une seconde, et le
-        # `commit` de l'unite ne fermerait pas celle qu'on croit.
-        connexion.autocommit = True
+        # SURTOUT PAS D'AUTOCOMMIT — ET LA PREMIERE REDACTION EN METTAIT UN.
+        #
+        # Le raisonnement etait: « `_UniteDeTravail` emet `begin` lui-meme,
+        # donc psycopg2 n'a pas a ouvrir de transaction implicite ». Il est
+        # faux, et la mesure est nette:
+        #
+        #     autocommit=True  -> begin; insert; commit(); select -> 1 ligne
+        #                      -> rollback;                  select -> 0 ligne
+        #     autocommit=False -> begin; insert; commit(); select -> 1 ligne
+        #
+        # En autocommit, `commit()` de psycopg2 est un NO-OP: le pilote croit
+        # qu'aucune transaction n'est en cours, alors que le `begin` explicite
+        # en a bel et bien ouvert une cote serveur. La transaction restait donc
+        # ouverte, et la fermeture de la connexion la ROLLBACK.
+        #
+        # CE QUE CELA DONNAIT EN PRODUIT: `POST /v1/authority/decisions`
+        # rendait 201 avec un identifiant de decision — lu par `returning`
+        # DANS la transaction — et rien n'etait ecrit. Un faux succes complet,
+        # decouvert parce que l'approbateur ne retrouvait pas la decision.
+        #
+        # psycopg2 ouvre sa transaction implicite avant la premiere
+        # instruction; le `begin` de l'unite de travail tombe alors dans une
+        # transaction deja ouverte, PostgreSQL emet un avertissement et
+        # l'ignore. C'est sans consequence: la transaction existe, `SET LOCAL`
+        # y a la portee voulue, et `commit()` la valide reellement.
+        connexion.autocommit = False
         return connexion
 
 
