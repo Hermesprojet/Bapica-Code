@@ -80,6 +80,18 @@ jobs:
           pip install psycopg2-binary
           python -c "import psycopg2; print('pilote present:', psycopg2.__version__)"
 
+      # LA TRANCHE APPLICATIVE. Elle est installee dans le MEME venv, parce
+      # que `db/test/api_e2e.sh` lance `python3 -m pytest` et doit y trouver
+      # FastAPI, PyJWT et `eurostruct_api`. Sans eux ce harnais rend 4 — NON
+      # EXECUTE — et `--require-db` en fait un rouge, ce qui est le
+      # comportement voulu: une surface qu'on n'a pas pu exercer n'est pas une
+      # surface qui a tenu.
+      - name: dependances de la tranche applicative
+        run: |
+          source "$GITHUB_WORKSPACE/.venv-eurostruct/bin/activate"
+          pip install -e eurostruct/api
+          python -c "import fastapi, jwt, eurostruct_api; print('API prete')"
+
       - name: client postgresql
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
@@ -94,3 +106,23 @@ jobs:
           # consentement ne serait plus une barriere.
           EUROSTRUCT_CLUSTER_JETABLE: oui-cluster-jetable-et-isole
         run: ./eurostruct/run_tests.sh --require-db
+
+      # L'INTERFACE EST UNE SURFACE COMME UNE AUTRE. Le typecheck est ce qui
+      # empeche l'ecran d'afficher un champ que le contrat ne porte plus: il a
+      # deja refuse `clause.reference`, invente a la main, la ou le contrat
+      # genere dit `clause.cite`.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: interface — dependances
+        working-directory: eurostruct/web
+        run: npm ci --no-audit --no-fund
+
+      - name: interface — typecheck
+        working-directory: eurostruct/web
+        run: npm run typecheck
+
+      - name: interface — build
+        working-directory: eurostruct/web
+        run: npm run build

@@ -1,0 +1,128 @@
+:root {
+  color-scheme: light dark;
+  --fond: #fbfbfa;
+  --papier: #ffffff;
+  --encre: #16181d;
+  --encre-douce: #5b6270;
+  --trait: #dfe1e6;
+  --refus: #8a1c1c;
+  --refus-fond: #fdf2f2;
+  --refus-trait: #f0c9c9;
+  --alerte: #7a4a00;
+  --alerte-fond: #fff8ea;
+  --alerte-trait: #f0dcb4;
+  --ok: #14532d;
+  --ok-fond: #f2f9f4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #14161a;
+    --papier: #1b1e24;
+    --encre: #e9eaee;
+    --encre-douce: #a2a9b8;
+    --trait: #2e333c;
+    --refus: #ff9d9d;
+    --refus-fond: #2a1618;
+    --refus-trait: #55282b;
+    --alerte: #f0c67a;
+    --alerte-fond: #2a2214;
+    --alerte-trait: #55452a;
+    --ok: #9fe0b6;
+    --ok-fond: #14251a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--encre);
+  font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main { max-width: 60rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+
+h1 { font-size: 1.4rem; margin: 0 0 .25rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.05rem; margin: 1.75rem 0 .6rem; }
+.sous-titre { color: var(--encre-douce); margin: 0 0 1.75rem; }
+
+fieldset {
+  border: 1px solid var(--trait); border-radius: 10px;
+  padding: 1rem 1.1rem 1.2rem; margin: 0 0 1rem; background: var(--papier);
+}
+legend { padding: 0 .4rem; font-weight: 600; font-size: .85rem;
+         text-transform: uppercase; letter-spacing: .04em;
+         color: var(--encre-douce); }
+
+.grille { display: grid; gap: .85rem 1rem;
+          grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+
+label { display: block; font-size: .82rem; color: var(--encre-douce);
+        margin-bottom: .25rem; }
+input, select {
+  width: 100%; padding: .5rem .6rem; font: inherit; color: var(--encre);
+  background: var(--fond); border: 1px solid var(--trait); border-radius: 7px;
+}
+input:focus, select:focus { outline: 2px solid #6b8afd; outline-offset: 1px; }
+
+.ligne-case { display: flex; align-items: flex-start; gap: .55rem;
+              margin-top: .3rem; }
+.ligne-case input { width: auto; margin-top: .25rem; }
+.ligne-case label { margin: 0; color: var(--encre); font-size: .9rem; }
+.ligne-case .aide { display: block; color: var(--encre-douce);
+                    font-size: .8rem; margin-top: .15rem; }
+
+button {
+  font: inherit; font-weight: 600; padding: .6rem 1.1rem; border-radius: 8px;
+  border: 1px solid transparent; background: #2c3442; color: #fff;
+  cursor: pointer;
+}
+button:disabled { opacity: .55; cursor: progress; }
+button.secondaire { background: transparent; color: var(--encre);
+                    border-color: var(--trait); }
+
+.bandeau {
+  border-radius: 10px; padding: .85rem 1rem; margin: 1.25rem 0;
+  border: 1px solid;
+}
+.bandeau.refus { background: var(--refus-fond); border-color: var(--refus-trait);
+                 color: var(--refus); }
+.bandeau.alerte { background: var(--alerte-fond);
+                  border-color: var(--alerte-trait); color: var(--alerte); }
+.bandeau.ok { background: var(--ok-fond); border-color: var(--trait);
+              color: var(--ok); }
+.bandeau strong { display: block; margin-bottom: .2rem; }
+
+.mention-non-signable {
+  display: inline-block; font-weight: 700; letter-spacing: .06em;
+  font-size: .82rem; padding: .3rem .6rem; border-radius: 6px;
+  background: var(--alerte-fond); color: var(--alerte);
+  border: 1px solid var(--alerte-trait);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { text-align: left; padding: .45rem .5rem;
+         border-bottom: 1px solid var(--trait); }
+th { color: var(--encre-douce); font-weight: 600; font-size: .78rem;
+     text-transform: uppercase; letter-spacing: .03em; }
+td.nombre { font-variant-numeric: tabular-nums; text-align: right; }
+
+.cartes { display: grid; gap: .75rem;
+          grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+          margin: .5rem 0 1rem; }
+.carte { background: var(--papier); border: 1px solid var(--trait);
+         border-radius: 10px; padding: .7rem .8rem; }
+.carte .cle { font-size: .78rem; color: var(--encre-douce); }
+.carte .valeur { font-size: 1.25rem; font-variant-numeric: tabular-nums;
+                 margin-top: .15rem; }
+.carte .unite { font-size: .8rem; color: var(--encre-douce); }
+
+ul.bloquants { margin: .6rem 0 0; padding-left: 1.1rem; }
+ul.bloquants li { margin-bottom: .5rem; }
+ul.bloquants code { font-size: .85rem; }
+.clause { color: var(--encre-douce); font-size: .85rem; }
+
+.pied { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--trait);
+        color: var(--encre-douce); font-size: .82rem; }

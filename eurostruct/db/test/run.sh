@@ -327,6 +327,19 @@ echo "==> contrat du provider (frontiere d'identite)"
 etape "contrat du provider" \
   "$HERE/provider_contract.sh" "${DB_NAME:0:20}pv"
 
+# LA TRANCHE APPLICATIVE, SUR LA MEME BASE DEPLOYEE.
+#
+# `provider_contract.sh` ci-dessus eprouve le CONTRAT du provider avec un
+# authentificateur FICTIF. Celui-ci eprouve le chemin PRODUIT: deux identites
+# portees par des JETONS RSA SIGNES, verifies par l'authentificateur de
+# production, du `Bearer` brut jusqu'au commit.
+#
+# SANS FASTAPI NI PYJWT, IL REND 4 — NON EXECUTE. Une surface qu'on n'a pas pu
+# exercer n'est pas une surface qui a tenu.
+echo "==> parcours d'autorite depuis l'API (tranche applicative)"
+etape "parcours d'autorite depuis l'API" \
+  "$HERE/api_e2e.sh" "${DB_NAME:0:20}ae"
+
 echo "==> quatre-yeux explicite (6.3c)"
 etape "quatre-yeux explicite" \
   "$HERE/authority_four_eyes.sh" "${DB_NAME:0:20}fy"
