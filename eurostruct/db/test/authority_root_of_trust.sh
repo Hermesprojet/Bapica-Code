@@ -101,12 +101,35 @@ exiger_roles_absents "authority_root_of_trust.sh" \
 ATTAQUES_DEFINIES=(1 2 3 4 5 6 7 8 9 10 11 12 13 14)
 verdicts_declarer "${ATTAQUES_DEFINIES[@]}"
 
+# LES POINTS QUE CE HARNAIS SAIT EMETTRE — ECRITS EN TOUTES LETTRES.
+#
+# La liste double `ATTAQUES_DEFINIES`, et c'est deliberе: le pre-vol lit ce
+# fichier SANS l'executer, et ne verrait dans `"${ATTAQUES_DEFINIES[@]}"` que
+# le texte d'une expansion. Une declaration que le pre-vol ne peut pas lire
+# n'est pas une declaration — mesure du 29/08 sur
+# `authority_role_frontier.sh`, ou la premiere redaction a fait refuser quatre
+# controles. Le controle ci-dessous interdit aux deux listes de diverger.
+esc_points_declares 1 2 3 4 5 6 7 8 9 10 11 12 13 14
+
+if [[ "${ATTAQUES_DEFINIES[*]}" != "$(echo $ESC_POINTS_DECLARES)" ]]; then
+  echo "REFUS: ATTAQUES_DEFINIES et esc_points_declares divergent." >&2
+  echo "       attaques: ${ATTAQUES_DEFINIES[*]}" >&2
+  echo "       declares:$ESC_POINTS_DECLARES" >&2
+  exit 2
+fi
+
 KO=0
 # Raccourcis lisibles sur les sites d'appel: l'identifiant de l'attaque est le
 # nombre en tete du texte, ce qui evite de le repeter et donc de le desaccorder.
-rouge()        { verdict "${1%%.*}" ROUGE        "$@"; }
+#
+# ET C'EST AUSSI LE POINT DE CONTROLE. Le harnais le connait deja; il n'a pas
+# a le faire redecouvrir dans sa propre prose par un traducteur.
+rouge()        { verdict "${1%%.*}" ROUGE        "$@"
+                 esc_point_rouge "${1%%.*}" nature=racine_atteinte \
+                   detail="$*"; }
 sur()          { verdict "${1%%.*}" SUR          "$@"; }
-non_parcouru() { verdict "${1%%.*}" NON_PARCOURU "$@"; KO=1; }
+non_parcouru() { verdict "${1%%.*}" NON_PARCOURU "$@"; KO=1
+                 esc_point_troue "${1%%.*}" "$*"; }
 # `echoue` reste pour les fautes de DECOR, qui ne sont le verdict d'aucune
 # attaque: un decor casse n'est pas un chemin non parcouru, c'est un harnais
 # qui n'a pas pu commencer.
@@ -1336,6 +1359,12 @@ else
 fi
 
 verdicts_resume "6.3c — racine de confiance des autorites"
+
+# LE CANAL EST CONCLU AVANT LES DEUX SORTIES, ET NON DANS L'UNE D'ELLES.
+# Un point qui PASSE doit produire un SUR, et un point seulement troue son
+# NON_PARCOURU: sans cela le lanceur lirait NOT_RUN — « pas mesure » — la ou
+# il faut lire SURVIVED — « la garantie a ete retiree et rien n'a rougi ».
+esc_conclure
 
 if [[ $KO -eq 0 && $VERDICTS_KO -eq 0 && $VERDICTS_ROUGES -eq 0 \
       && $VERDICTS_NON_PARCOURUS -eq 0 ]]; then

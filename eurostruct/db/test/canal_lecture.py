@@ -84,7 +84,6 @@ HARNAIS_NON_MIGRES = {
     "db/test/authority_bootstrap_contract.sh",
     "db/test/authority_delegation_lineage.sh",
     "db/test/authority_four_eyes.sh",
-    "db/test/authority_root_of_trust.sh",
     "db/test/authority_sql_hardening.sh",
     "db/test/cross_cluster_restore.sh",
     "db/test/deploy_recovery.sh",
