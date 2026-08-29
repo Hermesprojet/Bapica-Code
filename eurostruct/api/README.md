@@ -4,12 +4,21 @@ Couche HTTP d'EUROSTRUCT. **Le moteur deterministe reste sans dependance
 HTTP, IA ou reseau** : tout ce qui parle au monde exterieur — signature de
 jeton, pilote PostgreSQL, routes — vit ici.
 
-## Demarrage local
+## Demarrage local — une commande
 
-    python -m venv .venv && . .venv/bin/activate
     pip install -e eurostruct/engine -e eurostruct/api
+    (cd eurostruct/web && npm install)
     cp eurostruct/api/.env.example .env      # puis renseigner les valeurs
-    set -a && . ./.env && set +a
+    ./eurostruct/dev.sh                      # --build pour servir le build
+
+`dev.sh` demarre l'API (8000) et l'interface (3000), **attend qu'elles
+repondent vraiment** — un processus lance n'est pas un service disponible —
+et rend la main. Ctrl-C arrete les deux. Sans `.env`, il demarre quand meme
+et affiche ce que `/ready` reproche: le CALCUL fonctionne sans base ni
+Supabase, ce sont les DECISIONS d'autorite qui exigent une identite.
+
+Pour lancer l'API seule:
+
     uvicorn eurostruct_api.app:app --reload --port 8000
 
 `/docs` sert le schema OpenAPI.
