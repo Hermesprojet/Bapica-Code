@@ -604,7 +604,7 @@ grant eurostruct_normative_bootstrap to "$MIG" with admin option;
 SQL
   if decor_phase_1 j; then
     MANIF_J=$(del -tAc "select normative_settings_manifest()" 2>&1)
-    SORTIE_J2=$(del -tAc "select normative_finalize_deployment('$MANIF_J')" 2>&1)
+    SORTIE_J2=$(del -v esc_v="$MANIF_J" -tAc "select normative_finalize_deployment(:'esc_v')" 2>&1)
     ETAT_J=$(del -tAc "select normative_activation_state()" 2>&1)
     PLAN_J=$(admb -tAc "select role_name from normative_control_plane" 2>&1)
     if [[ "$ETAT_J" == "PENDING" ]] \
@@ -729,10 +729,10 @@ LECTURE="select normative_activation_state() || ' // '
 # le seul moyen de comparer deux empreintes: le `topology_digest` porte les OID
 # des roles, qui different d'une base a l'autre. Deux bases jumelles auraient
 # donne deux empreintes differentes sans que cela prouve quoi que ce soit.
-BRUT_COMPOSE=$(ctl -tA -v ON_ERROR_STOP=1 2>&1 <<SQL
+BRUT_COMPOSE=$(ctl -v esc_v="$MANIF_K" -tA -v ON_ERROR_STOP=1 2>&1 <<SQL
 begin;
 select pg_advisory_xact_lock(hashtext('eurostruct.normative_finalisation'));
-select normative_prepare_activation('$MANIF_K');
+select normative_prepare_activation(:'esc_v');
 revoke eurostruct_normative_writer    from "$MIG";
 revoke eurostruct_normative_bootstrap from "$MIG";
 select 'DIGEST=' || normative_record_activation();
@@ -744,7 +744,7 @@ DIGEST_COMPOSE=$(grep -oE 'DIGEST=[0-9a-f]+' <<<"$BRUT_COMPOSE" | head -1)
 ETAT_COMPOSE=$(grep -F ' // ' <<<"$BRUT_COMPOSE" | tail -1)
 
 APRES_ANNULATION=$(ctl -tAc "select normative_activation_state()" 2>&1)
-DIGEST_FINAL=$(ctl -tAc "select 'DIGEST=' || normative_finalize_deployment('$MANIF_K')" 2>&1 \
+DIGEST_FINAL=$(ctl -v esc_v="$MANIF_K" -tAc "select 'DIGEST=' || normative_finalize_deployment(:'esc_v')" 2>&1 \
                  | grep -oE 'DIGEST=[0-9a-f]+' | head -1)
 ETAT_FINAL=$(ctl -tAc "$LECTURE" 2>&1 | grep -F ' // ' | tail -1)
 

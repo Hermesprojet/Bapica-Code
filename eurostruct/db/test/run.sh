@@ -477,8 +477,22 @@ adm -c "drop database if exists $NS_DB;" >/dev/null 2>&1
 # scenario A exige desormais que le decor ait EXISTE avant le signal, puis
 # qu'il ait disparu apres.
 echo "==> terminaison de la matrice de mutation sur signal"
-etape "terminaison de la matrice sur signal" \
+# LA CONTINUATION DE LIGNE ETAIT CASSEE, ET C'ETAIT UNE REGRESSION MUETTE.
+# En inserant le selftest du canal j'avais ecrit:
+#
+#     etape "terminaison de la matrice sur signal" \
+#       python3 "$HERE/canal_selftest.py"
+#       "$HERE/mutation_signal_selftest.sh"
+#
+# La barre oblique rattachait le selftest DU CANAL a une etape qui en nomme un
+# autre, et `mutation_signal_selftest.sh` devenait une commande NUE. Sous
+# `set -e`, sa moindre defaillance ne devenait plus une surface rouge: elle
+# tuait `run.sh` entier, sans nom et sans comptage. Chaque surface a son etape.
+etape "canal machine d'attribution" \
   python3 "$HERE/canal_selftest.py"
+etape "composition du SQL par le shell" \
+  python3 "$HERE/scanner_selftest.py"
+etape "terminaison de la matrice sur signal" \
   "$HERE/mutation_signal_selftest.sh"
 
 # --------------------------------------------------------------------------
@@ -631,7 +645,7 @@ SQL
     echo "ECHEC: $b ne se termine pas en PENDING (obtenu: $etat)" >&2; return 1
   fi
   manif=$(plan_db "$b" -tAc 'select normative_settings_manifest()' 2>&1)
-  out=$(plan_db "$b" -tAc "select normative_finalize_deployment('$manif')" 2>&1)
+  out=$(plan_db "$b" -v esc_v="$manif" -tAc "select normative_finalize_deployment(:'esc_v')" 2>&1)
   etat=$(plan_db "$b" -tAc 'select normative_activation_state()' 2>&1)
   if [[ "$etat" != "ACTIVE" ]]; then
     echo "ECHEC: phase 2 refusee sur $b (etat $etat):" >&2

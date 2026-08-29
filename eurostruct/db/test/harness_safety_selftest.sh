@@ -1096,12 +1096,18 @@ SQL19
 
   # 19.5 HEREDOC A SUBSTITUTION -> aucune execution shell dans un flux SQL.
   #      Mesure: « -- voir `whoami` » fait parvenir « -- voir root » a psql.
-  INST_HD="$(python3 "$HERE/verifier_heredocs.py" "$HERE" 2>&1)"
-  if [[ -z "$INST_HD" ]]; then
-    inst_verdict 5 "aucun heredoc non quote ne porte de substitution" ok
+  #      LE VERDICT VIENT DU CODE DE RETOUR, PAS DE LA PROSE. Ce site lisait
+  #      « sortie vide = conforme ». Le scanner imprime desormais une ligne de
+  #      succes — et cette ligne aurait rendu 19.5 ROUGE alors que le scanner
+  #      etait VERT. C'est la faute que le canal machine a corrigee ailleurs:
+  #      la prose est pour l'humain, le code de retour porte le verdict.
+  INST_HD_RC=0
+  INST_HD="$(python3 "$HERE/verifier_heredocs.py" "$HERE" 2>&1)" || INST_HD_RC=$?
+  if (( INST_HD_RC == 0 )); then
+    inst_verdict 5 "aucune composition SQL dangereuse dans les harnais" ok
   else
-    inst_verdict 5 "aucun heredoc non quote ne porte de substitution" \
-      "$(tr '\n' ' ' <<<"$INST_HD")"
+    inst_verdict 5 "aucune composition SQL dangereuse dans les harnais" \
+      "rc=$INST_HD_RC $(tr '\n' ' ' <<<"$INST_HD")"
   fi
 
   # 19.6 SORTIE MULTIOCTET -> capturee sans dommage, identifiant preserve.
