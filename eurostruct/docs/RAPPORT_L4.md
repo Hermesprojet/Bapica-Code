@@ -18,13 +18,18 @@ tout seul.
 6.3c n'est ni `CLOSED`, ni `DEPLOYABLE`, ni `PRODUCTION_READY`. `3d0acc2`
 n'est pas un candidat final.
 
-## Validation ordonnée — `96df869`
+## Validation ordonnée — `1eb57ab`
 
     30 surfaces, 0 rouge, 0 non exécutée
     « Toutes les surfaces de db/test sont vertes. »
 
-Lancée en capturant le PID exact (27268), attendue sur ce PID — jamais par
+Lancée en capturant le PID exact (28885), attendue sur ce PID — jamais par
 `pgrep -f`, qui reconnaît sa propre ligne de commande.
+
+Elle a été **relancée** sur `1eb57ab` après l'ajout du contrôle 19.9. Une
+première exécution verte portait sur `96df869` ; s'en prévaloir pour un arbre
+modifié depuis aurait été rattacher une preuve à un état qui n'existe plus.
+Durée mesurée : ~18,5 min.
 
 **Ce que cette exécution ne dit pas** : elle établit que les trente surfaces
 passent, pas que les garanties qu'elles portent sont irremplaçables. Seule la
@@ -57,6 +62,7 @@ plutôt que lancée et laissée inachevée.
 | `9d8a830` | F6 est tué — le harnais s'éprouve lui-même sans pilote |
 | `04e89a1` | la matrice de séparation mesurée : cinq couches, pas trois |
 | `96df869` | le scanner voit les deux défauts de composition SQL |
+| `1eb57ab` | 19.9 — le scanner doit voir sa propre cécité |
 
 ## Les deux résultats qui comptent
 
