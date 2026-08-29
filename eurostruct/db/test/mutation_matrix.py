@@ -1470,7 +1470,28 @@ revoke insert on normative_authorisation_grants          from normative_backend;
        """  -- IDEMPOTENCE, avant meme le verrou: une finalisation deja faite ne doit ni
   -- attendre ni echouer bruyamment.
   if normative_activation_state() = 'ACTIVE' then""")], False),
-    ("D2 la relecture APRES le verrou ne compare plus le manifeste", "D", S,
+    # LE POINT ETAIT « D », ET C'ETAIT FAUX — mesure du 29/08.
+    #
+    # `D` eprouve l'idempotence AVANT le verrou; `D2` eprouve la relecture
+    # APRES. Deux mutations distinctes, deux scenarios distincts, et le harnais
+    # les distingue depuis toujours: il imprime « ROUGE: D. » pour l'une et
+    # « ROUGE: D2. » pour l'autre. Le registre, lui, attendait « D » pour les
+    # deux.
+    #
+    # POURQUOI PERSONNE NE L'A VU. Le traducteur cherchait « D » dans la prose
+    # et ne le trouvait pas sur la ligne « ROUGE: D2. » — verifie: aucune des
+    # trois formes ne rend « D » sur cette ligne. Il passait alors a sa SECONDE
+    # passe, la detection generique d'un refus d'installation, qui matchait le
+    # decor refuse et rendait KILLED_INSTALL_ASSERTION avec « invariant non
+    # nomme ». Le controle etait donc compte comme tue par une heuristique
+    # d'installation ANONYME, pour une mutation dont le point ne correspondait
+    # a rien.
+    #
+    # La migration du harnais a rendu l'ecart visible en une execution: le
+    # canal porte un rouge sur « D2 » et un SUR terminal sur « D », et le
+    # controle ressort SURVIVED. C'est exactement ce qu'un canal doit faire
+    # d'une attribution fausse — la montrer, au lieu de la reussir par hasard.
+    ("D2 la relecture APRES le verrou ne compare plus le manifeste", "D2", S,
      [("""  -- COMMITTED, chaque instruction d'une fonction VOLATILE prend un nouvel
   -- instantane: le perdant voit donc ici ce que le gagnant a valide pendant
   -- qu'il attendait, et rend le meme resultat que s'il etait arrive apres.

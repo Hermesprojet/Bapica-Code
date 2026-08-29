@@ -82,7 +82,6 @@ CLES_DIAGNOSTIC = {"nature", "detail", "objet", "attendu", "obtenu"}
 #: liste — c'est ce qui empeche un repli silencieux.
 HARNAIS_NON_MIGRES = {
     "db/test/authority_bootstrap_contract.sh",
-    "db/test/authority_closure.sh",
     "db/test/authority_delegation_lineage.sh",
     "db/test/authority_four_eyes.sh",
     "db/test/authority_role_frontier.sh",

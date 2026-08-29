@@ -87,6 +87,50 @@ echoue() {
 }
 rouge()  { echo "      ROUGE: $*"; ROUGES=$((ROUGES + 1)); }
 
+# --------------------------------------------------------------------------
+# LES DEUX FORMES QUI DECLARENT LEUR POINT
+# --------------------------------------------------------------------------
+# CE QU'ELLES REMPLACENT: le lanceur relisait cette sortie pour y retrouver
+# « A1 » dans « ROUGE: A1. le migrateur atteint... ». La prose destinee a
+# l'humain decidait du verdict de la campagne. Le harnais CONNAIT son point.
+#
+# LA LIGNE IMPRIMEE NE CHANGE PAS. `rouge_pt A1 "texte"` imprime exactement
+# « ROUGE: A1. texte », comme avant. Elle n'a simplement plus autorite.
+#
+# SEULE LA PREMIERE LIGNE D'UN GROUPE PORTE LE POINT, et c'est deja le cas
+# dans ce fichier: les lignes suivantes commencent par des espaces et
+# continuent la phrase. Elles restent des `rouge` ordinaires — les convertir
+# ferait emettre plusieurs fois pour un point qui a deja rendu son verdict.
+#
+# `troue_pt` EST L'AUTRE MOITIE, ET ELLE COMPTE AUTANT. Neuf sites de ce
+# harnais disent « ECHEC: C1. la declaration n'a pas change: le scenario ne
+# reproduit rien ». Ce n'est pas une garantie perdue, c'est un scenario qu'on
+# n'a pas joue: NOT_RUN, jamais SURVIVED. Les confondre ferait declarer prouve
+# ce qu'on n'a pas mesure.
+rouge_pt() {   # rouge_pt <point> <texte...>
+  local pt="${1:?rouge_pt <point> <texte...>}"; shift
+  rouge "$pt. $*"
+  esc_point_rouge "$pt" nature=cloture_ouverte detail="$*"
+}
+troue_pt() {   # troue_pt <point> <texte...>
+  local pt="${1:?troue_pt <point> <texte...>}"; shift
+  echoue "$pt. $*"
+  esc_point_troue "$pt" "$*"
+}
+# UN `echoue` QUI EST EN REALITE UN ROUGE. Un seul site, et il a fallu lire le
+# code autour pour le savoir: en B2 le commentaire du harnais tranche lui-meme
+# — « Ce qui serait rouge, c'est l'ABSENCE de refus ». La ligne imprimee reste
+# un ECHEC, parce qu'elle l'a toujours ete et que la changer n'apprendrait
+# rien; c'est le CANAL qui doit dire juste. Meme famille que les cinq `echoue`
+# porteurs de label de `finalisation_contract.sh`, que le traducteur lisait
+# comme des rouges et qui auraient fait SURVIVRE leur controle une fois migres
+# sans cette distinction.
+rouge_echoue_pt() {   # rouge_echoue_pt <point> <texte...>
+  local pt="${1:?rouge_echoue_pt <point> <texte...>}"; shift
+  echoue "$pt. $*"
+  esc_point_rouge "$pt" nature=cloture_ouverte detail="$*"
+}
+
 adm() { psql -X -q -d postgres "$@"; }
 
 # --------------------------------------------------------------------------
@@ -298,7 +342,7 @@ A_OUVERT=0
 if [[ "$PORTEE" == "false/false" ]]; then
   echo "      ok: A1. le migrateur n'atteint pas l'activateur (SET/USAGE = $PORTEE)"
 else
-  rouge "A1. le migrateur atteint l'activateur pendant PENDING (SET/USAGE = $PORTEE)."
+  rouge_pt A1 "le migrateur atteint l'activateur pendant PENDING (SET/USAGE = $PORTEE)."
   rouge "    La phase 1 en a besoin pour transferer la propriete des fonctions;"
   rouge "    la question n'est donc pas de le lui retirer, mais que la racine de"
   rouge "    confiance ne soit pas ce role-la."
@@ -328,7 +372,7 @@ done
 if [[ -z "$ECRITES" ]]; then
   echo "      ok: A2. aucune ecriture directe dans les tables de confiance"
 else
-  rouge "A2. le migrateur ECRIT directement, apres SET ROLE, dans: $ECRITES"
+  rouge_pt A2 "le migrateur ECRIT directement, apres SET ROLE, dans: $ECRITES"
   A_OUVERT=1
 fi
 
@@ -340,7 +384,7 @@ ETAT=$(mig -tAc "select normative_activation_state()" 2>&1)
 if [[ "$ETAT" != "ACTIVE" ]]; then
   echo "      ok: A3. la fausse activation est refusee (etat: $ETAT)"
 else
-  rouge "A3. UNE FAUSSE LIGNE D'ACTIVATION FAIT PASSER L'ETAT A « ACTIVE »."
+  rouge_pt A3 "UNE FAUSSE LIGNE D'ACTIVATION FAIT PASSER L'ETAT A « ACTIVE »."
   rouge "    Aucune finalisation n'a eu lieu, aucun manifeste n'a ete presente,"
   rouge "    aucun emprunt n'a ete restitue, et le digest est invente."
   A_OUVERT=1
@@ -355,7 +399,7 @@ SQL
              'a0000000-0000-0000-0000-0000000000a1', 'FICTIF Racine',
              'FICTIF — amorcage apres fausse activation.')" 2>&1)
   if grep -qE '^[0-9a-f-]{36}$' <<<"$(tail -1 <<<"$AMORCE")"; then
-    rouge "A4. UNE ECRITURE NORMATIVE EST ACCEPTEE sans finalisation: l'amorcage"
+    rouge_pt A4 "UNE ECRITURE NORMATIVE EST ACCEPTEE sans finalisation: l'amorcage"
     rouge "    a inscrit l'octroi $(tail -1 <<<"$AMORCE")."
     rouge "    Les quatre declencheurs de 6.3b6b ne regardent que l'ETAT, et"
     rouge "    l'etat vient d'etre fabrique."
@@ -368,7 +412,7 @@ SQL
   LIGNES=$(admb -tAc "select (select count(*) from normative_activation)::text || '/' ||
                              (select count(*) from normative_authorisation_grants)::text" 2>&1)
   if grep -qiE "ERROR|ERREUR" <<<"$TOPO"; then
-    rouge "A5. assert_normative_topology() refuse — MAIS TROP TARD: l'etat est"
+    rouge_pt A5 "assert_normative_topology() refuse — MAIS TROP TARD: l'etat est"
     rouge "    deja ACTIVE et les ecritures sont deja la (activation/octrois = $LIGNES)."
     rouge "    Un controle qu'il faut penser a appeler ne ferme rien."
   fi
@@ -414,11 +458,11 @@ SANS_FORCE=$(admb -tAc "select coalesce(string_agg(relname, ', ' order by relnam
                                            'normative_rule_confirmation_revocations')
                            and relrowsecurity and not relforcerowsecurity" 2>&1)
 if [[ -n "$POSSEDEES" ]]; then
-  rouge "B1. APRES ACTIVATION, le migrateur possede encore: $POSSEDEES"
+  rouge_pt B1 "APRES ACTIVATION, le migrateur possede encore: $POSSEDEES"
   B_OUVERT=1
 fi
 if [[ -n "$SANS_FORCE" ]]; then
-  rouge "B1. RLS non FORCEE (le proprietaire la contourne) sur: $SANS_FORCE"
+  rouge_pt B1 "RLS non FORCEE (le proprietaire la contourne) sur: $SANS_FORCE"
   B_OUVERT=1
 fi
 [[ $B_OUVERT -eq 0 ]] && echo "      ok: B1. aucune table normative ne reste au migrateur, RLS forcee"
@@ -503,7 +547,7 @@ else
   REFUS=$(mig -c "delete from normative_rule_confirmations
                    where rule_id = 'test.fermeture';" 2>&1)
   if ! grep -qiE "immuable|permission denied|droit refuse" <<<"$REFUS"; then
-    echoue "B2. la suppression directe n'a ete refusee par rien:"
+    rouge_echoue_pt B2 "la suppression directe n'a ete refusee par rien:"
     echoue "    $(head -1 <<<"$REFUS" | cut -c1-140)"
   else
     grep -qi "permission denied" <<<"$REFUS" \
@@ -521,7 +565,7 @@ else
       echo "      ok: B3. le migrateur ne peut pas desactiver les declencheurs"
       echo "             ($(grep -m1 -iE 'ERROR|ERREUR' <<<"$DESACT" | cut -c1-90 | sed 's/^ERROR:  //'))"
     else
-      rouge "B3. LE MIGRATEUR A DESACTIVE LES DECLENCHEURS (actifs: $ACTIFS)."
+      rouge_pt B3 "LE MIGRATEUR A DESACTIVE LES DECLENCHEURS (actifs: $ACTIFS)."
       rouge "    Ses capacites normatives valent pourtant $RESTE: la revocation"
       rouge "    de la phase 2 n'achete rien contre le PROPRIETAIRE."
       B_OUVERT=1
@@ -538,7 +582,7 @@ else
                            from normative_rule_confirmations
                           where rule_id = 'test.fermeture'" 2>&1)
       [[ "$AVANT" != "$APRES" ]] && \
-        rouge "B4. LA PREUVE A ETE REECRITE: evidence_digest $AVANT -> $APRES."
+        rouge_pt B4 "LA PREUVE A ETE REECRITE: evidence_digest $AVANT -> $APRES."
 
       # --- B5. suppression, sans audit ------------------------------------
       AUD_AV=$(admb -tAc "select count(*) from audit_log
@@ -550,7 +594,7 @@ else
       RESTANT=$(admb -tAc "select count(*) from normative_rule_confirmations
                             where rule_id = 'test.fermeture'" 2>&1)
       if [[ "$RESTANT" == "0" ]]; then
-        rouge "B5. LA PREUVE A ETE SUPPRIMEE (lignes restantes: $RESTANT), et"
+        rouge_pt B5 "LA PREUVE A ETE SUPPRIMEE (lignes restantes: $RESTANT), et"
         rouge "    l'audit normatif n'a pas bouge ($AUD_AV -> $AUD_AP)."
         rouge "    La conservation decennale ne tient pas contre le proprietaire."
       fi
@@ -603,15 +647,15 @@ if grep -qiE "verrou de finalisation|n'est pas une operation autonome" <<<"$PREP
   echo "      ok: C1. la preparation isolee est refusee — le verrou de"
   echo "             finalisation n'est pas detenu, donc rien ne peut perimer"
 elif ! grep -qE '^[0-9a-f]{64}$' <<<"$PREP"; then
-  echoue "C1. la preparation isolee est refusee, mais pas au motif du verrou:"
+  troue_pt C1 "la preparation isolee est refusee, mais pas au motif du verrou:"
   echoue "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$PREP" | cut -c1-150)"
 elif [[ "$M1" == "$M2" ]]; then
-  echoue "C1. la declaration n'a pas change: le scenario ne reproduit rien"
+  troue_pt C1 "la declaration n'a pas change: le scenario ne reproduit rien"
 elif [[ "$ETAT" != "ACTIVE" ]]; then
   echo "      ok: C1. finalisation refusee sur une preparation perimee"
   echo "             ($(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-100))"
 else
-  rouge "C1. PARCOURS A — LA FINALISATION ABOUTIT SUR UNE PREPARATION PERIMEE."
+  rouge_pt C1 "PARCOURS A — LA FINALISATION ABOUTIT SUR UNE PREPARATION PERIMEE."
   rouge "    fige comme approuve  : « $FIGE »"
   rouge "    reellement declare   : « $DECLARE »"
   rouge "    La branche « deja prepare » ne relit jamais les declarations: le"
@@ -638,7 +682,7 @@ if [[ "$ETAT" != "ACTIVE" ]]; then
   echo "      ok: C2. l'activation hors finaliseur est refusee"
   echo "             ($(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-100))"
 else
-  rouge "C2. PARCOURS B — ACTIVE OBTENU SANS LE FINALISEUR, en trois"
+  rouge_pt C2 "PARCOURS B — ACTIVE OBTENU SANS LE FINALISEUR, en trois"
   rouge "    transactions distinctes: prepare, revocations a la main, puis"
   rouge "    record. Le verrou de finalisation n'a jamais ete pris et"
   rouge "    l'ensemble n'a jamais ete atomique."
@@ -671,7 +715,7 @@ for cas in "AUTRE:$(printf '0%.0s' $(seq 1 64))" "VIDE:" "MAL FORME:pas-un-diges
   if grep -qiE "MANIFEST_MISMATCH|ne correspond|manifeste" <<<"$S"; then
     echo "      ok: D. manifeste « $nom » refuse apres activation"
   else
-    rouge "D. manifeste « $nom » ACCEPTE apres activation: « $(head -1 <<<"$S" | cut -c1-60) »"
+    rouge_pt D "manifeste « $nom » ACCEPTE apres activation: « $(head -1 <<<"$S" | cut -c1-60) »"
     D_OUVERT=1
   fi
 done
@@ -788,7 +832,7 @@ d2_attendre() {  # d2_attendre <app> <detient|bloquee>
   for ((i = 0; i < 600; i++)); do
     [[ "$(admb -tAc "select pg_stat_clear_snapshot(); select $pred" 2>/dev/null           | tail -1 | tr -d ' ')" == "t" ]] && return 0
   done
-  echoue "D2. la session $app n'a jamais ete observee « $quoi »"
+  troue_pt D2 "la session $app n'a jamais ete observee « $quoi »"
   return 1
 }
 
@@ -802,19 +846,19 @@ else
   if d2_course "$(printf '0%.0s' $(seq 1 64))" "diff"; then
     ETAT_D2=$(ctl -tAc "select normative_activation_state()" 2>&1 | tr -d ' ')
     if [[ "$D2_CODE_A" -ne 0 ]]; then
-      echoue "D2. le gagnant n'a pas finalise (code $D2_CODE_A): scenario non evalue"
+      troue_pt D2 "le gagnant n'a pas finalise (code $D2_CODE_A): scenario non evalue"
     elif [[ "$ETAT_D2" != "ACTIVE" ]]; then
-      echoue "D2. la base n'est pas ACTIVE apres le gagnant (« $ETAT_D2 »)"
+      troue_pt D2 "la base n'est pas ACTIVE apres le gagnant (« $ETAT_D2 »)"
     elif grep -qiE "MANIFEST_MISMATCH|ne correspond|manifeste" <<<"$D2_SORTIE_B"; then
       echo "      ok: D2. le perdant, debloque apres le commit du gagnant,"
       echo "             relit ACTIVE et REFUSE son manifeste different"
       echo "             ($(grep -m1 -oiE '(ERROR|ERREUR)[^|]{0,90}' <<<"$D2_SORTIE_B" | cut -c1-90))"
     elif [[ "$D2_CODE_B" -eq 0 ]]; then
-      rouge "D2. le PERDANT a obtenu un succes avec un manifeste DIFFERENT:"
+      rouge_pt D2 "le PERDANT a obtenu un succes avec un manifeste DIFFERENT:"
       rouge "    la relecture apres le verrou n'a pas compare le manifeste."
       rouge "    sortie du perdant: $(tr '\n' ' ' <<<"$D2_SORTIE_B" | cut -c1-200)"
     else
-      echoue "D2. le perdant a echoue pour une AUTRE raison que le manifeste:"
+      troue_pt D2 "le perdant a echoue pour une AUTRE raison que le manifeste:"
       echoue "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$D2_SORTIE_B" | cut -c1-140)"
     fi
     # L'ETAT PERSISTANT EST CELUI DU GAGNANT, et rien d'autre.
@@ -871,7 +915,7 @@ NOM_SEUL=$(grep -nE "^\s+(p|c)\.rolname = normative_control_plane\(\)" \
 if [[ -z "$NOM_SEUL" ]]; then
   echo "      ok: E. toutes les exemptions comparent l'oid ET le nom"
 else
-  rouge "E. exemptions comparant le NOM SEUL, lignes: $NOM_SEUL"
+  rouge_pt E "exemptions comparant le NOM SEUL, lignes: $NOM_SEUL"
   rouge "   « oid et nom partout » est annonce mais n'est vrai que du bloc des"
   rouge "   roles d'autorite."
 fi
@@ -891,7 +935,7 @@ F_SQL=$(grep -lF "$MARQUEUR_F" "${MIGRATIONS[@]}" 2>/dev/null | sed 's#.*/##' | 
 F_DOC=$(grep -rlF "$MARQUEUR_F" "$DB_DIR/../docs" 2>/dev/null | head -1)
 F_OUVERT=0
 if [[ -z "$F_SQL" || -z "$F_DOC" ]]; then
-  rouge "F. le contrat du topology_digest n'est pas ecrit"
+  rouge_pt F "le contrat du topology_digest n'est pas ecrit"
   rouge "   (migration: ${F_SQL:-ABSENT}; documentation: ${F_DOC:-ABSENTE})."
   rouge "   Tant qu'il ne l'est pas, « il bloque la derive » et « il documente"
   rouge "   l'activation » restent tous deux defendables — et l'un des deux est"
@@ -928,14 +972,14 @@ adm -c "grant normative_backend to \"$SVC\";" >/dev/null 2>&1
 APRES_F=$(photo)
 TOPO_F=$(ctl -tAc "select assert_normative_topology()" 2>&1)
 if [[ "$INSCRIT" != "$AVANT_F" ]]; then
-  echoue "F. la photo refaite ne retrouve pas celle inscrite a l'activation:"
+  troue_pt F "la photo refaite ne retrouve pas celle inscrite a l'activation:"
   echoue "   inscrite $(cut -c1-12 <<<"$INSCRIT") / refaite $(cut -c1-12 <<<"$AVANT_F")"
 elif [[ "$AVANT_F" == "$APRES_F" ]]; then
-  rouge "F. une modification de topologie ne change pas la photographie:"
+  rouge_pt F "une modification de topologie ne change pas la photographie:"
   rouge "   elle ne photographie donc pas la topologie."
   F_OUVERT=1
 elif grep -qiE "ERROR|ERREUR" <<<"$TOPO_F"; then
-  rouge "F. une modification AUTORISEE fait refuser la topologie:"
+  rouge_pt F "une modification AUTORISEE fait refuser la topologie:"
   rouge "   $(grep -m1 -iE 'ERROR|ERREUR' <<<"$TOPO_F" | cut -c1-140)"
   F_OUVERT=1
 elif [[ $F_OUVERT -eq 0 ]]; then
@@ -980,7 +1024,7 @@ if [[ -n "$DIAG_SQL" && -n "$DOC_MD" ]]; then
   echo "      ok: G. la restauration inter-cluster a un diagnostic et une"
   echo "             documentation ($(basename "$DOC_MD"))"
 else
-  rouge "G. la restauration inter-cluster n'est ni diagnostiquee ni documentee"
+  rouge_pt G "la restauration inter-cluster n'est ni diagnostiquee ni documentee"
   rouge "   (diagnostic dans 0010: ${DIAG_SQL:-ABSENT}; documentation: ${DOC_MD:-ABSENTE})."
   rouge "   L'identite du plan porte un OID PostgreSQL, qu'un pg_dump/restore"
   rouge "   vers un autre cluster ne preserve pas. Le comportement attendu est"
@@ -1038,7 +1082,7 @@ H_MIGS="$(mktemp -d "${TMPDIR:-/tmp}/esc_h_XXXXXX")"
 cp "$DB_DIR"/migrations/*.sql "$H_MIGS/" 2>/dev/null
 H_CIBLE=$(ls "$H_MIGS"/0014_*.sql 2>/dev/null | head -1)
 if [[ -z "$H_CIBLE" ]]; then
-  echoue "H. 0014 introuvable: le refus delibere ne peut pas etre pose."
+  troue_pt H "0014 introuvable: le refus delibere ne peut pas etre pose."
   H_KO=1
 else
   # DANS la transaction de 0014, apres son travail, avant son `commit`: c'est
@@ -1060,7 +1104,7 @@ if (( H_KO == 0 )); then
   ESC_DECOR_MIGRATIONS_DIR="$H_MIGS" decor_poser h1 && H_POSE=0 || H_POSE=$?
   REFUS_ATTENDU=""
   if [[ "${H_POSE:-0}" == "0" ]]; then
-    rouge "H1. le decor a ete POSE malgre le refus injecte dans 0014:"
+    rouge_pt H1 "le decor a ete POSE malgre le refus injecte dans 0014:"
     rouge "    le refus n'a pas eu lieu, et les etapes 2 a 10 ne prouveraient rien."
     H_KO=1
     esc_decor_fermer
@@ -1079,7 +1123,7 @@ if (( H_KO == 0 )); then
   if grep -q "HARNAIS_REFUS_DELIBERE_0014" <<<"${ESC_MIGRATION_SORTIE:-}"; then
     echo "      ok: H2. le refus provient de 0014, sa transaction est annulee"
   else
-    rouge "H2. le refus ne provient pas de l'exception injectee dans 0014."
+    rouge_pt H2 "le refus ne provient pas de l'exception injectee dans 0014."
     rouge "    Obtenu: $(grep -m1 -iE 'ERROR|ERREUR' <<<"${ESC_MIGRATION_SORTIE:-}" | cut -c1-140)"
     H_KO=1
   fi
@@ -1131,7 +1175,7 @@ if (( H_KO == 0 )); then
     echo "             canonique, zero role de harnais, zero base, zero appartenance,
              zero verrou supplementaire"
   else
-    rouge "H3. le refus de phase 1 a laisse ${#H_RESIDUS[@]} residu(s):"
+    rouge_pt H3 "le refus de phase 1 a laisse ${#H_RESIDUS[@]} residu(s):"
     printf '             %s\n' "${H_RESIDUS[@]}"
     rouge "    C'est exactement la contamination qui fait lire « rien"
     rouge "    d'evalue » comme un survivant dans une campagne de mutation."
@@ -1145,7 +1189,7 @@ fi
 # registre de migrations ne connait rien du premier.
 if (( H_KO == 0 )); then
   if ! decor_poser h2; then
-    rouge "H4. le second decor ne se pose pas apres un refus de phase 1:"
+    rouge_pt H4 "le second decor ne se pose pas apres un refus de phase 1:"
     rouge "    le harnais est contamine, et tout ce qui suit est illisible."
     H_KO=1
   else
@@ -1154,10 +1198,10 @@ if (( H_KO == 0 )); then
     H_A_0014=$(mig -tAc "select count(*) from normative_migration_ledger
                           where migration_id like '0014%'" 2>&1)
     if [[ "$H_ETAT" != "PENDING" ]]; then
-      rouge "H4. le second decor n'atteint pas PENDING (obtenu: $H_ETAT)."
+      rouge_pt H4 "le second decor n'atteint pas PENDING (obtenu: $H_ETAT)."
       H_KO=1
     elif [[ "$H_A_0014" != "1" ]]; then
-      rouge "H4. le second decor n'a pas applique 0014 ($H_A_0014 ligne(s))."
+      rouge_pt H4 "le second decor n'a pas applique 0014 ($H_A_0014 ligne(s))."
       H_KO=1
     else
       echo "      ok: H4. second decor lance immediatement (etapes 9 et 10),"
@@ -1183,7 +1227,7 @@ H_SCEAU_DIR="$(mktemp -d "${TMPDIR:-/tmp}/esc_h0_XXXXXX")"
 H_SCEAU="$H_SCEAU_DIR/$(basename "$HARNAIS_SCEAU")"
 cp "$HARNAIS_SCEAU" "$H_SCEAU" 2>/dev/null
 if [[ ! -f "$H_SCEAU" ]]; then
-  echoue "H5. le sceau n'a pas pu etre copie: le refus delibere est impossible."
+  troue_pt H5 "le sceau n'a pas pu etre copie: le refus delibere est impossible."
   H_KO=1
 else
   cat >>"$H_SCEAU" <<'SQL'
@@ -1202,7 +1246,7 @@ if (( H_KO == 0 )); then
   ESC_DECOR_SCEAU="$H_SCEAU" decor_poser h3 && H_POSE0=0 || H_POSE0=$?
   REFUS_ATTENDU=""
   if [[ "${H_POSE0:-0}" == "0" ]]; then
-    rouge "H5. le decor a ete POSE malgre le refus injecte dans le sceau:"
+    rouge_pt H5 "le decor a ete POSE malgre le refus injecte dans le sceau:"
     rouge "    H6 et H7 ne prouveraient rien."
     H_KO=1
     esc_decor_fermer
@@ -1227,7 +1271,7 @@ if (( H_KO == 0 )); then
     echo "      ok: H6. teardown execute malgre le refus de phase 0 — zero"
     echo "             role canonique, zero role de harnais, zero base"
   else
-    rouge "H6. le refus de phase 0 a laisse ${#H_RESIDUS0[@]} residu(s):"
+    rouge_pt H6 "le refus de phase 0 a laisse ${#H_RESIDUS0[@]} residu(s):"
     printf '             %s\n' "${H_RESIDUS0[@]}"
     H_KO=1
   fi
@@ -1235,13 +1279,13 @@ fi
 
 if (( H_KO == 0 )); then
   if ! decor_poser h4; then
-    rouge "H7. aucun decor ne se pose apres un refus de phase 0: le harnais"
+    rouge_pt H7 "aucun decor ne se pose apres un refus de phase 0: le harnais"
     rouge "    est contamine."
     H_KO=1
   else
     H_ETAT0=$(ctl -tAc "select normative_activation_state()" 2>&1)
     if [[ "$H_ETAT0" != "PENDING" ]]; then
-      rouge "H7. le decor suivant n'atteint pas PENDING (obtenu: $H_ETAT0)."
+      rouge_pt H7 "le decor suivant n'atteint pas PENDING (obtenu: $H_ETAT0)."
       H_KO=1
     else
       echo "      ok: H7. decor suivant lance immediatement apres un refus de"
@@ -1257,6 +1301,13 @@ rm -rf "$H_SCEAU_DIR"
 # rien. `H_KO` ne sert qu'a enchainer les etapes, jamais a compter.
 
 echo ""
+
+# LE CANAL EST CONCLU AVANT LES DEUX SORTIES, ET NON DANS L'UNE D'ELLES.
+# Un point qui PASSE doit produire un SUR, et un point seulement troue son
+# NON_PARCOURU: sans cela le lanceur lirait NOT_RUN — « pas mesure » — la ou
+# il faut lire SURVIVED — « la garantie a ete retiree et rien n'a rougi ».
+esc_conclure
+
 echo "================================================="
 if [[ $KO -eq 0 && $ROUGES -eq 0 ]]; then
   echo " Fermeture de l'autorite: le migrateur est contenu."
