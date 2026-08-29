@@ -77,12 +77,106 @@ verdicts_declarer \
   graphe-cartographie admin-non-vacuite createrole-ne-reintegre-pas \
   plan-racine-externe
 
+
+# ==========================================================================
+# LE POINT DE CHAQUE VERDICT — DECLARE, ET NON RELU DANS LA PROSE
+# ==========================================================================
+# Meme forme que dans `migration_postconditions.sh`: le lanceur relisait la
+# sortie pour y retrouver « PC1 » dans « ROUGE: PC1. un membre non declare... ».
+# La prose destinee a l'humain decidait du verdict. Le harnais CONNAIT le point
+# de chacun de ses verdicts.
+#
+# QUATRE VERDICTS SEULEMENT PORTENT UN POINT DU REGISTRE — les quatre
+# postconditions, PC1 a PC4. Les dix-huit autres decrivent la frontiere elle-
+# meme et ne sont vises par aucune mutation aujourd'hui; ils portent leur
+# propre nom comme point. Ce n'est pas du remplissage: le jour ou une mutation
+# les visera, le point existera deja et le pre-vol le trouvera.
+#
+# LA SORTIE HUMAINE NE CHANGE PAS. Les messages continuent d'ouvrir par
+# « PC1. »; cette ligne n'a simplement plus autorite sur le verdict.
+declare -A POINT_DE=(
+  [postcondition-membre-en-trop]=PC1   [postcondition-admin-en-chaine]=PC2
+  [postcondition-declare-absent]=PC3   [postcondition-admin-direct]=PC4
+  [matrice-avant]=matrice-avant        [matrice-apres]=matrice-apres
+  [login-ordinaire]=login-ordinaire    [migrateur-createur]=migrateur-createur
+  [migrateur-sans-admin]=migrateur-sans-admin
+  [migrateur-createrole]=migrateur-createrole
+  [role-deploiement]=role-deploiement  [proprietaire-base]=proprietaire-base
+  [transitivite]=transitivite          [reconnexion]=reconnexion
+  [rejeu-des-migrations]=rejeu-des-migrations
+  [ecriture-reelle]=ecriture-reelle    [admin-option-borne]=admin-option-borne
+  [egalite-declaree-reelle]=egalite-declaree-reelle
+  [graphe-cartographie]=graphe-cartographie
+  [admin-non-vacuite]=admin-non-vacuite
+  [createrole-ne-reintegre-pas]=createrole-ne-reintegre-pas
+  [plan-racine-externe]=plan-racine-externe
+)
+
+# TOUT VERDICT DECLARE DOIT AVOIR SON POINT, ET RECIPROQUEMENT. Un verdict sans
+# point emettrait pour un point vide: le lanceur lirait NOT_RUN sans que rien
+# ne dise pourquoi. Une entree orpheline signale un verdict renomme dont la
+# table garde l'ancien nom.
+POINTS_MANQUANTS=""; POINTS_ORPHELINS=""
+for _v in "${VERDICTS_DECLARES[@]}"; do
+  [[ -n "${POINT_DE[$_v]:-}" ]] || POINTS_MANQUANTS="$POINTS_MANQUANTS $_v"
+done
+for _v in "${!POINT_DE[@]}"; do
+  case " ${VERDICTS_DECLARES[*]} " in
+    *" $_v "*) ;;
+    *) POINTS_ORPHELINS="$POINTS_ORPHELINS $_v" ;;
+  esac
+done
+if [[ -n "$POINTS_MANQUANTS$POINTS_ORPHELINS" ]]; then
+  echo "REFUS: la table des points et les verdicts declares divergent." >&2
+  [[ -z "$POINTS_MANQUANTS" ]] || \
+    echo "       sans point (non attribuable):$POINTS_MANQUANTS" >&2
+  [[ -z "$POINTS_ORPHELINS" ]] || \
+    echo "       point sans verdict declare:$POINTS_ORPHELINS" >&2
+  exit 2
+fi
+unset _v POINTS_MANQUANTS POINTS_ORPHELINS
+
+# LES POINTS QUE CE HARNAIS SAIT EMETTRE — ECRITS EN TOUTES LETTRES.
+#
+# La premiere redaction disait `esc_points_declares "${POINT_DE[@]}"`. C'est
+# correct a l'execution et ILLISIBLE POUR LE PRE-VOL, qui lit le fichier sans
+# l'executer: il n'y voyait que le texte de l'expansion, ne trouvait aucun
+# point, et a refuse les quatre controles PC — a juste titre. Une declaration
+# que le pre-vol ne peut pas lire n'est pas une declaration.
+esc_points_declares PC1 PC2 PC3 PC4 \
+    matrice-avant matrice-apres login-ordinaire migrateur-createur \
+    migrateur-sans-admin migrateur-createrole role-deploiement \
+    proprietaire-base transitivite reconnexion rejeu-des-migrations \
+    ecriture-reelle admin-option-borne egalite-declaree-reelle \
+    graphe-cartographie admin-non-vacuite createrole-ne-reintegre-pas \
+    plan-racine-externe
+
+# ET LES DEUX LISTES NE PEUVENT PAS DIVERGER. Ecrire les points deux fois —
+# une fois comme valeurs de `POINT_DE`, une fois pour le pre-vol — ouvre
+# exactement le genre d'ecart que ce harnais existe pour interdire ailleurs.
+POINTS_DIVERGENTS=""
+for _v in "${POINT_DE[@]}"; do
+  case "$ESC_POINTS_DECLARES" in
+    *" $_v "*) ;;
+    *) POINTS_DIVERGENTS="$POINTS_DIVERGENTS $_v" ;;
+  esac
+done
+if [[ -n "$POINTS_DIVERGENTS" ]]; then
+  echo "REFUS: point(s) de POINT_DE absents de esc_points_declares:" >&2
+  echo "      $POINTS_DIVERGENTS" >&2
+  exit 2
+fi
+unset _v POINTS_DIVERGENTS
+
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
 detail() { echo "                $*"; }
-rouge()  { verdict "$1" ROUGE "${@:2}"; }
+rouge()  { verdict "$1" ROUGE "${@:2}"
+           esc_point_rouge "${POINT_DE[$1]}" nature=frontiere_ouverte \
+             detail="$1: ${*:2}"; }
 sur()    { verdict "$1" SUR   "${@:2}"; }
-troue()  { verdict "$1" NON_PARCOURU "${@:2}"; }
+troue()  { verdict "$1" NON_PARCOURU "${@:2}"
+           esc_point_troue "${POINT_DE[$1]}" "$1: ${*:2}"; }
 
 MIG="${PREFIXE}_mf_${JETON}"; CTL="${PREFIXE}_cf_${JETON}"
 SVC="${PREFIXE}_sf_${JETON}"; ORD="${PREFIXE}_of_${JETON}"
@@ -801,6 +895,13 @@ fi
 # ==========================================================================
 verdicts_verifier || true
 verdicts_resume "6.3c — frontiere des roles PostgreSQL"
+
+# LE CANAL EST CONCLU AVANT LES DEUX SORTIES, ET NON DANS L'UNE D'ELLES.
+# Un point qui PASSE doit produire un SUR, et un point seulement troue son
+# NON_PARCOURU: sans cela le lanceur lirait NOT_RUN — « pas mesure » — la ou
+# il faut lire SURVIVED — « la garantie a ete retiree et rien n'a rougi ».
+esc_conclure
+
 if [[ $KO -eq 0 && $VERDICTS_KO -eq 0 && $VERDICTS_ROUGES -eq 0 \
       && $VERDICTS_NON_PARCOURUS -eq 0 ]]; then
   echo " Le migrateur n'atteint le backend d'autorite par aucun chemin ordinaire."
