@@ -221,15 +221,36 @@ def cas_protocole() -> None:
         r28 = "traduit"
     except cl.TraducteurRefuse:
         r28 = "REFUSE"
-    # LA DISTINCTION CONTROLE / POINT, FIGEE. La prose nomme « D9 »; le
-    # controle s'appelle « F4 ». Chercher le controle ne trouve rien et rend
-    # SURVIVANT un controle tue depuis des semaines — mesure du 29/08.
-    ev_f4 = cl.traduire_prose("      ROUGE: PR. D9. la barriere refuse", "F4",
-                              point="D9", harnais="db/test/provider_contract.sh",
+    # LA DISTINCTION CONTROLE / POINT, FIGEE. La prose nomme « MF2 »; le
+    # controle s'appelle « MF2 l'assertion... » cote matrice, et surtout la
+    # recherche porte sur le POINT. Chercher le CONTROLE dans la prose ne
+    # trouve rien et rend SURVIVANT un controle tue depuis des semaines —
+    # mesure du 29/08.
+    #
+    # LE HARNAIS CITE ICI A CHANGE, ET C'EST UN FAIT DE MIGRATION. Ce cas
+    # portait sur `provider_contract.sh` et son point `D9`. Ce harnais EMET
+    # depuis le 29/08: le traducteur le refuse desormais, et l'ancienne
+    # redaction faisait lever cet auto-test. On reancre la propriete sur un
+    # harnais ENCORE non migre — elle ne concerne pas un fichier en
+    # particulier — et le refus de l'ancien devient le cas 19c.
+    ev_pt = cl.traduire_prose("      ROUGE: AH. MF2. le manifeste refuse", "MF2c",
+                              point="MF2",
+                              harnais="db/test/authority_sql_hardening.sh",
                               run_id=RUN, sha=SHA)
     verifier("19b. la prose nomme le POINT, l'evenement porte le CONTROLE",
-             (ev_f4[0]["controle_id"], ev_f4[0]["point_id"]) if ev_f4 else None,
-             ("F4", "D9"))
+             (ev_pt[0]["controle_id"], ev_pt[0]["point_id"]) if ev_pt else None,
+             ("MF2c", "MF2"))
+
+    # 19c. LE HARNAIS MIGRE N'A PLUS DE REPLI TEXTUEL.
+    try:
+        cl.traduire_prose("      ROUGE: PR. D9. la barriere refuse", "F4",
+                          point="D9", harnais="db/test/provider_contract.sh",
+                          run_id=RUN, sha=SHA)
+        r19c = "traduit"
+    except cl.TraducteurRefuse:
+        r19c = "REFUSE"
+    verifier("19c. provider_contract.sh migre: le traducteur refuse",
+             r19c, "REFUSE")
 
     verifier("28. harnais MIGRE: le traducteur refuse (pas de repli silencieux)",
              r28, "REFUSE")
@@ -314,6 +335,12 @@ PREUVES_NEGATIVES = [
     if inconnus:''',
      '''    inconnus = set()
     if False:'''),
+    ("N5 un sous-processus de decor herite de nouveau du canal",
+     "canal_lecture.py",
+     '''    for cle in CONTEXTE_CANAL:
+        env.pop(cle, None)''',
+     '''    for cle in ():
+        env.pop(cle, None)'''),
 ]
 
 
@@ -379,6 +406,77 @@ def cas_migration() -> None:
              r, "REFUSE")
 
 
+def cas_decor() -> None:
+    """Un sous-processus de DECOR ne rend pas de verdict.
+
+    CE QUE CES CAS EXISTENT POUR EMPECHER. Mesure du 29/08, premier rejeu
+    filtre apres la migration de `provider_contract.sh`: les sept controles de
+    la factory sont tombes en `INFRA_FAILURE`, `double_terminal 7`.
+    `provider_contract.py` lance `sans_pilote.py`, qui RELANCE
+    `provider_contract.py` prive de pilote — c'est tout l'objet de D10.
+    L'enfant heritait de `ESC_CANAL` et ecrivait son PROPRE verdict terminal
+    pour le meme controle: « SUR puis SUR », « ROUGE puis SUR ».
+
+    Un harnais qui se relance lui-meme double son verdict. Ce n'est pas propre
+    a `provider_contract`: toute migration future qui lance un decor herite du
+    meme piege, et c'est pourquoi la regle est ici et non la-bas.
+
+    LE CAS 40 EST LE SEUL QUI PROUVE QUELQUE CHOSE. « L'enfant n'ecrit rien »
+    serait vrai aussi d'un enfant qui n'emet jamais — un canal muet et un
+    canal correctement prive se ressemblent, vus du fichier. On exige donc
+    D'ABORD que l'heritage nu ecrive REELLEMENT, puis que `env_decor` l'en
+    empeche. Sans la premiere moitie, la seconde ne mesure rien.
+    """
+    ici = os.path.dirname(os.path.abspath(__file__))
+    # Un enfant minimal qui CONCLUT: c'est exactement ce que fait le
+    # `finally` d'un harnais Python migre.
+    enfant = (f"import sys; sys.path.insert(0, {ici!r});"
+              " import canal_lecture; canal_lecture.conclure([])")
+    contexte = {"ESC_CANAL": None, "ESC_RUN_ID": RUN, "ESC_SHA": SHA,
+                "ESC_CONTROLE_ID": "DEC", "ESC_POINT_ATTENDU": "d1"}
+
+    def lancer(env: dict, canal: str) -> int:
+        """Lance l'enfant et rend le nombre d'evenements qu'il a ecrits."""
+        subprocess.run([sys.executable, "-c", enfant], env=env,
+                       capture_output=True, text=True)
+        with open(canal, encoding="utf-8") as f:
+            return sum(1 for ligne in f if ligne.strip())
+
+    # 39. `env_decor` retire les cinq variables, et RIEN d'autre.
+    temoin = {**os.environ, **{k: (v or "x") for k, v in contexte.items()},
+              "ESC_TEMOIN_A_CONSERVER": "present"}
+    net = cl.env_decor(temoin)
+    verifier("39. env_decor retire le contexte du canal et conserve le reste",
+             (sorted(k for k in cl.CONTEXTE_CANAL if k in net),
+              net.get("ESC_TEMOIN_A_CONSERVER")),
+             ([], "present"))
+
+    # 40. L'HERITAGE NU ECRIT — puis `env_decor` l'en empeche.
+    f = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, dir=espace())
+    f.close()
+    nu = {**os.environ, **contexte, "ESC_CANAL": f.name}
+    verifier("40. sans env_decor, un sous-processus ECRIT sur le canal parent",
+             lancer(nu, f.name), 1)
+
+    g = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, dir=espace())
+    g.close()
+    verifier("41. avec env_decor, il n'ecrit rien",
+             lancer(cl.env_decor({**nu, "ESC_CANAL": g.name}), g.name), 0)
+
+    # 42. ET LA CONSEQUENCE COMPTABLE EST BIEN CELLE QU'ON A MESUREE.
+    # Le parent conclut, l'enfant heritant conclut aussi: le lecteur doit voir
+    # un SECOND verdict terminal. C'est ce que la campagne a rapporte sept
+    # fois; on l'ancre ici pour que le lien fix/invariant soit eprouve.
+    h = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, dir=espace())
+    h.close()
+    double = {**os.environ, **contexte, "ESC_CANAL": h.name}
+    lancer(double, h.name)          # le « parent »
+    lancer(double, h.name)          # l'enfant qui a herite
+    lec = cl.lire(h.name, {"DEC"}, run_id=RUN, sha=SHA)
+    verifier("42. deux conclusions sur le meme controle: double_terminal",
+             lec.double_terminal, 1)
+
+
 def cas_preuve_negative() -> None:
     """Neutraliser le lecteur doit faire ROUGIR cet auto-test.
 
@@ -406,10 +504,15 @@ def cas_preuve_negative() -> None:
             verifier(nom, "ROUGE" if r.returncode != 0 else "VERT", "ROUGE")
 
 
-#: Nombre de cas que ce fichier PARCOURT. Publie a la sortie, et exige par le
-#: controle de proprete: un `rc == 0` ne distingue pas « tout est passe » de
-#: « rien n'a ete execute ».
-CAS_ATTENDUS = 35  # chemin complet, preuves negatives comprises
+#: LE COMPTE EST PUBLIE, PAS DECLARE. Il l'etait — `CAS_ATTENDUS = 35` — et
+#: personne ne le lisait: le compte reel etait deja 43, puis 49. Une constante
+#: que rien ne consomme derive en silence, et deux chiffres pour un seul fait
+#: sont exactement le mecanisme qu'on retire partout ailleurs.
+#:
+#: Le seul compte qui vaut est `PARCOURUS`, incremente par `verifier()` et
+#: imprime en `CANAL_SELFTEST_CAS=` a la sortie. `canal_proprete.py` le lit et
+#: refuse de conclure s'il baisse: un `rc == 0` ne distingue pas « tout est
+#: passe » de « rien n'a ete execute ».
 
 
 def _corps() -> int:
@@ -417,6 +520,7 @@ def _corps() -> int:
     cas_protocole()
     cas_emetteur()
     cas_migration()
+    cas_decor()
     if not IMBRIQUE:
         print("      --- preuve negative: le lecteur neutralise doit rougir ---")
         cas_preuve_negative()

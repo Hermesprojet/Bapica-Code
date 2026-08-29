@@ -35,6 +35,9 @@ import uuid
 
 RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(RACINE, "engine", "src"))
+# Le repertoire des harnais, pour `canal_lecture` — le protocole du canal
+# est defini une seule fois, et les deux bouts s'y referent.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # LE PILOTE MANQUANT NE DOIT PAS TOUT ETEINDRE.
 #
@@ -53,27 +56,51 @@ try:
 except ImportError:  # pragma: no cover
     PILOTE_PRESENT = False
 
+import canal_lecture  # noqa: E402
 from eurostruct_engine.ndp import postgres_provider as pp  # noqa: E402
 
 ECHECS: list[str] = []
 SURS: list[str] = []
 
 
-def verifier(nom: str, condition: bool, detail: str = "") -> None:
+#: Points qui ont ROUGI. `conclure()` s'en sert pour savoir s'il doit rendre
+#: un SUR pour le point attendu.
+POINTS_ROUGES: list[str] = []
+
+
+def verifier(point: str, nom: str, condition: bool, detail: str = "") -> None:
+    """Rend un verdict pour un POINT DECLARE.
+
+    LE POINT EST UN ARGUMENT, PAS LE PREMIER JETON DU TEXTE. Il l'etait: le
+    traducteur relisait « ROUGE: PR. D5. ... » pour retrouver « D5 ». Le
+    harnais connait son point; le lui faire redecouvrir dans sa propre prose
+    est le mecanisme meme qu'on supprime.
+
+    La sortie humaine ne change pas — la ligne imprimee est celle d'avant.
+    """
+    etiquette = f"{point}. {nom}"
     if condition:
-        SURS.append(nom)
-        print(f"      ok: {nom}")
+        SURS.append(etiquette)
+        print(f"      ok: {etiquette}")
     else:
-        ECHECS.append(nom)
-        print(f"      ROUGE: PR. {nom}")
+        ECHECS.append(etiquette)
+        POINTS_ROUGES.append(point)
+        print(f"      ROUGE: PR. {etiquette}")
         if detail:
             print(f"             {detail}")
+        canal_lecture.emettre(point, "ROUGE", nature="contrat_du_provider",
+                              detail=detail or nom)
 
 
-def non_parcouru(nom: str, detail: str) -> None:
-    ECHECS.append(nom)
-    print(f"      NON PARCOURU: {nom}", file=sys.stderr)
+def non_parcouru(point: str, nom: str, detail: str) -> None:
+    """Un chemin non atteint n'est pas un chemin sain — il n'est pas mesure."""
+    etiquette = f"{point}. {nom}"
+    ECHECS.append(etiquette)
+    POINTS_ROUGES.append(point)
+    print(f"      NON PARCOURU: {etiquette}", file=sys.stderr)
     print(f"             {detail}", file=sys.stderr)
+    canal_lecture.emettre(point, "NON_PARCOURU",
+                          nature="chemin_non_atteint", detail=detail)
 
 
 # ---------------------------------------------------------------------------
@@ -170,24 +197,26 @@ def proprietes_factory() -> None:
         def commit(self): raise AssertionError("jamais appele")
         def rollback(self): raise AssertionError("jamais appele")
 
-    def attendre(nom, exception_attendue, appel):
+    def attendre(point, nom, exception_attendue, appel):
         try:
             appel()
         except exception_attendue:
-            verifier(nom, True)
+            verifier(point, nom, True)
         except Exception as e:  # noqa: BLE001
-            verifier(nom, False, f"levee inattendue: {type(e).__name__}: {e}")
+            verifier(point, nom, False,
+                     f"levee inattendue: {type(e).__name__}: {e}")
         else:
-            verifier(nom, False, "aucun refus: la factory a rendu un provider")
+            verifier(point, nom, False,
+                     "aucun refus: la factory a rendu un provider")
 
     # D1. AUCUNE FABRIQUE DE CONNEXION -> refus, pas d'ouverture implicite.
-    attendre("D1. sans fabrique de connexion, refus",
+    attendre("D1", "sans fabrique de connexion, refus",
              ConfigurationProviderInvalide,
              lambda: creer_provider_de_production(
                  fabrique_de_connexion=None, authentificateur=AuthReel()))
 
     # D2. AUCUN AUTHENTIFICATEUR -> refus AVANT toute connexion.
-    attendre("D2. sans authentificateur, refus",
+    attendre("D2", "sans authentificateur, refus",
              AuthentificationRequise,
              lambda: creer_provider_de_production(
                  fabrique_de_connexion=lambda: ConnexionMuette(),
@@ -204,22 +233,22 @@ def proprietes_factory() -> None:
         creer_provider_de_production(
             fabrique_de_connexion=lambda: ConnexionMuette(),
             authentificateur=AuthFictif())
-        verifier("D3. un authentificateur fictif est refuse", False,
+        verifier("D3", "un authentificateur fictif est refuse", False,
                  "il a ete ACCEPTE: un provider fictif serait utilisable")
     except Exception:
-        verifier("D3. un authentificateur fictif est refuse", True)
+        verifier("D3", "un authentificateur fictif est refuse", True)
 
     # D4. PILOTE ABSENT -> refus, JAMAIS un repli memoire.
     def fabrique_qui_echoue():
         raise ImportError("no module named 'psycopg2'")
-    attendre("D4. un pilote absent est un refus, pas un repli",
+    attendre("D4", "un pilote absent est un refus, pas un repli",
              PiloteIndisponible,
              lambda: creer_provider_de_production(
                  fabrique_de_connexion=fabrique_qui_echoue,
                  authentificateur=AuthReel()))
 
     # D5. CONNEXION NON CONFORME -> refus.
-    attendre("D5. une connexion non conforme est refusee",
+    attendre("D5", "une connexion non conforme est refusee",
              PiloteIndisponible,
              lambda: creer_provider_de_production(
                  fabrique_de_connexion=lambda: object(),
@@ -229,21 +258,21 @@ def proprietes_factory() -> None:
     #     authentificateur placerait l'authentification du mauvais cote.
     try:
         creer_provider_de_production(ConnexionMuette(), AuthReel())  # type: ignore[misc]
-        verifier("D6. l'appel positionnel est refuse", False, "il a ete accepte")
+        verifier("D6", "l'appel positionnel est refuse", False, "il a ete accepte")
     except TypeError:
-        verifier("D6. l'appel positionnel est refuse", True)
+        verifier("D6", "l'appel positionnel est refuse", True)
     except Exception as e:  # noqa: BLE001
-        verifier("D6. l'appel positionnel est refuse", False, f"{type(e).__name__}")
+        verifier("D6", "l'appel positionnel est refuse", False, f"{type(e).__name__}")
 
     # D7. LE CHEMIN NOMINAL REND UN PROVIDER, et il a traverse le crochet.
     try:
         p = creer_provider_de_production(
             fabrique_de_connexion=lambda: ConnexionMuette(),
             authentificateur=AuthReel())
-        verifier("D7. le chemin nominal rend un provider non fictif",
+        verifier("D7", "le chemin nominal rend un provider non fictif",
                  p.is_fictional is False, f"is_fictional={p.is_fictional}")
     except Exception as e:  # noqa: BLE001
-        verifier("D7. le chemin nominal rend un provider non fictif", False,
+        verifier("D7", "le chemin nominal rend un provider non fictif", False,
                  f"{type(e).__name__}: {e}")
 
 
@@ -276,26 +305,26 @@ def main() -> int:
             continue
         if params & interdits:
             fautives.append(f"{nom}({', '.join(sorted(params & interdits))})")
-    verifier("A1. aucune methode publique ne recoit l'acteur",
+    verifier("A1", "aucune methode publique ne recoit l'acteur",
              not fautives, f"fautives: {fautives}")
 
     # A2. LE CONTEXTE N'EST PAS CONSTRUCTIBLE PAR L'APPELANT.
     try:
         pp.ContexteAuthentifie(actor_id="intrus", emis_par="moi-meme")
-        verifier("A2. le contexte refuse d'etre fabrique par l'appelant",
+        verifier("A2", "le contexte refuse d'etre fabrique par l'appelant",
                  False, "il a ete construit")
     except pp.AuthentificationRequise:
-        verifier("A2. le contexte refuse d'etre fabrique par l'appelant", True)
+        verifier("A2", "le contexte refuse d'etre fabrique par l'appelant", True)
 
     # A3. SANS AUTHENTIFICATEUR: REFUS AVANT TOUTE REQUETE.
     espion = ConnexionEspionne()
     try:
         pp.PostgresConfirmationProvider(connexion=espion,
                                         authentificateur=None)
-        verifier("A3. provider sans authentificateur refuse", False,
+        verifier("A3", "provider sans authentificateur refuse", False,
                  "il a ete construit")
     except pp.AuthentificationRequise:
-        verifier("A3. provider sans authentificateur refuse "
+        verifier("A3", "provider sans authentificateur refuse "
                  "AVANT toute requete", not espion.requetes,
                  f"requetes emises: {espion.requetes}")
 
@@ -306,10 +335,10 @@ def main() -> int:
     try:
         prov_espion.approuver_decision("preuve-invalide",
                                        decision_id=str(uuid.uuid4()))
-        verifier("A4. une preuve refusee n'ouvre aucune transaction", False,
+        verifier("A4", "une preuve refusee n'ouvre aucune transaction", False,
                  "l'appel a abouti")
     except pp.AuthentificationRequise:
-        verifier("A4. une preuve refusee n'ouvre aucune transaction",
+        verifier("A4", "une preuve refusee n'ouvre aucune transaction",
                  not espion2.requetes,
                  f"requetes emises: {espion2.requetes}")
 
@@ -319,10 +348,10 @@ def main() -> int:
     )
     try:
         assert_provider_is_usable_in_production(prov_espion)
-        verifier("A5. un provider a authentificateur fictif est refuse "
+        verifier("A5", "un provider a authentificateur fictif est refuse "
                  "en production", False, "il a ete accepte")
     except Exception:
-        verifier("A5. un provider a authentificateur fictif est refuse "
+        verifier("A5", "un provider a authentificateur fictif est refuse "
                  "en production", True)
 
     # LA FACTORY, ICI: elle n'a besoin NI de pilote NI de base, et doit donc
@@ -335,11 +364,16 @@ def main() -> int:
     racine_moteur = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
         "engine", "src", "eurostruct_engine")
+    # TOUS LES SOUS-PROCESSUS DE CE HARNAIS SONT DU DECOR. On les exerce pour
+    # observer leur code de retour; le verdict est rendu ICI, par `verifier`.
+    # Sans `env_decor`, `sans_pilote.py` relance ce fichier meme, qui herite du
+    # canal et emet un SECOND verdict terminal. Voir `canal_lecture.env_decor`.
+    DECOR = canal_lecture.env_decor()
     bar = subprocess.run(
         [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                       "barriere_provider.py"), racine_moteur],
-        capture_output=True, text=True, errors="replace")
-    verifier("D8. aucun module produit ne contourne la factory",
+        capture_output=True, text=True, errors="replace", env=DECOR)
+    verifier("D8", "aucun module produit ne contourne la factory",
              bar.returncode == 0,
              (bar.stdout + bar.stderr).strip()[:200])
 
@@ -367,8 +401,8 @@ def main() -> int:
         fix = subprocess.run(
             [sys.executable, os.path.join(ici, "fixtures_barriere.py"),
              os.path.join(ici, "barriere_provider.py")],
-            capture_output=True, text=True, errors="replace")
-        verifier("D9. la barriere juge correctement dix arbres fabriques",
+            capture_output=True, text=True, errors="replace", env=DECOR)
+        verifier("D9", "la barriere juge correctement dix arbres fabriques",
                  fix.returncode == 0,
                  (fix.stdout + fix.stderr).strip()[-220:])
 
@@ -380,8 +414,8 @@ def main() -> int:
         sp = subprocess.run(
             [sys.executable, os.path.join(ici, "sans_pilote.py"),
              os.path.join(os.path.dirname(os.path.dirname(ici)), "engine", "src")],
-            capture_output=True, text=True, errors="replace")
-        verifier("D10. sans pilote, la factory refuse (et le refus est nomme)",
+            capture_output=True, text=True, errors="replace", env=DECOR)
+        verifier("D10", "sans pilote, la factory refuse (et le refus est nomme)",
                  sp.returncode == 0,
                  (sp.stdout + sp.stderr).strip()[-220:])
 
@@ -431,7 +465,7 @@ def main() -> int:
 
         # B1. HORS TRANSACTION, AUCUNE IDENTITE.
         cx.rollback()
-        verifier("B1. avant tout travail, aucune identite en session",
+        verifier("B1", "avant tout travail, aucune identite en session",
                  prov.acteur_courant() == "",
                  f"vu: {prov.acteur_courant()!r}")
 
@@ -441,14 +475,14 @@ def main() -> int:
         with prov._unite("preuve-valide") as u:
             u.executer("select current_setting('eurostruct.actor_id', true)")
             vu_dedans["valeur"] = u.curseur.fetchone()[0]
-        verifier("B2. dans l'unite de travail, l'identite authentifiee est posee",
+        verifier("B2", "dans l'unite de travail, l'identite authentifiee est posee",
                  vu_dedans.get("valeur") == acteur_a,
                  f"vu: {vu_dedans.get('valeur')!r}, attendu {acteur_a!r}")
 
         # B3. APRES COMMIT: PLUS RIEN. C'est `SET LOCAL` qui le garantit, et
         #     non un `reset` applicatif — la difference compte le jour ou
         #     quelqu'un remplace set_config(..., true) par (..., false).
-        verifier("B3. apres COMMIT, l'identite a disparu de la session",
+        verifier("B3", "apres COMMIT, l'identite a disparu de la session",
                  prov.acteur_courant() == "",
                  f"vu: {prov.acteur_courant()!r}")
 
@@ -459,7 +493,7 @@ def main() -> int:
                 raise RuntimeError("interruption volontaire")
         except RuntimeError:
             pass
-        verifier("B4. apres une EXCEPTION, l'identite a disparu",
+        verifier("B4", "apres une EXCEPTION, l'identite a disparu",
                  prov.acteur_courant() == "",
                  f"vu: {prov.acteur_courant()!r}")
 
@@ -471,7 +505,7 @@ def main() -> int:
         except Exception:
             pass
         cx.rollback()
-        verifier("B5. apres une ERREUR SQL, l'identite a disparu",
+        verifier("B5", "apres une ERREUR SQL, l'identite a disparu",
                  prov.acteur_courant() == "",
                  f"vu: {prov.acteur_courant()!r}")
 
@@ -485,11 +519,11 @@ def main() -> int:
         with prov_b._unite("preuve-valide") as u:
             u.executer("select current_setting('eurostruct.actor_id', true)")
             vu_b["valeur"] = u.curseur.fetchone()[0]
-        verifier("B6. la connexion reprise porte la NOUVELLE identite, "
+        verifier("B6", "la connexion reprise porte la NOUVELLE identite, "
                  "et elle seule",
                  vu_b.get("valeur") == acteur_b,
                  f"vu: {vu_b.get('valeur')!r}, attendu {acteur_b!r}")
-        verifier("B6bis. et rien ne subsiste apres",
+        verifier("B6", "bis. et rien ne subsiste apres",
                  prov.acteur_courant() == "",
                  f"vu: {prov.acteur_courant()!r}")
 
@@ -503,7 +537,7 @@ def main() -> int:
         cx.commit()
         reste = prov.acteur_courant()
         cur.close()
-        verifier("B7. set_config(..., true) ne survit pas au COMMIT",
+        verifier("B7", "set_config(..., true) ne survit pas au COMMIT",
                  reste == "", f"vu: {reste!r}")
 
         # ------------------------------------------------------------------
@@ -524,21 +558,21 @@ def main() -> int:
             standard_family="EN 1992", part="1-1", edition="2004",
             permission="can_validate_normative_reference",
             reason="FICTIF decision par le provider")
-        verifier("C1. A propose sans jamais nommer A",
+        verifier("C1", "A propose sans jamais nommer A",
                  bool(decision), f"decision rendue: {decision!r}")
 
         ligne = observer(
             "select proposer_id::text, proposal_source_grant_id::text, "
             "state::text, correlation_id::text "
             "from normative_authority_decisions where id = %s", (decision,))
-        verifier("C2. le proposant enregistre est l'identite AUTHENTIFIEE",
+        verifier("C2", "le proposant enregistre est l'identite AUTHENTIFIEE",
                  ligne is not None and ligne[0] == acteur_a,
                  f"vu: {ligne[0] if ligne else None!r}, attendu {acteur_a!r}")
-        verifier("C3. la source d'autorite du proposant est conservee",
+        verifier("C3", "la source d'autorite du proposant est conservee",
                  ligne is not None and ligne[1] == grant_a,
                  f"vu: {ligne[1] if ligne else None!r}, attendu {grant_a!r}")
         correlation = ligne[3] if ligne else None
-        verifier("C4. une correlation est posee des la proposition",
+        verifier("C4", "une correlation est posee des la proposition",
                  bool(correlation), f"vu: {correlation!r}")
 
         # C5. L'AUTO-APPROBATION EST REFUSEE PAR POSTGRESQL, et non par le
@@ -547,10 +581,10 @@ def main() -> int:
         #     reecriture du code appelant.
         try:
             prov_a.approuver_decision("preuve-valide", decision_id=decision)
-            verifier("C5. le proposant ne peut pas s'approuver lui-meme",
+            verifier("C5", "le proposant ne peut pas s'approuver lui-meme",
                      False, "l'approbation a abouti")
         except Exception as e:  # noqa: BLE001
-            verifier("C5. le proposant ne peut pas s'approuver lui-meme",
+            verifier("C5", "le proposant ne peut pas s'approuver lui-meme",
                      "principal" in str(e).lower()
                      or "proposant" in str(e).lower(),
                      f"refus obtenu, mais pour une autre raison: {e}")
@@ -562,13 +596,13 @@ def main() -> int:
             "select approver_id::text, approval_source_grant_id::text, "
             "state::text, correlation_id::text "
             "from normative_authority_decisions where id = %s", (decision,))
-        verifier("C6. l'approbateur enregistre est la SECONDE identite",
+        verifier("C6", "l'approbateur enregistre est la SECONDE identite",
                  l2 is not None and l2[0] == acteur_b and l2[2] == "APPROVED",
                  f"vu: {l2!r}")
-        verifier("C7. la source d'autorite de l'approbateur est conservee",
+        verifier("C7", "la source d'autorite de l'approbateur est conservee",
                  l2 is not None and l2[1] == grant_b,
                  f"vu: {l2[1] if l2 else None!r}, attendu {grant_b!r}")
-        verifier("C8. la correlation n'a pas change entre les deux etapes",
+        verifier("C8", "la correlation n'a pas change entre les deux etapes",
                  l2 is not None and l2[3] == correlation,
                  f"avant {correlation!r}, apres {l2[3] if l2 else None!r}")
 
@@ -576,18 +610,18 @@ def main() -> int:
         prov_b.consommer_decision("preuve-valide", decision_id=decision)
         etat = observer("select state::text from normative_authority_decisions "
                         "where id = %s", (decision,))
-        verifier("C9. la decision est CONSUMED", etat and etat[0] == "CONSUMED",
+        verifier("C9", "la decision est CONSUMED", etat and etat[0] == "CONSUMED",
                  f"vu: {etat!r}")
         try:
             prov_b.consommer_decision("preuve-valide", decision_id=decision)
-            verifier("C10. une seconde consommation est refusee", False,
+            verifier("C10", "une seconde consommation est refusee", False,
                      "elle a abouti")
         except Exception:  # noqa: BLE001
-            verifier("C10. une seconde consommation est refusee", True)
+            verifier("C10", "une seconde consommation est refusee", True)
         cx.rollback()
 
         # C11. APRES TOUT CELA, LA SESSION NE PORTE PLUS AUCUNE IDENTITE.
-        verifier("C11. apres les trois primitives, la session est vide",
+        verifier("C11", "apres les trois primitives, la session est vide",
                  prov_a.acteur_courant() == "",
                  f"vu: {prov_a.acteur_courant()!r}")
 
@@ -611,5 +645,18 @@ def main() -> int:
     return 0
 
 
+def _principal() -> int:
+    """Enveloppe `main()` et CONCLUT le canal, quoi qu'il arrive.
+
+    Un point qui passe doit produire un SUR. Sans lui, le lanceur lirait
+    NOT_RUN — « pas mesure » — la ou il faut lire SURVIVED — « la garantie a
+    ete retiree et rien n'a rougi ».
+    """
+    try:
+        return main()
+    finally:
+        canal_lecture.conclure(POINTS_ROUGES)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_principal())

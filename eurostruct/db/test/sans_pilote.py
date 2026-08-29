@@ -138,9 +138,17 @@ except SystemExit as e:
 def eprouver_harnais(harnais: str, moteur_src: str) -> tuple[int, str]:
     """Lance `provider_contract.py` sans pilote. Rend (code, sortie)."""
     import os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import canal_lecture
     r = subprocess.run([sys.executable, "-c", HARNAIS],
                        capture_output=True, text=True, errors="replace",
-                       env={**os.environ, "ESC_HARNAIS": harnais,
+                       # SANS CANAL, ET DEPUIS ICI AUSSI. Le parent nous lance
+                       # deja avec `env_decor`; on le refait au site qui
+                       # RELANCE reellement le harnais, pour que la propriete
+                       # tienne meme lance a la main. Une seule definition —
+                       # `canal_lecture.env_decor` — appliquee deux fois.
+                       env={**canal_lecture.env_decor(),
+                            "ESC_HARNAIS": harnais,
                             "PYTHONPATH": moteur_src,
                             # COUPE LA RECURSION. `provider_contract` lance ce
                             # fichier en D10; sans ce marqueur il se relance

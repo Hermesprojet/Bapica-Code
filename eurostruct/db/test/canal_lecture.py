@@ -94,7 +94,6 @@ HARNAIS_NON_MIGRES = {
     "db/test/migration_postconditions.sh",
     "db/test/migration_roundtrip.sh",
     "db/test/official_deployment.sh",
-    "db/test/provider_contract.sh",
     "db/test/seal_contract.sh",
     "db/test/two_phase_deployment.sh",
     "db/test/mutation_matrix.py",
@@ -268,6 +267,117 @@ def verdict_du_controle(lec: Lecture, controle: str) -> tuple[str, str]:
 
 #: Compatibilite de nom pour les appelants qui parlaient de « point ».
 verdict_du_point = verdict_du_controle
+
+
+# ---------------------------------------------------------------------------
+# L'EMISSION DEPUIS PYTHON — meme protocole, meme fichier
+# ---------------------------------------------------------------------------
+# POURQUOI ICI, ET PAS DANS UN MODULE A PART. Le schema du protocole 2 est
+# defini dans ce fichier; une seconde definition ailleurs derivera. Un harnais
+# Python qui emet doit emettre EXACTEMENT ce que ce lecteur attend.
+#
+# Le pendant shell est `esc_evt` dans `lib_harnais.sh`. Les deux ecrivent la
+# meme ligne, et `canal_selftest.py` les eprouve tous les deux.
+def emettre(point: str, statut: str, *, phase: str = "runtime",
+            nature: str | None = None, detail: str | None = None,
+            invariant: str | None = None) -> None:
+    """Ecrit un evenement de protocole 2 sur le canal, s'il y en a un.
+
+    Silencieux quand `ESC_CANAL` est absent — un harnais lance a la main ne
+    doit pas echouer faute de campagne. En revanche, un canal SANS contexte
+    est une faute: un evenement qu'on ne peut rattacher ni au run ni au SHA
+    ferait conclure NOT_RUN sans qu'on sache pourquoi.
+    """
+    import json as _json
+    import os as _os
+    import time as _time
+
+    canal = _os.environ.get("ESC_CANAL")
+    if not canal:
+        return
+    run = _os.environ.get("ESC_RUN_ID")
+    sha = _os.environ.get("ESC_SHA")
+    controle = _os.environ.get("ESC_CONTROLE_ID")
+    if not (run and sha and controle):
+        raise RuntimeError(
+            "canal sans contexte: ESC_RUN_ID, ESC_SHA et ESC_CONTROLE_ID sont "
+            "exiges. Un evenement qu'on ne peut pas rattacher vaut moins que "
+            "pas d'evenement du tout.")
+    attendu = _os.environ.get("ESC_POINT_ATTENDU") or ""
+    evt = {
+        "protocole": PROTOCOLE_ATTENDU, "run_id": run, "sha": sha,
+        "controle_id": controle, "point_id": point, "statut": statut,
+        "phase": phase, "seq": _time.time_ns(),
+        "horodatage": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+        # TERMINAL SEULEMENT POUR LE POINT ATTENDU. Un harnais peut rougir sur
+        # plusieurs points; si chacun etait terminal, l'invariant « un seul
+        # verdict terminal » se declencherait a tort.
+        "terminal": (point == attendu) if attendu else True,
+        "invariant": invariant,
+        "diagnostic": ({"nature": nature, "detail": detail}
+                       if (nature or detail) else None),
+    }
+    ligne = _json.dumps(evt, ensure_ascii=False, separators=(",", ":"))
+    assert "\n" not in ligne
+    with open(canal, "a", encoding="utf-8") as f:
+        f.write(ligne + "\n")
+
+
+def conclure(points_rouges) -> None:
+    """Emet un SUR pour le point attendu s'il n'a jamais rougi.
+
+    Sans cela le lanceur lirait NOT_RUN — « pas mesure » — la ou il faut lire
+    SURVIVED — « la garantie a ete retiree et rien n'a rougi ».
+    """
+    import os as _os
+    attendu = _os.environ.get("ESC_POINT_ATTENDU")
+    if not attendu or not _os.environ.get("ESC_CANAL"):
+        return
+    if attendu in set(points_rouges):
+        return
+    emettre(attendu, "SUR", nature="point_non_rouge",
+            detail="le point attendu n'a pas rougi")
+
+
+#: Les variables qui font d'un processus un EMETTEUR. Un sous-processus de
+#: decor ne doit en heriter aucune.
+CONTEXTE_CANAL = ("ESC_CANAL", "ESC_RUN_ID", "ESC_SHA", "ESC_CONTROLE_ID",
+                  "ESC_POINT_ATTENDU")
+
+
+def env_decor(base=None) -> dict:
+    """L'environnement d'un sous-processus de DECOR: sans canal.
+
+    UN HARNAIS QUI SE RELANCE LUI-MEME DOUBLE SON PROPRE VERDICT. Mesure du
+    29/08, premier rejeu filtre apres la migration de `provider_contract.sh`:
+    les sept controles de la factory sont tombes en `INFRA_FAILURE` avec
+    `double_terminal 7`. La cause n'etait ni le protocole ni le lecteur.
+    `provider_contract.py` lance `sans_pilote.py`, qui RELANCE
+    `provider_contract.py` dans un environnement prive de pilote (c'est tout
+    l'objet de D10). L'enfant heritait de `ESC_CANAL` et des trois variables
+    de contexte: il ecrivait donc son propre verdict terminal sur le meme
+    canal, pour le meme controle. « SUR puis SUR », « ROUGE puis SUR ».
+
+    LA DISTINCTION QUI COMPTE. Un sous-processus lance par un harnais est de
+    l'une de deux natures, et une seule:
+
+      * un DECOR — on l'exerce pour OBSERVER son code de retour, et c'est le
+        parent qui rend le verdict a partir de cette observation. Il ne doit
+        pas ecrire sur le canal: son avis n'est pas un verdict, c'est une
+        mesure. `barriere_provider.py`, `fixtures_barriere.py`,
+        `sans_pilote.py` sont des decors;
+      * un DELEGATAIRE — le parent lui passe la main et n'en dit rien de
+        plus. Il ecrit, lui, et le parent se tait. `provider_contract.sh`
+        delegue ainsi a `provider_contract.py`.
+
+    Rendre l'enfant silencieux n'efface aucune preuve: le parent emet, et un
+    canal muet vaut `NOT_RUN` — jamais vert par defaut.
+    """
+    import os as _os
+    env = dict(_os.environ if base is None else base)
+    for cle in CONTEXTE_CANAL:
+        env.pop(cle, None)
+    return env
 
 
 # ---------------------------------------------------------------------------
