@@ -70,6 +70,29 @@ def creer_application(reglages: Reglages | None = None) -> FastAPI:
         except Exception:  # noqa: BLE001
             _journal.warning("fabrique de connexion non construite: voir /ready")
 
+    # CORS — SANS LUI, L'INTERFACE NE PEUT PAS APPELER L'API.
+    #
+    # Trouve en pilotant l'ecran dans un VRAI navigateur: les tests passent par
+    # `TestClient`, qui n'applique aucune politique d'origine, et ne pouvaient
+    # donc pas le voir. Un navigateur, lui, refuse la requete de `:3000` vers
+    # `:8000` si la reponse ne porte pas l'en-tete.
+    #
+    # LES ORIGINES SONT DECLAREES, JAMAIS `*` — la configuration refuse le
+    # joker. `allow_credentials` reste FAUX: l'identite voyage dans un en-tete
+    # `Authorization` explicite, pas dans un cookie que le navigateur joindrait
+    # tout seul. C'est ce qui rend la falsification de requete inter-site sans
+    # objet ici.
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(reglages.origines),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+        expose_headers=["X-Eurostruct-Rebar-Rows"],
+    )
+
     installer_gestionnaires(app, mode_debogage=reglages.mode_debogage)
     app.include_router(sante.routeur)
     app.include_router(calculs.routeur)

@@ -59,10 +59,18 @@ class ReglagesBase:
         return bool(self.dsn)
 
 
+#: Origines autorisees par defaut: le poste de developpement, et rien d'autre.
+#: EN PRODUCTION, ELLES SE DECLARENT. Un `*` ici laisserait n'importe quelle
+#: page du web appeler l'API avec les cookies du navigateur.
+ORIGINES_LOCALES = ("http://localhost:3000", "http://127.0.0.1:3000")
+
+
 @dataclass(frozen=True, slots=True)
 class Reglages:
     auth: ReglagesAuth
     base: ReglagesBase
+    #: D'ou l'interface a le droit d'appeler. Jamais `*`.
+    origines: tuple[str, ...] = ORIGINES_LOCALES
     #: `true` en developpement local uniquement. N'assouplit AUCUNE
     #: verification: change seulement le detail rendu dans les refus 500.
     mode_debogage: bool = False
@@ -115,8 +123,34 @@ def charger(env: dict[str, str] | None = None) -> Reglages:
             tolerance_horloge_s=_tolerance(e.get("EUROSTRUCT_JWT_LEEWAY_S")),
         ),
         base=ReglagesBase(dsn=e.get("EUROSTRUCT_DATABASE_URL", "").strip()),
+        origines=_origines(e.get("EUROSTRUCT_CORS_ORIGINS")),
         mode_debogage=e.get("EUROSTRUCT_DEBUG", "").lower() in ("1", "true", "yes"),
     )
+
+
+def _origines(brut: str | None) -> tuple[str, ...]:
+    """Origines autorisees, explicites. `*` est REFUSE.
+
+    Un joker laisserait n'importe quelle page du web appeler cette API depuis
+    le navigateur d'un utilisateur connecte. C'est le genre de commodite qu'on
+    ajoute « pour deboguer » et qu'on oublie de retirer.
+    """
+    if not brut:
+        return ORIGINES_LOCALES
+    demandees = tuple(o.strip() for o in brut.split(",") if o.strip())
+    if "*" in demandees:
+        raise ConfigurationInvalide(
+            "EUROSTRUCT_CORS_ORIGINS ne peut pas valoir « * ». Declarez les "
+            "origines une a une: un joker laisserait n'importe quelle page du "
+            "web appeler cette API depuis le navigateur d'un utilisateur."
+        )
+    for o in demandees:
+        if not o.startswith(("http://", "https://")):
+            raise ConfigurationInvalide(
+                f"origine invalide ({o!r}): une origine porte son schema, "
+                "son hote et son port, sans chemin."
+            )
+    return demandees
 
 
 def _tolerance(brut: str | None) -> int:
