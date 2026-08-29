@@ -279,6 +279,28 @@ le provider n'a pas de consommateur, aucune authentification réelle n'est
 démontrée, et Supabase n'est pas vérifié. Elles ne dépendent pas de la
 campagne : aucune campagne de mutation ne peut les lever.
 
+## Un audit statique tenté, et son résultat négatif
+
+Après la campagne, j'ai cherché s'il restait d'autres défauts du type `2b` —
+un point attendu par le registre qu'aucune ligne rouge du harnais ne rendrait.
+L'audit relève les émetteurs de rouge de chaque harnais non migré, reconstruit
+la ligne qui serait imprimée, et la donne au traducteur.
+
+Il a signalé **29 contrôles orphelins**. Vérification contre le journal de la
+campagne : **les 29 ont été tués**. Vingt-neuf faux positifs sur vingt-neuf.
+
+La cause est dans l'audit, pas dans le registre : son modèle de « comment un
+harnais imprime un rouge » ne couvre que les appels littéraux
+`rouge "…"` / `echoue "…"`. Or `provider_contract.sh` délègue à un script
+Python, `migration_postconditions.sh` compose ses messages par variables, et
+d'autres nomment leurs émetteurs autrement.
+
+**Conséquence, et c'est le résultat utile** : un audit statique ne peut pas
+remplacer la campagne ici, et celui-ci n'est pas livré comme contrôle — il
+produirait 29 fausses alertes à chaque exécution. Un contrôle qui crie sans
+raison finit par être sauté, ce qui est pire que pas de contrôle. Le fichier
+reste dans le bloc-notes de session, non versionné.
+
 ## Défauts de mes propres instruments, trouvés dans ce lot
 
 1. **j'ai importé `mutation_matrix.py` comme une bibliothèque** pour tester une
