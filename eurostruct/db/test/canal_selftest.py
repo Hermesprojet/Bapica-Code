@@ -28,6 +28,41 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import canal_lecture as cl  # noqa: E402
 
 ECHECS: list[str] = []
+
+# ---------------------------------------------------------------------------
+# UN ESPACE POSSEDE, NETTOYE DANS UN `finally`
+# ---------------------------------------------------------------------------
+# CE FICHIER LAISSAIT 108 FICHIERS PAR EXECUTION. Mesure du 29/08 avec un
+# TMPDIR neuf: 27 par le chemin normal, et 81 par les trois sous-processus des
+# preuves negatives — chaque copie rejouant le chemin complet.
+#
+# La cause etait `NamedTemporaryFile(delete=False)` sans `unlink`. Le `False`
+# etait NECESSAIRE — le fichier doit survivre a sa fermeture pour etre relu —
+# mais rien ne le reprenait ensuite.
+#
+# On ne compte donc plus les fichiers un a un: tout est cree DANS un
+# repertoire que ce processus possede, et ce repertoire est detruit dans un
+# `finally`. Un `unlink` par fichier oublierait le prochain; un repertoire
+# possede n'oublie rien, et ne peut rien detruire au-dehors.
+_ESPACE: tempfile.TemporaryDirectory | None = None
+
+
+def espace() -> str:
+    """Le repertoire possede par cette execution. Cree a la demande."""
+    global _ESPACE
+    if _ESPACE is None:
+        _ESPACE = tempfile.TemporaryDirectory(prefix="canal-selftest-")
+    return _ESPACE.name
+
+
+def liberer_espace() -> None:
+    """Detruit le repertoire possede — et LUI SEUL."""
+    global _ESPACE
+    if _ESPACE is not None:
+        _ESPACE.cleanup()
+        _ESPACE = None
+
+
 RUN = "run-selftest"
 SHA = "0" * 40
 #: Garde de recursion: la preuve negative relance CE fichier sur une copie
@@ -35,7 +70,14 @@ SHA = "0" * 40
 IMBRIQUE = bool(os.environ.get("ESC_CANAL_PREUVE_NEGATIVE"))
 
 
+#: Cas REELLEMENT parcourus. Ce n'est pas une constante declaree: c'est un
+#: compteur, incremente par chaque verdict rendu. Une constante mentirait le
+#: jour ou une boucle serait videe; un compteur ne le peut pas.
+PARCOURUS = [0]
+
+
 def verifier(nom: str, obtenu, attendu) -> None:
+    PARCOURUS[0] += 1
     if obtenu == attendu:
         print(f"      ok: {nom}")
     else:
@@ -45,7 +87,7 @@ def verifier(nom: str, obtenu, attendu) -> None:
 
 def canal(*evts) -> str:
     f = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False,
-                                    encoding="utf-8")
+                                    dir=espace(), encoding="utf-8")
     for e in evts:
         f.write((e if isinstance(e, str)
                  else json.dumps(e, ensure_ascii=False)) + "\n")
@@ -203,7 +245,7 @@ def cas_protocole() -> None:
 def cas_emetteur() -> None:
     lib = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "lib_harnais.sh")
-    f = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False)
+    f = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, dir=espace())
     f.close()
     env = {**os.environ, "ESC_CANAL": f.name, "ESC_RUN_ID": RUN,
            "ESC_SHA": SHA, "ESC_CONTROLE_ID": "S9", "ESC_POINT_ATTENDU": "19.9"}
@@ -227,7 +269,7 @@ def cas_emetteur() -> None:
     # 32. UN POINT QUI N'EST PAS LE POINT ATTENDU N'EST PAS TERMINAL. Sans
     # cela, un harnais rougissant sur plusieurs points produirait plusieurs
     # verdicts terminaux et invaliderait la campagne a tort.
-    g = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False); g.close()
+    g = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, dir=espace()); g.close()
     subprocess.run(
         ["bash", "-c", f'source "{lib}"; esc_evt "19.5" ROUGE runtime'],
         env={**env, "ESC_CANAL": g.name}, capture_output=True, text=True)
@@ -242,7 +284,7 @@ def cas_emetteur() -> None:
     # 33. SANS CONTEXTE, L'EMETTEUR REFUSE. Un evenement qu'on ne peut
     # rattacher ni au run ni au SHA vaut moins que pas d'evenement du tout:
     # il ferait conclure NOT_RUN sans qu'on sache pourquoi.
-    h = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False); h.close()
+    h = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, dir=espace()); h.close()
     nu = {k: v for k, v in os.environ.items()
           if k not in {"ESC_RUN_ID", "ESC_SHA", "ESC_CONTROLE_ID"}}
     r = subprocess.run(
@@ -296,7 +338,13 @@ def cas_preuve_negative() -> None:
             verifier(nom, "ROUGE" if r.returncode != 0 else "VERT", "ROUGE")
 
 
-def main() -> int:
+#: Nombre de cas que ce fichier PARCOURT. Publie a la sortie, et exige par le
+#: controle de proprete: un `rc == 0` ne distingue pas « tout est passe » de
+#: « rien n'a ete execute ».
+CAS_ATTENDUS = 35  # chemin complet, preuves negatives comprises
+
+
+def _corps() -> int:
     print("    le canal machine: la ponctuation ne decide plus d'un verdict")
     cas_protocole()
     cas_emetteur()
@@ -315,6 +363,24 @@ def main() -> int:
     print(" et le lecteur neutralise fait rougir l'auto-test.")
     print("=================================================")
     return 0
+
+
+def main() -> int:
+    """Enveloppe `_corps()` et libere l'espace possede, quoi qu'il arrive.
+
+    LE `finally` EST LE POINT. Un nettoyage place a la fin du chemin heureux
+    ne s'execute pas quand un cas leve, et c'est precisement l'execution qui
+    laisse le plus de traces. Le repertoire possede part dans les deux cas.
+    """
+    try:
+        code = _corps()
+    finally:
+        # LE COMPTE EST PUBLIE AVANT LA LIBERATION, et meme en cas d'echec:
+        # un controle qui ne saurait pas combien de cas ont ete parcourus ne
+        # pourrait pas distinguer un decor vide d'un decor conforme.
+        print(f"CANAL_SELFTEST_CAS={PARCOURUS[0]}")
+        liberer_espace()
+    return code
 
 
 if __name__ == "__main__":

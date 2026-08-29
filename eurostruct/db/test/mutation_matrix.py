@@ -112,6 +112,7 @@ LIB = "db/test/lib_harnais.sh"
 FACT = "engine/src/eurostruct_engine/ndp/provider_factory.py"
 BARR = "db/test/barriere_provider.py"
 SCAN = "db/test/verifier_heredocs.py"
+CSEL = "db/test/canal_selftest.py"
 PROV = "db/test/provider_contract.py"
 A15 = "db/migrations/0015_authority_manifest.sql"
 CMD = "tools/deploy_eurostruct.sh"
@@ -2276,6 +2277,41 @@ CAS_SCANNER = [
 ]
 
 
+# --------------------------------------------------------------------------
+# NT1 — LA PROPRETE DU CANAL DEVIENT FALSIFIABLE
+# --------------------------------------------------------------------------
+# `canal_selftest.py` laissait 108 fichiers `.jsonl` par execution — 27 par le
+# chemin normal, 81 par les trois sous-processus des preuves negatives, chaque
+# copie rejouant le chemin complet. Un harnais qui salit son `TMPDIR` finit
+# par masquer les residus qui comptent: bases, roles, verrous.
+#
+# CE QUE CETTE MUTATION VISE, ET POURQUOI CE N'EST PAS `liberer_espace()`.
+# Neutraliser l'appel explicite ne fait REAPPARAITRE aucun residu:
+# `TemporaryDirectory` porte son propre finaliseur et detruit le repertoire a
+# la sortie de l'interprete. L'appel rend le nettoyage DETERMINISTE, il n'est
+# pas ce qui evite la fuite.
+#
+# Ce qui l'evite, c'est que les fichiers naissent DANS le repertoire possede.
+# On fait donc rendre a `espace()` la RACINE du TMPDIR au lieu du repertoire
+# possede: les fichiers y retombent et y restent. Viser `dir=espace()`
+# directement etait AMBIGU — trois occurrences — et le pre-vol l'a refuse;
+# le point de decision, lui, est unique. Mesure du 29/08: une falsification
+# qui vise la mauvaise cause ne prouve rien, et celle-ci a d'abord vise la
+# mauvaise.
+#
+# POINT ATTENDU: 19.10, dans `harness_safety_selftest.sh`, qui EMET sur le
+# canal. Pas de traducteur possible: son silence serait NOT_RUN, jamais vert.
+CAS_PROPRETE = [
+    ("NT1 les fichiers du canal ne naissent plus dans l'espace possede",
+     "19.10", CSEL,
+     [("""    global _ESPACE
+    if _ESPACE is None:
+        _ESPACE = tempfile.TemporaryDirectory(prefix="canal-selftest-")
+    return _ESPACE.name""",
+       """    return tempfile.gettempdir()""")], False),
+]
+
+
 LOTS = [
     (CAS, {}),
     (CAS_MANIFESTE,
@@ -2301,6 +2337,8 @@ LOTS = [
      dict(harnais="db/test/migration_postconditions.sh", prefixe="mn")),
     (CAS_SCANNER,
      dict(harnais="db/test/harness_safety_selftest.sh", prefixe="msc")),
+    (CAS_PROPRETE,
+     dict(harnais="db/test/harness_safety_selftest.sh", prefixe="mnt")),
 ]
 
 TOTAL = sum(len(cas) for cas, _ in LOTS)

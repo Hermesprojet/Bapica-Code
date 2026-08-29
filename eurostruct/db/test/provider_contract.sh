@@ -92,8 +92,19 @@ harnais_piege_signaux
 # complet pour decouvrir ensuite qu'on ne peut pas s'en servir gaspille une
 # minute et brouille le diagnostic.
 if ! python3 -c "import psycopg2" >/dev/null 2>&1; then
+  # LES ACCENTS GRAVES S'EXECUTAIENT, ET PRECISEMENT ICI.
+  #
+  # La ligne etait, entre guillemets DOUBLES:
+  #     echo "       `python3 -c 'import psycopg2'` echoue. ..."
+  # Bash y execute la substitution. Sur ce chemin — celui ou le pilote MANQUE
+  # — la commande echouait, sa trace partait vers stderr au milieu du
+  # diagnostic, et le message se reduisait a « echoue. Les proprietes SQL du ».
+  # Mesure du 29/08.
+  #
+  # Le diagnostic cense expliquer le rouge de la CI etait donc lui-meme mutile,
+  # sur le seul chemin ou on le lit. Guillemets SIMPLES: rien ne s'y execute.
   echo "NON EXECUTE: provider_contract.sh — aucun pilote PostgreSQL." >&2
-  echo "       `python3 -c 'import psycopg2'` echoue. Les proprietes SQL du" >&2
+  echo '       `python3 -c "import psycopg2"` echoue. Les proprietes SQL du' >&2
   echo "       provider (SET LOCAL, non-fuite de pool) ne peuvent pas etre" >&2
   echo "       eprouvees, et une surface non executee n'est pas verte." >&2
   echo "       Installer: pip install psycopg2-binary" >&2

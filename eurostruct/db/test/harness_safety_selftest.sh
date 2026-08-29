@@ -1037,7 +1037,7 @@ done
 rm -rf "$TEMOINS_DIR"
 
 # --------------------------------------------------------------------------
-# 19. L'INSTRUMENT LUI-MEME — neuf facons de mentir, neuf refus
+# 19. L'INSTRUMENT LUI-MEME — dix facons de mentir, dix refus
 # --------------------------------------------------------------------------
 # CE QUE CE CONTROLE EXISTE POUR EMPECHER. Quatre fautes d'instrument ont
 # produit dans ce jalon des conclusions FAUSSES sur le produit — pas des tests
@@ -1193,9 +1193,32 @@ SQL19
       detail="$INST_SC_MOTIF"
   fi
 
+  # 19.10 L'AUTO-TEST DU CANAL NE LAISSE RIEN DERRIERE LUI.
+  #
+  # Mesure du 29/08, `TMPDIR` neuf: 108 fichiers `.jsonl` par execution — 27
+  # par le chemin normal, 81 par les trois sous-processus des preuves
+  # negatives. Un harnais qui salit son `TMPDIR` finit par masquer les
+  # residus qui comptent: bases, roles, verrous.
+  #
+  # Le controle eprouve le chemin normal ET l'erreur controlee — c'est ce
+  # second cas qui compte, un nettoyage place a la fin du chemin heureux ne
+  # s'executant pas quand un cas leve.
+  INST_PR_RC=0
+  INST_PR="$(python3 "$HERE/canal_proprete.py" 2>&1)" || INST_PR_RC=$?
+  if (( INST_PR_RC == 0 )); then
+    inst_verdict 10 "l'auto-test du canal ne laisse aucun fichier temporaire" ok
+    esc_evt "19.10" SUR runtime nature=canal_propre \
+      detail="chemin normal et erreur controlee: TMPDIR vide"
+  else
+    inst_verdict 10 "l'auto-test du canal ne laisse aucun fichier temporaire" \
+      "rc=$INST_PR_RC $(tr '\n' ' ' <<<"$INST_PR")"
+    esc_evt "19.10" ROUGE runtime nature=canal_salissant \
+      detail="rc=$INST_PR_RC"
+  fi
+
   psql -X -q -d postgres -c "drop database if exists \"$INST_BASE\"" >/dev/null 2>&1
 fi
-(( INST_KO )) || echo "      ok: 19. l'instrument refuse les neuf facons de mentir"
+(( INST_KO )) || echo "      ok: 19. l'instrument refuse les dix facons de mentir"
 
 echo ""
 if [[ $KO -eq 0 ]]; then
