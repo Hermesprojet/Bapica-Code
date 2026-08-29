@@ -341,6 +341,9 @@ PREUVES_NEGATIVES = [
         env.pop(cle, None)''',
      '''    for cle in ():
         env.pop(cle, None)'''),
+    ("N6 le garde des points declares est neutralise", "lib_harnais.sh",
+     '''  case "$ESC_POINTS_DECLARES" in *" $1 "*) return 0 ;; esac''',
+     '''  return 0'''),
 ]
 
 
@@ -358,17 +361,23 @@ def cas_migration() -> None:
     lib = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "lib_harnais.sh")
 
-    def emettre(script: str, attendu: str = "2b") -> list[dict]:
+    def lancer(script: str, attendu: str = "2b") -> tuple[list[dict], str]:
+        """Rend (evenements, stderr) — le second sert au garde de declaration."""
         f = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False,
                                         dir=espace())
         f.close()
-        subprocess.run(
+        r = subprocess.run(
             ["bash", "-c", f'source "{lib}"; {script}'],
             env={**os.environ, "ESC_CANAL": f.name, "ESC_RUN_ID": RUN,
                  "ESC_SHA": SHA, "ESC_CONTROLE_ID": "MIG",
                  "ESC_POINT_ATTENDU": attendu},
             capture_output=True, text=True)
-        return [json.loads(l) for l in open(f.name, encoding="utf-8") if l.strip()]
+        with open(f.name, encoding="utf-8") as fh:
+            evts = [json.loads(ligne) for ligne in fh if ligne.strip()]
+        return evts, r.stderr
+
+    def emettre(script: str, attendu: str = "2b") -> list[dict]:
+        return lancer(script, attendu)[0]
 
     # 34. LE POINT EST DECLARE, PAS EXTRAIT DE LA PROSE.
     e = emettre('esc_point_rouge 2b nature=t detail="peu importe le texte"')
@@ -439,6 +448,30 @@ def cas_migration() -> None:
         r = "REFUSE"
     verifier("38. finalisation_contract.sh migre: le traducteur refuse",
              r, "REFUSE")
+
+    # 38b. UN POINT DECLARE PASSE SANS BRUIT.
+    e, err = lancer('esc_points_declares 2a 2b 3; '
+                    'esc_point_rouge 2b nature=t detail="declare"')
+    verifier("38b. un point declare n'attire aucune faute",
+             (len(e), "FAUTE DE DECLARATION" in err), (1, False))
+
+    # 38c. UN POINT NON DECLARE EST UNE FAUTE — MAIS L'EVENEMENT PART.
+    #
+    # LES DEUX MOITIES COMPTENT, ET LA SECONDE PLUS QUE LA PREMIERE. Taire
+    # l'evenement transformerait une erreur de tenue de liste en ABSENCE DE
+    # PREUVE: le controle passerait de « tue » a « non mesure » pour une faute
+    # de declaration. On emet donc, et on se plaint.
+    e, err = lancer('esc_points_declares 3; '
+                    'esc_point_rouge 2b nature=t detail="non declare"')
+    verifier("38c. un point non declare: faute imprimee, evenement emis quand meme",
+             (len(e), "FAUTE DE DECLARATION" in err), (1, True))
+
+    # 38d. ET LE GARDE EST INERTE TANT QUE RIEN N'EST DECLARE.
+    # Les harnais non encore migres n'appellent pas `esc_points_declares`; le
+    # garde ne doit pas se mettre a crier sur chacun d'eux.
+    e, err = lancer('esc_point_rouge 2b nature=t detail="aucune declaration"')
+    verifier("38d. sans declaration, le garde se tait",
+             (len(e), "FAUTE DE DECLARATION" in err), (1, False))
 
 
 def cas_decor() -> None:

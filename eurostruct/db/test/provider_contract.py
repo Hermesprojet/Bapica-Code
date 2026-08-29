@@ -67,6 +67,16 @@ SURS: list[str] = []
 #: un SUR pour le point attendu.
 POINTS_ROUGES: list[str] = []
 
+# LES POINTS QUE CE HARNAIS SAIT EMETTRE. Le pre-vol s'en sert pour refuser,
+# AVANT toute execution, un controle dont le point n'est emis par personne.
+# Emettre un point absent d'ici imprime une faute: voir `canal_lecture.emettre`.
+canal_lecture.declarer_points(
+    "A1", "A2", "A3", "A4", "A5",
+    "B1", "B2", "B3", "B4", "B5", "B6", "B6bis", "B7",
+    "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11",
+    "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10",
+)
+
 
 def verifier(point: str, nom: str, condition: bool, detail: str = "") -> None:
     """Rend un verdict pour un POINT DECLARE.

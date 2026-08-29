@@ -45,6 +45,12 @@ HARNAIS_SCEAU="$DB_DIR/control_plane/0001_normative_seal.sql"
 
 # shellcheck source=lib_harnais.sh
 source "$HERE/lib_harnais.sh"
+# LES POINTS QUE CE HARNAIS SAIT EMETTRE. Le pre-vol s'en sert pour refuser,
+# AVANT toute execution, un controle dont le point n'est emis par personne.
+# Emettre un point absent d'ici imprime une faute: voir `_esc_point_connu`.
+esc_points_declares Y1 Y2 Y3 Y4 Y5 Y6 Y7 Y8 Y9 Y10 Y11 Y12 Y13 AC1 AC2 AC3 \
+    AC4 AC5
+
 # shellcheck source=../apply_migration.sh
 source "$DB_DIR/apply_migration.sh"
 

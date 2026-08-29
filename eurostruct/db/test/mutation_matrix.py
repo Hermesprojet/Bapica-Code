@@ -2481,6 +2481,54 @@ def _doublons(lots):
     ]
 
 
+def _points_declares(chemin_harnais):
+    """Points qu'un harnais MIGRE declare savoir emettre, ou None.
+
+    Rend None quand le harnais ne declare rien — soit qu'il ne soit pas encore
+    migre (il passe alors par le traducteur, qui lit sa prose), soit que le
+    fichier ne soit pas lisible. Dans les deux cas le pre-vol ne conclut pas:
+    « je n'ai pas trouve de declaration » n'est pas « le point n'existe pas ».
+
+    ON LIT UNE DECLARATION, ON NE SCANNE PAS LES SITES D'APPEL. Le scanner a
+    ete essaye: une expression reguliere sur les appels. Elle a rate `2b` dans
+    `finalisation_contract.sh`, ou l'appel est en milieu de ligne — `|| {
+    rouge_point 2b "..."`. Un scanner qui rate un site rend un faux manquant,
+    donc un refus injustifie; le rendre laxiste le rend aveugle.
+
+    UN HARNAIS SHELL QUI DELEGUE A PYTHON DECLARE DANS SON DELEGUE. C'est le
+    cas de `provider_contract.sh`, qui passe la main a `provider_contract.py`:
+    on regarde donc aussi le fichier de meme nom en `.py`.
+    """
+    import ast as _ast
+    for chemin in (chemin_harnais, os.path.splitext(chemin_harnais)[0] + ".py"):
+        try:
+            src = open(chemin, encoding="utf-8").read()
+        except OSError:
+            continue
+        # Shell: `esc_points_declares A1 A2 \` + continuations.
+        m = re.search(r"^esc_points_declares((?:[^\n\\]|\\\n)*)", src, re.M)
+        if m:
+            return set(m.group(1).replace("\\\n", " ").split())
+        # Python: `canal_lecture.declarer_points("A1", "A2", ...)`.
+        m = re.search(r"declarer_points\(", src)
+        if m:
+            debut = m.end() - 1
+            prof, i = 0, debut
+            while i < len(src):
+                if src[i] == "(":
+                    prof += 1
+                elif src[i] == ")":
+                    prof -= 1
+                    if prof == 0:
+                        break
+                i += 1
+            try:
+                return set(_ast.literal_eval("(" + src[debut + 1:i] + ")"))
+            except (SyntaxError, ValueError):
+                return None
+    return None
+
+
 def _prevol():
     """PROUVE ce qu'il avance, et INVALIDE la campagne avant tout lancement.
 
@@ -2554,6 +2602,25 @@ def _prevol():
                         "retenu dans cette campagne")
             if cc in INSTALL_ASSERTION and not INSTALL_ASSERTION[cc].strip():
                 stale.append(f"{nom} — diagnostic d'installation vide")
+            # 8. LE POINT ATTENDU EST-IL EMIS PAR QUELQU'UN ?
+            #
+            # Seulement pour un harnais MIGRE: un harnais non migre passe par
+            # le traducteur, qui lit sa prose et ne declare rien.
+            #
+            # DEUX FAUTES REELLES, LE 29/08, QUE CE CONTROLE FERME. La
+            # conversion d'`authority_closure.sh` a manque huit sites parce que
+            # son motif exigeait un chiffre apres la lettre: les points `D`,
+            # `E` et `G` — trois controles du registre — n'etaient plus emis
+            # par personne. Et le controle `D2` attendait le point `D`, que son
+            # scenario n'emet pas. Les deux ont la meme forme, et la campagne
+            # complete ne les aurait nommees qu'apres quatre-vingt-dix minutes,
+            # via `not_run == 0`.
+            declares = _points_declares(chemin_h)
+            if declares is not None and c[1] not in declares:
+                stale.append(
+                    f"{nom} — le point « {c[1]} » n'est declare par AUCUN "
+                    f"emetteur de {h}. Un harnais migre qui n'emet pas le "
+                    f"point attendu rend le controle NOT_RUN, jamais tue.")
     if stale:
         print()
         print(f"PRE-VOL: {len(stale)} controle(s) ne peuvent PAS etre exerces.")

@@ -47,6 +47,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="$(dirname "$HERE")"
 # shellcheck source=lib_harnais.sh
 source "$HERE/lib_harnais.sh"
+# LES POINTS QUE CE HARNAIS SAIT EMETTRE. Le pre-vol s'en sert pour refuser,
+# AVANT toute execution, un controle dont le point n'est emis par personne.
+# Emettre un point absent d'ici imprime une faute: voir `_esc_point_connu`.
+esc_points_declares 1 2 2b 2c 3 4 5 6 7 8a 8b
+
 # LE SEUL CHEMIN QUI SAIT APPLIQUER UNE MIGRATION (6.3b6e): les harnais
 # l'empruntent AUSSI, sans quoi ils testeraient un chemin que la
 # production n'emprunte pas.

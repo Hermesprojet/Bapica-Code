@@ -1200,6 +1200,52 @@ ESC_POINTS_RENDUS=""      # points ayant deja rendu un verdict TERMINAL
 ESC_POINTS_TROUES=""      # points dont un chemin n'a pas ete atteint, en attente
 declare -A ESC_TROU_MOTIF=()
 
+# ==========================================================================
+# LES POINTS QU'UN HARNAIS SAIT EMETTRE — DECLARES, ET VERIFIABLES AVANT VOL
+# ==========================================================================
+# CE QUE CETTE DECLARATION EXISTE POUR EMPECHER, MESURE DEUX FOIS LE 29/08:
+#
+#   * la conversion de `authority_closure.sh` exigeait un chiffre apres la
+#     lettre — `A1`, `H7` — et manquait `D`, `E`, `F`, `G`. Trois de ces
+#     points sont des points du REGISTRE: les controles D, E et G seraient
+#     devenus NOT_RUN, « non mesures », apres avoir ete tues pendant des
+#     semaines. Rien dans le harnais ne l'aurait dit;
+#   * le controle `D2` attendait le point `D`, que son scenario n'emet pas.
+#     Le traducteur masquait l'ecart en retombant sur une detection generique
+#     de refus d'installation.
+#
+# Les deux fautes ont la meme forme: UN POINT ATTENDU QUE PERSONNE N'EMET. La
+# campagne complete finit par le voir — `not_run == 0` echoue — mais quatre-
+# vingt-dix minutes plus tard, et seulement si on la lance.
+#
+# POURQUOI UNE DECLARATION ET NON UN SCANNER. On a essaye le scanner: une
+# expression reguliere sur les sites d'appel. Elle a rate `2b` dans
+# `finalisation_contract.sh`, parce que l'appel y est en milieu de ligne —
+# `|| { rouge_point 2b "..."`. Un scanner qui rate un site rend un faux
+# manquant, c'est-a-dire un refus injustifie; le rendre laxiste pour eviter
+# cela le rend aveugle. Une declaration explicite ne se devine pas.
+#
+# ET ELLE EST TENUE HONNETE PAR L'EXECUTION: emettre un point non declare
+# imprime une faute. La declaration ne peut donc pas deriver en silence par
+# rapport a ce que le harnais fait reellement.
+ESC_POINTS_DECLARES=""
+
+# esc_points_declares <point...> — a appeler une fois, avant tout verdict.
+esc_points_declares() { ESC_POINTS_DECLARES=" $* "; }
+
+# Rend 0 si le point est declare (ou si le harnais ne declare rien encore).
+_esc_point_connu() {
+  [[ -z "$ESC_POINTS_DECLARES" ]] && return 0
+  case "$ESC_POINTS_DECLARES" in *" $1 "*) return 0 ;; esac
+  # ON EMET QUAND MEME. Un point non declare est une faute de DECLARATION,
+  # pas une raison de perdre un vrai rouge: taire l'evenement transformerait
+  # une erreur de tenue de liste en absence de preuve.
+  echo "FAUTE DE DECLARATION: le point « $1 » est emis mais n'est pas dans" >&2
+  echo "       esc_points_declares. L'evenement part quand meme; c'est la" >&2
+  echo "       declaration qu'il faut corriger, pas l'emission." >&2
+  return 0
+}
+
 # esc_point_rouge <point> [cle=valeur ...] — emis tout de suite, une seule fois.
 esc_point_rouge() {
   local pt="${1:?esc_point_rouge <point> [cle=valeur ...]}"
@@ -1207,6 +1253,7 @@ esc_point_rouge() {
   case "$ESC_POINTS_RENDUS" in
     *" $pt "*) return 0 ;;          # premier rouge gagne, comme le traducteur
   esac
+  _esc_point_connu "$pt"
   ESC_POINTS_RENDUS="$ESC_POINTS_RENDUS $pt "
   esc_evt "$pt" ROUGE runtime "$@"
 }
@@ -1215,6 +1262,7 @@ esc_point_rouge() {
 esc_point_troue() {
   local pt="${1:?esc_point_troue <point> <motif>}"
   shift
+  _esc_point_connu "$pt"
   ESC_POINTS_TROUES="$ESC_POINTS_TROUES $pt "
   [[ -n "${ESC_TROU_MOTIF[$pt]:-}" ]] || ESC_TROU_MOTIF[$pt]="$*"
 }

@@ -276,6 +276,25 @@ verdict_du_point = verdict_du_controle
 #
 # Le pendant shell est `esc_evt` dans `lib_harnais.sh`. Les deux ecrivent la
 # meme ligne, et `canal_selftest.py` les eprouve tous les deux.
+
+#: Points que ce harnais Python declare savoir emettre. Pendant de
+#: `esc_points_declares` cote shell — meme raison, meme garde. Le pre-vol lit
+#: cette declaration pour refuser, AVANT toute execution, un controle dont le
+#: point n'est emis par personne.
+POINTS_DECLARES: set[str] = set()
+
+
+def declarer_points(*points: str) -> None:
+    """Declare les points que ce harnais sait emettre.
+
+    A appeler une fois, avant tout verdict. Emettre un point absent de cette
+    liste imprime une faute — la declaration ne peut donc pas deriver en
+    silence par rapport a ce que le harnais fait reellement.
+    """
+    POINTS_DECLARES.clear()
+    POINTS_DECLARES.update(points)
+
+
 def emettre(point: str, statut: str, *, phase: str = "runtime",
             nature: str | None = None, detail: str | None = None,
             invariant: str | None = None) -> None:
@@ -288,11 +307,19 @@ def emettre(point: str, statut: str, *, phase: str = "runtime",
     """
     import json as _json
     import os as _os
+    import sys as _sys
     import time as _time
 
     canal = _os.environ.get("ESC_CANAL")
     if not canal:
         return
+    # POINT NON DECLARE: UNE FAUTE DE DECLARATION, PAS UNE RAISON DE SE TAIRE.
+    # Pendant du garde shell `_esc_point_connu`. Voir `declarer_points`.
+    if POINTS_DECLARES and point not in POINTS_DECLARES:
+        print(f"FAUTE DE DECLARATION: le point « {point} » est emis mais n'est "
+              f"pas dans declarer_points(). L'evenement part quand meme; c'est "
+              f"la declaration qu'il faut corriger, pas l'emission.",
+              file=_sys.stderr)
     run = _os.environ.get("ESC_RUN_ID")
     sha = _os.environ.get("ESC_SHA")
     controle = _os.environ.get("ESC_CONTROLE_ID")
