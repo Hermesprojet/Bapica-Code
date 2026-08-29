@@ -62,16 +62,18 @@ SELFTEST = ICI / "canal_selftest.py"
 LECTURE = ICI / "canal_lecture.py"
 LIB = ICI / "lib_harnais.sh"
 
-#: Le chemin complet en parcourt 49 (44 quand les preuves negatives sont
+#: Le chemin complet en parcourt 53 (48 quand les preuves negatives sont
 #: sautees). On exige le compte du chemin complet: un selftest ampute
 #: rendrait moins, et ce controle doit le voir.
 #:
-#: CE NOMBRE MONTE, ET C'EST NORMAL. 43 le 29/08 au matin; 49 le soir, quand
-#: la migration de `provider_contract.sh` a fait apparaitre le double verdict
-#: terminal d'un harnais qui se relance lui-meme (cas 39 a 42, preuve N5). Le
-#: baisser pour « faire passer » un selftest ampute serait exactement la faute
-#: que ce controle existe pour voir.
-CAS_MINIMUM = 49
+#: CE NOMBRE MONTE, ET C'EST NORMAL. 43 le 29/08 au matin; 49 quand la
+#: migration de `provider_contract.sh` a fait apparaitre le double verdict
+#: terminal d'un harnais qui se relance lui-meme (cas 39 a 42, preuve N5); 53
+#: quand celle de `migration_postconditions.sh` a impose une precedence entre
+#: verdicts partageant un point (cas 37b a 37e). Le baisser pour « faire
+#: passer » un selftest ampute serait exactement la faute que ce controle
+#: existe pour voir.
+CAS_MINIMUM = 53
 
 ECHECS: list[str] = []
 

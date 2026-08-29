@@ -76,12 +76,76 @@ verdicts_declarer \
   acl-explicite-sans-public acl-fonction-declencheur \
   derive-declencheur-search-path
 
+# ==========================================================================
+# LE POINT DE CHAQUE VERDICT — DECLARE, ET NON RELU DANS LA PROSE
+# ==========================================================================
+# CE QUE CETTE TABLE REMPLACE. Le lanceur relisait la sortie de ce harnais
+# pour y retrouver « Y1 » dans « ROUGE: Y1. la migration passe mais... ». La
+# prose destinee a l'humain decidait donc du verdict de la campagne. Le
+# harnais CONNAIT le point de chacun de ses verdicts: il n'a pas a le faire
+# redecouvrir dans son propre texte.
+#
+# ELLE EST INDEXEE PAR VERDICT, ET LA RELATION N'EST PAS BIJECTIVE. Quatre
+# verdicts d'une meme migration partagent son point — `m0011-verte`,
+# `m0011-privilege-sans-effet`, `m0011-appel-neutralise` et `m0011-atomicite`
+# portent tous `Y1`, parce que la mutation qu'on leur oppose est la meme. La
+# premiere qui rougit attribue, et les suivantes n'ajoutent rien: voir
+# `esc_point_rouge` dans `lib_harnais.sh`.
+#
+# LA SORTIE HUMAINE NE CHANGE PAS. Les messages continuent d'ouvrir par
+# « Y1. » — c'est utile a la lecture. Cette ligne n'a simplement plus autorite
+# sur le verdict.
+declare -A POINT_DE=(
+  [m0011-verte]=Y1  [m0011-privilege-sans-effet]=Y1
+  [m0011-appel-neutralise]=Y1  [m0011-atomicite]=Y1
+  [m0012-verte]=Y2  [m0012-privilege-sans-effet]=Y2
+  [m0012-appel-neutralise]=Y2  [m0012-atomicite]=Y2
+  [m0014-verte]=Y3  [m0014-privilege-sans-effet]=Y3
+  [m0014-appel-neutralise]=Y3  [m0014-atomicite]=Y3
+  [derive-proprietaire]=Y4         [derive-public-execute]=Y5
+  [derive-search-path]=Y6          [derive-trigger-desactive]=Y7
+  [derive-policy-absente]=Y8       [derive-policy-mauvais-role]=Y9
+  [derive-ecriture-directe]=Y10    [derive-force-rls]=Y11
+  [derive-revoke-sans-effet]=Y12   [derive-schema-create]=Y13
+  [acl-nulle-fonction-appelable]=AC1  [acl-revoquee-effective]=AC2
+  [acl-explicite-sans-public]=AC3     [acl-fonction-declencheur]=AC4
+  [derive-declencheur-search-path]=AC5
+)
+
+# TOUT VERDICT DECLARE DOIT AVOIR SON POINT, ET RECIPROQUEMENT. Un verdict
+# ajoute plus tard sans entree ici emettrait pour un point vide: le lanceur
+# lirait NOT_RUN sans que rien ne dise pourquoi. Une entree orpheline, elle,
+# signale un verdict renomme dont la table garde l'ancien nom. On refuse avant
+# de poser le moindre decor.
+POINTS_MANQUANTS=""; POINTS_ORPHELINS=""
+for _v in "${VERDICTS_DECLARES[@]}"; do
+  [[ -n "${POINT_DE[$_v]:-}" ]] || POINTS_MANQUANTS="$POINTS_MANQUANTS $_v"
+done
+for _v in "${!POINT_DE[@]}"; do
+  case " ${VERDICTS_DECLARES[*]} " in
+    *" $_v "*) ;;
+    *) POINTS_ORPHELINS="$POINTS_ORPHELINS $_v" ;;
+  esac
+done
+if [[ -n "$POINTS_MANQUANTS$POINTS_ORPHELINS" ]]; then
+  echo "REFUS: la table des points et les verdicts declares divergent." >&2
+  [[ -z "$POINTS_MANQUANTS" ]] || \
+    echo "       sans point (non attribuable):$POINTS_MANQUANTS" >&2
+  [[ -z "$POINTS_ORPHELINS" ]] || \
+    echo "       point sans verdict declare:$POINTS_ORPHELINS" >&2
+  exit 2
+fi
+unset _v POINTS_MANQUANTS POINTS_ORPHELINS
+
 KO=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
 detail() { echo "                $*"; }
-rouge()  { verdict "$1" ROUGE "${@:2}"; }
+rouge()  { verdict "$1" ROUGE "${@:2}"
+           esc_point_rouge "${POINT_DE[$1]}" nature=postcondition_absente \
+             detail="$1: ${*:2}"; }
 sur()    { verdict "$1" SUR   "${@:2}"; }
-troue()  { verdict "$1" NON_PARCOURU "${@:2}"; }
+troue()  { verdict "$1" NON_PARCOURU "${@:2}"
+           esc_point_troue "${POINT_DE[$1]}" "$1: ${*:2}"; }
 
 MIG="${PREFIXE}_mp_${JETON}"; CTL="${PREFIXE}_cp_${JETON}"
 SVC="${PREFIXE}_sp_${JETON}"; BASE="${PREFIXE}_dp_${JETON}"
@@ -759,6 +823,15 @@ fi
 # ==========================================================================
 verdicts_verifier || true
 verdicts_resume "6.3c — postconditions de migration"
+
+# LE CANAL EST CONCLU AVANT LES DEUX SORTIES, ET NON DANS L'UNE D'ELLES.
+# Un point qui PASSE doit produire un SUR, et un point seulement troue doit
+# produire son NON_PARCOURU: sans cela le lanceur lirait NOT_RUN — « pas
+# mesure » — la ou il faut lire SURVIVED — « la garantie a ete retiree et rien
+# n'a rougi ». Les deux sont des echecs; ils ne se corrigent pas de la meme
+# facon.
+esc_conclure
+
 if [[ $KO -eq 0 && $VERDICTS_KO -eq 0 && $VERDICTS_ROUGES -eq 0 \
       && $VERDICTS_NON_PARCOURUS -eq 0 ]]; then
   echo " Les postconditions sont ATTEINTES par le chemin produit, et elles refusent."

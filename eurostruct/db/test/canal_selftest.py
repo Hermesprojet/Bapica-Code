@@ -320,7 +320,7 @@ def cas_emetteur() -> None:
 #: l'emission est aussi grave que neutraliser la lecture.
 PREUVES_NEGATIVES = [
     ("N4 l'emission d'un point declare est neutralisee", "lib_harnais.sh",
-     '  esc_evt "$pt" ROUGE runtime',
+     '  esc_evt "$pt" ROUGE runtime "$@"',
      '  : neutralise'),
     ("N1 le rejet des evenements d'un autre run/sha est retire", "canal_lecture.py",
      '''        if (run_id is not None and evt["run_id"] != run_id) or \\
@@ -393,6 +393,41 @@ def cas_migration() -> None:
     e = emettre('esc_point_rouge 2b nature=t detail="rouge"; esc_conclure')
     verifier("37. esc_conclure n'ecrase pas un rouge deja rendu",
              [(x["statut"], x["terminal"]) for x in e], [("ROUGE", True)])
+
+    # 37b. UN TROU EST DIFFERE — il n'ecrit rien tant qu'on n'a pas conclu.
+    # L'emettre aussitot le graverait avant qu'un rouge plus tardif sur le
+    # meme point ait pu se produire (cas 37d).
+    e = emettre('esc_point_troue 2b "decor absent"')
+    verifier("37b. un trou seul n'ecrit rien avant la conclusion", len(e), 0)
+
+    # 37c. ET IL DEVIENT NON_PARCOURU A LA CONCLUSION, JAMAIS SUR.
+    # `NON_PARCOURU` vaut NOT_RUN cote lanceur — « on ne sait rien » — et
+    # jamais SURVIVED — « la garantie retiree n'a rien casse ». Confondre les
+    # deux, c'est declarer prouve un scenario qu'on n'a pas joue.
+    e = emettre('esc_point_troue 2b "decor absent"; esc_conclure')
+    verifier("37c. un point troue conclut NON_PARCOURU, et une seule fois",
+             [(x["statut"], x["terminal"], x["diagnostic"]["detail"]) for x in e],
+             [("NON_PARCOURU", True, "decor absent")])
+
+    # 37d. LE ROUGE L'EMPORTE SUR UN TROU DEJA CONSTATE.
+    #
+    # LE CAS QUI JUSTIFIE LE REPORT. Quatre verdicts declares de
+    # `migration_postconditions.sh` partagent le point `Y1`. Que le premier
+    # chemin soit troue et le second rouge est ordinaire — et si le trou avait
+    # ete grave aussitot, il aurait tenu: le premier verdict terminal gagne. Le
+    # controle serait ressorti « non mesure » alors qu'il venait d'etre tue.
+    e = emettre('esc_point_troue 2b "decor absent"; '
+                'esc_point_rouge 2b nature=t detail="rouge tardif"; esc_conclure')
+    verifier("37d. un rouge tardif l'emporte sur un trou anterieur",
+             [(x["statut"], x["terminal"]) for x in e], [("ROUGE", True)])
+
+    # 37e. ET LE PREMIER ROUGE GAGNE — comme le traducteur, qui rendait
+    # `[_evt(...)]` sur la premiere ligne portant le point et s'arretait.
+    e = emettre('esc_point_rouge 2b nature=t detail="premier"; '
+                'esc_point_rouge 2b nature=t detail="second"; esc_conclure')
+    verifier("37e. deux rouges sur un meme point: un seul verdict, le premier",
+             [(x["statut"], x["diagnostic"]["detail"]) for x in e],
+             [("ROUGE", "premier")])
 
     # 38. LE TRADUCTEUR REFUSE UN HARNAIS MIGRE.
     try:

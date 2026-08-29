@@ -1170,22 +1170,68 @@ FINPY
 # mesure » — la ou il faut lire SURVIVED — « la garantie a ete retiree et rien
 # n'a rougi ». Les deux sont des echecs, mais ils ne se corrigent pas de la
 # meme facon, et les confondre efface la distinction.
-ESC_POINTS_ROUGES=""
+#
+# UN SEUL VERDICT TERMINAL PAR POINT, ET LE PREMIER ROUGE GAGNE.
+#
+# C'est la regle qu'appliquait deja le traducteur de prose: il rendait
+# `[_evt(...)]` sur la PREMIERE ligne rouge portant le point, et s'arretait la.
+# Un harnais migre doit s'y tenir, sinon deux chemins qui rougissent le meme
+# point produisent deux verdicts terminaux — `double_terminal`, la faute que la
+# campagne compte, mesuree le 29/08 sur `provider_contract` par un autre
+# chemin: un harnais qui se relance lui-meme.
+#
+# ELLE EST REELLEMENT EN JEU ICI. Dans `migration_postconditions.sh`, QUATRE
+# verdicts declares partagent un point (`m0011-verte`,
+# `m0011-privilege-sans-effet`, `m0011-appel-neutralise`, `m0011-atomicite`
+# portent tous `Y1`), et une mutation qui vise `Y1` en fait rougir plusieurs.
+#
+# LES TROUS SONT DIFFERES, ET C'EST LE POINT DELICAT.
+#
+# Un chemin non atteint n'est pas un chemin sain: il vaut `NOT_RUN` — « on ne
+# sait rien » — et jamais `SURVIVED` — « la garantie retiree n'a rien casse ».
+# Mais l'emettre AUSSITOT le graverait avant qu'un rouge plus tardif, sur le
+# meme point, ait pu se produire: le premier verdict tient, et le controle
+# serait declare non mesure alors qu'il a ete tue. On retient donc le trou,
+# et `esc_conclure` ne le rend que si RIEN n'a rougi.
+#
+# Le ROUGE, lui, part immediatement: un harnais tue en cours de route doit
+# laisser son rouge derriere lui, pas un silence.
+ESC_POINTS_RENDUS=""      # points ayant deja rendu un verdict TERMINAL
+ESC_POINTS_TROUES=""      # points dont un chemin n'a pas ete atteint, en attente
+declare -A ESC_TROU_MOTIF=()
 
-# esc_point_rouge <point> [cle=valeur ...]
+# esc_point_rouge <point> [cle=valeur ...] — emis tout de suite, une seule fois.
 esc_point_rouge() {
   local pt="${1:?esc_point_rouge <point> [cle=valeur ...]}"
   shift
-  ESC_POINTS_ROUGES="$ESC_POINTS_ROUGES $pt "
+  case "$ESC_POINTS_RENDUS" in
+    *" $pt "*) return 0 ;;          # premier rouge gagne, comme le traducteur
+  esac
+  ESC_POINTS_RENDUS="$ESC_POINTS_RENDUS $pt "
   esc_evt "$pt" ROUGE runtime "$@"
+}
+
+# esc_point_troue <point> <motif> — differe jusqu'a `esc_conclure`.
+esc_point_troue() {
+  local pt="${1:?esc_point_troue <point> <motif>}"
+  shift
+  ESC_POINTS_TROUES="$ESC_POINTS_TROUES $pt "
+  [[ -n "${ESC_TROU_MOTIF[$pt]:-}" ]] || ESC_TROU_MOTIF[$pt]="$*"
 }
 
 # esc_conclure — a appeler une fois, avant de sortir.
 esc_conclure() {
   [[ -n "${ESC_CANAL:-}" ]] || return 0
   [[ -n "${ESC_POINT_ATTENDU:-}" ]] || return 0
-  case "$ESC_POINTS_ROUGES" in
+  case "$ESC_POINTS_RENDUS" in
     *" $ESC_POINT_ATTENDU "*) return 0 ;;
+  esac
+  case "$ESC_POINTS_TROUES" in
+    *" $ESC_POINT_ATTENDU "*)
+      esc_evt "$ESC_POINT_ATTENDU" NON_PARCOURU runtime \
+        nature=chemin_non_atteint \
+        detail="${ESC_TROU_MOTIF[$ESC_POINT_ATTENDU]:-chemin non atteint}"
+      return 0 ;;
   esac
   esc_evt "$ESC_POINT_ATTENDU" SUR runtime nature=point_non_rouge \
     detail="le point attendu n'a pas rougi: la garantie retiree n'a rien casse"
