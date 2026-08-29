@@ -105,7 +105,27 @@ jobs:
           # dans les scripts: un harnais qui se donnerait a lui-meme son
           # consentement ne serait plus une barriere.
           EUROSTRUCT_CLUSTER_JETABLE: oui-cluster-jetable-et-isole
-        run: ./eurostruct/run_tests.sh --require-db
+        run: |
+          set -o pipefail
+          ./eurostruct/run_tests.sh --require-db 2>&1 | tee "$RUNNER_TEMP/suite.log"
+
+      # LE VERDICT DOIT ETRE LISIBLE DANS LA CI, ET IL NE L'ETAIT PAS.
+      #
+      # Le journal d'un job se termine par celui du conteneur `services:`
+      # PostgreSQL, qui bavarde beaucoup. L'API de GitHub ne rend que la FIN du
+      # journal: le tableau des surfaces, imprime bien plus haut, etait
+      # inatteignable. On lisait des lignes de checkpoint pendant qu'on
+      # cherchait pourquoi la suite avait echoue.
+      #
+      # `if: always()` — le resume sert surtout quand la suite ECHOUE.
+      - name: verdict de la suite
+        if: always()
+        run: |
+          echo "======================= VERDICT ======================="
+          tail -n 30 "$RUNNER_TEMP/suite.log" || echo "(aucun journal)"
+          echo "==================== ANOMALIES ========================"
+          grep -nE "ROUGE|ECHEC|ATTENTION|NON EXECUTE|FAILED|ERROR" \
+               "$RUNNER_TEMP/suite.log" | head -n 40 || echo "(aucune)"
 
       # L'INTERFACE EST UNE SURFACE COMME UNE AUTRE. Le typecheck est ce qui
       # empeche l'ecran d'afficher un champ que le contrat ne porte plus: il a
