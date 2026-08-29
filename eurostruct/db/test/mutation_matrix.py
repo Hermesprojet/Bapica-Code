@@ -959,6 +959,27 @@ def _diagnostiquer_survivant(sortie, point_attendu):
               f"semble reellement perdue.")
         return
     autres = [v for v in vus if v != point_attendu]
+    if point_attendu in vus:
+        # LA PROSE ET LE CANAL SE CONTREDISENT, ET C'EST LA SIGNATURE D'UNE
+        # MIGRATION MAL CABLEE.
+        #
+        # L'ancienne redaction imprimait « le harnais a rougi sur ['Y1'], on
+        # attendait « Y1 » » — deux fois la meme valeur, comme si elles
+        # differaient. Mesuree le 29/08 en falsifiant volontairement la table
+        # `POINT_DE` de `migration_postconditions.sh`: le message ne nommait
+        # pas la faute qu'il venait pourtant de detecter.
+        #
+        # Ce que le fait signifie: le texte destine a l'humain annonce un rouge
+        # sur le point attendu, et le canal n'en porte pas. Pour un harnais
+        # MIGRE, l'emission est mal cablee — point errone dans sa table, ou
+        # site de verdict qui imprime sans emettre. Le verdict reste SURVIVED:
+        # on nomme la piste, on ne reclasse rien.
+        print(f"        DIAGNOSTIC: la sortie humaine annonce un rouge sur "
+              f"« {point_attendu} », le canal n'en porte pas.")
+        print("        Pour un harnais MIGRE, c'est l'emission qui est mal "
+              "cablee — point errone, ou site de verdict qui imprime sans "
+              "emettre. Le verdict reste SURVIVED.")
+        return
     print(f"        DIAGNOSTIC: le harnais a rougi sur {vus}, on attendait "
           f"« {point_attendu} ».")
     if autres:
