@@ -74,6 +74,7 @@ verdicts_declarer \
   controle-de-derive \
   manifeste-egale-realite manifeste-derive-proprietaire \
   manifeste-non-declaree manifeste-public-vs-temoin \
+  manifeste-refuse-vraiment \
   declencheurs-epingles declencheur-pg-temp-ferme \
   auto-enrolement-guc auto-enrolement-role migrateur-non-membre \
   appartenance-declaree policy-suit-privilege surface-du-backend
@@ -564,6 +565,53 @@ if grep -qiE 'ERROR|ERREUR' <<<"$R"; then
   fi
 else
   sur manifeste-egale-realite "manifeste == realite sur la base telle que deployee."
+fi
+
+echo "      -- manifeste-refuse-vraiment: l'assertion LEVE-t-elle, ou se contente-t-elle de compter ?"
+# LE TEMOIN PROPRE DE MF1, ET POURQUOI IL FALLAIT L'ECRIRE.
+#
+# La campagne des 103 a laisse MF1 survivre. MF1 neutralise le `raise` final de
+# `assert_authority_manifest()`: l'assertion compte encore les ecarts, mais ne
+# refuse plus. Les trois autres controles du manifeste rougissaient bien — ils
+# constatent « l'assertion ne s'est pas plainte » — mais ils rougissaient sous
+# les identifiants MF2, MF3 et MF4. MF1 n'avait pas de temoin portant son nom,
+# et un temoin implicite ne vaut pas un temoin.
+#
+# CELUI-CI NE MESURE QU'UNE CHOSE: face a un ecart REEL, l'assertion doit
+# LEVER. Pas signaler, pas journaliser: lever. C'est exactement la garantie que
+# MF1 retire, et rien d'autre ne la porte.
+if ! admb -q -c "alter function normative_decision_approve(uuid)
+                  owner to eurostruct_normative_activator" >/dev/null 2>&1; then
+  troue manifeste-refuse-vraiment "l'ecart n'a pas pu etre pose."
+else
+  # LA SORTIE N'EST PAS LE CRITERE: LE CODE DE RETOUR L'EST. Une assertion qui
+  # ne leve plus rend 0 en silence, et son absence de message ressemble a un
+  # succes. On interroge donc psql avec ON_ERROR_STOP et on lit son code.
+  MF1_CODE=0
+  ctl -q -v ON_ERROR_STOP=1 -c "select assert_authority_manifest()" >/dev/null 2>&1 \
+    || MF1_CODE=$?
+  admb -q -c "alter function normative_decision_approve(uuid)
+               owner to eurostruct_normative_writer" >/dev/null 2>&1
+  # NON-VACUITE: sur une base CONFORME, la meme assertion doit rendre 0.
+  # Sans cela, un refus permanent — pour n'importe quelle raison — passerait
+  # pour la preuve que l'assertion leve sur ecart.
+  MF1_SAIN=0
+  ctl -q -v ON_ERROR_STOP=1 -c "select assert_authority_manifest()" >/dev/null 2>&1 \
+    || MF1_SAIN=$?
+  if [[ "$MF1_SAIN" != "0" ]]; then
+    troue manifeste-refuse-vraiment \
+      "l'assertion refuse aussi une base CONFORME (code $MF1_SAIN): le"
+    detail "controle ne distinguerait pas un refus d'un dysfonctionnement."
+  elif [[ "$MF1_CODE" == "0" ]]; then
+    rouge manifeste-refuse-vraiment \
+      "MF1. face a une derive REELLE, l'assertion n'a pas leve (code 0):"
+    detail "elle compte des ecarts et les garde pour elle. Une assertion qui"
+    detail "ne refuse pas est un journal, pas une garantie."
+  else
+    sur manifeste-refuse-vraiment \
+      "face a une derive reelle l'assertion LEVE (code $MF1_CODE), et rend 0"
+    detail "sur une base conforme."
+  fi
 fi
 
 echo "      -- manifeste-derive-proprietaire: une derive de proprietaire est-elle VUE ?"

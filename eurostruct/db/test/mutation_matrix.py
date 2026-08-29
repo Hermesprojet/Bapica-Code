@@ -2010,6 +2010,11 @@ CAS_MANIFESTE = [
        """             has_function_privilege('normative_backend', p.oid, 'EXECUTE')
                as public_acl,""")], False),
     # MF1 — l'assertion ne leve plus. Le manifeste devient un document.
+    # LE POINT EST « MF1 », ET IL EXISTE MAINTENANT. La campagne des 103 a
+    # laisse MF1 survivre: les trois autres controles du manifeste rougissaient
+    # (ils constatent « l'assertion ne s'est pas plainte ») mais sous LEURS
+    # identifiants. `manifeste-refuse-vraiment` porte celui-ci, et ne mesure
+    # qu'une chose: face a un ecart reel, l'assertion doit LEVER.
     ("MF1 l'assertion ne refuse plus", "MF1", A15,
      [("""  if array_length(ecarts, 1) > 0 then
     raise exception""",
