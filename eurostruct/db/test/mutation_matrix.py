@@ -57,6 +57,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import canal_lecture  # noqa: E402
 
 # --------------------------------------------------------------------------
+# LES ANOMALIES DU CANAL, AGREGEES SUR TOUTE LA CAMPAGNE
+# --------------------------------------------------------------------------
+# Une campagne ne se clot pas seulement sur « aucun survivant »: elle se clot
+# aussi sur « rien d'illisible n'a ete lu ». Un evenement d'un autre run, un
+# controle inconnu, un JSONL tronque — chacun signifie qu'on ignore ce que les
+# AUTRES lignes disaient. Ces compteurs sont donc exiges NULS, au meme titre
+# que les survivants.
+ANOMALIES = {"unknown_event": 0, "cross_run_event": 0,
+             "double_terminal": 0, "invalid_jsonl": 0}
+
+# --------------------------------------------------------------------------
 # L'IDENTITE DE LA CAMPAGNE — un run, un SHA, et rien qui puisse se confondre
 # --------------------------------------------------------------------------
 # `RUN_ID` distingue deux campagnes concurrentes et une capture oubliee dans le
@@ -1029,8 +1040,11 @@ def essayer(nom, point, fichier, paires, redondant=False,
         lec = canal_lecture.lire(canal, {controle_id or point},
                                  run_id=RUN_ID, sha=SHA_CANDIDAT)
     except canal_lecture.CanalInvalide as e:
+        ANOMALIES["invalid_jsonl"] += 1
         print(f"  INFRA {nom}\n        -> canal machine invalide: {e}")
         return INFRA_FAILURE
+    for _cle, _n in lec.anomalies().items():
+        ANOMALIES[_cle] += _n
     if lec.fautes:
         print(f"  INFRA {nom}\n        -> comptabilite du canal fautive:")
         for f in lec.fautes[:3]:
@@ -2492,6 +2506,11 @@ INV = [
     ("stale == 0", STALES == 0),
     ("infra_failure == 0", INFRAS == 0),
     ("not_run == 0", NON_LANCES == 0),
+    # LES ANOMALIES DU CANAL — exigees nulles au meme titre.
+    ("unknown_event == 0", ANOMALIES["unknown_event"] == 0),
+    ("invalid_jsonl == 0", ANOMALIES["invalid_jsonl"] == 0),
+    ("cross_run_event == 0", ANOMALIES["cross_run_event"] == 0),
+    ("double_terminal == 0", ANOMALIES["double_terminal"] == 0),
 ]
 INV_TENUS = all(ok for _, ok in INV)
 
@@ -2552,6 +2571,11 @@ print(f"MUTATIONS: defined {DEFINIS} | attempted {TENTES} | "
 print(f"           survived {SURVIVANTS} | stale {STALES} | "
       f"infra_failure {INFRAS} | not_run {NON_LANCES} | code {CODE}")
 print()
+print(f"           CANAL: unknown_event {ANOMALIES['unknown_event']} | "
+      f"invalid_jsonl {ANOMALIES['invalid_jsonl']} | "
+      f"cross_run_event {ANOMALIES['cross_run_event']} | "
+      f"double_terminal {ANOMALIES['double_terminal']}")
+print(f"           RUN {RUN_ID} | SHA {SHA_CANDIDAT}")
 print("           INVARIANTS DE CAMPAGNE:")
 for _libelle, _ok in INV:
     print(f"             [{'ok' if _ok else 'NON'}] {_libelle}")
