@@ -1103,11 +1103,21 @@ SQL19
   #      la prose est pour l'humain, le code de retour porte le verdict.
   INST_HD_RC=0
   INST_HD="$(python3 "$HERE/verifier_heredocs.py" "$HERE" 2>&1)" || INST_HD_RC=$?
+  #      19.5 INSPECTE LE CORPUS; 19.9 FALSIFIE L'INSTRUMENT. Les deux emettent
+  #      sur le canal parce que leur DIVERGENCE est la preuve recherchee: un
+  #      scanner aveugle laisse 19.5 vert — le corpus est propre, il n'y a rien
+  #      a y voir — pendant que 19.9 rougit. Sans les deux traces, on ne
+  #      pourrait pas montrer que le controle du corpus ne remplace pas le
+  #      controle de l'instrument.
   if (( INST_HD_RC == 0 )); then
     inst_verdict 5 "aucune composition SQL dangereuse dans les harnais" ok
+    esc_evt "19.5" SUR runtime nature=corpus_propre \
+      detail="le balayage du corpus reel ne trouve rien"
   else
     inst_verdict 5 "aucune composition SQL dangereuse dans les harnais" \
       "rc=$INST_HD_RC $(tr '\n' ' ' <<<"$INST_HD")"
+    esc_evt "19.5" ROUGE runtime nature=corpus_fautif \
+      detail="rc=$INST_HD_RC"
   fi
 
   # 19.6 SORTIE MULTIOCTET -> capturee sans dommage, identifiant preserve.
@@ -1157,13 +1167,30 @@ SQL19
   # prouver une garantie avec l'exemple qu'elle couvre deja. Seuls des cas
   # FABRIQUES distinguent un scanner qui voit d'un scanner devenu aveugle,
   # et c'est ce que `scanner_selftest.py` fabrique.
+  #      UN `rc == 0` NE SUFFIT PAS, ET C'EST LE POINT.
+  #      Un selftest ampute — decor fabrique non cree, boucle videe — rendrait
+  #      ZERO et passerait pour vert. On exige donc le COMPTE de cas
+  #      reellement parcourus, publie par le selftest lui-meme. Un decor qui
+  #      n'a pas ete parcouru ne peut pas conclure.
+  INST_SC_CAS_ATTENDUS=12
   INST_SC_RC=0
   INST_SC="$(python3 "$HERE/scanner_selftest.py" 2>&1)" || INST_SC_RC=$?
-  if (( INST_SC_RC == 0 )); then
-    inst_verdict 9 "le scanner de composition SQL voit ses onze cas fabriques" ok
+  INST_SC_N="$(sed -n 's/^SCANNER_SELFTEST_CAS=\([0-9]\{1,\}\)$/\1/p' <<<"$INST_SC" | tail -1)"
+  INST_SC_N="${INST_SC_N:-0}"
+  if (( INST_SC_RC == 0 )) && (( INST_SC_N >= INST_SC_CAS_ATTENDUS )); then
+    inst_verdict 9 "le scanner de composition SQL voit ses cas fabriques" ok
+    esc_evt "19.9" SUR runtime nature=scanner_selftest \
+      detail="$INST_SC_N cas fabriques parcourus"
   else
-    inst_verdict 9 "le scanner de composition SQL voit ses onze cas fabriques" \
-      "rc=$INST_SC_RC $(tr '\n' ' ' <<<"$INST_SC")"
+    if (( INST_SC_RC == 0 )); then
+      INST_SC_MOTIF="decor fabrique non parcouru: $INST_SC_N cas sur $INST_SC_CAS_ATTENDUS"
+    else
+      INST_SC_MOTIF="rc=$INST_SC_RC $(tr '\n' ' ' <<<"$INST_SC")"
+    fi
+    inst_verdict 9 "le scanner de composition SQL voit ses cas fabriques" \
+      "$INST_SC_MOTIF"
+    esc_evt "19.9" ROUGE runtime nature=scanner_aveugle \
+      detail="$INST_SC_MOTIF"
   fi
 
   psql -X -q -d postgres -c "drop database if exists \"$INST_BASE\"" >/dev/null 2>&1

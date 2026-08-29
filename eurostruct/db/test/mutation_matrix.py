@@ -100,6 +100,7 @@ H = "db/test/authority_closure.sh"
 LIB = "db/test/lib_harnais.sh"
 FACT = "engine/src/eurostruct_engine/ndp/provider_factory.py"
 BARR = "db/test/barriere_provider.py"
+SCAN = "db/test/verifier_heredocs.py"
 PROV = "db/test/provider_contract.py"
 A15 = "db/migrations/0015_authority_manifest.sql"
 CMD = "tools/deploy_eurostruct.sh"
@@ -2164,6 +2165,57 @@ CAS_SEPARATION = [
 ]
 
 
+# --------------------------------------------------------------------------
+# SC1 A SC5 — AVEUGLER LE SCANNER DE COMPOSITION SQL
+# --------------------------------------------------------------------------
+# CE QUE CES CINQ CONTROLES ETABLISSENT, ET QUI N'EST PAS EVIDENT.
+#
+# Deux controles regardent le scanner, et ils ne disent PAS la meme chose:
+#
+#   19.5  balaie le CORPUS REEL (`db/test/*.sh`) et exige qu'il soit propre;
+#   19.9  fait tourner les CAS FABRIQUES et exige que le scanner les voie.
+#
+# Le corpus est propre. Un scanner devenu aveugle y rend donc ZERO, et 19.5
+# reste VERT pendant que la garantie a disparu. C'est exactement la faute qui
+# a produit les onze survivants de `3d0acc2`: prouver une garantie avec
+# l'exemple qu'elle couvre deja.
+#
+# MESURE DU 29/08 — TROIS DES CINQ NE SONT VUES QUE PAR 19.9:
+#
+#   SC1  detection des heredocs retiree        19.9 ROUGE   19.5 VERT
+#   SC2  refus sur zero fichier retire         19.9 ROUGE   19.5 VERT
+#   SC3  chemin de fichier plus accepte        19.9 ROUGE   19.5 VERT
+#   SC4  tolerance a la forme echappee otee    19.9 ROUGE   19.5 ROUGE
+#   SC5  detection des recollages retiree      19.9 ROUGE   19.5 ROUGE
+#
+# SC4 et SC5 rougissent AUSSI 19.5 — S4 parce que `deploy_recovery.sh` porte de
+# vraies formes echappees qui deviennent alors des fautes, S5 parce que le
+# compte de recollages tombe a zero et s'ecarte du plafond. Elles sont gardees,
+# mais ce sont SC1, SC2 et SC3 qui portent la demonstration.
+#
+# CIBLE UNIQUE POUR LES CINQ: `verifier_heredocs.py`. POINT ATTENDU: 19.9.
+# `harness_safety_selftest.sh` EMET SUR LE CANAL — il ne figure pas dans
+# `HARNAIS_NON_MIGRES`, donc aucun repli textuel n'est possible pour lui. Si
+# son canal se tait, le controle devient NOT_RUN, jamais vert.
+CAS_SCANNER = [
+    ('SC1 (S1) la detection des heredocs executants est neutralisee', "19.9", SCAN,
+     [('        if re.search(r"(?<!\\\\)`", texte) or re.search(r"(?<!\\\\)\\$\\(", texte):',
+       '        if False:')], False),
+    ('SC2 (S2) le refus de conclure sur zero fichier est neutralise', "19.9", SCAN,
+     [('    if not fichiers:\n        print("REFUS: aucun fichier .sh a inspecter — un controle qui ne "\n              "regarde rien ne vaut pas un controle reussi.", file=sys.stderr)\n        return 2',
+       '    if False:\n        pass')], False),
+    ("SC3 (S3) la prise en charge d'un chemin fichier est neutralisee", "19.9", SCAN,
+     [('        if racine.is_file():\n            fichiers.append(racine)\n        else:\n            fichiers.extend(sorted(racine.glob("*.sh")))',
+       '        fichiers.extend(sorted(racine.glob("*.sh")))')], False),
+    ('SC4 (S4) la tolerance des formes echappees est supprimee', "19.9", SCAN,
+     [('or re.search(r"(?<!\\\\)\\$\\(", texte):',
+       'or re.search(r"\\$\\(", texte):')], False),
+    ('SC5 (S5) la detection du recollage SQL est neutralisee', "19.9", SCAN,
+     [('    noms = _variables_lues_dans_la_base(lignes)\n    if not noms:\n        return []',
+       '    noms = _variables_lues_dans_la_base(lignes)\n    if True:\n        return []')], False),
+]
+
+
 LOTS = [
     (CAS, {}),
     (CAS_MANIFESTE,
@@ -2187,6 +2239,8 @@ LOTS = [
      dict(harnais="db/test/authority_four_eyes.sh", prefixe="mq")),
     (CAS_POSTCONDITIONS_MIGRATION,
      dict(harnais="db/test/migration_postconditions.sh", prefixe="mn")),
+    (CAS_SCANNER,
+     dict(harnais="db/test/harness_safety_selftest.sh", prefixe="msc")),
 ]
 
 TOTAL = sum(len(cas) for cas, _ in LOTS)

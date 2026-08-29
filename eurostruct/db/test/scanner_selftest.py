@@ -182,7 +182,13 @@ def main() -> int:
         for e in echecs:
             print(f"  {e}", file=sys.stderr)
         return 1
-    print(f"\n{len(CAS) + 2} cas, tous conformes")
+    # MARQUEUR MACHINE — LE NOMBRE DE CAS REELLEMENT PARCOURUS.
+    # Un `rc == 0` ne distingue pas « douze cas conformes » de « aucun cas
+    # execute »: un selftest ampute rendrait zero et passerait pour vert. Le
+    # controle 19.9 exige donc le compte, et refuse un compte inferieur.
+    n = len(CAS) + 2
+    print(f"\n{n} cas, tous conformes")
+    print(f"SCANNER_SELFTEST_CAS={n}")
     return 0
 
 
