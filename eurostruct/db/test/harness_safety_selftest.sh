@@ -1037,7 +1037,7 @@ done
 rm -rf "$TEMOINS_DIR"
 
 # --------------------------------------------------------------------------
-# 19. L'INSTRUMENT LUI-MEME — huit facons de mentir, huit refus
+# 19. L'INSTRUMENT LUI-MEME — neuf facons de mentir, neuf refus
 # --------------------------------------------------------------------------
 # CE QUE CE CONTROLE EXISTE POUR EMPECHER. Quatre fautes d'instrument ont
 # produit dans ce jalon des conclusions FAUSSES sur le produit — pas des tests
@@ -1149,9 +1149,26 @@ SQL19
       "la valeur a change ($INST_VAL): le piege ne se reproduit pas"
   fi
 
+  # 19.9 LE SCANNER DE COMPOSITION SQL VOIT-IL ENCORE ?
+  #
+  # 19.5 fait tourner le scanner sur le CORPUS REEL — et le corpus est propre.
+  # Un scanner affaibli y rendrait donc ZERO, et 19.5 resterait VERT. C'est
+  # exactement la faute qui a produit les onze survivants de `3d0acc2`:
+  # prouver une garantie avec l'exemple qu'elle couvre deja. Seuls des cas
+  # FABRIQUES distinguent un scanner qui voit d'un scanner devenu aveugle,
+  # et c'est ce que `scanner_selftest.py` fabrique.
+  INST_SC_RC=0
+  INST_SC="$(python3 "$HERE/scanner_selftest.py" 2>&1)" || INST_SC_RC=$?
+  if (( INST_SC_RC == 0 )); then
+    inst_verdict 9 "le scanner de composition SQL voit ses onze cas fabriques" ok
+  else
+    inst_verdict 9 "le scanner de composition SQL voit ses onze cas fabriques" \
+      "rc=$INST_SC_RC $(tr '\n' ' ' <<<"$INST_SC")"
+  fi
+
   psql -X -q -d postgres -c "drop database if exists \"$INST_BASE\"" >/dev/null 2>&1
 fi
-(( INST_KO )) || echo "      ok: 19. l'instrument refuse les huit facons de mentir"
+(( INST_KO )) || echo "      ok: 19. l'instrument refuse les neuf facons de mentir"
 
 echo ""
 if [[ $KO -eq 0 ]]; then

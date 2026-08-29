@@ -114,6 +114,39 @@ littérale à l'écriture et s'évalue chez la couche cible (c'était le trou
 connu), et le cas 8, qui fixe la seule forme de correction qui marche pour
 qu'aucune relecture ne reprenne la mienne.
 
+### Le scanner est lui-même falsifiable, et c'est mesuré
+
+Un instrument neuf ne vaut rien tant que rien ne prouve qu'il verrait sa
+propre défaillance. Le contrôle **19.9** a donc été ajouté à
+`harness_safety_selftest.sh` : il fait tourner les onze cas **fabriqués**.
+Cinq façons d'aveugler le scanner ont ensuite été appliquées, chacune suivie
+d'une exécution complète du harnais, et **deux** choses ont été mesurées à
+chaque fois — 19.9 doit rougir, et 19.5 (le balayage du corpus réel) doit
+rester vert :
+
+| mutation | 19.9 | 19.5 | verdict |
+|---|---|---|---|
+| S1 la détection des heredocs est retirée | ROUGE | **VERT** | tué par 19.9 seul |
+| S2 le refus sur zéro fichier est retiré | ROUGE | **VERT** | tué par 19.9 seul |
+| S3 un chemin de fichier n'est plus accepté | ROUGE | **VERT** | tué par 19.9 seul |
+| S4 la tolérance à la forme échappée est retirée | ROUGE | ROUGE | tué, mais 19.5 aussi |
+| S5 la détection des recollages est retirée | ROUGE | ROUGE | tué, mais 19.5 aussi |
+
+**Trois des cinq ne sont vues que par les cas fabriqués.** Le corpus réel est
+propre : un scanner devenu aveugle y rend zéro, et 19.5 reste vert pendant que
+la garantie a disparu. C'est la même faute que celle des onze survivants —
+prouver une garantie avec l'exemple qu'elle couvre déjà — et 19.9 est
+précisément ce qui la ferme.
+
+Le scanner a été restauré et l'identité au fichier d'origine vérifiée par
+`cmp`, non supposée.
+
+**Ce que ceci n'est pas** : ces cinq falsifications ne sont pas encore des
+contrôles du registre de mutations. Les inscrire demande une attribution par
+point, que les harnais ne portent pas directement — elle passe par
+l'adaptateur de prose. Le faire à moitié casserait un préflight aujourd'hui
+tout à zéro. C'est le prochain pas, nommé, pas un acquis.
+
 ## Quatre défauts de mes propres instruments, trouvés en chemin
 
 1. **une continuation de ligne cassée** rattachait le selftest du canal à une
@@ -133,6 +166,8 @@ qu'aucune relecture ne reprenne la mienne.
 ## Ce qui reste ouvert
 
 * la campagne complète des 104 contrôles — `FULL_MUTATION_PENDING` ;
+* inscrire S1–S5 au registre de mutations, ce qui suppose de donner au
+  contrôle 19.9 un point attribuable par le canal plutôt que par la prose ;
 * la conversion des 31 recollages, qui exige de valider un changement de
   sémantique d'échec harnais par harnais ;
 * le contre-exemple complet de la séparation : neutraliser les **cinq**
