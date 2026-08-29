@@ -1029,7 +1029,7 @@ esc_decor_abandonner() {
 #   * le CANAL MACHINE est un JSONL strict, versionne, que seul le lanceur lit.
 #
 # Rien de ce qui est ecrit pour l'humain n'entre dans le calcul du verdict.
-ESC_CANAL_PROTOCOLE=1
+ESC_CANAL_PROTOCOLE=2
 ESC_CANAL="${ESC_CANAL:-}"
 
 # esc_evt <point_id> <statut> <phase> [cle=valeur ...]
@@ -1045,27 +1045,67 @@ ESC_CANAL="${ESC_CANAL:-}"
 # ligne et l'UTF-8 — c'est-a-dire sur exactement ce que les diagnostics
 # PostgreSQL contiennent. Un evenement mal forme invalide la campagne entiere;
 # il ne doit donc jamais etre produit par negligence de citation.
+#
+# PROTOCOLE 2 — CE QUE LE LANCEUR DECLARE, ET POURQUOI CE N'EST PAS AU HARNAIS
+#
+#   ESC_RUN_ID         identifiant de la campagne
+#   ESC_SHA            SHA du candidat gele
+#   ESC_CONTROLE_ID    la MUTATION eprouvee (« S1 », « MF1 »)
+#   ESC_POINT_ATTENDU  le point de controle cense rougir
+#
+# Le harnais ne sait pas quelle mutation on lui applique — il ne peut donc pas
+# nommer le controle. Le lanceur, lui, le sait: c'est lui qui l'a posee.
+#
+# `terminal` NE VAUT QUE POUR LE POINT ATTENDU. Un harnais peut legitimement
+# rougir sur plusieurs points au cours d'une meme execution; si chacun etait
+# terminal, l'invariant « un seul verdict terminal par controle » se
+# declencherait a tort et la campagne entiere deviendrait invalide. Les autres
+# rouges sont enregistres — ils sont un fait — mais ils n'attribuent rien.
 esc_evt() {
   [[ -n "$ESC_CANAL" ]] || return 0
   local point="${1:?esc_evt <point_id> <statut> <phase> [cle=valeur ...]}"
   local statut="${2:?statut}" phase="${3:?phase}"
   shift 3
   ESC_EVT_POINT="$point" ESC_EVT_STATUT="$statut" ESC_EVT_PHASE="$phase" \
-  ESC_EVT_PROTO="$ESC_CANAL_PROTOCOLE" ESC_EVT_FICHIER="$ESC_CANAL" \
+  ESC_EVT_PROTO="${ESC_CANAL_PROTOCOLE:-2}" ESC_EVT_FICHIER="$ESC_CANAL" \
+  ESC_EVT_RUN="${ESC_RUN_ID:-}" ESC_EVT_SHA="${ESC_SHA:-}" \
+  ESC_EVT_CTRL="${ESC_CONTROLE_ID:-}" ESC_EVT_ATTENDU="${ESC_POINT_ATTENDU:-}" \
   python3 - "$@" <<'FINPY'
-import json, os, sys
+import json, os, sys, time
+
+point = os.environ["ESC_EVT_POINT"]
+attendu = os.environ.get("ESC_EVT_ATTENDU") or ""
+manquants = [n for n in ("ESC_EVT_RUN", "ESC_EVT_SHA", "ESC_EVT_CTRL")
+             if not os.environ.get(n)]
+if manquants:
+    # UN EVENEMENT SANS CONTEXTE NE PEUT PAS ETRE RATTACHE. Le taire serait
+    # pire que refuser: la campagne conclurait NOT_RUN sans savoir pourquoi.
+    print(f"esc_evt: contexte absent {manquants} — le lanceur doit declarer "
+          f"ESC_RUN_ID, ESC_SHA et ESC_CONTROLE_ID", file=sys.stderr)
+    sys.exit(2)
 
 evt = {
-    "protocole": int(os.environ["ESC_EVT_PROTO"]),
-    "point_id":  os.environ["ESC_EVT_POINT"],
-    "statut":    os.environ["ESC_EVT_STATUT"],
-    "phase":     os.environ["ESC_EVT_PHASE"],
+    "protocole":  int(os.environ["ESC_EVT_PROTO"]),
+    "run_id":     os.environ["ESC_EVT_RUN"],
+    "sha":        os.environ["ESC_EVT_SHA"],
+    "controle_id": os.environ["ESC_EVT_CTRL"],
+    "point_id":   point,
+    "statut":     os.environ["ESC_EVT_STATUT"],
+    "phase":      os.environ["ESC_EVT_PHASE"],
+    # SEQUENCE MONOTONE, en nanosecondes: elle ordonne sans ambiguite deux
+    # harnais qui ecrivent en parallele dans le meme canal, et sert
+    # d'horodatage. Deux evenements du meme controle ne peuvent pas la
+    # partager — le lecteur refuse les doublons (controle, seq).
+    "seq":        time.time_ns(),
+    "horodatage": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    "terminal":   (point == attendu) if attendu else True,
     "scenario_id": None, "chemin": None, "invariant": None,
-    "diagnostic": None, "code": None, "effet": None, "terminal": True,
+    "diagnostic": None, "code": None, "effet": None,
 }
 CLES = {"scenario": "scenario_id", "chemin": "chemin", "invariant": "invariant",
-        "diagnostic": "diagnostic", "code": "code", "effet": "effet",
-        "terminal": "terminal"}
+        "nature": "_nature", "detail": "_detail",
+        "code": "code", "effet": "effet", "terminal": "terminal"}
+nature = detail = None
 for arg in sys.argv[1:]:
     if "=" not in arg:
         print(f"esc_evt: argument sans « = »: {arg!r}", file=sys.stderr)
@@ -1077,6 +1117,10 @@ for arg in sys.argv[1:]:
     champ = CLES[cle]
     if champ == "terminal":
         evt[champ] = valeur.strip().lower() in {"oui", "true", "1"}
+    elif champ == "_nature":
+        nature = valeur
+    elif champ == "_detail":
+        detail = valeur
     elif champ == "code":
         try:
             evt[champ] = int(valeur)
@@ -1084,6 +1128,11 @@ for arg in sys.argv[1:]:
             evt[champ] = None
     else:
         evt[champ] = valeur
+
+# LE DIAGNOSTIC EST STRUCTURE, PAS UNE PROSE. Une prose libre redevient vite
+# ce qu'on analyse, et l'on retombe dans la faute que le canal supprime.
+if nature is not None or detail is not None:
+    evt["diagnostic"] = {"nature": nature, "detail": detail}
 
 if evt["statut"] not in {"ROUGE", "SUR", "NON_PARCOURU", "INFRA"}:
     print(f"esc_evt: statut invalide {evt['statut']!r}", file=sys.stderr)
@@ -1096,6 +1145,10 @@ if evt["phase"] not in {"installation", "runtime", "teardown"}:
 # sauts de ligne des diagnostics sont echappes par `json.dumps` lui-meme.
 ligne = json.dumps(evt, ensure_ascii=False, separators=(",", ":"))
 assert "\n" not in ligne, "un evenement ne peut pas contenir de saut de ligne"
+# ECRITURE ATOMIQUE: `O_APPEND` sous la taille de PIPE_BUF garantit qu'une
+# ligne ne s'entrelace pas avec celle d'un autre harnais. C'est ce qui rend
+# « JSON tronque = campagne invalide » utilisable: une troncature devient
+# alors le signe d'un vrai defaut, pas d'une course d'ecriture.
 with open(os.environ["ESC_EVT_FICHIER"], "a", encoding="utf-8") as f:
     f.write(ligne + "\n")
 FINPY

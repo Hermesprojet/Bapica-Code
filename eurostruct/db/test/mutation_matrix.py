@@ -56,6 +56,35 @@ import uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import canal_lecture  # noqa: E402
 
+# --------------------------------------------------------------------------
+# L'IDENTITE DE LA CAMPAGNE — un run, un SHA, et rien qui puisse se confondre
+# --------------------------------------------------------------------------
+# `RUN_ID` distingue deux campagnes concurrentes et une capture oubliee dans le
+# scratch. `SHA_CANDIDAT` rattache chaque evenement a l'arbre EXACT eprouve.
+#
+# Le lot L4 a montre ce que leur absence coute: une execution verte de l'arbre
+# de travail avait ete attribuee a un SHA qui n'existait pas encore au moment
+# ou elle tournait. Le canal refuse desormais tout evenement portant un autre
+# run ou un autre SHA, et la campagne exige `cross_run_event == 0`.
+#
+# Le SHA est LU DANS LE DEPOT, jamais passe en argument: un SHA fourni a la
+# main peut mentir, `git rev-parse HEAD` dans l'espace de travail ne le peut
+# pas. `ESC_SHA_CANDIDAT` n'existe que pour les selftests, qui n'ont pas de
+# depot sous la main.
+RUN_ID = os.environ.get("ESC_RUN_ID") or f"run-{uuid.uuid4().hex[:16]}"
+
+
+def _sha_courant() -> str:
+    force = os.environ.get("ESC_SHA_CANDIDAT")
+    if force:
+        return force
+    try:
+        return subprocess.run(["git", "-C", ESPACE, "rev-parse", "HEAD"],
+                              capture_output=True, text=True,
+                              check=True).stdout.strip()
+    except Exception:
+        return "SHA_INCONNU"
+
 # `.../eurostruct/db/test/mutation_matrix.py` -> `.../eurostruct`: TROIS
 # remontees. Deux laissaient RACINE sur `.../db`, ou `git status -- db/...` ne
 # designe rien: la garde d'arbre propre passait alors sans rien constater.
@@ -350,7 +379,11 @@ def restaurer(fichier):
         open(f"{ESPACE}/{fichier}", "w").write(texte)
 
 
-def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
+SHA_CANDIDAT = None  # pose au premier lancement, depuis ESPACE
+
+
+def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu",
+           controle_id=None, point_attendu=None):
     env = dict(os.environ)
     env["TMPDIR"] = SCRATCH
     # LE CONSENTEMENT EST POSE ICI, EXPLICITEMENT. Sans lui les harnais
@@ -360,6 +393,18 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     # LE CANAL MACHINE — un fichier par execution, jamais partage.
     canal = os.path.join(SCRATCH, f"canal_{uuid.uuid4().hex}.jsonl")
     env["ESC_CANAL"] = canal
+    # LE CONTEXTE DE L'EVENEMENT EST DECLARE PAR LE LANCEUR, PAS PAR LE HARNAIS.
+    # Le harnais ignore quelle mutation on lui applique; le lanceur l'a posee.
+    # Sans ces quatre valeurs un evenement ne peut etre rattache ni a la
+    # campagne, ni au SHA gele, ni au controle eprouve — et c'est exactement
+    # ainsi qu'une preuve finit par repondre pour un arbre qui n'existe plus.
+    global SHA_CANDIDAT
+    if SHA_CANDIDAT is None:
+        SHA_CANDIDAT = _sha_courant()
+    env["ESC_RUN_ID"] = RUN_ID
+    env["ESC_SHA"] = SHA_CANDIDAT
+    env["ESC_CONTROLE_ID"] = controle_id or ""
+    env["ESC_POINT_ATTENDU"] = point_attendu or ""
     # PRISE DE TEST: substitue le harnais. Elle sert au contre-exemple du
     # harnais qui sort IMMEDIATEMENT — precisement le cas ou le temoin retenait
     # les pipes. Inerte quand la variable est absente.
@@ -876,6 +921,11 @@ def essayer(nom, point, fichier, paires, redondant=False,
             harnais="db/test/finalisation_contract.sh", prefixe="mu"):
     """Rend UN statut terminal. Jamais deux, jamais aucun."""
     code_court = _code(nom)
+    # LE CONTROLE ET LE POINT SONT DEUX CHOSES. `code_court` nomme la MUTATION
+    # eprouvee; `point` nomme le POINT DE CONTROLE cense rougir. Les confondre
+    # est ce qui a permis a `MF1` d'etre declare tue par les rouges de `MF2`,
+    # `MF3` et `MF4` — un temoin implicite qui ne prouvait rien sur MF1.
+    controle_id = code_court
     cibles = _cibles(fichier, paires)
     textes_avant = {}
     for f, _pr in cibles:
@@ -909,7 +959,9 @@ def essayer(nom, point, fichier, paires, redondant=False,
     try:
         for f, _ in cibles:
             _tracer(nom, f)
-        code, sortie, canal = lancer(harnais, prefixe)
+        code, sortie, canal = lancer(harnais, prefixe,
+                                     controle_id=controle_id,
+                                     point_attendu=point)
     finally:
         for f, _ in cibles:
             restaurer(f)
@@ -973,7 +1025,8 @@ def essayer(nom, point, fichier, paires, redondant=False,
     # rendre facultative, et un controle non migre apparait pour ce qu'il est:
     # non mesure.
     try:
-        lec = canal_lecture.lire(canal, {point})
+        lec = canal_lecture.lire(canal, {controle_id or point},
+                                 run_id=RUN_ID, sha=SHA_CANDIDAT)
     except canal_lecture.CanalInvalide as e:
         print(f"  INFRA {nom}\n        -> canal machine invalide: {e}")
         return INFRA_FAILURE
@@ -983,7 +1036,8 @@ def essayer(nom, point, fichier, paires, redondant=False,
             print(f"        {f}")
         return INFRA_FAILURE
     if lec.evenements:
-        statut, motif = canal_lecture.verdict_du_point(lec, point)
+        statut, motif = canal_lecture.verdict_du_controle(
+            lec, controle_id or point)
         etiquettes = {
             "KILLED_RUNTIME": ("ok   ", KILLED_RUNTIME),
             "KILLED_INSTALL_ASSERTION": ("ok   ", KILLED_INSTALL_ASSERTION),
@@ -1007,13 +1061,25 @@ def essayer(nom, point, fichier, paires, redondant=False,
     # La difference n'est pas cosmetique. Deux mecanismes rendraient le verdict
     # dependant de celui des deux qui a parle; un adaptateur alimente le seul
     # mecanisme, et ses defauts se voient dans les evenements produits.
-    traduits = canal_lecture.traduire_prose(sortie, point)
+    # LE TRADUCTEUR EST NOMME, ET IL REFUSE PAR DEFAUT. Passer le harnais
+    # n'est pas decoratif: `canal_lecture` rejette tout harnais qui n'est pas
+    # declare non migre, ce qui empeche un harnais MIGRE de retomber en
+    # silence sur les regex le jour ou son canal se tairait. Un canal muet
+    # doit rester distinguable d'un canal vert.
+    try:
+        traduits = canal_lecture.traduire_prose(
+            sortie, controle_id or point, point=point, harnais=harnais,
+            run_id=RUN_ID, sha=SHA_CANDIDAT)
+    except canal_lecture.TraducteurRefuse as e:
+        print(f"  INFRA {nom}\n        -> {e}")
+        return INFRA_FAILURE
     if traduits:
         lec.evenements.extend(traduits)
         for e in traduits:
             if e.get("terminal", True):
-                lec.terminaux.setdefault(e["point_id"], e["statut"])
-        statut, motif = canal_lecture.verdict_du_point(lec, point)
+                lec.terminaux.setdefault(e["controle_id"], e["statut"])
+        statut, motif = canal_lecture.verdict_du_controle(
+            lec, controle_id or point)
         etiquettes = {
             "KILLED_RUNTIME": ("ok   ", KILLED_RUNTIME),
             "KILLED_INSTALL_ASSERTION": ("ok   ", KILLED_INSTALL_ASSERTION),
