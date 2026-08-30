@@ -11,6 +11,7 @@ never downgraded into a partial result.
 
 from __future__ import annotations
 
+import math
 from datetime import date
 from typing import Any
 
@@ -23,6 +24,7 @@ from .exceptions import (
     InconsistentInput,
     NationalAnnexIncomplete,
     OutOfValidationDomain,
+    ReinforcementNotVerified,
     UnitError,
     UnverifiedNationalParameter,
 )
@@ -36,16 +38,26 @@ from .schemas.common import (
     QuantityDTO,
 )
 from .schemas.ec2_beam import (
+    BarRowDTO,
+    BeamSectionDrawingRequest,
     Ec2BeamFlexureRequest,
     Ec2BeamFlexureResponse,
     Ec2BeamFlexureResult,
+    Ec2BeamSectionRequest,
     RebarScheduleRowDTO,
 )
-from .schemas.ec2_beam import BeamSectionDrawingRequest
 from .traceability import Provenance, ProvenanceKind
 from .units import Q_, Quantity
 
-__all__ = ["run_ec2_beam_flexure", "render_beam_section", "error_of", "to_quantity", "of_quantity"]
+__all__ = [
+    "error_of",
+    "of_quantity",
+    "provided_area",
+    "render_beam_section",
+    "run_ec2_beam_flexure",
+    "to_quantity",
+    "verify_and_render_beam_section",
+]
 
 
 def to_quantity(dto: QuantityDTO) -> Quantity:
@@ -158,6 +170,74 @@ def render_beam_section(
     return doc, [RebarScheduleRowDTO.model_validate(r.to_dict()) for r in schedule]
 
 
+def provided_area(rows: list[BarRowDTO]) -> Quantity:
+    """The steel area of *rows*. Computed **here**, never received.
+
+    Geometry, not engineering — but it must not be left to a client. An area
+    supplied alongside the bars can disagree with them, and the verification
+    would then pass on a number that no bar in the drawing has. Deriving it
+    from the bars makes that disagreement unrepresentable.
+    """
+    total = sum(r.count * math.pi * (r.diameter / 2.0) ** 2 for r in rows)
+    return Q_(total, "mm**2")
+
+
+def verify_and_render_beam_section(
+    req: Ec2BeamSectionRequest,
+) -> tuple[Any, list[RebarScheduleRowDTO], Ec2BeamFlexureResponse]:
+    """Verify the chosen bars, then draw them. Never one without the other.
+
+    The drawing is built from ``req.calculation.section`` — the very geometry
+    the verification just ran on — so the plan cannot describe a beam that was
+    never checked. That is the whole point of taking one request rather than
+    two: a caller cannot hold two geometries and send the wrong one.
+
+    :raises ReinforcementNotVerified: when the section as detailed fails a
+        check. No document is produced.
+    """
+    aire = provided_area(req.reinforcement.bottom)
+    calcul = req.calculation.model_copy(
+        update={"A_s_provided": of_quantity(aire, "mm**2")}
+    )
+    reponse = run_ec2_beam_flexure(calcul)
+
+    rapport = reponse.verification
+    if not rapport.passed:
+        rates = tuple(c.name for c in rapport.checks if c.status.value != "pass")
+        raise ReinforcementNotVerified(
+            "le ferraillage choisi ne verifie pas la section: "
+            f"{', '.join(rates) or 'un controle'} — utilisation "
+            f"{rapport.max_utilisation:.3f}. Aucun plan n'est produit: un "
+            "dessin qui echoue a sa propre verification a l'air d'un dessin "
+            "valide entre les mains de celui qui l'ouvre. Acier mis en oeuvre "
+            f"{aire.magnitude:.0f} mm², requis "
+            f"{reponse.result.As_required.value:.0f} mm².",
+            utilisation=rapport.max_utilisation,
+            failing=rates,
+        )
+
+    dessin = BeamSectionDrawingRequest(
+        project=req.calculation.project_id,
+        element=req.calculation.element,
+        b=req.calculation.section.b.value,
+        h=req.calculation.section.h.value,
+        cover=req.reinforcement.cover,
+        link_diameter=req.reinforcement.link_diameter,
+        bottom=list(req.reinforcement.bottom),
+        top=list(req.reinforcement.top),
+        link_spacing=req.reinforcement.link_spacing,
+        link_mark=req.reinforcement.link_mark,
+        plot_scale=req.plot_scale,
+        concrete_grade=req.calculation.materials.concrete_grade,
+        steel_grade=req.calculation.materials.steel_grade,
+        exposure_class=req.exposure_class,
+        index=req.index,
+        date=req.date,
+    )
+    doc, schedule = render_beam_section(dessin)
+    return doc, schedule, reponse
+
+
 def error_of(exc: EurostructEngineError) -> EngineErrorDTO:
     """Map a refusal onto the wire error type."""
     if isinstance(exc, OutOfValidationDomain):
@@ -186,6 +266,14 @@ def error_of(exc: EurostructEngineError) -> EngineErrorDTO:
     if isinstance(exc, DeprecatedNationalParameter):
         return EngineErrorDTO(
             error="deprecated_national_parameter", what=exc.key, detail=str(exc)
+        )
+    if isinstance(exc, ReinforcementNotVerified):
+        # Un verdict d'ingenierie, pas une entree malformee: le dessin est
+        # refuse parce que la section ne verifie pas, et le refus le dit.
+        return EngineErrorDTO(
+            error="reinforcement_not_verified",
+            what=f"utilisation {exc.utilisation:.3f}",
+            detail=exc.detail,
         )
     if isinstance(exc, UnitError):
         return EngineErrorDTO(error="unit_error", what="unit", detail=str(exc))

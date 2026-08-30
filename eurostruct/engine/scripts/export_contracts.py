@@ -39,6 +39,7 @@ from eurostruct_engine.schemas.ec2_beam import (  # noqa: E402
     BeamSectionDrawingRequest,
     Ec2BeamFlexureRequest,
     Ec2BeamFlexureResponse,
+    Ec2BeamSectionRequest,
     RebarScheduleRowDTO,
 )
 
@@ -46,6 +47,10 @@ from eurostruct_engine.schemas.ec2_beam import (  # noqa: E402
 ROOTS = [
     Ec2BeamFlexureRequest,
     Ec2BeamFlexureResponse,
+    # La requete que l'interface envoie: elle porte le calcul ET le
+    # ferraillage choisi, si bien que le dessin ne peut pas decrire une autre
+    # section que celle qui vient d'etre verifiee.
+    Ec2BeamSectionRequest,
     BeamSectionDrawingRequest,
     RebarScheduleRowDTO,
     NdpSummaryDTO,

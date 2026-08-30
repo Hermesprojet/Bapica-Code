@@ -23,7 +23,7 @@ export interface BarRowDTO {
   mark: string;
 }
 
-/** Input of the DXF cross-section generator. */
+/** Input of the DXF cross-section generator. Kept as the **drawing** contract: it knows a geometry and bars, and nothing about whether they were verified. :class:`Ec2BeamSectionRequest` is what a client should send; this one is what the renderer consumes once the check has passed. */
 export interface BeamSectionDrawingRequest {
   /** Width, mm */
   b: number;
@@ -161,12 +161,22 @@ export interface Ec2BeamFlexureResult {
   z: QuantityDTO;
 }
 
+/** Verify the chosen bars, **then** draw them — never the reverse. WHY THE CALCULATION TRAVELS WITH THE DRAWING REQUEST ----------------------------------------------------- Measured on 30/08: the interface sent a hard-coded 300 x 500 to the drawing endpoint whatever section had just been calculated. The engineer received a plan of a beam that was never verified, carrying the mandatory notice and their own element mark. Nothing could catch it, because the drawing endpoint had no way to know what had been calculated: it was handed a geometry and drew it, correctly. Sending the **verified request itself** removes the gap by construction — the drawn section and the checked section are the same object, and no caller can hold two of them. ``A_s_provided`` is deliberately absent: it is **computed here** from the bars, so that no client has to, and so that none can claim an area its bars do not have. */
+export interface Ec2BeamSectionRequest {
+  calculation: Ec2BeamFlexureRequest;
+  date?: string;
+  exposure_class?: string;
+  index?: string;
+  plot_scale?: number;
+  reinforcement: ReinforcementChoiceDTO;
+}
+
 /** A refusal. The API returns this with HTTP 422, never a partial result. */
 export interface EngineErrorDTO {
   clause?: string | null;
   detail: string;
   /** Machine-readable class of refusal. */
-  error: "out_of_validation_domain" | "national_annex_incomplete" | "unverified_national_parameter" | "deprecated_national_parameter" | "inconsistent_input" | "unit_error";
+  error: "out_of_validation_domain" | "national_annex_incomplete" | "unverified_national_parameter" | "deprecated_national_parameter" | "inconsistent_input" | "unit_error" | "reinforcement_not_verified";
   preflight?: PreflightReportDTO | null;
   what: string;
 }
@@ -316,6 +326,18 @@ export interface RegulatoryFrameworkDTO {
   eurocode_status: string;
   notes?: string[];
   verification_regime: string;
+}
+
+/** The bars the engineer chose. Never deduced from the calculation. ``As_required`` says how much steel is needed; it says nothing about how many bars, of which diameter, arranged how. That choice is the engineer's, and this is where it enters — separately from the geometry, which comes from the calculation that was verified. */
+export interface ReinforcementChoiceDTO {
+  bottom: BarRowDTO[];
+  /** Nominal cover c_nom, mm */
+  cover: number;
+  /** Link diameter, mm */
+  link_diameter: number;
+  link_mark?: string;
+  link_spacing?: number | null;
+  top?: BarRowDTO[];
 }
 
 export type SourceTypeDTO =

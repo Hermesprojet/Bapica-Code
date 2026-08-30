@@ -23,7 +23,6 @@ passer un test reviendrait à signer à la place de l'ingénieur.
 """
 from __future__ import annotations
 
-import pytest
 
 REQUETE_TYPE = {
     "project_id": "DEMO-001",
@@ -136,22 +135,86 @@ def test_unite_invalide_est_refusee(client):
     assert "result" not in r.json()
 
 
+#: Une section, son ferraillage, et rien qui puisse diverger entre les deux.
+#: 5 HA16 = 1005 mm², suffisants pour 300 x 500 sous 150 kN·m.
+def _plan(nb_barres: int = 5, diametre: float = 16.0) -> dict:
+    return {
+        "calculation": dict(CORPS_EXPLORATOIRE, element="P1"),
+        "reinforcement": {
+            "cover": 30.0, "link_diameter": 8.0, "link_spacing": 200.0,
+            "bottom": [{"count": nb_barres, "diameter": diametre, "mark": "A1"}],
+        },
+    }
+
+
 def test_dxf_est_servi_comme_un_fichier(client):
-    """Le DXF est le corps de la réponse, pas un champ encodé dans un JSON."""
-    r = client.post("/v1/calculations/ec2/beam-section.dxf", json={
-        "project": "DEMO-001", "element": "P1",
-        "b": 300.0, "h": 500.0, "cover": 30.0, "link_diameter": 8.0,
-        "bottom": [{"count": 3, "diameter": 16.0, "mark": "A1"}],
-        "top": [{"count": 2, "diameter": 12.0, "mark": "A2"}],
-        "link_spacing": 200.0,
-    })
-    if r.status_code == 422:
-        pytest.skip(f"le service de dessin refuse cette section: {r.text[:200]}")
+    """Le DXF est le corps de la réponse, pas un champ encodé dans un JSON.
+
+    AUCUN `pytest.skip` ICI, ET C'EST DELIBERE. Une redaction anterieure se
+    sautait elle-meme quand le service repondait 422. Au changement de contrat
+    elle s'est donc excusee au lieu d'echouer, et la suite est restee verte
+    alors que l'endpoint ne rendait plus un seul fichier. Un cas qui se
+    dispense de conclure ne protege rien.
+    """
+    r = client.post("/v1/calculations/ec2/beam-section.dxf", json=_plan())
     assert r.status_code == 200, r.text
     assert r.headers["content-type"].startswith("image/vnd.dxf")
     assert "attachment" in r.headers["content-disposition"]
-    assert r.content.startswith(b"  0\nSECTION") or b"SECTION" in r.content[:200]
+    assert b"SECTION" in r.content[:200]
     assert int(r.headers["X-Eurostruct-Rebar-Rows"]) >= 1
+    # L'utilisation voyage en en-tete: le plan dit ce qu'il vaut.
+    assert 0.0 < float(r.headers["X-Eurostruct-Utilisation"]) <= 1.0
+
+
+def test_le_plan_porte_la_geometrie_du_calcul(client):
+    """Le dessin cote la section VERIFIEE, pas une autre.
+
+    C'est le defaut mesure le 30/08 vu depuis l'API: la geometrie du plan ne
+    peut plus venir d'ailleurs que de `calculation.section`, puisque c'est le
+    seul endroit ou elle existe dans la requete.
+    """
+    plan = _plan()
+    plan["calculation"] = dict(
+        plan["calculation"],
+        section={"b": {"value": 250.0, "unit": "mm"},
+                 "h": {"value": 600.0, "unit": "mm"},
+                 "d": {"value": 550.0, "unit": "mm"}},
+    )
+    r = client.post("/v1/calculations/ec2/beam-section.dxf", json=plan)
+    assert r.status_code == 200, r.text
+    corps = r.content.decode("utf-8")
+    assert "\n250\n" in corps, "la largeur calculee n'est pas cotee"
+    assert "\n600\n" in corps, "la hauteur calculee n'est pas cotee"
+
+
+def test_un_ferraillage_insuffisant_ne_produit_aucun_plan(client):
+    """Un dessin qui echoue a sa propre verification a l'air d'un dessin.
+
+    Une seule barre de 8 mm ne verifie evidemment pas la section. Le refus est
+    un verdict d'ingenierie — 422, motif nomme — et surtout: pas de fichier.
+    """
+    r = client.post("/v1/calculations/ec2/beam-section.dxf",
+                    json=_plan(nb_barres=1, diametre=8.0))
+    assert r.status_code == 422, r.text
+    corps = r.json()
+    assert corps["error"] == "reinforcement_not_verified"
+    assert "utilisation" in corps["what"]
+    assert not r.headers["content-type"].startswith("image/")
+
+
+def test_l_aire_d_acier_n_est_pas_recue_mais_calculee(client):
+    """Aucun appelant ne peut annoncer une aire que ses barres n'ont pas.
+
+    Le contrat de dessin ne porte pas `A_s_provided`: le moteur le derive des
+    barres. Deux barres de plus doivent donc changer l'utilisation, sans que
+    personne n'ait eu a la calculer.
+    """
+    faible = client.post("/v1/calculations/ec2/beam-section.dxf", json=_plan(5))
+    fort = client.post("/v1/calculations/ec2/beam-section.dxf", json=_plan(7))
+    assert faible.status_code == 200 and fort.status_code == 200
+    u5 = float(faible.headers["X-Eurostruct-Utilisation"])
+    u7 = float(fort.headers["X-Eurostruct-Utilisation"])
+    assert u7 < u5, f"7 barres devraient moins solliciter que 5 ({u7} vs {u5})"
 
 
 # ---------------------------------------------------------------------------

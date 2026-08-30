@@ -27,11 +27,14 @@ import io
 from typing import Any
 
 from eurostruct_engine.schemas.ec2_beam import (
-    BeamSectionDrawingRequest,
     Ec2BeamFlexureRequest,
+    Ec2BeamSectionRequest,
 )
 from eurostruct_engine.legal import Language, notice
-from eurostruct_engine.service import render_beam_section, run_ec2_beam_flexure
+from eurostruct_engine.service import (
+    run_ec2_beam_flexure,
+    verify_and_render_beam_section,
+)
 from fastapi import APIRouter, Response
 
 routeur = APIRouter(prefix="/v1/calculations", tags=["calculs"])
@@ -92,27 +95,45 @@ def flexion_poutre_ec2(requete: Ec2BeamFlexureRequest) -> dict[str, Any]:
 
 
 @routeur.post("/ec2/beam-section.dxf")
-def section_poutre_dxf(requete: BeamSectionDrawingRequest) -> Response:
-    """Rend le DXF de la section, et le tableau d'armatures dans l'en-tête.
+def section_poutre_dxf(requete: Ec2BeamSectionRequest) -> Response:
+    """Vérifie le ferraillage choisi, **puis** rend le DXF.
 
-    LE DXF EST LE CORPS, PAS UN CHAMP D'UN JSON. Un fichier de dessin encodé
-    en base64 dans une enveloppe oblige chaque client à le décoder avant de
-    l'ouvrir ; servi tel quel, il se télécharge et s'ouvre.
+    LA REQUÊTE PORTE LE CALCUL, PAS UNE GÉOMÉTRIE LIBRE
+    ----------------------------------------------------
+    Mesuré le 30/08 : l'interface envoyait ici une section codée en dur, et
+    l'endpoint la dessinait — correctement, puisqu'il n'avait aucun moyen de
+    savoir ce qui avait été calculé. L'ingénieur recevait le plan d'une poutre
+    jamais vérifiée, à son propre repère.
+
+    En recevant la **requête de calcul elle-même**, l'écart devient
+    inconstructible : la section dessinée et la section vérifiée sont le même
+    objet. `A_s_provided` n'est pas reçu — le moteur le dérive des barres, si
+    bien qu'aucun appelant ne peut annoncer une aire que son ferraillage n'a
+    pas.
+
+    UN REFUS NE PRODUIT AUCUN FICHIER. Si la section ainsi ferraillée ne
+    vérifie pas, la réponse est un 422 qui nomme le contrôle en défaut, et rien
+    n'est téléchargé : un dessin qui échoue à sa propre vérification a l'air
+    d'un dessin valide entre les mains de celui qui l'ouvre.
+
+    LE DXF EST LE CORPS, PAS UN CHAMP D'UN JSON. Servi tel quel, il se
+    télécharge et s'ouvre sans décodage.
     """
-    document, tableau = render_beam_section(requete)
+    document, tableau, reponse = verify_and_render_beam_section(requete)
     tampon = io.StringIO()
     document.write(tampon)
     contenu = tampon.getvalue().encode("utf-8")
 
-    nom = f"{requete.element or 'section'}.dxf".replace(" ", "_")
+    nom = f"{requete.calculation.element or 'section'}.dxf".replace(" ", "_")
     return Response(
         content=contenu,
         media_type="image/vnd.dxf",
         headers={
             "Content-Disposition": f'attachment; filename="{nom}"',
-            # Le tableau d'armatures voyage en en-tete pour rester lisible
-            # sans ouvrir le DXF. Il ne contient que des entiers et des
+            # Le tableau d'armatures et l'utilisation voyagent en en-tete pour
+            # rester lisibles sans ouvrir le DXF. Rien que des nombres et des
             # reperes: aucune donnee personnelle, aucun secret.
             "X-Eurostruct-Rebar-Rows": str(len(tableau)),
+            "X-Eurostruct-Utilisation": f"{reponse.verification.max_utilisation:.3f}",
         },
     )

@@ -20,13 +20,18 @@ import { useEffect, useState } from "react";
 import type { BlockingParameterDTO } from "@contracts/generated/engine";
 import {
   etatDuReferentiel, planDeCharge, telechargerDxf, verifierFlexion,
-  type EtatReferentiel, type Issue, type PlanDeCharge,
+  type Ec2BeamFlexureRequest, type Ec2BeamSectionRequest,
+  type EtatReferentiel, type Issue, type Pays, type PlanDeCharge,
 } from "@/lib/api";
 import { authDisponible, ouvrirSession, type Session } from "@/lib/session";
 
 type Champs = {
   b: string; h: string; d: string; M_Ed: string;
-  beton: string; acier: string; pays: string; element: string;
+  beton: string; acier: string; element: string;
+  //: LE TYPE DU CONTRAT, PAS `string`. C'est le seul écart qui obligeait à
+  //: écrire `as never` sur la requête — un cast qui éteignait précisément le
+  //: contrôle que le contrat généré existe pour exercer.
+  pays: Pays;
   strict: boolean;
 };
 
@@ -44,14 +49,20 @@ export default function Page() {
   const majuscule = (k: keyof Champs) => (e: { target: { value: string } }) =>
     setChamps((c) => ({ ...c, [k]: e.target.value }));
 
+  // Le sélecteur ne peut rendre que les quatre pays du contrat: on le dit au
+  // typage plutôt que de le supposer.
+  const changerPays = (e: { target: { value: string } }) =>
+    setChamps((c) => ({ ...c, pays: e.target.value as Pays }));
+
   async function soumettre(e: React.FormEvent) {
     e.preventDefault();
     setEnCours(true);
     setIssue(null);
-    const resultat = await verifierFlexion({
+    // Une requête RÉELLEMENT typée: si le contrat change, ceci ne compile plus.
+    const requete: Ec2BeamFlexureRequest = {
       project_id: "DEMO-001",
       element: champs.element,
-      country: champs.pays as never,
+      country: champs.pays,
       strict_ndp: champs.strict,
       M_Ed: { value: Number(champs.M_Ed), unit: "kN*m" },
       section: {
@@ -60,7 +71,8 @@ export default function Page() {
         d: { value: Number(champs.d), unit: "mm" },
       },
       materials: { concrete_grade: champs.beton, steel_grade: champs.acier },
-    } as never);
+    };
+    const resultat = await verifierFlexion(requete);
     setIssue(resultat);
     setEnCours(false);
   }
@@ -115,7 +127,7 @@ export default function Page() {
             </div>
             <div>
               <label htmlFor="pays">Pays</label>
-              <select id="pays" value={champs.pays} onChange={majuscule("pays")}>
+              <select id="pays" value={champs.pays} onChange={changerPays}>
                 <option value="BE">Belgique</option>
                 <option value="FR">France</option>
                 <option value="ES">Espagne</option>
@@ -465,7 +477,7 @@ function Resultat({ issue }: { issue: Extract<Issue, { type: "resultat" }> }) {
         </>
       )}
 
-      <Ferraillage element={r.element} />
+      <Ferraillage calcul={issue.requete} />
     </section>
   );
 }
@@ -478,27 +490,50 @@ function Resultat({ issue }: { issue: Extract<Issue, { type: "resultat" }> }) {
  * elles sont disposées. Choisir à la place de l'ingénieur produirait un plan
  * que personne n'a décidé.
  */
-function Ferraillage({ element }: { element: string }) {
+/**
+ * Le plan de section, produit **depuis la requête qui vient d'être vérifiée**.
+ *
+ * CE QUI ÉTAIT FAUX, ET CE QUE ÇA DONNAIT
+ * ----------------------------------------
+ * Ce composant fabriquait sa propre géométrie — `b: 300, h: 500` en dur, plus
+ * des barres supérieures et un espacement de cadres que personne n'avait
+ * choisis. Une poutre calculée en 250 × 600 sortait cotée 300 × 500, sous le
+ * repère de l'élément et avec la mention légale : un plan crédible d'une
+ * poutre jamais vérifiée.
+ *
+ * Le composant ne connaît plus aucune dimension. Il reçoit `calcul`, la
+ * requête gelée au moment du calcul, et n'y ajoute que ce que l'ingénieur
+ * choisit vraiment : les barres et l'enrobage. Le moteur revérifie la section
+ * ainsi ferraillée, et **refuse de dessiner** si elle ne passe pas.
+ */
+function Ferraillage({ calcul }: { calcul: Ec2BeamFlexureRequest }) {
   const [nb, setNb] = useState("3");
   const [diam, setDiam] = useState("16");
   const [enrobage, setEnrobage] = useState("30");
+  const [diamCadre, setDiamCadre] = useState("8");
+  const [espCadre, setEspCadre] = useState("200");
   const [etat, setEtat] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
 
   async function telecharger() {
     setEnCours(true);
     setEtat(null);
-    const issue = await telechargerDxf({
-      project: "DEMO-001",
-      element,
-      b: 300, h: 500,
-      cover: Number(enrobage),
-      link_diameter: 8,
-      bottom: [{ count: Number(nb), diameter: Number(diam), mark: "A1" }],
-      top: [{ count: 2, diameter: 12, mark: "A2" }],
-      link_spacing: 200,
-    } as never);
-    setEtat(issue.ok ? "DXF telecharge." : issue.message);
+    // La géométrie n'est PAS reconstruite ici: elle voyage dans `calcul`.
+    const requete: Ec2BeamSectionRequest = {
+      calculation: calcul,
+      reinforcement: {
+        cover: Number(enrobage),
+        link_diameter: Number(diamCadre),
+        link_spacing: Number(espCadre),
+        bottom: [{ count: Number(nb), diameter: Number(diam), mark: "A1" }],
+      },
+    };
+    const issue = await telechargerDxf(requete);
+    setEtat(
+      issue.ok
+        ? `Plan téléchargé: ${calcul.element || "section"}.dxf`
+        : issue.message,
+    );
     setEnCours(false);
   }
 
@@ -525,6 +560,16 @@ function Ferraillage({ element }: { element: string }) {
           <label htmlFor="enr">Enrobage c<sub>nom</sub> (mm)</label>
           <input id="enr" inputMode="decimal" value={enrobage}
                  onChange={(e) => setEnrobage(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="dcad">Cadres Ø (mm)</label>
+          <input id="dcad" inputMode="decimal" value={diamCadre}
+                 onChange={(e) => setDiamCadre(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="ecad">Espacement cadres (mm)</label>
+          <input id="ecad" inputMode="decimal" value={espCadre}
+                 onChange={(e) => setEspCadre(e.target.value)} />
         </div>
       </div>
       <button type="button" className="secondaire" onClick={telecharger}

@@ -42,7 +42,7 @@
     },
     "BeamSectionDrawingRequest": {
       "additionalProperties": false,
-      "description": "Input of the DXF cross-section generator.",
+      "description": "Input of the DXF cross-section generator.\n\nKept as the **drawing** contract: it knows a geometry and bars, and nothing\nabout whether they were verified. :class:`Ec2BeamSectionRequest` is what a\nclient should send; this one is what the renderer consumes once the check\nhas passed.",
       "properties": {
         "b": {
           "description": "Width, mm",
@@ -644,6 +644,45 @@
       "title": "Ec2BeamFlexureResult",
       "type": "object"
     },
+    "Ec2BeamSectionRequest": {
+      "additionalProperties": false,
+      "description": "Verify the chosen bars, **then** draw them — never the reverse.\n\nWHY THE CALCULATION TRAVELS WITH THE DRAWING REQUEST\n-----------------------------------------------------\nMeasured on 30/08: the interface sent a hard-coded 300 x 500 to the drawing\nendpoint whatever section had just been calculated. The engineer received a\nplan of a beam that was never verified, carrying the mandatory notice and\ntheir own element mark.\n\nNothing could catch it, because the drawing endpoint had no way to know\nwhat had been calculated: it was handed a geometry and drew it, correctly.\nSending the **verified request itself** removes the gap by construction —\nthe drawn section and the checked section are the same object, and no\ncaller can hold two of them.\n\n``A_s_provided`` is deliberately absent: it is **computed here** from the\nbars, so that no client has to, and so that none can claim an area its\nbars do not have.",
+      "properties": {
+        "calculation": {
+          "$ref": "#/$defs/Ec2BeamFlexureRequest"
+        },
+        "date": {
+          "default": "",
+          "title": "Date",
+          "type": "string"
+        },
+        "exposure_class": {
+          "default": "",
+          "title": "Exposure Class",
+          "type": "string"
+        },
+        "index": {
+          "default": "A",
+          "title": "Index",
+          "type": "string"
+        },
+        "plot_scale": {
+          "default": 20.0,
+          "exclusiveMinimum": 0,
+          "title": "Plot Scale",
+          "type": "number"
+        },
+        "reinforcement": {
+          "$ref": "#/$defs/ReinforcementChoiceDTO"
+        }
+      },
+      "required": [
+        "calculation",
+        "reinforcement"
+      ],
+      "title": "Ec2BeamSectionRequest",
+      "type": "object"
+    },
     "EngineErrorDTO": {
       "additionalProperties": false,
       "description": "A refusal. The API returns this with HTTP 422, never a partial result.",
@@ -672,7 +711,8 @@
             "unverified_national_parameter",
             "deprecated_national_parameter",
             "inconsistent_input",
-            "unit_error"
+            "unit_error",
+            "reinforcement_not_verified"
           ],
           "title": "Error",
           "type": "string"
@@ -1438,6 +1478,63 @@
         "verification_regime"
       ],
       "title": "RegulatoryFrameworkDTO",
+      "type": "object"
+    },
+    "ReinforcementChoiceDTO": {
+      "additionalProperties": false,
+      "description": "The bars the engineer chose. Never deduced from the calculation.\n\n``As_required`` says how much steel is needed; it says nothing about how\nmany bars, of which diameter, arranged how. That choice is the engineer's,\nand this is where it enters — separately from the geometry, which comes\nfrom the calculation that was verified.",
+      "properties": {
+        "bottom": {
+          "items": {
+            "$ref": "#/$defs/BarRowDTO"
+          },
+          "minItems": 1,
+          "title": "Bottom",
+          "type": "array"
+        },
+        "cover": {
+          "description": "Nominal cover c_nom, mm",
+          "minimum": 0,
+          "title": "Cover",
+          "type": "number"
+        },
+        "link_diameter": {
+          "description": "Link diameter, mm",
+          "minimum": 0,
+          "title": "Link Diameter",
+          "type": "number"
+        },
+        "link_mark": {
+          "default": "C1",
+          "title": "Link Mark",
+          "type": "string"
+        },
+        "link_spacing": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Link Spacing"
+        },
+        "top": {
+          "items": {
+            "$ref": "#/$defs/BarRowDTO"
+          },
+          "title": "Top",
+          "type": "array"
+        }
+      },
+      "required": [
+        "cover",
+        "link_diameter",
+        "bottom"
+      ],
+      "title": "ReinforcementChoiceDTO",
       "type": "object"
     },
     "SourceTypeDTO": {

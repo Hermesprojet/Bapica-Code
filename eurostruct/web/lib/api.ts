@@ -13,12 +13,27 @@
  * d'ingénierie. L'interface affiche ce que le moteur a décidé.
  */
 import type {
-  BeamSectionDrawingRequest,
   BlockingParameterDTO,
   Ec2BeamFlexureRequest,
   Ec2BeamFlexureResponse,
+  Ec2BeamSectionRequest,
   EngineErrorDTO,
 } from "@contracts/generated/engine";
+
+/** Les quatre pays traités, **tels que le contrat les nomme**. */
+export type Pays = Ec2BeamFlexureRequest["country"];
+
+/**
+ * La requête validée, telle qu'elle a été vérifiée.
+ *
+ * Elle voyage avec le résultat pour que le plan qui suivra porte la MÊME
+ * section. Sans elle, l'écran devait reconstruire une géométrie au moment du
+ * dessin — et c'est très exactement là que 300 × 500 s'était figé.
+ */
+export type CalculValide = {
+  requete: Ec2BeamFlexureRequest;
+  reponse: ReponseCalcul;
+};
 
 /**
  * La réponse de calcul, augmentée des champs que la couche HTTP ajoute.
@@ -41,7 +56,7 @@ export type ReponseCalcul = Ec2BeamFlexureResponse & {
 export type Refus = { statut: number; erreur: EngineErrorDTO };
 
 export type Issue =
-  | { type: "resultat"; valeur: ReponseCalcul }
+  | { type: "resultat"; valeur: ReponseCalcul; requete: Ec2BeamFlexureRequest }
   | { type: "refus"; valeur: Refus }
   | { type: "panne"; message: string };
 
@@ -75,7 +90,9 @@ export async function verifierFlexion(
 
   const corps: unknown = await reponse.json().catch(() => null);
   if (reponse.ok) {
-    return { type: "resultat", valeur: corps as ReponseCalcul };
+    // La requête voyage avec le résultat: c'est elle, et elle seule, qui
+    // servira au dessin.
+    return { type: "resultat", valeur: corps as ReponseCalcul, requete };
   }
   if (corps && typeof corps === "object") {
     return {
@@ -100,7 +117,7 @@ export function urlDxf(): string {
  * l'ingénieur produirait un plan que personne n'a décidé.
  */
 export async function telechargerDxf(
-  requete: BeamSectionDrawingRequest,
+  requete: Ec2BeamSectionRequest,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   let reponse: Response;
   try {
@@ -125,7 +142,7 @@ export async function telechargerDxf(
   const url = URL.createObjectURL(blob);
   const lien = document.createElement("a");
   lien.href = url;
-  lien.download = `${requete.element || "section"}.dxf`;
+  lien.download = `${requete.calculation.element || "section"}.dxf`;
   document.body.appendChild(lien);
   lien.click();
   lien.remove();
@@ -217,4 +234,9 @@ export async function planDeCharge(pays: string): Promise<PlanDeCharge | null> {
   }
 }
 
-export type { BeamSectionDrawingRequest, Ec2BeamFlexureRequest, EngineErrorDTO };
+export type {
+  BarRowDTO,
+  Ec2BeamFlexureRequest,
+  Ec2BeamSectionRequest,
+  EngineErrorDTO,
+} from "@contracts/generated/engine";
