@@ -409,7 +409,17 @@ function Connexion() {
     e.preventDefault();
     setEnCours(true);
     setRefus(null);
-    setRefus(await auth.ouvrir(courriel, motDePasse));
+    // LE MOT DE PASSE QUITTE L'ETAT REACT AVANT MEME L'ALLER-RETOUR.
+    //
+    // Il y restait pour toute la durée de la session: visible dans l'arbre
+    // React, dans un instantané des outils de développement, dans un rapport
+    // d'erreur qui sérialise l'état, et dans la mémoire de l'onglet bien
+    // après qu'il ait servi. Il n'a qu'UN usage, et cet usage est ici.
+    //
+    // La copie locale est celle qui part; l'état, lui, est vidé tout de suite.
+    const secret = motDePasse;
+    setMotDePasse("");
+    setRefus(await auth.ouvrir(courriel, secret));
     setEnCours(false);
   }
 

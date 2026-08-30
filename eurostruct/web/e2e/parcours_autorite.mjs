@@ -36,6 +36,16 @@ const API = process.env.EUROSTRUCT_API || "http://127.0.0.1:8000";
 
 const A = { courriel: "a@fictif.invalid", mdp: "FICTIF-A" };
 const B = { courriel: "b@fictif.invalid", mdp: "FICTIF-B" };
+//: UN COMPTE DONT L'EMETTEUR RETARDE DELIBEREMENT L'ECHANGE MOT DE PASSE.
+//: Sans lui, une connexion se termine avant que le clic suivant parte, et les
+//: deux courses d'ouverture — reponse apres deconnexion, reponse ancienne
+//: arrivee en dernier — sont inobservables. Le retard est declare par le
+//: harnais, dans le 6e champ de la description du compte.
+const LENT = { courriel: "lent@fictif.invalid", mdp: "FICTIF-LENT" };
+//: L'ACTEUR DE B, tel que le harnais l'a inscrit. C'est lui qu'on doit
+//: retrouver dans le jeton qui part apres la course.
+const ACTEUR_B = process.env.EUROSTRUCT_E2E_ACTEUR_B || "";
+const ACTEUR_LENT = process.env.EUROSTRUCT_E2E_ACTEUR_LENT || "";
 //: DEUX COMPTES A JETON COURT, ET ILS N'EPROUVENT PAS LA MEME CHOSE.
 //: Le premier reçoit un jeton de renouvellement: à l'échéance, l'écran doit
 //: renouveler en mémoire et repartir avec le jeton NEUF. Le second n'en reçoit
@@ -128,6 +138,28 @@ const attenteJeton = (delai) =>
   );
 
 const versAutorite = () => requetes.filter((r) => r.url.includes("/v1/authority/"));
+
+/**
+ * Le `sub` d'un en-tete `Authorization: Bearer <jwt>`, ou `null`.
+ *
+ * ON NE VERIFIE RIEN ICI, ET C'EST VOLONTAIRE. La signature est verifiee par
+ * l'API; ce parcours lit seulement QUI le navigateur a mis dans la requete.
+ * Lire la charge utile sans la verifier serait une faute dans du code de
+ * production — ici, c'est l'observation.
+ */
+function sujetDuJeton(entete) {
+  if (typeof entete !== "string" || !entete.startsWith("Bearer ")) return null;
+  const parts = entete.slice(7).split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const charge = JSON.parse(
+      Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"),
+                  "base64").toString("utf8"));
+    return charge.sub ?? null;
+  } catch {
+    return null;
+  }
+}
 
 async function connecter({ courriel, mdp }) {
   await page.fill("#courriel", courriel);
@@ -397,6 +429,108 @@ try {
   exige(apresPeremption.length === 0,
         "une requete d'autorite est partie alors que la session avait expire " +
         `sans pouvoir etre renouvelee (${apresPeremption.length} requete(s))`);
+
+  // ======================= 8b. le mot de passe quitte l'etat React
+  ici("8b-mot-de-passe-efface");
+  //
+  // IL Y RESTAIT POUR TOUTE LA DUREE DE LA SESSION: visible dans l'arbre
+  // React, dans un instantane des outils de developpement, et dans tout
+  // rapport d'erreur qui serialise l'etat. Il n'a qu'UN usage.
+  //
+  // ON LE MESURE PENDANT L'ALLER-RETOUR, avec le compte LENT: une fois la
+  // session ouverte le formulaire disparait, et le champ avec lui — on ne
+  // saurait plus distinguer « efface » de « demonte ».
+  await page.click("#deconnecter").catch(() => {});
+  await page.waitForSelector("#connecter", { timeout: 10000 });
+  await page.fill("#courriel", LENT.courriel);
+  await page.fill("#mdp", LENT.mdp);
+  const departMdp = page.waitForRequest(
+    (r) => r.url().includes("/auth/v1/token") && r.method() === "POST",
+    { timeout: 15000 },
+  );
+  await page.click("#connecter");
+  await departMdp;
+  exige((await page.inputValue("#mdp")) === "",
+        "le mot de passe est encore dans l'etat React pendant l'echange: il " +
+        "y restera pour toute la duree de la session");
+  await page.waitForSelector("#deconnecter", { timeout: 15000 });
+
+  // ====== 8c. pendant une ouverture en vol, l'ecran n'offre aucune sortie
+  ici("8c-aucune-sortie-pendant-l-ouverture");
+  //
+  // LE RISQUE VISE: une connexion LENTE qui revient APRES une deconnexion
+  // rouvrirait la session que la personne vient de fermer — le meme defaut
+  // que le renouvellement en vol (cas 7), sur l'autre chemin.
+  //
+  // CE QUE CE CAS ETABLIT, ET IL FAUT LE DIRE EXACTEMENT. La course n'est pas
+  // ATTEIGNABLE depuis l'ecran: tant que l'echange est en vol, il n'existe
+  // AUCUN bouton de deconnexion — le bloc « session ouverte » n'est pas
+  // monte. On mesure donc cette absence, qui est la garde reelle.
+  //
+  // Une premiere redaction pretendait viser la fenetre en cliquant
+  // « se deconnecter » pendant l'echange. Playwright attendait l'apparition
+  // du bouton, la session s'ouvrait entre-temps, et le clic tombait APRES:
+  // le cas passait au vert en retirant la garde du fournisseur — verifie.
+  // Un cas qui ne tombe pas quand on casse ce qu'il pretend eprouver ne
+  // prouve rien, et le laisser aurait fabrique une assurance fausse.
+  //
+  // Le fournisseur porte en plus un numero de demande, qui jette toute
+  // reponse d'ouverture qui n'est plus la derniere emise. Cette garde-la
+  // protege les appelants programmatiques; elle N'EST PAS mesuree ici.
+  await page.click("#deconnecter").catch(() => {});
+  await page.waitForSelector("#connecter", { timeout: 10000 });
+  await page.fill("#courriel", LENT.courriel);
+  await page.fill("#mdp", LENT.mdp);
+  const departOuverture = page.waitForRequest(
+    (r) => r.url().includes("/auth/v1/token") && r.method() === "POST",
+    { timeout: 15000 },
+  );
+  await page.click("#connecter");
+  await departOuverture;
+  exige(await page.locator("#deconnecter").count() === 0,
+        "un bouton de deconnexion est offert pendant une ouverture en vol: " +
+        "la reponse pourrait revenir apres la fermeture et rouvrir la session");
+  await page.waitForSelector("#deconnecter", { timeout: 15000 });
+
+  // ============ 8d. deux connexions simultanees ne peuvent pas se croiser
+  ici("8d-deux-connexions-simultanees");
+  //
+  // LE RISQUE: si deux ouvertures sont en vol et que la plus ANCIENNE revient
+  // en dernier, elle ecrase la plus recente. Sur un ecran d'autorite,
+  // l'identite decide qui approuve: se retrouver sous le compte qu'on n'a pas
+  // choisi en dernier n'est pas un detail d'affichage.
+  //
+  // CE QUE CE CAS MESURE, ET CE QU'IL NE MESURE PAS. Il etablit que l'ECRAN
+  // ne permet pas d'en lancer une seconde pendant la premiere: le bouton est
+  // desactive tant que l'echange est en vol. C'est la garde observable depuis
+  // le navigateur, et elle rend la course impossible A LA SOURCE.
+  //
+  // Le fournisseur porte en plus un numero de demande, qui jette toute
+  // reponse d'ouverture qui n'est plus la derniere emise. Cette garde-la
+  // protege les appelants programmatiques, que ce parcours ne peut pas
+  // fabriquer: on ne l'annonce donc pas comme mesuree ici.
+  await page.click("#deconnecter").catch(() => {});
+  await page.waitForSelector("#connecter", { timeout: 10000 });
+  await page.fill("#courriel", LENT.courriel);
+  await page.fill("#mdp", LENT.mdp);
+  const departCourse = page.waitForRequest(
+    (r) => r.url().includes("/auth/v1/token") && r.method() === "POST",
+    { timeout: 15000 },
+  );
+  await page.click("#connecter");
+  await departCourse;
+  exige(await page.locator("#connecter").isDisabled(),
+        "le bouton de connexion reste actif pendant un echange en vol: deux " +
+        "ouvertures peuvent se croiser, et la plus ancienne peut ecraser la " +
+        "plus recente");
+  await page.waitForSelector("#deconnecter", { timeout: 15000 });
+
+  // ET L'IDENTITE QUI PART EST BIEN CELLE DE LA DERNIERE CONNEXION.
+  const apresCourse = await agir("#relire", "/v1/authority/decisions/", "GET");
+  const sortant = sujetDuJeton(apresCourse.requete?.autorisation);
+  exige(sortant === ACTEUR_LENT,
+        `la requete part sous « ${sortant ?? "aucun"} » alors que la derniere ` +
+        `connexion est « ${ACTEUR_LENT} »`);
 
   // ========================================== 9. rien dans les stockages
   ici("9-stockages");

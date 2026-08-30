@@ -68,6 +68,20 @@ export type PorteurDeJeton = {
    * même ». Le porteur a déjà fermé la session dans ce cas.
    */
   jetonUtilisable(): Promise<string | null>;
+  /**
+   * Force un renouvellement APRES un 401, même si le jeton local semblait bon.
+   *
+   * C'est le cas que `jetonUtilisable()` ne peut pas voir: l'horloge locale
+   * dit « encore valide », et le serveur dit non. Seul le serveur a raison —
+   * il connaît les révocations, et notre horloge peut dériver.
+   */
+  renouvellementForce(): Promise<string | null>;
+  /**
+   * Ferme la session: le serveur a refusé un jeton que nous croyions bon, et
+   * le renouvellement n'a rien donné. Garder une session dont chaque appel
+   * fait 401 n'est pas une session, c'est un écran qui ment.
+   */
+  abandonner(): void;
 };
 
 /** Aucune session utilisable: la requête n'est pas partie. */
@@ -121,6 +135,18 @@ export class ApiInjoignable extends Error {
 type Options = {
   methode?: "GET" | "POST";
   corps?: unknown;
+  /**
+   * L'appel peut-il être REPETE sans effet supplémentaire ?
+   *
+   * FAUX PAR DEFAUT, ET CE DEFAUT EST LE POINT. Proposer, approuver et
+   * consommer sont des actes: les rejouer après un 401 créerait une seconde
+   * décision, ou consommerait deux fois. Un 401 sur un acte ferme donc la
+   * session et remonte le refus — c'est à la personne de recommencer, en
+   * sachant ce qu'elle refait.
+   *
+   * Seules les lectures le portent.
+   */
+  idempotent?: boolean;
 };
 
 async function _lire(reponse: Response): Promise<unknown> {
@@ -176,7 +202,7 @@ export async function appelProtege<T>(
   porteur: PorteurDeJeton,
   options: Options = {},
 ): Promise<T | null> {
-  const { methode = "POST", corps } = options;
+  const { methode = "POST", corps, idempotent = false } = options;
   const jeton = await porteur.jetonUtilisable();
   if (!jeton) throw new SessionExpiree();
 
@@ -185,15 +211,46 @@ export async function appelProtege<T>(
   // pour un serveur qui n'a jamais ete appele.
   const adresse = base();
 
-  let reponse: Response;
-  try {
-    reponse = await fetch(`${adresse}${chemin}`, {
-      method: methode,
-      headers: { ..._entetes(corps), Authorization: `Bearer ${jeton}` },
-      body: corps === undefined ? undefined : JSON.stringify(corps),
-    });
-  } catch (cause) {
-    throw new ApiInjoignable(cause);
+  const envoyer = async (avec: string): Promise<Response> => {
+    try {
+      return await fetch(`${adresse}${chemin}`, {
+        method: methode,
+        headers: { ..._entetes(corps), Authorization: `Bearer ${avec}` },
+        body: corps === undefined ? undefined : JSON.stringify(corps),
+      });
+    } catch (cause) {
+      throw new ApiInjoignable(cause);
+    }
+  };
+
+  let reponse = await envoyer(jeton);
+
+  // UN 401 SUR UNE SESSION QUE NOUS CROYIONS BONNE.
+  //
+  // Notre horloge disait « encore valide »; le serveur dit non, et c'est lui
+  // qui a raison — il connaît les révocations, notre horloge peut dériver.
+  //
+  // AU PLUS UN RENOUVELLEMENT FORCE, ET AU PLUS UNE REPETITION. Sans borne,
+  // un serveur qui refuse toujours produit une boucle de renouvellements: on
+  // martèle l'émetteur, la personne voit un écran figé, et rien dans les
+  // journaux ne dit pourquoi. Si le second appel est encore 401, la session
+  // est FERMEE: elle ne sert plus à rien, et la garder ouverte ferait croire
+  // le contraire.
+  //
+  // SEULEMENT POUR UN APPEL IDEMPOTENT. Rejouer une proposition créerait une
+  // seconde décision; rejouer une consommation la consommerait deux fois.
+  if (reponse.status === 401) {
+    if (!idempotent) {
+      porteur.abandonner();
+      throw new AppelRefuse(401, await _lire(reponse));
+    }
+    const neuf = await porteur.renouvellementForce();
+    if (!neuf) throw new AppelRefuse(401, await _lire(reponse));
+    reponse = await envoyer(neuf);
+    if (reponse.status === 401) {
+      porteur.abandonner();
+      throw new AppelRefuse(401, await _lire(reponse));
+    }
   }
 
   if (!reponse.ok) throw new AppelRefuse(reponse.status, await _lire(reponse));

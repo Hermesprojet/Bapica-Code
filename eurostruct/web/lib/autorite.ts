@@ -78,7 +78,10 @@ export async function relireDecision(
 ): Promise<AuthorityDecisionReview> {
   const relu = await appelProtege<AuthorityDecisionReview>(
     `/v1/authority/decisions/${encodeURIComponent(decisionId)}`,
-    porteur, { methode: "GET" },
+    // IDEMPOTENT: c'est une LECTURE. Elle peut être répétée après un 401 sans
+    // rien créer. Les trois primitives, elles, ne le sont pas et ne le disent
+    // donc pas.
+    porteur, { methode: "GET", idempotent: true },
   );
   if (!relu?.decision_id) {
     throw new Error("la relecture n'a rendu aucune decision.");

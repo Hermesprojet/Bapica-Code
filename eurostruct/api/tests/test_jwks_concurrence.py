@@ -130,6 +130,109 @@ def test_un_seul_appel_reseau_pour_dix_kid_inconnus_simultanes(document_jwks):
     )
 
 
+def test_sur_cache_froid_tous_les_demandeurs_recoivent_le_MEME_succes(
+        document_jwks):
+    """LE DEFAUT QUE « UN SEUL APPEL RESEAU » NE VOYAIT PAS.
+
+    Dix fils demandent un `kid` CONNU alors que le cache est **vide**. Un seul
+    appel réseau doit partir — et les dix doivent recevoir la clé.
+
+    Dans la rédaction précédente, le premier fil posait `_dernier_essai` puis
+    partait sur le réseau; les neuf autres voyaient une date fraîche et
+    rendaient la main immédiatement, avec un cache encore vide. Ils levaient
+    `JwksIndisponible` alors que la réponse arrivait dans la milliseconde
+    suivante: neuf 503 transitoires, au démarrage, quand les requêtes sont le
+    plus nombreuses. Le compteur, lui, disait « un seul appel » — la propriété
+    mesurée n'était pas celle qui compte.
+    """
+    lecteur = LecteurCompte(document_jwks, lenteur_s=0.25)
+    trousseau = TrousseauJwks("https://fictif.invalid/jwks", lecteur=lecteur)
+
+    barriere = threading.Barrier(10)
+    obtenues: list[object] = []
+    refus: list[str] = []
+    verrou = threading.Lock()
+
+    def demander() -> None:
+        barriere.wait()
+        try:
+            cle = trousseau.cle_pour(KID)
+            with verrou:
+                obtenues.append(cle)
+        except (CleInconnue, JwksIndisponible) as cause:
+            with verrou:
+                refus.append(type(cause).__name__)
+
+    fils = [threading.Thread(target=demander) for _ in range(10)]
+    for f in fils:
+        f.start()
+    for f in fils:
+        f.join(timeout=30)
+
+    assert refus == [], (
+        f"{len(refus)} demandeur(s) refuses sur cache froid ({set(refus)}) "
+        "alors qu'un chargement etait en vol: le single-flight ne partage pas "
+        "son resultat, il se contente de ne pas rappeler."
+    )
+    assert len(obtenues) == 10
+    assert lecteur.appels == 1, (
+        f"{lecteur.appels} appels reseau pour dix demandes simultanees sur "
+        "cache froid."
+    )
+
+
+def test_les_appels_echoues_sont_comptes(document_jwks):
+    """Un bornage qui ne compte que les succes ne borne pas les pannes.
+
+    Le compteur servait a prouver le bornage. Incremente APRES le retour du
+    lecteur, il ignorait les appels qui echouent — c'est-a-dire exactement le
+    cas ou un emetteur en panne risque d'etre martele.
+    """
+    lecteur = LecteurCompte(document_jwks)
+    trousseau = TrousseauJwks("https://fictif.invalid/jwks", lecteur=lecteur)
+    lecteur.en_panne = True
+
+    avant = trousseau.etat()["appels_reseau"]
+    with pytest.raises(JwksIndisponible):
+        trousseau.cle_pour(KID)
+    assert trousseau.etat()["appels_reseau"] == avant + 1, (
+        "un appel reseau qui echoue n'est pas compte: le bornage se mesure "
+        "alors sur le seul cas ou il n'est pas en jeu."
+    )
+    assert lecteur.appels == 1
+
+
+def test_une_panne_est_partagee_sans_second_appel(document_jwks):
+    """Tous les attendants recoivent le MEME echec, et il n'y a qu'un appel."""
+    lecteur = LecteurCompte(document_jwks, lenteur_s=0.25)
+    lecteur.en_panne = True
+    trousseau = TrousseauJwks("https://fictif.invalid/jwks", lecteur=lecteur)
+
+    barriere = threading.Barrier(8)
+    refus: list[str] = []
+    verrou = threading.Lock()
+
+    def demander() -> None:
+        barriere.wait()
+        try:
+            trousseau.cle_pour(KID)
+        except JwksIndisponible:
+            with verrou:
+                refus.append("indisponible")
+
+    fils = [threading.Thread(target=demander) for _ in range(8)]
+    for f in fils:
+        f.start()
+    for f in fils:
+        f.join(timeout=30)
+
+    assert len(refus) == 8, "un attendant n'a pas recu le refus partage"
+    assert lecteur.appels == 1, (
+        f"{lecteur.appels} appels reseau pour une panne: chaque attendant a "
+        "relance le sien."
+    )
+
+
 def test_le_bornage_par_fenetre_est_conserve(document_jwks):
     """Un `kid` inconnu, mille fois de suite: un seul appel."""
     lecteur = LecteurCompte(document_jwks)

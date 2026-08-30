@@ -70,6 +70,11 @@ ACTEUR_A="22222222-6666-6666-6666-6666666666a1"
 ACTEUR_B="33333333-6666-6666-6666-6666666666b1"
 ACTEUR_C="44444444-6666-6666-6666-6666666666c1"
 ACTEUR_D="55555555-6666-6666-6666-6666666666d1"
+#: UN COMPTE DONT L'EMETTEUR RETARDE L'ECHANGE MOT DE PASSE.
+#: Sans lui, une connexion se termine avant que le clic suivant parte, et
+#: les deux courses d'ouverture — reponse revenue apres une deconnexion,
+#: reponse ancienne arrivee en dernier — sont inobservables.
+ACTEUR_LENT="66666666-6666-6666-6666-6666666666e1"
 RACINE_ID="11111111-6666-6666-6666-666666666601"
 
 # LES PORTS SONT DECALES DES PORTS DE DEVELOPPEMENT. Se lier a 3000 ou 8000
@@ -239,7 +244,8 @@ fi
 ctlp -c "grant eurostruct_authority_backend to \"$SVC\";" >/dev/null 2>&1
 admb -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
 insert into auth.users (id) values
-  ('$RACINE_ID'),('$ACTEUR_A'),('$ACTEUR_B'),('$ACTEUR_C'),('$ACTEUR_D')
+  ('$RACINE_ID'),('$ACTEUR_A'),('$ACTEUR_B'),('$ACTEUR_C'),('$ACTEUR_D'),
+  ('$ACTEUR_LENT')
 on conflict do nothing;
 SQL
 
@@ -281,7 +287,8 @@ octroyer() {   # octroyer <beneficiaire> <motif>
              'EN 1992', '1-1', \$\$$EDITION_BE\$\$, '$2', '$GR')" -d "$BASE" >/dev/null 2>&1
   q "select id from normative_authorisation_grants where reason = '$2'"
 }
-for duo in "$ACTEUR_A:A" "$ACTEUR_B:B" "$ACTEUR_C:C" "$ACTEUR_D:D"; do
+for duo in "$ACTEUR_A:A" "$ACTEUR_B:B" "$ACTEUR_C:C" "$ACTEUR_D:D" \
+           "$ACTEUR_LENT:LENT"; do
   ID="${duo%%:*}"; NOM="${duo##*:}"
   G="$(octroyer "$ID" "FICTIF autorite de $NOM (web)")"
   if [[ ! "$G" =~ ^[0-9a-f-]{36}$ ]]; then
@@ -307,7 +314,14 @@ export EUROSTRUCT_SUPABASE_LOCAL_ISSUER="http://127.0.0.1:$PORT_AUTH/auth/v1"
 # systematiquement: il passait au vert AVEC le defaut present. Verifie en
 # retirant la garde de caducite — aucun cas ne tombait.
 export EUROSTRUCT_E2E_DELAI_REFRESH_MS=2000
-export EUROSTRUCT_E2E_COMPTES="a@fictif.invalid:FICTIF-A:$ACTEUR_A:3600:oui,b@fictif.invalid:FICTIF-B:$ACTEUR_B:3600:oui,court@fictif.invalid:FICTIF-COURT:$ACTEUR_C:20:oui,sec@fictif.invalid:FICTIF-SEC:$ACTEUR_D:20:non"
+# LE 6e CHAMP EST LE RETARD DE L'ECHANGE MOT DE PASSE, en millisecondes.
+# Il ne vaut que pour le compte « lent »: un retard global ralentirait aussi
+# la connexion RAPIDE de la course, qui n'arriverait plus en second.
+export EUROSTRUCT_E2E_COMPTES="a@fictif.invalid:FICTIF-A:$ACTEUR_A:3600:oui,b@fictif.invalid:FICTIF-B:$ACTEUR_B:3600:oui,court@fictif.invalid:FICTIF-COURT:$ACTEUR_C:20:oui,sec@fictif.invalid:FICTIF-SEC:$ACTEUR_D:20:non,lent@fictif.invalid:FICTIF-LENT:$ACTEUR_LENT:3600:oui:1800"
+# L'ACTEUR DE B, pour que le parcours puisse EXIGER que le jeton sortant
+# soit le sien apres la course des deux connexions.
+export EUROSTRUCT_E2E_ACTEUR_B="$ACTEUR_B"
+export EUROSTRUCT_E2E_ACTEUR_LENT="$ACTEUR_LENT"
 
 node "$RACINE/web/e2e/supabase_local.mjs" >"$TMP/auth.log" 2>&1 &
 PID_AUTH=$!

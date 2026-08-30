@@ -42,7 +42,8 @@ const AUDIENCE = "authenticated";
 const KID = "eurostruct-e2e-1";
 
 /**
- * Les comptes du décor : `courriel:mdp:uuid[:duree_s[:rafraichissable]]`.
+ * Les comptes du décor :
+ * `courriel:mdp:uuid[:duree_s[:rafraichissable[:retard_mdp_ms]]]`.
  *
  * `duree_s` sert aux cas d'expiration : un jeton qui dure quelques secondes
  * permet d'observer ce que l'écran fait quand il périme, sans attendre une
@@ -62,13 +63,16 @@ const KID = "eurostruct-e2e-1";
  */
 const COMPTES = new Map();
 for (const brut of (process.env.EUROSTRUCT_E2E_COMPTES || "").split(",")) {
-  const [courriel, motDePasse, sub, duree, rafraichissable] = brut.split(":");
+  const [courriel, motDePasse, sub, duree, rafraichissable, retardMs] =
+    brut.split(":");
   if (!courriel || !motDePasse || !sub) continue;
   COMPTES.set(courriel, {
     motDePasse,
     sub,
     duree: Number(duree || 3600),
     rafraichissable: (rafraichissable ?? "oui") !== "non",
+    // 6e champ: le retard de l'echange MOT DE PASSE, en millisecondes.
+    retardMs: Number(retardMs || 0),
   });
 }
 if (COMPTES.size === 0) {
@@ -124,6 +128,21 @@ const RAFRAICHISSEMENTS = new Map();
  * artificielle : il rend observable celle de tout le monde.
  */
 const DELAI_REFRESH_MS = Number(process.env.EUROSTRUCT_E2E_DELAI_REFRESH_MS || 0);
+
+/**
+ * Le même retard, mais sur l'échange MOT DE PASSE, et PAR COMPTE.
+ *
+ * IL REND OBSERVABLES DEUX COURSES QU'AUCUN CAS NE POUVAIT VISER. Une
+ * connexion est un aller-retour: si elle revient APRES une déconnexion, elle
+ * rouvre une session que la personne vient de fermer; si deux connexions sont
+ * en vol et que la plus ancienne revient en dernier, elle ECRASE la plus
+ * récente — et sur un écran d'autorité, l'identité décide qui approuve.
+ *
+ * PAR COMPTE, ET C'EST NECESSAIRE. Un retard global ralentirait aussi la
+ * connexion RAPIDE de la course, qui n'arriverait alors plus en second: le
+ * cas ne viserait plus rien. Le retard est donc le 6e champ de la
+ * description d'un compte.
+ */
 
 function delivrer(compte) {
   const corps = {
@@ -216,7 +235,12 @@ const serveur = createServer((req, res) => {
                              error_description: "Invalid login credentials" });
         return;
       }
-      repondre(res, 200, delivrer(compte));
+      const rendu = delivrer(compte);
+      if (compte.retardMs > 0) {
+        setTimeout(() => repondre(res, 200, rendu), compte.retardMs);
+      } else {
+        repondre(res, 200, rendu);
+      }
     });
     return;
   }

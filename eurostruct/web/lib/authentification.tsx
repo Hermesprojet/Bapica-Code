@@ -99,6 +99,27 @@ export function FournisseurAuth({ children }: { children: React.ReactNode }) {
    */
   const generation = useRef(0);
 
+  /**
+   * NUMERO DE LA DERNIERE DEMANDE D'OUVERTURE. Il s'incrémente au DEPART de
+   * chaque connexion, et à chaque fermeture.
+   *
+   * DEUX COURSES QUE `generation` NE VOYAIT PAS, parce qu'elle ne bouge qu'à
+   * l'ARRIVEE d'une session:
+   *
+   *   * une connexion LENTE qui revient après une déconnexion. `ouvrir()`
+   *     écrivait sans rien vérifier: la session se rouvrait toute seule, avec
+   *     un jeton frais, alors que la personne venait de partir — le même
+   *     défaut que le renouvellement en vol, sur l'autre chemin;
+   *   * deux connexions SIMULTANEES. Si la première est plus lente que la
+   *     seconde, sa réponse arrive en dernier et ECRASE la plus récente. On se
+   *     retrouve connecté sous le compte qu'on n'a pas choisi en dernier —
+   *     et sur un écran d'autorité, c'est l'identité qui décide qui approuve.
+   *
+   * Une réponse d'ouverture n'écrit donc que si son numéro est encore le
+   * dernier émis.
+   */
+  const demande = useRef(0);
+
   const poser = useCallback((s: Session | null) => {
     session.current = s;
     setConnecte(s !== null);
@@ -109,6 +130,9 @@ export function FournisseurAuth({ children }: { children: React.ReactNode }) {
     // LA SEULE COPIE DISPARAIT. Il n'y en a pas d'autre à nettoyer, ce qui est
     // exactement la raison de n'en avoir jamais fait de seconde.
     generation.current += 1;
+    // ET LES OUVERTURES EN VOL SONT PERIMEES. Une connexion lente qui revient
+    // après ce clic ne doit pas rouvrir ce que la personne vient de fermer.
+    demande.current += 1;
     enVol.current = null;
     poser(null);
     setExpiree(false);
@@ -149,7 +173,12 @@ export function FournisseurAuth({ children }: { children: React.ReactNode }) {
 
   const ouvrir = useCallback(
     async (courriel: string, motDePasse: string): Promise<string | null> => {
+      // LE NUMERO EST PRIS AVANT L'ALLER-RETOUR, et relu après.
+      const mienne = (demande.current += 1);
       const issue = await ouvrirSession(courriel, motDePasse);
+      // CADUQUE: une déconnexion, ou une connexion PLUS RECENTE, est passée
+      // pendant l'aller-retour. On ne rouvre rien et on n'écrase rien.
+      if (mienne !== demande.current) return null;
       if (issue.type === "session") {
         // Une ouverture aussi périme les échanges en vol: le renouvellement
         // de la session précédente n'a plus rien à écrire ici.
@@ -202,6 +231,40 @@ export function FournisseurAuth({ children }: { children: React.ReactNode }) {
         }
         const neuve = await _renouveler();
         return neuve ? neuve.jeton : null;
+      },
+
+      /**
+       * APRES UN 401, ET SEULEMENT LA. Notre horloge disait « encore
+       * valide »; le serveur dit non, et c'est lui qui a raison.
+       *
+       * On passe par le MEME `_renouveler` que le minuteur: son
+       * dédoublonnage en vol reste donc valable, et deux appels qui prennent
+       * un 401 en même temps ne consomment pas deux fois le jeton de
+       * renouvellement — GoTrue le fait tourner, et le second échange
+       * échouerait sur un jeton déjà utilisé.
+       */
+      async renouvellementForce(): Promise<string | null> {
+        const courante = session.current;
+        if (!courante || !courante.rafraichissement) {
+          poser(null);
+          setExpiree(true);
+          return null;
+        }
+        const neuve = await _renouveler();
+        return neuve ? neuve.jeton : null;
+      },
+
+      /**
+       * Le serveur a refusé un jeton que nous croyions bon, et le
+       * renouvellement n'a rien donné. Une session dont chaque appel fait 401
+       * n'est pas une session: c'est un écran qui ment.
+       */
+      abandonner(): void {
+        generation.current += 1;
+        demande.current += 1;
+        enVol.current = null;
+        poser(null);
+        setExpiree(true);
       },
     }),
     [_renouveler, poser],

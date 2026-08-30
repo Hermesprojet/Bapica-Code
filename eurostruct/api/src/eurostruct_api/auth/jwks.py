@@ -54,6 +54,30 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+# LES TROIS DUREES CI-DESSOUS NE SONT PAS ALIGNEES SUR LA DOCUMENTATION
+# SUPABASE, ET C'EST UN FAIT, PAS UN CHOIX.
+#
+#     alignement_durees_supabase = pending_verification
+#
+# CE QUI MANQUE, EXACTEMENT: les deux pages
+# https://supabase.com/docs/guides/auth/signing-keys et
+# https://supabase.com/docs/guides/auth/sessions — c'est-à-dire la durée de vie
+# annoncée d'une clé de signature, le `Cache-Control` que l'émetteur pose sur
+# son JWKS, la fenêtre de recouvrement d'une rotation, et la durée de vie d'un
+# jeton d'accès. Sans ces quatre nombres, aligner reviendrait à en inventer
+# quatre — précisément ce que l'interdiction sur les valeurs non tracées
+# refuse, et une valeur inventée ici décide pendant combien de temps une clé
+# RÉVOQUÉE reste acceptée.
+#
+# CE QUI A ÉTÉ TENTÉ ET N'A PAS ABOUTI: les deux pages ont été demandées depuis
+# cet environnement; le proxy de sortie refuse `supabase.com`
+# (EGRESS_BLOCKED). Aucune valeur n'a donc été relevée, et aucune n'a été
+# devinée à la place.
+#
+# CE QUE VALENT LES TROIS VALEURS ACTUELLES: des bornes de PRUDENCE choisies
+# par nous, documentées ligne à ligne, et volontairement plus courtes que ce
+# qu'un émetteur tolérerait. Elles ne prétendent pas refléter Supabase.
+
 #: Fenêtre minimale entre deux rechargements déclenchés par un `kid` inconnu.
 #: Un attaquant qui envoie mille jetons forgés provoque au plus un appel.
 DELAI_RECHARGEMENT_S = 60.0
@@ -112,9 +136,12 @@ class TrousseauJwks:
         self._url = url
         self._lecteur = lecteur
         self._verrou = threading.Lock()
-        #: Tenu pendant l'appel réseau. C'est lui qui rend le rechargement
-        #: *single-flight*: un seul appel en vol, les autres attendent.
-        self._verrou_reseau = threading.Lock()
+        #: L'ETAT DU VOL PARTAGE. `None` quand aucun appel n'est en cours;
+        #: sinon l'`Event` que le meneur posera à la fin de SON appel, et que
+        #: tous les autres attendent. C'est ce qui rend le rechargement
+        #: réellement *single-flight*: un appel réseau, un seul résultat, et
+        #: tout le monde le reçoit.
+        self._vol: threading.Event | None = None
         self._cles: dict[str, Any] = {}
         self._charge_a: float = 0.0
         self._dernier_essai: float = 0.0
@@ -189,6 +216,8 @@ class TrousseauJwks:
         Réservé au démarrage et aux tests. ``/ready`` n'appelle PAS ceci — une
         sonde qui recharge à chaque passage martèle l'émetteur.
         """
+        with self._verrou:
+            self.appels_reseau += 1
         self._recharger()
         with self._verrou:
             return len(self._cles)
@@ -279,41 +308,84 @@ class TrousseauJwks:
             return self._cles.get(kid), age
 
     def _recharger_si_permis(self) -> None:
-        """Recharge, au plus une fois par fenêtre et une seule à la fois.
+        """Recharge, au plus une fois par fenêtre, et **tout le monde attend**.
 
-        LES DEUX GARDES SONT PRISES SOUS LE MÊME VERROU. Les séparer — décider
-        d'abord, agir ensuite — laissait dix demandeurs simultanés franchir le
-        portillon avant qu'aucun n'ait posé la date.
+        CE QUE LA REDACTION PRECEDENTE NE FAISAIT PAS, ET QUI COMPTE SUR CACHE
+        FROID. Le bornage par fenêtre était pris en premier: le premier fil
+        posait ``_dernier_essai`` puis partait sur le réseau, et les suivants
+        voyaient une date fraîche et **rendaient la main immédiatement** — avec
+        un cache encore vide. Ils levaient alors ``JwksIndisponible`` alors que
+        la réponse arrivait dans la milliseconde qui suivait: un 503 transitoire
+        pour chaque requête concurrente au démarrage, exactement au moment où
+        elles sont le plus nombreuses.
+
+        « Un seul appel réseau » n'est donc pas la propriété qu'il faut: c'est
+        « un seul appel réseau, et **le même résultat pour tous** ». Le vol est
+        matérialisé par un ``Event``. Trois cas, et trois seulement:
+
+        * un vol est en cours -> on l'attend, puis on relit le cache;
+        * aucun vol, et la fenêtre est fermée -> on ne tente rien;
+        * aucun vol, et la fenêtre est ouverte -> on devient le meneur.
+
+        LE MENEUR SIGNALE TOUJOURS, panne comprise. Un ``Event`` jamais posé
+        laisserait les autres attendre le délai plein pour rien.
         """
-        with self._verrou:
-            maintenant = time.monotonic()
-            if self._dernier_essai and (
-                    maintenant - self._dernier_essai) < DELAI_RECHARGEMENT_S:
-                return
-            # LA DATE EST POSÉE AVANT L'APPEL, et c'est délibéré: elle borne
-            # les TENTATIVES, pas les succès. Un émetteur en panne ne doit pas
-            # être sollicité mille fois parce que mille tentatives ont échoué.
-            self._dernier_essai = maintenant
+        while True:
+            with self._verrou:
+                vol = self._vol
+                if vol is None:
+                    maintenant = time.monotonic()
+                    if self._dernier_essai and (
+                            maintenant - self._dernier_essai
+                    ) < DELAI_RECHARGEMENT_S:
+                        # Fenêtre fermée ET personne en vol: il n'y a rien à
+                        # attendre, et rien à tenter.
+                        return
+                    # LA DATE EST POSÉE AVANT L'APPEL, et c'est délibéré: elle
+                    # borne les TENTATIVES, pas les succès. Un émetteur en
+                    # panne ne doit pas être sollicité mille fois parce que
+                    # mille tentatives ont échoué.
+                    self._dernier_essai = maintenant
+                    # L'APPEL EST COMPTÉ ICI, AVANT DE PARTIR. Le compter au
+                    # retour ne comptait que les succès: le bornage se
+                    # mesurait alors sur le seul cas où il n'est pas en jeu.
+                    self.appels_reseau += 1
+                    vol = threading.Event()
+                    self._vol = vol
+                    meneur = True
+                else:
+                    meneur = False
 
-        # SINGLE-FLIGHT. Si un appel est déjà en vol, on attend son résultat
-        # plutôt que d'en lancer un second: c'est la même information.
-        if not self._verrou_reseau.acquire(blocking=False):
-            with self._verrou_reseau:
-                return
-        try:
-            self._recharger()
-        except JwksIndisponible:
-            # Une panne n'est pas une exception ici: l'appelant décidera s'il
-            # peut se contenter de ce qu'il a déjà, et jusqu'à quel âge.
-            pass
-        finally:
-            self._verrou_reseau.release()
+            if not meneur:
+                # ON ATTEND LE RESULTAT DU MENEUR, PAS UN DELAI. La borne est
+                # celle du réseau plus une marge: un meneur tué net ne doit
+                # pas suspendre les autres pour toujours.
+                if not vol.wait(timeout=DELAI_RESEAU_S * 2):
+                    return
+                # Le vol est fini. Si un AUTRE a redémarré entre-temps, la
+                # boucle le verra; sinon on sort et l'appelant relit le cache.
+                with self._verrou:
+                    if self._vol is None or self._vol is vol:
+                        return
+                continue
+
+            try:
+                self._recharger()
+            except JwksIndisponible:
+                # Une panne n'est pas une exception ici: l'appelant décidera
+                # s'il peut se contenter de ce qu'il a déjà, et jusqu'à quel
+                # âge. Les attendants reçoivent le MEME verdict.
+                pass
+            finally:
+                with self._verrou:
+                    self._vol = None
+                vol.set()
+            return
 
     def _recharger(self) -> None:
         from jwt import PyJWK
 
         document = self._lecteur(self._url)
-        self.appels_reseau += 1
         cles: dict[str, Any] = {}
         for jwk in document["keys"]:
             if not isinstance(jwk, dict):
