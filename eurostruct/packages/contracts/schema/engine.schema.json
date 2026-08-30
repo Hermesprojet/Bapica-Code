@@ -307,7 +307,7 @@
     },
     "AuthorityReviewDraftRequest": {
       "additionalProperties": false,
-      "description": "Ask the server to compose the dossier of one registry parameter.\n\nThe browser never builds a normative digest: it names the parameter and\nsupplies the human material, and the server canonicalises and hashes.",
+      "description": "Ask the server to compose the dossier of one registry parameter.\n\nTHE CLIENT SUPPLIES PROOF, NEVER SPECIFICATION. It names the parameter and\nhands over the human material — what a person read, where, and what they\ncertify. Everything normative is derived server-side:\n\n* the value, unit, provenance, annex, edition, clause and document digest\n  come from the registry;\n* what the clause *does* is a function of those registry fields;\n* the implementation fingerprint is a function of the declared code path\n  that reads and applies the rule, plus the engine version.\n\n``implementation_note`` AND ``effect`` USED TO BE FIELDS HERE, and both\nfed a canonical payload. Two people describing the same clause differently\ntherefore signed two different subjects, and the code could change under a\nconfirmation without invalidating it. ``Strict`` forbids extra fields, so\na client still sending them now gets a 422 rather than a silent effect.",
       "properties": {
         "citations": {
           "description": "One per document the specification declares.",
@@ -325,18 +325,6 @@
           "maxLength": 2,
           "minLength": 2,
           "title": "Country Code",
-          "type": "string"
-        },
-        "effect": {
-          "description": "What the cited clause does, in one line.",
-          "minLength": 1,
-          "title": "Effect",
-          "type": "string"
-        },
-        "implementation_note": {
-          "description": "What the implementation being attested actually does.",
-          "minLength": 1,
-          "title": "Implementation Note",
           "type": "string"
         },
         "rule_id": {
@@ -357,8 +345,6 @@
         "country_code",
         "rule_id",
         "statement",
-        "implementation_note",
-        "effect",
         "citations"
       ],
       "title": "AuthorityReviewDraftRequest",

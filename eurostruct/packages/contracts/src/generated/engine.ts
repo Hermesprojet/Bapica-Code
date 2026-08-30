@@ -84,15 +84,11 @@ export interface AuthorityReviewDossier {
   summary: Record<string, unknown>;
 }
 
-/** Ask the server to compose the dossier of one registry parameter. The browser never builds a normative digest: it names the parameter and supplies the human material, and the server canonicalises and hashes. */
+/** Ask the server to compose the dossier of one registry parameter. THE CLIENT SUPPLIES PROOF, NEVER SPECIFICATION. It names the parameter and hands over the human material — what a person read, where, and what they certify. Everything normative is derived server-side: * the value, unit, provenance, annex, edition, clause and document digest come from the registry; * what the clause *does* is a function of those registry fields; * the implementation fingerprint is a function of the declared code path that reads and applies the rule, plus the engine version. ``implementation_note`` AND ``effect`` USED TO BE FIELDS HERE, and both fed a canonical payload. Two people describing the same clause differently therefore signed two different subjects, and the code could change under a confirmation without invalidating it. ``Strict`` forbids extra fields, so a client still sending them now gets a 422 rather than a silent effect. */
 export interface AuthorityReviewDraftRequest {
   /** One per document the specification declares. */
   citations: AuthorityReviewCitation[];
   country_code: string;
-  /** What the cited clause does, in one line. */
-  effect: string;
-  /** What the implementation being attested actually does. */
-  implementation_note: string;
   rule_id: string;
   /** What the two reviewers declare they read and checked. */
   statement: string;

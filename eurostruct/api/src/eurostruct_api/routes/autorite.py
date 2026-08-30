@@ -164,8 +164,6 @@ def composer(corps: AuthorityReviewDraftRequest,
         dossier = composer_dossier(
             parametre,
             statement=corps.statement,
-            implementation_note=corps.implementation_note,
-            effet=corps.effect,
             citations=tuple(
                 CitationDeRevue(
                     document_digest=c.document_digest,

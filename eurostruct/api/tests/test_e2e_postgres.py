@@ -184,6 +184,10 @@ def _dossier_fictif(subject_id: str) -> dict[str, str]:
             "edition": "2004", "clause": "§FICTIF",
             "effect": "FICTIF", "document_digest": DOC_FICTIF},
     })
+    # ENTIEREMENT FICTIVE, ET C'EST LE POINT DE CE HARNAIS. Il eprouve les
+    # trois primitives, pas la passerelle: son sujet n'existe dans aucun
+    # registre, donc aucune empreinte d'implementation ne peut lui etre
+    # derivee. Le dossier reste structurellement valide et normativement nul.
     impl = digest_of({
         "kind": "implementation",
         "canonicalization_version": CANONICALIZATION_VERSION,

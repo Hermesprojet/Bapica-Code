@@ -36,6 +36,8 @@ from eurostruct_engine.ndp.confirmation import (
     NormativeStack,
     NormativeStackComponent,
 )
+from eurostruct_engine.ndp.dossier import effet_normatif
+from eurostruct_engine.ndp.implementation import empreinte_implementation
 from eurostruct_engine.ndp.model import (
     NationalAnnex,
     NationalParameter,
@@ -143,7 +145,9 @@ def payload_de_spec(**ecarts) -> dict:
             "reference": ANNEXE_REF,
             "edition": EDITION,
             "clause": "§3.1.6(1)P",
-            "effect": "FICTIF — fixe la valeur nationale",
+            # DERIVE DU REGISTRE, comme en production: `effet_normatif` est
+            # une fonction des champs du parametre, plus un champ du client.
+            "effect": effet_normatif(parametre()),
             "document_digest": DOC_ANB,
         },
     }
@@ -155,7 +159,13 @@ def payload_de_spec(**ecarts) -> dict:
     return charge
 
 
-IMPL = digest_of({"regle": CLE, "quoi": "FICTIF implementation"})
+#: L'EMPREINTE D'IMPLEMENTATION N'EST PAS UNE FIXTURE LIBRE.
+#:
+#: Elle se derive du chemin de code declare qui lit et applique la regle, et la
+#: passerelle la RECALCULE de son cote. Un dossier qui en porterait une autre
+#: est refuse — c'est precisement la garantie ajoutee, et `IMPL_AUTRE` ci-
+#: dessous existe pour la mettre en echec.
+IMPL = empreinte_implementation(CLE)
 IMPL_AUTRE = digest_of({"regle": CLE, "quoi": "FICTIF autre implementation"})
 
 
@@ -386,7 +396,19 @@ def test_une_mauvaise_empreinte_d_implementation_referme_le_portillon() -> None:
     rapport = evaluer_parametre(parametre(), autre,
                                 provider=deux_signatures(signe))
     assert not rapport.usable
-    assert rapport.status is ConfirmationStatus.UNCONFIRMED
+    # LE REFUS ARRIVE PLUS TOT QU'AVANT, ET C'EST UN GAIN.
+    #
+    # Il venait d'`assess_confirmations`, qui comparait le paquet PRESENTE aux
+    # paquets SIGNES: le statut etait alors UNCONFIRMED. Depuis que la
+    # passerelle recalcule l'empreinte d'implementation depuis le code
+    # deploye, `_ecart_de_sujet` refuse AVANT meme d'interroger le provider —
+    # le paquet presente ne correspond pas au code qui tourne, et cela se
+    # decide sans consulter la moindre signature.
+    #
+    # `status is None` dit exactement cela: il n'y a pas eu d'evaluation des
+    # confirmations, parce qu'il n'y avait rien a evaluer.
+    assert rapport.status is None
+    assert "implementation" in rapport.reason.lower()
 
 
 def test_une_mauvaise_empreinte_de_specification_referme_le_portillon() -> None:
@@ -730,7 +752,7 @@ def test_le_calcul_strict_ABOUTIT_quand_tous_les_parametres_sont_confirmes() -> 
                 "reference": p.national_annex_reference,
                 "edition": p.edition,
                 "clause": p.clause,
-                "effect": "FICTIF — fixe la valeur nationale",
+                "effect": effet_normatif(p),
                 "document_digest": p.source_doc_id,
             },
         )
@@ -745,7 +767,11 @@ def test_le_calcul_strict_ABOUTIT_quand_tous_les_parametres_sont_confirmes() -> 
                     "annexe", p.national_annex_reference, p.edition, 1,
                     p.source_doc_id),),
             ),
-            normative_spec=spec, implementation=IMPL,
+            # UNE EMPREINTE PAR REGLE, et derivee du code: `IMPL` est celle
+            # d'`alpha_cc` et ne vaut que pour lui. Les huit parametres
+            # partagent le meme chemin de code mais pas la meme empreinte —
+            # le `rule_id` entre dans le payload.
+            normative_spec=spec, implementation=empreinte_implementation(cle),
             evidence_items=dossier(spec),
         )
         signatures.extend((confirmation(dossier_signe, "alice"),

@@ -161,6 +161,7 @@ def dossier_pour(p) -> dict:
         digest_of,
         evidence_digest,
     )
+    from eurostruct_engine.ndp.dossier import effet_normatif
     from eurostruct_engine.ndp.confirmation import (
         EvidenceItem,
         NormativeStack,
@@ -186,16 +187,16 @@ def dossier_pour(p) -> dict:
             "reference": p.national_annex_reference,
             "edition": p.edition,
             "clause": p.clause,
-            "effect": "FICTIF — fixe la valeur nationale",
+            "effect": effet_normatif(p),
             "document_digest": p.source_doc_id,
         },
     })
-    impl = digest_of({
-        "kind": "implementation",
-        "canonicalization_version": CANONICALIZATION_VERSION,
-        "rule_id": p.key,
-        "quoi": "FICTIF — implementation de test",
-    })
+    # L'EMPREINTE D'IMPLEMENTATION N'EST PLUS FABRIQUEE ICI. Elle se derive du
+    # chemin de code declare qui lit et applique la regle: un dossier de test
+    # qui en inventerait une serait refuse par la passerelle, et il aurait
+    # raison de l'etre.
+    from eurostruct_engine.ndp.implementation import empreinte_implementation
+    impl = empreinte_implementation(p.key)
     pile = NormativeStack.of(
         country_code=p.country_code, standard_family=p.standard_family,
         part=p.part,
@@ -559,8 +560,6 @@ def _brouillon(p, statement="FICTIF — dossier compose par le serveur.") -> dic
         "country_code": p.country_code,
         "rule_id": p.key,
         "statement": statement,
-        "implementation_note": "FICTIF — implementation de test",
-        "effect": "FICTIF — fixe la valeur nationale",
         "citations": [{
             "document_digest": p.source_doc_id,
             "quote": f"FICTIF — citation relevee pour {p.key}.",

@@ -49,6 +49,7 @@ from .confirmation import (
     NormativeStackComponent,
     required_sources,
 )
+from .implementation import empreinte_implementation
 
 __all__ = [
     "CitationDeRevue",
@@ -152,13 +153,30 @@ class DossierCompose:
         }
 
 
+def effet_normatif(parametre) -> str:
+    """Ce que la clause citée FAIT, dérivé du registre et de lui seul.
+
+    C'ÉTAIT UN CHAMP DU CLIENT, ET C'EST LE DÉFAUT QU'ON FERME. ``effect``
+    entre dans ``normative_spec_payload``, donc dans l'empreinte de
+    spécification : une phrase choisie par l'appelant déplaçait le sujet
+    signé. Deux ingénieurs pouvaient relire la même clause et signer deux
+    spécifications différentes parce qu'ils l'avaient décrite autrement.
+
+    La phrase est maintenant une FONCTION du registre : mêmes champs, même
+    texte, toujours. Elle reste lisible pour l'ingénieur qui relit, et elle ne
+    peut plus être déplacée par personne.
+    """
+    return (
+        f"fixe la valeur nationale de {parametre.parameter_name} "
+        f"({parametre.national_annex_reference}, {parametre.clause})"
+    )
+
+
 def composer_dossier(
     parametre,
     *,
     statement: str,
     citations: tuple[CitationDeRevue, ...],
-    implementation_note: str,
-    effet: str,
 ) -> DossierCompose:
     """Compose le dossier d'un paramètre national scalaire.
 
@@ -166,11 +184,17 @@ def composer_dossier(
     provenance, l'annexe, l'édition, la clause et l'empreinte du document en
     sortent, jamais de l'appelant.
 
+    ``statement`` et ``citations`` sont la seule matière humaine, et elles ne
+    portent que la PREUVE. Ni l'effet normatif ni l'empreinte
+    d'implémentation ne s'en déduisent : le premier est une fonction du
+    registre, la seconde une fonction du code déployé.
+
     Refuse, plutôt que de composer un dossier incomplet :
 
     * un paramètre sans empreinte de document déposée — aucune confirmation ne
       peut se rattacher à un document qu'on ne sait pas désigner ;
-    * une déclaration, une note d'implémentation ou un effet vides ;
+    * une règle dont le chemin de code n'est pas déclaré ;
+    * une déclaration vide ;
     * une source requise sans citation, ou une citation qui ne correspond à
       aucune source requise. La couverture documentaire est vérifiée **ici**,
       pas reportée au moment où PostgreSQL rejettera le dossier.
@@ -181,15 +205,20 @@ def composer_dossier(
             "confirmation ne peut y etre rattachee. Deposer d'abord le PDF de "
             "l'annexe et enregistrer son empreinte."
         )
-    for nom, texte in (("statement", statement),
-                       ("implementation_note", implementation_note),
-                       ("effet", effet)):
-        if not texte or not texte.strip():
-            raise ConfirmationDomainError(
-                f"{nom} est vide. Le dossier de revue est ce que deux "
-                "ingenieurs certifient avoir lu; un champ vide en ferait une "
-                "formalite."
-            )
+    if not statement or not statement.strip():
+        raise ConfirmationDomainError(
+            "statement est vide. Le dossier de revue est ce que deux "
+            "ingenieurs certifient avoir lu; un champ vide en ferait une "
+            "formalite."
+        )
+
+    # L'EMPREINTE D'IMPLEMENTATION EST CALCULEE ICI, PAS RECUE.
+    #
+    # Elle est levee AVANT toute autre construction: une regle dont le chemin
+    # de code n'est pas declare ne doit produire aucun dossier, pas un dossier
+    # a qui il manquerait une empreinte.
+    implementation = empreinte_implementation(parametre.key)
+    effet = effet_normatif(parametre)
 
     spec = digest_of({
         "kind": "normative_spec",
@@ -211,13 +240,6 @@ def composer_dossier(
             "document_digest": parametre.source_doc_id,
         },
     })
-    implementation = digest_of({
-        "kind": "implementation",
-        "canonicalization_version": CANONICALIZATION_VERSION,
-        "rule_id": parametre.key,
-        "quoi": implementation_note,
-    })
-
     # LA COUVERTURE EST VERIFIEE AVANT DE HACHER QUOI QUE CE SOIT. Composer un
     # dossier auquel il manque une citation produirait une empreinte de preuve
     # parfaitement valide — et parfaitement fausse.

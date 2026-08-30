@@ -73,6 +73,7 @@ from .confirmation import (
     NormativeReviewPackage,
     assess_confirmations,
 )
+from .implementation import empreinte_implementation
 from .model import ValidationStatus
 
 if TYPE_CHECKING:  # pragma: no cover - typage seul
@@ -245,6 +246,38 @@ def _ecart_de_sujet(parametre: NationalParameter,
     if all(c.edition != parametre.edition for c in etages):
         return (f"la pile porte ce document a une autre edition que "
                 f"{parametre.edition!r}.")
+
+    # --- L'IMPLEMENTATION REELLEMENT DEPLOYEE -------------------------------
+    #
+    # LE CONTROLE QUI MANQUAIT, ET IL EST DU MEME ORDRE QUE CELUI DE LA VALEUR.
+    #
+    # Une confirmation dit trois choses: quelle regle, quelle valeur, et QUEL
+    # CODE l'applique. Les deux premieres etaient ancrees au registre; la
+    # troisieme ne l'etait a rien. `implementation_payload` se construisait a
+    # partir d'un texte fourni par le client, si bien que:
+    #
+    #   * deux redactions du meme parametre donnaient deux empreintes — donc
+    #     deux sujets pour un seul code;
+    #   * le code pouvait changer entierement sans qu'aucune confirmation cesse
+    #     d'etre valable.
+    #
+    # On RECALCULE donc l'empreinte ici, independamment, depuis le chemin de
+    # code declare et la version du moteur qui tourne. Une confirmation
+    # antérieure reste dans l'historique — elle est authentique et l'audit la
+    # voit — et n'ouvre plus rien.
+    try:
+        attendue = empreinte_implementation(parametre.key)
+    except ConfirmationDomainError as cause:
+        return str(cause)
+    if paquet.implementation.digest != attendue.digest:
+        return (
+            f"implementation: le dossier atteste du code "
+            f"{paquet.implementation.digest[:16]}… et le moteur qui tourne "
+            f"porte {attendue.digest[:16]}…. La confirmation reste dans "
+            "l'historique — elle a eu lieu — mais elle atteste d'un code "
+            "revolu: elle n'ouvre plus le mode strict. Refaire passer ce "
+            "parametre par le chemin d'autorite."
+        )
 
     return None
 

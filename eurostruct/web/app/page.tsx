@@ -577,9 +577,11 @@ function DecisionsAutorite(
       country_code: choisi.country_code,
       rule_id: choisi.key,
       statement: declaration.trim(),
-      implementation_note:
-        `lecture scalaire de ${choisi.key} depuis le registre national`,
-      effect: `fixe la valeur nationale de ${choisi.parameter_name}`,
+      // NI `implementation_note`, NI `effect`. Les deux entraient dans un
+      // payload canonique, donc dans une empreinte: une phrase choisie par
+      // l'ecran deplacait le sujet signe. L'effet se derive du registre et
+      // l'empreinte d'implementation du code deploye — ni l'un ni l'autre ne
+      // passe plus par ici.
       citations: [{
         document_digest: choisi.source_doc_id,
         quote: citation.trim(),
