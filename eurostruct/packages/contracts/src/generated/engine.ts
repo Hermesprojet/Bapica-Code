@@ -167,6 +167,40 @@ export interface CalcStepDTO {
   value: number;
 }
 
+/** Un calcul rouvert : les MÊMES entrées, les MÊMES résultats. ``request`` est la requête exacte reçue par le moteur, pas une reconstruction. ``inputs_hash`` en est l'empreinte, et permet à l'écran de dire « ce sont bien ces entrées-là » sans faire confiance au transport. ``ndp_snapshot`` est l'état du portillon normatif **au moment du calcul**. Il change quand une confirmation arrive ou est révoquée ; le relire aujourd'hui donnerait l'état d'aujourd'hui pour un calcul d'hier. */
+export interface CalculEnregistre {
+  calculation_id: string;
+  created_at: string;
+  engine_version: string;
+  inputs_hash: string;
+  journal?: unknown | null;
+  /** « PROJET — NON SIGNABLE ». Présente uniquement quand des paramètres nationaux non confirmés ont pu servir. Bien plus forte que `notice`: celle-ci dit « pas encore signé », celle-là « pas signable du tout ». */
+  mention?: string | null;
+  ndp_snapshot?: Record<string, unknown> | null;
+  /** La mention obligatoire: ce document doit être vérifié et signé par un ingénieur habilité. Elle accompagne un calcul relu comme elle accompagne un calcul neuf. */
+  notice: string;
+  project_id: string;
+  refusal?: Record<string, unknown> | null;
+  request: Record<string, unknown>;
+  result?: Record<string, unknown> | null;
+  status: string;
+  strict_ndp: boolean;
+  verifications?: (Record<string, unknown>)[];
+}
+
+/** Une ligne d'historique. Assez pour choisir, pas assez pour conclure. ``max_utilisation`` est ``None`` quand le calcul n'a produit aucune vérification — un refus, notamment. Le rendre à ``0.0`` ferait lire « largement vérifié » là où rien n'a été vérifié. */
+export interface CalculResume {
+  calculation_id: string;
+  created_at: string;
+  element?: string | null;
+  engine_version: string;
+  inputs_hash: string;
+  max_utilisation?: number | null;
+  /** 'succeeded' ou 'refused'. Un refus reste un refus dans l'historique: il n'est ni omis, ni dégradé en échec technique. */
+  status: string;
+  strict_ndp: boolean;
+}
+
 export interface CheckDTO {
   acting: string;
   clause: ClauseDTO;
@@ -275,10 +309,21 @@ export interface EngineErrorDTO {
   what: string;
 }
 
+/** L'historique d'un projet, du plus récent au plus ancien. */
+export interface HistoriqueCalculs {
+  calculations: CalculResume[];
+  project_id: string;
+}
+
 export interface JournalDTO {
   clauses: string[];
   steps: CalcStepDTO[];
   title: string;
+}
+
+/** Les projets des organisations de l'appelant, et rien d'autre. */
+export interface ListeProjets {
+  projects: Projet[];
 }
 
 export interface MaterialsDTO {
@@ -363,6 +408,32 @@ export interface PreflightReportDTO {
   ok: boolean;
   required: string[];
   strict: boolean;
+}
+
+/** Un projet, tel que l'atelier le montre. ``organization_name`` accompagne ``organization_id`` : un identifiant seul obligerait l'écran à un second appel pour afficher « Bureau A », et c'est ce genre de second appel qui finit par ne jamais être fait. */
+export interface Projet {
+  /** Combien de calculs sont enregistrés sur ce projet. */
+  calculation_count: number;
+  country: "BE" | "FR" | "ES" | "DE";
+  created_at: string;
+  name: string;
+  /** Date de référence du projet (ISO 8601). Elle résout l'édition d'Annexe Nationale en vigueur, norme par norme. Ce n'est pas la date du calcul. */
+  ndp_as_of: string;
+  organization_id: string;
+  organization_name: string;
+  project_id: string;
+  reference?: string | null;
+}
+
+/** Ce qu'un ingénieur saisit pour ouvrir un projet. ``ndp_as_of`` N'EST PAS DÉCORATIVE. Elle résout l'édition d'Annexe Nationale en vigueur, norme par norme, et se fige à la création : sans elle, le référentiel dépendrait de la date à laquelle le calcul est lancé — c'est-à-dire du hasard. */
+export interface ProjetCreation {
+  country: "BE" | "FR" | "ES" | "DE";
+  name: string;
+  /** Date de référence, ISO 8601 (AAAA-MM-JJ). Elle résout l'édition d'Annexe Nationale en vigueur et se fige à la création du projet. */
+  ndp_as_of: string;
+  /** Facultatif, et jamais cru sur parole: la base le confronte aux appartenances. Nécessaire uniquement quand l'appelant appartient à plusieurs organisations. */
+  organization_id?: string | null;
+  reference?: string | null;
 }
 
 /** Where a value came from. ``document_extraction`` values must already have been confirmed by a human before the orchestrator submits them: ``confirmed_by`` and ``confirmed_at`` are how the engine's output can state that the gate was passed. */

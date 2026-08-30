@@ -30,7 +30,7 @@ from .base import FabriqueConnexionPostgres
 from .config import Reglages, charger
 from . import erreurs
 from .erreurs import installer_gestionnaires
-from .routes import autorite, calculs, referentiel, sante
+from .routes import autorite, calculs, projets, referentiel, sante
 
 _journal = logging.getLogger("eurostruct.api")
 
@@ -105,6 +105,11 @@ def creer_application(reglages: Reglages | None = None) -> FastAPI:
     # national est le meme pour tout le monde.
     app.include_router(referentiel.routeur)
     app.include_router(autorite.routeur)
+    # L'ATELIER EN DERNIER: il exige a la fois une identite verifiee et
+    # une base, la ou les routes precedentes se contentent de l'une ou de
+    # l'autre. L'ordre d'enregistrement n'a aucun effet sur le routage —
+    # aucun prefixe ne se recouvre — et rend l'exigence lisible.
+    app.include_router(projets.routeur)
     return app
 
 

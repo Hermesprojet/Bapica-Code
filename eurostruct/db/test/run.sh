@@ -357,6 +357,21 @@ echo "==> decision consommee -> confirmation -> calcul strict"
 etape "decision vers strict" \
   "$HERE/decision_vers_strict.sh" "${DB_NAME:0:20}ds"
 
+# LE PARCOURS DE TRAVAIL: PROJET -> CALCUL -> HISTORIQUE -> REOUVERTURE.
+#
+# Les deux precedents eprouvent le chemin NORMATIF — qui a le droit de
+# confirmer une valeur nationale, et ce que cette confirmation ouvre. Celui-ci
+# eprouve le chemin de TRAVAIL, celui qu'un ingenieur emprunte tous les jours,
+# et qui n'avait jamais ete branche: `project_id: "DEMO-001"` etait ecrit en
+# dur dans l'interface, et un calcul mourait avec sa reponse HTTP.
+#
+# Sept etapes, plus l'isolation. Le decor pose DEUX organisations disjointes:
+# un seul acteur ne peut pas prouver qu'il est empeche d'aller ailleurs, faute
+# d'un ailleurs.
+echo "==> atelier: projet, calcul, historique, reouverture"
+etape "atelier de projet" \
+  "$HERE/atelier_projet.sh" "${DB_NAME:0:20}at"
+
 echo "==> quatre-yeux explicite (6.3c)"
 etape "quatre-yeux explicite" \
   "$HERE/authority_four_eyes.sh" "${DB_NAME:0:20}fy"

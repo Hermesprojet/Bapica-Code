@@ -38,6 +38,13 @@ from eurostruct_engine.schemas.autorite import (  # noqa: E402
     AuthorityReviewDossier,
     AuthorityReviewDraftRequest,
 )
+from eurostruct_engine.schemas.atelier import (  # noqa: E402
+    CalculEnregistre,
+    HistoriqueCalculs,
+    ListeProjets,
+    Projet,
+    ProjetCreation,
+)
 from eurostruct_engine.schemas.common import (  # noqa: E402
     EngineErrorDTO,
     NdpSummaryDTO,
@@ -79,6 +86,15 @@ ROOTS = [
     AuthorityReviewDraftRequest,
     AuthorityReviewDossier,
     AuthorityDecisionReview,
+    # L'ATELIER. Le navigateur cree un projet, le selectionne, lance un calcul
+    # et rouvre l'historique: cinq formes, dont deux qu'il POSTE. Recopiees a
+    # la main, elles auraient derive au premier champ renomme — et le champ en
+    # question decide dans quelle organisation un projet est cree.
+    ListeProjets,
+    Projet,
+    ProjetCreation,
+    HistoriqueCalculs,
+    CalculEnregistre,
 ]
 
 TS_OUT = REPO / "packages" / "contracts" / "src" / "generated" / "engine.ts"

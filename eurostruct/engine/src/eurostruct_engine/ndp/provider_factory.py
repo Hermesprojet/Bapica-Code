@@ -51,6 +51,7 @@ __all__ = [
     "ConfigurationProviderInvalide",
     "PiloteIndisponible",
     "FabriqueDeConnexion",
+    "creer_atelier_de_production",
     "creer_provider_de_production",
 ]
 
@@ -85,21 +86,17 @@ class FabriqueDeConnexion(Protocol):
     def __call__(self) -> Connexion: ...
 
 
-def creer_provider_de_production(
-    *,
+def _connexion_de_production(
     fabrique_de_connexion: FabriqueDeConnexion,
     authentificateur: Authentificateur,
-) -> ConfirmationProvider:
-    """Rend un provider de production, ou lève. Jamais de troisième issue.
+) -> Connexion:
+    """Les quatre refus communs, puis une connexion vérifiée.
 
-    Les deux paramètres sont **nommés obligatoirement** : un appel positionnel
-    permettrait d'inverser silencieusement la connexion et l'authentificateur,
-    et la construction réussirait en plaçant l'authentification du mauvais
-    côté de la frontière.
-
-    Aucun paramètre ne reçoit d'acteur. L'identité vient de
-    l'authentificateur, à l'ouverture de chaque unité de travail, et de nulle
-    part ailleurs — c'est la propriété A1 du contrat du provider.
+    ÉCRIT UNE FOIS, POUR LES DEUX FABRIQUES. L'atelier et le provider de
+    confirmations exigent exactement les mêmes garanties : une fabrique
+    appelable, un authentificateur concret, non fictif, et un pilote présent.
+    Les recopier donnerait deux listes qui divergeraient au premier refus
+    ajouté — et ce serait toujours la plus courte qui laisserait passer.
     """
     if fabrique_de_connexion is None or not callable(fabrique_de_connexion):
         raise ConfigurationProviderInvalide(
@@ -145,7 +142,26 @@ def creer_provider_de_production(
             "Connexion (cursor/commit/rollback). Le pilote est absent ou "
             "inattendu; la factory refuse au lieu de deviner."
         )
+    return connexion
 
+
+def creer_provider_de_production(
+    *,
+    fabrique_de_connexion: FabriqueDeConnexion,
+    authentificateur: Authentificateur,
+) -> ConfirmationProvider:
+    """Rend un provider de production, ou lève. Jamais de troisième issue.
+
+    Les deux paramètres sont **nommés obligatoirement** : un appel positionnel
+    permettrait d'inverser silencieusement la connexion et l'authentificateur,
+    et la construction réussirait en plaçant l'authentification du mauvais
+    côté de la frontière.
+
+    Aucun paramètre ne reçoit d'acteur. L'identité vient de
+    l'authentificateur, à l'ouverture de chaque unité de travail, et de nulle
+    part ailleurs — c'est la propriété A1 du contrat du provider.
+    """
+    connexion = _connexion_de_production(fabrique_de_connexion, authentificateur)
     provider = PostgresConfirmationProvider(
         connexion=connexion, authentificateur=authentificateur,
     )
@@ -155,3 +171,33 @@ def creer_provider_de_production(
     # invoque protege le test, pas le produit.
     assert_provider_is_usable_in_production(provider)
     return provider
+
+
+def creer_atelier_de_production(
+    *,
+    fabrique_de_connexion: FabriqueDeConnexion,
+    authentificateur: Authentificateur,
+) -> Any:
+    """Rend l'atelier de production — projets, calculs, historique.
+
+    LES MÊMES REFUS QUE LE PROVIDER, ET C'EST DÉLIBÉRÉ. Un atelier branché sur
+    un authentificateur fictif écrirait des projets et des calculs sous des
+    identités fabriquées, dans les tables mêmes qui portent le cloisonnement
+    multi-locataire. Le fait qu'il ne touche pas au référentiel normatif ne le
+    rend pas moins sensible : il décide qui voit quoi.
+
+    ``assert_provider_is_usable_in_production`` n'est PAS appelé ici, et ce
+    n'est pas un oubli : ce crochet éprouve le contrat d'un
+    ``ConfirmationProvider`` — ``confirmations_for``, ``revocations_for`` — que
+    l'atelier n'implémente pas et n'a aucune raison d'implémenter. L'appeler
+    obligerait à lui greffer deux méthodes vides, c'est-à-dire à mentir pour
+    passer un contrôle.
+    """
+    connexion = _connexion_de_production(fabrique_de_connexion, authentificateur)
+    # IMPORT LOCAL, ET IL EST NECESSAIRE. `postgres_atelier` importe
+    # `postgres_provider`, que ce module importe deja: le remonter en tete
+    # fermerait le cycle a l'import du paquet.
+    from .postgres_atelier import PostgresAtelier
+
+    return PostgresAtelier(connexion=connexion,
+                           authentificateur=authentificateur)

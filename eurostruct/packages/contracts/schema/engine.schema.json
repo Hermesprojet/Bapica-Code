@@ -712,6 +712,198 @@
       "title": "CalcStepDTO",
       "type": "object"
     },
+    "CalculEnregistre": {
+      "additionalProperties": false,
+      "description": "Un calcul rouvert : les MÊMES entrées, les MÊMES résultats.\n\n``request`` est la requête exacte reçue par le moteur, pas une\nreconstruction. ``inputs_hash`` en est l'empreinte, et permet à l'écran de\ndire « ce sont bien ces entrées-là » sans faire confiance au transport.\n\n``ndp_snapshot`` est l'état du portillon normatif **au moment du calcul**. Il\nchange quand une confirmation arrive ou est révoquée ; le relire\naujourd'hui donnerait l'état d'aujourd'hui pour un calcul d'hier.",
+      "properties": {
+        "calculation_id": {
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "inputs_hash": {
+          "title": "Inputs Hash",
+          "type": "string"
+        },
+        "journal": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journal"
+        },
+        "mention": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "« PROJET — NON SIGNABLE ». Présente uniquement quand des paramètres nationaux non confirmés ont pu servir. Bien plus forte que `notice`: celle-ci dit « pas encore signé », celle-là « pas signable du tout ».",
+          "title": "Mention"
+        },
+        "ndp_snapshot": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ndp Snapshot"
+        },
+        "notice": {
+          "description": "La mention obligatoire: ce document doit être vérifié et signé par un ingénieur habilité. Elle accompagne un calcul relu comme elle accompagne un calcul neuf.",
+          "title": "Notice",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "refusal": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refusal"
+        },
+        "request": {
+          "additionalProperties": true,
+          "title": "Request",
+          "type": "object"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "strict_ndp": {
+          "title": "Strict Ndp",
+          "type": "boolean"
+        },
+        "verifications": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Verifications",
+          "type": "array"
+        }
+      },
+      "required": [
+        "calculation_id",
+        "project_id",
+        "status",
+        "strict_ndp",
+        "engine_version",
+        "inputs_hash",
+        "request",
+        "created_at",
+        "notice"
+      ],
+      "title": "CalculEnregistre",
+      "type": "object"
+    },
+    "CalculResume": {
+      "additionalProperties": false,
+      "description": "Une ligne d'historique. Assez pour choisir, pas assez pour conclure.\n\n``max_utilisation`` est ``None`` quand le calcul n'a produit aucune\nvérification — un refus, notamment. Le rendre à ``0.0`` ferait lire\n« largement vérifié » là où rien n'a été vérifié.",
+      "properties": {
+        "calculation_id": {
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "element": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Element"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "inputs_hash": {
+          "title": "Inputs Hash",
+          "type": "string"
+        },
+        "max_utilisation": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Utilisation"
+        },
+        "status": {
+          "description": "'succeeded' ou 'refused'. Un refus reste un refus dans l'historique: il n'est ni omis, ni dégradé en échec technique.",
+          "title": "Status",
+          "type": "string"
+        },
+        "strict_ndp": {
+          "title": "Strict Ndp",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "calculation_id",
+        "status",
+        "strict_ndp",
+        "engine_version",
+        "inputs_hash",
+        "created_at"
+      ],
+      "title": "CalculResume",
+      "type": "object"
+    },
     "CheckDTO": {
       "additionalProperties": false,
       "properties": {
@@ -1149,6 +1341,29 @@
       "title": "EngineErrorDTO",
       "type": "object"
     },
+    "HistoriqueCalculs": {
+      "additionalProperties": false,
+      "description": "L'historique d'un projet, du plus récent au plus ancien.",
+      "properties": {
+        "calculations": {
+          "items": {
+            "$ref": "#/$defs/CalculResume"
+          },
+          "title": "Calculations",
+          "type": "array"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "calculations"
+      ],
+      "title": "HistoriqueCalculs",
+      "type": "object"
+    },
     "JournalDTO": {
       "additionalProperties": false,
       "properties": {
@@ -1177,6 +1392,24 @@
         "clauses"
       ],
       "title": "JournalDTO",
+      "type": "object"
+    },
+    "ListeProjets": {
+      "additionalProperties": false,
+      "description": "Les projets des organisations de l'appelant, et rien d'autre.",
+      "properties": {
+        "projects": {
+          "items": {
+            "$ref": "#/$defs/Projet"
+          },
+          "title": "Projects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "projects"
+      ],
+      "title": "ListeProjets",
       "type": "object"
     },
     "MaterialsDTO": {
@@ -1613,6 +1846,137 @@
         "blocking"
       ],
       "title": "PreflightReportDTO",
+      "type": "object"
+    },
+    "Projet": {
+      "additionalProperties": false,
+      "description": "Un projet, tel que l'atelier le montre.\n\n``organization_name`` accompagne ``organization_id`` : un identifiant seul\nobligerait l'écran à un second appel pour afficher « Bureau A », et c'est\nce genre de second appel qui finit par ne jamais être fait.",
+      "properties": {
+        "calculation_count": {
+          "description": "Combien de calculs sont enregistrés sur ce projet.",
+          "minimum": 0,
+          "title": "Calculation Count",
+          "type": "integer"
+        },
+        "country": {
+          "enum": [
+            "BE",
+            "FR",
+            "ES",
+            "DE"
+          ],
+          "title": "Country",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "ndp_as_of": {
+          "description": "Date de référence du projet (ISO 8601). Elle résout l'édition d'Annexe Nationale en vigueur, norme par norme. Ce n'est pas la date du calcul.",
+          "title": "Ndp As Of",
+          "type": "string"
+        },
+        "organization_id": {
+          "title": "Organization Id",
+          "type": "string"
+        },
+        "organization_name": {
+          "title": "Organization Name",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference"
+        }
+      },
+      "required": [
+        "project_id",
+        "organization_id",
+        "organization_name",
+        "name",
+        "country",
+        "ndp_as_of",
+        "created_at",
+        "calculation_count"
+      ],
+      "title": "Projet",
+      "type": "object"
+    },
+    "ProjetCreation": {
+      "additionalProperties": false,
+      "description": "Ce qu'un ingénieur saisit pour ouvrir un projet.\n\n``ndp_as_of`` N'EST PAS DÉCORATIVE. Elle résout l'édition d'Annexe\nNationale en vigueur, norme par norme, et se fige à la création : sans\nelle, le référentiel dépendrait de la date à laquelle le calcul est\nlancé — c'est-à-dire du hasard.",
+      "properties": {
+        "country": {
+          "enum": [
+            "BE",
+            "FR",
+            "ES",
+            "DE"
+          ],
+          "title": "Country",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "ndp_as_of": {
+          "description": "Date de référence, ISO 8601 (AAAA-MM-JJ). Elle résout l'édition d'Annexe Nationale en vigueur et se fige à la création du projet.",
+          "title": "Ndp As Of",
+          "type": "string"
+        },
+        "organization_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Facultatif, et jamais cru sur parole: la base le confronte aux appartenances. Nécessaire uniquement quand l'appelant appartient à plusieurs organisations.",
+          "title": "Organization Id"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference"
+        }
+      },
+      "required": [
+        "name",
+        "country",
+        "ndp_as_of"
+      ],
+      "title": "ProjetCreation",
       "type": "object"
     },
     "ProvenanceDTO": {

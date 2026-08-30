@@ -36,12 +36,13 @@ from eurostruct_engine.ndp.postgres_provider import AuthentificationRequise
 from eurostruct_engine.ndp.provider_factory import (
     ConfigurationProviderInvalide,
     PiloteIndisponible,
+    creer_atelier_de_production,
     creer_provider_de_production,
 )
 from fastapi import Depends, Header, HTTPException, Request
 
-__all__ = ["acteur_authentifie", "jeton_porteur", "ouvrir_provider",
-           "provider_de_lecture"]
+__all__ = ["acteur_authentifie", "jeton_porteur", "ouvrir_atelier",
+           "ouvrir_provider", "provider_de_lecture"]
 
 
 def jeton_porteur(authorization: str | None = Header(default=None)) -> str:
@@ -188,6 +189,84 @@ def ouvrir_provider(requete: Request) -> _ProviderOuvert:
                     "detail": str(cause)},
         ) from cause
     return _ProviderOuvert(provider, connexion)
+
+
+class _AtelierOuvert:
+    """L'atelier, le JETON de la requête, et la connexion qu'il faudra fermer.
+
+    LE JETON VOYAGE AVEC L'ATELIER, ET C'EST NÉCESSAIRE. Chaque primitive
+    ouvre sa propre unité de travail — authentifier, ``SET LOCAL``, agir — et
+    reçoit donc la **preuve**, pas une identité déjà extraite. Une route qui
+    passerait un ``actor_id`` perdrait en chemin ce qui l'authentifie, et
+    PostgreSQL n'aurait plus qu'une chaîne de caractères à croire.
+    """
+
+    __slots__ = ("atelier", "jeton", "_connexion")
+
+    def __init__(self, atelier: Any, jeton: str, connexion: Any) -> None:
+        self.atelier = atelier
+        self.jeton = jeton
+        self._connexion = connexion
+
+    def fermer(self) -> None:
+        try:
+            self._connexion.close()
+        except Exception:  # noqa: BLE001 — fermer ne doit jamais masquer
+            pass
+
+
+def ouvrir_atelier(requete: Request,
+                   jeton: str = Depends(jeton_porteur)) -> _AtelierOuvert:
+    """Construit l'atelier de production pour CETTE requête.
+
+    LE MÊME CÂBLAGE QUE ``ouvrir_provider``, ET LES MÊMES REFUS. Une seule
+    différence : la factory rend un ``PostgresAtelier`` au lieu d'un provider
+    de confirmations. Sans base ou sans authentificateur, c'est **503** — pas
+    une liste de projets vide.
+
+    UNE LISTE VIDE SERAIT LE PIRE REPLI POSSIBLE. « Vous n'avez aucun projet »
+    et « je ne peux pas joindre la base » deviennent alors le même écran, et
+    c'est le premier que l'ingénieur croit.
+    """
+    etat = requete.app.state
+    authentificateur = getattr(etat, "authentificateur", None)
+    fabrique = getattr(etat, "fabrique_connexion", None)
+    if authentificateur is None or fabrique is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "service_non_pret",
+                    "what": "authentification ou base",
+                    "detail": ("l'atelier exige une base et une "
+                               "authentification: les projets et les calculs "
+                               "y vivent. Voir /ready.")},
+        )
+
+    connexion = None
+
+    def _fabrique_tracante() -> Any:
+        nonlocal connexion
+        connexion = fabrique()
+        return connexion
+
+    try:
+        atelier = creer_atelier_de_production(
+            fabrique_de_connexion=_fabrique_tracante,
+            authentificateur=authentificateur,
+        )
+    except (PiloteIndisponible, ConfigurationProviderInvalide,
+            AuthentificationRequise) as cause:
+        if connexion is not None:
+            try:
+                connexion.close()
+            except Exception:  # noqa: BLE001
+                pass
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "service_non_pret",
+                    "what": type(cause).__name__,
+                    "detail": str(cause)},
+        ) from cause
+    return _AtelierOuvert(atelier, jeton, connexion)
 
 
 class _LectureOuverte:
