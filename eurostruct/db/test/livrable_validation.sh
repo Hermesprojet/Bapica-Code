@@ -225,9 +225,17 @@ on conflict do nothing;
 
 -- LES ADHESIONS, ET CE QUE CHACUNE PROUVE.
 --
--- `display_name` et `professional_id` sont poses PAR L'ORGANISATION. La
--- primitive d'attestation les DERIVE de la, jamais du corps HTTP: c'est ce
--- qui rend impossible de signer sous le nom de quelqu'un d'autre.
+-- AUCUN ACCENT GRAVE DANS CE CORPS, ET CE N'EST PAS UNE COQUETTERIE. Cet
+-- heredoc n'est PAS quote: le shell y developpe les substitutions, et une
+-- paire d'accents graves autour d'un nom de colonne s'executerait comme une
+-- commande. Sa sortie — vide — entrerait dans le flux SQL a la place du mot.
+-- Le scanner du depot refuse cette forme, et il a raison: elle ne se voit
+-- pas, parce qu'un commentaire SQL mutile reste un commentaire.
+--
+-- Les colonnes display_name et professional_id sont posees PAR
+-- L'ORGANISATION. La primitive d'attestation les DERIVE de la, jamais du
+-- corps HTTP: c'est ce qui rend impossible de signer sous le nom de
+-- quelqu'un d'autre.
 insert into organization_members
   (org_id, user_id, role, display_name, professional_id) values
   ('$ORG_A', '$ACTEUR_A', 'engineer',
