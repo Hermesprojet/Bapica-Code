@@ -1,5 +1,131 @@
 {
   "$defs": {
+    "AuthorityDecisionConsumed": {
+      "additionalProperties": false,
+      "description": "The decision was spent. Exactly once: a replay is refused.",
+      "properties": {
+        "consumed": {
+          "title": "Consumed",
+          "type": "boolean"
+        },
+        "decision_id": {
+          "title": "Decision Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_id",
+        "consumed"
+      ],
+      "title": "AuthorityDecisionConsumed",
+      "type": "object"
+    },
+    "AuthorityDecisionCreated": {
+      "additionalProperties": false,
+      "description": "A decision now exists, and it is PENDING. Nothing is confirmed yet.",
+      "properties": {
+        "decision_id": {
+          "title": "Decision Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_id"
+      ],
+      "title": "AuthorityDecisionCreated",
+      "type": "object"
+    },
+    "AuthorityDecisionRequest": {
+      "additionalProperties": false,
+      "description": "What the decision is about. Never who proposes it.",
+      "properties": {
+        "country_code": {
+          "description": "ISO 3166-1 alpha-2 code of the national annex concerned.",
+          "examples": [
+            "BE"
+          ],
+          "maxLength": 2,
+          "minLength": 2,
+          "title": "Country Code",
+          "type": "string"
+        },
+        "edition": {
+          "description": "Edition of the standard the decision is scoped to.",
+          "examples": [
+            "2004"
+          ],
+          "title": "Edition",
+          "type": "string"
+        },
+        "org_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tenant scope, or null for a referential-wide decision.",
+          "title": "Org Id"
+        },
+        "part": {
+          "examples": [
+            "1-1"
+          ],
+          "title": "Part",
+          "type": "string"
+        },
+        "permission": {
+          "examples": [
+            "can_validate_normative_reference"
+          ],
+          "title": "Permission",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Human-readable motive. A datum, never a proof.",
+          "title": "Reason",
+          "type": "string"
+        },
+        "standard_family": {
+          "examples": [
+            "EN 1992"
+          ],
+          "title": "Standard Family",
+          "type": "string"
+        },
+        "subject_id": {
+          "description": "Identifier of the subject the decision bears on.",
+          "examples": [
+            "EN 1992-1-1:alpha_cc"
+          ],
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "subject_kind": {
+          "description": "Nature of the subject, e.g. 'ndp_parameter'.",
+          "examples": [
+            "ndp_parameter"
+          ],
+          "title": "Subject Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject_kind",
+        "subject_id",
+        "country_code",
+        "standard_family",
+        "part",
+        "edition",
+        "permission",
+        "reason"
+      ],
+      "title": "AuthorityDecisionRequest",
+      "type": "object"
+    },
     "BarRowDTO": {
       "additionalProperties": false,
       "properties": {

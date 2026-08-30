@@ -14,6 +14,36 @@
 
 /* eslint-disable */
 
+/** The decision was spent. Exactly once: a replay is refused. */
+export interface AuthorityDecisionConsumed {
+  consumed: boolean;
+  decision_id: string;
+}
+
+/** A decision now exists, and it is PENDING. Nothing is confirmed yet. */
+export interface AuthorityDecisionCreated {
+  decision_id: string;
+}
+
+/** What the decision is about. Never who proposes it. */
+export interface AuthorityDecisionRequest {
+  /** ISO 3166-1 alpha-2 code of the national annex concerned. */
+  country_code: string;
+  /** Edition of the standard the decision is scoped to. */
+  edition: string;
+  /** Tenant scope, or null for a referential-wide decision. */
+  org_id?: string | null;
+  part: string;
+  permission: string;
+  /** Human-readable motive. A datum, never a proof. */
+  reason: string;
+  standard_family: string;
+  /** Identifier of the subject the decision bears on. */
+  subject_id: string;
+  /** Nature of the subject, e.g. 'ndp_parameter'. */
+  subject_kind: string;
+}
+
 export interface BarRowDTO {
   count: number;
   /** Nominal bar diameter, mm */

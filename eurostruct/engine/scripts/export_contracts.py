@@ -30,6 +30,11 @@ REPO = Path(__file__).resolve().parents[2]
 ENGINE = REPO / "engine"
 sys.path.insert(0, str(ENGINE / "src"))
 
+from eurostruct_engine.schemas.autorite import (  # noqa: E402
+    AuthorityDecisionConsumed,
+    AuthorityDecisionCreated,
+    AuthorityDecisionRequest,
+)
 from eurostruct_engine.schemas.common import (  # noqa: E402
     EngineErrorDTO,
     NdpSummaryDTO,
@@ -56,6 +61,13 @@ ROOTS = [
     NdpSummaryDTO,
     PreflightReportDTO,
     EngineErrorDTO,
+    # Le chemin d'autorite. Sans ces trois-la, tout client devait RECOPIER la
+    # forme en TypeScript — et une forme recopiee derive le jour ou un champ
+    # est renomme. Ici le champ en question decide qui peut confirmer une
+    # valeur nationale.
+    AuthorityDecisionRequest,
+    AuthorityDecisionCreated,
+    AuthorityDecisionConsumed,
 ]
 
 TS_OUT = REPO / "packages" / "contracts" / "src" / "generated" / "engine.ts"

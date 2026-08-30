@@ -24,36 +24,27 @@ from typing import Any
 
 from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
 from eurostruct_engine.ndp.postgres_provider import AuthentificationRequise
-from eurostruct_engine.schemas.common import Strict
+from eurostruct_engine.schemas.autorite import (
+    AuthorityDecisionConsumed,
+    AuthorityDecisionCreated,
+    AuthorityDecisionRequest,
+)
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import Field
 
 from ..dependances import jeton_porteur, ouvrir_provider
 
 routeur = APIRouter(prefix="/v1/authority", tags=["autorite"])
 
-
-class ProposerRequete(Strict):
-    """Ce sur quoi la décision porte. Jamais qui la propose."""
-
-    subject_kind: str = Field(description="Nature du sujet, ex. « ndp_parameter ».")
-    subject_id: str = Field(description="Identifiant du sujet.")
-    org_id: str | None = Field(default=None)
-    country_code: str = Field(min_length=2, max_length=2)
-    standard_family: str
-    part: str
-    edition: str
-    permission: str
-    reason: str = Field(description="Motif lisible. Une donnee, pas une preuve.")
-
-
-class DecisionCreee(Strict):
-    decision_id: str
-
-
-class DecisionConsommee(Strict):
-    decision_id: str
-    consumed: bool
+#: LES TROIS FORMES SONT GENEREES, PAS DECLAREES ICI.
+#:
+#: Elles vivaient dans ce module, que `export_contracts.py` ne lit pas: le
+#: navigateur n'avait donc aucun type genere pour le chemin d'autorite, et tout
+#: client devait recopier la forme en TypeScript. Une forme recopiee derive au
+#: premier champ renomme — et ce champ-la decide qui peut confirmer une valeur
+#: nationale.
+ProposerRequete = AuthorityDecisionRequest
+DecisionCreee = AuthorityDecisionCreated
+DecisionConsommee = AuthorityDecisionConsumed
 
 
 def _refus(cause: Exception) -> HTTPException:

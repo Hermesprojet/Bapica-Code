@@ -66,8 +66,13 @@ export type Issue =
   | { type: "refus"; valeur: Refus }
   | { type: "panne"; message: string };
 
-const BASE =
-  process.env.NEXT_PUBLIC_EUROSTRUCT_API_URL ?? "http://127.0.0.1:8000";
+//: L'ADRESSE ET LA REGLE DE TRANSPORT SONT DANS `transport.ts`.
+//:
+//: Les appels de ce module sont PUBLICS: le calcul EC2 est deterministe et le
+//: referentiel national est le meme pour tout le monde. Aucun ne joint de
+//: jeton, et `appelPublic` ne sait pas en joindre — c'est ce qui empeche qu'un
+//: `Authorization` se retrouve un jour sur une route qui ne l'exige pas.
+import { BASE, appelPublic } from "@/lib/transport";
 
 /**
  * Lance la vérification en flexion.
@@ -186,18 +191,10 @@ export type EtatReferentiel = {
  * sans ce bandeau : un bandeau absent apprend moins qu'une page blanche, mais
  * il n'empêche pas de travailler.
  */
-export async function etatDuReferentiel(
+export function etatDuReferentiel(
   pays: string,
 ): Promise<EtatReferentiel | null> {
-  try {
-    const reponse = await fetch(`${BASE}/v1/ndp/${encodeURIComponent(pays)}`, {
-      headers: { Accept: "application/json" },
-    });
-    if (!reponse.ok) return null;
-    return (await reponse.json()) as EtatReferentiel;
-  } catch {
-    return null;
-  }
+  return appelPublic<EtatReferentiel>(`/v1/ndp/${encodeURIComponent(pays)}`);
 }
 
 /** Une fiche de paramètre national, telle que l'API la rend. */
@@ -230,17 +227,10 @@ export type PlanDeCharge = {
  * pour un écran de calcul que personne n'a demandé à déplier, ce serait payer
  * une requête pour rien.
  */
-export async function planDeCharge(pays: string): Promise<PlanDeCharge | null> {
-  try {
-    const reponse = await fetch(
-      `${BASE}/v1/ndp/${encodeURIComponent(pays)}/parameters`,
-      { headers: { Accept: "application/json" } },
-    );
-    if (!reponse.ok) return null;
-    return (await reponse.json()) as PlanDeCharge;
-  } catch {
-    return null;
-  }
+export function planDeCharge(pays: string): Promise<PlanDeCharge | null> {
+  return appelPublic<PlanDeCharge>(
+    `/v1/ndp/${encodeURIComponent(pays)}/parameters`,
+  );
 }
 
 export type {

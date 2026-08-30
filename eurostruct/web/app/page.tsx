@@ -23,7 +23,12 @@ import {
   type Ec2BeamFlexureRequest, type Ec2BeamSectionRequest,
   type EtatReferentiel, type Issue, type Pays, type PlanDeCharge,
 } from "@/lib/api";
-import { authDisponible, ouvrirSession, type Session } from "@/lib/session";
+import { FournisseurAuth, useAuth } from "@/lib/authentification";
+import {
+  approuverDecision, consommerDecision, proposerDecision,
+  type AuthorityDecisionRequest,
+} from "@/lib/autorite";
+import { AppelRefuse, SessionExpiree } from "@/lib/transport";
 
 type Champs = {
   b: string; h: string; d: string; M_Ed: string;
@@ -41,7 +46,24 @@ const DEFAUTS: Champs = {
   strict: true,
 };
 
+/**
+ * LA SESSION EST DÉTENUE ICI, AU-DESSUS DE TOUT LE RESTE.
+ *
+ * Elle vivait dans l'état local de `Connexion` : le jeton était obtenu,
+ * affiché, et **jamais utilisé** — aucun autre composant ne pouvait le voir.
+ * Le fournisseur la remonte, si bien que les décisions d'autorité s'en
+ * servent, que l'expiration se surveille en un seul endroit, et que la
+ * déconnexion vide la seule copie qui existe.
+ */
 export default function Page() {
+  return (
+    <FournisseurAuth>
+      <Ecran />
+    </FournisseurAuth>
+  );
+}
+
+function Ecran() {
   const [champs, setChamps] = useState<Champs>(DEFAUTS);
   const [issue, setIssue] = useState<Issue | null>(null);
   const [enCours, setEnCours] = useState(false);
@@ -85,6 +107,7 @@ export default function Page() {
       </p>
 
       <Connexion />
+      <DecisionsAutorite pays={champs.pays} />
       <Referentiel pays={champs.pays} />
 
       <form onSubmit={soumettre}>
@@ -291,20 +314,23 @@ function PlanDeChargeRepli({ pays, total }: { pays: string; total: number }) {
  * ELLE NE GARDE PAS LE CALCUL. Le calcul EC2 est déterministe et ne consulte
  * aucune donnée d'autorité : le protéger derrière une authentification
  * n'apporterait rien, et rendrait la tranche inutilisable pour évaluer le
- * moteur. Ce sont les **décisions d'autorité** qui exigent une identité, et
- * elles ne sont pas dans cet écran.
+ * moteur. Ce sont les **décisions d'autorité** qui exigent une identité.
+ *
+ * ELLE NE DÉTIENT PLUS LA SESSION. Elle la demande au fournisseur — c'est tout
+ * l'objet du correctif : une session détenue ici n'était visible de personne,
+ * et le jeton obtenu ne servait à rien.
  *
  * Quand la configuration est absente, ce bloc dit pourquoi, et n'affiche
  * aucun formulaire dont on saurait d'avance qu'il refusera.
  */
 function Connexion() {
-  const [session, setSession] = useState<Session | null>(null);
+  const auth = useAuth();
   const [courriel, setCourriel] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
   const [refus, setRefus] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
 
-  if (!authDisponible()) {
+  if (!auth.disponible) {
     return (
       <div className="bandeau alerte" role="status">
         <strong>Authentification non configurée</strong>
@@ -318,12 +344,19 @@ function Connexion() {
     );
   }
 
-  if (session) {
+  if (auth.connecte) {
     return (
       <div className="bandeau ok" role="status">
         <strong>Session ouverte</strong>
         Le jeton vit en mémoire dans cet onglet, jamais dans{" "}
-        <code>localStorage</code>.
+        <code>localStorage</code>, <code>sessionStorage</code>, un cookie ou une
+        URL. Fermer l&apos;onglet le fait disparaître.
+        <div style={{ marginTop: ".6rem" }}>
+          <button id="deconnecter" type="button" className="secondaire"
+                  onClick={auth.fermer}>
+            Se déconnecter
+          </button>
+        </div>
       </div>
     );
   }
@@ -332,9 +365,7 @@ function Connexion() {
     e.preventDefault();
     setEnCours(true);
     setRefus(null);
-    const issue = await ouvrirSession(courriel, motDePasse);
-    if (issue.type === "session") setSession(issue.valeur);
-    else setRefus(issue.message);
+    setRefus(await auth.ouvrir(courriel, motDePasse));
     setEnCours(false);
   }
 
@@ -342,6 +373,13 @@ function Connexion() {
     <form onSubmit={connecter}>
       <fieldset>
         <legend>Connexion</legend>
+        {auth.expiree && (
+          <p id="session-expiree" className="bandeau refus" role="alert">
+            <strong>Session expirée</strong> — elle n&apos;a pas pu être
+            renouvelée. Aucune requête n&apos;a été envoyée avec le jeton
+            périmé. Reconnectez-vous.
+          </p>
+        )}
         <div className="grille">
           <div>
             <label htmlFor="courriel">Courriel</label>
@@ -356,8 +394,8 @@ function Connexion() {
                    onChange={(e) => setMotDePasse(e.target.value)} />
           </div>
         </div>
-        <button type="submit" className="secondaire" disabled={enCours}
-                style={{ marginTop: ".8rem" }}>
+        <button id="connecter" type="submit" className="secondaire"
+                disabled={enCours} style={{ marginTop: ".8rem" }}>
           {enCours ? "Connexion…" : "Se connecter"}
         </button>
         {refus && (
@@ -365,6 +403,137 @@ function Connexion() {
         )}
       </fieldset>
     </form>
+  );
+}
+
+/** Ce qu'une étape d'autorité a répondu. Jamais un résultat partiel. */
+type Etape = { nom: string; statut: string; detail: string };
+
+/**
+ * LES DÉCISIONS D'AUTORITÉ : proposer, approuver, consommer.
+ *
+ * POURQUOI CETTE SECTION EXISTE
+ * ------------------------------
+ * Le quatre-yeux était complet côté PostgreSQL et côté API, et **inatteignable
+ * depuis l'écran**. Une règle que l'interface ne sait pas exercer n'est pas une
+ * règle du produit : c'est une règle du dépôt.
+ *
+ * CE QU'ELLE MONTRE, ÉTAPE PAR ÉTAPE
+ * -----------------------------------
+ * L'identifiant de la décision et le résultat de chaque appel. C'est ce qui
+ * rend le parcours à deux personnes praticable sur un seul poste : A propose,
+ * se déconnecte, B se connecte et reprend **le même identifiant**.
+ *
+ * L'IDENTIFIANT SURVIT À LA DÉCONNEXION, LE JETON NON. Le premier est une
+ * référence de dossier — B en a besoin. Le second est l'identité de A, et elle
+ * part avec lui. C'est précisément la distinction que cette section rend
+ * visible.
+ *
+ * AUCUN CHAMP D'ACTEUR. Ni ici, ni dans le corps envoyé : l'identité sort du
+ * jeton porteur. Le contrat serveur est `extra="forbid"`, si bien qu'un champ
+ * ajouté ferait un 422 plutôt qu'une usurpation.
+ */
+function DecisionsAutorite({ pays }: { pays: Pays }) {
+  const auth = useAuth();
+  //: L'ETAT DU DOSSIER VIT ICI, hors du bloc de connexion: se déconnecter ne
+  //: doit pas effacer le numéro que le second ingénieur doit reprendre.
+  const [decision, setDecision] = useState<string>("");
+  const [etapes, setEtapes] = useState<Etape[]>([]);
+  const [enCours, setEnCours] = useState(false);
+
+  if (!auth.disponible) return null;
+
+  const noter = (nom: string, statut: string, detail: string) =>
+    setEtapes((e) => [...e, { nom, statut, detail }]);
+
+  /** Exécute une étape et note ce qu'elle a répondu. Ne masque aucun refus. */
+  async function etape(nom: string, action: () => Promise<string>) {
+    setEnCours(true);
+    try {
+      noter(nom, "ok", await action());
+    } catch (cause) {
+      if (cause instanceof SessionExpiree) {
+        // RIEN N'EST PARTI. C'est le fait à afficher: pas « le serveur a
+        // refusé », mais « nous n'avons pas envoyé ».
+        noter(nom, "non envoyé", cause.message);
+      } else if (cause instanceof AppelRefuse) {
+        noter(nom, `refus ${cause.statut}`, cause.detail);
+      } else {
+        noter(nom, "panne", String(cause));
+      }
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  const proposition: AuthorityDecisionRequest = {
+    subject_kind: "ndp_parameter",
+    subject_id: "EN 1992-1-1:alpha_cc",
+    org_id: null,
+    country_code: pays,
+    standard_family: "EN 1992",
+    part: "1-1",
+    edition: "2004",
+    permission: "can_validate_normative_reference",
+    reason: "revue de la valeur nationale relevee dans l'annexe publiee",
+  };
+
+  return (
+    <section>
+      <fieldset>
+        <legend>Décisions d&apos;autorité</legend>
+        <p className="aide">
+          Une confirmation de valeur nationale exige <strong>deux</strong>
+          {" "}ingénieurs : celui qui propose ne peut pas approuver. Le second
+          reprend l&apos;identifiant ci-dessous après s&apos;être connecté à sa
+          propre session.
+        </p>
+
+        <p>
+          Décision en cours :{" "}
+          <code id="decision-id">{decision || "—"}</code>
+        </p>
+
+        <div className="grille">
+          <button id="proposer" type="button" className="secondaire"
+                  disabled={enCours}
+                  onClick={() => etape("proposition", async () => {
+                    const cree = await proposerDecision(auth.porteur, proposition);
+                    setDecision(cree.decision_id);
+                    return cree.decision_id;
+                  })}>
+            1. Proposer
+          </button>
+          <button id="approuver" type="button" className="secondaire"
+                  disabled={enCours}
+                  onClick={() => etape("approbation", async () => {
+                    await approuverDecision(auth.porteur, decision);
+                    return "approuvee";
+                  })}>
+            2. Approuver (second ingénieur)
+          </button>
+          <button id="consommer" type="button" className="secondaire"
+                  disabled={enCours}
+                  onClick={() => etape("consommation", async () => {
+                    const c = await consommerDecision(auth.porteur, decision);
+                    return c.consumed ? "consommee" : "non consommee";
+                  })}>
+            3. Consommer
+          </button>
+        </div>
+
+        {etapes.length > 0 && (
+          <ul className="bloquants" id="journal-autorite">
+            {etapes.map((e, i) => (
+              <li key={i}>
+                <strong>{e.nom}</strong> — {e.statut}
+                <div className="clause">{e.detail}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </fieldset>
+    </section>
   );
 }
 
