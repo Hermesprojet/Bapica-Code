@@ -108,3 +108,56 @@ def test_la_route_ne_demande_aucune_identite(client):
     ici laisserait croire que la reponse depend de qui demande.
     """
     assert client.get("/v1/ndp/BE").status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Le plan de charge: quels parametres, pas seulement combien
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("pays", PAYS)
+def test_la_liste_porte_autant_de_fiches_que_le_compte(client, pays):
+    """Un compte et une liste qui divergent, c'est l'un des deux qui ment."""
+    corps = client.get(f"/v1/ndp/{pays}/parameters").json()
+    assert len(corps["parameters"]) == corps["referentiel"]["total"]
+
+
+def test_chaque_fiche_dit_ou_lire_la_valeur(client):
+    """Une liste sans clause ni annexe n'est pas actionnable."""
+    for fiche in client.get("/v1/ndp/BE/parameters").json()["parameters"]:
+        assert fiche["clause"], fiche["key"]
+        assert fiche["national_annex_reference"], fiche["key"]
+        assert fiche["description"], fiche["key"]
+
+
+def test_aucune_fiche_n_est_utilisable_en_mode_strict_aujourd_hui(client):
+    """Le meme fait que le compte, vu par l'autre bout.
+
+    Si ce cas et `…referentiel"]["confirmed"] == 0` divergeaient un jour, c'est
+    que la liste et le compte ne parlent plus du meme referentiel.
+    """
+    fiches = client.get("/v1/ndp/BE/parameters").json()["parameters"]
+    assert not [f for f in fiches if f["usable_in_strict_mode"]]
+
+
+def test_chaque_fiche_bloquante_dit_ce_qui_reste_a_faire(client):
+    fiches = client.get("/v1/ndp/BE/parameters").json()["parameters"]
+    bloquantes = [f for f in fiches if not f["usable_in_strict_mode"]]
+    assert bloquantes
+    assert all(f["reste_a_faire"] for f in bloquantes)
+
+
+def test_le_non_representable_dit_qu_aucune_relecture_ne_le_debloque(client):
+    """Ce n'est pas une forme moindre de « pas encore verifie ».
+
+    Confondre les deux enverrait un ingenieur relire une annexe qui, sur ce
+    parametre, ne donne pas un nombre.
+    """
+    fiches = client.get("/v1/ndp/BE/parameters").json()["parameters"]
+    nr = [f for f in fiches if f["validation_status"] == "not_representable"]
+    assert nr, "le jeu belge en porte un (cot_theta_max)"
+    assert all("aucune relecture" in f["reste_a_faire"] for f in nr)
+
+
+def test_un_pays_inconnu_est_refuse_de_la_meme_facon(client):
+    r = client.get("/v1/ndp/ZZ/parameters")
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "COUNTRY_NOT_IN_REFERENTIAL"

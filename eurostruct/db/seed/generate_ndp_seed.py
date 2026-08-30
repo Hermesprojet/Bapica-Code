@@ -81,6 +81,29 @@ def main() -> int:
             out.append("")
 
             for name, item in sorted(annex["parameters"].items()):
+                # LA SECONDE PORTE DE LA MEME PIECE.
+                #
+                # Le moteur refuse depuis 07df06c qu'un fichier du depot porte
+                # `confirmed` — mesure du 30/08: deux champs bascules dans
+                # `be.json` suffisaient a faire aboutir un calcul belge STRICT
+                # et a le declarer signable, sans relecteur nomme ni ligne en
+                # base.
+                #
+                # Ce generateur lit les MEMES fichiers et ecrit dans la base de
+                # reference. Sans ce controle, une graine confirmee y entrerait
+                # pendant que le moteur, lui, refuserait de la lire: la base
+                # dirait une chose et le calcul une autre — pire que les deux
+                # erreurs separement.
+                if item.get("validation_status") == "confirmed":
+                    raise SystemExit(
+                        f"REFUS: {country}/{std}:{name} porte 'confirmed' dans "
+                        f"{path.name}. Un fichier transcrit; il ne confirme "
+                        "pas. La confirmation est l'acte date d'un ingenieur "
+                        "nomme, contre-signe par un second, enregistre par le "
+                        "chemin d'autorite — pas un champ que l'on edite. Voir "
+                        "engine/src/eurostruct_engine/ndp/registry.py, "
+                        "_statut_transcrit."
+                    )
                 out.append(
                     "insert into national_annex_parameters (annex_id, country_code, "
                     "standard_family, part, national_annex_reference, edition, "
