@@ -119,6 +119,15 @@ services:
       # d'ENREGISTRER: une ligne conservee dix ans ne peut pas designer un code
       # qu'elle ne sait pas nommer.
       EUROSTRUCT_BUILD_SHA: ${EUROSTRUCT_BUILD_SHA:-}
+      # LE MAGASIN D'OBJETS, SUR UN VOLUME NOMME.
+      #
+      # PAS DANS LA COUCHE ECRIVABLE DU CONTENEUR: elle disparait a chaque
+      # `docker compose up --force-recreate`, en laissant en base des lignes
+      # qui promettent des documents introuvables. Un volume survit au
+      # conteneur, ce qui est le minimum qu'un livrable conserve dix ans exige.
+      EUROSTRUCT_STORAGE_DIR: /var/lib/eurostruct/livrables
+    volumes:
+      - livrables:/var/lib/eurostruct/livrables
     depends_on:
       db:
         condition: service_healthy
@@ -180,3 +189,6 @@ services:
 
 volumes:
   db:
+  # LES OCTETS DES LIVRABLES. Un volume nomme, parce qu'un document conserve
+  # dix ans ne peut pas vivre dans la couche ecrivable d'un conteneur.
+  livrables:

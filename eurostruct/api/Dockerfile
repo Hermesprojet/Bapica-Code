@@ -80,6 +80,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 COPY --from=build /opt/eurostruct /opt/eurostruct
 
+# LE POINT DE MONTAGE DU MAGASIN D'OBJETS, CREE ICI ET POSSEDE PAR LE SERVICE.
+#
+# CE N'EST PAS UNE COMMODITE. Docker cree un volume nomme en reprenant le
+# proprietaire et les droits du repertoire tel qu'il existe DANS L'IMAGE. Si le
+# repertoire n'existe pas, le volume est cree en root:root et le processus
+# non-root ne peut pas y ecrire: le premier livrable echoue sur « permission
+# denied », a un endroit ou plus rien ne rappelle qu'un volume a un
+# proprietaire.
+#
+# LE CHEMIN N'EST PAS DECLARE ICI EN `ENV`: c'est a l'orchestration de dire ou
+# elle monte le volume. Graver le chemin dans l'image ferait croire que l'image
+# a un magasin alors qu'elle n'a qu'un repertoire vide.
+RUN mkdir -p /var/lib/eurostruct/livrables \
+ && chown -R eurostruct:eurostruct /var/lib/eurostruct
+
 USER eurostruct
 WORKDIR /home/eurostruct
 

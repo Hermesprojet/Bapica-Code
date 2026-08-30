@@ -1010,3 +1010,44 @@ def test_la_base_refuse_elle_meme_un_chemin_qui_ne_designe_pas_les_octets():
     finally:
         connexion.rollback()
         connexion.close()
+
+
+def test_le_projet_dit_le_role_de_l_appelant_dans_cette_organisation(
+        client, jeton, projet):
+    """L'ÉCRAN DOIT SAVOIR CE QU'IL A LE DROIT DE FAIRE.
+
+    Sans cette information, il n'a que deux mauvaises réponses : afficher
+    « Attester le calcul » à un dessinateur, qui cliquera et recevra un refus ;
+    ou cacher le bouton sans un mot, ce qui ne s'explique pas.
+
+    LE RÔLE EST DÉRIVÉ, PAS DÉCLARÉ. Il sort de ``organization_members`` sous
+    l'identité du jeton, exactement comme la primitive d'attestation le dérive
+    au moment d'agir. Il sert à MONTRER ou EXPLIQUER ; la frontière reste dans
+    PostgreSQL, et les cas de refus plus haut l'établissent.
+
+    ET IL EST PAR PROJET, PAS PAR SESSION : un ingénieur peut être validateur
+    dans un bureau et simple lecteur dans un autre.
+    """
+    attendus = {
+        ACTEUR_A: ("engineer", "FICTIF Ing. A", True),
+        ACTEUR_V: ("validating_engineer", "FICTIF Ing. V (compte de test)", True),
+        ACTEUR_W: ("viewer", "FICTIF Lecteur W", True),
+        ACTEUR_D: ("validating_engineer", "FICTIF Ing. D (revoque)", False),
+        ACTEUR_N: ("validating_engineer", None, True),
+    }
+    for acteur, (role, nom, actif) in attendus.items():
+        r = client.get("/v1/projects", headers=_entete(jeton(acteur)))
+        assert r.status_code == 200, (acteur, r.text)
+        vus = [p for p in r.json()["projects"]
+               if p["project_id"] == projet["project_id"]]
+        assert len(vus) == 1, (acteur, vus)
+        assert vus[0]["member_role"] == role, acteur
+        assert vus[0]["member_name"] == nom, acteur
+        assert vus[0]["member_active"] is actif, acteur
+
+    # ET L'ORGANISATION VOISINE NE VOIT PAS CE PROJET DU TOUT: le role rendu
+    # n'ouvre rien, il decrit une appartenance qui doit d'abord exister.
+    r = client.get("/v1/projects", headers=_entete(jeton(ACTEUR_B)))
+    assert r.status_code == 200, r.text
+    assert all(p["project_id"] != projet["project_id"]
+               for p in r.json()["projects"])

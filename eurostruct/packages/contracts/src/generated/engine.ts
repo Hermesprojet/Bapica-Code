@@ -520,6 +520,12 @@ export interface Projet {
   calculation_count: number;
   country: "BE" | "FR" | "ES" | "DE";
   created_at: string;
+  /** Faux quand l'accès à cette organisation a été révoqué. Le projet reste lisible — la trace des signatures passées doit le rester — et toute action est fermée. */
+  member_active?: boolean;
+  /** Le nom de l'appelant tel que l'organisation l'enregistre. C'est celui qui figurera sur une attestation: son absence se constate ici plutôt qu'au moment de signer. */
+  member_name?: string | null;
+  /** Le rôle de l'appelant dans l'organisation de CE projet. Dérivé de l'adhésion côté serveur. L'écran s'en sert pour montrer ou expliquer une action; il ne décide de rien — la frontière est dans PostgreSQL. */
+  member_role: string;
   name: string;
   /** Date de référence du projet (ISO 8601). Elle résout l'édition d'Annexe Nationale en vigueur, norme par norme. Ce n'est pas la date du calcul. */
   ndp_as_of: string;

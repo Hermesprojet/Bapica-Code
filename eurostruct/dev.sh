@@ -97,6 +97,24 @@ else
   echo "--> build INCONNU: les calculs ne seront pas enregistrables." >&2
 fi
 
+# LE MAGASIN D'OBJETS: OU VIVENT LES OCTETS D'UN LIVRABLE.
+#
+# UN REPERTOIRE PERSISTANT, PAS `/tmp`. Un livrable est un fichier; sa ligne
+# en base promet qu'on saura le relire. Choisir un repertoire temporaire
+# ferait disparaitre les octets au premier redemarrage de la machine en
+# laissant les lignes derriere eux — le pire des deux mondes, decouvert des
+# mois plus tard.
+#
+# SANS MAGASIN, L'API REFUSE DE CREER UN LIVRABLE, par un 503 qui nomme la
+# variable. Le calcul, lui, continue: produire un document et enregistrer un
+# calcul sont deux choses differentes.
+if [[ -z "${EUROSTRUCT_STORAGE_DIR:-}" ]]; then
+  EUROSTRUCT_STORAGE_DIR="$ICI/.livrables"
+  export EUROSTRUCT_STORAGE_DIR
+fi
+mkdir -p "$EUROSTRUCT_STORAGE_DIR"
+echo "--> livrables: ${EUROSTRUCT_STORAGE_DIR}"
+
 echo "--> API sur http://127.0.0.1:$PORT_API"
 "$PYTHON" -m uvicorn eurostruct_api.app:app \
   --host 127.0.0.1 --port "$PORT_API" &

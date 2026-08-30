@@ -77,6 +77,21 @@ class Projet(Strict):
     created_at: str
     calculation_count: int = Field(
         ge=0, description="Combien de calculs sont enregistrés sur ce projet.")
+    member_role: str = Field(
+        description="Le rôle de l'appelant dans l'organisation de CE projet. "
+                    "Dérivé de l'adhésion côté serveur. L'écran s'en sert pour "
+                    "montrer ou expliquer une action; il ne décide de rien — "
+                    "la frontière est dans PostgreSQL.")
+    member_name: str | None = Field(
+        default=None,
+        description="Le nom de l'appelant tel que l'organisation l'enregistre. "
+                    "C'est celui qui figurera sur une attestation: son absence "
+                    "se constate ici plutôt qu'au moment de signer.")
+    member_active: bool = Field(
+        default=True,
+        description="Faux quand l'accès à cette organisation a été révoqué. Le "
+                    "projet reste lisible — la trace des signatures passées "
+                    "doit le rester — et toute action est fermée.")
 
 
 class ListeProjets(Strict):

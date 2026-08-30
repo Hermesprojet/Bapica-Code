@@ -25,9 +25,12 @@ import {
   type PlanDeCharge, type ReponseCalcul,
 } from "@/lib/api";
 import {
-  calculerEtEnregistrer, creerProjet, historiqueDuProjet, listerProjets,
-  rouvrirCalcul, telechargerNote,
-  type CalculDeProjetRequest, type CalculEnregistre, type Projet,
+  attesterLivrable, calculerEtEnregistrer, creerLivrable, creerProjet,
+  emettreLivrable, historiqueDuProjet, listerLivrables, listerProjets,
+  relireLivrable, renvoyerAuBrouillon, reviserLivrable, rouvrirCalcul,
+  soumettreALaRelecture, telechargerLivrable, telechargerNote,
+  type CalculDeProjetRequest, type CalculEnregistre, type Livrable,
+  type LivrableDetail, type Projet,
 } from "@/lib/atelier";
 import type { CalculResume } from "@contracts/generated/engine";
 import { FournisseurAuth, useAuth } from "@/lib/authentification";
@@ -324,7 +327,18 @@ function Ecran() {
 
       {projet && (
         <Historique projet={projet} revision={revisionAtelier}
-                    surReouverture={setIssue} />
+                    surReouverture={setIssue}
+                    surLivrable={() => setRevisionAtelier((n) => n + 1)} />
+      )}
+
+      {/* LES LIVRABLES SUIVENT L'HISTORIQUE, ET PARTAGENT SON COMPTEUR.
+          Produire un brouillon depuis l'historique doit le faire apparaitre
+          ici sans rechargement: deux compteurs separes laisseraient l'une des
+          deux listes en retard sur l'autre, et c'est toujours celle qu'on
+          regarde. */}
+      {projet && (
+        <Livrables projet={projet} revision={revisionAtelier}
+                   surChangement={() => setRevisionAtelier((n) => n + 1)} />
       )}
 
       {issue?.type === "panne" && (
@@ -571,10 +585,11 @@ function Atelier({ projet, surSelection }: {
  * ROUVRIR NE RECALCULE RIEN. Le serveur rend ce qui a été enregistré ; relancer
  * le moteur donnerait le résultat d'aujourd'hui pour un calcul d'hier.
  */
-function Historique({ projet, revision, surReouverture }: {
+function Historique({ projet, revision, surReouverture, surLivrable }: {
   projet: Projet;
   revision: number;
   surReouverture: (issue: Issue) => void;
+  surLivrable: () => void;
 }) {
   const auth = useAuth();
   const [lignes, setLignes] = useState<CalculResume[] | null>(null);
@@ -613,6 +628,31 @@ function Historique({ projet, revision, surReouverture }: {
     } catch (cause) {
       setErreur(cause instanceof AppelRefuse
         ? `${cause.statut} — la note n'a pas pu etre produite.`
+        : String(cause));
+    }
+  }
+
+  /**
+   * Produit un brouillon de livrable depuis le calcul choisi.
+   *
+   * LE 503 EST DISTINGUE DU 422, et l'ecran le dit differemment. « Aucun
+   * magasin d'objets n'est declare » n'est pas un refus de la demande: il n'y
+   * a rien a corriger dans la demande, et inviter l'ingenieur a la reformuler
+   * lui ferait perdre son temps.
+   */
+  async function produire(calculationId: string) {
+    try {
+      await creerLivrable(auth.porteur, projet.project_id,
+                          { calculation_id: calculationId });
+      setErreur(null);
+      surLivrable();
+    } catch (cause) {
+      setErreur(cause instanceof AppelRefuse
+        ? (cause.statut === 503
+            ? "503 — aucun magasin d'objets n'est disponible: le service ne "
+              + "peut pas conserver les octets du livrable. Aucune ligne n'a "
+              + "ete ecrite."
+            : `${cause.statut} — ${cause.detail}`)
         : String(cause));
     }
   }
@@ -658,11 +698,316 @@ function Historique({ projet, revision, surReouverture }: {
                       Télécharger la note HTML
                     </button>
                   )}
+                  {/* LE BROUILLON N'EST PAS LA NOTE, ET LA DIFFERENCE COMPTE.
+                      « Telecharger la note » rend un document a l'instant, qui
+                      ne laisse aucune trace. « Produire un brouillon » ecrit un
+                      LIVRABLE: ses octets sont deposes, relus, et leur
+                      empreinte enregistree — c'est ce document-la, et pas un
+                      autre, qu'un ingenieur pourra attester. */}
+                  {c.status !== "refused" && (
+                    <button type="button"
+                            onClick={() => produire(c.calculation_id)}>
+                      Produire un brouillon
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Les livrables du projet, et leur parcours de relecture.
+ *
+ * CE QUE CET ECRAN NE FAIT PAS
+ * -----------------------------
+ * Il ne DECIDE de rien. Le rôle de l'appelant, son nom et l'état de son
+ * adhésion viennent du serveur, qui les dérive de `organization_members` sous
+ * l'identité du jeton. L'écran s'en sert pour **montrer ou expliquer** ; la
+ * frontière reste dans PostgreSQL, où elle est éprouvée. Cacher un bouton n'a
+ * jamais protégé quoi que ce soit.
+ *
+ * AUCUN BOUTON DECORATIF
+ * -----------------------
+ * Chaque action affichée atteint une route réelle et survit au rechargement.
+ * Quand une action est fermée, l'écran dit **pourquoi** plutôt que de faire
+ * disparaître le bouton sans un mot : « votre rôle est dessinateur » se
+ * comprend, un vide ne se comprend pas.
+ *
+ * CE QUE LE MOT « ATTESTER » VEUT DIRE ICI
+ * -----------------------------------------
+ * Une **attestation métier authentifiée**, jamais une signature électronique
+ * qualifiée. Le produit enregistre qu'un membre actif, nommé, porteur du rôle
+ * de validation, atteste avoir relu ce calcul-là. Le nom est le même ici, dans
+ * l'API et dans PostgreSQL.
+ */
+const ETATS: Record<string, string> = {
+  draft: "brouillon",
+  review: "en relecture",
+  validated: "validé",
+  final: "émis",
+};
+
+function Livrables({ projet, revision, surChangement }: {
+  projet: Projet;
+  revision: number;
+  surChangement: () => void;
+}) {
+  const auth = useAuth();
+  const [lignes, setLignes] = useState<Livrable[] | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [ouvert, setOuvert] = useState<LivrableDetail | null>(null);
+  const [motif, setMotif] = useState("");
+  const [attestation, setAttestation] = useState("");
+  const [reserves, setReserves] = useState("");
+  const [enCours, setEnCours] = useState(false);
+
+  //: L'HABILITATION VIENT DU SERVEUR, PAS DU NAVIGATEUR. Ces deux booléens ne
+  //: protègent rien: ils décident de ce qu'on montre et de ce qu'on explique.
+  const validateur = projet.member_role === "validating_engineer";
+  const actif = projet.member_active !== false;
+
+  useEffect(() => {
+    let vivant = true;
+    listerLivrables(auth.porteur, projet.project_id)
+      .then((l) => { if (vivant) { setLignes(l); setErreur(null); } })
+      .catch((cause) => {
+        if (vivant) { setLignes(null); setErreur(String(cause)); }
+      });
+    return () => { vivant = false; };
+  }, [auth.porteur, projet.project_id, revision]);
+
+  /**
+   * Exécute une action et rafraîchit. Le refus du serveur est AFFICHÉ TEL QUEL.
+   *
+   * LE MESSAGE DE POSTGRESQL EST LE BON MESSAGE. « le rôle "viewer" ne porte
+   * pas la validation technique », « votre accès a été révoqué le … », « ce
+   * calcul a été mené en mode non strict » : chacun dit exactement ce qui
+   * bloque et ce qu'il faudrait pour le débloquer. Le remplacer par « action
+   * impossible » perdrait tout ce qui rend le refus actionnable.
+   */
+  async function agir(quoi: () => Promise<LivrableDetail>) {
+    setEnCours(true);
+    try {
+      setOuvert(await quoi());
+      setErreur(null);
+      surChangement();
+    } catch (cause) {
+      setErreur(cause instanceof AppelRefuse
+        ? `${cause.statut} — ${cause.detail}` : String(cause));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  async function detailler(id: string) {
+    try {
+      setOuvert(await relireLivrable(auth.porteur, projet.project_id, id));
+      setErreur(null);
+    } catch (cause) {
+      setErreur(String(cause));
+    }
+  }
+
+  async function telecharger(id: string) {
+    try {
+      await telechargerLivrable(auth.porteur, projet.project_id, id);
+      setErreur(null);
+    } catch (cause) {
+      setErreur(cause instanceof AppelRefuse
+        ? `${cause.statut} — ${cause.detail}` : String(cause));
+    }
+  }
+
+  return (
+    <section className="bandeau" id="livrables">
+      <strong>Livrables — {projet.name}</strong>
+
+      {/* POURQUOI LA VALIDATION EST FERMEE, DIT AVANT QU'ON L'ESSAIE.
+          L'absence d'ingenieur habilite n'empeche ni les projets, ni les
+          calculs, ni les brouillons: elle ferme l'attestation et l'emission,
+          et c'est ce que cette ligne explique. */}
+      {!validateur && (
+        <p className="aide" id="pourquoi-ferme">
+          Vous êtes connecté comme <strong>{projet.member_role}</strong>
+          {projet.member_name ? ` (${projet.member_name})` : ""} dans
+          {" "}{projet.organization_name}. Produire un brouillon et le
+          soumettre à la relecture vous est ouvert ; l&apos;attestation et
+          l&apos;émission sont réservées au rôle{" "}
+          <strong>validating_engineer</strong>, celui de l&apos;ingénieur qui
+          répond de l&apos;étude.
+        </p>
+      )}
+      {validateur && !actif && (
+        <p className="aide" role="alert" id="pourquoi-ferme">
+          Votre accès à {projet.organization_name} a été révoqué : il ne peut
+          plus engager le bureau d&apos;études. Les livrables restent lisibles.
+        </p>
+      )}
+      {validateur && actif && !projet.member_name && (
+        <p className="aide" role="alert" id="pourquoi-ferme">
+          Aucun nom n&apos;est enregistré pour votre adhésion. Une attestation
+          porte le nom d&apos;une personne : l&apos;organisation doit le
+          renseigner avant que la validation soit possible.
+        </p>
+      )}
+
+      {erreur && <p role="alert" id="refus-livrable">{erreur}</p>}
+
+      {lignes !== null && lignes.length === 0 && (
+        <p className="aide">
+          Aucun livrable. Produire un brouillon depuis un calcul abouti de
+          l&apos;historique.
+        </p>
+      )}
+
+      {lignes !== null && lignes.length > 0 && (
+        <table id="table-livrables">
+          <thead>
+            <tr>
+              <th>Document</th><th>État</th><th>Indice</th>
+              <th>Filigrane</th><th>Validé par</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {lignes.map((d) => (
+              <tr key={d.deliverable_id} data-livrable={d.deliverable_id}>
+                <td>{d.filename}</td>
+                <td data-etat={d.state}>{ETATS[d.state] ?? d.state}</td>
+                <td>{d.revision}</td>
+                {/* LE FILIGRANE DIT CE QUI EST VRAI DES OCTETS POUR TOUJOURS,
+                    pas l'etat du workflow, qui change. Un document tire d'un
+                    calcul non strict porte « PROJET — NON SIGNABLE » et le
+                    portera encore dans dix ans. */}
+                <td>{d.watermark ?? "—"}</td>
+                <td>{d.validator_name ?? "—"}</td>
+                <td>
+                  <button type="button" onClick={() => detailler(d.deliverable_id)}>
+                    Détail
+                  </button>
+                  <button type="button" onClick={() => telecharger(d.deliverable_id)}>
+                    Télécharger
+                  </button>
+                  {d.state === "draft" && (
+                    <button type="button" disabled={enCours}
+                            onClick={() => agir(() => soumettreALaRelecture(
+                              auth.porteur, projet.project_id, d.deliverable_id))}>
+                      Soumettre à la relecture
+                    </button>
+                  )}
+                  {d.state === "validated" && validateur && (
+                    <button type="button" disabled={enCours}
+                            onClick={() => agir(() => emettreLivrable(
+                              auth.porteur, projet.project_id, d.deliverable_id))}>
+                      Émettre
+                    </button>
+                  )}
+                  {d.state === "final" && (
+                    <button type="button" disabled={enCours}
+                            onClick={() => agir(() => reviserLivrable(
+                              auth.porteur, projet.project_id, d.deliverable_id,
+                              { calculation_id: d.calculation_id }))}
+                            title="Un livrable émis ne se modifie plus: corriger, c'est émettre l'indice suivant.">
+                      Créer une révision
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {ouvert && (
+        <div className="bandeau" id="detail-livrable">
+          <strong>{ouvert.filename} — indice {ouvert.revision}</strong>
+          <dl>
+            <dt>État</dt><dd>{ETATS[ouvert.state] ?? ouvert.state}</dd>
+            <dt>Empreinte des octets</dt><dd><code>{ouvert.sha256}</code></dd>
+            <dt>Taille</dt><dd>{ouvert.size_bytes} octets</dd>
+            <dt>Moteur</dt>
+            <dd>{ouvert.engine_version} — build{" "}
+                <code>{ouvert.engine_build_sha ?? "—"}</code></dd>
+            <dt>Identité d&apos;exécution</dt>
+            <dd><code>{ouvert.execution_identity ?? "—"}</code></dd>
+            <dt>Date normative</dt><dd>{ouvert.ndp_as_of ?? "—"}</dd>
+            {ouvert.last_reason && (<>
+              <dt>Dernier motif</dt><dd>{ouvert.last_reason}</dd>
+            </>)}
+            {ouvert.validator_name && (<>
+              <dt>Attesté par</dt>
+              <dd>{ouvert.validator_name} — {ouvert.validator_role}
+                  {ouvert.professional_id ? ` — n° ${ouvert.professional_id}` : ""}
+                  {ouvert.validated_at ? ` — ${ouvert.validated_at}` : ""}</dd>
+              <dt>Attestation</dt><dd>{ouvert.statement}</dd>
+            </>)}
+            {ouvert.reservations && (<>
+              <dt>Réserves du validateur</dt><dd>{ouvert.reservations}</dd>
+            </>)}
+          </dl>
+
+          <strong>Historique</strong>
+          <ol id="historique-livrable">
+            {(ouvert.transitions ?? []).map((t, i) => (
+              <li key={i}>
+                {t.occurred_at} — {t.from_state ? `${ETATS[t.from_state] ?? t.from_state} → ` : ""}
+                {ETATS[t.to_state] ?? t.to_state}
+                {t.reason ? ` — ${t.reason}` : ""}
+              </li>
+            ))}
+          </ol>
+
+          {/* LE RETOUR AU BROUILLON EXIGE UN MOTIF, ICI COMME EN BASE. Le
+              champ n'est pas une politesse: celui qui reprend le document doit
+              savoir ce qui lui est reproche. */}
+          {ouvert.state === "review" && (
+            <p>
+              <label htmlFor="motif-retour">Motif du retour au brouillon</label>
+              <input id="motif-retour" type="text" value={motif}
+                     onChange={(e) => setMotif(e.target.value)}
+                     placeholder="Ce qui est reproché à la pièce" />
+              <button type="button" disabled={enCours || !motif.trim()}
+                      onClick={() => agir(() => renvoyerAuBrouillon(
+                        auth.porteur, projet.project_id, ouvert.deliverable_id,
+                        { reason: motif }))}>
+                Renvoyer au brouillon
+              </button>
+            </p>
+          )}
+
+          {/* LE PANNEAU D'ATTESTATION N'APPARAIT QUE POUR UN COMPTE HABILITE.
+              Et quand il n'apparait pas, la ligne d'explication plus haut dit
+              pourquoi — un bouton absent sans un mot ne s'explique pas. */}
+          {ouvert.state === "review" && validateur && actif && (
+            <div id="panneau-attestation">
+              <strong>Attestation métier authentifiée</strong>
+              <p className="aide">
+                Ce n&apos;est pas une signature électronique qualifiée. Vous
+                attestez, sous votre nom et votre inscription professionnelle,
+                avoir relu ce calcul-là — ses entrées, son instantané normatif,
+                son identité d&apos;exécution et l&apos;empreinte des octets
+                ci-dessus.
+              </p>
+              <label htmlFor="attestation">Ce que vous attestez</label>
+              <textarea id="attestation" value={attestation} rows={3}
+                        onChange={(e) => setAttestation(e.target.value)} />
+              <label htmlFor="reserves">Réserves (facultatif)</label>
+              <textarea id="reserves" value={reserves} rows={2}
+                        onChange={(e) => setReserves(e.target.value)} />
+              <button type="button" disabled={enCours || !attestation.trim()}
+                      onClick={() => agir(() => attesterLivrable(
+                        auth.porteur, projet.project_id, ouvert.deliverable_id,
+                        { statement: attestation,
+                          reservations: reserves.trim() || null }))}>
+                Attester ce calcul
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </section>
   );

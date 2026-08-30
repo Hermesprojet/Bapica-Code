@@ -144,6 +144,13 @@ class PostgresAtelier:
                     "ndp_as_of": _texte(ligne["ndp_as_of"]),
                     "created_at": _texte(ligne["created_at"]),
                     "calculation_count": int(ligne["calculation_count"]),
+                    # L'ADHESION DE L'APPELANT DANS CETTE ORGANISATION-LA.
+                    # Elle est DERIVEE par la primitive; l'ecran s'en sert
+                    # pour montrer ou expliquer, jamais pour decider — la
+                    # frontiere reste dans PostgreSQL.
+                    "member_role": ligne["member_role"],
+                    "member_name": ligne["member_name"],
+                    "member_active": bool(ligne["member_active"]),
                 }
                 for ligne in self._lignes(u)
             ]
