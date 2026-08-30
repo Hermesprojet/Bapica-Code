@@ -5,6 +5,15 @@ node_modules/
 *.log
 .vercel
 .env*
+# ...MAIS LES GABARITS SONT DU CODE, PAS DES SECRETS.
+# `.env*` avalait `eurostruct/api/.env.example`: le fichier etait documente
+# dans le README, dans `dev.sh` et dans le rapport, present sur les postes qui
+# l'avaient cree, et ABSENT du depot. Un clone neuf n'avait donc pas le fichier
+# que la commande de demarrage lui disait de copier.
+# L'exception est ciblee sur le suffixe `.example`: aucun `.env` reel ne
+# remonte, seuls les gabarits sans valeur.
+!.env.example
+!**/.env.example
 
 # EUROSTRUCT
 .venv-eurostruct/
