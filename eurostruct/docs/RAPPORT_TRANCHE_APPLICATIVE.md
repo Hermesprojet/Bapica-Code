@@ -1,6 +1,6 @@
 # RAPPORT — première tranche applicative exécutable
 
-**Branche** `claude/wip-6.3c-racine-de-confiance` · **base** `4a489f4` · **SHA final** `084396b`
+**Branche** `claude/wip-6.3c-racine-de-confiance` · **base** `4a489f4` · **SHA final** `74878e2`
 
 ---
 
@@ -31,10 +31,12 @@ Ensuite, dans le navigateur :
    la réponse HTTP elle-même et pas seulement par l'écran — une note produite
    par un autre client doit la porter aussi.
 6. **DXF** de la section ferraillée, téléchargeable.
-6bis. **Bandeau de référentiel**, affiché avant tout calcul :
-   « Référentiel BE — 0 / 29 valeur(s) nationale(s) confirmée(s) ». La question
-   « où en est la Belgique ? » ne devrait pas exiger de saisir une poutre.
-7. **Autorité** : proposer une décision, la faire approuver par un second
+7. **Bandeau de référentiel** avant tout calcul — « Référentiel BE — 0 / 29
+   valeur(s) confirmée(s) » — et, replié dessous, le **plan de charge** : les
+   29 paramètres, leur clause, leur annexe, leur folio, et ce qui reste à faire
+   sur chacun. La question « où en est la Belgique ? » ne devrait pas exiger de
+   saisir une poutre.
+8. **Autorité** : proposer une décision, la faire approuver par un second
    ingénieur, la consommer une fois. L'identité vient **du jeton vérifié et de
    lui seul** : aucun point d'entrée n'accepte `actor_id`, proposant ou
    approbateur comme donnée.
@@ -104,21 +106,23 @@ WARNING:  there is already a transaction in progress
 ```
 
 Le garde de rôle interrogeait la base sur **son propre curseur**, avant la
-requête. Avec une connexion en `autocommit=False`, ce premier ordre ouvre déjà
-la transaction : le `begin` explicite qui suivait arrivait donc toujours en
-second. À chaque lecture, sans que rien n'échoue — c'est exactement le genre de
-défaut qui dure.
+requête. Avec `autocommit=False`, ce premier ordre ouvre déjà la transaction :
+le `begin` explicite qui suivait arrivait toujours en second. À chaque lecture,
+sans que rien n'échoue — le genre de défaut qui dure. Reproduit **hors du
+produit** avant d'y toucher.
 
-Reproduit **hors du produit** avant d'y toucher : `psycopg2`,
-`autocommit=False`, `select 1` puis `begin`, et la notice apparaît.
+Le garde partage désormais le curseur de la requête qu'il autorise. L'écriture,
+elle, garde son `begin` : `SET LOCAL` n'a aucune portée hors transaction, et
+aligner les deux « par symétrie » casserait le second chemin.
 
-Le garde partage désormais le curseur de la requête qu'il autorise : une seule
-transaction, un seul instantané, et le rôle ne peut plus changer entre le
-contrôle et la lecture. L'**écriture** garde son `begin` explicite — `SET LOCAL`
-n'a aucune portée hors transaction — et les aligner « par symétrie » casserait
-le second chemin.
+### 2.4 La seconde porte de la même pièce
 
-### 2.4 Le workflow `EUROSTRUCT` était rouge pour l'outillage
+`generate_ndp_seed.py` lit les **mêmes fichiers** que le moteur et écrit dans la
+base de référence. Après §2.1, le moteur refusait `confirmed` mais le
+générateur l'aurait encore émis : la base aurait dit une chose et le calcul une
+autre — pire que les deux erreurs séparément. Il refuse maintenant aussi.
+
+### 2.5 Le workflow `EUROSTRUCT` était rouge pour l'outillage
 
 Rouge depuis `2e342ec`, où `api_e2e.sh` est entré dans `db/test/run.sh`. Le job
 « Schema de donnees » n'installait pas le paquet API : le harnais rendait 4
@@ -151,7 +155,7 @@ manque, sans révéler aucune valeur.
 | commande | résultat |
 |---|---|
 | `python -m pytest engine/tests -q -W error` | **collectes 962 · executes 962 · reussis 962 · ignores 0 · echoues 0**, aucun avertissement |
-| `python -m pytest api/tests -q` | **collectes 71 · executes 71 · reussis 57 · ignores 14 · echoues 0** (les 14 E2E sautés hors décor) |
+| `python -m pytest api/tests -q` | **collectes 80 · executes 80 · reussis 66 · ignores 14 · echoues 0** (les 14 E2E sautés hors décor) |
 | `db/test/api_e2e.sh` (PostgreSQL 16 réel) | **14/14**, zéro résidu |
 | `db/test/run.sh` | **rc=0 — les 31 surfaces vertes**, 0 base et 0 rôle résiduels |
 | mutation du correctif d'avertissement | `begin` rétabli → le cas tombe (rc=1) ; corrigé → 14/14 |
@@ -159,6 +163,7 @@ manque, sans révéler aucune valeur.
 | `npm run typecheck` / `npm run build` | passent |
 | Chromium réel, build de production | bandeau et refus vérifiés (ci-dessous) |
 | `scripts/audit_engine_dependencies.py` | 14 paquets, **aucun import réseau ni IA** |
+| `db/seed/generate_ndp_seed.py` | graine **octet pour octet** identique à `0001_ndp.sql` ; le garde refuse une graine `confirmed` |
 
 ### Les mutations qui rendent les gardes décisives
 
@@ -179,6 +184,11 @@ appliquée puis **vérifiée** avant l'assertion.
 - `Référentiel BE — 0 / 29 valeur(s) nationale(s) confirmée(s) au 2026-08-30.
   Aucune note signable ne peut être produite pour ce pays aujourd'hui.`
   Le bandeau suit le pays choisi ; aucune requête en échec.
+- Le repli **« Voir les 29 paramètres et ce qui reste à faire »** ne charge
+  rien tant qu'on ne l'ouvre pas : avant ouverture, un seul appel
+  (`/v1/ndp/BE`) et zéro fiche rendue ; après, `/v1/ndp/BE/parameters` part et
+  les 29 fiches s'affichent avec clause, annexe et folio imprimé.
+  `cot_theta_max` y porte « aucune relecture ne le débloque ».
 - strict → refus nommant les **8** paramètres bloquants sur 8 requis, chacun
   avec sa clause (`§3.1.6(1)P`) et son annexe (`NBN EN 1992-1-1 ANB`).
 - non strict → `A_s = 849 mm²`, `M_Rd = 150,0 kN·m`, utilisation 100,0 %,
