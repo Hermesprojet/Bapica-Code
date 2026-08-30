@@ -171,9 +171,9 @@ export default function Page() {
       {issue?.type === "resultat" && <Resultat issue={issue} />}
 
       <p className="pied">
-        Un résultat n&apos;est signable que si les paramètres nationaux
-        utilisés sont confirmés. Aucun calcul ne remplace la validation d&apos;un
-        ingénieur.
+        Un résultat ne peut être soumis à un ingénieur que si les paramètres
+        nationaux utilisés sont confirmés — et sa signature reste un acte
+        humain, qu&apos;aucun calcul ne remplace.
       </p>
     </main>
   );
@@ -184,8 +184,8 @@ export default function Page() {
  *
  * POURQUOI CE BANDEAU EXISTE
  * ---------------------------
- * Jusqu'ici, la seule façon d'apprendre qu'aucune note signable ne peut sortir
- * d'un pays était de **saisir une poutre et de lire le 422**. C'est une
+ * Jusqu'ici, la seule façon d'apprendre qu'aucun calcul strict ne peut aboutir
+ * pour un pays était de **saisir une poutre et de lire le 422**. C'est une
  * mauvaise façon de poser la question : « où en est la Belgique ? » se pose
  * avant qu'aucune poutre n'existe, et la réponse sert à toutes les études.
  *
@@ -211,17 +211,21 @@ function Referentiel({ pays }: { pays: string }) {
 
   const confirmes = etat.referentiel.confirmed ?? 0;
   const total = etat.referentiel.total ?? 0;
+  // LE BANDEAU SUIT LE PREFLIGHT, PAS LE COMPTE. Un seul paramètre confirmé
+  // sur les huit que le calcul demande laisse le calcul impossible: c'est
+  // `strict_ndp_satisfied` qui le dit, jamais `confirmed > 0`.
+  const pret = etat.strict_ndp_satisfied;
 
   return (
-    <div className={etat.signable_possible ? "bandeau ok" : "bandeau alerte"}
-         role="status">
+    <div className={pret ? "bandeau ok" : "bandeau alerte"} role="status">
       <strong>Référentiel {etat.country_code}</strong> — {confirmes} / {total}{" "}
       valeur(s) nationale(s) confirmée(s) au {etat.as_of}.
-      {!etat.signable_possible && (
+      {!pret && (
         <>
-          {" "}Aucune note signable ne peut être produite pour ce pays
-          aujourd&apos;hui : une valeur transcrite n&apos;est pas une valeur
-          validée.
+          {" "}Le calcul en mode strict reste impossible pour ce pays :
+          {" "}{etat.blocking.length} des {etat.required.length} paramètres
+          qu&apos;il demande ne sont pas utilisables. Une valeur transcrite
+          n&apos;est pas une valeur validée.
           <div className="clause" style={{ marginTop: ".4rem" }}>{etat.action}</div>
         </>
       )}
@@ -418,7 +422,7 @@ function Resultat({ issue }: { issue: Extract<Issue, { type: "resultat" }> }) {
 
   return (
     <section>
-      {!r.signable && (
+      {r.exploratory && (
         <div className="bandeau alerte" role="status">
           <span className="mention-non-signable">
             {r.mention ?? "PROJET — NON SIGNABLE"}

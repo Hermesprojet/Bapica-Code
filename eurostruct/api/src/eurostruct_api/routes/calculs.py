@@ -11,7 +11,7 @@ la couche HTTP serait une seconde vérité, non éprouvée.
 --------------------------------
 Il vaut ``true`` par défaut dans le contrat, et cette couche ne le renverse
 jamais. Quand l'appelant demande explicitement ``strict_ndp=false``, la
-réponse porte ``signable: false`` et la mention **« PROJET — NON SIGNABLE »**.
+réponse porte ``exploratory: true`` et la mention **« PROJET — NON SIGNABLE »**.
 Un calcul exploratoire est une aide au dimensionnement ; ce n'est pas une note
 qu'un ingénieur peut signer.
 
@@ -61,9 +61,25 @@ MENTION_OBLIGATOIRE = notice(Language.FR)
 def flexion_poutre_ec2(requete: Ec2BeamFlexureRequest) -> dict[str, Any]:
     """Vérification ELU en flexion simple, section rectangulaire.
 
-    Rend la réponse du contrat, augmentée des seuls champs que la couche HTTP a
-    le droit d'ajouter : le caractère signable — conséquence directe de
-    ``strict_ndp``, pas une donnée d'ingénierie — et la mention obligatoire.
+    QUATRE CHAMPS AJOUTÉS, ET AUCUN NE DIT « SIGNABLE »
+    ----------------------------------------------------
+    Une rédaction antérieure rendait ``signable = bool(strict_ndp)``. C'était
+    une promesse que rien ici ne tient : signer une note exige une validation
+    humaine, un circuit documentaire et des garanties de commercialisation.
+    Aucun de ces trois éléments n'existe dans cette réponse. Le mode strict dit
+    seulement d'où viennent les nombres.
+
+    ``strict_ndp_satisfied``
+        Le calcul a tourné en mode strict et a abouti : tous les paramètres
+        nationaux qu'il demande étaient confirmés et utilisables. C'est un
+        fait sur les **valeurs**, et rien d'autre.
+
+    ``eligible_for_engineering_review``
+        Le plus qu'on puisse dire : ce résultat peut être **soumis** à un
+        ingénieur. Pas qu'il est signé, ni signable.
+
+    ``exploratory``
+        ``strict_ndp=false`` : des valeurs non confirmées ont pu servir.
 
     ``notice`` ET ``mention`` NE DISENT PAS LA MÊME CHOSE, et les confondre
     serait une régression :
@@ -82,7 +98,12 @@ def flexion_poutre_ec2(requete: Ec2BeamFlexureRequest) -> dict[str, Any]:
     """
     reponse = run_ec2_beam_flexure(requete)
     corps = reponse.model_dump(mode="json")
-    corps["signable"] = bool(requete.strict_ndp)
+    strict = bool(requete.strict_ndp)
+    # Aboutir en mode strict VEUT DIRE que le portillon a laissé passer: un
+    # paramètre non confirmé aurait levé avant d'arriver ici.
+    corps["strict_ndp_satisfied"] = strict
+    corps["eligible_for_engineering_review"] = strict
+    corps["exploratory"] = not strict
     corps["notice"] = MENTION_OBLIGATOIRE
     if not requete.strict_ndp:
         corps["mention"] = MENTION_NON_SIGNABLE

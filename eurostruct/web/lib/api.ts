@@ -38,13 +38,19 @@ export type CalculValide = {
 /**
  * La réponse de calcul, augmentée des champs que la couche HTTP ajoute.
  *
- * Aucun n'est une donnée d'ingénierie : `signable`, `mention` et
- * `avertissement` sont des conséquences directes de `strict_ndp`, et `notice`
- * est la mention légale obligatoire. Ils sont déclarés ici parce qu'ils
+ * Aucun n'est une donnée d'ingénierie. `strict_ndp_satisfied`, `exploratory`
+ * et `mention` sont des conséquences directes de `strict_ndp` ; `notice` est la
+ * mention légale obligatoire. Ils sont déclarés ici parce qu'ils
  * n'appartiennent pas au contrat du moteur.
  */
 export type ReponseCalcul = Ec2BeamFlexureResponse & {
-  signable: boolean;
+  /** Tous les paramètres nationaux requis étaient confirmés. Un fait sur les
+   *  VALEURS — pas une promesse de signature. */
+  strict_ndp_satisfied: boolean;
+  /** Le plus qu'on puisse dire: ce résultat peut être SOUMIS à un ingénieur. */
+  eligible_for_engineering_review: boolean;
+  /** Des valeurs non confirmées ont pu servir. */
+  exploratory: boolean;
   /** La mention obligatoire du §9, sur TOUTE réponse: « pas encore signé ». */
   notice: string;
   /** Conditionnelle et bien plus forte: « pas signable du tout ». */
@@ -165,7 +171,10 @@ export type EtatReferentiel = {
   required: string[];
   blocking: BlockingParameterDTO[];
   referentiel: Record<string, number>;
-  signable_possible: boolean;
+  /** Tous les paramètres que le calcul EC2 flexion demande sont utilisables.
+   *  Remplace `signable_possible`, qui valait `confirmed > 0`: **une** valeur
+   *  confirmée n'ouvre pas un calcul qui en exige **huit**. */
+  strict_ndp_satisfied: boolean;
   action: string;
 };
 

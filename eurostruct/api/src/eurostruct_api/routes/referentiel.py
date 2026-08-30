@@ -106,10 +106,19 @@ def etat_du_referentiel(
 
     comptes = _comptes(pays, jeu.as_of)
     corps["referentiel"] = comptes
-    # LE FAIT CENTRAL, ECRIT SANS DETOUR. Zero valeur confirmee veut dire
-    # qu'aucune note signable ne peut sortir de ce pays, quel que soit le
-    # projet — et c'est ce qu'un chef de projet doit lire en premier.
-    corps["signable_possible"] = comptes[ValidationStatus.CONFIRMED.value] > 0
+
+    # LE FAIT CENTRAL, ET IL SE DIT EXACTEMENT.
+    #
+    # Une rédaction antérieure annonçait `signable_possible = confirmed > 0`.
+    # C'était faux de deux façons à la fois. **Une** valeur confirmée n'ouvre
+    # pas un calcul qui en exige **huit** : le compte global ne dit rien des
+    # paramètres que ce calcul-là demande. Et « signable » promettait bien
+    # au-delà : signer exige une validation humaine, un circuit documentaire
+    # et des garanties de commercialisation dont rien ici ne répond.
+    #
+    # On rend donc le verdict du **préflight** — tous les paramètres requis
+    # sont-ils utilisables — sous un nom qui ne dit que cela.
+    corps["strict_ndp_satisfied"] = bool(rapport.ok) and strict
     corps["action"] = (
         "Faire relever chaque valeur dans l'Annexe Nationale publiee, a la "
         "page citee, par un ingenieur nomme; la confirmation se fait ensuite "

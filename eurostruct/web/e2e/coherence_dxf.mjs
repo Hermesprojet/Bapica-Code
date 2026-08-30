@@ -77,6 +77,10 @@ try {
   await page.click("button[type=submit]");
   await page.waitForSelector("#nb", { timeout: 20000 });
 
+  // Le vocabulaire de l'ecran: « NON SIGNABLE », jamais « signable ».
+  const nonSignable = await page.locator(".mention-non-signable").count();
+  exige(nonSignable > 0, "le calcul exploratoire ne porte pas la mention");
+
   // --- D'ABORD: un ferraillage INSUFFISANT ne doit rien produire ----------
   //
   // Trois HA16 (603 mm²) ne verifient pas cette section. Le moteur le dit, et

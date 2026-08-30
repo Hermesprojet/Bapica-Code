@@ -20,7 +20,7 @@ def test_les_quatre_pays_ont_un_referentiel(client):
 
 
 @pytest.mark.parametrize("pays", PAYS)
-def test_aucun_pays_ne_peut_produire_de_note_signable_aujourd_hui(client, pays):
+def test_aucun_pays_ne_satisfait_le_mode_strict_aujourd_hui(client, pays):
     """Le fait central du produit, et il doit être lisible sans calculer.
 
     Zéro valeur confirmée veut dire qu'aucune note signable ne peut sortir de
@@ -29,7 +29,7 @@ def test_aucun_pays_ne_peut_produire_de_note_signable_aujourd_hui(client, pays):
     contourner.
     """
     corps = client.get(f"/v1/ndp/{pays}").json()
-    assert corps["signable_possible"] is False
+    assert corps["strict_ndp_satisfied"] is False
     assert corps["referentiel"]["confirmed"] == 0
 
 
@@ -161,3 +161,77 @@ def test_un_pays_inconnu_est_refuse_de_la_meme_facon(client):
     r = client.get("/v1/ndp/ZZ/parameters")
     assert r.status_code == 404
     assert r.json()["detail"]["code"] == "COUNTRY_NOT_IN_REFERENTIAL"
+
+
+# ---------------------------------------------------------------------------
+# La transition: UNE valeur confirmée n'ouvre pas un calcul qui en exige HUIT
+# ---------------------------------------------------------------------------
+def _registre_avec_un_confirme(monkeypatch, pays: str = "BE"):
+    """Le registre réel, avec **un seul** paramètre rendu utilisable.
+
+    Construit en mémoire: le chargeur JSON refuse `confirmed` depuis 07df06c,
+    et c'est voulu — un fichier du dépôt ne confirme pas. Ce qu'on simule ici
+    n'est pas une confirmation, c'est son EFFET sur le préflight.
+    """
+    import dataclasses
+
+    from eurostruct_engine.ndp import ValidationStatus, ValueProvenance, registry
+
+    reel = registry.load_country_registry(pays)
+    vise = None
+    annexes = []
+    for annexe in reel.annexes:
+        params = []
+        for p in annexe.parameters:
+            if (
+                vise is None
+                and p.validation_status is ValidationStatus.PENDING_VERIFICATION
+                and p.parameter_name == "alpha_cc"
+            ):
+                p = dataclasses.replace(
+                    p,
+                    validation_status=ValidationStatus.CONFIRMED,
+                    value_provenance=ValueProvenance.NATIONAL_ANNEX,
+                    verified_by="FICTIF — cas de transition",
+                    verified_at="2026-08-30",
+                )
+                vise = p.key
+            params.append(p)
+        annexes.append(dataclasses.replace(annexe, parameters=tuple(params)))
+    faux = dataclasses.replace(reel, annexes=tuple(annexes))
+
+    registry.load_country_registry.cache_clear()
+    # DEUX LIAISONS A REMPLACER, PAS UNE. `referentiel.py` importe le nom
+    # directement: la liaison faite a l'import pointe encore sur la vraie
+    # fonction, et le compte serait reste a zero pendant que le prevol, lui,
+    # voyait le decor. Deux verites dans un meme test ne prouvent rien.
+    from eurostruct_api.routes import referentiel as route
+
+    monkeypatch.setattr(registry, "load_country_registry", lambda _p=pays: faux)
+    monkeypatch.setattr(route, "load_country_registry", lambda _p=pays: faux)
+    return vise
+
+
+def test_un_seul_parametre_confirme_ne_suffit_pas(client, monkeypatch):
+    """LE CAS QUI MANQUAIT.
+
+    `signable_possible` valait `confirmed > 0`: **une** valeur confirmée
+    faisait passer le bandeau au vert alors que sept des huit paramètres du
+    calcul restaient bloquants. Le chef de projet lisait « on peut y aller ».
+
+    Le verdict vient maintenant du préflight, et il reste rouge tant que
+    **tous** les paramètres requis ne sont pas utilisables.
+    """
+    vise = _registre_avec_un_confirme(monkeypatch)
+    assert vise, "aucun parametre a basculer: le jeu belge a change"
+    corps = client.get("/v1/ndp/BE").json()
+    assert corps["referentiel"]["confirmed"] == 1, "le decor n'a pas pris"
+    assert corps["strict_ndp_satisfied"] is False, (
+        "un seul parametre confirme a suffi a declarer le mode strict "
+        "satisfait — c'est exactement le defaut que ce cas existe pour "
+        "empecher"
+    )
+    assert corps["blocking"], "le prevol doit encore nommer des bloquants"
+    assert len(corps["blocking"]) < len(corps["required"]), (
+        "le parametre confirme devrait avoir disparu des bloquants"
+    )

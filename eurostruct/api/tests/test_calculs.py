@@ -103,7 +103,11 @@ def test_mode_non_strict_calcule_mais_marque_non_signable(client):
     assert "verification" in corps and "journal" in corps
     # LA MENTION VOYAGE DANS LA REPONSE, pas seulement dans l'interface: une
     # note produite par un autre client doit la porter aussi.
-    assert corps["signable"] is False
+    # LE VOCABULAIRE EST EXACT: on ne dit pas « signable », on dit ce qu'on
+    # sait — d'ou viennent les valeurs, et jusqu'ou ce resultat peut aller.
+    assert corps["exploratory"] is True
+    assert corps["strict_ndp_satisfied"] is False
+    assert corps["eligible_for_engineering_review"] is False
     assert corps["mention"] == MENTION_NON_SIGNABLE
     assert "exploratoire" in corps["avertissement"]
 
@@ -257,7 +261,11 @@ def test_la_mention_et_la_non_signabilite_sont_deux_choses(client):
                         json=CORPS_EXPLORATOIRE).json()
     assert corps["notice"] != corps["mention"]
     assert corps["mention"] == "PROJET — NON SIGNABLE"
-    assert corps["signable"] is False
+    # LE VOCABULAIRE EST EXACT: on ne dit pas « signable », on dit ce qu'on
+    # sait — d'ou viennent les valeurs, et jusqu'ou ce resultat peut aller.
+    assert corps["exploratory"] is True
+    assert corps["strict_ndp_satisfied"] is False
+    assert corps["eligible_for_engineering_review"] is False
 
 
 # ---------------------------------------------------------------------------
