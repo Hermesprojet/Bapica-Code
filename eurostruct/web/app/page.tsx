@@ -25,6 +25,7 @@ import {
   type PlanDeCharge,
 } from "@/lib/api";
 import { FournisseurAuth, useAuth } from "@/lib/authentification";
+import { apiUrlConfiguree, DIAGNOSTIC_API_ABSENTE } from "@/lib/configuration";
 import {
   approuverDecision, composerDossier, consommerDecision, proposerDecision,
   relireDecision,
@@ -116,6 +117,7 @@ function Ecran() {
         Vérification ELU selon EN 1992-1-1 et son Annexe Nationale.
       </p>
 
+      <ConfigurationManquante />
       <Connexion />
       <DecisionsAutorite pays={champs.pays}
                          surConsommation={() => setRevision((n) => n + 1)} />
@@ -226,6 +228,34 @@ function Ecran() {
  * Il ne bloque rien. Si l'API ne répond pas, il disparaît, et l'écran de
  * calcul reste utilisable.
  */
+/**
+ * LE DIAGNOSTIC QUAND L'ADRESSE DE L'API N'A PAS ETE DECLAREE.
+ *
+ * Il y avait un repli codé en dur sur `http://127.0.0.1:8000`. Une image
+ * déployée sans `EUROSTRUCT_API_URL` appelait donc le port 8000 du poste de
+ * **l'utilisateur** : cela échoue chez lui, réussit chez un développeur qui a
+ * une API locale, et n'apparaît dans aucun journal serveur. Le défaut de
+ * configuration pouvait durer des semaines.
+ *
+ * Le repli est parti. À sa place, cette bannière — et chaque appel refuse en
+ * nommant la variable manquante.
+ *
+ * `useEffect` PLUTOT QU'UNE LECTURE AU RENDU: la configuration est déposée
+ * dans la page par un script du layout, et le rendu serveur ne la voit pas.
+ * La lire pendant le rendu ferait diverger serveur et client — l'erreur
+ * d'hydratation #418, qui remplacerait ce diagnostic par un autre.
+ */
+function ConfigurationManquante() {
+  const [manque, setManque] = useState(false);
+  useEffect(() => { setManque(!apiUrlConfiguree()); }, []);
+  if (!manque) return null;
+  return (
+    <div className="bandeau refus" role="alert" id="configuration-absente">
+      <strong>Configuration absente</strong> — {DIAGNOSTIC_API_ABSENTE}
+    </div>
+  );
+}
+
 function Referentiel({ pays, revision = 0 }:
                      { pays: string; revision?: number }) {
   const [etat, setEtat] = useState<EtatReferentiel | null>(null);

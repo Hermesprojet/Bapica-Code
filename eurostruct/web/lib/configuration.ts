@@ -34,6 +34,19 @@
  * En développement local sans conteneur, les `NEXT_PUBLIC_*` continuent de
  * fonctionner. Elles ne sont plus le chemin de production, elles en sont la
  * commodité.
+ *
+ * IL N'Y A PLUS DE REPLI SUR `http://127.0.0.1:8000`
+ * ---------------------------------------------------
+ * Ce littéral était le dernier chemin par lequel une adresse pouvait entrer
+ * sans que personne l'ait déclarée. Une image déployée sans
+ * `EUROSTRUCT_API_URL` ne rendait pas d'erreur : elle appelait le port 8000 du
+ * poste de **l'utilisateur**, ce qui échoue en silence chez lui, réussit chez
+ * un développeur qui a une API locale, et ne se voit dans aucun journal
+ * serveur. Un défaut de configuration doit se voir tout de suite.
+ *
+ * `configuration()` rend donc une chaîne vide, et `base()` REFUSE en la
+ * nommant. `apiUrlConfiguree()` permet à l'écran d'afficher le diagnostic
+ * plutôt que de laisser chaque appel lever.
  */
 
 /** Ce que le serveur dépose dans la page. Rien d'autre n'y a sa place. */
@@ -65,9 +78,29 @@ export function configuration(): ConfigurationPublique {
     apiUrl:
       servie?.apiUrl ||
       process.env.NEXT_PUBLIC_EUROSTRUCT_API_URL ||
-      "http://127.0.0.1:8000",
+      "",
     supabaseUrl: servie?.supabaseUrl || process.env.NEXT_PUBLIC_SUPABASE_URL || "",
     supabaseAnonKey:
       servie?.supabaseAnonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
   };
+}
+
+/** Le diagnostic exact quand l'adresse de l'API n'a pas été déclarée. */
+export const DIAGNOSTIC_API_ABSENTE =
+  "l'adresse de l'API n'est pas configuree. Le serveur qui sert cette page " +
+  "doit porter EUROSTRUCT_API_URL dans son environnement (elle est lue a " +
+  "chaque requete et deposee dans la page). En developpement local, " +
+  "NEXT_PUBLIC_EUROSTRUCT_API_URL fait aussi l'affaire.";
+
+/** Une configuration absente. Nommée, pour ne pas se confondre avec un réseau. */
+export class ConfigurationAbsente extends Error {
+  constructor(message: string = DIAGNOSTIC_API_ABSENTE) {
+    super(message);
+    this.name = "ConfigurationAbsente";
+  }
+}
+
+/** `true` si l'adresse de l'API a été déclarée. Pour l'AFFICHER, pas pour lever. */
+export function apiUrlConfiguree(): boolean {
+  return configuration().apiUrl.trim().length > 0;
 }

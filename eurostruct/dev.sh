@@ -102,6 +102,13 @@ fi
 # 4. L'INTERFACE
 # --------------------------------------------------------------------------
 cd "$ICI/web" || exit 2
+# L'ADRESSE EST DECLAREE, PLUS DEDUITE D'UN REPLI. `lib/configuration.ts`
+# repliait sur `http://127.0.0.1:8000` quand rien n'etait configure: une image
+# deployee sans `EUROSTRUCT_API_URL` appelait alors le port 8000 du poste de
+# l'UTILISATEUR, ce qui echoue chez lui, reussit chez un developpeur qui a une
+# API locale, et n'apparait dans aucun journal serveur. Le repli est parti;
+# ce script dit donc ce qu'il fait tourner.
+export EUROSTRUCT_API_URL="http://127.0.0.1:$PORT_API"
 if (( MODE_BUILD )); then
   echo "--> build de l'interface"
   npm run build >/dev/null || { echo "REFUS: le build a echoue." >&2; arreter; }

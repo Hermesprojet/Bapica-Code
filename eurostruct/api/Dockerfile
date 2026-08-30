@@ -38,10 +38,20 @@ COPY api/ /src/api/
 # `--prefix` PLUTOT QU'UN VENV. On copie ensuite l'arbre entier dans l'étage
 # final: pas de chemin d'activation à reproduire, pas de venv qui référence un
 # préfixe qui n'existe plus.
+#
+# LES TROIS EN UNE SEULE RESOLUTION, ET C'EST LE CORRECTIF. Trois `pip install`
+# successifs échouaient: `--prefix=/opt/eurostruct` installe HORS des chemins
+# que pip interroge ensuite, si bien que le second appel ne voyait pas le
+# moteur qu'il venait d'installer. Il le cherchait donc sur PyPI, où il n'est
+# pas publié — et rendait « No matching distribution found for
+# eurostruct-engine>=0.3.0 ». Cette image ne s'était donc JAMAIS construite.
+#
+# Une seule invocation met les deux chemins locaux dans la même résolution:
+# pip satisfait `eurostruct-api -> eurostruct-engine` avec l'arbre présent,
+# sans jamais interroger d'index pour un paquet qui n'y sera jamais.
 RUN python -m pip install --upgrade pip \
- && python -m pip install --prefix=/opt/eurostruct ./engine \
- && python -m pip install --prefix=/opt/eurostruct ./api \
- && python -m pip install --prefix=/opt/eurostruct "uvicorn[standard]>=0.29"
+ && python -m pip install --prefix=/opt/eurostruct \
+      ./engine ./api "uvicorn[standard]>=0.29"
 
 
 FROM python:3.11-slim-bookworm AS runtime

@@ -29,6 +29,19 @@
 -- contrainte de table, pas par prudence de l'appelant. Rendre ces colonnes
 -- transformerait une lecture de dossier en annuaire des acteurs habilites.
 
+-- LA MIGRATION EST UNE TRANSACTION, ET ELLE S'INSCRIT AU REGISTRE.
+--
+-- CE QUI MANQUAIT, ET CE QUE CELA A COUTE. Sans le `begin;`/`commit;` et sans
+-- l'appel final a `normative_migration_applied()`, cette migration
+-- s'appliquait sans laisser aucune trace dans `normative_migration_ledger`.
+-- Consequences mesurees sur une composition reelle: le second demarrage
+-- rejouait tout, et la commande officielle refusait avec
+-- ACTIVE_SCHEMA_UPGRADE_REQUIRED en annoncant que la base ACTIVE n'avait pas
+-- des migrations qu'elle portait pourtant. Les harnais ne l'avaient pas vu
+-- parce qu'ils partent toujours d'une base neuve et ne relisent pas le
+-- registre ensuite.
+begin;
+
 grant create on schema public to eurostruct_normative_writer;
 
 
@@ -312,3 +325,13 @@ begin
   perform assert_authority_composition();
 end;
 $$;
+
+
+-- L'INSCRIPTION AU REGISTRE, DANS LA MEME TRANSACTION QUE L'EFFET.
+--
+-- Inscrite hors transaction, elle pourrait survivre a un echec — la base
+-- annoncerait alors une migration qu'elle n'a pas. Inscrite dedans, les deux
+-- tombent ensemble.
+select normative_migration_applied(:'esc_migration_id', :'esc_migration_sum');
+
+commit;

@@ -224,8 +224,18 @@ const serveur = createServer((req, res) => {
   repondre(res, 404, { error: "not_found" });
 });
 
-serveur.listen(PORT, "127.0.0.1", () => {
+// L'ADRESSE D'ECOUTE EST `127.0.0.1` PAR DEFAUT, ET CE DEFAUT NE BOUGE PAS.
+//
+// Un emetteur de jetons, meme fictif, n'a rien a ecouter au-dela de la boucle
+// locale tant que personne ne l'a demande. La composition, elle, a besoin de
+// le joindre depuis un CONTENEUR: elle passe alors l'adresse de la passerelle
+// du pont Docker — une interface precise, jamais `0.0.0.0`, qui exposerait
+// aussi les interfaces externes de la machine.
+const ECOUTE = process.env.EUROSTRUCT_SUPABASE_LOCAL_BIND || "127.0.0.1";
+
+serveur.listen(PORT, ECOUTE, () => {
   // AUCUN JETON, AUCUNE CLÉ PRIVÉE, AUCUN MOT DE PASSE dans cette ligne: elle
   // finit dans un journal de CI.
-  console.log(`supabase_local: ${COMPTES.size} compte(s) fictifs, port ${PORT}`);
+  console.log(
+    `supabase_local: ${COMPTES.size} compte(s) fictifs, ${ECOUTE}:${PORT}`);
 });

@@ -84,8 +84,17 @@ export async function verifierFlexion(
   requete: Ec2BeamFlexureRequest,
 ): Promise<Issue> {
   let reponse: Response;
+  let adresse: string;
   try {
-    reponse = await fetch(`${base()}/v1/calculations/ec2/beam-flexure`, {
+    // HORS DU `try` DU RESEAU, ET C'EST LE POINT. Une configuration absente
+    // n'est pas une panne de l'API: la confondre avec elle enverrait
+    // l'ingenieur verifier un serveur qui n'a jamais ete appele.
+    adresse = base();
+  } catch (cause) {
+    return { type: "panne", message: String(cause) };
+  }
+  try {
+    reponse = await fetch(`${adresse}/v1/calculations/ec2/beam-flexure`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requete),
@@ -95,7 +104,7 @@ export async function verifierFlexion(
       type: "panne",
       message:
         `l'API n'a pas repondu (${String(cause)}). Verifiez qu'elle tourne ` +
-        `sur ${base()} — voir eurostruct/api/README.md.`,
+        `sur ${adresse} — voir eurostruct/api/README.md.`,
     };
   }
 
@@ -130,9 +139,17 @@ export function urlDxf(): string {
 export async function telechargerDxf(
   requete: Ec2BeamSectionRequest,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
+  let cible: string;
+  try {
+    // Voir `verifierFlexion`: une configuration absente n'est pas une panne
+    // de l'API, et ne doit pas se dire comme telle.
+    cible = urlDxf();
+  } catch (cause) {
+    return { ok: false, message: String(cause) };
+  }
   let reponse: Response;
   try {
-    reponse = await fetch(urlDxf(), {
+    reponse = await fetch(cible, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requete),

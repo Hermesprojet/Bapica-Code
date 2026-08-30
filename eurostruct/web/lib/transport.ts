@@ -32,7 +32,7 @@
  * et l'oublie aussitôt : c'est ce qui rend impossible qu'une session fermée
  * laisse un jeton utilisable derrière elle dans un module transverse.
  */
-import { configuration } from "@/lib/configuration";
+import { ConfigurationAbsente, configuration } from "@/lib/configuration";
 
 /**
  * L'adresse de l'API, lue **au moment de l'appel**.
@@ -40,9 +40,17 @@ import { configuration } from "@/lib/configuration";
  * C'ETAIT UNE CONSTANTE DE MODULE ALIMENTEE PAR `NEXT_PUBLIC_*`, donc inlinee
  * dans le bundle au build: l'image portait `http://127.0.0.1:8000` en dur et
  * ne pouvait servir qu'un seul environnement. Voir `lib/configuration.ts`.
+ *
+ * ELLE REFUSE PLUTOT QUE DE REPLIER SUR `http://127.0.0.1:8000`. Ce repli
+ * faisait appeler le port 8000 du poste de l'UTILISATEUR: cela echoue chez
+ * lui, reussit chez un developpeur qui a une API locale, et n'apparait dans
+ * aucun journal serveur. Une configuration absente doit se voir tout de suite,
+ * et se nommer.
  */
 export function base(): string {
-  return configuration().apiUrl;
+  const adresse = configuration().apiUrl.trim();
+  if (!adresse) throw new ConfigurationAbsente();
+  return adresse;
 }
 
 /**
@@ -100,7 +108,12 @@ export class AppelRefuse extends Error {
 /** L'API n'a pas répondu. Ce n'est pas un refus: c'est une absence. */
 export class ApiInjoignable extends Error {
   constructor(cause: unknown) {
-    super(`l'API n'a pas repondu (${String(cause)}). Voir ${base()}.`);
+    // `base()` PEUT LEVER, et un constructeur d'erreur qui lève remplace le
+    // diagnostic par une seconde panne — celle-là sans message utile. On lit
+    // donc l'adresse sans passer par la garde, et on dit « non configuree »
+    // quand il n'y en a pas.
+    const adresse = configuration().apiUrl.trim() || "(adresse non configuree)";
+    super(`l'API n'a pas repondu (${String(cause)}). Voir ${adresse}.`);
     this.name = "ApiInjoignable";
   }
 }
@@ -167,9 +180,14 @@ export async function appelProtege<T>(
   const jeton = await porteur.jetonUtilisable();
   if (!jeton) throw new SessionExpiree();
 
+  // HORS DU `try`, ET C'EST LE POINT: une `ConfigurationAbsente` prise ici
+  // ressortirait en `ApiInjoignable`, c'est-a-dire « le reseau a echoue »
+  // pour un serveur qui n'a jamais ete appele.
+  const adresse = base();
+
   let reponse: Response;
   try {
-    reponse = await fetch(`${base()}${chemin}`, {
+    reponse = await fetch(`${adresse}${chemin}`, {
       method: methode,
       headers: { ..._entetes(corps), Authorization: `Bearer ${jeton}` },
       body: corps === undefined ? undefined : JSON.stringify(corps),

@@ -248,3 +248,71 @@ jobs:
           # consentement ne serait plus une barriere.
           EUROSTRUCT_CLUSTER_JETABLE: oui-cluster-jetable-et-isole
         run: ./db/test/run.sh
+
+  composition:
+    name: Composition de production (images construites, pile demarree)
+    runs-on: ubuntu-latest
+    # CE JOB NE PUBLIE RIEN. Il construit les trois images LOCALEMENT, monte la
+    # composition sur un volume neuf, la fait servir, et detruit tout. Aucun
+    # `login`, aucun `push`, aucun registre: publier depuis une branche de
+    # travail mettrait en ligne un artefact que personne n'a approuve.
+    #
+    # POURQUOI CE JOB EXISTE
+    # -----------------------
+    # `docker compose config` disait que le fichier etait bien forme. Il ne
+    # disait rien du demarrage. Mesure: l'image de l'API ne s'etait JAMAIS
+    # construite — trois `pip install --prefix` successifs, dont le second ne
+    # voyait pas le moteur que le premier venait d'installer hors des chemins
+    # interroges — et la base demarrait vierge, sans migration ni role
+    # applicatif. Les deux defauts sont invisibles a tout ce qui ne construit
+    # pas et ne demarre pas.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # LE MOTEUR EST INSTALLE POUR LA PREUVE, PAS POUR L'IMAGE. Le harnais lit
+      # l'edition en vigueur dans le registre national plutot que de l'ecrire
+      # en dur: une portee d'habilitation sur une edition inventee ferait
+      # refuser la proposition avant d'atteindre ce que la preuve eprouve.
+      - name: Moteur (lecture du registre par le harnais)
+        run: pip install -e engine
+
+      # LES TROIS IMAGES, CONSTRUITES EXPLICITEMENT.
+      #
+      # Separement du demarrage, et c'est deliberé: un echec de build doit se
+      # lire comme un echec de build. Construites dans le meme `docker compose
+      # build`, elles portent les noms que la composition attend, et l'etape
+      # suivante n'a plus qu'a les monter.
+      - name: Construction des images (aucune publication)
+        run: |
+          set -euo pipefail
+          cp deploy/local.env.example /tmp/ci.env
+          docker compose --env-file /tmp/ci.env -p esc-preuve-b build
+          docker images --format '{{.Repository}}:{{.Tag}}' | grep '^esc-preuve-b-'
+
+      # LA COMPOSITION, DEPUIS UN VOLUME NEUF, AVEC L'EMETTEUR LOCAL FICTIF.
+      #
+      # Le harnais pose lui-meme son emetteur (accounts FICTIF, cles generees a
+      # la volee), ecrit un fichier d'environnement temporaire, attend les
+      # services, verifie /health, /ready, le plan de charge, le parcours
+      # d'autorite complet — composer, proposer, refuser l'auto-approbation,
+      # approuver, consommer — puis redemarre sur le MEME volume et detruit
+      # tout, volume compris.
+      - name: Composition depuis un volume vide
+        env:
+          EUROSTRUCT_PREUVE_SANS_BUILD: oui
+        run: ./db/test/composition_depuis_zero.sh
+
+      # LA DESTRUCTION EST DANS LE PIEGE DE SORTIE DU HARNAIS. Celle-ci couvre
+      # l'annulation du job, ou le piege ne tourne pas.
+      - name: Destruction de la composition et du volume
+        if: always()
+        run: |
+          docker compose -p esc-preuve-b down -v --remove-orphans || true

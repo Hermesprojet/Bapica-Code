@@ -46,6 +46,53 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # L'INITIALISATION — elle ne sert rien, elle prepare, puis elle SORT.
+  #
+  # SANS ELLE, `db` DEMARRAIT UNE IMAGE POSTGRESQL VIERGE: aucune migration,
+  # aucun role applicatif, aucune racine d'autorite — et l'API s'y connectait
+  # avec `POSTGRES_USER`, le superutilisateur de l'image, pour qui RLS ne
+  # s'applique pas. La composition montait, et ne servait rien.
+  #
+  # ELLE EST IDEMPOTENTE, et c'est le REGISTRE de migrations qui le rend vrai,
+  # pas une propriete des fichiers SQL. Relancee sur un volume deja initialise,
+  # elle constate et sort en 0.
+  init:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.init
+    environment:
+      # LE SUPERUTILISATEUR N'EST UTILISE QUE LA: creer des roles est le seul
+      # acte qui l'exige. L'API ne le voit jamais.
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      EUROSTRUCT_DB_HOST: db
+      EUROSTRUCT_DB_PORT: "5432"
+      EUROSTRUCT_MIGRATOR_DB_USER: ${EUROSTRUCT_MIGRATOR_DB_USER:-eurostruct_migrator}
+      EUROSTRUCT_MIGRATOR_DB_PASSWORD: ${EUROSTRUCT_MIGRATOR_DB_PASSWORD}
+      EUROSTRUCT_PLAN_DB_USER: ${EUROSTRUCT_PLAN_DB_USER:-eurostruct_plan}
+      EUROSTRUCT_PLAN_DB_PASSWORD: ${EUROSTRUCT_PLAN_DB_PASSWORD}
+      EUROSTRUCT_APP_DB_USER: ${EUROSTRUCT_APP_DB_USER}
+      EUROSTRUCT_APP_DB_PASSWORD: ${EUROSTRUCT_APP_DB_PASSWORD}
+      # LOCAL UNIQUEMENT. En production c'est Supabase qui pose `auth.users`
+      # et `auth.uid()`; ce drapeau demande un schema FICTIF a leur place, et
+      # il n'est jamais mis par defaut.
+      EUROSTRUCT_LOCAL_AUTH_STUB: ${EUROSTRUCT_LOCAL_AUTH_STUB:-non}
+      # LE MANDAT D'AMORCAGE. Sans lui, aucune racine d'autorite n'est amorcee
+      # — designer la premiere personne habilitee est une decision prise hors
+      # du systeme, pas un effet de bord du demarrage.
+      EUROSTRUCT_BOOTSTRAP_MANDATE: ${EUROSTRUCT_BOOTSTRAP_MANDATE:-}
+      EUROSTRUCT_BOOTSTRAP_ACTOR: ${EUROSTRUCT_BOOTSTRAP_ACTOR:-}
+      EUROSTRUCT_BOOTSTRAP_NAME: ${EUROSTRUCT_BOOTSTRAP_NAME:-}
+      EUROSTRUCT_BOOTSTRAP_REASON: ${EUROSTRUCT_BOOTSTRAP_REASON:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    # ELLE NE REDEMARRE PAS. Une initialisation qui echoue doit rester echouee
+    # et visible: `restart: unless-stopped` la ferait boucler, et la
+    # composition semblerait « en cours de demarrage » indefiniment.
+    restart: "no"
+
   api:
     build:
       context: .
@@ -53,8 +100,12 @@ services:
     environment:
       # LES SECRETS DE RUNTIME DE L'API. Ils ne traversent JAMAIS le build:
       # ils ne sont ni des `ARG`, ni des `ENV` de l'image.
+      #
+      # LE LOGIN EST CELUI DE L'APPLICATION, PAS `POSTGRES_USER`. Le second est
+      # le superutilisateur de l'image: RLS ne s'applique pas a lui, et toutes
+      # les politiques que les migrations posent deviendraient decoratives.
       EUROSTRUCT_DATABASE_URL: >-
-        postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+        postgresql://${EUROSTRUCT_APP_DB_USER}:${EUROSTRUCT_APP_DB_PASSWORD}@db:5432/${POSTGRES_DB}
       EUROSTRUCT_SUPABASE_JWKS_URL: ${EUROSTRUCT_SUPABASE_JWKS_URL}
       EUROSTRUCT_SUPABASE_ISSUER: ${EUROSTRUCT_SUPABASE_ISSUER}
       EUROSTRUCT_SUPABASE_AUDIENCE: ${EUROSTRUCT_SUPABASE_AUDIENCE:-authenticated}
@@ -65,6 +116,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      # LA SORTIE EN 0 DE L'INITIALISATION, PAS SA SEULE EXECUTION. Avec
+      # `service_started`, l'API demarrerait pendant les migrations et
+      # rendrait des 500 jusqu'a ce qu'elles finissent — ou indefiniment si
+      # elles echouent.
+      init:
+        condition: service_completed_successfully
     ports:
       - "${API_PORT:-8000}:8000"
     healthcheck:
