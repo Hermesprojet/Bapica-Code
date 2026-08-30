@@ -38,9 +38,10 @@ from eurostruct_engine.ndp.provider_factory import (
     PiloteIndisponible,
     creer_provider_de_production,
 )
-from fastapi import Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 
-__all__ = ["jeton_porteur", "ouvrir_provider", "provider_de_lecture"]
+__all__ = ["acteur_authentifie", "jeton_porteur", "ouvrir_provider",
+           "provider_de_lecture"]
 
 
 def jeton_porteur(authorization: str | None = Header(default=None)) -> str:
@@ -67,6 +68,59 @@ def jeton_porteur(authorization: str | None = Header(default=None)) -> str:
             headers={"WWW-Authenticate": "Bearer"},
         )
     return morceaux[1].strip()
+
+
+def acteur_authentifie(requete: Request,
+                       jeton: str = Depends(jeton_porteur)) -> str:
+    """Vérifie le JWT et rend l'identité. **Sans ouvrir de transaction.**
+
+    POURQUOI CETTE DEPENDANCE EXISTE
+    ---------------------------------
+    ``jeton_porteur`` extrait une chaîne d'un en-tête. Il ne vérifie **rien** :
+    ni signature, ni émetteur, ni audience, ni expiration. Une route qui n'en
+    demande pas plus laisse passer ``Bearer nimporte-quoi``.
+
+    C'était le cas de ``POST /v1/authority/review-packages``, qui compose le
+    dossier de revue d'un paramètre : elle rendait la valeur, l'unité, la
+    clause, le folio et l'empreinte du document d'une annexe **sous licence**
+    à qui présentait n'importe quelle chaîne.
+
+    ELLE N'OUVRE AUCUNE CONNEXION, ET C'EST DELIBERE. ``ouvrir_provider``
+    ouvre une transaction PostgreSQL parce que les trois primitives d'autorité
+    écrivent. Composer un dossier ne touche pas la base : le registre est en
+    mémoire. Prendre une connexion ici la retiendrait du pool pour une lecture
+    qui n'en a pas besoin.
+
+    LE VALIDATEUR N'EST PAS DUPLIQUE. C'est le même ``AuthentificateurSupabase``
+    que le reste du chemin d'autorité, pris sur l'état de l'application : deux
+    validateurs, c'est un de trop, et c'est toujours le plus faible qui finit
+    par décider.
+    """
+    authentificateur = getattr(requete.app.state, "authentificateur", None)
+    if authentificateur is None:
+        # PAS D'AUTHENTIFICATEUR, PAS DE SERVICE. Le refus est 503 et non 401:
+        # ce n'est pas l'appelant qui est en faute.
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "service_non_pret",
+                    "what": "authentification",
+                    "detail": ("le service n'a pas de configuration "
+                               "d'authentification utilisable. Voir /ready.")},
+        )
+    try:
+        contexte = authentificateur.authentifier(jeton)
+    except AuthentificationRequise as cause:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "authentification_refusee",
+                    "what": "jeton",
+                    # Le message de l'authentificateur ne distingue pas
+                    # « signature fausse » de « audience fausse »: il ne donne
+                    # aucun oracle a qui essaie.
+                    "detail": str(cause)},
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from cause
+    return contexte.actor_id
 
 
 class _ProviderOuvert:

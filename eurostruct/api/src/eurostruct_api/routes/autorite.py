@@ -61,7 +61,7 @@ from eurostruct_engine.schemas.autorite import (
 )
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..dependances import jeton_porteur, ouvrir_provider
+from ..dependances import acteur_authentifie, jeton_porteur, ouvrir_provider
 
 routeur = APIRouter(prefix="/v1/authority", tags=["autorite"])
 
@@ -144,7 +144,7 @@ def _refus(cause: AuthentificationRequise | ConfirmationDomainError) -> HTTPExce
 
 @routeur.post("/review-packages", response_model=AuthorityReviewDossier)
 def composer(corps: AuthorityReviewDraftRequest,
-             _jeton: str = Depends(jeton_porteur)) -> AuthorityReviewDossier:
+             _acteur: str = Depends(acteur_authentifie)) -> AuthorityReviewDossier:
     """Compose le dossier d'un paramètre. **Le serveur seul le fabrique.**
 
     LE NAVIGATEUR NE CONSTRUIT AUCUNE EMPREINTE NORMATIVE. Il nomme le
@@ -154,10 +154,25 @@ def composer(corps: AuthorityReviewDraftRequest,
     ferait dépendre l'empreinte de la sérialisation d'un client, et ferait
     venir la **valeur** de l'écran plutôt que du registre.
 
-    LE JETON EST EXIGE, MEME SANS ECRITURE. Un dossier nomme le document, la
-    clause et le folio d'une annexe sous licence : ce n'est pas une donnée
-    publique. Aucune connexion n'est ouverte pour autant — rien n'est écrit,
-    et le registre est en mémoire.
+    LE JETON EST VERIFIE, PAS SEULEMENT LU. Cette route dépendait de
+    ``jeton_porteur``, qui extrait la chaîne d'un en-tête ``Bearer`` sans
+    contrôler ni signature, ni émetteur, ni audience, ni expiration : elle
+    ressemblait à une authentification, et le seul refus qu'elle produisait —
+    en-tête absent — est celui que personne ne rencontre. ``Bearer
+    nimporte-quoi`` obtenait un **200** et le dossier entier : valeur
+    nationale, provenance, référence d'annexe, édition, clause, folio imprimé
+    et empreinte du document source, c'est-à-dire le contenu d'une annexe
+    **sous licence**.
+
+    ``acteur_authentifie`` passe par l'authentificateur de l'application — le
+    même que le reste du chemin d'autorité, pas un second validateur — et
+    **n'ouvre aucune connexion**. Composer ne lit ni n'écrit en base : le
+    registre est en mémoire, et ``ouvrir_provider`` retiendrait une connexion
+    du pool pour rien.
+
+    L'IDENTITE N'ENTRE PAS DANS LE DOSSIER, et c'est délibéré : elle décide
+    qui a le droit de demander, jamais ce qui est rendu. Deux ingénieurs
+    autorisés composant le même paramètre obtiennent les mêmes empreintes.
     """
     parametre = _parametre_du_registre(corps.country_code.upper(), corps.rule_id)
     try:
