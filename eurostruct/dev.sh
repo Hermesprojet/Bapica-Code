@@ -70,6 +70,33 @@ fi
 # --------------------------------------------------------------------------
 # 3. L'API
 # --------------------------------------------------------------------------
+# L'IDENTITE DU BUILD EST INJECTEE ICI, PAR CE SCRIPT.
+#
+# C'est le seul endroit du developpement local ou l'on SAIT qu'un depot est
+# present et qu'il est le bon: on est dans l'arborescence du projet, lancee a
+# la main. Le moteur, lui, ne lit jamais `.git` — un conteneur de production
+# n'en a pas, et s'il en avait un ce serait celui du repertoire courant au
+# moment de l'appel.
+#
+# SANS DEPOT LISIBLE, ON N'INVENTE RIEN. La variable reste vide, l'API sert le
+# calcul exploratoire, et refuse d'ENREGISTRER en le disant. Un « unknown »
+# poserait une identite qui ressemble a une reponse.
+if [[ -z "${EUROSTRUCT_BUILD_SHA:-}" ]]; then
+  EUROSTRUCT_BUILD_SHA="$(git -C "$ICI" rev-parse HEAD 2>/dev/null || true)"
+  # UN ARBRE MODIFIE N'EST PAS SON DERNIER COMMIT. Le suffixe le dit, plutot
+  # que de laisser croire qu'un calcul enregistre correspond au code pousse.
+  if [[ -n "$EUROSTRUCT_BUILD_SHA" ]] \
+     && ! git -C "$ICI" diff --quiet 2>/dev/null; then
+    EUROSTRUCT_BUILD_SHA="${EUROSTRUCT_BUILD_SHA}-modifie"
+  fi
+  export EUROSTRUCT_BUILD_SHA
+fi
+if [[ -n "${EUROSTRUCT_BUILD_SHA:-}" ]]; then
+  echo "--> build: ${EUROSTRUCT_BUILD_SHA}"
+else
+  echo "--> build INCONNU: les calculs ne seront pas enregistrables." >&2
+fi
+
 echo "--> API sur http://127.0.0.1:$PORT_API"
 "$PYTHON" -m uvicorn eurostruct_api.app:app \
   --host 127.0.0.1 --port "$PORT_API" &

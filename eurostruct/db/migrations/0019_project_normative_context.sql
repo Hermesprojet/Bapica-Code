@@ -53,6 +53,41 @@ grant create on schema public to eurostruct_normative_writer;
 
 
 -- ---------------------------------------------------------------------
+-- 0. L'IDENTITE DE CE QUI A TOURNE
+-- ---------------------------------------------------------------------
+-- `inputs_hash` EST L'EMPREINTE DE LA REQUETE, ET RIEN D'AUTRE. Le
+-- commentaire de 0001 — « deux calculs de meme hash doivent produire le meme
+-- resultat bit-a-bit » — n'est vrai que sous deux conditions que cette
+-- empreinte ne porte pas: le meme CODE, et le meme REFERENTIEL. Une
+-- confirmation arrivee entre deux calculs change la valeur d'un parametre
+-- national, donc le resultat, pour une requete strictement identique.
+--
+-- `execution_identity` PORTE LES TROIS: requete canonique, instantane NDP
+-- reellement utilise, et build. Deux exécutions de meme identite doivent
+-- rendre le meme resultat; deux resultats differents sous la meme identite
+-- sont un defaut, et celui-la merite qu'on le cherche.
+--
+-- `engine_build_sha` EST SUR LE CALCUL, PAS SUR LA VERSION, et c'est
+-- necessaire: `engine_versions.version` est UNIQUE, si bien que deux builds
+-- de « 0.3.0 » partagent une seule ligne. Le build est une propriete de
+-- L'EXECUTION, pas de la version — et six commits successifs portent la meme
+-- version, mesure. `engine_versions.git_sha` reste renseigne a la creation de
+-- la ligne, comme repere du premier build vu.
+alter table calculations
+  add column if not exists execution_identity text,
+  add column if not exists engine_build_sha   text;
+
+comment on column calculations.execution_identity is
+  'Empreinte canonique de (requete, instantane NDP, moteur, build). Deux '
+  'executions de meme identite doivent rendre le meme resultat. Distincte '
+  'd''`inputs_hash`, qui n''empreinte que la requete.';
+comment on column calculations.engine_build_sha is
+  'Le build EXACT qui a produit ce calcul, injecte par l''environnement. '
+  '`engine_versions.version` etant unique, deux builds d''une meme version '
+  'partagent une ligne: le build appartient donc a l''execution.';
+
+
+-- ---------------------------------------------------------------------
 -- 1. LA REGION ENTRE DANS LA CREATION ET DANS LA LECTURE
 -- ---------------------------------------------------------------------
 -- L'ANCIENNE SIGNATURE EST DEPOSEE, ET C'EST DELIBERE. Ajouter un parametre
@@ -165,6 +200,14 @@ $$;
 -- LA LECTURE REND LA REGION. Une valeur figee qu'on ne peut pas relire ne
 -- verrouille rien: l'ecran ne saurait pas quoi afficher, ni sur quoi bloquer
 -- ses champs.
+-- L'ANCIENNE SIGNATURE A DOUZE ARGUMENTS EST DEPOSEE. Les deux nouveaux
+-- parametres ont une valeur par defaut: sans ce `drop`, un appel a douze
+-- arguments resoudrait vers CELLE QUI N'EXIGE PAS d'identite de build, et la
+-- garde ci-dessus deviendrait contournable en omettant deux arguments.
+drop function if exists project_calculation_record(
+  uuid, calculation_status, text, boolean, text,
+  jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb);
+
 drop function if exists project_workspace_list();
 
 create or replace function project_workspace_list()
@@ -230,7 +273,9 @@ create or replace function project_calculation_record(
   p_refusal        jsonb,
   p_result         jsonb,
   p_journal        jsonb,
-  p_verifications  jsonb)
+  p_verifications  jsonb,
+  p_execution_identity text default null,
+  p_engine_build   text default null)
 returns uuid
 language plpgsql
 volatile
@@ -273,6 +318,23 @@ begin
     raise exception
       'les entrees sont absentes: un calcul qu''on ne peut pas rouvrir n''est '
       'pas un calcul enregistre.'
+      using errcode = 'check_violation';
+  end if;
+
+  -- UN CALCUL PERSISTANT SANS IDENTITE DE BUILD EST REFUSE.
+  --
+  -- Il pretendrait designer le code qui l'a produit et ne saurait pas le
+  -- nommer. « 0.3.0 » ne designe aucun build: six commits successifs la
+  -- portent. Le calcul EXPLORATOIRE, lui, reste disponible — il ne pretend
+  -- rien et ne survit a rien; c'est la persistance qui exige de pouvoir
+  -- repondre, dix ans plus tard, a « quel code ? ».
+  if coalesce(btrim(p_engine_build), '') = ''
+     or coalesce(btrim(p_execution_identity), '') = '' then
+    raise exception
+      'identite d''execution absente: un calcul conserve doit designer le '
+      'code exact qui l''a produit et le referentiel qu''il a applique. La '
+      'version seule ne le fait pas. Injecter EUROSTRUCT_BUILD_SHA au '
+      'demarrage; le calcul exploratoire reste disponible sans elle.'
       using errcode = 'check_violation';
   end if;
 
@@ -382,10 +444,14 @@ begin
   -- LA VERSION DU MOTEUR EST ENREGISTREE TELLE QU'ELLE EST, pas choisie dans
   -- une liste. Une version inconnue de `engine_versions` est une version qui
   -- n'a jamais tourne ici; l'inscrire est un constat.
+  -- `git_sha` EST RENSEIGNE A LA CREATION DE LA LIGNE, comme repere du
+  -- premier build vu pour cette version. Il n'est PAS mis a jour ensuite:
+  -- ecraser ferait mentir toutes les lignes anterieures. Le build faisant foi
+  -- est sur le calcul.
   select id into moteur from engine_versions where version = p_engine_version;
   if moteur is null then
-    insert into engine_versions (version, released_at)
-    values (p_engine_version, now())
+    insert into engine_versions (version, released_at, git_sha)
+    values (p_engine_version, now(), p_engine_build)
     on conflict (version) do nothing
     returning id into moteur;
     if moteur is null then
@@ -396,11 +462,13 @@ begin
   insert into calculations (org_id, project_id, model_id, engine_version_id,
                             status, inputs_hash, strict_ndp, refusal,
                             progress_log, request, ndp_as_of, ndp_snapshot,
+                            execution_identity, engine_build_sha,
                             requested_by, started_at, finished_at)
   values (org, p_project_id, modele, moteur, p_status, p_inputs_hash,
           coalesce(p_strict_ndp, true), p_refusal,
           coalesce(p_progress_log, '[]'::jsonb), p_request, as_of,
           coalesce(p_ndp_snapshot, '{}'::jsonb),
+          btrim(p_execution_identity), btrim(p_engine_build),
           acteur, now(), now())
   returning id into calcul;
 
@@ -431,6 +499,70 @@ $$;
 
 
 -- ---------------------------------------------------------------------
+-- 2 bis. LA RELECTURE REND L'IDENTITE D'EXECUTION
+-- ---------------------------------------------------------------------
+-- Une identite enregistree qu'on ne peut pas relire ne prouve rien: la note
+-- de calcul doit l'afficher, et un audit doit pouvoir la confronter.
+drop function if exists project_calculation_read(uuid, uuid);
+
+create or replace function project_calculation_read(
+  p_project_id uuid, p_calculation_id uuid)
+returns table (
+  calculation_id uuid,
+  status         calculation_status,
+  strict_ndp     boolean,
+  engine_version text,
+  engine_build_sha text,
+  execution_identity text,
+  inputs_hash    text,
+  request        jsonb,
+  ndp_snapshot   jsonb,
+  ndp_as_of      date,
+  refusal        jsonb,
+  progress_log   jsonb,
+  result         jsonb,
+  journal        jsonb,
+  verifications  jsonb,
+  created_at     timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  acteur uuid := normative_authenticated_actor();
+begin
+  if not exists (select 1 from projects p
+                  join organization_members m on m.org_id = p.org_id
+                 where p.id = p_project_id and m.user_id = acteur) then
+    raise exception 'projet introuvable ou hors de vos organisations.'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  return query
+    select c.id, c.status, c.strict_ndp, e.version, c.engine_build_sha,
+           c.execution_identity, c.inputs_hash,
+           c.request, c.ndp_snapshot, c.ndp_as_of, c.refusal, c.progress_log,
+           r.payload, r.journal,
+           coalesce((select jsonb_agg(jsonb_build_object(
+                       'name', v.name, 'standard', v.standard,
+                       'clause', v.clause, 'equation', v.equation,
+                       'utilisation', v.utilisation, 'status', v.status,
+                       'acting', v.acting, 'resisting', v.resisting,
+                       'detail', v.detail, 'remedy', v.remedy)
+                       order by v.created_at, v.id)
+                      from verifications v where v.result_id = r.id),
+                    '[]'::jsonb),
+           c.created_at
+      from calculations c
+      join engine_versions e on e.id = c.engine_version_id
+      left join results r on r.calculation_id = c.id
+     where c.id = p_calculation_id and c.project_id = p_project_id;
+end;
+$$;
+
+
+-- ---------------------------------------------------------------------
 -- 3. PROPRIETE ET ACCES DES FONCTIONS REMPLACEES
 -- ---------------------------------------------------------------------
 -- `drop` PUIS `create` REPART DE `acldefault`: le proprietaire redevient le
@@ -445,7 +577,8 @@ begin
     'project_workspace_list()',
     'project_workspace_create(text, text, country_code, date, uuid, text)',
     'project_calculation_record(uuid, calculation_status, text, boolean, text,'
-      || ' jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)']
+      || ' jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, text, text)',
+    'project_calculation_read(uuid, uuid)']
   loop
     execute format('alter function %s owner to eurostruct_normative_writer', f);
     execute format('revoke all on function %s from public', f);
@@ -538,6 +671,8 @@ do $$
 declare
   n_create int;
   n_list   int;
+  n_record int;
+  n_read   int;
   fautives text;
 begin
   select count(*) into n_create from pg_proc p
@@ -546,11 +681,23 @@ begin
   select count(*) into n_list from pg_proc p
     join pg_namespace ns on ns.oid = p.pronamespace
    where ns.nspname = 'public' and p.proname = 'project_workspace_list';
-  if n_create <> 1 or n_list <> 1 then
+  select count(*) into n_record from pg_proc p
+    join pg_namespace ns on ns.oid = p.pronamespace
+   where ns.nspname = 'public' and p.proname = 'project_calculation_record';
+  select count(*) into n_read from pg_proc p
+    join pg_namespace ns on ns.oid = p.pronamespace
+   where ns.nspname = 'public' and p.proname = 'project_calculation_read';
+  -- `project_calculation_record` COMPTE DOUBLE ICI. Ses deux nouveaux
+  -- parametres ont une valeur par defaut: si l'ancienne signature a douze
+  -- arguments survivait, un appel a douze arguments resoudrait vers ELLE, et
+  -- la garde d'identite de build deviendrait contournable en omettant deux
+  -- arguments. C'est le genre de contournement qui ne laisse aucune trace.
+  if n_create <> 1 or n_list <> 1 or n_record <> 1 or n_read <> 1 then
     raise exception
-      'ATELIER_0019_SIGNATURES_MULTIPLES: project_workspace_create=%, '
-      'project_workspace_list=%. Deux homonymes laisseraient PostgreSQL '
-      'choisir, et un appelant atteindrait la mauvaise.', n_create, n_list;
+      'ATELIER_0019_SIGNATURES_MULTIPLES: create=%, list=%, record=%, read=%. '
+      'Deux homonymes laisseraient PostgreSQL choisir, et un appelant '
+      'atteindrait la mauvaise — y compris celle sans garde.',
+      n_create, n_list, n_record, n_read;
   end if;
 
   select string_agg(f.identite, ', ') into fautives
@@ -561,7 +708,8 @@ begin
            where ns.nspname = 'public'
              and p.proname in ('project_workspace_list',
                                'project_workspace_create',
-                               'project_calculation_record')) f
+                               'project_calculation_record',
+                               'project_calculation_read')) f
    where not f.prosecdef
       or f.pub
       or f.proprio <> 'eurostruct_normative_writer'

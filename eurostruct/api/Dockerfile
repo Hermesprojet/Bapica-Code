@@ -61,8 +61,20 @@ FROM python:3.11-slim-bookworm AS runtime
 # oublie de le poser.
 RUN useradd --system --create-home --uid 10001 eurostruct
 
+# L'IDENTITE DU BUILD, INJECTEE A LA CONSTRUCTION.
+#
+# Elle est gravee dans l'image, ou elle designe exactement le code embarque.
+# L'IMAGE NE LIT PAS `.git`: elle n'en a pas, et si elle en avait un ce serait
+# celui du repertoire courant au moment de l'appel — une identite qui depend du
+# repertoire de travail n'est pas une identite.
+#
+# `ARG` PUIS `ENV`, PAS L'INVERSE: un `ARG` seul disparait a l'execution, et le
+# processus qui sert les requetes ne le verrait pas.
+ARG EUROSTRUCT_BUILD_SHA=""
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    EUROSTRUCT_BUILD_SHA="${EUROSTRUCT_BUILD_SHA}" \
     PATH="/opt/eurostruct/bin:${PATH}" \
     PYTHONPATH="/opt/eurostruct/lib/python3.11/site-packages"
 

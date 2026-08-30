@@ -322,17 +322,23 @@ def test_la_primitive_refuse_elle_meme_un_contexte_qui_contredit_le_projet():
                               "element": "P1"})
         with pytest.raises(psycopg2.Error) as refus:
             cur.execute(
+                # UNE IDENTITE DE BUILD VALIDE EST FOURNIE, et c'est
+                # necessaire: sans elle, la garde de build repondrait la
+                # premiere — a juste titre — et ce cas n'eprouverait plus le
+                # contexte normatif qu'il vise.
                 "select project_calculation_record("
                 "%s::uuid, 'succeeded'::calculation_status, %s, false, %s,"
                 " %s::jsonb, %s::jsonb, null, null, %s::jsonb, %s::jsonb,"
-                " %s::jsonb)",
+                " %s::jsonb, %s, %s)",
                 (projet_id, "0" * 64, "FICTIF-0.0.0", requete,
                  json.dumps({"country": PAYS_INTRUS}),
                  json.dumps({"As_required": {"value": 1.0, "unit": "mm**2"}}),
-                 json.dumps([]), json.dumps([{"name": "x", "standard": "EN",
-                                              "clause": "1", "utilisation": 0.5,
-                                              "status": "pass", "acting": "a",
-                                              "resisting": "r"}])))
+                 json.dumps({"title": "t", "steps": [{"s": 1}], "clauses": []}),
+                 json.dumps([{"name": "x", "standard": "EN",
+                              "clause": "1", "utilisation": 0.5,
+                              "status": "pass", "acting": "a",
+                              "resisting": "r"}]),
+                 "FICTIF-identite-0000001", "FICTIF-build-0000001"))
         message = str(refus.value).lower()
         assert "contexte" in message or "projet" in message, (
             f"la primitive a refuse pour une autre raison: {refus.value}")

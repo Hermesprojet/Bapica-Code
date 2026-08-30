@@ -291,9 +291,18 @@ jobs:
       # build`, elles portent les noms que la composition attend, et l'etape
       # suivante n'a plus qu'a les monter.
       - name: Construction des images (aucune publication)
+        env:
+          # L'IDENTITE DU BUILD, INJECTEE PAR LA CI ET GRAVEE DANS L'IMAGE.
+          #
+          # `github.sha` designe exactement le code construit. L'image ne lit
+          # jamais `.git` — elle n'en a pas — et un calcul enregistre sans
+          # cette identite est refuse: une ligne conservee dix ans ne peut pas
+          # designer un code qu'elle ne sait pas nommer.
+          EUROSTRUCT_BUILD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           cp deploy/local.env.example /tmp/ci.env
+          echo "EUROSTRUCT_BUILD_SHA=${EUROSTRUCT_BUILD_SHA}" >> /tmp/ci.env
           docker compose --env-file /tmp/ci.env -p esc-preuve-b build
           docker images --format '{{.Repository}}:{{.Tag}}' | grep '^esc-preuve-b-'
 
@@ -308,6 +317,7 @@ jobs:
       - name: Composition depuis un volume vide
         env:
           EUROSTRUCT_PREUVE_SANS_BUILD: oui
+          EUROSTRUCT_BUILD_SHA: ${{ github.sha }}
         run: ./db/test/composition_depuis_zero.sh
 
       # LA DESTRUCTION EST DANS LE PIEGE DE SORTIE DU HARNAIS. Celle-ci couvre

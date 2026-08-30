@@ -776,11 +776,38 @@
           "title": "Created At",
           "type": "string"
         },
+        "engine_build_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le build EXACT qui a produit ce calcul. La version seule ne désigne aucun code: plusieurs commits successifs la partagent.",
+          "title": "Engine Build Sha"
+        },
         "engine_version": {
           "title": "Engine Version",
           "type": "string"
         },
+        "execution_identity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Empreinte canonique de (requête, instantané NDP, moteur, build). Deux exécutions de même identité doivent rendre le même résultat. Distincte d'`inputs_hash`, qui n'empreinte que la requête.",
+          "title": "Execution Identity"
+        },
         "inputs_hash": {
+          "description": "Empreinte de la REQUÊTE, et rien d'autre. Elle répond à « est-ce la même demande ? », pas à « obtiendra-t-on le même résultat ? » — cela dépend aussi du code et du référentiel, que porte `execution_identity`.",
           "title": "Inputs Hash",
           "type": "string"
         },
@@ -806,6 +833,19 @@
           "default": null,
           "description": "« PROJET — NON SIGNABLE ». Présente uniquement quand des paramètres nationaux non confirmés ont pu servir. Bien plus forte que `notice`: celle-ci dit « pas encore signé », celle-là « pas signable du tout ».",
           "title": "Mention"
+        },
+        "ndp_as_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "La date de référence effectivement appliquée, reprise du projet.",
+          "title": "Ndp As Of"
         },
         "ndp_snapshot": {
           "anyOf": [

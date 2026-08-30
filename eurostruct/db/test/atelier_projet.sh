@@ -229,6 +229,14 @@ export EUROSTRUCT_E2E_DSN="dbname=$BASE user=$SVC password=$MDP host=${PGHOST:-/
 # demande de regarder les tables, ce que le service ne peut pas faire. Cette
 # DSN sert au constat, jamais au parcours: aucune route ne la voit.
 export EUROSTRUCT_E2E_DSN_OBS="dbname=$BASE host=${PGHOST:-/var/run/postgresql}"
+# L'IDENTITE DE BUILD DU HARNAIS.
+#
+# La persistance la REFUSE quand elle manque: un calcul conserve doit designer
+# le code exact qui l'a produit, et « 0.3.0 » ne le fait pas. Le harnais en
+# declare donc une, derivee du jeton de l'execution — deux executions du meme
+# harnais sont deux builds distincts pour ce qui nous occupe, et c'est
+# exactement ce que le cas « meme requete, autre build » exploite.
+export EUROSTRUCT_BUILD_SHA="FICTIF-build-${JETON}"
 export EUROSTRUCT_ATELIER_ACTEUR_A="$ACTEUR_A"
 export EUROSTRUCT_ATELIER_ACTEUR_B="$ACTEUR_B"
 export EUROSTRUCT_ATELIER_ORG_A="$ORG_A"
@@ -236,6 +244,7 @@ export EUROSTRUCT_ATELIER_ORG_B="$ORG_B"
 
 python3 -m pytest "$RACINE/api/tests/test_atelier_postgres.py" \
         "$RACINE/api/tests/test_contexte_normatif_du_projet.py" \
+        "$RACINE/api/tests/test_identite_execution.py" \
         -p no:cacheprovider --no-header
 CODE=$?
 unset EUROSTRUCT_E2E_DSN EUROSTRUCT_E2E_DSN_OBS \

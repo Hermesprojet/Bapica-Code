@@ -113,6 +113,12 @@ services:
       # LES ORIGINES SONT DECLAREES, JAMAIS `*` — la configuration refuse le
       # joker, et le port est celui que l'interface publie sur l'hôte.
       EUROSTRUCT_CORS_ORIGINS: ${EUROSTRUCT_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      # L'IDENTITE DU BUILD. Gravee dans l'image a la construction, elle peut
+      # etre surchargee ici — c'est le cas d'une image rejouee sous un autre
+      # nom. Sans elle, l'API sert le calcul EXPLORATOIRE et refuse
+      # d'ENREGISTRER: une ligne conservee dix ans ne peut pas designer un code
+      # qu'elle ne sait pas nommer.
+      EUROSTRUCT_BUILD_SHA: ${EUROSTRUCT_BUILD_SHA:-}
     depends_on:
       db:
         condition: service_healthy

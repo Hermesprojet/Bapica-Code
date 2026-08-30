@@ -179,7 +179,8 @@ class PostgresAtelier:
     def enregistrer_calcul(
         self, preuve: Any, *, project_id: str, status: str,
         inputs_hash: str, strict_ndp: bool, engine_version: str,
-        request: Any, ndp_snapshot: Any = None, progress_log: Any = None,
+        request: Any, execution_identity: str, engine_build: str,
+        ndp_snapshot: Any = None, progress_log: Any = None,
         refusal: Any = None, result: Any = None, journal: Any = None,
         verifications: Any = None,
     ) -> str:
@@ -194,6 +195,11 @@ class PostgresAtelier:
         motif : le mode strict qui refuse faute de paramètre confirmé n'est pas
         une panne, c'est une réponse du moteur, et l'historique doit la porter
         telle quelle.
+
+        ``execution_identity`` ET ``engine_build`` SONT OBLIGATOIRES, et la
+        primitive refuse sans eux. Un calcul conservé dix ans doit pouvoir
+        désigner le code exact qui l'a produit ; ``0.3.0`` ne le désigne pas —
+        six commits successifs la portent.
         """
         def _js(valeur: Any) -> str | None:
             if valeur is None:
@@ -209,10 +215,11 @@ class PostgresAtelier:
                 "select project_calculation_record("
                 "%s::uuid, %s::calculation_status, %s, %s, %s, "
                 "%s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, "
-                "%s::jsonb, %s::jsonb, %s::jsonb)",
+                "%s::jsonb, %s::jsonb, %s::jsonb, %s, %s)",
                 (project_id, status, inputs_hash, strict_ndp, engine_version,
                  _js(request), _js(ndp_snapshot), _js(progress_log),
-                 _js(refusal), _js(result), _js(journal), _js(verifications)),
+                 _js(refusal), _js(result), _js(journal), _js(verifications),
+                 execution_identity, engine_build),
             )
             ligne = u.curseur.fetchone()
             if not ligne or not ligne[0]:
@@ -271,6 +278,9 @@ class PostgresAtelier:
             "strict_ndp": bool(ligne["strict_ndp"]),
             "engine_version": ligne["engine_version"],
             "inputs_hash": ligne["inputs_hash"],
+            "engine_build_sha": ligne["engine_build_sha"],
+            "execution_identity": ligne["execution_identity"],
+            "ndp_as_of": _texte(ligne["ndp_as_of"]),
             "request": _json_ou_none(ligne["request"]),
             "ndp_snapshot": _json_ou_none(ligne["ndp_snapshot"]),
             "refusal": _json_ou_none(ligne["refusal"]),

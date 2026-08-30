@@ -306,6 +306,14 @@ fi
 export EUROSTRUCT_SUPABASE_LOCAL_PORT="$PORT_AUTH"
 export EUROSTRUCT_SUPABASE_LOCAL_ISSUER="http://127.0.0.1:$PORT_AUTH/auth/v1"
 export EUROSTRUCT_E2E_COMPTES="a@fictif.invalid:FICTIF-A:$ACTEUR_A:3600:oui,b@fictif.invalid:FICTIF-B:$ACTEUR_B:3600:oui"
+# L'IDENTITE DE BUILD DU HARNAIS.
+#
+# La persistance la REFUSE quand elle manque: un calcul conserve doit designer
+# le code exact qui l'a produit, et « 0.3.0 » ne le fait pas. Le harnais en
+# declare donc une, derivee du jeton de l'execution — deux executions du meme
+# harnais sont deux builds distincts pour ce qui nous occupe, et c'est
+# exactement ce que le cas « meme requete, autre build » exploite.
+export EUROSTRUCT_BUILD_SHA="FICTIF-build-${JETON}"
 export EUROSTRUCT_E2E_ACTEUR_A="$ACTEUR_A"
 export EUROSTRUCT_E2E_ACTEUR_B="$ACTEUR_B"
 

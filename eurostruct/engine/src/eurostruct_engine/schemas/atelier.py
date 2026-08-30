@@ -149,7 +149,26 @@ class CalculEnregistre(Strict):
     status: str
     strict_ndp: bool
     engine_version: str
-    inputs_hash: str
+    engine_build_sha: str | None = Field(
+        default=None,
+        description="Le build EXACT qui a produit ce calcul. La version seule "
+                    "ne désigne aucun code: plusieurs commits successifs la "
+                    "partagent.")
+    execution_identity: str | None = Field(
+        default=None,
+        description="Empreinte canonique de (requête, instantané NDP, moteur, "
+                    "build). Deux exécutions de même identité doivent rendre "
+                    "le même résultat. Distincte d'`inputs_hash`, qui "
+                    "n'empreinte que la requête.")
+    ndp_as_of: str | None = Field(
+        default=None,
+        description="La date de référence effectivement appliquée, reprise du "
+                    "projet.")
+    inputs_hash: str = Field(
+        description="Empreinte de la REQUÊTE, et rien d'autre. Elle répond à "
+                    "« est-ce la même demande ? », pas à « obtiendra-t-on le "
+                    "même résultat ? » — cela dépend aussi du code et du "
+                    "référentiel, que porte `execution_identity`.")
     request: dict[str, Any]
     ndp_snapshot: dict[str, Any] | None = None
     refusal: dict[str, Any] | None = None

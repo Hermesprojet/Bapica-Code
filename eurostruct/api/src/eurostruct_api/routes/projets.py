@@ -34,8 +34,10 @@ import hashlib
 import json
 from typing import Any
 
+from eurostruct_engine.build import BuildInconnu, identite_de_build
 from eurostruct_engine.exceptions import EurostructEngineError
 from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
+from eurostruct_engine.ndp.execution import identite_execution
 from eurostruct_engine.ndp.postgres_provider import AuthentificationRequise
 from eurostruct_engine.schemas.atelier import (
     CalculDeProjetRequest,
@@ -208,6 +210,21 @@ def calculer_et_enregistrer(
         ouvert.fermer()
         raise _refus(cause) from cause
 
+    # L'IDENTITE DE BUILD EST EXIGEE AVANT DE CALCULER, et le refus est un
+    # 503. Ce n'est pas l'appelant qui est en faute: le service tourne sans
+    # savoir quel code il execute, et la persistance ne peut pas mentir
+    # la-dessus. Le calcul EXPLORATOIRE, lui, reste servi par
+    # `/v1/calculations/...`: il ne pretend rien et ne survit a rien.
+    try:
+        build = identite_de_build()
+    except BuildInconnu as cause:
+        ouvert.fermer()
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "service_non_pret", "what": "identite de build",
+                    "detail": str(cause)},
+        ) from cause
+
     requete = _requete_moteur(projet, corps)
     empreinte = _empreinte_des_entrees(requete)
     strict = bool(corps.strict_ndp)
@@ -239,6 +256,11 @@ def calculer_et_enregistrer(
                 inputs_hash=empreinte, strict_ndp=strict,
                 engine_version=_version_du_moteur(),
                 request=charge,
+                # UN REFUS N'A PAS D'INSTANTANE NDP: le moteur n'a rien
+                # applique. L'identite le porte tel quel, si bien que deux
+                # refus de meme requete sur le meme build se comparent.
+                execution_identity=_identite(charge, None, build),
+                engine_build=build,
                 refusal=error_of(refus).model_dump(mode="json",
                                                    exclude_none=True),
             )
@@ -254,6 +276,12 @@ def calculer_et_enregistrer(
             engine_version=corps_moteur["engine_version"],
             request=charge,
             ndp_snapshot=corps_moteur.get("ndp"),
+            # L'IDENTITE EST CALCULEE SUR L'INSTANTANE REELLEMENT APPLIQUE,
+            # pas sur l'etat d'aujourd'hui du referentiel: une confirmation
+            # arrivee entre deux calculs change le resultat pour une requete
+            # identique, et c'est exactement ce que l'identite doit distinguer.
+            execution_identity=_identite(charge, corps_moteur.get("ndp"), build),
+            engine_build=build,
             # `results.payload` PORTE LE DOCUMENT, `verifications` L'INDEX.
             # Les deux existent et aucun n'est redondant: la table rend « quels
             # calculs ne passent pas » interrogeable en SQL, le payload porte
@@ -376,6 +404,23 @@ def _jeton_de(ouvert: Any) -> str:
     l'authentifie.
     """
     return ouvert.jeton
+
+
+def _identite(charge: dict[str, Any], ndp: Any, build: str) -> str:
+    """L'identité de cette exécution : requête, référentiel appliqué, build.
+
+    ELLE PASSE PAR LA CANONICALISATION DU DÉPÔT — ``digest_of`` — comme les
+    quatre empreintes du dossier de revue. Un second mécanisme dériverait au
+    premier réglage changé, et ce serait toujours le plus faible qui servirait
+    ici.
+    """
+    from eurostruct_engine.version import ENGINE_NAME, ENGINE_VERSION
+
+    return identite_execution(
+        request=charge, ndp_snapshot=ndp,
+        engine_name=ENGINE_NAME, engine_version=ENGINE_VERSION,
+        build_sha=build,
+    ).digest
 
 
 def _version_du_moteur() -> str:

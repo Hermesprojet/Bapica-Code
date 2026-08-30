@@ -186,11 +186,18 @@ export interface CalculDeProjetRequest {
 export interface CalculEnregistre {
   calculation_id: string;
   created_at: string;
+  /** Le build EXACT qui a produit ce calcul. La version seule ne désigne aucun code: plusieurs commits successifs la partagent. */
+  engine_build_sha?: string | null;
   engine_version: string;
+  /** Empreinte canonique de (requête, instantané NDP, moteur, build). Deux exécutions de même identité doivent rendre le même résultat. Distincte d'`inputs_hash`, qui n'empreinte que la requête. */
+  execution_identity?: string | null;
+  /** Empreinte de la REQUÊTE, et rien d'autre. Elle répond à « est-ce la même demande ? », pas à « obtiendra-t-on le même résultat ? » — cela dépend aussi du code et du référentiel, que porte `execution_identity`. */
   inputs_hash: string;
   journal?: unknown | null;
   /** « PROJET — NON SIGNABLE ». Présente uniquement quand des paramètres nationaux non confirmés ont pu servir. Bien plus forte que `notice`: celle-ci dit « pas encore signé », celle-là « pas signable du tout ». */
   mention?: string | null;
+  /** La date de référence effectivement appliquée, reprise du projet. */
+  ndp_as_of?: string | null;
   ndp_snapshot?: Record<string, unknown> | null;
   /** La mention obligatoire: ce document doit être vérifié et signé par un ingénieur habilité. Elle accompagne un calcul relu comme elle accompagne un calcul neuf. */
   notice: string;
