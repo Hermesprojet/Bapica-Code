@@ -119,10 +119,15 @@ def test_l_empreinte_nomme_le_chemin_de_code_et_la_version_du_moteur() -> None:
     assert charge["rule_id"] == CLE
     assert charge["engine_version"] == ENGINE_VERSION
     chemin = charge["code_path"]
-    assert chemin, "aucun symbole declare: l'empreinte ne resume rien."
+    assert chemin, "aucun symbole atteint: l'empreinte ne resume rien."
     for entree in chemin:
         assert entree["symbol"]
-        assert len(entree["source_sha256"]) == 64
+        assert len(entree["semantics_sha256"]) == 64
+    # LES RACINES SONT NOMMEES A PART DE CE QUI EST ATTEINT. Confondre les
+    # deux ferait perdre l'information qui explique une empreinte
+    # surprenante: « d'ou vient ce symbole que je n'ai pas declare ».
+    assert charge["roots"], "aucune racine declaree."
+    assert set(charge["roots"]) <= {e["symbol"] for e in chemin}
 
 
 def test_une_regle_sans_chemin_de_code_declare_est_refusee() -> None:
@@ -169,10 +174,21 @@ def test_une_confirmation_dont_l_empreinte_est_perimee_ne_debloque_plus(
     # On ne réécrit pas le moteur pour un test: on déplace la SOURCE que
     # l'empreinte résume, ce qui est exactement l'effet observable d'un
     # correctif dans la fonction qui applique le paramètre.
+    #
+    # UNE INSTRUCTION, PAS UN COMMENTAIRE. La première rédaction ajoutait
+    # « # FICTIF — le code a change. » — et depuis que l'empreinte résume la
+    # SÉMANTIQUE et non le texte, un commentaire ne la déplace plus. Le cas
+    # serait passé au vert sans rien éprouver. C'est le défaut même que
+    # `test_empreinte_transitive.py` nomme: un test qui modifie la prose
+    # d'un symbole déjà haché ne prouve rien sur ce qui est couvert.
+    cible = "eurostruct_engine.ec2.beam_flexure:design_flexure"
     vraie_source = mod_impl._source_du_symbole
 
     def source_modifiee(symbole: str) -> str:
-        return vraie_source(symbole) + "\n# FICTIF — le code a change.\n"
+        source = vraie_source(symbole)
+        if symbole != cible:
+            return source
+        return source + "\n    _fictif_le_code_a_change = 1\n"
 
     monkeypatch.setattr(mod_impl, "_source_du_symbole", source_modifiee)
     empreinte_implementation.cache_clear()
