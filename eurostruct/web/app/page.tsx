@@ -28,7 +28,8 @@ import {
   attesterLivrable, calculerEtEnregistrer, creerLivrable, creerProjet,
   emettreLivrable, historiqueDuProjet, listerLivrables, listerProjets,
   relireLivrable, renvoyerAuBrouillon, reviserLivrable, rouvrirCalcul,
-  soumettreALaRelecture, telechargerLivrable, telechargerNote,
+  soumettreALaRelecture, telechargerDossierDeRevue,
+  telechargerLivrable, telechargerNote,
   type CalculDeProjetRequest, type CalculEnregistre, type Livrable,
   type LivrableDetail, type Projet,
 } from "@/lib/atelier";
@@ -828,6 +829,24 @@ function Livrables({ projet, revision, surChangement }: {
     }
   }
 
+  /**
+   * Le dossier de revue : le document ET ce a quoi il se rattache.
+   *
+   * ENVOYER LA NOTE SEULE OBLIGE SON DESTINATAIRE A CROIRE SUR PAROLE. Le
+   * dossier porte, a cote des octets exacts, un manifeste qui nomme le
+   * calcul, le contexte normatif, le SHA du moteur, l'identite d'execution,
+   * les deux empreintes et l'attestation quand elle existe.
+   */
+  async function dossier(id: string) {
+    try {
+      await telechargerDossierDeRevue(auth.porteur, projet.project_id, id);
+      setErreur(null);
+    } catch (cause) {
+      setErreur(cause instanceof AppelRefuse
+        ? `${cause.statut} — ${cause.detail}` : String(cause));
+    }
+  }
+
   return (
     <section className="bandeau" id="livrables">
       <strong>Livrables — {projet.name}</strong>
@@ -896,6 +915,10 @@ function Livrables({ projet, revision, surChangement }: {
                   </button>
                   <button type="button" onClick={() => telecharger(d.deliverable_id)}>
                     Télécharger
+                  </button>
+                  <button type="button" onClick={() => dossier(d.deliverable_id)}
+                          title="Le document et son manifeste de rattachement">
+                    Dossier de revue
                   </button>
                   {d.state === "draft" && (
                     <button type="button" disabled={enCours}

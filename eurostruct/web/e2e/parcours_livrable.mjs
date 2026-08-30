@@ -461,6 +461,23 @@ try {
         "le document ne porte pas l'identite d'execution");
 
   // =======================================================================
+  // 5 bis — LE DOSSIER DE REVUE SE TÉLÉCHARGE, ET IL EST DÉTERMINISTE
+  // =======================================================================
+  ici("telechargement du dossier de revue");
+  const dossier = await empreinteDuTelechargement(
+    () => page.click(`tr[data-livrable="${livrableId}"] >> text=Dossier de revue`));
+  exige(dossier.nom.endsWith(".zip"),
+        `le dossier telecharge s'appelle « ${dossier.nom} »`);
+  exige(dossier.taille > 0, "le dossier de revue est vide");
+  //: DEUX TELECHARGEMENTS RENDENT LES MEMES OCTETS. Un dossier dont
+  //: l'empreinte change a chaque appel ne permet pas de dire « voici le
+  //: dossier que j'ai relu ».
+  const dossierBis = await empreinteDuTelechargement(
+    () => page.click(`tr[data-livrable="${livrableId}"] >> text=Dossier de revue`));
+  exige(dossierBis.sha256 === dossier.sha256,
+        "deux telechargements du dossier de revue rendent des octets differents");
+
+  // =======================================================================
   // 6 — F5 : LES MÊMES DONNÉES ET LES MÊMES OCTETS
   // =======================================================================
   ici("rechargement complet");
@@ -681,7 +698,9 @@ console.log(
   "ok: A cree un projet BE/Wallonie, ouvre le mode strict par le quatre-yeux "
   + "avec V, enregistre un calcul strict, produit un brouillon dont les octets "
   + "telecharges portent l'empreinte enregistree et la conservent apres un "
-  + "rechargement complet; l'ecran de A n'offre aucun panneau d'attestation et "
+  + "rechargement complet; le dossier de revue se telecharge et deux "
+  + "telechargements rendent les memes octets; l'ecran de A n'offre aucun "
+  + "panneau d'attestation et "
   + "dit pourquoi, la route le refuse aussi; V atteste sous le nom et le "
   + "numero d'inscription de SON adhesion, emet, et le livrable emis ne se "
   + "modifie plus — ni par bouton, ni par route; une revision d'indice 2 le "

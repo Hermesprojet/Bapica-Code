@@ -404,3 +404,52 @@ export async function telechargerLivrable(
     URL.revokeObjectURL(url);
   }
 }
+
+/**
+ * Télécharge le **dossier de revue** : le document et son manifeste.
+ *
+ * CE QU'IL CONTIENT, ET POURQUOI IL EXISTE. Envoyer une note HTML seule oblige
+ * son destinataire à croire sur parole à quel calcul elle se rattache. Le
+ * dossier porte les deux : les octets exacts, et un manifeste JSON qui nomme
+ * l'organisation, le projet, le contexte normatif, la version et le SHA du
+ * moteur, l'identité d'exécution, les empreintes — celle enregistrée comme
+ * celle servie — et l'attestation si elle existe.
+ *
+ * IL EST DÉTERMINISTE. Deux téléchargements rendent les mêmes octets, ce qui
+ * permet de dire « voici le dossier que j'ai relu » plutôt que de l'affirmer.
+ */
+export async function telechargerDossierDeRevue(
+  porteur: PorteurDeJeton,
+  projectId: string,
+  deliverableId: string,
+): Promise<void> {
+  const jeton = await porteur.jetonUtilisable();
+  if (!jeton) throw new SessionExpiree();
+  const cible = `${base()}/v1/projects/${encodeURIComponent(projectId)}`
+    + `/deliverables/${encodeURIComponent(deliverableId)}/review-bundle`;
+
+  let reponse: Response;
+  try {
+    reponse = await fetch(cible, { headers: { Authorization: `Bearer ${jeton}` } });
+  } catch (cause) {
+    throw new ApiInjoignable(cause);
+  }
+  if (!reponse.ok) {
+    throw new AppelRefuse(reponse.status, await reponse.text().catch(() => null));
+  }
+
+  const disposition = reponse.headers.get("content-disposition") ?? "";
+  const trouve = /filename="([^"]+)"/.exec(disposition);
+  const nom = trouve?.[1] ?? `dossier-revue-${deliverableId}.zip`;
+
+  const contenu = await reponse.blob();
+  const url = URL.createObjectURL(contenu);
+  try {
+    const lien = document.createElement("a");
+    lien.href = url;
+    lien.download = nom;
+    lien.click();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}

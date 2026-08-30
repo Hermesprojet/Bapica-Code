@@ -1051,3 +1051,123 @@ def test_le_projet_dit_le_role_de_l_appelant_dans_cette_organisation(
     assert r.status_code == 200, r.text
     assert all(p["project_id"] != projet["project_id"]
                for p in r.json()["projects"])
+
+
+# ===========================================================================
+# 4 — LE DOSSIER DE REVUE
+# ===========================================================================
+def test_le_dossier_de_revue_porte_le_document_et_son_rattachement(
+        client, jeton, projet, brouillon):
+    """ENVOYER LA NOTE SEULE OBLIGE SON DESTINATAIRE À CROIRE SUR PAROLE.
+
+    Le dossier porte, à côté des octets exacts, un manifeste qui nomme
+    l'organisation, le projet, le contexte normatif, la version et le SHA du
+    moteur, l'identité d'exécution, l'empreinte des entrées, et les DEUX
+    empreintes du document : celle enregistrée, et celle des octets qui
+    partent dans l'archive. Un manifeste qui n'en porterait qu'une ne
+    permettrait pas de constater qu'elles s'accordent — il l'affirmerait.
+    """
+    import io
+    import zipfile
+
+    r = client.get(f"/v1/projects/{projet['project_id']}/deliverables/"
+                   f"{brouillon['deliverable_id']}/review-bundle",
+                   headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("application/zip")
+    assert "attachment" in r.headers["content-disposition"]
+    assert r.headers["content-disposition"].endswith('.zip"')
+
+    archive = zipfile.ZipFile(io.BytesIO(r.content))
+    noms = sorted(archive.namelist())
+    assert noms == sorted([f"documents/{brouillon['filename']}",
+                           "manifeste.json"]), noms
+
+    # LES OCTETS SONT CEUX DU LIVRABLE, PAS UN DOCUMENT RECOMPOSE.
+    octets = archive.read(f"documents/{brouillon['filename']}")
+    assert hashlib.sha256(octets).hexdigest() == brouillon["sha256"]
+
+    m = json.loads(archive.read("manifeste.json"))
+    assert m["kind"] == "eurostruct/review-bundle"
+    assert m["organization"]["id"] == ORG_A
+    assert m["project"]["id"] == projet["project_id"]
+    assert m["project"]["region"] == "Wallonie"
+    assert m["calculation"]["id"] == brouillon["calculation_id"]
+    assert m["calculation"]["engine_build_sha"] == brouillon["engine_build_sha"]
+    assert m["calculation"]["execution_identity"] == brouillon["execution_identity"]
+    assert m["calculation"]["inputs_hash"] == brouillon["inputs_hash"]
+    assert m["files"][0]["sha256_recorded"] == brouillon["sha256"]
+    assert m["files"][0]["sha256_served"] == brouillon["sha256"]
+    assert m["files"][0]["size_bytes"] == len(octets)
+
+    # CE QUI N'EXISTE PAS EST NOMME. Un dossier qui listerait seulement ce
+    # qu'il contient laisserait croire que le reste n'a pas ete demande.
+    assert "calculation_note_pdf" in m["artifacts_not_produced"]
+    assert "ifc_export" in m["artifacts_not_produced"]
+
+    # ET IL NE SE DIT JAMAIS SIGNE ELECTRONIQUEMENT.
+    assert m["attestation"]["kind"] == "attestation_metier_authentifiee"
+    assert m["attestation"]["is_qualified_electronic_signature"] is False
+    assert m["attestation"]["validation_id"] is None
+    assert m["mention"] is None
+
+
+def test_deux_telechargements_du_dossier_rendent_les_memes_octets(
+        client, jeton, projet, brouillon):
+    """UN DOSSIER DONT L'EMPREINTE CHANGE NE PEUT RIEN ATTESTER.
+
+    ZIP n'a pas de champ « sans date » : prendre l'heure courante rendrait deux
+    archives du même dossier différentes d'un octet, donc d'empreinte. On ne
+    pourrait alors pas dire « voici le dossier que j'ai relu ».
+    """
+    chemin = (f"/v1/projects/{projet['project_id']}/deliverables/"
+              f"{brouillon['deliverable_id']}/review-bundle")
+    premier = client.get(chemin, headers=_entete(jeton(ACTEUR_A)))
+    second = client.get(chemin, headers=_entete(jeton(ACTEUR_A)))
+    assert premier.status_code == second.status_code == 200
+    assert premier.content == second.content
+    assert (hashlib.sha256(premier.content).hexdigest()
+            == hashlib.sha256(second.content).hexdigest())
+
+
+def test_le_dossier_d_une_piece_attestee_porte_l_attestation(
+        client, jeton, projet, en_relecture):
+    """ET IL LA NOMME POUR CE QU'ELLE EST."""
+    import io
+    import zipfile
+
+    base = (f"/v1/projects/{projet['project_id']}/deliverables/"
+            f"{en_relecture['deliverable_id']}")
+    texte = "FICTIF — relu, sous reserve du controle d'enrobage."
+    r = client.post(f"{base}/validation",
+                    json={"statement": texte, "reservations": "FICTIF — reserve."},
+                    headers=_entete(jeton(ACTEUR_V)))
+    assert r.status_code == 200, r.text
+
+    r = client.get(f"{base}/review-bundle", headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 200, r.text
+    m = json.loads(zipfile.ZipFile(io.BytesIO(r.content)).read("manifeste.json"))
+
+    assert m["attestation"]["validator_name"] == "FICTIF Ing. V (compte de test)"
+    assert m["attestation"]["validator_role"] == "validating_engineer"
+    assert m["attestation"]["professional_id"] == "FICTIF-ORDRE-0001"
+    assert m["attestation"]["statement"] == texte
+    assert m["attestation"]["signed_at"]
+    assert m["attestation"]["is_qualified_electronic_signature"] is False
+    assert m["deliverable"]["state"] == "validated"
+    assert [t["to_state"] for t in m["transitions"]] == ["draft", "review",
+                                                         "validated"]
+
+
+def test_une_organisation_voisine_n_obtient_aucun_dossier_de_revue(
+        client, jeton, projet, brouillon):
+    """MEME ISOLATION QUE LA LECTURE, PAR LE MEME CHEMIN."""
+    r = client.get(f"/v1/projects/{projet['project_id']}/deliverables/"
+                   f"{brouillon['deliverable_id']}/review-bundle",
+                   headers=_entete(jeton(ACTEUR_B)))
+    assert r.status_code == 422, r.text
+    assert "introuvable" in json.dumps(r.json()).lower()
+
+    r = client.get(f"/v1/projects/{projet['project_id']}/deliverables/"
+                   f"{brouillon['deliverable_id']}/review-bundle")
+    assert r.status_code == 401, r.text

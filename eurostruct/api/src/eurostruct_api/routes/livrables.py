@@ -35,6 +35,9 @@ aucun écran ne l'appelle ainsi.
 """
 from __future__ import annotations
 
+import io
+import json
+import zipfile
 from typing import Any
 
 from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
@@ -327,6 +330,179 @@ def telecharger(project_id: str, deliverable_id: str,
         headers={
             "Content-Disposition":
                 f'attachment; filename="{localisation["filename"]}"',
+            **_EN_TETES_DOCUMENT,
+        },
+    )
+
+
+#: LE MOMENT GRAVE DANS CHAQUE ENTREE D'ARCHIVE.
+#:
+#: ZIP N'A PAS DE CHAMP « SANS DATE ». Prendre l'heure courante rendrait deux
+#: archives du MEME dossier different d'un octet, donc d'empreinte — et un
+#: dossier de revue dont l'empreinte change a chaque telechargement ne peut
+#: rien attester. 1980-01-01 est le plus ancien moment que le format sache
+#: representer: c'est la valeur qui dit « pas de date » sans en inventer une.
+_EPOQUE_ZIP = (1980, 1, 1, 0, 0, 0)
+
+#: LES GENRES DE DOCUMENT QUE LE PRODUIT SAIT REELLEMENT PRODUIRE, ET LES
+#: AUTRES. Le manifeste les nomme tous les deux: un dossier qui listerait
+#: seulement ce qu'il contient laisserait croire que le reste n'existe pas
+#: parce qu'il n'a pas ete demande, alors qu'il n'existe pas du tout.
+_GENRES_ABSENTS = (
+    "calculation_note_pdf", "rebar_drawing_dxf", "rebar_drawing_pdf",
+    "connection_drawing_dxf", "schedule_xlsx", "quantities_xlsx",
+    "ifc_export", "model_json",
+)
+
+
+def _manifeste(projet: dict[str, Any], detail: dict[str, Any],
+               octets: bytes) -> dict[str, Any]:
+    """Ce que le dossier contient, et a quoi cela se rattache.
+
+    TOUT VIENT DES DONNEES GELEES. Pas un champ n'est recalcule : le contexte
+    normatif, la version du moteur, le build, l'identite d'execution et
+    l'empreinte des entrees sont les colonnes que la primitive a rendues, et
+    l'empreinte du document est celle des octets **relus dans le magasin**.
+
+    LES DEUX EMPREINTES SONT ECRITES SEPAREMENT, et c'est le point : celle que
+    la base a enregistree, et celle des octets qui partent dans l'archive. Un
+    manifeste qui n'en porterait qu'une ne permettrait pas de constater
+    qu'elles s'accordent — il l'affirmerait.
+    """
+    return {
+        "kind": "eurostruct/review-bundle",
+        "version": 1,
+        "organization": {
+            "id": projet["organization_id"],
+            "name": projet["organization_name"],
+        },
+        "project": {
+            "id": projet["project_id"],
+            "name": projet["name"],
+            "reference": projet.get("reference"),
+            "country": projet["country"],
+            "region": projet.get("region"),
+            "ndp_as_of": projet["ndp_as_of"],
+        },
+        "calculation": {
+            "id": detail["calculation_id"],
+            "inputs_hash": detail.get("inputs_hash"),
+            "ndp_as_of": detail.get("ndp_as_of"),
+            "engine_version": detail["engine_version"],
+            "engine_build_sha": detail.get("engine_build_sha"),
+            "execution_identity": detail.get("execution_identity"),
+        },
+        "deliverable": {
+            "id": detail["deliverable_id"],
+            "kind": detail["kind"],
+            "filename": detail["filename"],
+            "state": detail["state"],
+            "revision": detail["revision"],
+            "supersedes_id": detail.get("supersedes_id"),
+            "watermark": detail.get("watermark"),
+            "generated_at": detail["generated_at"],
+        },
+        "files": [{
+            "path": f"documents/{detail['filename']}",
+            "media_type": detail["media_type"],
+            "sha256_recorded": detail["sha256"],
+            "sha256_served": empreinte(octets),
+            "size_bytes": len(octets),
+        }],
+        # LES ARTEFACTS QUI N'EXISTENT PAS ENCORE SONT NOMMES.
+        "artifacts_not_produced": list(_GENRES_ABSENTS),
+        # L'ATTESTATION, SI ELLE EXISTE. `null` partout ailleurs: un dossier de
+        # revue d'un brouillon ne doit pas ressembler a celui d'une piece
+        # attestee, et l'absence de champs le dirait moins clairement que des
+        # champs a `null`.
+        "attestation": {
+            "kind": "attestation_metier_authentifiee",
+            "is_qualified_electronic_signature": False,
+            "validation_id": detail.get("validation_id"),
+            "validator_name": detail.get("validator_name"),
+            "validator_role": detail.get("validator_role"),
+            "professional_id": detail.get("professional_id"),
+            "statement": detail.get("statement"),
+            "reservations": detail.get("reservations"),
+            "signed_at": detail.get("validated_at"),
+        },
+        "transitions": detail.get("transitions") or [],
+        "notice": MENTION_OBLIGATOIRE,
+        "mention": detail.get("watermark") or None,
+    }
+
+
+@routeur.get("/{project_id}/deliverables/{deliverable_id}/review-bundle")
+def dossier_de_revue(project_id: str, deliverable_id: str,
+                     ouvert: Any = Depends(ouvrir_atelier)) -> Response:
+    """Le dossier de revue : le document, et le manifeste qui le rattache.
+
+    CE QU'IL CONTIENT
+    ------------------
+    ``documents/<nom>`` — les octets **exacts** du livrable, lus dans le
+    magasin, jamais recomposés. ``manifeste.json`` — l'organisation, le projet,
+    le contexte normatif, la version et le SHA du moteur, l'identité
+    d'exécution, l'empreinte des entrées, l'empreinte du document telle
+    qu'enregistrée **et** telle que servie, l'attestation si elle existe, et
+    l'historique des transitions.
+
+    IL EST DÉTERMINISTE, ET C'EST NÉCESSAIRE. Deux téléchargements du même
+    dossier rendent les **mêmes octets** : dates d'archive figées, entrées dans
+    un ordre fixe, JSON aux clés triées. Un dossier dont l'empreinte change à
+    chaque appel ne peut rien attester — on ne pourrait pas dire « voici le
+    dossier que j'ai relu ».
+
+    IL NE PRODUIT NI N'ENREGISTRE RIEN. C'est une lecture : aucun livrable
+    n'est créé, aucun octet n'est déposé, et le moteur n'est pas relancé.
+    """
+    jeton = _jeton_de(ouvert)
+    try:
+        projet = _projet_de(ouvert, jeton, project_id)
+        detail = ouvert.atelier.relire_livrable(
+            jeton, project_id=project_id, deliverable_id=deliverable_id)
+        localisation = ouvert.atelier.octets_du_livrable(
+            jeton, project_id=project_id, deliverable_id=deliverable_id)
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        raise _refus(cause) from cause
+    finally:
+        ouvert.fermer()
+
+    try:
+        magasin = stockage_configure()
+        if magasin.nom != localisation["storage_backend"]:
+            raise StockageIndisponible(
+                f"le livrable a ete depose dans le magasin "
+                f"« {localisation['storage_backend']} » et le service est "
+                f"configure avec « {magasin.nom} »."
+            )
+        octets = magasin.lire(localisation["storage_path"])
+        if empreinte(octets) != localisation["sha256"]:
+            raise OctetsAlteres(
+                "les octets stockes ne portent plus l'empreinte enregistree: "
+                "on refuse de les mettre dans un dossier de revue."
+            )
+    except (StockageIndisponible, ObjetIntrouvable, OctetsAlteres) as cause:
+        raise _indisponible(cause) from cause
+
+    manifeste = json.dumps(_manifeste(projet, detail, octets),
+                           ensure_ascii=False, indent=2, sort_keys=True)
+
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, "w", zipfile.ZIP_DEFLATED) as archive:
+        for chemin, contenu in (
+            (f"documents/{detail['filename']}", octets),
+            ("manifeste.json", manifeste.encode("utf-8")),
+        ):
+            entree = zipfile.ZipInfo(chemin, date_time=_EPOQUE_ZIP)
+            entree.external_attr = 0o644 << 16
+            archive.writestr(entree, contenu)
+
+    nom = f"dossier-revue-{_nom_de_fichier(projet, detail['calculation_id'])}"
+    return Response(
+        content=tampon.getvalue(), media_type="application/zip",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="{nom.removesuffix(".html")}.zip"',
             **_EN_TETES_DOCUMENT,
         },
     )
