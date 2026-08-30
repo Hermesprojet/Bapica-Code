@@ -29,7 +29,7 @@ from .auth.supabase import AuthentificateurSupabase
 from .base import FabriqueConnexionPostgres
 from .config import Reglages, charger
 from .erreurs import installer_gestionnaires
-from .routes import autorite, calculs, sante
+from .routes import autorite, calculs, referentiel, sante
 
 _journal = logging.getLogger("eurostruct.api")
 
@@ -96,6 +96,9 @@ def creer_application(reglages: Reglages | None = None) -> FastAPI:
     installer_gestionnaires(app, mode_debogage=reglages.mode_debogage)
     app.include_router(sante.routeur)
     app.include_router(calculs.routeur)
+    # AVANT les routes d'autorite: aucune identite requise, le referentiel
+    # national est le meme pour tout le monde.
+    app.include_router(referentiel.routeur)
     app.include_router(autorite.routeur)
     return app
 

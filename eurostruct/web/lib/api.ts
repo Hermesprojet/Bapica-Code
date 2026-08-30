@@ -14,6 +14,7 @@
  */
 import type {
   BeamSectionDrawingRequest,
+  BlockingParameterDTO,
   Ec2BeamFlexureRequest,
   Ec2BeamFlexureResponse,
   EngineErrorDTO,
@@ -127,6 +128,46 @@ export async function telechargerDxf(
   // LIBERER L'URL. Sans cela le blob reste en memoire tant que l'onglet vit.
   URL.revokeObjectURL(url);
   return { ok: true };
+}
+
+/**
+ * L'état du référentiel national d'un pays.
+ *
+ * `blocking` porte la même forme que les blocages d'un refus de calcul — c'est
+ * le même préflight, appelé sans qu'aucune poutre n'ait été saisie.
+ */
+export type EtatReferentiel = {
+  country_code: string;
+  as_of: string;
+  strict: boolean;
+  ok: boolean;
+  required: string[];
+  blocking: BlockingParameterDTO[];
+  referentiel: Record<string, number>;
+  signable_possible: boolean;
+  action: string;
+};
+
+/**
+ * L'état du référentiel d'un pays. Aucune identité n'est requise : une
+ * confirmation belge vaut pour toutes les études belges.
+ *
+ * Rend `null` si l'API ne répond pas. L'écran de calcul doit rester utilisable
+ * sans ce bandeau : un bandeau absent apprend moins qu'une page blanche, mais
+ * il n'empêche pas de travailler.
+ */
+export async function etatDuReferentiel(
+  pays: string,
+): Promise<EtatReferentiel | null> {
+  try {
+    const reponse = await fetch(`${BASE}/v1/ndp/${encodeURIComponent(pays)}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!reponse.ok) return null;
+    return (await reponse.json()) as EtatReferentiel;
+  } catch {
+    return null;
+  }
 }
 
 export type { BeamSectionDrawingRequest, Ec2BeamFlexureRequest, EngineErrorDTO };

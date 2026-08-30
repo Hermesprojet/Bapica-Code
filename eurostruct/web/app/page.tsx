@@ -16,9 +16,12 @@
  * L'ÉCRAN NE CALCULE RIEN. Pas une formule, pas un arrondi. Il montre ce que
  * le moteur a décidé, et le refuse tel quel quand le moteur refuse.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BlockingParameterDTO } from "@contracts/generated/engine";
-import { telechargerDxf, verifierFlexion, type Issue } from "@/lib/api";
+import {
+  etatDuReferentiel, telechargerDxf, verifierFlexion,
+  type EtatReferentiel, type Issue,
+} from "@/lib/api";
 import { authDisponible, ouvrirSession, type Session } from "@/lib/session";
 
 type Champs = {
@@ -70,6 +73,7 @@ export default function Page() {
       </p>
 
       <Connexion />
+      <Referentiel pays={champs.pays} />
 
       <form onSubmit={soumettre}>
         <fieldset>
@@ -162,6 +166,57 @@ export default function Page() {
     </main>
   );
 }
+
+/**
+ * Où en est le référentiel national du pays choisi.
+ *
+ * POURQUOI CE BANDEAU EXISTE
+ * ---------------------------
+ * Jusqu'ici, la seule façon d'apprendre qu'aucune note signable ne peut sortir
+ * d'un pays était de **saisir une poutre et de lire le 422**. C'est une
+ * mauvaise façon de poser la question : « où en est la Belgique ? » se pose
+ * avant qu'aucune poutre n'existe, et la réponse sert à toutes les études.
+ *
+ * Il ne bloque rien. Si l'API ne répond pas, il disparaît, et l'écran de
+ * calcul reste utilisable.
+ */
+function Referentiel({ pays }: { pays: string }) {
+  const [etat, setEtat] = useState<EtatReferentiel | null>(null);
+
+  useEffect(() => {
+    let vivant = true;
+    setEtat(null);
+    etatDuReferentiel(pays).then((e) => {
+      // La reponse d'un pays qu'on a quitte entre-temps ne doit pas s'afficher.
+      if (vivant) setEtat(e);
+    });
+    return () => {
+      vivant = false;
+    };
+  }, [pays]);
+
+  if (!etat) return null;
+
+  const confirmes = etat.referentiel.confirmed ?? 0;
+  const total = etat.referentiel.total ?? 0;
+
+  return (
+    <div className={etat.signable_possible ? "bandeau ok" : "bandeau alerte"}
+         role="status">
+      <strong>Référentiel {etat.country_code}</strong> — {confirmes} / {total}{" "}
+      valeur(s) nationale(s) confirmée(s) au {etat.as_of}.
+      {!etat.signable_possible && (
+        <>
+          {" "}Aucune note signable ne peut être produite pour ce pays
+          aujourd&apos;hui : une valeur transcrite n&apos;est pas une valeur
+          validée.
+          <div className="clause" style={{ marginTop: ".4rem" }}>{etat.action}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 
 /**
  * La connexion Supabase, quand elle est configurée.
