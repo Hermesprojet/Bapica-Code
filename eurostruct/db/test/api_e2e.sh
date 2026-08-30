@@ -109,6 +109,12 @@ python3 -c "import psycopg2" >/dev/null 2>&1 || MANQUANTS="$MANQUANTS psycopg2"
 python3 -c "import fastapi"  >/dev/null 2>&1 || MANQUANTS="$MANQUANTS fastapi"
 python3 -c "import jwt"      >/dev/null 2>&1 || MANQUANTS="$MANQUANTS pyjwt"
 python3 -c "import eurostruct_api" >/dev/null 2>&1 || MANQUANTS="$MANQUANTS eurostruct-api"
+# `TestClient` EST CE QUE LE MODULE DE TEST IMPORTE, ET IL EXIGE `httpx`.
+# Verifier `fastapi` seul ne suffit pas: le paquet s'importe tres bien sans
+# `httpx`, et l'echec tombe alors APRES la pose du decor complet — une minute
+# perdue, et un diagnostic qui parle de pytest plutot que d'une dependance.
+python3 -c "from fastapi.testclient import TestClient" >/dev/null 2>&1 \
+  || MANQUANTS="$MANQUANTS httpx(TestClient)"
 if [[ -n "$MANQUANTS" ]]; then
   echo "NON EXECUTE: api_e2e.sh — dependance(s) absente(s):$MANQUANTS" >&2
   echo "       Le parcours HTTP d'autorite ne peut pas etre eprouve, et une" >&2

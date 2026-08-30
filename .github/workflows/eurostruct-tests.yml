@@ -86,11 +86,28 @@ jobs:
       # EXECUTE — et `--require-db` en fait un rouge, ce qui est le
       # comportement voulu: une surface qu'on n'a pas pu exercer n'est pas une
       # surface qui a tenu.
+      # L'EXTRA `dev` N'EST PAS UN CONFORT: IL PORTE `httpx`.
+      #
+      # `fastapi.testclient.TestClient` est bati sur `httpx`. Sans lui, CHAQUE
+      # cas de la surface API echoue a l'import — pas un echec d'assertion, une
+      # erreur de collecte. Mesure du 30/08: la CI etait rouge depuis
+      # l'enregistrement de la surface, verte en local, et la difference tenait
+      # a ce seul paquet — installe de longue date sur le poste de travail,
+      # absent du runner parce que `pip install -e eurostruct/api` ne tire que
+      # les dependances de BASE.
+      #
+      # L'ETAPE VERIFIE SON PROPRE EFFET, y compris `TestClient` lui-meme: un
+      # `pip install` qui reussit sans que la classe s'importe laisserait la
+      # surface rouge et l'on chercherait la panne ailleurs.
       - name: dependances de la tranche applicative
         run: |
           source "$GITHUB_WORKSPACE/.venv-eurostruct/bin/activate"
-          pip install -e eurostruct/api
-          python -c "import fastapi, jwt, eurostruct_api; print('API prete')"
+          pip install -e "eurostruct/api[dev]"
+          python - <<'PY'
+          import fastapi, jwt, eurostruct_api
+          from fastapi.testclient import TestClient   # exige httpx
+          print("API prete:", fastapi.__version__, "| TestClient importable")
+          PY
 
       - name: client postgresql
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
