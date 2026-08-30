@@ -44,12 +44,18 @@ cette unité de travail » et « l'acteur traîne ».
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, ClassVar, Protocol, runtime_checkable
 
 from .confirmation import (
     ConfirmationDomainError,
     NormativeRuleConfirmation,
     NormativeRuleConfirmationRevocation,
+)
+from .projection import (
+    COLONNES_CONFIRMATION,
+    COLONNES_REVOCATION,
+    confirmation_depuis_ligne,
+    revocation_depuis_ligne,
 )
 
 __all__ = [
@@ -186,6 +192,19 @@ class PostgresConfirmationProvider:
     #: `SET LOCAL`, donc lié à la transaction.
     REGLAGE_ACTEUR: str = "eurostruct.actor_id"
 
+    #: Les rôles que les politiques de lecture couvrent en ``using (true)``.
+    #: Voir :meth:`_exiger_un_role_qui_voit`: hors de cette liste, un SELECT
+    #: rend zéro ligne **sans erreur**, et zéro ligne se lit « aucune
+    #: confirmation ». La liste est ici, à côté du code qui s'en sert, plutôt
+    #: que devinée à l'exécution: elle doit changer avec les migrations, et se
+    #: relire dans le même diff qu'elles.
+    ROLES_QUI_VOIENT: ClassVar[tuple[str, ...]] = (
+        "normative_backend",
+        "eurostruct_authority_backend",
+        "normative_governance",
+        "eurostruct_normative_writer",
+    )
+
     def __post_init__(self) -> None:
         if self.authentificateur is None:
             raise AuthentificationRequise(
@@ -240,22 +259,101 @@ class PostgresConfirmationProvider:
         return _UniteDeTravail(self.connexion, contexte, self.REGLAGE_ACTEUR)
 
     # ----------------------------------------------------- lecture (Protocol)
+    def _lire(self, requete: str, parametres: Any) -> list[dict[str, Any]]:
+        """Une lecture, dans sa propre transaction, terminée par un rollback.
+
+        PAS D'ACTEUR POSÉ, ET C'EST EXACT. Les politiques de lecture des
+        confirmations sont ``using (true)`` pour les rôles de service : le
+        référentiel normatif n'est pas une donnée de locataire, et une
+        confirmation belge vaut pour toutes les études belges. Poser un acteur
+        ici laisserait croire que la visibilité en dépend.
+
+        ``rollback`` plutôt que ``commit`` : une lecture n'a rien à valider, et
+        une transaction laissée ouverte tiendrait un instantané indéfiniment.
+        """
+        self._exiger_un_role_qui_voit()
+        curseur = self.connexion.cursor()
+        try:
+            curseur.execute("begin")
+            curseur.execute(requete, parametres)
+            colonnes = [d[0] for d in curseur.description]
+            return [dict(zip(colonnes, ligne, strict=True))
+                    for ligne in curseur.fetchall()]
+        finally:
+            try:
+                self.connexion.rollback()
+            finally:
+                curseur.close()
+
+    def _exiger_un_role_qui_voit(self) -> None:
+        """Refuser de lire sous un rôle dont RLS masque tout.
+
+        LA RAISON D'ÊTRE DE CETTE MÉTHODE. Sous ``row level security``, un rôle
+        sans politique applicable ne reçoit pas d'erreur : il reçoit **zéro
+        ligne**. « Je n'ai pas le droit de voir » et « il n'y en a aucune »
+        deviennent le même octet, et c'est le second que lirait un décompte à
+        quatre yeux — donc une règle réputée non confirmée alors qu'elle l'est,
+        ou l'inverse le jour où une politique change.
+
+        On demande donc à PostgreSQL, avant de conclure quoi que ce soit d'un
+        ensemble vide, si le rôle courant est de ceux que les politiques
+        ``using (true)`` couvrent.
+        """
+        curseur = self.connexion.cursor()
+        try:
+            curseur.execute(
+                "select bool_or(pg_has_role(current_user, r, 'usage')) "
+                "from unnest(%s::text[]) r "
+                "where exists (select 1 from pg_roles where rolname = r)",
+                (list(self.ROLES_QUI_VOIENT),),
+            )
+            ligne = curseur.fetchone()
+        finally:
+            curseur.close()
+        if not (ligne and ligne[0]):
+            raise ConfirmationDomainError(
+                "le role de cette connexion n'est couvert par aucune politique "
+                f"de lecture des confirmations ({', '.join(self.ROLES_QUI_VOIENT)}). "
+                "Lire quand meme rendrait zero ligne SANS ERREUR, et zero ligne "
+                "se lit « aucune confirmation » — une REPONSE, et fausse. On "
+                "refuse au lieu de repondre a la place de la base."
+            )
+
     def confirmations_for(
         self, rule_id: str,
     ) -> tuple[NormativeRuleConfirmation, ...]:
-        raise NotImplementedError(
-            "la projection des lignes SQL vers NormativeRuleConfirmation "
-            "appartient au jalon de lecture; ce module pose d'abord la "
-            "frontiere d'identite. Ne pas rendre un tuple vide: cela se "
-            "lirait « aucune confirmation », ce qui est une REPONSE."
+        """Les confirmations portant *rule_id*, projetées et vérifiées.
+
+        L'ordre est déterministe (``verified_at``, puis l'identifiant) : deux
+        lectures de la même base doivent rendre la même séquence, sans quoi un
+        diagnostic serait irreproductible.
+        """
+        colonnes = ", ".join(COLONNES_CONFIRMATION)
+        lignes = self._lire(
+            f"select {colonnes} from normative_rule_confirmations "
+            "where rule_id = %s order by verified_at, id",
+            (rule_id,),
         )
+        return tuple(confirmation_depuis_ligne(ligne) for ligne in lignes)
 
     def revocations_for(
         self, rule_id: str,
     ) -> tuple[NormativeRuleConfirmationRevocation, ...]:
-        raise NotImplementedError(
-            "voir confirmations_for: un tuple vide serait une reponse fausse."
+        """Les révocations visant les confirmations de *rule_id*.
+
+        La table des révocations ne porte pas ``rule_id`` — une révocation vise
+        une confirmation, pas une règle. La jointure est donc ce qui rattache
+        les deux, et la faire ici plutôt que côté appelant évite qu'un appelant
+        l'oublie et conclue « aucune révocation ».
+        """
+        colonnes = ", ".join(f"r.{c}" for c in COLONNES_REVOCATION)
+        lignes = self._lire(
+            f"select {colonnes} from normative_rule_confirmation_revocations r "
+            "join normative_rule_confirmations c on c.id = r.confirmation_id "
+            "where c.rule_id = %s order by r.revoked_at, r.id",
+            (rule_id,),
         )
+        return tuple(revocation_depuis_ligne(ligne) for ligne in lignes)
 
     # ------------------------------------------------- décisions (quatre-yeux)
     def proposer_decision(
