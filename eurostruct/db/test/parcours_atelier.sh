@@ -424,10 +424,12 @@ CODE=$?
 if [[ $CODE -eq 0 ]]; then
   echo ""
   echo "==================================================="
-  echo " Depuis le navigateur: un projet cree, un calcul"
-  echo " enregistre, un rechargement complet, un calcul"
-  echo " rouvert aux MEMES entrees et resultats, et une"
-  echo " organisation voisine qui ne voit rien."
+  echo " Depuis le navigateur: un projet BE/Wallonie date,"
+  echo " un referentiel verrouille qu'aucun corps ne peut"
+  echo " substituer, un calcul enregistre, un rechargement"
+  echo " complet, une reouverture aux MEMES resultats, une"
+  echo " note telechargee portant le SHA exact du moteur,"
+  echo " et une organisation voisine qui n'obtient rien."
   echo "===================================================" 
 fi
 exit $CODE
