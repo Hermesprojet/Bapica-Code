@@ -1,8 +1,16 @@
 # Matrice du quatre-yeux explicite — `0014_four_eyes_decisions.sql`
 
 **Jalon 6.3c — racine de confiance.**
-Statut du sous-système : `DB_AUTHORITY_CONTROLS_COMPLETE — BLOCKED_BY_REAL_AUTH`.
+Statut du sous-système : `AUTHORITY_PATH_WIRED — SUPABASE_UNVERIFIED`.
 Ce document n'est **pas** une clôture de 6.3c.
+
+**CE QUI A CHANGÉ, ET QUAND.** `BLOCKED_BY_REAL_AUTH` disait « aucun
+vérificateur de jeton n'existe dans ce dépôt ». Ce n'est plus vrai :
+`AuthentificateurSupabase` vérifie signature, `alg`, `kid`, `iss`, `aud`,
+`exp`, `nbf` et `sub`, et trois harnais jouent le parcours avec deux identités
+cryptographiquement authentifiées. Ce qui reste ouvert n'est pas
+l'authentification, c'est **Supabase** : aucun cycle n'a été validé sur un
+staging réel, et `SUPABASE_UNVERIFIED` le dit.
 
 ---
 
@@ -158,15 +166,23 @@ depuis le domaine. Le moteur ne connaît aucune base, par construction.
 
 | Exigence du contrat | État | Ce qui manque exactement |
 |---|---|---|
-| Le contexte d'acteur est purgé après `COMMIT` | `pending_verification` | il n'existe aucune connexion applicative, donc aucun `COMMIT` applicatif |
-| … après `ROLLBACK` | `pending_verification` | idem |
-| … après une erreur | `pending_verification` | idem |
-| Une connexion de pool ne fuit pas l'acteur au locataire suivant | `pending_verification` | il n'existe aucun pool |
-| Les deux identités proviennent de deux authentifications **réelles** | `BLOCKED_BY_REAL_AUTH` | aucun vérificateur de jeton n'existe dans le dépôt |
+| Le contexte d'acteur est purgé après `COMMIT` | **mesuré** | `provider_contract.py` B3 |
+| … après `ROLLBACK` | **mesuré** | `provider_contract.py` B4 |
+| … après une erreur | **mesuré** | `provider_contract.py` B5 |
+| Une connexion de pool ne fuit pas l'acteur au locataire suivant | **mesuré** | `provider_contract.py` B6, B6bis, B7 |
+| Les deux identités proviennent de deux authentifications **réelles** | **mesuré** | `api_e2e.sh`, `decision_vers_strict.sh`, `parcours_authentifie.sh` |
 
-Aucune de ces cinq lignes n'est déclarée verte, et aucune n'est déclarée
-rouge. Un état non mesuré n'est ni l'un ni l'autre — le déclarer vert serait
-un faux vert, le déclarer rouge accuserait un code qui n'existe pas.
+**CES CINQ LIGNES ÉTAIENT `pending_verification`, ET NE LE SONT PLUS.** Elles
+disaient « il n'existe aucune connexion applicative », « aucun pool », « aucun
+vérificateur de jeton dans le dépôt ». Les trois sont faux depuis que le
+provider de production, l'authentificateur Supabase et les routes d'autorité
+existent : le contrat du provider est éprouvé sur PostgreSQL, et le parcours
+complet est joué avec deux jetons RSA **signés**, vérifiés par
+l'authentificateur de production, du `Bearer` brut jusqu'au `COMMIT`.
+
+Ce document a continué de les annoncer non mesurées bien après. Une matrice
+qui décrit un état révolu n'est pas neutre : elle fait croire à un blocage qui
+n'existe plus, et elle cache ceux qui restent.
 
 ### 4.2 Le contrat externe que le provider devra honorer
 
@@ -203,11 +219,39 @@ déploiement réel emprunterait.
 
 - **Pas** que 6.3c est clos.
 - **Pas** que le système est déployable ou prêt pour la production.
-- **Pas** que le quatre-yeux est opérationnel : il est *contractuellement*
-  tenu par PostgreSQL, et *pratiquement* inatteignable tant qu'aucun
-  authentificateur n'existe.
+- **Pas** que le quatre-yeux est *opérationnel en production*. Il est
+  contractuellement tenu par PostgreSQL, joué de bout en bout depuis les
+  routes publiques sur un PostgreSQL jetable — proposer, refuser
+  l'auto-approbation, approuver, consommer, produire l'effet normatif, le
+  relire par le provider — et **jamais éprouvé sur un Supabase réel**.
+- **Pas** que la mise à niveau d'une base ACTIVE est résolue. La commande
+  officielle installe et vérifie ; elle refuse d'appliquer une migration à une
+  base en service (`ACTIVE_SCHEMA_UPGRADE_REQUIRED`), et ce protocole reste à
+  concevoir.
 - **Pas** que la compatibilité Supabase est établie : elle reste
   `SUPABASE_UNVERIFIED`, aucun cycle n'ayant été validé sur un staging réel.
 
 Statut maximal atteignable en l'état, et statut retenu :
-**`DB_AUTHORITY_CONTROLS_COMPLETE — BLOCKED_BY_REAL_AUTH`.**
+**`AUTHORITY_PATH_WIRED — SUPABASE_UNVERIFIED`.**
+
+---
+
+## 6. Ce que la décision consommée produit, depuis `0016`
+
+`normative_decision_consume()` faisait `APPROVED -> CONSUMED`, écrivait
+l'audit, et **n'insérait rien** dans `normative_rule_confirmations` — la seule
+table que le provider lise. Le quatre-yeux se jouait entièrement, et le mode
+strict restait fermé.
+
+| Ce que `0016`/`0017` garantissent | Établi par |
+|---|---|
+| La décision porte un dossier de revue **figé dès la proposition** | `decision_vers_strict.sh` (dossier absent → refus ; dossier remplacé → refus) |
+| La consommation produit **deux** attestations dans la MÊME transaction | `decision_vers_strict.sh` (trace relue depuis une autre connexion) |
+| Aucun client ne peut insérer une confirmation ni fournir `verifier_id` | déclencheurs disjoints `0016` + cas négatif du corps |
+| Le blocage du calcul strict disparaît **pour cette clé, et elle seule** | `decision_vers_strict.sh` |
+| Après les huit dossiers, le calcul strict rend 200 | `decision_vers_strict.sh` |
+| B relit le dossier gelé, empreintes recalculées, sans aucun acteur rendu | `0017` + `decision_vers_strict.sh` + parcours navigateur |
+
+**Le référentiel versionné reste à 0 / 29.** Tout ce qui précède se joue dans
+un décor jetable et explicitement fictif ; aucune valeur NDP réelle n'a été
+touchée, et aucune source normative n'a été inventée.

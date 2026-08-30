@@ -2,11 +2,14 @@
 
 **Branche** `claude/wip-6.3c-racine-de-confiance` · **base** `4a489f4`
 
-**Les chiffres de ce rapport ont été mesurés sur `da04d7e`**, dernier commit
-porteur de code. Ce qui suit — ce rapport, le README — est de la documentation
-et ne change aucun de ces nombres. Y écrire le SHA de la pointe obligerait à
-tout remesurer après chaque correction de phrase : c'est le commit **mesuré**
-qui compte, pas le dernier.
+**Les chiffres des sections 1 à 7 ont été mesurés sur `da04d7e`.** La
+**section 9** rapporte le lot suivant, mesuré sur `715b565` — et elle
+**corrige** deux affirmations des sections 6 et 7, devenues fausses.
+
+Le SHA écrit est celui du commit **mesuré**, pas celui de la pointe : y mettre
+la pointe obligerait à tout remesurer après chaque correction de phrase. Mais
+un rapport qui garde son SHA sans dire ce qui a bougé depuis devient une
+archive présentée comme un état courant. La section 9 existe pour cela.
 
 ---
 
@@ -320,3 +323,85 @@ l'ouverture de la connexion.
 Ni `PRODUCTION_READY` ni « 6.3c CLOSED ». Ce lot livre une **tranche
 applicative exécutable** et ferme deux trous mesurés. Il ne livre pas un
 référentiel national confirmé, et sans lui aucune note ne peut être signée.
+
+---
+
+## 9. Le lot suivant — mesuré sur `715b565`
+
+### 9.1 Ce que la section 6 annonçait, et qui est faux depuis
+
+> « **Le pont manque entre la confirmation et le portillon.** […] rien
+> n'appelle `assess_confirmations` hors des tests. »
+
+C'était vrai, et ce l'est resté après que le provider ait su lire — parce que
+la moitié amont manquait : `normative_decision_consume()` faisait
+`APPROVED -> CONSUMED`, écrivait l'audit, et **n'insérait rien** dans
+`normative_rule_confirmations`, seule table que le provider lise. Deux chemins
+existaient côte à côte, sans que rien ne les relie.
+
+`0016` produit les deux attestations **dans la transaction de consommation**,
+liées à la décision par clé étrangère, à partir d'un dossier de revue **figé
+dès la proposition**. Ce qu'une preuve établit maintenant, depuis un
+PostgreSQL vide et par les **routes publiques**, sans aucun fournisseur fictif :
+
+| # | fait | établi par |
+|---|---|---|
+| 1 | le calcul strict bloque sur **8** paramètres | `decision_vers_strict.sh` |
+| 2 | A propose le dossier exact, **ne peut pas s'approuver** | idem |
+| 3 | B approuve exactement le même contenu, la consommation est atomique | idem |
+| 4 | le blocage disparaît **pour cette clé, et elle seule** | idem |
+| 5 | après les huit dossiers, le calcul rend **200** et `strict_ndp_satisfied` | idem |
+| 6 | dix cas négatifs ne créent **aucune** confirmation | idem |
+| 7 | le référentiel versionné reste **0 / 29** | idem |
+
+Le pont n'exigeait **aucun apport normatif** : le dossier vient de l'appelant
+et le serveur le canonicalise. Ce que le §6.2 disait impossible sans apport
+normatif — la sélection par empreintes — reste vrai pour les valeurs ; le
+CÂBLAGE, lui, ne l'exigeait pas.
+
+### 9.2 Trois défauts que seule une exécution réelle pouvait montrer
+
+1. **L'image de l'API ne s'était jamais construite.** Trois
+   `pip install --prefix` successifs, dont le second ne voyait pas le moteur
+   installé par le premier hors des chemins interrogés : « No matching
+   distribution found for eurostruct-engine>=0.3.0 ».
+2. **La composition démarrait une base vierge**, et l'API s'y connectait avec
+   le **superutilisateur** de l'image — pour qui RLS ne s'applique pas, et
+   toutes les politiques posées par les migrations sont décoratives.
+3. **`0016` et `0017` ne s'inscrivaient pas au registre de migrations.** Le
+   second démarrage rejouait tout, et la commande officielle refusait en
+   annonçant que la base ACTIVE n'avait pas des migrations qu'elle portait.
+
+Aucun harnais ne pouvait les voir : ils partent d'une base neuve, ne
+construisent aucune image, et ne relisent jamais le registre ensuite.
+
+### 9.3 L'écran d'autorité, et ce qu'il ne fabrique pas
+
+Il proposait `EN 1992-1-1:alpha_cc`, édition `2004`, écrits dans `page.tsx` —
+et le registre belge porte « 1e éd., août 2010 ». Il charge maintenant le plan
+de charge, laisse choisir un paramètre, et **le serveur compose le dossier** :
+valeur, unité, provenance, annexe, édition, clause et empreinte du document
+viennent du **registre**. La citation et la déclaration viennent d'une
+personne — le serveur ne peut pas les produire, et les inventer viderait le
+quatre-yeux de son objet.
+
+**Le navigateur ne construit aucune empreinte normative**, et le parcours le
+vérifie sur l'octet qui part.
+
+### 9.4 Ce que la section 7 doit corriger
+
+La ligne 2 du tableau — « Fournir un staging Supabase » — reste vraie et
+inchangée. Ce qui a changé : **l'alignement des durées de cache JWKS sur la
+documentation Supabase est `pending_verification`**, et pour une raison qui
+n'est pas la nôtre : le proxy de sortie de l'environnement de travail refuse
+`supabase.com`. Les quatre nombres qui manquent sont nommés dans
+`api/src/eurostruct_api/auth/jwks.py`. Aucun n'a été deviné : une valeur
+inventée là décide pendant combien de temps une clé **révoquée** reste
+acceptée.
+
+### 9.5 Statut, inchangé
+
+Ni `PRODUCTION_READY`, ni « 6.3c CLOSED ». Ce lot ferme le parcours
+`décision → confirmation → strict` et rend la composition démarrable. Il ne
+livre **pas** un référentiel national confirmé — il reste à 0 / 29 — et sans
+lui aucune note ne peut être signée.

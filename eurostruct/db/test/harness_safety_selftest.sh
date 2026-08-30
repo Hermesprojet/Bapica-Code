@@ -706,10 +706,39 @@ elif ! kill -0 "$PID_INT" 2>/dev/null; then
   echoue "  constaterait un nettoyage NORMAL, pas un nettoyage apres coupure."
 else
   # Les deux faits sont etablis: on coupe.
-  kill -TERM "$PID_INT" 2>/dev/null
+  #
+  # LE RESULTAT DE `kill` EST LU. Ignore, il laissait passer le cas ou le
+  # processus venait de se terminer entre le constat et le signal: on aurait
+  # alors constate un nettoyage NORMAL en croyant observer un nettoyage apres
+  # coupure.
+  if ! kill -TERM "$PID_INT" 2>/dev/null; then
+    echoue "14. le processus avait disparu au moment du signal: rien n'a ete"
+    echoue "  interrompu, et ce qui suit ne prouverait rien."
+  fi
+  # `wait` REND LA MAIN QUAND LE PROCESSUS EST MOISSONNE, donc APRES son piege
+  # de sortie — celui-ci s'execute dans le processus interrompu, avant qu'il ne
+  # se termine. Il n'y a donc RIEN a attendre ensuite, et c'est le point de ce
+  # correctif.
   wait "$PID_INT" 2>/dev/null
-  # Le piege de sortie s'execute dans le processus interrompu; on lui laisse le
-  # temps de rendre la main, en scrutant plutot qu'en dormant au hasard.
+  CODE_INT=$?
+
+  # LE CODE DE SORTIE PROUVE L'INTERRUPTION, ET AUCUNE HORLOGE N'INTERVIENT.
+  #
+  # Un processus tue par SIGTERM sort en 143 (128 + 15). Un processus qui a
+  # fini son travail sort en 0 ou sur un code d'erreur du script. Constater 143
+  # est donc la preuve DETERMINISTE que le nettoyage observe ensuite est bien
+  # celui d'une coupure — la preuve que le `sleep` de la premiere redaction
+  # pretendait donner sans jamais l'etablir.
+  #
+  # `wait` peut aussi rendre 143 quand c'est LUI qui a ete interrompu; ce
+  # scenario ne pose aucun piege sur TERM dans le processus courant, si bien
+  # que le seul chemin qui mene ici est celui qu'on vise.
+  if [[ "$CODE_INT" -ne 143 ]]; then
+    echoue "14. le processus a rendu $CODE_INT, et non 143 (128+SIGTERM):"
+    echoue "  il ne s'est pas termine SUR l'interruption. Ce qui suit"
+    echoue "  constaterait un nettoyage normal."
+  fi
+
   # LES ROLES CANONIQUES COMPTENT AUSSI, ET CE SONT EUX QUI FONT MAL.
   #
   # Ce constat ne regardait que `interr%`, c'est-a-dire le decor jetable. Or
@@ -717,15 +746,16 @@ else
   # imposes, globaux au cluster —, et ce sont ceux-la qui font refuser toute
   # execution ulterieure. Les chercher est le seul moyen de distinguer « le
   # piege a tourne » de « le piege a tourne a moitie ».
-  APRES="?"
-  for _ in $(seq 1 50); do
-    APRES=$(adm -tAc "select coalesce(string_agg(rolname, ', ' order by rolname), '')
-                        from pg_roles
-                       where rolname like 'interr%'
-                          or rolname in ($LISTE_CANONIQUES)")
-    [[ -z "$APRES" ]] && break
-    sleep 0.2
-  done
+  #
+  # UNE SEULE LECTURE, ET APRES `wait`. La redaction precedente scrutait le
+  # catalogue cinquante fois a 200 ms: sur un runner lent, le piege pouvait
+  # n'avoir pas fini au bout de dix secondes, et le scenario annoncait des
+  # residus qui disparaissaient juste apres. Le verdict dependait alors de la
+  # vitesse de la machine — c'est-a-dire de rien de ce qu'il pretend mesurer.
+  APRES=$(adm -tAc "select coalesce(string_agg(rolname, ', ' order by rolname), '')
+                      from pg_roles
+                     where rolname like 'interr%'
+                        or rolname in ($LISTE_CANONIQUES)")
   # ET LA BASE, pour la meme raison: une base residuelle n'est pas moins un
   # residu qu'un role, et elle retient les roles qui la possedent.
   BASES_APRES=$(adm -tAc "select coalesce(string_agg(datname, ', '), '')
