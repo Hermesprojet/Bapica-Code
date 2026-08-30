@@ -16,8 +16,9 @@ charges : la première verticale complète, pas quarante modules à 30 %.
 |---|---|---|
 | 1 | Schéma PostgreSQL complet (19 tables, RLS, immuabilité décennale) | ✅ appliqué et testé contre PostgreSQL 16 |
 | 2 | Contrat d'interface Pydantic → TypeScript généré | ✅ 22 types, régénération vérifiée en CI |
-| 3 | Moteur `ec2/beam_flexure.py` + suite de tests de référence | ✅ 107 tests |
+| 3 | Moteur `ec2/beam_flexure.py` + suite de tests de référence | ✅ 20 cas sur ce module, **962 sur le moteur entier** — comptes rendus par `run_tests.sh`, jamais recopiés |
 | 4 | Générateur DXF : coupe de poutre, armatures, cadres, calques, cotation | ✅ audit `ezdxf` sans erreur |
+| — | **Tranche applicative** : API HTTP + interface, `dev.sh` | ✅ voir « Démarrer l'application » |
 
 ## Le principe non négociable, dans le code
 
@@ -28,13 +29,44 @@ charges : la première verticale complète, pas quarante modules à 30 %.
 peut pas produire un nombre qui finit dans une note de calcul, parce qu'aucun
 LLM n'est atteignable depuis le moteur.
 
-## Démarrage
+## Démarrer l'application
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e engine -e "api[dev]"
+(cd web && npm install)
+
+./dev.sh                    # API :8000 + interface :3000
+```
+
+`dev.sh` **attend que les deux services répondent** avant de rendre la main :
+un processus lancé n'est pas un service disponible, et annoncer l'un pour
+l'autre fait chercher la panne du mauvais côté.
+
+Sans `.env`, l'application démarre quand même. `/health` répond, `/ready`
+explique **ce qui manque** — sans révéler aucune valeur — et le calcul
+fonctionne : il est déterministe et ne consulte aucune donnée d'autorité. Ce
+sont les **décisions** qui exigent une identité vérifiée.
+
+### À quoi s'attendre
+
+En mode strict — le défaut — **le calcul refuse pour les quatre pays**, parce
+qu'aucun paramètre national n'est au statut `confirmed` (0 sur 29). Ce n'est
+pas une panne : c'est le comportement voulu, et l'écran rend le refus comme une
+**liste de travail** — les paramètres à faire relever, chacun avec sa clause,
+son annexe et son folio. Le bandeau de référentiel le dit avant même qu'une
+poutre soit saisie.
+
+Décocher le mode strict donne un résultat **exploratoire**, affiché sous la
+mention « PROJET — NON SIGNABLE ».
+
+## Démarrage (moteur seul)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e "engine[dev]"
 
-cd engine && python -m pytest tests/ -q          # 107 tests
+cd engine && python -m pytest tests/ -q          # 962 tests
 PGHOST=/tmp PGUSER=postgres ./db/test/run.sh     # garanties du schéma
 ```
 
