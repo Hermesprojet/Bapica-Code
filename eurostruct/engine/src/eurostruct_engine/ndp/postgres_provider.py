@@ -78,6 +78,12 @@ class Curseur(Protocol):
     def fetchone(self) -> Any: ...
     def close(self) -> None: ...
 
+    #: Les noms de colonnes du dernier `select`. DÉCLARÉ parce que la lecture
+    #: s'en sert pour nommer les champs: un curseur conforme qui ne le porte
+    #: pas ferait échouer la projection, et l'exigence doit se lire ici plutôt
+    #: que se découvrir à l'exécution.
+    description: Any
+
 
 @runtime_checkable
 class Connexion(Protocol):
@@ -270,11 +276,25 @@ class PostgresConfirmationProvider:
 
         ``rollback`` plutôt que ``commit`` : une lecture n'a rien à valider, et
         une transaction laissée ouverte tiendrait un instantané indéfiniment.
+
+        AUCUN ``begin`` EXPLICITE ICI, ET LA PREMIÈRE RÉDACTION EN METTAIT UN.
+        Le garde de rôle interroge la base *avant* la requête ; avec une
+        connexion en ``autocommit=False``, ce premier ordre a déjà ouvert la
+        transaction. Le ``begin`` qui suivait arrivait donc toujours en second,
+        et PostgreSQL répondait ``WARNING: there is already a transaction in
+        progress`` — à **chaque** lecture. Mesuré, pas supposé.
+
+        L'écriture, elle, garde son ``begin`` explicite : ``SET LOCAL`` n'a
+        aucune portée hors transaction, et une connexion reçue en autocommit
+        poserait l'acteur pour la durée d'une seule instruction.
+
+        Le garde partage désormais le curseur de la lecture, donc sa
+        transaction : le rôle ne peut plus changer entre le contrôle et la
+        requête qu'il autorise.
         """
-        self._exiger_un_role_qui_voit()
         curseur = self.connexion.cursor()
         try:
-            curseur.execute("begin")
+            self._exiger_un_role_qui_voit(curseur)
             curseur.execute(requete, parametres)
             colonnes = [d[0] for d in curseur.description]
             return [dict(zip(colonnes, ligne, strict=True))
@@ -285,7 +305,7 @@ class PostgresConfirmationProvider:
             finally:
                 curseur.close()
 
-    def _exiger_un_role_qui_voit(self) -> None:
+    def _exiger_un_role_qui_voit(self, curseur: Any = None) -> None:
         """Refuser de lire sous un rôle dont RLS masque tout.
 
         LA RAISON D'ÊTRE DE CETTE MÉTHODE. Sous ``row level security``, un rôle
@@ -298,8 +318,14 @@ class PostgresConfirmationProvider:
         On demande donc à PostgreSQL, avant de conclure quoi que ce soit d'un
         ensemble vide, si le rôle courant est de ceux que les politiques
         ``using (true)`` couvrent.
+
+        ``curseur`` est celui de la lecture quand elle en fournit un : le
+        contrôle et la requête qu'il autorise partagent alors la même
+        transaction. Sans argument — usage de diagnostic — la méthode ouvre et
+        referme le sien.
         """
-        curseur = self.connexion.cursor()
+        propre = curseur is None
+        curseur = self.connexion.cursor() if propre else curseur
         try:
             curseur.execute(
                 "select bool_or(pg_has_role(current_user, r, 'usage')) "
@@ -309,7 +335,8 @@ class PostgresConfirmationProvider:
             )
             ligne = curseur.fetchone()
         finally:
-            curseur.close()
+            if propre:
+                curseur.close()
         if not (ligne and ligne[0]):
             raise ConfirmationDomainError(
                 "le role de cette connexion n'est couvert par aucune politique "

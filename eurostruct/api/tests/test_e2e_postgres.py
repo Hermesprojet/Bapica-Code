@@ -459,3 +459,27 @@ def test_la_lecture_ne_laisse_aucune_transaction_ouverte():
         assert connexion.get_transaction_status() == ext.TRANSACTION_STATUS_IDLE
     finally:
         connexion.close()
+
+
+def test_la_lecture_n_emet_aucun_avertissement_postgresql():
+    """« there is already a transaction in progress », a chaque lecture.
+
+    CE QUE CE CAS A TROUVE. Le garde de role interrogeait la base sur son
+    propre curseur AVANT la requete. Avec une connexion en
+    ``autocommit=False``, ce premier ordre ouvre deja la transaction : le
+    ``begin`` explicite qui suivait arrivait donc toujours en second, et
+    PostgreSQL repondait par un WARNING — a chaque lecture, sans que rien
+    n'echoue.
+
+    Un avertissement que personne ne regarde est un defaut qui dure. Ce cas le
+    regarde.
+    """
+    provider, connexion = _provider_de_service()
+    try:
+        del connexion.notices[:]
+        provider.confirmations_for("be.ec2.aucune_regle_de_ce_nom")
+        provider.revocations_for("be.ec2.aucune_regle_de_ce_nom")
+        avertissements = [n.strip() for n in connexion.notices]
+        assert not avertissements, avertissements
+    finally:
+        connexion.close()
