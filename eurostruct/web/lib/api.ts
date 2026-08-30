@@ -21,14 +21,18 @@ import type {
 } from "@contracts/generated/engine";
 
 /**
- * La réponse de calcul, augmentée des deux champs que la couche HTTP ajoute.
+ * La réponse de calcul, augmentée des champs que la couche HTTP ajoute.
  *
- * `signable` et `mention` ne sont pas des données d'ingénierie : ce sont des
- * conséquences directes de `strict_ndp`, calculées par l'API. Ils sont
- * déclarés ici parce qu'ils n'appartiennent pas au contrat du moteur.
+ * Aucun n'est une donnée d'ingénierie : `signable`, `mention` et
+ * `avertissement` sont des conséquences directes de `strict_ndp`, et `notice`
+ * est la mention légale obligatoire. Ils sont déclarés ici parce qu'ils
+ * n'appartiennent pas au contrat du moteur.
  */
 export type ReponseCalcul = Ec2BeamFlexureResponse & {
   signable: boolean;
+  /** La mention obligatoire du §9, sur TOUTE réponse: « pas encore signé ». */
+  notice: string;
+  /** Conditionnelle et bien plus forte: « pas signable du tout ». */
   mention?: string;
   avertissement?: string;
 };

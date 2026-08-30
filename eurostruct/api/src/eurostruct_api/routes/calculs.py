@@ -30,6 +30,7 @@ from eurostruct_engine.schemas.ec2_beam import (
     BeamSectionDrawingRequest,
     Ec2BeamFlexureRequest,
 )
+from eurostruct_engine.legal import Language, notice
 from eurostruct_engine.service import render_beam_section, run_ec2_beam_flexure
 from fastapi import APIRouter, Response
 
@@ -40,18 +41,46 @@ routeur = APIRouter(prefix="/v1/calculations", tags=["calculs"])
 #: autre client doit la porter aussi.
 MENTION_NON_SIGNABLE = "PROJET — NON SIGNABLE"
 
+#: La mention obligatoire du cahier des charges §9, **sur toute réponse**.
+#:
+#: POURQUOI ELLE N'ÉTAIT PAS LÀ, ET POURQUOI C'EST UN DÉFAUT. Le DXF la porte
+#: — `legal.py` l'y inscrit, et `test_dxf.py` le vérifie. La réponse JSON, non.
+#: Or c'est elle qu'un client transforme en note de calcul : le jour où des
+#: paramètres nationaux seront confirmés, un calcul strict rendrait un résultat
+#: sans mention, et chaque client devrait penser à l'ajouter.
+#:
+#: L'interdiction n° 8 ne dit pas « sur les dessins » : elle dit « ne jamais
+#: livrer un document sans la mention de validation par un ingénieur ».
+MENTION_OBLIGATOIRE = notice(Language.FR)
+
 
 @routeur.post("/ec2/beam-flexure")
 def flexion_poutre_ec2(requete: Ec2BeamFlexureRequest) -> dict[str, Any]:
     """Vérification ELU en flexion simple, section rectangulaire.
 
-    Rend la réponse du contrat, augmentée du seul champ que la couche HTTP a
-    le droit d'ajouter : le caractère signable, qui est une conséquence
-    directe de ``strict_ndp`` et n'est pas une donnée d'ingénierie.
+    Rend la réponse du contrat, augmentée des seuls champs que la couche HTTP a
+    le droit d'ajouter : le caractère signable — conséquence directe de
+    ``strict_ndp``, pas une donnée d'ingénierie — et la mention obligatoire.
+
+    ``notice`` ET ``mention`` NE DISENT PAS LA MÊME CHOSE, et les confondre
+    serait une régression :
+
+    ``notice``
+        « ce document doit être vérifié et signé par un ingénieur habilité ».
+        Vraie de **toute** réponse, y compris d'un calcul parfaitement strict :
+        aucun logiciel ne signe une note.
+
+    ``mention``
+        « PROJET — NON SIGNABLE ». Bien plus forte, et **conditionnelle** : le
+        calcul a utilisé des paramètres nationaux non confirmés, donc il ne
+        peut pas être signé du tout, quel que soit l'ingénieur.
+
+    La première dit « pas encore signé » ; la seconde « pas signable ».
     """
     reponse = run_ec2_beam_flexure(requete)
     corps = reponse.model_dump(mode="json")
     corps["signable"] = bool(requete.strict_ndp)
+    corps["notice"] = MENTION_OBLIGATOIRE
     if not requete.strict_ndp:
         corps["mention"] = MENTION_NON_SIGNABLE
         corps["avertissement"] = (

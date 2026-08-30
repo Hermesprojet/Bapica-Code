@@ -152,3 +152,46 @@ def test_dxf_est_servi_comme_un_fichier(client):
     assert "attachment" in r.headers["content-disposition"]
     assert r.content.startswith(b"  0\nSECTION") or b"SECTION" in r.content[:200]
     assert int(r.headers["X-Eurostruct-Rebar-Rows"]) >= 1
+
+
+# ---------------------------------------------------------------------------
+# La mention obligatoire — interdiction n° 8
+# ---------------------------------------------------------------------------
+CORPS_EXPLORATOIRE = {
+    "project_id": "X", "country": "BE", "strict_ndp": False,
+    "M_Ed": {"value": 150.0, "unit": "kN*m"},
+    "section": {"b": {"value": 300.0, "unit": "mm"},
+                "h": {"value": 500.0, "unit": "mm"},
+                "d": {"value": 450.0, "unit": "mm"}},
+    "materials": {"concrete_grade": "C25/30", "steel_grade": "B500B"},
+}
+
+
+def test_toute_reponse_porte_la_mention_de_validation(client):
+    """Le DXF la portait, la reponse JSON non — et c'est elle qu'on met en note.
+
+    Le jour ou des parametres nationaux seront confirmes, un calcul strict
+    rendra un resultat: sans ce champ, chaque client devrait penser a ajouter
+    la mention, et l'interdiction n° 8 serait respectee par habitude plutot
+    que par construction.
+    """
+    from eurostruct_engine.legal import Language, notice
+
+    corps = client.post("/v1/calculations/ec2/beam-flexure",
+                        json=CORPS_EXPLORATOIRE).json()
+    assert corps["notice"] == notice(Language.FR)
+    assert "ingenieur habilite" in corps["notice"]
+
+
+def test_la_mention_et_la_non_signabilite_sont_deux_choses(client):
+    """« pas encore signe » n'est pas « pas signable ».
+
+    Les fusionner ferait disparaitre l'une des deux: soit un calcul strict
+    perdrait la mention de validation, soit un calcul exploratoire cesserait
+    d'annoncer qu'il ne peut PAS etre signe.
+    """
+    corps = client.post("/v1/calculations/ec2/beam-flexure",
+                        json=CORPS_EXPLORATOIRE).json()
+    assert corps["notice"] != corps["mention"]
+    assert corps["mention"] == "PROJET — NON SIGNABLE"
+    assert corps["signable"] is False

@@ -415,6 +415,11 @@ function Resultat({ issue }: { issue: Extract<Issue, { type: "resultat" }> }) {
         </div>
       )}
 
+      {/* La mention obligatoire vient de la REPONSE, jamais d'une chaine
+          recopiee ici: une seconde redaction divergerait de celle que porte
+          le DXF, et l'ecran affirmerait autre chose que le livrable. */}
+      <p className="pied" style={{ marginTop: 0 }}>{r.notice}</p>
+
       <h2>Résultat</h2>
       <div className="cartes">
         <Carte cle="A_s requise" valeur={res.As_required.value}
