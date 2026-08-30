@@ -243,7 +243,20 @@ def calculer_et_enregistrer(
             engine_version=corps["engine_version"],
             request=charge,
             ndp_snapshot=corps.get("ndp"),
-            result=corps.get("result"),
+            # `results.payload` PORTE LE DOCUMENT, `verifications` L'INDEX.
+            #
+            # Les deux existent et aucun n'est redondant. La table est ce qui
+            # rend « quels calculs ne passent pas » interrogeable en SQL —
+            # l'index `(status, utilisation desc)` de 0001 est la pour cela.
+            # Le payload est le rapport TEL QUE LE MOTEUR L'A PRODUIT, avec
+            # la reference citable de chaque clause, que la table ne porte
+            # pas: la recomposer a l'affichage ferait dire a l'ecran autre
+            # chose que ce qui ira dans la note.
+            result={
+                "element": corps.get("element"),
+                "result": corps.get("result"),
+                "verification": corps.get("verification"),
+            },
             journal=corps.get("journal"),
             verifications=_verifications_a_plat(corps.get("verification")),
         )
@@ -336,11 +349,17 @@ def _verifications_a_plat(rapport: Any) -> list[dict[str, Any]]:
         return []
     lignes: list[dict[str, Any]] = []
     for c in controles:
+        # LA CLAUSE EST UN OBJET, PAS UNE CHAINE. `CheckDTO.clause` est un
+        # `ClauseDTO` — norme, clause, equation, reference citable. La
+        # premiere redaction lisait `c["standard"]` et `c["clause"]` a plat:
+        # le premier n'existe pas, et le second deposait un JSON entier dans
+        # une colonne `text` censee porter « §6.1 ».
+        clause = c.get("clause") if isinstance(c.get("clause"), dict) else {}
         lignes.append({
-            "name": c.get("name") or c.get("id") or "verification",
-            "standard": c.get("standard") or "EN 1992-1-1",
-            "clause": c.get("clause") or "",
-            "equation": c.get("equation"),
+            "name": c.get("name") or "verification",
+            "standard": clause.get("standard") or "",
+            "clause": clause.get("clause") or "",
+            "equation": clause.get("equation"),
             # L'INTERDICTION N° 9 S'APPLIQUE ICI AUSSI: aucune valeur n'est
             # arrondie en passant. `utilisation` traverse telle quelle.
             "utilisation": float(c.get("utilisation") or 0.0),

@@ -22,8 +22,14 @@ import {
   etatDuReferentiel, planDeCharge, telechargerDxf, verifierFlexion,
   type Ec2BeamFlexureRequest, type Ec2BeamSectionRequest,
   type EtatReferentiel, type Issue, type ParametreNdp, type Pays,
-  type PlanDeCharge,
+  type PlanDeCharge, type ReponseCalcul,
 } from "@/lib/api";
+import {
+  calculerEtEnregistrer, creerProjet, historiqueDuProjet, listerProjets,
+  rouvrirCalcul,
+  type CalculEnregistre, type Projet,
+} from "@/lib/atelier";
+import type { CalculResume } from "@contracts/generated/engine";
 import { FournisseurAuth, useAuth } from "@/lib/authentification";
 import { apiUrlConfiguree, DIAGNOSTIC_API_ABSENTE } from "@/lib/configuration";
 import {
@@ -68,6 +74,22 @@ export default function Page() {
 }
 
 function Ecran() {
+  const auth = useAuth();
+  //: LE PROJET SÉLECTIONNÉ, ET LA DIFFÉRENCE QU'IL FAIT.
+  //:
+  //: Sans projet, le calcul reste EXPLORATOIRE: il passe par la route
+  //: publique, ne touche aucune base, et disparaît au rechargement. C'est
+  //: exactement ce qu'était le produit entier jusqu'ici, avec
+  //: `project_id: "DEMO-001"` écrit en dur.
+  //:
+  //: Avec un projet, il passe par la route de l'atelier, qui l'enregistre —
+  //: requête exacte, journal, résultats et vérifications — en une seule
+  //: transaction, puis le rend relu depuis la base.
+  const [projet, setProjet] = useState<Projet | null>(null);
+  //: Ce que l'historique incrémente pour se redemander. Un calcul enregistré
+  //: qui n'apparaîtrait pas dans la liste juste au-dessus donnerait à croire
+  //: qu'il n'a pas été sauvegardé.
+  const [revisionAtelier, setRevisionAtelier] = useState(0);
   const [champs, setChamps] = useState<Champs>(DEFAUTS);
   const [issue, setIssue] = useState<Issue | null>(null);
   const [enCours, setEnCours] = useState(false);
@@ -87,13 +109,19 @@ function Ecran() {
   const changerPays = (e: { target: { value: string } }) =>
     setChamps((c) => ({ ...c, pays: e.target.value as Pays }));
 
-  async function soumettre(e: React.FormEvent) {
-    e.preventDefault();
-    setEnCours(true);
-    setIssue(null);
-    // Une requête RÉELLEMENT typée: si le contrat change, ceci ne compile plus.
-    const requete: Ec2BeamFlexureRequest = {
-      project_id: "DEMO-001",
+  /**
+   * La requête, telle que le moteur la recevra.
+   *
+   * `project_id` PORTE LE PROJET RÉEL QUAND IL Y EN A UN. Sans projet, c'est
+   * un repère de note exploratoire — et il est nommé comme tel, plutôt que
+   * `DEMO-001`, qui ressemblait à un identifiant et n'en était pas un. Sur la
+   * route de l'atelier, le serveur l'écrase de toute façon par celui du
+   * chemin: aucune note ne peut porter un projet différent de celui où elle
+   * est enregistrée.
+   */
+  function requeteCourante(): Ec2BeamFlexureRequest {
+    return {
+      project_id: projet?.project_id ?? "exploratoire",
       element: champs.element,
       country: champs.pays,
       strict_ndp: champs.strict,
@@ -105,9 +133,41 @@ function Ecran() {
       },
       materials: { concrete_grade: champs.beton, steel_grade: champs.acier },
     };
-    const resultat = await verifierFlexion(requete);
-    setIssue(resultat);
+  }
+
+  /** Calcul EXPLORATOIRE. Rien n'est écrit, et l'écran le dit. */
+  async function soumettre(e: React.FormEvent) {
+    e.preventDefault();
+    setEnCours(true);
+    setIssue(null);
+    setIssue(await verifierFlexion(requeteCourante()));
     setEnCours(false);
+  }
+
+  /**
+   * Calcul ENREGISTRÉ, sur le projet sélectionné.
+   *
+   * LE REFUS EST AFFICHÉ COMME UN REFUS, et il a quand même été enregistré:
+   * le serveur écrit la ligne avant de rendre le 422. L'écran n'a donc rien à
+   * faire de particulier — sinon rafraîchir l'historique, où le refus figure.
+   */
+  async function enregistrer() {
+    if (!projet) return;
+    setEnCours(true);
+    setIssue(null);
+    const requete = requeteCourante();
+    try {
+      const calcul = await calculerEtEnregistrer(
+        auth.porteur, projet.project_id, requete);
+      setIssue(issueDepuisEnregistre(calcul));
+    } catch (cause) {
+      setIssue(issueDepuisErreur(cause));
+    } finally {
+      // DANS TOUS LES CAS. Un refus est une ligne d'historique comme une
+      // autre, et ne pas rafraîchir donnerait à croire qu'il n'a rien laissé.
+      setRevisionAtelier((n) => n + 1);
+      setEnCours(false);
+    }
   }
 
   return (
@@ -119,6 +179,7 @@ function Ecran() {
 
       <ConfigurationManquante />
       <Connexion />
+      <Atelier projet={projet} surSelection={setProjet} />
       <DecisionsAutorite pays={champs.pays}
                          surConsommation={() => setRevision((n) => n + 1)} />
       <Referentiel pays={champs.pays} revision={revision} />
@@ -192,9 +253,33 @@ function Ecran() {
         </fieldset>
 
         <button type="submit" disabled={enCours}>
-          {enCours ? "Calcul en cours…" : "Vérifier"}
+          {enCours ? "Calcul en cours…" : "Vérifier (exploratoire)"}
         </button>
+
+        {/* DEUX BOUTONS, ET LEUR DIFFÉRENCE EST ÉCRITE.
+            « Vérifier » ne laisse aucune trace: c'est ce que faisait tout
+            l'écran jusqu'ici. « Calculer et enregistrer » écrit le calcul sur
+            le projet — requête exacte, journal, résultats et vérifications —
+            et il survit au rechargement. Confondre les deux ferait croire à un
+            enregistrement qui n'a pas lieu. */}
+        <button type="button" disabled={enCours || !projet}
+                onClick={enregistrer}
+                title={projet ? `Enregistrer sur « ${projet.name} »`
+                              : "Sélectionner un projet d'abord"}>
+          {enCours ? "En cours…" : "Calculer et enregistrer sur le projet"}
+        </button>
+        {!projet && (
+          <p className="aide">
+            Aucun projet sélectionné : le calcul reste exploratoire et
+            disparaîtra au rechargement.
+          </p>
+        )}
       </form>
+
+      {projet && (
+        <Historique projet={projet} revision={revisionAtelier}
+                    surReouverture={setIssue} />
+      )}
 
       {issue?.type === "panne" && (
         <div className="bandeau refus" role="alert">
@@ -212,6 +297,284 @@ function Ecran() {
         humain, qu&apos;aucun calcul ne remplace.
       </p>
     </main>
+  );
+}
+
+// ===========================================================================
+// L'ATELIER — projets, historique, réouverture
+// ===========================================================================
+
+/**
+ * Un calcul enregistré, projeté dans la forme que l'écran de résultat affiche.
+ *
+ * POURQUOI PROJETER PLUTÔT QU'ÉCRIRE UN SECOND ÉCRAN. `Resultat` sait déjà
+ * afficher un calcul — les cartes, le journal, les vérifications, la mention.
+ * En écrire un deuxième pour les calculs relus donnerait deux rendus du même
+ * objet, et c'est toujours le moins entretenu qui finit par mentir sur un
+ * taux d'utilisation.
+ *
+ * ON NE FABRIQUE AUCUNE VALEUR AU PASSAGE. Ce qui manque au calcul relu — il
+ * n'en manque pas, la base porte le résultat entier — n'est pas comblé.
+ */
+function issueDepuisEnregistre(calcul: CalculEnregistre): Issue {
+  //: `results.payload` PORTE LE DOCUMENT: le resultat, le rapport de
+  //: verification avec la reference citable de chaque clause, et le repere.
+  //: La table `verifications` en est l'index interrogeable, pas la source de
+  //: l'affichage — la recomposer ici ferait dire a l'ecran autre chose que ce
+  //: qui ira dans la note.
+  const paquet = (calcul.result ?? {}) as Record<string, unknown>;
+  return {
+    type: "resultat",
+    valeur: {
+      element: paquet.element,
+      result: paquet.result,
+      verification: paquet.verification,
+      engine_version: calcul.engine_version,
+      journal: calcul.journal,
+      // LES DEUX CONSÉQUENCES DU MODE STRICT, telles que la base les porte.
+      // Les recalculer ici ferait dire à l'écran autre chose que ce qui est
+      // enregistré.
+      strict_ndp_satisfied: calcul.strict_ndp && calcul.status === "succeeded",
+      eligible_for_engineering_review:
+        calcul.strict_ndp && calcul.status === "succeeded",
+      exploratory: !calcul.strict_ndp,
+      notice: calcul.notice,
+      mention: calcul.mention ?? undefined,
+    } as unknown as ReponseCalcul,
+    requete: calcul.request as unknown as Ec2BeamFlexureRequest,
+  };
+}
+
+/** Une erreur de transport, dite comme telle et jamais comme un résultat. */
+function issueDepuisErreur(cause: unknown): Issue {
+  if (cause instanceof AppelRefuse) {
+    return { type: "panne", message: `${cause.statut} — ${cause.message}` };
+  }
+  return { type: "panne", message: String(cause) };
+}
+
+/**
+ * Les projets de l'organisation, leur création, et la sélection.
+ *
+ * IL NE S'AFFICHE PAS SANS SESSION, et il le dit. Un projet nomme un client et
+ * une adresse : la liste n'existe pas pour un visiteur, et une liste vide
+ * affichée à sa place se lirait « vous n'avez aucun projet ».
+ *
+ * AUCUNE ORGANISATION N'EST SAISIE ICI. Elle sort des appartenances en base.
+ * Le seul cas où elle se poserait — un ingénieur de plusieurs bureaux — reçoit
+ * aujourd'hui un refus nommé du serveur plutôt qu'un choix deviné, et le champ
+ * viendra quand le cas se présentera vraiment.
+ */
+function Atelier({ projet, surSelection }: {
+  projet: Projet | null;
+  surSelection: (p: Projet | null) => void;
+}) {
+  const auth = useAuth();
+  const [projets, setProjets] = useState<Projet[] | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [ouvrirCreation, setOuvrirCreation] = useState(false);
+  const [nom, setNom] = useState("");
+  const [reference, setReference] = useState("");
+  const [pays, setPays] = useState<Pays>("BE");
+  const [dateRef, setDateRef] = useState(
+    () => new Date().toISOString().slice(0, 10));
+  const [enCours, setEnCours] = useState(false);
+
+  useEffect(() => {
+    if (!auth.connecte) {
+      setProjets(null);
+      surSelection(null);
+      return;
+    }
+    let vivant = true;
+    listerProjets(auth.porteur)
+      .then((liste) => { if (vivant) { setProjets(liste); setErreur(null); } })
+      .catch((cause) => {
+        // UNE PANNE N'EST PAS UNE LISTE VIDE. Les confondre ferait afficher
+        // « aucun projet » à quelqu'un qui en a douze.
+        if (vivant) { setProjets(null); setErreur(String(cause)); }
+      });
+    return () => { vivant = false; };
+  }, [auth.connecte, auth.porteur, surSelection]);
+
+  if (!auth.connecte) return null;
+
+  async function creer(e: React.FormEvent) {
+    e.preventDefault();
+    setEnCours(true);
+    setErreur(null);
+    try {
+      const cree = await creerProjet(auth.porteur, {
+        name: nom, reference: reference || null, country: pays,
+        ndp_as_of: dateRef, organization_id: null,
+      });
+      setProjets((liste) => [cree, ...(liste ?? [])]);
+      surSelection(cree);
+      setOuvrirCreation(false);
+      setNom("");
+      setReference("");
+    } catch (cause) {
+      setErreur(String(cause));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  return (
+    <section className="bandeau">
+      <strong>Atelier</strong>
+      {erreur && <p role="alert">{erreur}</p>}
+
+      <div className="grille">
+        <div>
+          <label htmlFor="projet">Projet</label>
+          <select id="projet" value={projet?.project_id ?? ""}
+                  onChange={(e) => surSelection(
+                    projets?.find((p) => p.project_id === e.target.value)
+                    ?? null)}>
+            <option value="">— aucun (calcul exploratoire) —</option>
+            {(projets ?? []).map((p) => (
+              <option key={p.project_id} value={p.project_id}>
+                {p.name}{p.reference ? ` — ${p.reference}` : ""} ({p.country},
+                {" "}{p.calculation_count} calcul
+                {p.calculation_count === 1 ? "" : "s"})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <button type="button"
+                  onClick={() => setOuvrirCreation((o) => !o)}>
+            {ouvrirCreation ? "Annuler" : "Nouveau projet"}
+          </button>
+        </div>
+      </div>
+
+      {projet && (
+        <p className="aide">
+          {projet.organization_name} — référentiel figé au {projet.ndp_as_of}.
+        </p>
+      )}
+
+      {ouvrirCreation && (
+        <form onSubmit={creer}>
+          <div className="grille">
+            <div>
+              <label htmlFor="p-nom">Nom</label>
+              <input id="p-nom" value={nom} required
+                     onChange={(e) => setNom(e.target.value)} />
+            </div>
+            <div>
+              <label htmlFor="p-ref">Référence</label>
+              <input id="p-ref" value={reference}
+                     onChange={(e) => setReference(e.target.value)} />
+            </div>
+            <div>
+              <label htmlFor="p-pays">Pays</label>
+              <select id="p-pays" value={pays}
+                      onChange={(e) => setPays(e.target.value as Pays)}>
+                <option value="BE">Belgique</option>
+                <option value="FR">France</option>
+                <option value="ES">Espagne</option>
+                <option value="DE">Allemagne</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="p-date">Date de référence</label>
+              <input id="p-date" type="date" value={dateRef} required
+                     onChange={(e) => setDateRef(e.target.value)} />
+              <span className="aide">
+                Elle résout l&apos;édition d&apos;Annexe Nationale en vigueur,
+                et se fige à la création.
+              </span>
+            </div>
+          </div>
+          <button type="submit" disabled={enCours || !nom.trim()}>
+            {enCours ? "Création…" : "Créer le projet"}
+          </button>
+        </form>
+      )}
+    </section>
+  );
+}
+
+/**
+ * L'historique du projet, et la réouverture d'un calcul sauvegardé.
+ *
+ * LES REFUS Y FIGURENT, et c'est le point. Un historique qui ne montrerait que
+ * les calculs aboutis ferait croire qu'aucun n'a jamais été refusé — or c'est
+ * la première trace qu'un audit cherche.
+ *
+ * ROUVRIR NE RECALCULE RIEN. Le serveur rend ce qui a été enregistré ; relancer
+ * le moteur donnerait le résultat d'aujourd'hui pour un calcul d'hier.
+ */
+function Historique({ projet, revision, surReouverture }: {
+  projet: Projet;
+  revision: number;
+  surReouverture: (issue: Issue) => void;
+}) {
+  const auth = useAuth();
+  const [lignes, setLignes] = useState<CalculResume[] | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vivant = true;
+    historiqueDuProjet(auth.porteur, projet.project_id)
+      .then((h) => { if (vivant) { setLignes(h.calculations); setErreur(null); } })
+      .catch((cause) => {
+        if (vivant) { setLignes(null); setErreur(String(cause)); }
+      });
+    return () => { vivant = false; };
+  }, [auth.porteur, projet.project_id, revision]);
+
+  async function rouvrir(calculationId: string) {
+    try {
+      surReouverture(issueDepuisEnregistre(
+        await rouvrirCalcul(auth.porteur, projet.project_id, calculationId)));
+    } catch (cause) {
+      surReouverture(issueDepuisErreur(cause));
+    }
+  }
+
+  return (
+    <section className="bandeau">
+      <strong>Historique — {projet.name}</strong>
+      {erreur && <p role="alert">{erreur}</p>}
+      {lignes !== null && lignes.length === 0 && (
+        <p className="aide">Aucun calcul enregistré sur ce projet.</p>
+      )}
+      {lignes !== null && lignes.length > 0 && (
+        <table>
+          <thead>
+            <tr>
+              <th>Repère</th><th>État</th><th>Mode</th>
+              <th>Utilisation max</th><th>Moteur</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {lignes.map((c) => (
+              <tr key={c.calculation_id}>
+                <td>{c.element ?? "—"}</td>
+                <td>{c.status === "refused" ? "refusé" : "abouti"}</td>
+                <td>{c.strict_ndp ? "strict" : "exploratoire"}</td>
+                {/* `null` N'EST PAS `0`. Un refus n'a produit aucune
+                    vérification, et « 0,00 » se lirait « largement vérifié »
+                    là où rien ne l'a été. */}
+                <td>{c.max_utilisation === null || c.max_utilisation === undefined
+                      ? "—" : c.max_utilisation.toFixed(3)}</td>
+                <td>{c.engine_version}</td>
+                <td>
+                  <button type="button"
+                          onClick={() => rouvrir(c.calculation_id)}>
+                    Rouvrir
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }
 
