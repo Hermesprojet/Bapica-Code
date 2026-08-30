@@ -362,23 +362,46 @@ fi
 
 echo "      -- surface-du-backend: ce que le backend authentifie atteint, et rien de plus"
 # UNE SURFACE OUVERTE SE MESURE PAR SON CONTENU, PAS PAR SON EXISTENCE. Le
-# backend authentifie doit atteindre EXACTEMENT sept fonctions: les trois
-# primitives de decision, la RELECTURE du dossier gele, les deux derivations
-# d'acteur, et la lecture d'efficacite. Compter « au moins trois » laisserait
-# un GRANT de plus passer sans que rien ne le dise — c'est precisement ainsi
-# qu'une porte s'ajoute.
+# backend authentifie doit atteindre EXACTEMENT les fonctions declarees
+# ci-dessous. Compter « au moins trois » laisserait un GRANT de plus passer
+# sans que rien ne le dise — c'est precisement ainsi qu'une porte s'ajoute.
 #
-# `normative_decision_review` EST LA SEPTIEME, ajoutee par 0017 et DECLAREE
-# ici. Sans elle, le second ingenieur approuve un identifiant et non un
-# contenu: son navigateur n'a jamais vu le dossier. Elle ne rend aucun acteur,
-# et le quatre-yeux reste garanti par la contrainte de table. Ce controle a
-# refuse des son ajout — il fait exactement ce pour quoi il existe, et c'est
-# la declaration qui manquait.
+# LE CHEMIN NORMATIF — sept fonctions: les trois primitives de decision, la
+# RELECTURE du dossier gele, les deux derivations d'acteur, et la lecture
+# d'efficacite. `normative_decision_review` a ete ajoutee par 0017 et declaree
+# ici: sans elle, le second ingenieur approuve un identifiant et non un
+# contenu, son navigateur n'ayant jamais vu le dossier. Elle ne rend aucun
+# acteur, et le quatre-yeux reste garanti par la contrainte de table.
+#
+# LE CHEMIN DE TRAVAIL — cinq primitives, ajoutees par 0018 et declarees de
+# meme: lister et creer un projet, enregistrer un calcul, relire l'historique,
+# rouvrir un calcul. Le MEME backend les execute, parce que c'est le meme
+# service qui presente le meme jeton verifie. Ce controle a refuse des leur
+# ajout, avec le message exact:
+#
+#   ROUGE: la surface du backend authentifie a change.
+#
+# Il fait exactement ce pour quoi il existe: une porte de plus ne s'ouvre pas
+# en silence. C'est la declaration qui manquait, pas la garde qui exagerait.
+#
+# CE QUE LES CINQ N'OUVRENT PAS. Aucune ne touche
+# `normative_authorisation_grants` ni `normative_authority_decisions`: elles
+# ecrivent `projects`, `calculations`, `results` et `verifications`, sous les
+# politiques RLS de 0018 et sous l'acteur derive de la session.
+#
+# ET LES QUATRE FONCTIONS INTERNES DE 0018 — `project_backend_actor`,
+# `project_actor_is_member`, `project_actor_can_write`,
+# `project_annexe_en_vigueur` — n'apparaissent PAS dans cette liste, et c'est
+# voulu: elles ne sont accordees qu'au proprietaire des primitives. Leur
+# absence est elle-meme une mesure, pas un oubli.
 #
 # SANS ESPACES: `q()` normalise en retirant les blancs, et comparer une chaine
 # espacee a une chaine compactee produisait un rouge sur deux ensembles
 # IDENTIQUES — un faux rouge est aussi trompeur qu'un faux vert.
-ATTENDUES="normative_authenticated_actor,normative_authenticated_actor_or_null,normative_decision_approve,normative_decision_consume,normative_decision_propose,normative_decision_review,normative_grant_is_effective"
+#
+# L'ORDRE EST CELUI DE `order by p.proname`, et non celui du recit ci-dessus:
+# la comparaison porte sur la chaine entiere.
+ATTENDUES="normative_authenticated_actor,normative_authenticated_actor_or_null,normative_decision_approve,normative_decision_consume,normative_decision_propose,normative_decision_review,normative_grant_is_effective,project_calculation_list,project_calculation_read,project_calculation_record,project_workspace_create,project_workspace_list"
 OUVERTES="$(q "select coalesce(string_agg(distinct p.proname, ', '
                                  order by p.proname), '(aucune)')
                  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -388,9 +411,11 @@ OUVERTES="$(q "select coalesce(string_agg(distinct p.proname, ', '
                   and not has_function_privilege('public', p.oid, 'EXECUTE')")"
 detail "atteintes par eurostruct_authority_backend: $OUVERTES"
 if [[ "$OUVERTES" == "$ATTENDUES" ]]; then
-  sur surface-du-backend "le backend authentifie atteint exactement les six"
-  detail "fonctions prevues — les trois primitives de decision, les deux"
-  detail "derivations d'acteur, la lecture d'efficacite. Ni plus, ni moins."
+  sur surface-du-backend "le backend authentifie atteint exactement les douze"
+  detail "fonctions declarees — sept sur le chemin normatif (trois primitives"
+  detail "de decision, la relecture du dossier gele, deux derivations d'acteur,"
+  detail "la lecture d'efficacite) et cinq sur le chemin de travail (projets,"
+  detail "calcul, historique, reouverture). Ni plus, ni moins."
 elif [[ "$OUVERTES" == "(aucune)" ]]; then
   rouge surface-du-backend "le backend authentifie n'atteint RIEN: le chemin"
   detail "nominal du quatre-yeux n'existe pas."

@@ -381,7 +381,9 @@ $$;
 --
 -- `p_org_id` est FACULTATIF et jamais cru: fourni, il est confronte aux
 -- appartenances; absent, il est derive — et s'il y a plusieurs organisations
--- possibles, on refuse en les nommant plutot que d'en choisir une.
+-- possibles, on REFUSE plutot que d'en choisir une. Le refus dit COMBIEN il y
+-- en a, ce qui suffit a l'appelant pour en nommer une; les enumerer ferait de
+-- cette primitive un annuaire, ce qu'elle n'est pas.
 create or replace function project_workspace_create(
   p_name      text,
   p_reference text,
