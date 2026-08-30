@@ -674,7 +674,12 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
           </thead>
           <tbody>
             {lignes.map((c) => (
-              <tr key={c.calculation_id}>
+              /* L'IDENTIFIANT DU CALCUL EST SUR LA LIGNE, et il sert.
+                 Un historique de plusieurs calculs aboutis porte autant de
+                 boutons identiques; sans repere, « cliquer sur Produire un
+                 brouillon » ne designe rien de precis — ni pour un parcours
+                 automatise, ni pour quelqu'un qui decrit ce qu'il a fait. */
+              <tr key={c.calculation_id} data-calcul={c.calculation_id}>
                 <td>{c.element ?? "—"}</td>
                 <td>{c.status === "refused" ? "refusé" : "abouti"}</td>
                 <td>{c.strict_ndp ? "strict" : "exploratoire"}</td>

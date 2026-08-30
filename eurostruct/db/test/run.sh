@@ -390,6 +390,22 @@ echo "==> livrable: brouillon, relecture, attestation, emission"
 etape "livrable et validation" \
   "$HERE/livrable_validation.sh" "${DB_NAME:0:20}lv"
 
+# LE LIVRABLE, DEPUIS UN VRAI NAVIGATEUR.
+#
+# `livrable_validation.sh` prouve que les routes et les primitives tiennent
+# sous identite verifiee. Il ne dit rien de ce que l'ECRAN envoie, ni de ce
+# qu'un ingenieur peut faire avec sa souris, ni de ce qui reste apres un F5 —
+# et c'est la que vivent les defauts d'interface.
+#
+# Douze faits, dont trois qu'aucun test applicatif ne peut etablir: les octets
+# telecharges PAR LE NAVIGATEUR portent l'empreinte enregistree; l'ecran d'un
+# ingenieur non habilite n'offre AUCUN panneau d'attestation et dit pourquoi;
+# un livrable emis n'offre plus aucun bouton de modification — et la route le
+# refuse aussi, parce que cacher un bouton ne protege rien.
+echo "==> livrable, depuis un vrai navigateur"
+etape "parcours livrable (navigateur)" \
+  "$HERE/parcours_livrable.sh" "${DB_NAME:0:20}pl"
+
 echo "==> quatre-yeux explicite (6.3c)"
 etape "quatre-yeux explicite" \
   "$HERE/authority_four_eyes.sh" "${DB_NAME:0:20}fy"
