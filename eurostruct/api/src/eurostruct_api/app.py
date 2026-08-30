@@ -28,6 +28,7 @@ from . import __version__
 from .auth.supabase import AuthentificateurSupabase
 from .base import FabriqueConnexionPostgres
 from .config import Reglages, charger
+from . import erreurs
 from .erreurs import installer_gestionnaires
 from .routes import autorite, calculs, referentiel, sante
 
@@ -90,7 +91,11 @@ def creer_application(reglages: Reglages | None = None) -> FastAPI:
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
-        expose_headers=["X-Eurostruct-Rebar-Rows"],
+        # L'IDENTIFIANT DE CORRELATION DOIT ETRE LISIBLE PAR L'INTERFACE.
+        # Sans `expose_headers`, le navigateur le recoit et le cache: seule
+        # une personne ayant acces aux journaux pourrait relier une panne a sa
+        # trace, et l'utilisateur qui la signale n'aurait rien a citer.
+        expose_headers=["X-Eurostruct-Rebar-Rows", erreurs.ENTETE_CORRELATION],
     )
 
     installer_gestionnaires(app, mode_debogage=reglages.mode_debogage)

@@ -65,7 +65,94 @@ __all__ = [
     "ContexteAuthentifie",
     "AuthentificationRequise",
     "PostgresConfirmationProvider",
+    "RefusSqlTraduits",
 ]
+
+
+# ---------------------------------------------------------------------------
+# CE QUE POSTGRESQL REFUSE EXPRÈS, ET CE QUI EST SIMPLEMENT CASSÉ
+# ---------------------------------------------------------------------------
+# Les deux arrivent ici sous la même forme — une exception du pilote — et il
+# faut pourtant les séparer, parce qu'elles ne disent pas la même chose :
+#
+#   * « le proposant ne peut pas approuver sa propre décision » est une RÈGLE.
+#     Elle s'adresse à l'ingénieur, elle doit remonter jusqu'à lui, et son
+#     message a été écrit pour être lu ;
+#   * « connection to server failed » est une PANNE. Elle ne s'adresse à
+#     personne d'autre qu'à nous, et son message porte la chaîne de connexion.
+#
+# La couche HTTP ne peut pas trancher: elle voit deux exceptions de pilote.
+# C'est ici, à la frontière du SQL, qu'on sait laquelle est laquelle — et
+# PostgreSQL le dit lui-même, par son SQLSTATE.
+#
+# Avant ce tri, les routes attrapaient `Exception` et rendaient `str(cause)`
+# en 422: la chaîne de connexion complète partait au client, sous un code qui
+# se lit « votre demande est refusée ».
+
+#: SQLSTATE que NOS PROPRES objets provoquent délibérément.
+ETATS_DE_REFUS: frozenset[str] = frozenset({
+    "P0001",   # raise_exception: un `raise exception` de nos fonctions
+    "42501",   # insufficient_privilege: un refus de la frontière de rôles
+})
+
+#: Familles de SQLSTATE qui sont elles aussi nos règles — classe 23, violation
+#: de contrainte d'intégrité: `check`, `unique`, clé étrangère.
+FAMILLES_DE_REFUS: tuple[str, ...] = ("23",)
+
+
+def _message_de_refus(cause: Exception, etat: str) -> str:
+    """Le texte qu'on a le droit de faire sortir, et rien d'autre.
+
+    ``str(cause)`` d'une erreur psycopg2 concatène le message, le ``DETAIL`` et
+    parfois le ``CONTEXT`` : sur une violation de contrainte, le ``DETAIL``
+    contient **la ligne fautive**, données comprises. On ne le recopie donc
+    jamais.
+
+    * ``P0001`` — le message est celui que nous avons écrit dans la fonction
+      PL/pgSQL. Il est destiné à l'appelant, on le rend tel quel ;
+    * classe 23 — on ne nomme que la **contrainte**, qui est un nom de règle
+      que nous avons choisi (« decision_two_distinct_principals »). Ni la
+      table, ni la ligne ;
+    * ``42501`` — un texte fixe. Le message du serveur nomme l'objet et le
+      rôle, ce qui décrit notre schéma à qui ne devrait pas le connaître.
+    """
+    diag = getattr(cause, "diag", None)
+    if etat == "P0001":
+        principal = getattr(diag, "message_primary", None)
+        return principal or "la base a refuse cette operation."
+    if etat.startswith(FAMILLES_DE_REFUS):
+        contrainte = getattr(diag, "constraint_name", None)
+        if contrainte:
+            return (f"la regle « {contrainte} » refuse cette ecriture. Elle "
+                    "est posee dans la base et s'applique quel que soit "
+                    "l'appelant.")
+        return "une regle d'integrite de la base refuse cette ecriture."
+    return "cette operation n'est pas permise a l'identite presentee."
+
+
+class RefusSqlTraduits:
+    """Traduit les refus DÉLIBÉRÉS de PostgreSQL, laisse passer les pannes.
+
+    Ce n'est pas un filet de sécurité : c'est un tri. Ce qui n'est pas reconnu
+    comme une règle **remonte tel quel**, pour être traité comme le défaut que
+    c'est — un 500 avec identifiant de corrélation, et rien dans le corps.
+    """
+
+    __slots__ = ()
+
+    def __enter__(self) -> RefusSqlTraduits:
+        return self
+
+    def __exit__(self, _type, valeur, _trace) -> bool:
+        if valeur is None or isinstance(valeur, ConfirmationDomainError):
+            return False
+        etat = getattr(valeur, "pgcode", None)
+        if not isinstance(etat, str) or not etat:
+            return False
+        if etat in ETATS_DE_REFUS or etat.startswith(FAMILLES_DE_REFUS):
+            raise ConfirmationDomainError(
+                _message_de_refus(valeur, etat)) from valeur
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +481,7 @@ class PostgresConfirmationProvider:
         motif sont des DONNÉES — ce sur quoi la décision porte — et n'ont
         aucune valeur probante.
         """
-        with self._unite(preuve) as u:
+        with RefusSqlTraduits(), self._unite(preuve) as u:
             u.executer(
                 "select normative_decision_propose("
                 "%s, %s, %s, %s::country_code, %s, %s, %s, "
@@ -411,13 +498,13 @@ class PostgresConfirmationProvider:
         PostgreSQL refuse que ce soit le proposant — contrainte de table, pas
         vérification applicative.
         """
-        with self._unite(preuve) as u:
+        with RefusSqlTraduits(), self._unite(preuve) as u:
             u.executer("select normative_decision_approve(%s::uuid)",
                        (decision_id,))
 
     def consommer_decision(self, preuve: Any, *, decision_id: str) -> Any:
         """Consomme une décision approuvée, une fois."""
-        with self._unite(preuve) as u:
+        with RefusSqlTraduits(), self._unite(preuve) as u:
             u.executer("select normative_decision_consume(%s::uuid)",
                        (decision_id,))
             return u.curseur.fetchone()
