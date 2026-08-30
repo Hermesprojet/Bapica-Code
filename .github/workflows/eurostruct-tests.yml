@@ -118,14 +118,41 @@ jobs:
       # cherchait pourquoi la suite avait echoue.
       #
       # `if: always()` — le resume sert surtout quand la suite ECHOUE.
+      # LE VERDICT REMONTE EN ANNOTATIONS ET EN RESUME, PAS SEULEMENT EN
+      # JOURNAL.
+      #
+      # Mesure du 30/08: l'API de GitHub ne rend, pour ce job, QUE le journal
+      # du conteneur `services:` PostgreSQL — quatre cents lignes de
+      # checkpoints. La sortie des etapes n'y figure pas du tout. Un `tail`
+      # dans une etape n'aide donc personne qui lit par l'API.
+      #
+      # `::error::` produit une ANNOTATION, exposee par l'API des check-runs et
+      # affichee en tete de PR. `$GITHUB_STEP_SUMMARY` produit un resume lisible
+      # sur la page du run. Les deux survivent la ou le journal ne survit pas.
       - name: verdict de la suite
         if: always()
         run: |
-          echo "======================= VERDICT ======================="
-          tail -n 30 "$RUNNER_TEMP/suite.log" || echo "(aucun journal)"
-          echo "==================== ANOMALIES ========================"
-          grep -nE "ROUGE|ECHEC|ATTENTION|NON EXECUTE|FAILED|ERROR" \
-               "$RUNNER_TEMP/suite.log" | head -n 40 || echo "(aucune)"
+          {
+            echo "## Suite canonique"
+            echo '```'
+            tail -n 32 "$RUNNER_TEMP/suite.log" 2>/dev/null || echo "(aucun journal)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Les lignes qui portent une anomalie deviennent des annotations.
+          grep -nE "ROUGE|ECHEC|ATTENTION|NON EXECUTE|^FAILED|^ERROR" \
+               "$RUNNER_TEMP/suite.log" 2>/dev/null | head -n 25 \
+            | while IFS= read -r ligne; do
+                echo "::error title=suite canonique::${ligne}"
+              done
+
+          # Le tableau des surfaces, en annotations lui aussi: c'est lui qui
+          # dit QUELLE surface a lache, et il tient en six lignes.
+          sed -n '/^ SURFACE/,/^ VERDICT/p' "$RUNNER_TEMP/suite.log" 2>/dev/null \
+            | while IFS= read -r ligne; do
+                [ -n "${ligne// /}" ] && echo "::error title=surfaces::${ligne}"
+              done
+          true
 
       # L'INTERFACE EST UNE SURFACE COMME UNE AUTRE. Le typecheck est ce qui
       # empeche l'ecran d'afficher un champ que le contrat ne porte plus: il a
