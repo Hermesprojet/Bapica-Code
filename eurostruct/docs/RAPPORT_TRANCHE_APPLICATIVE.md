@@ -292,8 +292,15 @@ l'ouverture de la connexion.
    chaque règle, l'empreinte de la spécification nationale et celle du code qui
    l'exécute. Les inventer violerait l'interdiction n° 2.
 3. **Supabase n'a jamais été éprouvé sur un staging réel.**
-4. Dette L6 non bloquante : 12 harnais non migrés, 50 attributions traduites,
-   résidu `canal_<uuid>.jsonl`.
+4. Dette L6 non bloquante, **remesurée** : 12 harnais non migrés ; sur les 110
+   contrôles de la matrice, **54 attribuent encore leur verdict par traduction
+   de prose** et 56 passent par le canal natif ; le résidu `canal_<uuid>.jsonl`
+   est toujours présent dans `/tmp`.
+
+   Le chiffre repris du lot précédent disait « 50 ». Il était faux — ou l'était
+   devenu. Je l'avais recopié sans le mesurer, ce qui est exactement le défaut
+   que le §2.1 corrige ailleurs : un nombre juste pour un autre état du dépôt
+   se lit comme un nombre juste.
 
 ---
 
