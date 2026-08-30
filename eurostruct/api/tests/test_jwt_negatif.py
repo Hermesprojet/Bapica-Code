@@ -234,9 +234,17 @@ def test_rotation_des_cles(paire_rsa, paire_rsa_etrangere, reglages_auth):
     # Supabase fait tourner ses cles; le trousseau publie les deux.
     etat["keys"] = [_jwk_de(paire_rsa["publique"], KID),
                     _jwk_de(paire_rsa_etrangere["publique"], KID_AUTRE)]
-    # Le rechargement est BORNE dans le temps: on remet le compteur a zero
-    # pour eprouver la rotation elle-meme, pas le delai.
-    trousseau._dernier_rechargement = 0.0
+    # Le rechargement est BORNE dans le temps: on fait passer la fenetre pour
+    # eprouver la rotation elle-meme, pas le delai.
+    #
+    # ON PASSE PAR LA PRIMITIVE PREVUE, PLUS PAR UN CHAMP PRIVE. Ecrire
+    # `trousseau._dernier_rechargement = 0.0` a cesse d'avoir le moindre effet
+    # le jour ou ce champ a ete renomme: la ligne ne faisait plus rien, et
+    # seule la rotation qui echouait ensuite l'a revele. Un test qui bricole
+    # l'interieur de ce qu'il eprouve se casse en silence.
+    from eurostruct_api.auth.jwks import DELAI_RECHARGEMENT_S
+
+    trousseau.vieillir_pour_essai(DELAI_RECHARGEMENT_S + 1)
     assert auth.authentifier(nouveau).actor_id == "s"
 
 

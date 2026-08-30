@@ -179,8 +179,28 @@ class AuthentificateurSupabase:
 
     # -------------------------------------------------------------- utilitaires
     def precharger_trousseau(self) -> int:
-        """Pour ``/ready``: prouve que le JWKS est réellement joignable."""
-        return self._trousseau.precharger()
+        """Pour ``/ready``: le trousseau est-il utilisable **maintenant** ?
+
+        CE N'EST PLUS UN RECHARGEMENT INCONDITIONNEL, ET C'EST LE CORRECTIF.
+        Cette méthode appelait ``precharger()``, qui va sur le réseau à chaque
+        fois. Une sonde toutes les cinq secondes — le défaut de la plupart des
+        orchestrateurs — faisait donc un appel sortant toutes les cinq
+        secondes vers l'émetteur, pour une information qui ne change pas à ce
+        rythme. C'est nous qui martelions notre propre Supabase.
+
+        La bonne question n'est pas « l'émetteur répond-il à l'instant ? »
+        mais « puis-je vérifier un jeton maintenant ? ». ``assurer_charge``
+        y répond avec le cache, et ne va sur le réseau que s'il est périmé.
+        """
+        return self._trousseau.assurer_charge()
+
+    def purger_trousseau(self) -> None:
+        """Chasse les clés du cache. Exploitation en processus, jamais HTTP."""
+        self._trousseau.purger()
+
+    def etat_trousseau(self) -> dict[str, Any]:
+        """Des nombres et des booléens. Aucun ``kid``, aucun secret."""
+        return self._trousseau.etat()
 
     @staticmethod
     def _jeton_de(preuve: Any) -> str:

@@ -198,6 +198,13 @@ def test_ready_est_vert_sur_une_base_deployee(client):
     # C'est la verification qui traverse `creer_provider_de_production`, donc
     # le crochet `assert_provider_is_usable_in_production`.
     assert noms["provider_constructible"] is True
+    # ET LA NOTE RESTE, SUR LE SEUL /ready REELLEMENT VERT DE TOUTE LA SUITE.
+    # C'est ici qu'elle serait lue comme une garantie: base deployee, chaine
+    # complete, tout au vert. Le trousseau reste pourtant local et les cles
+    # sont nees dans ce processus — rien de tout cela ne dit quoi que ce soit
+    # d'une instance Supabase.
+    assert "SUPABASE_UNVERIFIED" in corps["notes"], (
+        "la note a disparu sur un /ready vert obtenu avec un emetteur local")
 
 
 def test_une_proposition_est_REELLEMENT_ecrite(client, jeton):

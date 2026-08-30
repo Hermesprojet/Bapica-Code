@@ -87,10 +87,19 @@ def pret(requete: Request, reponse: Response) -> dict[str, Any]:
     return {
         "ready": tout_ok,
         "verifications": verifications,
-        # SUPABASE_UNVERIFIED reste vrai tant qu'un staging reel n'a pas ete
-        # eprouve de bout en bout. `/ready` vert sur une instance locale ne
-        # vaut pas preuve de compatibilite Supabase.
-        "notes": ["SUPABASE_UNVERIFIED"] if not tout_ok else [],
+        # SUPABASE_UNVERIFIED NE DEPEND PAS DU VERDICT DE CETTE SONDE.
+        #
+        # Une redaction anterieure ne rendait la note QUE lorsque `ready`
+        # etait faux. Elle disparaissait donc au moment precis ou quelqu'un
+        # pourrait la lire comme une garantie: sur un `/ready` vert. Or un
+        # `/ready` vert prouve que CETTE configuration repond — un emetteur
+        # local, un JWKS de decor — et rien du tout sur une instance Supabase
+        # reelle.
+        #
+        # La note est un fait sur ce qui a ete VALIDE, pas sur ce qui repond.
+        # Elle reste tant qu'un staging reel n'a pas ete eprouve de bout en
+        # bout, et sa disparition sera une decision, pas un effet de bord.
+        "notes": ["SUPABASE_UNVERIFIED"],
     }
 
 

@@ -14,6 +14,31 @@ Deux fautes symétriques, et il faut les deux gardes :
   par `DELAI_RECHARGEMENT_S`, et un `kid` toujours inconnu après cela est un
   refus, pas une nouvelle tentative.
 
+LE BORNAGE DOIT ÊTRE ATOMIQUE, ET IL NE L'ÉTAIT PAS
+----------------------------------------------------
+Décider « ai-je le droit de recharger ? » puis recharger sont deux opérations.
+Entre les deux, dix requêtes portant le même `kid` inconnu franchissaient
+toutes le portillon avant qu'aucune n'ait posé la date : dix appels réseau. Le
+bornage ne bornait donc rien **sous charge**, c'est-à-dire au seul moment où
+il compte.
+
+Le rechargement est désormais *single-flight* : un seul appel réseau est en vol
+à la fois, et les autres demandeurs attendent son résultat au lieu d'en lancer
+un second. La décision et l'action sont prises sous le même verrou.
+
+LA TOLÉRANCE À LA PANNE EST BORNÉE, ELLE AUSSI
+-----------------------------------------------
+Quand le JWKS ne répond plus, servir une clé déjà connue vaut mieux qu'un refus
+général : refuser tous les jetons ressemble à une attaque et coupe le service
+pour une cause qui n'est pas de notre côté.
+
+Mais cette tolérance ne peut pas être infinie. Sans borne, une panne de
+plusieurs jours laisse accepter des jetons signés par une clé que l'émetteur a
+peut-être révoquée entre-temps — et la rotation, qui existe précisément pour
+cela, ne sert plus à rien. Au-delà de `AGE_MAX_CACHE_PERIME_S`, le trousseau
+refuse **même une clé anciennement connue**, et le refus dit qu'on ne sait
+plus, pas que le jeton est faux.
+
 CE QU'IL NE FAIT PAS
 ---------------------
 Il ne va pas chercher la clé « la plus probable » quand le `kid` manque. Un
@@ -36,6 +61,14 @@ DELAI_RECHARGEMENT_S = 60.0
 #: Au-delà, le trousseau est considéré comme périmé et rechargé de lui-même,
 #: sans qu'un `kid` inconnu ait à le demander.
 DUREE_DE_VIE_S = 600.0
+
+#: AU-DELÀ, ON REFUSE MÊME CE QU'ON CONNAÎT.
+#:
+#: C'est la borne de la tolérance à la panne. Une heure laisse largement passer
+#: un incident réseau ou un redéploiement de l'émetteur ; elle ne laisse pas
+#: passer une clé révoquée pendant un week-end. La valeur est un compromis
+#: assumé, et elle est ici pour être discutée plutôt que découverte.
+AGE_MAX_CACHE_PERIME_S = 3600.0
 
 #: Bornes de lecture réseau. Un JWKS qui ne répond pas doit faire échouer la
 #: vérification, pas suspendre le processus.
@@ -79,9 +112,12 @@ class TrousseauJwks:
         self._url = url
         self._lecteur = lecteur
         self._verrou = threading.Lock()
+        #: Tenu pendant l'appel réseau. C'est lui qui rend le rechargement
+        #: *single-flight*: un seul appel en vol, les autres attendent.
+        self._verrou_reseau = threading.Lock()
         self._cles: dict[str, Any] = {}
         self._charge_a: float = 0.0
-        self._dernier_rechargement: float = 0.0
+        self._dernier_essai: float = 0.0
         #: Compteur d'appels réseau réellement effectués. Exposé pour que les
         #: tests puissent prouver le bornage plutôt que le supposer.
         self.appels_reseau = 0
@@ -92,6 +128,9 @@ class TrousseauJwks:
 
         :raises CleInconnue: ``kid`` absent, vide, ou introuvable après un
             rechargement autorisé.
+        :raises JwksIndisponible: le cache est périmé au-delà de
+            ``AGE_MAX_CACHE_PERIME_S`` et n'a pas pu être renouvelé. On ne sait
+            plus — et on ne prétend pas savoir.
         """
         if not kid:
             raise CleInconnue(
@@ -99,53 +138,176 @@ class TrousseauJwks:
                 "trousseau qui en contient plusieurs reviendrait a deviner "
                 "qui a signe."
             )
-        cle = self._chercher(kid)
-        if cle is not None:
+
+        cle, age = self._cle_et_age(kid)
+        if cle is not None and age <= DUREE_DE_VIE_S:
             return cle
-        # KID INCONNU: on recharge, mais au plus une fois par fenêtre.
-        if self._rechargement_autorise():
-            self._recharger()
-            cle = self._chercher(kid)
-            if cle is not None:
-                return cle
-        raise CleInconnue(
-            f"aucune cle publique ne porte ce « kid » ({_masque(kid)}), "
-            "rechargement compris."
-        )
 
-    def precharger(self) -> int:
-        """Charge le trousseau maintenant. Rend le nombre de clés.
+        # PÉRIMÉ, OU KID INCONNU: une seule et même réponse — tenter un
+        # rechargement, borné dans le temps et unique en vol.
+        self._recharger_si_permis()
+        cle, age = self._cle_et_age(kid)
 
-        Utilisé par ``/ready`` : une configuration qui pointe vers un JWKS
-        injoignable n'est pas une configuration prête.
-        """
-        self._recharger()
-        return len(self._cles)
+        # DEUX REFUS QUI NE DISENT PAS LA MÊME CHOSE, ET QU'IL NE FAUT PAS
+        # CONFONDRE.
+        #
+        # ``CleInconnue`` dit « ce jeton nomme une clé que l'émetteur ne
+        # publie pas » — c'est ce qu'on lit dans un jeton forgé.
+        # ``JwksIndisponible`` dit « nous ne savons pas » — c'est notre côté
+        # qui est en panne, et l'appelant doit le voir comme tel.
+        #
+        # Une rédaction intermédiaire les avait fusionnés: le rechargement
+        # avalait la panne, le cache restait vide, et l'appel finissait en
+        # « clé inconnue ». Une panne de notre JWKS se serait lue comme une
+        # tentative d'intrusion, dans les journaux comme dans le diagnostic.
+        if not self._contient_des_cles():
+            raise JwksIndisponible(
+                "aucune cle publique disponible: le JWKS n'a pas pu etre "
+                "charge. Ce n'est pas un jeton douteux, c'est notre cote qui "
+                "ne sait pas verifier."
+            )
 
-    # -------------------------------------------------------------- interne
-    def _chercher(self, kid: str) -> Any | None:
-        with self._verrou:
-            perime = (time.monotonic() - self._charge_a) > DUREE_DE_VIE_S
-            cle = self._cles.get(kid)
-        if cle is not None and not perime:
-            return cle
-        if perime:
-            # PERIMEE: on recharge de nous-mêmes, sans qu'un `kid` inconnu
-            # ait eu à le demander. La rotation normale passe par ici.
-            try:
-                self._recharger()
-            except JwksIndisponible:
-                # Un trousseau périmé mais connu vaut mieux qu'un refus
-                # général pendant une panne réseau — à condition que la clé
-                # existe déjà. Une clé inconnue restera inconnue.
-                pass
-            with self._verrou:
-                return self._cles.get(kid)
+        if age > AGE_MAX_CACHE_PERIME_S:
+            raise JwksIndisponible(
+                f"trousseau perime depuis {int(age)} s (borne "
+                f"{int(AGE_MAX_CACHE_PERIME_S)} s) et injoignable. Au-dela de "
+                "cette borne une cle anciennement connue n'est plus une "
+                "preuve: l'emetteur a pu la revoquer sans qu'on l'apprenne."
+            )
+
+        if cle is None:
+            raise CleInconnue(
+                f"aucune cle publique ne porte ce « kid » ({_masque(kid)}), "
+                "rechargement compris."
+            )
+        # Connue, et le cache est périmé mais dans la tolérance: on sert.
         return cle
 
-    def _rechargement_autorise(self) -> bool:
+    def precharger(self) -> int:
+        """Charge le trousseau maintenant, **inconditionnellement**.
+
+        Réservé au démarrage et aux tests. ``/ready`` n'appelle PAS ceci — une
+        sonde qui recharge à chaque passage martèle l'émetteur.
+        """
+        self._recharger()
         with self._verrou:
-            return (time.monotonic() - self._dernier_rechargement) >= DELAI_RECHARGEMENT_S
+            return len(self._cles)
+
+    def cache_frais(self) -> bool:
+        """Le cache est-il utilisable sans aller sur le réseau ?
+
+        C'est la question de ``/ready`` : « puis-je vérifier un jeton
+        maintenant ? », et non « l'émetteur répond-il à l'instant ? ». La
+        seconde question coûte un appel sortant à chaque sonde.
+        """
+        with self._verrou:
+            return bool(self._cles) and (
+                time.monotonic() - self._charge_a) <= DUREE_DE_VIE_S
+
+    def assurer_charge(self) -> int:
+        """Garantit un cache frais, en rechargeant seulement si nécessaire.
+
+        Rend le nombre de clés. C'est ce qu'appelle ``/ready``.
+        """
+        if not self.cache_frais():
+            self._recharger_si_permis()
+        with self._verrou:
+            if not self._cles:
+                raise JwksIndisponible(
+                    "aucune cle publique utilisable: le JWKS n'a jamais pu "
+                    "etre charge.")
+            if (time.monotonic() - self._charge_a) > AGE_MAX_CACHE_PERIME_S:
+                raise JwksIndisponible(
+                    "trousseau perime au-dela de la borne de tolerance.")
+            return len(self._cles)
+
+    def purger(self) -> None:
+        """Vide le cache. Le prochain besoin rechargera.
+
+        POURQUOI CETTE PRIMITIVE EXISTE, ET POURQUOI ELLE N'EST PAS UNE ROUTE.
+        Une clé compromise doit pouvoir être chassée sans redémarrer le
+        processus. Mais une route de purge, même « interne », offrirait au
+        premier venu le moyen de vider notre cache puis de nous faire marteler
+        l'émetteur : la purge s'appelle depuis le processus, jamais par HTTP.
+
+        On remet aussi la date du dernier essai à zéro : purger pour découvrir
+        qu'on doit attendre une minute avant de recharger n'aurait aucun sens.
+        """
+        with self._verrou:
+            self._cles = {}
+            self._charge_a = 0.0
+            self._dernier_essai = 0.0
+
+    def etat(self) -> dict[str, Any]:
+        """Ce qu'on peut dire du cache **sans rien en révéler**.
+
+        Des nombres et des booléens. Aucun ``kid``, aucun matériel
+        cryptographique, aucune URL : un diagnostic qui recopie ce qu'il
+        décrit est une fuite déguisée en aide au débogage.
+        """
+        with self._verrou:
+            age = time.monotonic() - self._charge_a if self._charge_a else None
+            return {
+                "cles": len(self._cles),
+                "age_s": None if age is None else round(age, 1),
+                "frais": bool(self._cles) and age is not None
+                         and age <= DUREE_DE_VIE_S,
+                "appels_reseau": self.appels_reseau,
+            }
+
+    def vieillir_pour_essai(self, secondes: float) -> None:
+        """Fait vieillir le cache de ``secondes``. **Tests uniquement.**
+
+        Le vieillissement se mesure sur ``time.monotonic()``, qu'on ne peut pas
+        déplacer. L'alternative — attendre une heure dans un test — n'en est
+        pas une, et truquer l'horloge globale contaminerait tout le processus.
+        On déplace donc la seule date que ce trousseau détient.
+        """
+        with self._verrou:
+            self._charge_a -= secondes
+            self._dernier_essai -= secondes
+
+    # -------------------------------------------------------------- interne
+    def _contient_des_cles(self) -> bool:
+        with self._verrou:
+            return bool(self._cles)
+
+    def _cle_et_age(self, kid: str) -> tuple[Any | None, float]:
+        with self._verrou:
+            age = (time.monotonic() - self._charge_a) if self._charge_a \
+                else float("inf")
+            return self._cles.get(kid), age
+
+    def _recharger_si_permis(self) -> None:
+        """Recharge, au plus une fois par fenêtre et une seule à la fois.
+
+        LES DEUX GARDES SONT PRISES SOUS LE MÊME VERROU. Les séparer — décider
+        d'abord, agir ensuite — laissait dix demandeurs simultanés franchir le
+        portillon avant qu'aucun n'ait posé la date.
+        """
+        with self._verrou:
+            maintenant = time.monotonic()
+            if self._dernier_essai and (
+                    maintenant - self._dernier_essai) < DELAI_RECHARGEMENT_S:
+                return
+            # LA DATE EST POSÉE AVANT L'APPEL, et c'est délibéré: elle borne
+            # les TENTATIVES, pas les succès. Un émetteur en panne ne doit pas
+            # être sollicité mille fois parce que mille tentatives ont échoué.
+            self._dernier_essai = maintenant
+
+        # SINGLE-FLIGHT. Si un appel est déjà en vol, on attend son résultat
+        # plutôt que d'en lancer un second: c'est la même information.
+        if not self._verrou_reseau.acquire(blocking=False):
+            with self._verrou_reseau:
+                return
+        try:
+            self._recharger()
+        except JwksIndisponible:
+            # Une panne n'est pas une exception ici: l'appelant décidera s'il
+            # peut se contenter de ce qu'il a déjà, et jusqu'à quel âge.
+            pass
+        finally:
+            self._verrou_reseau.release()
 
     def _recharger(self) -> None:
         from jwt import PyJWK
@@ -175,7 +337,7 @@ class TrousseauJwks:
         with self._verrou:
             self._cles = cles
             self._charge_a = maintenant
-            self._dernier_rechargement = maintenant
+            self._dernier_essai = maintenant
 
 
 def _masque(kid: str) -> str:
