@@ -40,7 +40,7 @@ from eurostruct_engine.ndp.provider_factory import (
 )
 from fastapi import Header, HTTPException, Request
 
-__all__ = ["jeton_porteur", "ouvrir_provider"]
+__all__ = ["jeton_porteur", "ouvrir_provider", "provider_de_lecture"]
 
 
 def jeton_porteur(authorization: str | None = Header(default=None)) -> str:
@@ -134,3 +134,66 @@ def ouvrir_provider(requete: Request) -> _ProviderOuvert:
                     "detail": str(cause)},
         ) from cause
     return _ProviderOuvert(provider, connexion)
+
+
+class _LectureOuverte:
+    """Un provider de LECTURE et la connexion qu'il faudra fermer.
+
+    LA LECTURE DES CONFIRMATIONS N'AUTHENTIFIE PERSONNE, et c'est voulu: une
+    confirmation belge vaut pour toutes les etudes belges. Le calcul n'exige
+    donc pas d'identite — mais il a besoin de savoir CE QUI EST CONFIRME, sans
+    quoi le mode strict lirait encore un fichier du depot.
+    """
+
+    __slots__ = ("provider", "_connexion")
+
+    def __init__(self, provider: Any, connexion: Any) -> None:
+        self.provider = provider
+        self._connexion = connexion
+
+    def fermer(self) -> None:
+        try:
+            self._connexion.close()
+        except Exception:  # noqa: BLE001 — fermer ne doit jamais masquer
+            pass
+
+
+def provider_de_lecture(requete: Request) -> _LectureOuverte | None:
+    """Le provider qui dit ce qui est confirme, ou ``None``.
+
+    ``None`` N'EST PAS UN MODE DEGRADE. Sans source de confirmation, le mode
+    strict refuse — c'est le comportement fail-closed du moteur, et l'etat
+    reel du produit aujourd'hui. Ce qui serait un mode degrade, ce serait de
+    laisser passer.
+
+    On ne leve donc pas quand la base manque: le calcul EXPLORATOIRE, lui,
+    doit rester utilisable sans base. C'est la difference entre « je ne sais
+    pas ce qui est confirme » et « je ne peux pas travailler ».
+    """
+    etat = requete.app.state
+    authentificateur = getattr(etat, "authentificateur", None)
+    fabrique = getattr(etat, "fabrique_connexion", None)
+    if authentificateur is None or fabrique is None:
+        return None
+
+    connexion = None
+
+    def _fabrique_tracante() -> Any:
+        nonlocal connexion
+        connexion = fabrique()
+        return connexion
+
+    try:
+        provider = creer_provider_de_production(
+            fabrique_de_connexion=_fabrique_tracante,
+            authentificateur=authentificateur,
+        )
+    except (PiloteIndisponible, ConfigurationProviderInvalide,
+            AuthentificationRequise):
+        if connexion is not None:
+            try:
+                connexion.close()
+            except Exception:  # noqa: BLE001
+                pass
+        return None
+    return _LectureOuverte(provider, connexion)

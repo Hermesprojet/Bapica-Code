@@ -35,7 +35,9 @@ from eurostruct_engine.service import (
     run_ec2_beam_flexure,
     verify_and_render_beam_section,
 )
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
+
+from ..dependances import provider_de_lecture
 
 routeur = APIRouter(prefix="/v1/calculations", tags=["calculs"])
 
@@ -58,7 +60,10 @@ MENTION_OBLIGATOIRE = notice(Language.FR)
 
 
 @routeur.post("/ec2/beam-flexure")
-def flexion_poutre_ec2(requete: Ec2BeamFlexureRequest) -> dict[str, Any]:
+def flexion_poutre_ec2(
+    requete: Ec2BeamFlexureRequest,
+    lecture: Any = Depends(provider_de_lecture),
+) -> dict[str, Any]:
     """Vérification ELU en flexion simple, section rectangulaire.
 
     QUATRE CHAMPS AJOUTÉS, ET AUCUN NE DIT « SIGNABLE »
@@ -96,7 +101,16 @@ def flexion_poutre_ec2(requete: Ec2BeamFlexureRequest) -> dict[str, Any]:
 
     La première dit « pas encore signé » ; la seconde « pas signable ».
     """
-    reponse = run_ec2_beam_flexure(requete)
+    # LE PROVIDER EST LA SOURCE DES CONFIRMATIONS, et c'est par lui que le
+    # mode strict s'ouvre — jamais par un fichier du depot. `None` signifie
+    # « aucune source connue »: le moteur refuse alors en strict, ce qui est
+    # l'etat reel du referentiel aujourd'hui.
+    try:
+        reponse = run_ec2_beam_flexure(
+            requete, provider=lecture.provider if lecture else None)
+    finally:
+        if lecture is not None:
+            lecture.fermer()
     corps = reponse.model_dump(mode="json")
     strict = bool(requete.strict_ndp)
     # Aboutir en mode strict VEUT DIRE que le portillon a laissé passer: un

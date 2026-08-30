@@ -17,7 +17,11 @@ from typing import Any
 
 from .basis import DesignSituation
 from .drawing.beam_section import BarRow, BeamSectionSpec, build_beam_section
-from .ec2.beam_flexure import RectangularSection, design_flexure
+from .ec2.beam_flexure import (
+    RectangularSection,
+    design_flexure,
+    required_parameters,
+)
 from .exceptions import (
     DeprecatedNationalParameter,
     EurostructEngineError,
@@ -83,8 +87,27 @@ def _provenance(dto: ProvenanceDTO) -> Provenance:
     )
 
 
-def run_ec2_beam_flexure(req: Ec2BeamFlexureRequest) -> Ec2BeamFlexureResponse:
+def run_ec2_beam_flexure(
+    req: Ec2BeamFlexureRequest,
+    *,
+    provider: Any = None,
+) -> Ec2BeamFlexureResponse:
     """Execute the ULS bending verification described by *req*.
+
+    LE PORTILLON DU MODE STRICT PASSE PAR LE CHEMIN D'AUTORITE
+    -----------------------------------------------------------
+    ``provider`` est la source des confirmations. Quand il est fourni, chaque
+    paramètre national requis est confronté aux attestations qui le visent —
+    :func:`~eurostruct_engine.ndp.passerelle.confirmer_depuis_le_provider`
+    appelle ``assess_confirmations``, et **seuls** les paramètres dont deux
+    ingénieurs indépendants ont confirmé le sujet exact deviennent utilisables.
+
+    Sans provider, aucune confirmation n'est connue : le mode strict refuse,
+    ce qui est l'état de ce référentiel aujourd'hui. C'est un défaut
+    **fail-closed** — l'absence de source ne débloque rien.
+
+    Le moteur n'importe toujours aucun pilote de base : ``provider`` est un
+    protocole, et le seul appel qu'on lui fait est de lire.
 
     :raises EurostructEngineError: on any refusal; the caller converts it with
         :func:`error_of`.
@@ -95,6 +118,17 @@ def run_ec2_beam_flexure(req: Ec2BeamFlexureRequest) -> Ec2BeamFlexureResponse:
         strict=req.strict_ndp,
         as_of=date.fromisoformat(req.as_of) if req.as_of else None,
     )
+
+    if provider is not None and req.strict_ndp:
+        from .ndp.passerelle import confirmer_depuis_le_provider
+
+        # LES CLES DEMANDEES, ET AUCUNE AUTRE. Confirmer large « pendant qu'on
+        # y est » ouvrirait des parametres que ce calcul n'utilise pas, sur la
+        # foi d'un dossier que personne n'a demande a voir.
+        params, _ = confirmer_depuis_le_provider(
+            params, tuple(required_parameters(DesignSituation(req.situation.value))),
+            provider=provider,
+        )
 
     design = design_flexure(
         section=RectangularSection(
