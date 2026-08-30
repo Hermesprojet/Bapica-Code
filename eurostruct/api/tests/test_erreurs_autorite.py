@@ -436,3 +436,57 @@ def test_une_exception_sans_pgcode_n_est_PAS_traduite():
     from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
 
     assert not isinstance(_traduire(PanneDePilote()), ConfirmationDomainError)
+
+
+def test_NOS_PROPRES_refus_gardent_leur_message_meme_en_42501():
+    """LE CAS QUE LE CONTRAT DU PROVIDER A FAIT TOMBER.
+
+    Nos migrations levent LEURS PROPRES exceptions avec des codes empruntes:
+
+        raise exception '... le proposant ne peut pas etre son propre
+        approbateur. Deux regards exigent deux principals.'
+          using errcode = 'insufficient_privilege';
+
+    Une premiere redaction du tri classait par SQLSTATE et remplacait tout
+    42501 par un texte fixe. Le refus du quatre-yeux — la phrase meme que
+    l'ingenieur doit lire — devenait « cette operation n'est pas permise a
+    l'identite presentee ». Le harnais l'a dit mot pour mot: « refus obtenu,
+    mais pour une autre raison ».
+
+    Le partage n'est pas le code, c'est QUI A ECRIT LE MESSAGE.
+    """
+    from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
+
+    notre_message = (
+        "decision 2f1c: le proposant ne peut pas etre son propre approbateur. "
+        "Deux regards exigent deux principals."
+    )
+    sortie = _traduire(ErreurPilote(
+        "42501",
+        message=f"{notre_message}\nCONTEXT: PL/pgSQL function "
+                "normative_decision_approve(uuid) line 78 at RAISE",
+        diag=_Diag(message_primary=notre_message)))
+
+    assert isinstance(sortie, ConfirmationDomainError)
+    assert str(sortie) == notre_message, (
+        "notre propre refus a ete remplace par un texte generique: "
+        "l'ingenieur ne sait plus POURQUOI il est refuse")
+    # Et le CONTEXT, lui, ne sort pas: il nomme la fonction, donc le schema.
+    assert "PL/pgSQL" not in str(sortie)
+
+
+def test_un_refus_de_privilege_du_SERVEUR_reste_sanitise():
+    """L'autre moitie: quand c'est PostgreSQL qui formule, on ne recopie pas.
+
+    « permission denied for table … » nomme l'objet, donc notre schema. C'est
+    la formule du serveur, et elle se reconnait a son debut.
+    """
+    from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
+
+    formule = "permission denied for table normative_authorisation_grants"
+    sortie = _traduire(ErreurPilote(
+        "42501", message=formule, diag=_Diag(message_primary=formule)))
+
+    assert isinstance(sortie, ConfirmationDomainError)
+    assert TABLE_INTERNE not in str(sortie)
+    assert "permission denied" not in str(sortie)

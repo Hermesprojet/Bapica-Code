@@ -100,34 +100,57 @@ ETATS_DE_REFUS: frozenset[str] = frozenset({
 FAMILLES_DE_REFUS: tuple[str, ...] = ("23",)
 
 
+#: Le début exact du message que POSTGRESQL produit lui-même sur un refus de
+#: privilège : « permission denied for table … ». Il nomme l'objet, donc notre
+#: schéma. Nos propres refus, eux, portent le texte que nous avons écrit.
+_FORMULE_MOTEUR_42501 = "permission denied"
+
+
 def _message_de_refus(cause: Exception, etat: str) -> str:
     """Le texte qu'on a le droit de faire sortir, et rien d'autre.
 
-    ``str(cause)`` d'une erreur psycopg2 concatène le message, le ``DETAIL`` et
-    parfois le ``CONTEXT`` : sur une violation de contrainte, le ``DETAIL``
-    contient **la ligne fautive**, données comprises. On ne le recopie donc
-    jamais.
+    LE VRAI PARTAGE N'EST PAS LE SQLSTATE, C'EST QUI A ÉCRIT LE MESSAGE
+    -------------------------------------------------------------------
+    Une première rédaction classait par code : ``P0001`` -> message rendu tel
+    quel, ``42501`` -> texte fixe. Elle a fait tomber le contrat du provider,
+    et pour une bonne raison.
 
-    * ``P0001`` — le message est celui que nous avons écrit dans la fonction
-      PL/pgSQL. Il est destiné à l'appelant, on le rend tel quel ;
-    * classe 23 — on ne nomme que la **contrainte**, qui est un nom de règle
-      que nous avons choisi (« decision_two_distinct_principals »). Ni la
-      table, ni la ligne ;
-    * ``42501`` — un texte fixe. Le message du serveur nomme l'objet et le
-      rôle, ce qui décrit notre schéma à qui ne devrait pas le connaître.
+    Nos migrations lèvent **leurs propres** exceptions avec des codes
+    empruntés : ``raise exception '… le proposant ne peut pas etre son propre
+    approbateur …' using errcode = 'insufficient_privilege'``. Le refus du
+    quatre-yeux arrive donc en ``42501``, et le remplacer par « cette
+    opération n'est pas permise » efface exactement la phrase que l'ingénieur
+    doit lire. Le harnais l'a dit mot pour mot : *« refus obtenu, mais pour une
+    autre raison »*.
+
+    On rend donc le message que NOUS avons écrit, et on ne substitue un texte
+    contrôlé que dans les deux cas où le message vient du **serveur** :
+
+    * ``constraint_name`` renseigné — c'est PostgreSQL qui a formulé « new row
+      for relation "X" violates check constraint "Y" », et son ``DETAIL``
+      contient la **ligne fautive**. On ne nomme que la contrainte, qui est un
+      nom de règle que nous avons choisi ;
+    * ``42501`` commençant par « permission denied » — la formule du serveur,
+      qui nomme l'objet et le rôle.
+
+    ``str(cause)`` n'est jamais utilisé : il concatène message, ``DETAIL`` et
+    ``CONTEXT``. On ne lit que ``message_primary``.
     """
     diag = getattr(cause, "diag", None)
-    if etat == "P0001":
-        principal = getattr(diag, "message_primary", None)
-        return principal or "la base a refuse cette operation."
+    principal = getattr(diag, "message_primary", None) or ""
+    contrainte = getattr(diag, "constraint_name", None)
+
+    if contrainte:
+        return (f"la regle « {contrainte} » refuse cette ecriture. Elle "
+                "est posee dans la base et s'applique quel que soit "
+                "l'appelant.")
+    if etat == "42501" and principal.lower().startswith(_FORMULE_MOTEUR_42501):
+        return "cette operation n'est pas permise a l'identite presentee."
+    if principal:
+        return principal
     if etat.startswith(FAMILLES_DE_REFUS):
-        contrainte = getattr(diag, "constraint_name", None)
-        if contrainte:
-            return (f"la regle « {contrainte} » refuse cette ecriture. Elle "
-                    "est posee dans la base et s'applique quel que soit "
-                    "l'appelant.")
         return "une regle d'integrite de la base refuse cette ecriture."
-    return "cette operation n'est pas permise a l'identite presentee."
+    return "la base a refuse cette operation."
 
 
 class RefusSqlTraduits:
