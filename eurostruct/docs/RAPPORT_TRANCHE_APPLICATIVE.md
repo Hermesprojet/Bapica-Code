@@ -1,6 +1,6 @@
 # RAPPORT — première tranche applicative exécutable
 
-**Branche** `claude/wip-6.3c-racine-de-confiance` · **base** `4a489f4` · **SHA final** `74878e2`
+**Branche** `claude/wip-6.3c-racine-de-confiance` · **base** `4a489f4` · **SHA final** `da04d7e`
 
 ---
 
@@ -122,7 +122,31 @@ base de référence. Après §2.1, le moteur refusait `confirmed` mais le
 générateur l'aurait encore émis : la base aurait dit une chose et le calcul une
 autre — pire que les deux erreurs séparément. Il refuse maintenant aussi.
 
-### 2.5 Le workflow `EUROSTRUCT` était rouge pour l'outillage
+### 2.5 La mention obligatoire manquait sur la réponse de calcul
+
+**Interdiction n° 8** — « ne jamais livrer un document sans la mention de
+validation par un ingénieur ».
+
+Le DXF la porte : `legal.py` l'y inscrit, `test_dxf.py` le vérifie. **La
+réponse JSON, non.** Or c'est elle qu'un client transforme en note de calcul.
+
+Ce qui rendait le manque invisible : le mode strict refuse partout
+aujourd'hui, donc une réponse de succès est rare. Le jour où des paramètres
+seront confirmés, un calcul strict rendrait un résultat sans mention, et
+chaque client devrait penser à l'ajouter — l'interdiction serait respectée par
+habitude plutôt que par construction.
+
+`notice` et `mention` ne disent pas la même chose, et les fusionner ferait
+disparaître l'une des deux :
+
+| champ | dit | quand |
+|---|---|---|
+| `notice` | « doit être vérifié et signé par un ingénieur habilité » | **toujours** — aucun logiciel ne signe une note |
+| `mention` | « PROJET — NON SIGNABLE » | seulement si des NDP non confirmés ont servi |
+
+La première dit *pas encore signé*, la seconde *pas signable, par personne*.
+
+### 2.6 Le workflow `EUROSTRUCT` était rouge pour l'outillage
 
 Rouge depuis `2e342ec`, où `api_e2e.sh` est entré dans `db/test/run.sh`. Le job
 « Schema de donnees » n'installait pas le paquet API : le harnais rendait 4
@@ -155,7 +179,7 @@ manque, sans révéler aucune valeur.
 | commande | résultat |
 |---|---|
 | `python -m pytest engine/tests -q -W error` | **collectes 962 · executes 962 · reussis 962 · ignores 0 · echoues 0**, aucun avertissement |
-| `python -m pytest api/tests -q` | **collectes 80 · executes 80 · reussis 66 · ignores 14 · echoues 0** (les 14 E2E sautés hors décor) |
+| `python -m pytest api/tests -q` | **collectes 86 · executes 86 · reussis 72 · ignores 14 · echoues 0** (les 14 E2E sautés hors décor) |
 | `db/test/api_e2e.sh` (PostgreSQL 16 réel) | **14/14**, zéro résidu |
 | `db/test/run.sh` | **rc=0 — les 31 surfaces vertes**, 0 base et 0 rôle résiduels |
 | mutation du correctif d'avertissement | `begin` rétabli → le cas tombe (rc=1) ; corrigé → 14/14 |
@@ -208,7 +232,27 @@ pourquoi.
 
 ---
 
-## 4. Supabase
+## 4. Les interdictions vérifiées sur le chemin produit
+
+Vérifiées en exécutant l'API, pas en relisant le code :
+
+| interdiction | état | comment |
+|---|---|---|
+| n° 1 — aucun résultat produit par un LLM | tient | audit du **moteur** : 14 paquets, aucun import réseau ni IA. Étendu à la main aux deux couches ajoutées : dépendances de l'API = `fastapi`, `pydantic`, `psycopg2-binary`, `pyjwt[crypto]` ; de l'interface = `next`, `react`, `react-dom`. Aucune occurrence d'un client de modèle dans `api/` ni `web/` |
+| n° 2 — aucune valeur inventée | tient | source et page sur chaque paramètre ; le fichier ne confirme plus (§2.1) |
+| n° 6 — rien hors du domaine testé | tient | 5 entrées hors domaine → **5 refus 422**, chacun **nommant le domaine** |
+| n° 7 — pas de « DWG natif » promis | tient | aucune occurrence de « DWG » dans l'API ni l'interface |
+| n° 8 — mention de validation | **était fausse sur le JSON** | corrigée, §2.5 |
+
+L'interdiction n° 6 tenait déjà ; ce qui manquait, c'est ce qui l'exerce. Sur
+le chemin API, deux cas seulement étaient gardés (`d > h`, unité invalide).
+Classe de béton inconnue, nuance d'acier inconnue et moment au-delà de
+`mu_lim` ne l'étaient pas — ils le sont maintenant, et les cas vérifient que
+le refus **énumère le domaine** plutôt que de se contenter de refuser.
+
+---
+
+## 5. Supabase
 
 **Aucune preuve sur une instance Supabase réelle.** Raison précise : aucun
 paramètre de staging n'est présent dans cet environnement, et le cahier des
@@ -227,7 +271,7 @@ l'ouverture de la connexion.
 
 ---
 
-## 5. Ce qui bloque encore un MVP déployé
+## 6. Ce qui bloque encore un MVP déployé
 
 1. **Aucune valeur nationale n'est confirmée — 0 sur 29.** Le mode strict
    refuse donc pour tous les pays, et c'est le comportement voulu. Depuis
@@ -247,18 +291,18 @@ l'ouverture de la connexion.
 
 ---
 
-## 6. Ce qui exige une intervention humaine
+## 7. Ce qui exige une intervention humaine
 
 | # | décision | pourquoi elle n'est pas la mienne |
 |---|---|---|
-| 1 | **Valider la fermeture du 2.1** | Elle ferme le niveau 3 « transcrit et signé dans un fichier » au profit du seul chemin d'autorité. C'est un choix de gouvernance, pas une correction de bogue — même si l'état antérieur était intenable. |
+| 1 | **Valider la fermeture des §2.1 et §2.4** | Elle ferme le niveau 3 « transcrit et signé dans un fichier » au profit du seul chemin d'autorité. C'est un choix de gouvernance, pas une correction de bogue — même si l'état antérieur était intenable. |
 | 2 | Fournir un staging Supabase | Secrets et instance ; jamais dans la conversation. |
 | 3 | Relever les valeurs des annexes | Un ingénieur nommé ouvre l'annexe publiée à la page citée. Aucun agent ne peut le faire à sa place. |
 | 4 | Trancher ODA / RealDWG | Interdiction n° 7 : pas de promesse « DWG natif » avant. |
 
 ---
 
-## 7. Statut
+## 8. Statut
 
 Ni `PRODUCTION_READY` ni « 6.3c CLOSED ». Ce lot livre une **tranche
 applicative exécutable** et ferme deux trous mesurés. Il ne livre pas un
