@@ -170,4 +170,47 @@ export async function etatDuReferentiel(
   }
 }
 
+/** Une fiche de paramètre national, telle que l'API la rend. */
+export type ParametreNdp = {
+  key: string;
+  standard: string;
+  parameter_name: string;
+  parameter_value: number | null;
+  unit: string;
+  clause: string;
+  description: string;
+  national_annex_reference: string;
+  source_page: number | null;
+  validation_status: string;
+  usable_in_strict_mode: boolean;
+  reste_a_faire: string;
+};
+
+export type PlanDeCharge = {
+  country_code: string;
+  as_of: string;
+  referentiel: Record<string, number>;
+  parameters: ParametreNdp[];
+};
+
+/**
+ * Le plan de charge d'un pays : **quels** paramètres, pas seulement combien.
+ *
+ * Chargé à l'ouverture du repli, pas au rendu de la page : vingt-neuf fiches
+ * pour un écran de calcul que personne n'a demandé à déplier, ce serait payer
+ * une requête pour rien.
+ */
+export async function planDeCharge(pays: string): Promise<PlanDeCharge | null> {
+  try {
+    const reponse = await fetch(
+      `${BASE}/v1/ndp/${encodeURIComponent(pays)}/parameters`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!reponse.ok) return null;
+    return (await reponse.json()) as PlanDeCharge;
+  } catch {
+    return null;
+  }
+}
+
 export type { BeamSectionDrawingRequest, Ec2BeamFlexureRequest, EngineErrorDTO };

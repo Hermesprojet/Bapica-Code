@@ -19,8 +19,8 @@
 import { useEffect, useState } from "react";
 import type { BlockingParameterDTO } from "@contracts/generated/engine";
 import {
-  etatDuReferentiel, telechargerDxf, verifierFlexion,
-  type EtatReferentiel, type Issue,
+  etatDuReferentiel, planDeCharge, telechargerDxf, verifierFlexion,
+  type EtatReferentiel, type Issue, type PlanDeCharge,
 } from "@/lib/api";
 import { authDisponible, ouvrirSession, type Session } from "@/lib/session";
 
@@ -213,7 +213,58 @@ function Referentiel({ pays }: { pays: string }) {
           <div className="clause" style={{ marginTop: ".4rem" }}>{etat.action}</div>
         </>
       )}
+      <PlanDeChargeRepli pays={etat.country_code} total={total} />
     </div>
+  );
+}
+
+/**
+ * Les paramètres, un par un. Replié par défaut, chargé à l'ouverture.
+ *
+ * POURQUOI UN REPLI, ET PAS UNE LISTE TOUJOURS VISIBLE
+ * -----------------------------------------------------
+ * Le bandeau répond à « peut-on signer ? » en une ligne. Vingt-neuf fiches
+ * au-dessus du formulaire répondraient à une autre question, que personne n'a
+ * posée en arrivant sur un écran de calcul.
+ *
+ * La requête part **à l'ouverture**, pas au rendu : payer vingt-neuf fiches
+ * pour un repli que l'on n'ouvre pas, c'est payer pour rien.
+ */
+function PlanDeChargeRepli({ pays, total }: { pays: string; total: number }) {
+  const [plan, setPlan] = useState<PlanDeCharge | null>(null);
+  const [charge, setCharge] = useState(false);
+
+  async function ouvrir(e: React.SyntheticEvent<HTMLDetailsElement>) {
+    if (!e.currentTarget.open || charge) return;
+    setCharge(true);
+    setPlan(await planDeCharge(pays));
+  }
+
+  return (
+    <details style={{ marginTop: ".5rem" }} onToggle={ouvrir}>
+      <summary>Voir les {total} paramètres et ce qui reste à faire</summary>
+      {charge && !plan && (
+        <p className="clause">Le plan de charge n&apos;a pas pu être chargé.</p>
+      )}
+      {plan && (
+        <ul className="bloquants">
+          {plan.parameters.map((p) => (
+            <li key={p.key}>
+              <div><strong>{p.parameter_name}</strong> — {p.description}</div>
+              <div className="clause">
+                {p.standard} {p.clause} · {p.national_annex_reference}
+                {p.source_page ? ` · p. ${p.source_page}` : ""}
+              </div>
+              <div className="clause">
+                {p.usable_in_strict_mode
+                  ? "confirmé — utilisable en mode strict"
+                  : p.reste_a_faire}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
   );
 }
 
