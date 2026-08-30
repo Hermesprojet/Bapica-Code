@@ -245,6 +245,7 @@ export EUROSTRUCT_ATELIER_ORG_B="$ORG_B"
 python3 -m pytest "$RACINE/api/tests/test_atelier_postgres.py" \
         "$RACINE/api/tests/test_contexte_normatif_du_projet.py" \
         "$RACINE/api/tests/test_identite_execution.py" \
+        "$RACINE/api/tests/test_note_html.py" \
         -p no:cacheprovider --no-header
 CODE=$?
 unset EUROSTRUCT_E2E_DSN EUROSTRUCT_E2E_DSN_OBS \

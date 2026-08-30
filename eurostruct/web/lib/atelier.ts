@@ -30,7 +30,10 @@ import type {
   Projet,
   ProjetCreation,
 } from "@contracts/generated/engine";
-import { appelProtege, type PorteurDeJeton } from "@/lib/transport";
+import {
+  ApiInjoignable, AppelRefuse, appelProtege, base, SessionExpiree,
+  type PorteurDeJeton,
+} from "@/lib/transport";
 
 export type {
   CalculDeProjetRequest,
@@ -139,4 +142,57 @@ export async function rouvrirCalcul(
     throw new Error("la relecture n'a rendu aucun calcul.");
   }
   return relu;
+}
+
+/**
+ * Télécharge la note HTML d'un calcul sauvegardé.
+ *
+ * ELLE PASSE PAR `fetch` ET NON PAR UN LIEN, et c'est nécessaire : la route
+ * exige un `Authorization`, qu'un `<a href>` ne sait pas joindre. Un lien
+ * direct partirait sans jeton et rendrait 401 — ou pire, obligerait à mettre
+ * le jeton dans l'URL, où il finirait dans l'historique du navigateur et dans
+ * les journaux du serveur.
+ *
+ * LE DOCUMENT NE PASSE PAR AUCUN RENDU. Il est reçu tel quel et enregistré tel
+ * quel : ce que l'ingénieur archive est exactement ce que le serveur a produit
+ * depuis les données gelées.
+ */
+export async function telechargerNote(
+  porteur: PorteurDeJeton,
+  projectId: string,
+  calculationId: string,
+): Promise<void> {
+  const jeton = await porteur.jetonUtilisable();
+  if (!jeton) throw new SessionExpiree();
+  const cible = `${base()}/v1/projects/${encodeURIComponent(projectId)}`
+    + `/calculations/${encodeURIComponent(calculationId)}/note.html`;
+
+  let reponse: Response;
+  try {
+    reponse = await fetch(cible, { headers: { Authorization: `Bearer ${jeton}` } });
+  } catch (cause) {
+    throw new ApiInjoignable(cause);
+  }
+  if (!reponse.ok) {
+    throw new AppelRefuse(reponse.status, await reponse.text().catch(() => null));
+  }
+
+  // LE NOM DE FICHIER VIENT DU SERVEUR quand il le donne. C'est lui qui sait
+  // quel repère et quel identifiant le document porte, et il l'a déjà filtré.
+  const disposition = reponse.headers.get("content-disposition") ?? "";
+  const trouve = /filename="([^"]+)"/.exec(disposition);
+  const nom = trouve?.[1] ?? `note-${calculationId}.html`;
+
+  const contenu = await reponse.blob();
+  const url = URL.createObjectURL(contenu);
+  try {
+    const lien = document.createElement("a");
+    lien.href = url;
+    lien.download = nom;
+    lien.click();
+  } finally {
+    // L'URL D'OBJET EST LIBEREE, TOUJOURS. Sans cela chaque téléchargement
+    // retient son blob en mémoire jusqu'au rechargement de la page.
+    URL.revokeObjectURL(url);
+  }
 }

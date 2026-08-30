@@ -50,9 +50,10 @@ from eurostruct_engine.schemas.atelier import (
 )
 from eurostruct_engine.schemas.ec2_beam import Ec2BeamFlexureRequest
 from eurostruct_engine.service import error_of, run_ec2_beam_flexure
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from ..dependances import ouvrir_atelier, provider_de_lecture
+from ..note import MEDIA_TYPE, rendre_note
 from .calculs import MENTION_NON_SIGNABLE, MENTION_OBLIGATOIRE
 
 routeur = APIRouter(prefix="/v1/projects", tags=["atelier"])
@@ -345,9 +346,95 @@ def rouvrir(project_id: str, calculation_id: str,
     return _en_calcul_enregistre(relu, bool(relu.get("strict_ndp")))
 
 
+@routeur.get("/{project_id}/calculations/{calculation_id}/note.html")
+def note_html(project_id: str, calculation_id: str,
+              ouvert: Any = Depends(ouvrir_atelier)) -> Response:
+    """La note de calcul, rendue **depuis les données gelées**.
+
+    RIEN N'EST RECALCULÉ, NI ICI NI DANS LE NAVIGATEUR. Chaque nombre affiché
+    a été produit par le moteur au moment du calcul et écrit en base. Relancer
+    le moteur donnerait les nombres d'aujourd'hui sous la date d'hier ;
+    recalculer un taux de travail dans cette route créerait une seconde
+    vérité, non éprouvée, et c'est celle-là que le lecteur croirait puisqu'elle
+    est imprimée.
+
+    LE DOCUMENT EST AUTONOME. Aucun script, aucune ressource externe, aucune
+    police distante : il s'ouvre hors ligne dans dix ans, et sa relecture ne
+    signale rien à personne.
+
+    L'ISOLATION EST CELLE DE LA RÉOUVERTURE, et pour cause : c'est le même
+    chemin. Le projet est chargé sous l'identité authentifiée, le calcul est
+    relu par la primitive qui filtre déjà sur les appartenances. Une seconde
+    règle de visibilité écrite ici serait une de trop.
+
+    UN CALCUL SANS RÉSULTAT N'A PAS DE NOTE, et le refus le dit. Rendre un
+    document vide ferait passer pour une note ce qui n'est qu'un refus
+    enregistré — que l'historique, lui, montre déjà tel quel.
+    """
+    jeton = _jeton_de(ouvert)
+    try:
+        projet = _projet_de(ouvert, jeton, project_id)
+        calcul = ouvert.atelier.rouvrir_calcul(
+            jeton, project_id=project_id, calculation_id=calculation_id)
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        raise _refus(cause) from cause
+    finally:
+        ouvert.fermer()
+
+    if not (calcul.get("result") or {}).get("result"):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "atelier_refuse", "what": "note",
+                    "detail": ("ce calcul n'a produit aucun resultat: il a ete "
+                               "refuse par le moteur, et son motif figure dans "
+                               "l'historique. Une note vide ferait passer un "
+                               "refus pour un document.")},
+        )
+
+    strict = bool(calcul.get("strict_ndp"))
+    document = rendre_note(
+        projet, calcul,
+        notice=MENTION_OBLIGATOIRE,
+        mention=None if strict else MENTION_NON_SIGNABLE,
+    )
+    return Response(
+        content=document, media_type=MEDIA_TYPE,
+        headers={
+            # LE NOM DU FICHIER PORTE LE REPERE ET L'IDENTIFIANT. Deux notes
+            # du meme projet telechargees le meme jour ne doivent pas
+            # s'ecraser dans le dossier de l'ingenieur.
+            "Content-Disposition":
+                'attachment; filename="note-'
+                f'{_nom_de_fichier(calcul)}.html"',
+            # LE DOCUMENT NE S'EXECUTE PAS, ET LE SERVEUR LE DIT AUSSI.
+            # `rendre_note` n'emet aucun script; cette politique le garantit
+            # meme si quelqu'un en introduisait un demain.
+            "Content-Security-Policy":
+                "default-src 'none'; style-src 'unsafe-inline'; "
+                "img-src 'none'; script-src 'none'; base-uri 'none'; "
+                "form-action 'none'",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 # ===========================================================================
 # CE QUI SERT AUX CINQ, ET QUI N'EST PAS UNE ROUTE
 # ===========================================================================
+def _nom_de_fichier(calcul: dict[str, Any]) -> str:
+    """Un nom de fichier sûr, dérivé du repère et de l'identifiant.
+
+    ON NE MET PAS LE NOM DU PROJET DEDANS. Il est saisi par un humain, il peut
+    contenir n'importe quoi, et un nom de fichier est interprété par le système
+    de fichiers du destinataire. Le repère est filtré, l'identifiant est un
+    uuid : les deux sont sûrs par construction.
+    """
+    repere = "".join(
+        c for c in str((calcul.get("request") or {}).get("element") or "")
+        if c.isalnum() or c in "-_")[:40]
+    identifiant = "".join(c for c in str(calcul.get("calculation_id") or "")
+                          if c.isalnum() or c == "-")[:36]
+    return f"{repere or 'calcul'}-{identifiant or 'sans-identifiant'}"
 def _projet_de(ouvert: Any, jeton: str, project_id: str) -> dict[str, Any]:
     """Le projet, sous l'identité authentifiée. Ou un refus qui ne dit rien.
 

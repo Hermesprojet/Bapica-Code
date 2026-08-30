@@ -26,7 +26,7 @@ import {
 } from "@/lib/api";
 import {
   calculerEtEnregistrer, creerProjet, historiqueDuProjet, listerProjets,
-  rouvrirCalcul,
+  rouvrirCalcul, telechargerNote,
   type CalculDeProjetRequest, type CalculEnregistre, type Projet,
 } from "@/lib/atelier";
 import type { CalculResume } from "@contracts/generated/engine";
@@ -599,6 +599,24 @@ function Historique({ projet, revision, surReouverture }: {
     }
   }
 
+  /**
+   * Télécharge la note du calcul choisi.
+   *
+   * L'ERREUR EST AFFICHEE, PAS AVALEE. Un calcul refusé n'a pas de note — le
+   * serveur répond 422 en le disant — et un téléchargement qui échoue en
+   * silence laisserait l'ingénieur attendre un fichier qui n'arrivera pas.
+   */
+  async function telecharger(calculationId: string) {
+    try {
+      await telechargerNote(auth.porteur, projet.project_id, calculationId);
+      setErreur(null);
+    } catch (cause) {
+      setErreur(cause instanceof AppelRefuse
+        ? `${cause.statut} — la note n'a pas pu etre produite.`
+        : String(cause));
+    }
+  }
+
   return (
     <section className="bandeau">
       <strong>Historique — {projet.name}</strong>
@@ -631,6 +649,15 @@ function Historique({ projet, revision, surReouverture }: {
                           onClick={() => rouvrir(c.calculation_id)}>
                     Rouvrir
                   </button>
+                  {/* PAS DE NOTE POUR UN REFUS. Le moteur n'a rien conclu; un
+                      bouton qui rendrait un 422 ferait chercher une panne la
+                      ou il y a une reponse. Le motif est a la reouverture. */}
+                  {c.status !== "refused" && (
+                    <button type="button"
+                            onClick={() => telecharger(c.calculation_id)}>
+                      Télécharger la note HTML
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
