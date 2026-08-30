@@ -310,13 +310,21 @@ for x in json.load(sys.stdin)['parameters']:
     if x['key'] == '$CLE':
         print(x['source_doc_id'], x.get('source_page') or 1)" 2>/dev/null)"
       DIGEST="${DOC%% *}"; FOLIO="${DOC##* }"
+      # LE BROUILLON NE PORTE QUE LA PREUVE HUMAINE.
+      #
+      # Il envoyait aussi `implementation_note` et `effect`, et les deux
+      # entraient dans une empreinte canonique: deux redactions du meme
+      # parametre signaient deux sujets, et le code pouvait changer sous une
+      # confirmation sans l'invalider. Les deux champs ont disparu du contrat,
+      # qui est `extra="forbid"` — un client qui les envoie encore recoit un
+      # 422 plutot qu'un effet silencieux, et c'est exactement ce que la CI a
+      # constate ici. La specification et l'empreinte d'implementation sont
+      # derivees du registre et du chemin de code, cote serveur.
       BROUILLON="$(python3 -c "
 import json
 print(json.dumps({
   'country_code': 'BE', 'rule_id': '$CLE',
   'statement': 'FICTIF — releve pour la preuve B.',
-  'implementation_note': 'FICTIF — implementation de test',
-  'effect': 'FICTIF — fixe la valeur nationale',
   'citations': [{'document_digest': '$DIGEST',
                  'quote': 'FICTIF — citation relevee.',
                  'page_printed': int('$FOLIO')}]}))")"
