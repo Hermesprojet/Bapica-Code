@@ -261,3 +261,94 @@ def test_un_horodatage_sans_fuseau_est_refuse() -> None:
     # Le meme instant, avec son fuseau, passe.
     ligne["verified_at"] = datetime(2026, 8, 15, 12, 0, 0, tzinfo=UTC)
     assert confirmation_depuis_ligne(ligne).verified_at.tzinfo is not None
+
+
+# ---------------------------------------------------------------------------
+# Le garde de role: zero ligne n'est pas une reponse
+# ---------------------------------------------------------------------------
+class _CurseurStub:
+    def __init__(self, reponses):
+        self._reponses = list(reponses)
+        self.requetes: list[str] = []
+        self._derniere = None
+        self.description = None
+
+    def execute(self, requete, parametres=None):
+        self.requetes.append(requete)
+        if self._reponses:
+            self._derniere, self.description = self._reponses.pop(0)
+
+    def fetchone(self):
+        return self._derniere
+
+    def fetchall(self):
+        return []
+
+    def close(self):
+        pass
+
+
+class _ConnexionStub:
+    def __init__(self, reponses):
+        self.curseur = _CurseurStub(reponses)
+        self.commits = 0
+        self.rollbacks = 0
+
+    def cursor(self):
+        return self.curseur
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+
+class _AuthStub:
+    identite_de_l_authentificateur = "stub://tests"
+    est_fictif = True
+
+    def authentifier(self, preuve):
+        raise AssertionError("aucune lecture ne doit authentifier")
+
+
+def _provider(reponses):
+    from eurostruct_engine.ndp.postgres_provider import PostgresConfirmationProvider
+
+    connexion = _ConnexionStub(reponses)
+    return PostgresConfirmationProvider(
+        connexion=connexion, authentificateur=_AuthStub(),
+    ), connexion
+
+
+def test_un_role_qui_ne_voit_rien_fait_refuser_la_lecture() -> None:
+    """« Je n'ai pas le droit de voir » et « il n'y en a aucune » se
+    ressemblent trop pour qu'on les confonde.
+
+    Sous RLS, un role sans politique applicable recoit zero ligne SANS
+    erreur. Rendre alors un tuple vide ferait conclure « regle non
+    confirmee » a un decompte a quatre yeux.
+    """
+    provider, _ = _provider([((False,), None)])
+    with pytest.raises(Exception, match="aucune politique de lecture"):
+        provider.confirmations_for("be.ec2.une_regle")
+
+
+def test_un_role_couvert_laisse_la_lecture_se_faire() -> None:
+    provider, connexion = _provider([((True,), None), (None, [])])
+    assert provider.confirmations_for("be.ec2.une_regle") == ()
+    # La transaction de lecture est refermee par un rollback, pas un commit:
+    # une lecture n'a rien a valider.
+    assert connexion.rollbacks == 1
+    assert connexion.commits == 0
+
+
+def test_la_lecture_n_authentifie_personne() -> None:
+    """Le double leve si on l'appelle; la lecture ne doit pas l'appeler.
+
+    Le referentiel normatif n'est pas une donnee de locataire: une
+    confirmation belge vaut pour toutes les etudes belges. Poser un acteur
+    laisserait croire que la visibilite en depend.
+    """
+    provider, _ = _provider([((True,), None), (None, [])])
+    provider.confirmations_for("be.ec2.une_regle")  # ne leve pas

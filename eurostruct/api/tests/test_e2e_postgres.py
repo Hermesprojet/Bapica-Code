@@ -366,3 +366,96 @@ def test_identite_vient_du_jeton_et_non_du_corps(client, jeton):
     # ...et un jeton portant l'AUTRE sujet passe.
     assert client.post(f"/v1/authority/decisions/{decision_id}/approval",
                        headers=_entete(jeton(ACTEUR_B))).status_code == 204
+
+
+# ---------------------------------------------------------------- la LECTURE
+def _provider_de_service():
+    """Le provider de production, sur la connexion de service du décor.
+
+    Le login de service porte ``eurostruct_authority_backend``, que la
+    politique de lecture des confirmations couvre en ``using (true)``.
+    """
+    import psycopg2
+
+    from eurostruct_engine.ndp.postgres_provider import (
+        PostgresConfirmationProvider,
+        creer_contexte,
+    )
+
+    class _AuthDeLecture:
+        """Aucune lecture ne l'appelle — et c'est la propriété qu'on montre.
+
+        La lecture du référentiel normatif ne pose pas d'acteur: une
+        confirmation belge vaut pour toutes les études belges. Si un jour un
+        chemin de lecture authentifiait, ce double le dirait en levant.
+        """
+
+        identite_de_l_authentificateur = "e2e://lecture"
+        est_fictif = False
+
+        def authentifier(self, preuve):
+            raise AssertionError(
+                "la lecture des confirmations ne doit authentifier personne"
+            )
+
+        # Le protocole exige la forme; `creer_contexte` reste inutilisé ici.
+        _ = creer_contexte
+
+    connexion = psycopg2.connect(DSN)
+    connexion.autocommit = False
+    return PostgresConfirmationProvider(
+        connexion=connexion, authentificateur=_AuthDeLecture(),
+    ), connexion
+
+
+def test_la_lecture_des_confirmations_traverse_un_vrai_postgresql():
+    """Le SQL de lecture est accepté par le serveur, colonnes comprises.
+
+    CE QUE CE CAS ATTRAPE ET QUE LES AUTRES NE PEUVENT PAS. Les vingt-et-un
+    cas de ``test_projection.py`` tournent sans base : ils prouvent la
+    projection, pas que ``COLONNES_CONFIRMATION`` nomme des colonnes qui
+    existent. Un nom mal orthographié y passerait inaperçu et ne se
+    manifesterait qu'en exploitation.
+
+    Zéro confirmation est ici la **bonne** réponse — aucune n'a été signée sur
+    cette base — et elle n'est acceptable que parce que le garde de rôle a
+    répondu avant : sans lui, zéro ligne ne se distinguerait pas d'un refus.
+    """
+    provider, connexion = _provider_de_service()
+    try:
+        assert provider.confirmations_for("be.ec2.aucune_regle_de_ce_nom") == ()
+        assert provider.revocations_for("be.ec2.aucune_regle_de_ce_nom") == ()
+    finally:
+        connexion.close()
+
+
+def test_le_role_de_service_est_couvert_par_une_politique_de_lecture():
+    """Le garde interroge PostgreSQL, il ne suppose pas.
+
+    Si la migration cessait un jour d'accorder ``eurostruct_authority_backend``
+    au login de service, ce cas tomberait — et ``confirmations_for``
+    refuserait au lieu de rendre un tuple vide trompeur.
+    """
+    provider, connexion = _provider_de_service()
+    try:
+        # Ne lève pas: c'est l'assertion.
+        provider._exiger_un_role_qui_voit()
+    finally:
+        connexion.close()
+
+
+def test_la_lecture_ne_laisse_aucune_transaction_ouverte():
+    """Une lecture qui garde sa transaction tient un instantané indéfiniment.
+
+    ``idle in transaction`` est ce qui empêche ``VACUUM`` de récupérer les
+    versions mortes: une connexion de service oubliée là fait grossir la base
+    sans que rien n'échoue.
+    """
+    import psycopg2.extensions as ext
+
+    provider, connexion = _provider_de_service()
+    try:
+        provider.confirmations_for("be.ec2.aucune_regle_de_ce_nom")
+        assert connexion.get_transaction_status() == ext.TRANSACTION_STATUS_IDLE
+    finally:
+        connexion.close()
