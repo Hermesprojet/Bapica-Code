@@ -142,10 +142,81 @@ def _entete(j: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {j}"}
 
 
+#: Une empreinte de document FICTIVE, reconnaissable, et constante: ce module
+#: n'eprouve pas le rapprochement au registre — c'est le travail de
+#: `test_decision_vers_strict.py` — mais le cycle a quatre yeux lui-meme.
+DOC_FICTIF = "e2e" + "0" * 61
+
+
+def _dossier_fictif(subject_id: str) -> dict[str, str]:
+    """Un dossier de revue structurellement valide, et entierement fictif.
+
+    DEPUIS 0016, UNE DECISION « ndp_parameter » SE PROPOSE AVEC SON DOSSIER.
+    Sans lui, elle pourrait etre approuvee et consommee sans produire aucun
+    effet normatif — et c'est precisement le trou que 0016 ferme. Le refus
+    tombe donc a la proposition, la ou l'auteur peut encore corriger.
+
+    Les payloads sont produits par les fonctions canoniques du moteur: la base
+    verifie que les citations sont scellees et que les quatre payloads disent
+    ce qu'ils sont.
+    """
+    from eurostruct_engine.ndp.canonical import (
+        CANONICALIZATION_VERSION,
+        digest_of,
+        evidence_digest,
+    )
+    from eurostruct_engine.ndp.confirmation import (
+        EvidenceItem,
+        NormativeStack,
+        NormativeStackComponent,
+        required_sources,
+    )
+
+    spec = digest_of({
+        "kind": "normative_spec",
+        "canonicalization_version": CANONICALIZATION_VERSION,
+        "rule_id": subject_id, "rule_type": "scalar",
+        "output_unit": "dimensionless", "value_provenance": "national_annex",
+        "scalar_value": 0.85, "inputs": [], "domain": [],
+        "expression_sources": [],
+        "normative_authority": {
+            "country_code": "BE", "reference": "FICTIF ANB",
+            "edition": "2004", "clause": "§FICTIF",
+            "effect": "FICTIF", "document_digest": DOC_FICTIF},
+    })
+    impl = digest_of({
+        "kind": "implementation",
+        "canonicalization_version": CANONICALIZATION_VERSION,
+        "rule_id": subject_id, "quoi": "FICTIF"})
+    pile = NormativeStack.of(
+        country_code="BE", standard_family="EN 1992", part="1-1",
+        components=(NormativeStackComponent(
+            "annexe", "FICTIF ANB", "2004", 1, DOC_FICTIF),))
+    items = tuple(
+        EvidenceItem(document_digest=s.document_digest, document_role=s.role,
+                     reference=s.reference, edition=s.edition or "2004",
+                     clause=s.clause, page_printed=1,
+                     quote=f"FICTIF — citation pour {subject_id}.",
+                     page_pdf=None)
+        for s in required_sources(spec))
+    preuve = evidence_digest(items)
+    return {
+        "rule_id": subject_id,
+        "statement": f"FICTIF — dossier de {subject_id}.",
+        "digest_algorithm": "sha256",
+        "canonicalization_version": CANONICALIZATION_VERSION,
+        "normative_spec_payload": spec.canonical_payload,
+        "implementation_payload": impl.canonical_payload,
+        "evidence_payload": preuve.canonical_payload,
+        "stack_payload": pile.digest.canonical_payload,
+    }
+
+
 def _proposition(suffixe: str) -> dict[str, object]:
+    sujet = f"EN 1992-1-1:alpha_cc#{suffixe}"
     return {
         "subject_kind": "ndp_parameter",
-        "subject_id": f"EN 1992-1-1:alpha_cc#{suffixe}",
+        "subject_id": sujet,
         "org_id": None,
         "country_code": "BE",
         "standard_family": "EN 1992",
@@ -153,6 +224,7 @@ def _proposition(suffixe: str) -> dict[str, object]:
         "edition": "2004",
         "permission": "can_validate_normative_reference",
         "reason": f"FICTIF e2e {suffixe}",
+        "review_package": _dossier_fictif(sujet),
     }
 
 

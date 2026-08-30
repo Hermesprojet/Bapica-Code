@@ -89,6 +89,18 @@
           "title": "Reason",
           "type": "string"
         },
+        "review_package": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthorityReviewPackage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The dossier presented to both engineers. Required when subject_kind is 'ndp_parameter': without it the decision could be approved and consumed without producing any normative effect."
+        },
         "standard_family": {
           "examples": [
             "EN 1992"
@@ -124,6 +136,64 @@
         "reason"
       ],
       "title": "AuthorityDecisionRequest",
+      "type": "object"
+    },
+    "AuthorityReviewPackage": {
+      "additionalProperties": false,
+      "description": "The dossier the two engineers are shown, frozen at proposal time.\n\nWHY IT TRAVELS WITH THE PROPOSAL AND NOT WITH THE APPROVAL. \"B approved\"\nmeans nothing unless the record says *what* B approved. The dossier is\nwritten once, at proposal, and PostgreSQL freezes it: A and B therefore\napprove byte-identical content, and the effect produced at consumption is\nthat content and no other.\n\nNO DIGEST IS CARRIED HERE. The server recomputes every one of them from\nthe payloads below. Accepting a digest would let a caller announce a\nfingerprint that does not summarise what is stored.",
+      "properties": {
+        "canonicalization_version": {
+          "examples": [
+            "esc-canon/1"
+          ],
+          "title": "Canonicalization Version",
+          "type": "string"
+        },
+        "digest_algorithm": {
+          "examples": [
+            "sha256"
+          ],
+          "title": "Digest Algorithm",
+          "type": "string"
+        },
+        "evidence_payload": {
+          "title": "Evidence Payload",
+          "type": "string"
+        },
+        "implementation_payload": {
+          "title": "Implementation Payload",
+          "type": "string"
+        },
+        "normative_spec_payload": {
+          "title": "Normative Spec Payload",
+          "type": "string"
+        },
+        "rule_id": {
+          "description": "Exact parameter identifier, e.g. 'EN 1992-1-1:alpha_cc'.",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "stack_payload": {
+          "title": "Stack Payload",
+          "type": "string"
+        },
+        "statement": {
+          "description": "What the reviewers declare they read and checked.",
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "statement",
+        "digest_algorithm",
+        "canonicalization_version",
+        "normative_spec_payload",
+        "implementation_payload",
+        "evidence_payload",
+        "stack_payload"
+      ],
+      "title": "AuthorityReviewPackage",
       "type": "object"
     },
     "BarRowDTO": {

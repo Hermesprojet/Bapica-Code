@@ -34,7 +34,38 @@ __all__ = [
     "AuthorityDecisionRequest",
     "AuthorityDecisionCreated",
     "AuthorityDecisionConsumed",
+    "AuthorityReviewPackage",
 ]
+
+
+class AuthorityReviewPackage(Strict):
+    """The dossier the two engineers are shown, frozen at proposal time.
+
+    WHY IT TRAVELS WITH THE PROPOSAL AND NOT WITH THE APPROVAL. "B approved"
+    means nothing unless the record says *what* B approved. The dossier is
+    written once, at proposal, and PostgreSQL freezes it: A and B therefore
+    approve byte-identical content, and the effect produced at consumption is
+    that content and no other.
+
+    NO DIGEST IS CARRIED HERE. The server recomputes every one of them from
+    the payloads below. Accepting a digest would let a caller announce a
+    fingerprint that does not summarise what is stored.
+    """
+
+    rule_id: str = Field(
+        description="Exact parameter identifier, e.g. 'EN 1992-1-1:alpha_cc'.",
+    )
+    statement: str = Field(
+        description="What the reviewers declare they read and checked.",
+    )
+    digest_algorithm: str = Field(examples=["sha256"])
+    canonicalization_version: str = Field(examples=["esc-canon/1"])
+    #: The four canonical payloads. They are the signed material; the server
+    #: hashes them itself.
+    normative_spec_payload: str
+    implementation_payload: str
+    evidence_payload: str
+    stack_payload: str
 
 
 class AuthorityDecisionRequest(Strict):
@@ -66,6 +97,14 @@ class AuthorityDecisionRequest(Strict):
     permission: str = Field(examples=["can_validate_normative_reference"])
     reason: str = Field(
         description="Human-readable motive. A datum, never a proof.",
+    )
+    review_package: AuthorityReviewPackage | None = Field(
+        default=None,
+        description=(
+            "The dossier presented to both engineers. Required when "
+            "subject_kind is 'ndp_parameter': without it the decision could "
+            "be approved and consumed without producing any normative effect."
+        ),
     )
 
 

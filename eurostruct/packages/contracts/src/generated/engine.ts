@@ -37,11 +37,27 @@ export interface AuthorityDecisionRequest {
   permission: string;
   /** Human-readable motive. A datum, never a proof. */
   reason: string;
+  /** The dossier presented to both engineers. Required when subject_kind is 'ndp_parameter': without it the decision could be approved and consumed without producing any normative effect. */
+  review_package?: AuthorityReviewPackage | null;
   standard_family: string;
   /** Identifier of the subject the decision bears on. */
   subject_id: string;
   /** Nature of the subject, e.g. 'ndp_parameter'. */
   subject_kind: string;
+}
+
+/** The dossier the two engineers are shown, frozen at proposal time. WHY IT TRAVELS WITH THE PROPOSAL AND NOT WITH THE APPROVAL. "B approved" means nothing unless the record says *what* B approved. The dossier is written once, at proposal, and PostgreSQL freezes it: A and B therefore approve byte-identical content, and the effect produced at consumption is that content and no other. NO DIGEST IS CARRIED HERE. The server recomputes every one of them from the payloads below. Accepting a digest would let a caller announce a fingerprint that does not summarise what is stored. */
+export interface AuthorityReviewPackage {
+  canonicalization_version: string;
+  digest_algorithm: string;
+  evidence_payload: string;
+  implementation_payload: string;
+  normative_spec_payload: string;
+  /** Exact parameter identifier, e.g. 'EN 1992-1-1:alpha_cc'. */
+  rule_id: string;
+  stack_payload: string;
+  /** What the reviewers declare they read and checked. */
+  statement: string;
 }
 
 export interface BarRowDTO {

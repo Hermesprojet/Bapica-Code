@@ -497,20 +497,27 @@ class PostgresConfirmationProvider:
         self, preuve: Any, *, subject_kind: str, subject_id: str,
         org_id: str | None, country_code: str, standard_family: str,
         part: str, edition: str, permission: str, reason: str,
+        review_package: str | None = None,
     ) -> str:
         """Propose une décision **sous l'identité authentifiée**.
 
-        Aucun paramètre ne nomme le proposant. ``subject_*``, la portée et le
-        motif sont des DONNÉES — ce sur quoi la décision porte — et n'ont
-        aucune valeur probante.
+        Aucun paramètre ne nomme le proposant. ``subject_*``, la portée, le
+        motif et le dossier sont des DONNÉES — ce sur quoi la décision porte —
+        et n'ont aucune valeur probante.
+
+        ``review_package`` est le dossier de revue, déjà sérialisé en JSON.
+        PostgreSQL le **fige** : A et B approuveront ce contenu-là, et la
+        consommation en tirera son effet. Aucune empreinte n'y figure : le
+        serveur les recalcule sur les payloads.
         """
         with RefusSqlTraduits(), self._unite(preuve) as u:
             u.executer(
                 "select normative_decision_propose("
                 "%s, %s, %s, %s::country_code, %s, %s, %s, "
-                "%s::normative_permission, %s)",
+                "%s::normative_permission, %s, %s::jsonb)",
                 (subject_kind, subject_id, org_id, country_code,
-                 standard_family, part, edition, permission, reason),
+                 standard_family, part, edition, permission, reason,
+                 review_package),
             )
             ligne = u.curseur.fetchone()
             return ligne[0] if ligne else ""

@@ -549,12 +549,18 @@ else
     "grant execute on function normative_decision_consume(uuid) to public" \
     "revoke execute on function normative_decision_consume(uuid) from public" "Y5"
 
+  # LA SIGNATURE CITEE EST CELLE DE 0016, PAS CELLE DE 0014. 0016 remplace la
+  # variante a neuf arguments par une variante a dix (`p_review_package
+  # jsonb`). Citer l'ancienne fait echouer `alter function`, la derive n'est
+  # jamais posee, et le controle rend NON PARCOURU au lieu de rouge: une garde
+  # qu'on croit eprouvee et qui ne l'est plus est pire qu'une garde absente.
   eprouver_derive derive-search-path "AUTHORITY_0014_SEARCH_PATH_UNPINNED" \
     "assert_0014_decisions_surface()" \
     "alter function normative_decision_propose(text, text, uuid, country_code,
-       text, text, text, normative_permission, text) reset search_path" \
+       text, text, text, normative_permission, text, jsonb) reset search_path" \
     "alter function normative_decision_propose(text, text, uuid, country_code,
-       text, text, text, normative_permission, text) set search_path = public, pg_temp" "Y6"
+       text, text, text, normative_permission, text, jsonb)
+       set search_path = public, pg_temp" "Y6"
 
   eprouver_derive derive-trigger-desactive "AUTHORITY_0014_TRIGGER_NOT_ENABLED" \
     "assert_0014_decisions_surface()" \

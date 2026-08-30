@@ -340,6 +340,23 @@ echo "==> parcours d'autorite depuis l'API (tranche applicative)"
 etape "parcours d'autorite depuis l'API" \
   "$HERE/api_e2e.sh" "${DB_NAME:0:20}ae"
 
+# LE PARCOURS COMPLET: DECISION -> CONFIRMATION -> MODE STRICT.
+#
+# `api_e2e.sh` etablit que les trois primitives tiennent sous identite
+# authentifiee. Il ne dit RIEN de leur EFFET: jusqu'a 0016, une decision
+# consommee ne posait aucune confirmation, et `confirmer_depuis_le_provider()`
+# ne lit que cette table-la. Les deux chemins existaient cote a cote sans que
+# rien ne les relie, et les tests positifs de la passerelle injectaient un
+# fournisseur fictif — ils prouvaient l'algorithme, pas le cablage.
+#
+# Celui-ci part des huit blocages du calcul strict belge, joue les huit cycles
+# A/B par les ROUTES PUBLIQUES, et exige que le calcul finisse en 200 avec
+# `strict_ndp_satisfied`. AUCUN FOURNISSEUR FICTIF N'Y EST INJECTE: le provider
+# est celui de production, sur PostgreSQL.
+echo "==> decision consommee -> confirmation -> calcul strict"
+etape "decision vers strict" \
+  "$HERE/decision_vers_strict.sh" "${DB_NAME:0:20}ds"
+
 echo "==> quatre-yeux explicite (6.3c)"
 etape "quatre-yeux explicite" \
   "$HERE/authority_four_eyes.sh" "${DB_NAME:0:20}fy"

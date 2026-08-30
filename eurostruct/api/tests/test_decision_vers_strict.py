@@ -60,13 +60,12 @@ def cle():
 @pytest.fixture(scope="module")
 def application(cle):
     """L'application DE PRODUCTION. Seul le trousseau est local."""
-    from jwt.algorithms import RSAAlgorithm
-
     from eurostruct_api.app import creer_application
     from eurostruct_api.auth.jwks import TrousseauJwks
     from eurostruct_api.auth.supabase import AuthentificateurSupabase
     from eurostruct_api.base import FabriqueConnexionPostgres
     from eurostruct_api.config import Reglages, ReglagesAuth, ReglagesBase
+    from jwt.algorithms import RSAAlgorithm
 
     jwk = json.loads(RSAAlgorithm.to_jwk(cle.public_key()))
     jwk.update({"kid": KID, "alg": "RS256", "use": "sig"})
@@ -145,6 +144,104 @@ def _parametre(cle: str):
     return p
 
 
+# ------------------------------------------------------- le dossier de revue
+#
+# CONSTRUIT PAR LES FONCTIONS CANONIQUES DU MOTEUR, jamais a la main. Les
+# payloads doivent etre EXACTEMENT ce que `digest_of` produit: la projection
+# reconstruit la pile et le dossier depuis la base et les confronte a leurs
+# empreintes. Un JSON equivalent mais autrement serialise ne se rehacherait pas
+# a la meme valeur.
+#
+# TOUT EST FICTIF SAUF LA VALEUR ET SA PROVENANCE, qui viennent du registre:
+# la passerelle les compare, et les inventer ferait echouer le rapprochement —
+# c'est precisement la garantie qu'on veut.
+def dossier_pour(p) -> dict:
+    from eurostruct_engine.ndp.canonical import (
+        CANONICALIZATION_VERSION,
+        digest_of,
+        evidence_digest,
+    )
+    from eurostruct_engine.ndp.confirmation import (
+        EvidenceItem,
+        NormativeStack,
+        NormativeStackComponent,
+        required_sources,
+    )
+
+    assert p.source_doc_id, (
+        f"{p.key} n'a pas d'empreinte de document deposee: aucune "
+        "confirmation ne peut y etre rattachee")
+
+    spec = digest_of({
+        "kind": "normative_spec",
+        "canonicalization_version": CANONICALIZATION_VERSION,
+        "rule_id": p.key,
+        "rule_type": "scalar",
+        "output_unit": p.unit,
+        "value_provenance": p.value_provenance.value,
+        "scalar_value": p.parameter_value,
+        "inputs": [], "domain": [], "expression_sources": [],
+        "normative_authority": {
+            "country_code": p.country_code,
+            "reference": p.national_annex_reference,
+            "edition": p.edition,
+            "clause": p.clause,
+            "effect": "FICTIF — fixe la valeur nationale",
+            "document_digest": p.source_doc_id,
+        },
+    })
+    impl = digest_of({
+        "kind": "implementation",
+        "canonicalization_version": CANONICALIZATION_VERSION,
+        "rule_id": p.key,
+        "quoi": "FICTIF — implementation de test",
+    })
+    pile = NormativeStack.of(
+        country_code=p.country_code, standard_family=p.standard_family,
+        part=p.part,
+        components=(NormativeStackComponent(
+            "annexe", p.national_annex_reference, p.edition, 1,
+            p.source_doc_id),),
+    )
+    items = tuple(
+        EvidenceItem(
+            document_digest=s.document_digest, document_role=s.role,
+            reference=s.reference, edition=s.edition or p.edition,
+            clause=s.clause, page_printed=p.source_page or 1,
+            quote=f"FICTIF — citation relevee pour {p.key}.",
+            page_pdf=None,
+        )
+        for s in required_sources(spec)
+    )
+    preuve = evidence_digest(items)
+
+    return {
+        "rule_id": p.key,
+        "statement": f"FICTIF — dossier de revue de {p.key}.",
+        "digest_algorithm": "sha256",
+        "canonicalization_version": CANONICALIZATION_VERSION,
+        "normative_spec_payload": spec.canonical_payload,
+        "implementation_payload": impl.canonical_payload,
+        "evidence_payload": preuve.canonical_payload,
+        "stack_payload": pile.digest.canonical_payload,
+    }
+
+
+def proposition_pour(p) -> dict:
+    return {
+        "subject_kind": "ndp_parameter",
+        "subject_id": p.key,
+        "org_id": None,
+        "country_code": p.country_code,
+        "standard_family": p.standard_family,
+        "part": p.part,
+        "edition": p.edition,
+        "permission": "can_validate_normative_reference",
+        "reason": f"FICTIF revue de {p.key}",
+        "review_package": dossier_pour(p),
+    }
+
+
 # ---------------------------------------------------------------- le parcours
 def test_le_calcul_strict_refuse_et_nomme_ses_blocages(client):
     """Le point de départ, et il est mesuré, pas supposé."""
@@ -169,17 +266,7 @@ def test_une_decision_consommee_debloque_le_parametre_qu_elle_vise(client, jeton
     cle_visee = avant[0]
     p = _parametre(cle_visee)
 
-    corps = {
-        "subject_kind": "ndp_parameter",
-        "subject_id": cle_visee,
-        "org_id": None,
-        "country_code": p.country_code,
-        "standard_family": p.standard_family,
-        "part": p.part,
-        "edition": p.edition,
-        "permission": "can_validate_normative_reference",
-        "reason": f"FICTIF revue de {cle_visee} pour la preuve de bout en bout",
-    }
+    corps = proposition_pour(p)
 
     r = client.post("/v1/authority/decisions", json=corps,
                     headers=_entete(jeton(ACTEUR_A)))
@@ -227,14 +314,7 @@ def test_une_consommation_cree_une_trace_normative_durable(client, jeton):
     cle_visee = avant[-1]
     p = _parametre(cle_visee)
 
-    corps = {
-        "subject_kind": "ndp_parameter", "subject_id": cle_visee,
-        "org_id": None, "country_code": p.country_code,
-        "standard_family": p.standard_family, "part": p.part,
-        "edition": p.edition,
-        "permission": "can_validate_normative_reference",
-        "reason": f"FICTIF trace durable pour {cle_visee}",
-    }
+    corps = proposition_pour(p)
     r = client.post("/v1/authority/decisions", json=corps,
                     headers=_entete(jeton(ACTEUR_A)))
     assert r.status_code == 201, r.text
@@ -272,7 +352,9 @@ def test_le_referentiel_versionne_reste_a_zero_sur_zero_vingt_neuf():
 
     for pays in available_countries():
         jeu = load_parameter_set(pays, strict=True)
-        utilisables = [k for k in jeu.keys()
+        # SIM118 est un faux positif ici: `ParameterSet` n'est pas un dict et
+        # n'expose pas `__iter__` — retirer `.keys()` casserait la boucle.
+        utilisables = [k for k in jeu.keys()  # noqa: SIM118
                        if (p := jeu.find(k)) is not None
                        and p.usable_in_strict_mode]
         assert utilisables == [], f"{pays}: {utilisables}"
@@ -292,3 +374,214 @@ def test_aucun_corps_ne_peut_nommer_un_verificateur(client, jeton):
     r = client.post("/v1/authority/decisions", json=corps,
                     headers=_entete(jeton(ACTEUR_A)))
     assert r.status_code == 422, r.text
+
+
+# ===========================================================================
+# LES HUIT, PUIS LE CALCUL QUI ABOUTIT
+# ===========================================================================
+def _cycle(client, jeton, p, *, approbateur=None, consommer=True) -> str:
+    """Un cycle complet A/B pour un parametre. Rend l'identifiant."""
+    r = client.post("/v1/authority/decisions", json=proposition_pour(p),
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    decision_id = r.json()["decision_id"]
+    r = client.post(f"/v1/authority/decisions/{decision_id}/approval",
+                    headers=_entete(jeton(approbateur or ACTEUR_B)))
+    assert r.status_code == 204, r.text
+    if consommer:
+        r = client.post(f"/v1/authority/decisions/{decision_id}/consumption",
+                        headers=_entete(jeton(ACTEUR_B)))
+        assert r.status_code == 200, r.text
+    return decision_id
+
+
+# ===========================================================================
+# LES CAS NEGATIFS — AUCUN NE CREE DE CONFIRMATION
+# ===========================================================================
+def _confirmations(rule_id: str) -> int:
+    import psycopg2
+
+    connexion = psycopg2.connect(DSN_OBS)
+    try:
+        connexion.autocommit = True
+        with connexion.cursor() as curseur:
+            curseur.execute(
+                "select count(*) from normative_rule_confirmations "
+                " where rule_id = %s", (rule_id,))
+            return curseur.fetchone()[0]
+    finally:
+        connexion.close()
+
+
+def _un_parametre_neuf(client):
+    """Une cle encore bloquee, pour que le cas parte d'un etat connu."""
+    blocages = _blocages(client)
+    assert blocages, "plus aucun blocage: les cas negatifs ne prouveraient rien"
+    return _parametre(blocages[0])
+
+
+def test_une_proposition_seule_ne_confirme_rien(client, jeton):
+    p = _un_parametre_neuf(client)
+    avant = _confirmations(p.key)
+    r = client.post("/v1/authority/decisions", json=proposition_pour(p),
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    assert _confirmations(p.key) == avant
+    assert p.key in _blocages(client)
+
+
+def test_une_approbation_non_consommee_ne_confirme_rien(client, jeton):
+    p = _un_parametre_neuf(client)
+    avant = _confirmations(p.key)
+    _cycle(client, jeton, p, consommer=False)
+    assert _confirmations(p.key) == avant
+    assert p.key in _blocages(client)
+
+
+def test_une_auto_approbation_ne_confirme_rien(client, jeton):
+    p = _un_parametre_neuf(client)
+    avant = _confirmations(p.key)
+    r = client.post("/v1/authority/decisions", json=proposition_pour(p),
+                    headers=_entete(jeton(ACTEUR_A)))
+    decision_id = r.json()["decision_id"]
+    r = client.post(f"/v1/authority/decisions/{decision_id}/approval",
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 422, r.text
+    r = client.post(f"/v1/authority/decisions/{decision_id}/consumption",
+                    headers=_entete(jeton(ACTEUR_B)))
+    assert r.status_code == 422, r.text
+    assert _confirmations(p.key) == avant
+
+
+def test_un_rejeu_de_consommation_ne_cree_pas_un_troisieme_regard(client, jeton):
+    p = _un_parametre_neuf(client)
+    decision_id = _cycle(client, jeton, p)
+    apres_un = _confirmations(p.key)
+    r = client.post(f"/v1/authority/decisions/{decision_id}/consumption",
+                    headers=_entete(jeton(ACTEUR_B)))
+    assert r.status_code == 422, r.text
+    assert _confirmations(p.key) == apres_un, (
+        "le rejeu a produit une attestation supplementaire")
+
+
+@pytest.mark.parametrize("nom,ecart", [
+    ("valeur", {"scalar_value": 999.0}),
+    ("provenance", {"value_provenance": "eurocode_recommended"}),
+    ("unite", {"output_unit": "FICTIF-unite"}),
+])
+def test_un_dossier_qui_ne_correspond_pas_au_registre_ne_debloque_pas(
+        client, jeton, nom, ecart):
+    """LE DOSSIER PEUT ETRE SIGNE DEUX FOIS ET NE RIEN DEBLOQUER.
+
+    Les deux signatures sont authentiques et la decision est consommee: la
+    base a bien produit son effet. Mais la passerelle confronte le dossier au
+    REGISTRE, et un dossier qui parle d'un autre nombre ne confirme pas
+    celui-la.
+    """
+    import json as _json
+
+    p = _un_parametre_neuf(client)
+    corps = proposition_pour(p)
+    spec = _json.loads(corps["review_package"]["normative_spec_payload"])
+    spec.update(ecart)
+    from eurostruct_engine.ndp.canonical import digest_of
+
+    corps["review_package"]["normative_spec_payload"] = \
+        digest_of(spec).canonical_payload
+
+    r = client.post("/v1/authority/decisions", json=corps,
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    decision_id = r.json()["decision_id"]
+    client.post(f"/v1/authority/decisions/{decision_id}/approval",
+                headers=_entete(jeton(ACTEUR_B)))
+    r = client.post(f"/v1/authority/decisions/{decision_id}/consumption",
+                    headers=_entete(jeton(ACTEUR_B)))
+    assert r.status_code == 200, r.text
+
+    assert p.key in _blocages(client), (
+        f"un ecart de {nom} a quand meme debloque le parametre")
+
+
+@pytest.mark.parametrize("nom,ecart", [
+    ("pays", {"country_code": "FR"}),
+    ("edition", {"edition": "FICTIF-autre-edition"}),
+])
+def test_une_portee_qui_ne_correspond_pas_est_refusee(client, jeton, nom, ecart):
+    """La portee de la decision doit etre couverte par une habilitation."""
+    p = _un_parametre_neuf(client)
+    corps = proposition_pour(p)
+    corps.update(ecart)
+    r = client.post("/v1/authority/decisions", json=corps,
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 422, (
+        f"une portee au mauvais {nom} a ete acceptee: {r.text}")
+
+
+def test_un_dossier_absent_est_refuse_a_la_proposition(client, jeton):
+    """Une decision « ndp_parameter » sans dossier ne pourrait rien produire.
+
+    On la refuse LA OU L'AUTEUR PEUT ENCORE CORRIGER, pas a la consommation
+    d'une decision deja approuvee par deux personnes.
+    """
+    p = _un_parametre_neuf(client)
+    corps = proposition_pour(p)
+    del corps["review_package"]
+    r = client.post("/v1/authority/decisions", json=corps,
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 422, r.text
+    assert "dossier" in r.text.lower()
+
+
+def test_un_dossier_dont_la_citation_est_retouchee_est_refuse(client, jeton):
+    """La citation est scellee par son empreinte, et le scelle est verifie."""
+    import json as _json
+
+    p = _un_parametre_neuf(client)
+    corps = proposition_pour(p)
+    preuve = _json.loads(corps["review_package"]["evidence_payload"])
+    preuve["items"][0]["quote"] = "FICTIF — citation retouchee apres coup."
+    corps["review_package"]["evidence_payload"] = _json.dumps(
+        preuve, separators=(",", ":"), ensure_ascii=False, sort_keys=True)
+    r = client.post("/v1/authority/decisions", json=corps,
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 422, r.text
+
+
+# ===========================================================================
+# EN DERNIER: LES HUIT, PUIS LE CALCUL QUI ABOUTIT
+# ===========================================================================
+#
+# CE CAS DEBLOQUE TOUT, DONC IL PASSE APRES LES AUTRES. Les cas negatifs ont
+# besoin d'au moins une cle encore bloquee pour prouver qu'ils ne debloquent
+# rien; place avant eux, il leur retirait leur sujet et ils echouaient sur
+# « plus aucun blocage » — un rouge honnete, mais qui parlait de l'ordre des
+# cas et non du produit.
+def test_les_huit_parametres_puis_le_calcul_strict_aboutit(client, jeton):
+    """LA DEFINITION DE TERMINE, EXECUTEE.
+
+    Chaque cycle retire UNE cle des blocages, mecaniquement. Apres les huit,
+    le calcul strict rend 200 et `strict_ndp_satisfied` vaut true.
+
+    Le decor est jetable: rien de ceci ne touche le registre versionne, qui
+    reste a 0 sur 29 — un cas voisin le verifie.
+    """
+    restants = _blocages(client)
+    assert restants, "aucun blocage: le cas ne prouverait rien"
+
+    while restants:
+        avant = len(restants)
+        cible = restants[0]
+        _cycle(client, jeton, _parametre(cible))
+        restants = _blocages(client)
+        assert cible not in restants, f"« {cible} » bloque encore"
+        assert len(restants) == avant - 1, (
+            f"un cycle sur « {cible} » a change {avant - len(restants)} "
+            "blocage(s): la superposition n'est pas etroite")
+
+    r = client.post("/v1/calculations/ec2/beam-flexure", json=_requete_stricte())
+    assert r.status_code == 200, r.text
+    corps = r.json()
+    assert corps["strict_ndp_satisfied"] is True
+    assert corps["exploratory"] is False
+    assert corps["result"]["As_required"]["value"] > 0

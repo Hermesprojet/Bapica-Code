@@ -320,7 +320,7 @@ def appliquer_confirmations(
     ceux qui ont été refusés : c'est la liste de travail de l'ingénieur.
     """
     rapports: list[RapportPasserelle] = []
-    confirmes: set[str] = set()
+    confirmes: set[tuple[str, str]] = set()
 
     for cle, paquet in sorted(paquets.items()):
         parametre = jeu.find(cle)
@@ -334,20 +334,26 @@ def appliquer_confirmations(
                                     policy=policy)
         rapports.append(rapport)
         if rapport.usable:
-            confirmes.add(cle)
+            confirmes.add((cle, parametre.edition))
 
     if not confirmes:
         return jeu, tuple(rapports)
     return _jeu_superpose(jeu, confirmes), tuple(rapports)
 
 
-def _jeu_superpose(jeu: ParameterSet, confirmes: set[str]) -> ParameterSet:
-    """Reconstruit le jeu avec les seuls statuts confirmés modifiés."""
+def _jeu_superpose(jeu: ParameterSet,
+                   confirmes: set[tuple[str, str]]) -> ParameterSet:
+    """Reconstruit le jeu avec les seuls statuts confirmés modifiés.
+
+    La correspondance porte sur ``(clé, édition)``. Le registre conserve les
+    éditions successives d'une annexe : ne comparer que la clé ouvrirait
+    toutes les éditions d'un paramètre dès qu'une seule a été relue.
+    """
     annexes = []
     for annexe in jeu.registry.annexes:
         parametres = tuple(
             replace(p, validation_status=ValidationStatus.CONFIRMED)
-            if p.key in confirmes and p.is_in_force(jeu.as_of)
+            if (p.key, p.edition) in confirmes and p.is_in_force(jeu.as_of)
             else p
             for p in annexe.parameters
         )
@@ -408,9 +414,23 @@ def evaluer_depuis_le_provider(
     """Évalue un paramètre **sans qu'aucun paquet ne soit fourni**.
 
     C'est la forme qu'appelle le chemin de calcul : il connaît le paramètre et
-    le provider, et rien d'autre. Le dossier candidat est relu dans la
-    première attestation — l'ordre du provider est déterministe — puis
-    confronté au registre comme n'importe quel autre.
+    le provider, et rien d'autre.
+
+    ON EXAMINE TOUS LES DOSSIERS DISTINCTS, PAS LE PREMIER
+    -------------------------------------------------------
+    Une rédaction antérieure retenait ``confirmations[0]`` comme dossier
+    candidat. Une attestation portant sur autre chose — une édition ancienne,
+    une valeur erronée, un dossier qu'on a refusé de retenir — **empoisonnait
+    définitivement** une paire correcte plus récente : le candidat ne
+    correspondait pas au registre, l'évaluation s'arrêtait là, et le paramètre
+    restait bloqué quoi qu'on signe ensuite. Le parcours de bout en bout l'a
+    produit tout seul, dès que des cas négatifs eurent laissé leurs
+    attestations dans la table.
+
+    On regroupe donc les attestations par **sujet signé**, et on évalue chaque
+    dossier distinct. L'ordre des lignes rendues par SQL ne change rien : les
+    candidats sont triés sur leur sujet, et il suffit qu'**un** d'entre eux
+    corresponde au registre et satisfasse la politique.
     """
     confirmations = provider.confirmations_for(parametre.key)
     if not confirmations:
@@ -423,13 +443,62 @@ def evaluer_depuis_le_provider(
                     "consommation."),
             verifiers=frozenset(),
         )
-    try:
-        candidat = paquet_presente(confirmations[0])
-    except ConfirmationDomainError as cause:
-        return _refus(parametre.key,
-                      f"le dossier porte par l'attestation est incoherent: {cause}")
-    return evaluer_parametre(parametre, candidat, provider=provider,
-                             policy=policy)
+
+    # UN DOSSIER PAR SUJET SIGNE. Deux attestations du meme sujet decrivent le
+    # meme dossier — c'est ce que `subject_key` veut dire.
+    candidats: dict[tuple, NormativeReviewPackage] = {}
+    illisibles = 0
+    for c in confirmations:
+        try:
+            paquet = paquet_presente(c)
+        except ConfirmationDomainError:
+            # Une attestation dont le dossier ne se reconstruit pas ne peut
+            # servir de candidat. Elle n'empeche pas les autres d'etre lues.
+            illisibles += 1
+            continue
+        cle = _cle_de_tri(paquet)
+        candidats.setdefault(cle, paquet)
+
+    if not candidats:
+        return _refus(
+            parametre.key,
+            f"les {illisibles} attestation(s) presentes portent des dossiers "
+            "qui ne se reconstruisent pas.")
+
+    ecarts: list[str] = []
+    proches: list[RapportPasserelle] = []
+    for _cle, paquet in sorted(candidats.items(), key=lambda kv: kv[0]):
+        ecart = _ecart_de_sujet(parametre, paquet)
+        if ecart is not None:
+            ecarts.append(ecart)
+            continue
+        rapport = evaluer_parametre(parametre, paquet, provider=provider,
+                                    policy=policy)
+        if rapport.usable:
+            return rapport      # un dossier exact et suffisant: c'est fini
+        proches.append(rapport)
+
+    # AUCUN DOSSIER N'OUVRE. On rend le refus LE PLUS INFORMATIF: un dossier
+    # qui correspond au registre mais manque de regards apprend davantage
+    # qu'un dossier qui parle d'autre chose.
+    if proches:
+        return proches[0]
+    return _refus(
+        parametre.key,
+        f"{len(candidats)} dossier(s) atteste(s), aucun ne correspond au "
+        f"registre. Premier ecart: {ecarts[0]}")
+
+
+def _cle_de_tri(paquet: NormativeReviewPackage) -> tuple:
+    """Un ordre TOTAL et stable sur les dossiers candidats.
+
+    Sans lui, le verdict dependrait de l'ordre dans lequel PostgreSQL rend ses
+    lignes — c'est-a-dire de rien de normatif.
+    """
+    s = paquet.subject_key
+    return (s.country_code, s.standard_family, s.part, s.rule_id,
+            s.stack_digest, s.normative_spec_digest, s.implementation_digest,
+            s.evidence_digest)
 
 
 def confirmer_depuis_le_provider(
@@ -447,7 +516,7 @@ def confirmer_depuis_le_provider(
     produit, pas une limite de ce module.
     """
     rapports: list[RapportPasserelle] = []
-    confirmes: set[str] = set()
+    confirmes: set[tuple[str, str]] = set()
     for cle in cles:
         parametre = jeu.find(cle)
         if parametre is None:
@@ -459,7 +528,11 @@ def confirmer_depuis_le_provider(
                                              policy=policy)
         rapports.append(rapport)
         if rapport.usable:
-            confirmes.add(cle)
+            # L'IDENTITE EXACTE, PAS LA SEULE CLE. Le registre conserve les
+            # editions successives d'une annexe: confirmer « alpha_cc »
+            # ouvrirait toutes ses editions, y compris celles que personne n'a
+            # relues.
+            confirmes.add((cle, parametre.edition))
 
     if not confirmes:
         return jeu, tuple(rapports)

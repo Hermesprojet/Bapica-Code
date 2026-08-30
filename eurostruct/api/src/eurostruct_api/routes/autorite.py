@@ -120,6 +120,14 @@ def proposer(corps: ProposerRequete,
             edition=corps.edition,
             permission=corps.permission,
             reason=corps.reason,
+            # LE DOSSIER PART SERIALISE, ET SANS AUCUNE EMPREINTE. Le serveur
+            # recalcule les quatre empreintes sur les payloads: en accepter
+            # une reviendrait a laisser annoncer un resume qui ne resume pas
+            # ce qui sera stocke.
+            review_package=(
+                corps.review_package.model_dump_json(exclude_none=True)
+                if corps.review_package is not None else None
+            ),
         )
     except (AuthentificationRequise, ConfirmationDomainError) as cause:
         raise _refus(cause) from cause
