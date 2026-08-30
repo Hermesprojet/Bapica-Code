@@ -72,7 +72,7 @@ export type Issue =
 //: referentiel national est le meme pour tout le monde. Aucun ne joint de
 //: jeton, et `appelPublic` ne sait pas en joindre — c'est ce qui empeche qu'un
 //: `Authorization` se retrouve un jour sur une route qui ne l'exige pas.
-import { BASE, appelPublic } from "@/lib/transport";
+import { appelPublic, base } from "@/lib/transport";
 
 /**
  * Lance la vérification en flexion.
@@ -85,7 +85,7 @@ export async function verifierFlexion(
 ): Promise<Issue> {
   let reponse: Response;
   try {
-    reponse = await fetch(`${BASE}/v1/calculations/ec2/beam-flexure`, {
+    reponse = await fetch(`${base()}/v1/calculations/ec2/beam-flexure`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requete),
@@ -95,7 +95,7 @@ export async function verifierFlexion(
       type: "panne",
       message:
         `l'API n'a pas repondu (${String(cause)}). Verifiez qu'elle tourne ` +
-        `sur ${BASE} — voir eurostruct/api/README.md.`,
+        `sur ${base()} — voir eurostruct/api/README.md.`,
     };
   }
 
@@ -116,7 +116,7 @@ export async function verifierFlexion(
 
 /** URL de l'endpoint DXF. Le fichier est le corps de la réponse, pas un champ. */
 export function urlDxf(): string {
-  return `${BASE}/v1/calculations/ec2/beam-section.dxf`;
+  return `${base()}/v1/calculations/ec2/beam-section.dxf`;
 }
 
 /**

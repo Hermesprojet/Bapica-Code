@@ -21,3 +21,10 @@ node_modules/
 __pycache__/
 *.egg-info/
 .pytest_cache/
+
+# La copie REMPLIE du gabarit d'execution locale. Elle porte un mot de passe de
+# base et, le jour ou un staging existera, l'adresse d'un emetteur. Seul le
+# gabarit `deploy/local.env.example` est versionne — voir la regle `!**/.env.example`
+# plus haut, qui ne couvre pas ce nom-la.
+eurostruct/deploy/local.env
+**/deploy/local.env

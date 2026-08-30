@@ -350,12 +350,18 @@ if [[ ! -d "$RACINE/web/node_modules" ]]; then
   echo "       Installer: cd eurostruct/web && npm ci" >&2
   exit 4
 fi
+# LES VARIABLES DE RUNTIME, PAS LES `NEXT_PUBLIC_*`.
+#
+# C'est le chemin de production: le layout — un composant serveur — les lit a
+# chaque requete et les depose dans la page. Les `NEXT_PUBLIC_*` seraient
+# inlinees dans le bundle au build, et le parcours n'eprouverait alors pas le
+# chemin que l'image utilisera.
 WEB_ENV=(
-  "NEXT_PUBLIC_EUROSTRUCT_API_URL=http://127.0.0.1:$PORT_API"
-  "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:$PORT_AUTH"
+  "EUROSTRUCT_API_URL=http://127.0.0.1:$PORT_API"
+  "EUROSTRUCT_SUPABASE_URL=http://127.0.0.1:$PORT_AUTH"
   # FICTIVE, ET ELLE N'A PAS A ETRE AUTRE CHOSE. La cle anonyme de GoTrue
   # n'est pas un secret: elle designe le projet, elle n'autorise rien.
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY=FICTIF-ANON-$JETON"
+  "EUROSTRUCT_SUPABASE_ANON_KEY=FICTIF-ANON-$JETON"
 )
 # ON PART D'UN `.next` VIDE. Un build incremental par-dessus les artefacts
 # d'une execution precedente laisse un manifeste qui reference des chunks

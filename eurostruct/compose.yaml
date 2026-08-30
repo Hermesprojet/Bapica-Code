@@ -1,0 +1,119 @@
+# EUROSTRUCT — exécution de production, EN LOCAL
+#
+#     cd eurostruct
+#     cp deploy/local.env.example deploy/local.env   # puis remplir
+#     docker compose --env-file deploy/local.env up --build
+#
+# CE QUE CE FICHIER EST, ET CE QU'IL N'EST PAS
+# ---------------------------------------------
+# Il fait tourner les **artefacts construits** — les deux images de production
+# — sur un poste, avec un PostgreSQL local. C'est la répétition générale du
+# déploiement : les processus sont ceux qui tourneront ailleurs, servis par
+# `next start` et `uvicorn`, non par un serveur de développement.
+#
+# CE N'EST PAS UN DEPLOIEMENT, et il ne prouve rien sur un hébergeur. Il ne
+# prouve rien non plus sur Supabase : `SUPABASE_UNVERIFIED` reste vrai tant
+# qu'un staging réel n'a pas été éprouvé de bout en bout.
+#
+# AUCUN SECRET N'EST ECRIT ICI
+# -----------------------------
+# Pas un mot de passe, pas une clé, pas une DSN. Tout vient d'un fichier
+# d'environnement que Git ignore (`deploy/local.env`), dont seul le gabarit est
+# versionné. Un fichier de composition qui porte un mot de passe « juste pour
+# le local » finit dans l'historique, et l'historique ne s'oublie pas.
+
+name: eurostruct
+
+services:
+  db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # AUCUN PORT PUBLIE. La base n'est jointe que par le réseau de la
+    # composition. L'exposer sur l'hôte « pour regarder avec psql » est la
+    # façon la plus courante de laisser une base de test ouverte sur un
+    # réseau d'entreprise.
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` INTERROGE LE SERVEUR, il ne lit pas un fichier de PID.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      # LES SECRETS DE RUNTIME DE L'API. Ils ne traversent JAMAIS le build:
+      # ils ne sont ni des `ARG`, ni des `ENV` de l'image.
+      EUROSTRUCT_DATABASE_URL: >-
+        postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      EUROSTRUCT_SUPABASE_JWKS_URL: ${EUROSTRUCT_SUPABASE_JWKS_URL}
+      EUROSTRUCT_SUPABASE_ISSUER: ${EUROSTRUCT_SUPABASE_ISSUER}
+      EUROSTRUCT_SUPABASE_AUDIENCE: ${EUROSTRUCT_SUPABASE_AUDIENCE:-authenticated}
+      EUROSTRUCT_JWT_ALGORITHMS: ${EUROSTRUCT_JWT_ALGORITHMS:-RS256}
+      # LES ORIGINES SONT DECLAREES, JAMAIS `*` — la configuration refuse le
+      # joker, et le port est celui que l'interface publie sur l'hôte.
+      EUROSTRUCT_CORS_ORIGINS: ${EUROSTRUCT_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      # `/health`, PAS `/ready`. Cette sonde décide de REDEMARRER: la lier aux
+      # dépendances ferait tuer un processus parfaitement sain parce que la
+      # base est lente — une panne fabriquée par la sonde. `/ready` sert à
+      # router, et se lit de l'extérieur.
+      test: ["CMD-SHELL",
+             "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    # ARRET PROPRE. `uvicorn` reçoit SIGTERM (il est PID 1), ferme ses
+    # connexions en cours, puis sort. Vingt secondes couvrent la fenêtre de
+    # grâce du serveur, plus une marge.
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      # AUCUN `NEXT_PUBLIC_*` ICI, ET C'EST TOUT L'INTERET. Ces variables sont
+      # lues par le layout — un composant serveur — A CHAQUE REQUETE, et
+      # déposées dans la page. Rien n'est inliné dans le bundle, donc la même
+      # image sert n'importe quel environnement.
+      #
+      # L'adresse est celle que le NAVIGATEUR doit joindre, pas celle du
+      # réseau interne: c'est le navigateur de l'utilisateur qui appelle
+      # l'API, et il ne connaît pas le nom `api`.
+      EUROSTRUCT_API_URL: ${EUROSTRUCT_PUBLIC_API_URL:-http://127.0.0.1:8000}
+      EUROSTRUCT_SUPABASE_URL: ${EUROSTRUCT_PUBLIC_SUPABASE_URL:-}
+      EUROSTRUCT_SUPABASE_ANON_KEY: ${EUROSTRUCT_PUBLIC_SUPABASE_ANON_KEY:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL",
+             "node -e \"require('http').get('http://127.0.0.1:3000',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  db:

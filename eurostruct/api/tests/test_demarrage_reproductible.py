@@ -70,6 +70,10 @@ def test_le_gabarit_d_environnement_ne_porte_aucune_valeur() -> None:
     """
     gabarit = (EUROSTRUCT / "api" / ".env.example").read_text(encoding="utf-8")
     tolerees = {
+        # L'adresse locale de l'API, dans ses deux formes: celle de RUNTIME —
+        # lue par le layout a chaque requete, donc jamais figee dans le
+        # bundle — et celle de BUILD, repli de commodite pour `npm run dev`.
+        "EUROSTRUCT_API_URL": "http://127.0.0.1:8000",
         "NEXT_PUBLIC_EUROSTRUCT_API_URL": "http://127.0.0.1:8000",
         "EUROSTRUCT_JWT_ALGORITHMS": "RS256",
         "EUROSTRUCT_JWT_LEEWAY_S": "60",

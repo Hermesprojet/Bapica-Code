@@ -39,8 +39,13 @@
  * navigateur qui ouvre l'application.
  */
 
-const URL_SUPABASE = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const CLE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+import { configuration } from "@/lib/configuration";
+
+//: L'ADRESSE DE L'EMETTEUR ET SA CLE ANONYME SONT LUES AU MOMENT DE L'APPEL.
+//:
+//: C'etaient deux constantes de module alimentees par `NEXT_PUBLIC_*`, donc
+//: inlinees dans le bundle au build: la cle anonyme d'un projet Supabase
+//: restait imprimee dans l'image. Voir `lib/configuration.ts`.
 
 /**
  * Marge avant expiration. On cesse de se servir d'un jeton AVANT sa mort.
@@ -53,7 +58,8 @@ export const MARGE_EXPIRATION_MS = 15_000;
 
 /** La configuration est-elle présente ? Sinon l'écran n'affiche pas la connexion. */
 export function authDisponible(): boolean {
-  return Boolean(URL_SUPABASE && CLE_ANON);
+  const { supabaseUrl, supabaseAnonKey } = configuration();
+  return Boolean(supabaseUrl && supabaseAnonKey);
 }
 
 /**
@@ -138,18 +144,21 @@ async function _demander(
     return {
       type: "refus",
       message:
-        "authentification non configuree: NEXT_PUBLIC_SUPABASE_URL et " +
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY sont absentes. Voir " +
+        "authentification non configuree: l'adresse de l'emetteur et sa cle " +
+        "anonyme ne sont pas servies avec la page. En conteneur, poser " +
+        "EUROSTRUCT_SUPABASE_URL et EUROSTRUCT_SUPABASE_ANON_KEY sur le " +
+        "processus web; en local, les variantes NEXT_PUBLIC_*. Voir " +
         "eurostruct/api/.env.example.",
     };
   }
+  const { supabaseUrl, supabaseAnonKey } = configuration();
   let reponse: Response;
   try {
     reponse = await fetch(
-      `${URL_SUPABASE}/auth/v1/token?grant_type=${encodeURIComponent(grant)}`,
+      `${supabaseUrl}/auth/v1/token?grant_type=${encodeURIComponent(grant)}`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", apikey: CLE_ANON },
+        headers: { "Content-Type": "application/json", apikey: supabaseAnonKey },
         body: JSON.stringify(charge),
       },
     );

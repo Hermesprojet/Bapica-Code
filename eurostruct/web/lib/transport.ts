@@ -32,9 +32,18 @@
  * et l'oublie aussitôt : c'est ce qui rend impossible qu'une session fermée
  * laisse un jeton utilisable derrière elle dans un module transverse.
  */
+import { configuration } from "@/lib/configuration";
 
-export const BASE =
-  process.env.NEXT_PUBLIC_EUROSTRUCT_API_URL ?? "http://127.0.0.1:8000";
+/**
+ * L'adresse de l'API, lue **au moment de l'appel**.
+ *
+ * C'ETAIT UNE CONSTANTE DE MODULE ALIMENTEE PAR `NEXT_PUBLIC_*`, donc inlinee
+ * dans le bundle au build: l'image portait `http://127.0.0.1:8000` en dur et
+ * ne pouvait servir qu'un seul environnement. Voir `lib/configuration.ts`.
+ */
+export function base(): string {
+  return configuration().apiUrl;
+}
 
 /**
  * Ce que le transport exige d'une session pour partir.
@@ -91,7 +100,7 @@ export class AppelRefuse extends Error {
 /** L'API n'a pas répondu. Ce n'est pas un refus: c'est une absence. */
 export class ApiInjoignable extends Error {
   constructor(cause: unknown) {
-    super(`l'API n'a pas repondu (${String(cause)}). Voir ${BASE}.`);
+    super(`l'API n'a pas repondu (${String(cause)}). Voir ${base()}.`);
     this.name = "ApiInjoignable";
   }
 }
@@ -125,7 +134,7 @@ export async function appelPublic<T>(
 ): Promise<T | null> {
   const { methode = "GET", corps } = options;
   try {
-    const reponse = await fetch(`${BASE}${chemin}`, {
+    const reponse = await fetch(`${base()}${chemin}`, {
       method: methode,
       headers: _entetes(corps),
       body: corps === undefined ? undefined : JSON.stringify(corps),
@@ -160,7 +169,7 @@ export async function appelProtege<T>(
 
   let reponse: Response;
   try {
-    reponse = await fetch(`${BASE}${chemin}`, {
+    reponse = await fetch(`${base()}${chemin}`, {
       method: methode,
       headers: { ..._entetes(corps), Authorization: `Bearer ${jeton}` },
       body: corps === undefined ? undefined : JSON.stringify(corps),
