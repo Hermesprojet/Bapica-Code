@@ -390,21 +390,21 @@ echo "==> livrable: brouillon, relecture, attestation, emission"
 etape "livrable et validation" \
   "$HERE/livrable_validation.sh" "${DB_NAME:0:20}lv"
 
-# LE LIVRABLE, DEPUIS UN VRAI NAVIGATEUR.
+# LES DEUX PARCOURS NAVIGATEUR NE SONT PAS DANS CETTE SUITE, ET C'EST VOULU.
 #
-# `livrable_validation.sh` prouve que les routes et les primitives tiennent
-# sous identite verifiee. Il ne dit rien de ce que l'ECRAN envoie, ni de ce
-# qu'un ingenieur peut faire avec sa souris, ni de ce qui reste apres un F5 —
-# et c'est la que vivent les defauts d'interface.
+# `parcours_atelier.sh` et `parcours_livrable.sh` dressent la pile entiere —
+# Chromium, un build de production Next.js, uvicorn, PostgreSQL — et exigent
+# donc `node`, `npm`, `web/node_modules` et un binaire Chromium. Cette suite ne
+# provisionne rien de tout cela: les deux harnais rendraient 4 (NON EXECUTE),
+# et `run.sh` compte une surface non executee comme ROUGE — a juste titre, une
+# garantie qu'on n'a pas pu verifier n'est pas verte.
 #
-# Douze faits, dont trois qu'aucun test applicatif ne peut etablir: les octets
-# telecharges PAR LE NAVIGATEUR portent l'empreinte enregistree; l'ecran d'un
-# ingenieur non habilite n'offre AUCUN panneau d'attestation et dit pourquoi;
-# un livrable emis n'offre plus aucun bouton de modification — et la route le
-# refuse aussi, parce que cacher un bouton ne protege rien.
-echo "==> livrable, depuis un vrai navigateur"
-etape "parcours livrable (navigateur)" \
-  "$HERE/parcours_livrable.sh" "${DB_NAME:0:20}pl"
+# Les inscrire ici rendrait donc le job SQL rouge pour l'outillage et non pour
+# le produit, exactement le defaut que `api_e2e.sh` a deja cause au commit
+# 2e342ec. Ils se lancent separement:
+#
+#   db/test/parcours_atelier.sh  <prefixe>   # projet, calcul, historique
+#   db/test/parcours_livrable.sh <prefixe>   # brouillon, attestation, emission
 
 echo "==> quatre-yeux explicite (6.3c)"
 etape "quatre-yeux explicite" \
