@@ -34,6 +34,9 @@ from eurostruct_engine.schemas.autorite import (  # noqa: E402
     AuthorityDecisionConsumed,
     AuthorityDecisionCreated,
     AuthorityDecisionRequest,
+    AuthorityDecisionReview,
+    AuthorityReviewDossier,
+    AuthorityReviewDraftRequest,
 )
 from eurostruct_engine.schemas.common import (  # noqa: E402
     EngineErrorDTO,
@@ -68,6 +71,14 @@ ROOTS = [
     AuthorityDecisionRequest,
     AuthorityDecisionCreated,
     AuthorityDecisionConsumed,
+    # LA COMPOSITION DU DOSSIER ET SA RELECTURE. Le navigateur ne construit
+    # aucune empreinte normative: il demande au serveur de composer, affiche
+    # ce qu'il rend, et relit depuis la base ce que le second regard doit
+    # juger. Sans ces formes generees, cet ecran-la aurait ete le seul a
+    # recopier ses types a la main.
+    AuthorityReviewDraftRequest,
+    AuthorityReviewDossier,
+    AuthorityDecisionReview,
 ]
 
 TS_OUT = REPO / "packages" / "contracts" / "src" / "generated" / "engine.ts"

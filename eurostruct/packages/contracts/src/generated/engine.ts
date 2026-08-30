@@ -46,6 +46,58 @@ export interface AuthorityDecisionRequest {
   subject_kind: string;
 }
 
+/** A frozen decision, read back so the SECOND engineer can judge it. NO ACTOR IS RETURNED. B does not need to know who proposed in order to judge what was proposed, and PostgreSQL refuses a self-approval by table constraint rather than by the caller's prudence. Returning proposer and approver would turn a dossier read into a directory of licensed engineers. */
+export interface AuthorityDecisionReview {
+  country_code: string;
+  decision_id: string;
+  /** Recomputed by the server from the frozen payloads. */
+  digests?: Record<string, string>;
+  edition: string;
+  org_id: string | null;
+  /** The frozen dossier. Null only for a non-NDP subject. */
+  package?: AuthorityReviewPackage | null;
+  part: string;
+  permission: string;
+  proposed_at: string;
+  reason: string;
+  standard_family: string;
+  state: string;
+  subject_id: string;
+  subject_kind: string;
+}
+
+/** What a named engineer transcribed from the published document. THE SERVER CANNOT PRODUCE THIS. Everything else in a dossier is derived from the registry — value, unit, provenance, annex reference, edition, clause, document digest. The quote is the one thing that only exists because somebody opened the annex at that page and read it. Inventing it would empty the four-eyes rule of its object. */
+export interface AuthorityReviewCitation {
+  /** Which required document this quote covers. */
+  document_digest: string;
+  /** PDF page number, when it differs. */
+  page_pdf?: number | null;
+  /** Printed folio, as it appears on the page itself. */
+  page_printed: number;
+  quote: string;
+}
+
+/** The composed dossier: what to propose, what to show, nothing invented. ``package`` is what goes back on the wire at proposal time. ``digests`` and ``summary`` are for the screen — the browser displays them, it does not compute them and has no way to. */
+export interface AuthorityReviewDossier {
+  digests: Record<string, string>;
+  package: AuthorityReviewPackage;
+  summary: Record<string, unknown>;
+}
+
+/** Ask the server to compose the dossier of one registry parameter. The browser never builds a normative digest: it names the parameter and supplies the human material, and the server canonicalises and hashes. */
+export interface AuthorityReviewDraftRequest {
+  /** One per document the specification declares. */
+  citations: AuthorityReviewCitation[];
+  country_code: string;
+  /** What the cited clause does, in one line. */
+  effect: string;
+  /** What the implementation being attested actually does. */
+  implementation_note: string;
+  rule_id: string;
+  /** What the two reviewers declare they read and checked. */
+  statement: string;
+}
+
 /** The dossier the two engineers are shown, frozen at proposal time. WHY IT TRAVELS WITH THE PROPOSAL AND NOT WITH THE APPROVAL. "B approved" means nothing unless the record says *what* B approved. The dossier is written once, at proposal, and PostgreSQL freezes it: A and B therefore approve byte-identical content, and the effect produced at consumption is that content and no other. NO DIGEST IS CARRIED HERE. The server recomputes every one of them from the payloads below. Accepting a digest would let a caller announce a fingerprint that does not summarise what is stored. */
 export interface AuthorityReviewPackage {
   canonicalization_version: string;

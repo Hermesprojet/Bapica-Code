@@ -25,6 +25,10 @@ import type {
   AuthorityDecisionConsumed,
   AuthorityDecisionCreated,
   AuthorityDecisionRequest,
+  AuthorityDecisionReview,
+  AuthorityReviewDossier,
+  AuthorityReviewDraftRequest,
+  AuthorityReviewPackage,
 } from "@contracts/generated/engine";
 import { appelProtege, type PorteurDeJeton } from "@/lib/transport";
 
@@ -32,7 +36,55 @@ export type {
   AuthorityDecisionConsumed,
   AuthorityDecisionCreated,
   AuthorityDecisionRequest,
+  AuthorityDecisionReview,
+  AuthorityReviewDossier,
+  AuthorityReviewDraftRequest,
+  AuthorityReviewPackage,
 };
+
+/**
+ * Demande au SERVEUR de composer le dossier d'un paramètre.
+ *
+ * LE NAVIGATEUR NE CONSTRUIT AUCUNE EMPREINTE NORMATIVE. Il nomme le
+ * paramètre et transmet la matière humaine — le texte relevé dans l'annexe
+ * publiée — et reçoit les quatre payloads canoniques, leurs empreintes et le
+ * résumé à afficher. Canonicaliser ici ferait dépendre l'empreinte de la
+ * sérialisation d'un client, et ferait venir la **valeur** de l'écran plutôt
+ * que du registre.
+ */
+export async function composerDossier(
+  porteur: PorteurDeJeton,
+  brouillon: AuthorityReviewDraftRequest,
+): Promise<AuthorityReviewDossier> {
+  const dossier = await appelProtege<AuthorityReviewDossier>(
+    "/v1/authority/review-packages", porteur,
+    { methode: "POST", corps: brouillon },
+  );
+  if (!dossier?.package) {
+    throw new Error("la composition n'a rendu aucun dossier.");
+  }
+  return dossier;
+}
+
+/**
+ * Relit le dossier **gelé** d'une décision. C'est ce que le second lit.
+ *
+ * B n'a que l'identifiant : A s'est déconnecté, et son jeton est parti avec
+ * lui. Sans cette relecture, approuver serait cliquer sur un numéro.
+ */
+export async function relireDecision(
+  porteur: PorteurDeJeton,
+  decisionId: string,
+): Promise<AuthorityDecisionReview> {
+  const relu = await appelProtege<AuthorityDecisionReview>(
+    `/v1/authority/decisions/${encodeURIComponent(decisionId)}`,
+    porteur, { methode: "GET" },
+  );
+  if (!relu?.decision_id) {
+    throw new Error("la relecture n'a rendu aucune decision.");
+  }
+  return relu;
+}
 
 /** Propose une décision. Le proposant est le porteur du jeton. */
 export async function proposerDecision(

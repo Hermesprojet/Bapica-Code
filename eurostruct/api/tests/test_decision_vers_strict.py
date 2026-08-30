@@ -548,6 +548,153 @@ def test_un_dossier_dont_la_citation_est_retouchee_est_refuse(client, jeton):
     assert r.status_code == 422, r.text
 
 
+# ------------------------------------------- le dossier vient DU SERVEUR
+#
+# LE NAVIGATEUR NE CONSTRUIT AUCUNE EMPREINTE NORMATIVE. Il nomme le
+# parametre du plan de charge et fournit la matiere humaine — le texte releve
+# dans l'annexe publiee. Le serveur canonicalise, hache, et rend le dossier
+# exact a proposer. Ces cas eprouvent ce chemin-la, celui de l'interface.
+def _brouillon(p, statement="FICTIF — dossier compose par le serveur.") -> dict:
+    return {
+        "country_code": p.country_code,
+        "rule_id": p.key,
+        "statement": statement,
+        "implementation_note": "FICTIF — implementation de test",
+        "effect": "FICTIF — fixe la valeur nationale",
+        "citations": [{
+            "document_digest": p.source_doc_id,
+            "quote": f"FICTIF — citation relevee pour {p.key}.",
+            "page_printed": p.source_page or 1,
+        }],
+    }
+
+
+def test_le_serveur_compose_le_dossier_et_rend_ses_empreintes(client, jeton):
+    """Le point d'entree de l'ecran d'autorite: composer, pas fabriquer."""
+    p = _un_parametre_neuf(client)
+    r = client.post("/v1/authority/review-packages", json=_brouillon(p),
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 200, r.text
+    corps = r.json()
+
+    # LES QUATRE EMPREINTES SONT RENDUES, ET LE CLIENT N'EN A ENVOYE AUCUNE.
+    assert sorted(corps["digests"]) == [
+        "evidence_digest", "implementation_digest",
+        "normative_spec_digest", "stack_digest"]
+    assert all(len(e) == 64 for e in corps["digests"].values())
+
+    # ET LE RESUME PORTE CE QU'UN INGENIEUR DOIT LIRE AVANT D'APPROUVER —
+    # depuis le REGISTRE, jamais depuis l'ecran.
+    resume = corps["summary"]
+    assert resume["value"] == p.parameter_value
+    assert resume["unit"] == p.unit
+    assert resume["value_provenance"] == p.value_provenance.value
+    assert resume["national_annex_reference"] == p.national_annex_reference
+    assert resume["edition"] == p.edition
+    assert resume["clause"] == p.clause
+
+
+def test_le_dossier_compose_par_le_serveur_debloque_le_parametre(client, jeton):
+    """LE PARCOURS DE L'INTERFACE, DE BOUT EN BOUT.
+
+    Composer, proposer ce dossier-la sans y toucher, A refusee, B approuve,
+    consommer — et le blocage disparait. C'est le meme fil que plus haut, mais
+    parti du dossier que le SERVEUR a compose, comme l'ecran le fait.
+    """
+    p = _un_parametre_neuf(client)
+    r = client.post("/v1/authority/review-packages", json=_brouillon(p),
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 200, r.text
+    paquet = r.json()["package"]
+
+    corps = proposition_pour(p)
+    corps["review_package"] = paquet
+    r = client.post("/v1/authority/decisions", json=corps,
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    decision_id = r.json()["decision_id"]
+
+    for acteur, attendu in ((ACTEUR_A, 422), (ACTEUR_B, 204)):
+        r = client.post(f"/v1/authority/decisions/{decision_id}/approval",
+                        headers=_entete(jeton(acteur)))
+        assert r.status_code == attendu, r.text
+
+    r = client.post(f"/v1/authority/decisions/{decision_id}/consumption",
+                    headers=_entete(jeton(ACTEUR_B)))
+    assert r.status_code == 200, r.text
+    assert p.key not in _blocages(client)
+
+
+def test_b_relit_le_dossier_gele_avant_d_approuver(client, jeton):
+    """SANS CETTE LECTURE, « B A APPROUVE » VEUT DIRE « B A CLIQUE ».
+
+    B n'a que l'identifiant: A s'est deconnecte et son jeton est parti avec
+    lui. La relecture rend le dossier tel que PostgreSQL le conserve, et les
+    empreintes RECALCULEES sur ce contenu — pas reprises d'un champ stocke a
+    cote, qui s'accorderait avec lui par construction.
+    """
+    p = _un_parametre_neuf(client)
+    r = client.post("/v1/authority/review-packages", json=_brouillon(p),
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 200, r.text
+    compose = r.json()
+
+    corps = proposition_pour(p)
+    corps["review_package"] = compose["package"]
+    r = client.post("/v1/authority/decisions", json=corps,
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    decision_id = r.json()["decision_id"]
+
+    # B RELIT, SOUS SA PROPRE IDENTITE.
+    r = client.get(f"/v1/authority/decisions/{decision_id}",
+                   headers=_entete(jeton(ACTEUR_B)))
+    assert r.status_code == 200, r.text
+    relu = r.json()
+
+    assert relu["state"] == "PENDING"
+    assert relu["subject_id"] == p.key
+    assert relu["country_code"] == p.country_code
+    assert relu["edition"] == p.edition
+    # OCTET POUR OCTET: ce que B lit est ce que A a propose.
+    assert relu["package"] == compose["package"]
+    assert relu["digests"] == compose["digests"]
+    # ET AUCUN ACTEUR N'EST RENDU.
+    assert "proposer_id" not in relu and "approver_id" not in relu
+
+
+def test_la_relecture_exige_une_identite(client):
+    """Un dossier nomme un document sous licence: ce n'est pas public."""
+    r = client.get("/v1/authority/decisions/"
+                   "00000000-0000-0000-0000-000000000000")
+    assert r.status_code == 401, r.text
+
+
+def test_le_serveur_refuse_de_composer_un_dossier_incomplet(client, jeton):
+    """Sans citation correspondante, aucune empreinte de preuve n'est produite.
+
+    Une couverture documentaire non verifiee produirait une empreinte
+    parfaitement valide, et parfaitement fausse.
+    """
+    p = _un_parametre_neuf(client)
+    brouillon = _brouillon(p)
+    brouillon["citations"][0]["document_digest"] = "ff" * 32
+    r = client.post("/v1/authority/review-packages", json=brouillon,
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 422, r.text
+    assert "citation" in r.text.lower()
+
+
+def test_le_serveur_refuse_de_composer_un_parametre_absent(client, jeton):
+    """On ne compose pas un dossier pour ce que le registre ne porte pas."""
+    p = _un_parametre_neuf(client)
+    brouillon = _brouillon(p)
+    brouillon["rule_id"] = "EN 1992-1-1:parametre_qui_n_existe_pas"
+    r = client.post("/v1/authority/review-packages", json=brouillon,
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 404, r.text
+
+
 # ===========================================================================
 # EN DERNIER: LES HUIT, PUIS LE CALCUL QUI ABOUTIT
 # ===========================================================================

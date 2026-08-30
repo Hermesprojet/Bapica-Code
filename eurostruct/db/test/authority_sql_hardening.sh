@@ -362,14 +362,23 @@ fi
 
 echo "      -- surface-du-backend: ce que le backend authentifie atteint, et rien de plus"
 # UNE SURFACE OUVERTE SE MESURE PAR SON CONTENU, PAS PAR SON EXISTENCE. Le
-# backend authentifie doit atteindre EXACTEMENT six fonctions: les trois
-# primitives de decision, les deux derivations d'acteur, et la lecture
-# d'efficacite. Compter « au moins trois » laisserait un septieme GRANT passer
-# sans que rien ne le dise — c'est precisement ainsi qu'une porte s'ajoute.
+# backend authentifie doit atteindre EXACTEMENT sept fonctions: les trois
+# primitives de decision, la RELECTURE du dossier gele, les deux derivations
+# d'acteur, et la lecture d'efficacite. Compter « au moins trois » laisserait
+# un GRANT de plus passer sans que rien ne le dise — c'est precisement ainsi
+# qu'une porte s'ajoute.
+#
+# `normative_decision_review` EST LA SEPTIEME, ajoutee par 0017 et DECLAREE
+# ici. Sans elle, le second ingenieur approuve un identifiant et non un
+# contenu: son navigateur n'a jamais vu le dossier. Elle ne rend aucun acteur,
+# et le quatre-yeux reste garanti par la contrainte de table. Ce controle a
+# refuse des son ajout — il fait exactement ce pour quoi il existe, et c'est
+# la declaration qui manquait.
+#
 # SANS ESPACES: `q()` normalise en retirant les blancs, et comparer une chaine
 # espacee a une chaine compactee produisait un rouge sur deux ensembles
 # IDENTIQUES — un faux rouge est aussi trompeur qu'un faux vert.
-ATTENDUES="normative_authenticated_actor,normative_authenticated_actor_or_null,normative_decision_approve,normative_decision_consume,normative_decision_propose,normative_grant_is_effective"
+ATTENDUES="normative_authenticated_actor,normative_authenticated_actor_or_null,normative_decision_approve,normative_decision_consume,normative_decision_propose,normative_decision_review,normative_grant_is_effective"
 OUVERTES="$(q "select coalesce(string_agg(distinct p.proname, ', '
                                  order by p.proname), '(aucune)')
                  from pg_proc p join pg_namespace n on n.oid = p.pronamespace

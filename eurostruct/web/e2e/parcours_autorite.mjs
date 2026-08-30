@@ -140,14 +140,40 @@ async function connecter({ courriel, mdp }) {
 }
 
 /** Attend qu'une requête d'autorité soit REÇUE, puis rend la dernière. */
-async function agir(selecteur, motif) {
+async function agir(selecteur, motif, methode = "POST") {
   const attente = page.waitForResponse(
-    (r) => r.url().includes(motif) && r.request().method() === "POST",
+    (r) => r.url().includes(motif) && r.request().method() === methode,
     { timeout: 20000 },
   );
   await page.click(selecteur);
   const reponse = await attente;
-  return { statut: reponse.status(), requete: versAutorite().at(-1) };
+  return { statut: reponse.status(), requete: versAutorite().at(-1),
+           corps: await reponse.json().catch(() => null) };
+}
+
+/**
+ * Choisit un paramètre du PLAN DE CHARGE et fait composer son dossier.
+ *
+ * L'ÉCRAN NE PROPOSE PLUS `alpha_cc` ÉCRIT EN DUR. Il charge la liste que
+ * l'API rend pour le pays, l'ingénieur en choisit un, et c'est le SERVEUR qui
+ * compose les quatre payloads et leurs empreintes. Le navigateur transmet ce
+ * que la personne a relevé dans l'annexe; il n'en hache rien.
+ */
+async function composerUnDossier() {
+  await page.waitForFunction(
+    () => {
+      const s = document.querySelector("#param-autorite");
+      return s && s.options.length > 1;
+    },
+    { timeout: 20000 },
+  );
+  const cle = await page.locator("#param-autorite option").nth(1)
+                        .getAttribute("value");
+  await page.selectOption("#param-autorite", cle);
+  await page.fill("#citation", `FICTIF — citation relevee pour ${cle}.`);
+  await page.fill("#declaration", "FICTIF — releve et recoupe en annexe.");
+  const compose = await agir("#composer", "/v1/authority/review-packages");
+  return { cle, compose };
 }
 
 try {
@@ -158,9 +184,36 @@ try {
   const jetonA = await connecter(A);
   exige(Boolean(jetonA), "l'emetteur n'a delivre aucun jeton a A");
 
+  // LE DOSSIER VIENT DU SERVEUR, ET LE PARAMETRE DU PLAN DE CHARGE.
+  const { cle, compose } = await composerUnDossier();
+  exige(compose.statut === 200,
+        `la composition du dossier rend ${compose.statut}, attendu 200`);
+
+  // LE NAVIGATEUR N'ENVOIE AUCUNE EMPREINTE. Il envoie le texte releve; les
+  // quatre empreintes reviennent du serveur, qui les a calculees.
+  //
+  // `document_digest` N'EST PAS DANS CETTE LISTE, et c'est voulu: il DESIGNE
+  // le document que la citation couvre, il n'en resume aucun contenu. Ce qui
+  // est interdit, ce sont les quatre empreintes que le serveur produit et les
+  // payloads canoniques qu'il seul sait serialiser.
+  const corpsCompose = compose.requete?.corps ?? "";
+  for (const interdit of ["normative_spec_digest", "implementation_digest",
+                          "evidence_digest", "stack_digest",
+                          "normative_spec_payload", "implementation_payload",
+                          "evidence_payload", "stack_payload"]) {
+    exige(!corpsCompose.includes(interdit),
+          `le corps de composition contient « ${interdit} »: le navigateur ` +
+          "fabrique une empreinte ou un payload canonique");
+  }
+  const empreintesComposees = compose.corps?.digests ?? {};
+  exige(Object.keys(empreintesComposees).length === 4,
+        "la composition n'a pas rendu les quatre empreintes");
+
   const proposition = await agir("#proposer", "/v1/authority/decisions");
   exige(proposition.statut === 201,
         `la proposition de A rend ${proposition.statut}, attendu 201`);
+  exige((proposition.requete?.corps ?? "").includes(cle),
+        `la proposition ne porte pas le parametre choisi (${cle})`);
 
   // LE FAIT CENTRAL: l'octet qui part porte le jeton de A, pas « un » jeton.
   exige(proposition.requete?.autorisation === `Bearer ${jetonA}`,
@@ -212,15 +265,43 @@ try {
   const jetonB = await connecter(B);
   exige(jetonB !== jetonA, "B a recu le meme jeton que A");
 
+  // B RELIT LE DOSSIER GELE. Son navigateur n'a jamais vu ce que A a compose:
+  // sans cette lecture, approuver serait cliquer sur un numero.
+  const relecture = await agir("#relire", `/v1/authority/decisions/${decision}`,
+                               "GET");
+  exige(relecture.statut === 200,
+        `la relecture par B rend ${relecture.statut}, attendu 200`);
+  exige(relecture.corps?.subject_id === cle,
+        "le dossier relu ne porte pas le parametre que A a propose");
+  // OCTET POUR OCTET: les empreintes que B lit sont celles que A a vues, et
+  // le serveur les a RECALCULEES sur ce qu'il conserve.
+  for (const [nom, valeur] of Object.entries(empreintesComposees)) {
+    exige(relecture.corps?.digests?.[nom] === valeur,
+          `l'empreinte « ${nom} » relue par B differe de celle proposee par A`);
+  }
+
   const approbation = await agir("#approuver", "/approval");
   exige(approbation.statut === 204,
         `l'approbation par B rend ${approbation.statut}, attendu 204`);
   exige(approbation.requete?.autorisation === `Bearer ${jetonB}`,
         "l'approbation ne porte pas le Bearer de B");
 
+  // LA CONSOMMATION PERIME LE BANDEAU, ET L'ECRAN LE REDEMANDE.
+  //
+  // Sans ce rafraichissement, le seul effet visible du parcours restait
+  // invisible: le bandeau continuait d'afficher le compte d'avant la decision.
+  const referentielRedemande = page.waitForResponse(
+    (r) => /\/v1\/ndp\/[A-Z]{2}(\?|$)/.test(r.url()) &&
+           r.request().method() === "GET",
+    { timeout: 20000 },
+  );
   const consommation = await agir("#consommer", "/consumption");
   exige(consommation.statut === 200,
         `la consommation rend ${consommation.statut}, attendu 200`);
+  const rafraichi = await referentielRedemande.catch(() => null);
+  exige(Boolean(rafraichi),
+        "l'etat du referentiel n'a pas ete redemande apres la consommation: " +
+        "l'ecran affiche encore le compte d'avant la decision");
 
   // ================================================== 5. le rejeu est refuse
   ici("5-rejeu");

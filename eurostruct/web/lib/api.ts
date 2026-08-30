@@ -211,6 +211,14 @@ export type ParametreNdp = {
   validation_status: string;
   usable_in_strict_mode: boolean;
   reste_a_faire: string;
+  //: LA PORTEE ET L'EMPREINTE DU DOCUMENT, parce que l'ecran d'autorite en a
+  //: besoin pour NOMMER ce qu'il fait composer. Ce ne sont pas des valeurs
+  //: d'ingenierie: le navigateur les transporte, il n'en fabrique aucune.
+  country_code: string;
+  standard_family: string;
+  part: string;
+  edition: string;
+  source_doc_id: string | null;
 };
 
 export type PlanDeCharge = {

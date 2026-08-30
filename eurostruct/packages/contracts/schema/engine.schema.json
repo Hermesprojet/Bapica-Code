@@ -138,6 +138,232 @@
       "title": "AuthorityDecisionRequest",
       "type": "object"
     },
+    "AuthorityDecisionReview": {
+      "additionalProperties": false,
+      "description": "A frozen decision, read back so the SECOND engineer can judge it.\n\nNO ACTOR IS RETURNED. B does not need to know who proposed in order to\njudge what was proposed, and PostgreSQL refuses a self-approval by table\nconstraint rather than by the caller's prudence. Returning proposer and\napprover would turn a dossier read into a directory of licensed engineers.",
+      "properties": {
+        "country_code": {
+          "title": "Country Code",
+          "type": "string"
+        },
+        "decision_id": {
+          "title": "Decision Id",
+          "type": "string"
+        },
+        "digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Recomputed by the server from the frozen payloads.",
+          "title": "Digests",
+          "type": "object"
+        },
+        "edition": {
+          "title": "Edition",
+          "type": "string"
+        },
+        "org_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Org Id"
+        },
+        "package": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthorityReviewPackage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The frozen dossier. Null only for a non-NDP subject."
+        },
+        "part": {
+          "title": "Part",
+          "type": "string"
+        },
+        "permission": {
+          "title": "Permission",
+          "type": "string"
+        },
+        "proposed_at": {
+          "title": "Proposed At",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "standard_family": {
+          "title": "Standard Family",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "subject_id": {
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "subject_kind": {
+          "title": "Subject Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_id",
+        "state",
+        "subject_kind",
+        "subject_id",
+        "org_id",
+        "country_code",
+        "standard_family",
+        "part",
+        "edition",
+        "permission",
+        "reason",
+        "proposed_at"
+      ],
+      "title": "AuthorityDecisionReview",
+      "type": "object"
+    },
+    "AuthorityReviewCitation": {
+      "additionalProperties": false,
+      "description": "What a named engineer transcribed from the published document.\n\nTHE SERVER CANNOT PRODUCE THIS. Everything else in a dossier is derived\nfrom the registry — value, unit, provenance, annex reference, edition,\nclause, document digest. The quote is the one thing that only exists\nbecause somebody opened the annex at that page and read it. Inventing it\nwould empty the four-eyes rule of its object.",
+      "properties": {
+        "document_digest": {
+          "description": "Which required document this quote covers.",
+          "title": "Document Digest",
+          "type": "string"
+        },
+        "page_pdf": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "PDF page number, when it differs.",
+          "title": "Page Pdf"
+        },
+        "page_printed": {
+          "description": "Printed folio, as it appears on the page itself.",
+          "minimum": 1,
+          "title": "Page Printed",
+          "type": "integer"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_digest",
+        "quote",
+        "page_printed"
+      ],
+      "title": "AuthorityReviewCitation",
+      "type": "object"
+    },
+    "AuthorityReviewDossier": {
+      "additionalProperties": false,
+      "description": "The composed dossier: what to propose, what to show, nothing invented.\n\n``package`` is what goes back on the wire at proposal time. ``digests``\nand ``summary`` are for the screen — the browser displays them, it does\nnot compute them and has no way to.",
+      "properties": {
+        "digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Digests",
+          "type": "object"
+        },
+        "package": {
+          "$ref": "#/$defs/AuthorityReviewPackage"
+        },
+        "summary": {
+          "additionalProperties": true,
+          "title": "Summary",
+          "type": "object"
+        }
+      },
+      "required": [
+        "package",
+        "digests",
+        "summary"
+      ],
+      "title": "AuthorityReviewDossier",
+      "type": "object"
+    },
+    "AuthorityReviewDraftRequest": {
+      "additionalProperties": false,
+      "description": "Ask the server to compose the dossier of one registry parameter.\n\nThe browser never builds a normative digest: it names the parameter and\nsupplies the human material, and the server canonicalises and hashes.",
+      "properties": {
+        "citations": {
+          "description": "One per document the specification declares.",
+          "items": {
+            "$ref": "#/$defs/AuthorityReviewCitation"
+          },
+          "minItems": 1,
+          "title": "Citations",
+          "type": "array"
+        },
+        "country_code": {
+          "examples": [
+            "BE"
+          ],
+          "maxLength": 2,
+          "minLength": 2,
+          "title": "Country Code",
+          "type": "string"
+        },
+        "effect": {
+          "description": "What the cited clause does, in one line.",
+          "minLength": 1,
+          "title": "Effect",
+          "type": "string"
+        },
+        "implementation_note": {
+          "description": "What the implementation being attested actually does.",
+          "minLength": 1,
+          "title": "Implementation Note",
+          "type": "string"
+        },
+        "rule_id": {
+          "examples": [
+            "EN 1992-1-1:alpha_cc"
+          ],
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "statement": {
+          "description": "What the two reviewers declare they read and checked.",
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "country_code",
+        "rule_id",
+        "statement",
+        "implementation_note",
+        "effect",
+        "citations"
+      ],
+      "title": "AuthorityReviewDraftRequest",
+      "type": "object"
+    },
     "AuthorityReviewPackage": {
       "additionalProperties": false,
       "description": "The dossier the two engineers are shown, frozen at proposal time.\n\nWHY IT TRAVELS WITH THE PROPOSAL AND NOT WITH THE APPROVAL. \"B approved\"\nmeans nothing unless the record says *what* B approved. The dossier is\nwritten once, at proposal, and PostgreSQL freezes it: A and B therefore\napprove byte-identical content, and the effect produced at consumption is\nthat content and no other.\n\nNO DIGEST IS CARRIED HERE. The server recomputes every one of them from\nthe payloads below. Accepting a digest would let a caller announce a\nfingerprint that does not summarise what is stored.",

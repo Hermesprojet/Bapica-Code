@@ -251,6 +251,26 @@ if [[ ! "$GR" =~ ^[0-9a-f-]{36}$ ]]; then
   echo "      ECHEC: aucune racine amorcee; les primitives ne peuvent rien faire." >&2
   exit 1
 fi
+# L'EDITION DE LA PORTEE VIENT DU REGISTRE, PAS D'UNE CONSTANTE.
+#
+# Ce harnais octroyait sur l'edition « 2004 », et l'ecran proposait la meme,
+# ecrite en dur. Le registre belge porte « 1e ed., aout 2010 (...) »: les deux
+# etaient donc faux ensemble, et se rejoignaient. Maintenant que l'ecran lit le
+# plan de charge, la portee doit couvrir ce que le registre porte vraiment.
+EDITION_BE="$(python3 - <<'FINPY'
+from eurostruct_engine.ndp import load_parameter_set
+jeu = load_parameter_set("BE", strict=True)
+editions = {jeu.find(k).edition for k in jeu.keys()}
+if len(editions) != 1:
+    raise SystemExit(f"editions multiples: {sorted(editions)}")
+print(editions.pop())
+FINPY
+)"
+if [[ -z "$EDITION_BE" ]]; then
+  echo "      ECHEC: edition du registre belge illisible." >&2
+  exit 1
+fi
+
 octroyer() {   # octroyer <beneficiaire> <motif>
   PGUSER="$SVC" PGPASSWORD="$MDP" psql -X -q -tAc \
     "set eurostruct.actor_id = '$RACINE_ID';
@@ -258,7 +278,7 @@ octroyer() {   # octroyer <beneficiaire> <motif>
        (grantee_id, grantee_name, permission, country_code, standard_family,
         part, edition, reason, parent_grant_id)
      values ('$1', 'FICTIF $1', 'can_validate_normative_reference', 'BE',
-             'EN 1992', '1-1', '2004', '$2', '$GR')" -d "$BASE" >/dev/null 2>&1
+             'EN 1992', '1-1', \$\$$EDITION_BE\$\$, '$2', '$GR')" -d "$BASE" >/dev/null 2>&1
   q "select id from normative_authorisation_grants where reason = '$2'"
 }
 for duo in "$ACTEUR_A:A" "$ACTEUR_B:B" "$ACTEUR_C:C" "$ACTEUR_D:D"; do

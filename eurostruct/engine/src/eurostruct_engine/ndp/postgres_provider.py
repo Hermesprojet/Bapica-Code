@@ -539,6 +539,38 @@ class PostgresConfirmationProvider:
                        (decision_id,))
             return u.curseur.fetchone()
 
+    def relire_decision(self, preuve: Any, *, decision_id: str) -> dict[str, Any]:
+        """Le dossier **gelé** de la décision, pour le second regard.
+
+        Sans cette lecture, B approuve un identifiant et non un contenu : son
+        navigateur n'a jamais vu le dossier — A s'est déconnecté, et le jeton
+        est parti avec lui. C'est l'identifiant qui traverse, pas l'écran.
+
+        Passe par la primitive : ``eurostruct_authority_backend`` n'a aucun
+        privilège de table sur les décisions, délibérément depuis 0014. Un
+        ``SELECT`` direct rouvrirait aussi la lecture des colonnes d'audit.
+
+        La lecture se fait **sous identité authentifiée**, dans une unité de
+        travail comme les trois autres primitives : ``SET LOCAL`` n'a de portée
+        que dans une transaction, et la primitive lève sans acteur posé.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer("select * from normative_decision_review(%s::uuid)",
+                       (decision_id,))
+            colonnes = [d[0] for d in u.curseur.description]
+            ligne = u.curseur.fetchone()
+            if ligne is None:
+                # LA PRIMITIVE LEVE SUR UNE DECISION INTROUVABLE. Zéro ligne
+                # sans exception voudrait dire que la primitive a changé de
+                # comportement ; rendre `{}` ferait passer cela pour « pas de
+                # dossier », et l'écran afficherait un vide rassurant.
+                raise ConfirmationDomainError(
+                    f"decision {decision_id}: la primitive de relecture n'a "
+                    "rendu aucune ligne et n'a pas leve. On refuse plutot que "
+                    "d'afficher un dossier vide."
+                )
+            return dict(zip(colonnes, ligne, strict=True))
+
     # ------------------------------------------------------------- diagnostic
     def acteur_courant(self) -> str:
         """Ce que la session voit MAINTENANT, hors transaction.

@@ -31,9 +31,13 @@ from pydantic import Field
 from .common import Strict
 
 __all__ = [
-    "AuthorityDecisionRequest",
-    "AuthorityDecisionCreated",
     "AuthorityDecisionConsumed",
+    "AuthorityDecisionCreated",
+    "AuthorityDecisionRequest",
+    "AuthorityDecisionReview",
+    "AuthorityReviewCitation",
+    "AuthorityReviewDossier",
+    "AuthorityReviewDraftRequest",
     "AuthorityReviewPackage",
 ]
 
@@ -105,6 +109,99 @@ class AuthorityDecisionRequest(Strict):
             "subject_kind is 'ndp_parameter': without it the decision could "
             "be approved and consumed without producing any normative effect."
         ),
+    )
+
+
+class AuthorityReviewCitation(Strict):
+    """What a named engineer transcribed from the published document.
+
+    THE SERVER CANNOT PRODUCE THIS. Everything else in a dossier is derived
+    from the registry — value, unit, provenance, annex reference, edition,
+    clause, document digest. The quote is the one thing that only exists
+    because somebody opened the annex at that page and read it. Inventing it
+    would empty the four-eyes rule of its object.
+    """
+
+    document_digest: str = Field(
+        description="Which required document this quote covers.",
+    )
+    quote: str = Field(min_length=1)
+    page_printed: int = Field(
+        ge=1, description="Printed folio, as it appears on the page itself.",
+    )
+    page_pdf: int | None = Field(
+        default=None, description="PDF page number, when it differs.",
+    )
+
+
+class AuthorityReviewDraftRequest(Strict):
+    """Ask the server to compose the dossier of one registry parameter.
+
+    The browser never builds a normative digest: it names the parameter and
+    supplies the human material, and the server canonicalises and hashes.
+    """
+
+    country_code: str = Field(min_length=2, max_length=2, examples=["BE"])
+    rule_id: str = Field(examples=["EN 1992-1-1:alpha_cc"])
+    statement: str = Field(
+        min_length=1,
+        description="What the two reviewers declare they read and checked.",
+    )
+    implementation_note: str = Field(
+        min_length=1,
+        description="What the implementation being attested actually does.",
+    )
+    effect: str = Field(
+        min_length=1,
+        description="What the cited clause does, in one line.",
+    )
+    citations: list[AuthorityReviewCitation] = Field(
+        min_length=1,
+        description="One per document the specification declares.",
+    )
+
+
+class AuthorityReviewDossier(Strict):
+    """The composed dossier: what to propose, what to show, nothing invented.
+
+    ``package`` is what goes back on the wire at proposal time. ``digests``
+    and ``summary`` are for the screen — the browser displays them, it does
+    not compute them and has no way to.
+    """
+
+    package: AuthorityReviewPackage
+    digests: dict[str, str]
+    summary: dict[str, object]
+
+
+class AuthorityDecisionReview(Strict):
+    """A frozen decision, read back so the SECOND engineer can judge it.
+
+    NO ACTOR IS RETURNED. B does not need to know who proposed in order to
+    judge what was proposed, and PostgreSQL refuses a self-approval by table
+    constraint rather than by the caller's prudence. Returning proposer and
+    approver would turn a dossier read into a directory of licensed engineers.
+    """
+
+    decision_id: str
+    state: str
+    subject_kind: str
+    subject_id: str
+    org_id: str | None
+    country_code: str
+    standard_family: str
+    part: str
+    edition: str
+    permission: str
+    reason: str
+    proposed_at: str
+    package: AuthorityReviewPackage | None = Field(
+        default=None,
+        description="The frozen dossier. Null only for a non-NDP subject.",
+    )
+    digests: dict[str, str] = Field(
+        default_factory=dict,
+        description="Recomputed by the server from the frozen payloads.",
     )
 
 

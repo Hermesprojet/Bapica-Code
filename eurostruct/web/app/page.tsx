@@ -21,12 +21,15 @@ import type { BlockingParameterDTO } from "@contracts/generated/engine";
 import {
   etatDuReferentiel, planDeCharge, telechargerDxf, verifierFlexion,
   type Ec2BeamFlexureRequest, type Ec2BeamSectionRequest,
-  type EtatReferentiel, type Issue, type Pays, type PlanDeCharge,
+  type EtatReferentiel, type Issue, type ParametreNdp, type Pays,
+  type PlanDeCharge,
 } from "@/lib/api";
 import { FournisseurAuth, useAuth } from "@/lib/authentification";
 import {
-  approuverDecision, consommerDecision, proposerDecision,
-  type AuthorityDecisionRequest,
+  approuverDecision, composerDossier, consommerDecision, proposerDecision,
+  relireDecision,
+  type AuthorityDecisionRequest, type AuthorityDecisionReview,
+  type AuthorityReviewDossier,
 } from "@/lib/autorite";
 import { AppelRefuse, SessionExpiree } from "@/lib/transport";
 
@@ -67,6 +70,13 @@ function Ecran() {
   const [champs, setChamps] = useState<Champs>(DEFAUTS);
   const [issue, setIssue] = useState<Issue | null>(null);
   const [enCours, setEnCours] = useState(false);
+  //: L'ETAT DU REFERENTIEL EST DATE, ET LA CONSOMMATION LE PERIME.
+  //:
+  //: Le bandeau annonce « 0 / 29 ». Apres une decision consommee c'est faux,
+  //: et l'ecran continuait de l'afficher: le seul effet visible du parcours
+  //: d'autorite restait donc invisible. Ce compteur est ce que la
+  //: consommation incremente pour que le bandeau redemande.
+  const [revision, setRevision] = useState(0);
 
   const majuscule = (k: keyof Champs) => (e: { target: { value: string } }) =>
     setChamps((c) => ({ ...c, [k]: e.target.value }));
@@ -107,8 +117,9 @@ function Ecran() {
       </p>
 
       <Connexion />
-      <DecisionsAutorite pays={champs.pays} />
-      <Referentiel pays={champs.pays} />
+      <DecisionsAutorite pays={champs.pays}
+                         surConsommation={() => setRevision((n) => n + 1)} />
+      <Referentiel pays={champs.pays} revision={revision} />
 
       <form onSubmit={soumettre}>
         <fieldset>
@@ -215,7 +226,8 @@ function Ecran() {
  * Il ne bloque rien. Si l'API ne répond pas, il disparaît, et l'écran de
  * calcul reste utilisable.
  */
-function Referentiel({ pays }: { pays: string }) {
+function Referentiel({ pays, revision = 0 }:
+                     { pays: string; revision?: number }) {
   const [etat, setEtat] = useState<EtatReferentiel | null>(null);
 
   useEffect(() => {
@@ -228,7 +240,9 @@ function Referentiel({ pays }: { pays: string }) {
     return () => {
       vivant = false;
     };
-  }, [pays]);
+    // `revision` CHANGE APRES UNE CONSOMMATION: le bandeau redemande alors
+    // l'etat au lieu d'afficher indefiniment celui d'avant la decision.
+  }, [pays, revision]);
 
   if (!etat) return null;
 
@@ -410,7 +424,7 @@ function Connexion() {
 type Etape = { nom: string; statut: string; detail: string };
 
 /**
- * LES DÉCISIONS D'AUTORITÉ : proposer, approuver, consommer.
+ * LES DÉCISIONS D'AUTORITÉ : composer, proposer, relire, approuver, consommer.
  *
  * POURQUOI CETTE SECTION EXISTE
  * ------------------------------
@@ -418,28 +432,69 @@ type Etape = { nom: string; statut: string; detail: string };
  * depuis l'écran**. Une règle que l'interface ne sait pas exercer n'est pas une
  * règle du produit : c'est une règle du dépôt.
  *
- * CE QU'ELLE MONTRE, ÉTAPE PAR ÉTAPE
- * -----------------------------------
- * L'identifiant de la décision et le résultat de chaque appel. C'est ce qui
- * rend le parcours à deux personnes praticable sur un seul poste : A propose,
- * se déconnecte, B se connecte et reprend **le même identifiant**.
+ * CE QU'ELLE NE FAIT PLUS
+ * ------------------------
+ * Elle proposait `EN 1992-1-1:alpha_cc`, édition `2004`, motif fixe — écrits
+ * dans ce fichier. Aucun de ces trois-là n'était vrai : l'édition belge en
+ * vigueur n'est pas `2004`, si bien que la proposition échouait sur la portée
+ * d'habilitation avant d'atteindre quoi que ce soit d'intéressant. Un écran
+ * qui ne peut proposer qu'une seule chose, et la mauvaise, ne rend pas la
+ * règle exerçable.
+ *
+ * LE PARAMÈTRE VIENT DU PLAN DE CHARGE, la liste que l'API rend pour le pays.
+ * L'ingénieur en choisit un.
+ *
+ * LE NAVIGATEUR NE CONSTRUIT AUCUNE EMPREINTE NORMATIVE. Il envoie ce que la
+ * personne a relevé dans l'annexe publiée — la citation, le folio, ce qu'elle
+ * déclare avoir contrôlé — et le **serveur** compose les quatre payloads
+ * canoniques et leurs empreintes. La valeur, l'unité, la provenance, la
+ * clause et l'empreinte du document viennent du registre, jamais de l'écran.
  *
  * L'IDENTIFIANT SURVIT À LA DÉCONNEXION, LE JETON NON. Le premier est une
- * référence de dossier — B en a besoin. Le second est l'identité de A, et elle
- * part avec lui. C'est précisément la distinction que cette section rend
- * visible.
+ * référence de dossier — B en a besoin, et peut le coller ici. Le second est
+ * l'identité de A, et elle part avec lui.
+ *
+ * B RELIT LE DOSSIER GELÉ AVANT D'APPROUVER. Son navigateur n'a jamais vu ce
+ * que A a composé ; sans la relecture, approuver serait cliquer sur un numéro.
  *
  * AUCUN CHAMP D'ACTEUR. Ni ici, ni dans le corps envoyé : l'identité sort du
  * jeton porteur. Le contrat serveur est `extra="forbid"`, si bien qu'un champ
  * ajouté ferait un 422 plutôt qu'une usurpation.
  */
-function DecisionsAutorite({ pays }: { pays: Pays }) {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function DecisionsAutorite(
+  { pays, surConsommation }: { pays: Pays; surConsommation?: () => void },
+) {
   const auth = useAuth();
   //: L'ETAT DU DOSSIER VIT ICI, hors du bloc de connexion: se déconnecter ne
   //: doit pas effacer le numéro que le second ingénieur doit reprendre.
   const [decision, setDecision] = useState<string>("");
   const [etapes, setEtapes] = useState<Etape[]>([]);
   const [enCours, setEnCours] = useState(false);
+
+  const [candidats, setCandidats] = useState<ParametreNdp[] | null>(null);
+  const [cle, setCle] = useState<string>("");
+  const [citation, setCitation] = useState<string>("");
+  const [folio, setFolio] = useState<string>("");
+  const [declaration, setDeclaration] = useState<string>("");
+  const [dossier, setDossier] = useState<AuthorityReviewDossier | null>(null);
+  const [relu, setRelu] = useState<AuthorityDecisionReview | null>(null);
+
+  //: LE PLAN DE CHARGE, CHARGE PAR PAYS. Il est PUBLIC — le referentiel
+  //: national est le meme pour tout le monde — donc il se charge sans jeton,
+  //: et l'ecran sait quoi proposer avant meme qu'une session existe.
+  useEffect(() => {
+    let vivant = true;
+    setCandidats(null);
+    setCle("");
+    setDossier(null);
+    planDeCharge(pays).then((plan) => {
+      if (!vivant) return;
+      setCandidats(plan ? plan.parameters : []);
+    });
+    return () => { vivant = false; };
+  }, [pays]);
 
   if (!auth.disponible) return null;
 
@@ -466,17 +521,34 @@ function DecisionsAutorite({ pays }: { pays: Pays }) {
     }
   }
 
-  const proposition: AuthorityDecisionRequest = {
-    subject_kind: "ndp_parameter",
-    subject_id: "EN 1992-1-1:alpha_cc",
-    org_id: null,
-    country_code: pays,
-    standard_family: "EN 1992",
-    part: "1-1",
-    edition: "2004",
-    permission: "can_validate_normative_reference",
-    reason: "revue de la valeur nationale relevee dans l'annexe publiee",
-  };
+  const choisi = (candidats ?? []).find((p) => p.key === cle) ?? null;
+  //: UN PARAMETRE SANS EMPREINTE DE DOCUMENT NE PEUT PORTER AUCUNE
+  //: CONFIRMATION: on ne le propose pas, plutot que de laisser composer un
+  //: dossier que le serveur refusera.
+  const proposables = (candidats ?? []).filter(
+    (p) => !p.usable_in_strict_mode && p.source_doc_id);
+  const dossierPret = Boolean(
+    choisi?.source_doc_id && citation.trim() && declaration.trim());
+  const idValide = UUID.test(decision.trim());
+
+  async function composer(): Promise<string> {
+    if (!choisi?.source_doc_id) throw new Error("aucun parametre choisi.");
+    const compose = await composerDossier(auth.porteur, {
+      country_code: choisi.country_code,
+      rule_id: choisi.key,
+      statement: declaration.trim(),
+      implementation_note:
+        `lecture scalaire de ${choisi.key} depuis le registre national`,
+      effect: `fixe la valeur nationale de ${choisi.parameter_name}`,
+      citations: [{
+        document_digest: choisi.source_doc_id,
+        quote: citation.trim(),
+        page_printed: Number(folio) || choisi.source_page || 1,
+      }],
+    });
+    setDossier(compose);
+    return compose.digests.normative_spec_digest ?? "compose";
+  }
 
   return (
     <section>
@@ -486,41 +558,161 @@ function DecisionsAutorite({ pays }: { pays: Pays }) {
           Une confirmation de valeur nationale exige <strong>deux</strong>
           {" "}ingénieurs : celui qui propose ne peut pas approuver. Le second
           reprend l&apos;identifiant ci-dessous après s&apos;être connecté à sa
-          propre session.
+          propre session, <strong>relit le dossier gelé</strong>, puis approuve.
         </p>
 
-        <p>
+        <div>
+          <label htmlFor="param-autorite">Paramètre à faire confirmer</label>
+          <select id="param-autorite" value={cle} disabled={enCours}
+                  onChange={(e) => { setCle(e.target.value); setDossier(null); }}>
+            <option value="">
+              {candidats === null
+                ? "chargement du plan de charge…"
+                : proposables.length === 0
+                  ? "aucun paramètre à confirmer pour ce pays"
+                  : "— choisir —"}
+            </option>
+            {proposables.map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.parameter_name} — {p.standard} {p.clause}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {choisi && (
+          <>
+            <div className="clause" style={{ marginTop: ".4rem" }}>
+              {choisi.national_annex_reference} · éd. {choisi.edition}
+              {choisi.source_page ? ` · p. ${choisi.source_page}` : ""}
+              {" · "}valeur au registre : {String(choisi.parameter_value)}
+              {" "}{choisi.unit}
+            </div>
+            <div className="grille" style={{ marginTop: ".5rem" }}>
+              <div>
+                <label htmlFor="citation">
+                  Citation relevée dans l&apos;annexe publiée
+                </label>
+                <input id="citation" value={citation} disabled={enCours}
+                       onChange={(e) => {
+                         setCitation(e.target.value); setDossier(null);
+                       }} />
+              </div>
+              <div>
+                <label htmlFor="folio">Folio imprimé</label>
+                <input id="folio" inputMode="numeric" value={folio}
+                       disabled={enCours}
+                       placeholder={String(choisi.source_page ?? 1)}
+                       onChange={(e) => {
+                         setFolio(e.target.value); setDossier(null);
+                       }} />
+              </div>
+              <div>
+                <label htmlFor="declaration">Ce que vous certifiez avoir lu</label>
+                <input id="declaration" value={declaration} disabled={enCours}
+                       onChange={(e) => {
+                         setDeclaration(e.target.value); setDossier(null);
+                       }} />
+              </div>
+            </div>
+            <button id="composer" type="button" className="secondaire"
+                    disabled={enCours || !dossierPret}
+                    style={{ marginTop: ".5rem" }}
+                    onClick={() => etape("composition", composer)}>
+              Composer le dossier (le serveur le fabrique)
+            </button>
+          </>
+        )}
+
+        {dossier && <Dossier resume={dossier.summary}
+                             empreintes={dossier.digests} titre="Dossier composé" />}
+
+        <p style={{ marginTop: ".6rem" }}>
           Décision en cours :{" "}
           <code id="decision-id">{decision || "—"}</code>
         </p>
+        <div>
+          <label htmlFor="reprendre-decision">
+            Reprendre une décision (second ingénieur)
+          </label>
+          <input id="reprendre-decision" value={decision} disabled={enCours}
+                 placeholder="identifiant reçu du premier ingénieur"
+                 onChange={(e) => { setDecision(e.target.value); setRelu(null); }} />
+        </div>
 
-        <div className="grille">
+        <div className="grille" style={{ marginTop: ".5rem" }}>
           <button id="proposer" type="button" className="secondaire"
-                  disabled={enCours}
+                  disabled={enCours || !dossier}
                   onClick={() => etape("proposition", async () => {
+                    if (!dossier || !choisi) throw new Error("aucun dossier.");
+                    // LE CORPS PORTE LE DOSSIER TEL QUE LE SERVEUR L'A RENDU.
+                    // Le navigateur ne le retouche pas: il ne saurait pas
+                    // recalculer les empreintes, et c'est voulu.
+                    const proposition: AuthorityDecisionRequest = {
+                      subject_kind: "ndp_parameter",
+                      subject_id: choisi.key,
+                      org_id: null,
+                      country_code: choisi.country_code,
+                      standard_family: choisi.standard_family,
+                      part: choisi.part,
+                      edition: choisi.edition,
+                      permission: "can_validate_normative_reference",
+                      reason: declaration.trim(),
+                      review_package: dossier.package,
+                    };
                     const cree = await proposerDecision(auth.porteur, proposition);
                     setDecision(cree.decision_id);
+                    setRelu(null);
                     return cree.decision_id;
                   })}>
             1. Proposer
           </button>
+          <button id="relire" type="button" className="secondaire"
+                  disabled={enCours || !idValide}
+                  onClick={() => etape("relecture", async () => {
+                    const d = await relireDecision(auth.porteur, decision.trim());
+                    setRelu(d);
+                    return `${d.subject_id} — ${d.state}`;
+                  })}>
+            2. Relire le dossier gelé
+          </button>
           <button id="approuver" type="button" className="secondaire"
-                  disabled={enCours}
+                  disabled={enCours || !idValide}
                   onClick={() => etape("approbation", async () => {
-                    await approuverDecision(auth.porteur, decision);
+                    await approuverDecision(auth.porteur, decision.trim());
                     return "approuvee";
                   })}>
-            2. Approuver (second ingénieur)
+            3. Approuver (second ingénieur)
           </button>
           <button id="consommer" type="button" className="secondaire"
-                  disabled={enCours}
+                  disabled={enCours || !idValide}
                   onClick={() => etape("consommation", async () => {
-                    const c = await consommerDecision(auth.porteur, decision);
+                    const c = await consommerDecision(auth.porteur,
+                                                      decision.trim());
+                    // LE BANDEAU DU REFERENTIEL EST PERIME DES CET INSTANT.
+                    // Sans ce signal il continuerait d'afficher le compte
+                    // d'avant — le seul effet visible du parcours resterait
+                    // invisible.
+                    if (c.consumed) surConsommation?.();
                     return c.consumed ? "consommee" : "non consommee";
                   })}>
-            3. Consommer
+            4. Consommer
           </button>
         </div>
+
+        {relu && (
+          <Dossier resume={{
+            rule_id: relu.subject_id,
+            country_code: relu.country_code,
+            standard_family: relu.standard_family,
+            part: relu.part,
+            edition: relu.edition,
+            etat: relu.state,
+            proposee_le: relu.proposed_at,
+            declaration: relu.package?.statement ?? "",
+          }} empreintes={relu.digests ?? {}}
+             titre="Dossier gelé, relu depuis la base" />
+        )}
 
         {etapes.length > 0 && (
           <ul className="bloquants" id="journal-autorite">
@@ -534,6 +726,35 @@ function DecisionsAutorite({ pays }: { pays: Pays }) {
         )}
       </fieldset>
     </section>
+  );
+}
+
+/**
+ * Le dossier, affiché tel que le serveur l'a rendu.
+ *
+ * IL N'EN CALCULE RIEN. Ni empreinte, ni résumé : les deux arrivent du serveur,
+ * qui les a produits sur le contenu qu'il conserve.
+ */
+function Dossier({ resume, empreintes, titre }: {
+  resume: Record<string, unknown>;
+  empreintes: Record<string, string>;
+  titre: string;
+}) {
+  return (
+    <div className="bandeau" style={{ marginTop: ".6rem" }} role="status"
+         data-dossier={titre}>
+      <strong>{titre}</strong>
+      <ul className="bloquants">
+        {Object.entries(resume).map(([k, v]) => (
+          <li key={k}><code>{k}</code> : {String(v)}</li>
+        ))}
+      </ul>
+      <div className="clause">
+        {Object.entries(empreintes).map(([k, v]) => (
+          <div key={k}><code>{k}</code> : {v.slice(0, 16)}…</div>
+        ))}
+      </div>
+    </div>
   );
 }
 

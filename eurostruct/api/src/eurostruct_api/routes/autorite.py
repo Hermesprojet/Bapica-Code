@@ -39,14 +39,25 @@ SQLSTATE que le serveur pose lui-même.
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
+from eurostruct_engine.ndp import available_countries, load_parameter_set
 from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
+from eurostruct_engine.ndp.dossier import (
+    CitationDeRevue,
+    composer_dossier,
+    empreintes_des_payloads,
+)
 from eurostruct_engine.ndp.postgres_provider import AuthentificationRequise
 from eurostruct_engine.schemas.autorite import (
     AuthorityDecisionConsumed,
     AuthorityDecisionCreated,
     AuthorityDecisionRequest,
+    AuthorityDecisionReview,
+    AuthorityReviewDossier,
+    AuthorityReviewDraftRequest,
+    AuthorityReviewPackage,
 )
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -64,6 +75,34 @@ routeur = APIRouter(prefix="/v1/authority", tags=["autorite"])
 ProposerRequete = AuthorityDecisionRequest
 DecisionCreee = AuthorityDecisionCreated
 DecisionConsommee = AuthorityDecisionConsumed
+
+
+def _parametre_du_registre(pays: str, rule_id: str):
+    """L'entrée du registre, ou un refus qui dit ce qui manque.
+
+    Le mode **non strict** est délibéré : c'est justement le paramètre pas
+    encore confirmé qu'on veut faire relire. Le charger en strict rendrait
+    introuvable exactement ce que le parcours d'autorité existe pour débloquer.
+    """
+    if pays not in available_countries():
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "referentiel_absent", "what": pays,
+                    "detail": (f"aucun referentiel national pour « {pays} ». "
+                               "Un pays absent n'est pas un pays sans "
+                               "exigences: c'est un pays que ce moteur ne sait "
+                               "pas encore traiter.")},
+        )
+    parametre = load_parameter_set(pays, strict=False).find(rule_id)
+    if parametre is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "parametre_absent", "what": rule_id,
+                    "detail": (f"« {rule_id} » n'est pas dans le registre de "
+                               f"{pays}. On ne compose pas un dossier de revue "
+                               "pour un parametre qui n'existe pas.")},
+        )
+    return parametre
 
 
 def _refus(cause: AuthentificationRequise | ConfirmationDomainError) -> HTTPException:
@@ -100,6 +139,104 @@ def _refus(cause: AuthentificationRequise | ConfirmationDomainError) -> HTTPExce
         detail={"error": "decision_refusee",
                 "what": type(cause).__name__,
                 "detail": str(cause)},
+    )
+
+
+@routeur.post("/review-packages", response_model=AuthorityReviewDossier)
+def composer(corps: AuthorityReviewDraftRequest,
+             _jeton: str = Depends(jeton_porteur)) -> AuthorityReviewDossier:
+    """Compose le dossier d'un paramètre. **Le serveur seul le fabrique.**
+
+    LE NAVIGATEUR NE CONSTRUIT AUCUNE EMPREINTE NORMATIVE. Il nomme le
+    paramètre et fournit la matière humaine — ce que l'ingénieur a relevé dans
+    l'annexe publiée — et reçoit les quatre payloads canoniques, leurs
+    empreintes et le résumé à afficher. Le laisser canonicaliser lui-même
+    ferait dépendre l'empreinte de la sérialisation d'un client, et ferait
+    venir la **valeur** de l'écran plutôt que du registre.
+
+    LE JETON EST EXIGE, MEME SANS ECRITURE. Un dossier nomme le document, la
+    clause et le folio d'une annexe sous licence : ce n'est pas une donnée
+    publique. Aucune connexion n'est ouverte pour autant — rien n'est écrit,
+    et le registre est en mémoire.
+    """
+    parametre = _parametre_du_registre(corps.country_code.upper(), corps.rule_id)
+    try:
+        dossier = composer_dossier(
+            parametre,
+            statement=corps.statement,
+            implementation_note=corps.implementation_note,
+            effet=corps.effect,
+            citations=tuple(
+                CitationDeRevue(
+                    document_digest=c.document_digest,
+                    quote=c.quote,
+                    page_printed=c.page_printed,
+                    page_pdf=c.page_pdf,
+                )
+                for c in corps.citations
+            ),
+        )
+    except ConfirmationDomainError as cause:
+        raise _refus(cause) from cause
+    return AuthorityReviewDossier(
+        package=AuthorityReviewPackage(**dossier.payloads()),
+        digests=dossier.empreintes(),
+        summary=dossier.resume,
+    )
+
+
+@routeur.get("/decisions/{decision_id}", response_model=AuthorityDecisionReview)
+def relire(decision_id: str,
+           jeton: str = Depends(jeton_porteur),
+           ouvert: Any = Depends(ouvrir_provider)) -> AuthorityDecisionReview:
+    """Le dossier **gelé**, tel que la base le conserve. Pour le second regard.
+
+    B n'a que l'identifiant : A s'est déconnecté, et son jeton est parti avec
+    lui. Sans cette relecture, « B a approuvé » voudrait dire « B a cliqué sur
+    un numéro » — exactement le quatre-yeux décoratif que le dispositif existe
+    pour empêcher.
+
+    LES EMPREINTES SONT RECALCULEES SUR CE QUI EST RELU, pas reprises d'un
+    champ stocké. Une empreinte conservée à côté de son payload s'accorde avec
+    lui par construction et ne prouve rien.
+    """
+    try:
+        ligne = ouvert.provider.relire_decision(jeton, decision_id=decision_id)
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        raise _refus(cause) from cause
+    finally:
+        ouvert.fermer()
+
+    brut = ligne.get("review_package")
+    paquet = None
+    empreintes: dict[str, str] = {}
+    if brut is not None:
+        # psycopg2 rend le `jsonb` déjà décodé; un pilote qui rendrait la
+        # chaîne ne doit pas faire échouer la relecture pour autant.
+        contenu = json.loads(brut) if isinstance(brut, str | bytes) else brut
+        paquet = AuthorityReviewPackage(**contenu)
+        empreintes = empreintes_des_payloads(
+            normative_spec_payload=paquet.normative_spec_payload,
+            implementation_payload=paquet.implementation_payload,
+            evidence_payload=paquet.evidence_payload,
+            stack_payload=paquet.stack_payload,
+        )
+
+    return AuthorityDecisionReview(
+        decision_id=str(ligne["decision_id"]),
+        state=str(ligne["state"]),
+        subject_kind=ligne["subject_kind"],
+        subject_id=ligne["subject_id"],
+        org_id=str(ligne["org_id"]) if ligne.get("org_id") else None,
+        country_code=ligne["country_code"],
+        standard_family=ligne["standard_family"],
+        part=ligne["part"],
+        edition=ligne["edition"],
+        permission=str(ligne["permission"]),
+        reason=ligne["reason"],
+        proposed_at=str(ligne["proposed_at"]),
+        package=paquet,
+        digests=empreintes,
     )
 
 
