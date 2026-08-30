@@ -1,6 +1,12 @@
 # RAPPORT — première tranche applicative exécutable
 
-**Branche** `claude/wip-6.3c-racine-de-confiance` · **base** `4a489f4` · **SHA final** `da04d7e`
+**Branche** `claude/wip-6.3c-racine-de-confiance` · **base** `4a489f4`
+
+**Les chiffres de ce rapport ont été mesurés sur `da04d7e`**, dernier commit
+porteur de code. Ce qui suit — ce rapport, le README — est de la documentation
+et ne change aucun de ces nombres. Y écrire le SHA de la pointe obligerait à
+tout remesurer après chaque correction de phrase : c'est le commit **mesuré**
+qui compte, pas le dernier.
 
 ---
 
