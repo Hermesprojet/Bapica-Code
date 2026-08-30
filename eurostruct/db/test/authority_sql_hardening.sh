@@ -389,11 +389,18 @@ echo "      -- surface-du-backend: ce que le backend authentifie atteint, et rie
 # ecrivent `projects`, `calculations`, `results` et `verifications`, sous les
 # politiques RLS de 0018 et sous l'acteur derive de la session.
 #
-# ET LES QUATRE FONCTIONS INTERNES DE 0018 — `project_backend_actor`,
+# LE CHEMIN DES LIVRABLES — sept primitives, ajoutees par 0020 et declarees de
+# meme: creer un brouillon depuis un calcul gele, lister, relire avec son
+# historique, soumettre a la relecture ou revenir au brouillon, attester,
+# emettre, et rendre l'emplacement des octets. Elles rendent ATTEIGNABLE la
+# machine a etats que 0005 et 0009 avaient construite sans porte.
+#
+# ET LES FONCTIONS INTERNES — `project_backend_actor`,
 # `project_actor_is_member`, `project_actor_can_write`,
-# `project_annexe_en_vigueur` — n'apparaissent PAS dans cette liste, et c'est
-# voulu: elles ne sont accordees qu'au proprietaire des primitives. Leur
-# absence est elle-meme une mesure, pas un oubli.
+# `project_annexe_en_vigueur` (0018) et `project_calculation_is_publishable`
+# (0020) — n'apparaissent PAS dans cette liste, et c'est voulu: elles ne sont
+# accordees qu'au proprietaire des primitives. Leur absence est elle-meme une
+# mesure, pas un oubli.
 #
 # SANS ESPACES: `q()` normalise en retirant les blancs, et comparer une chaine
 # espacee a une chaine compactee produisait un rouge sur deux ensembles
@@ -401,7 +408,7 @@ echo "      -- surface-du-backend: ce que le backend authentifie atteint, et rie
 #
 # L'ORDRE EST CELUI DE `order by p.proname`, et non celui du recit ci-dessus:
 # la comparaison porte sur la chaine entiere.
-ATTENDUES="normative_authenticated_actor,normative_authenticated_actor_or_null,normative_decision_approve,normative_decision_consume,normative_decision_propose,normative_decision_review,normative_grant_is_effective,project_calculation_list,project_calculation_read,project_calculation_record,project_workspace_create,project_workspace_list"
+ATTENDUES="normative_authenticated_actor,normative_authenticated_actor_or_null,normative_decision_approve,normative_decision_consume,normative_decision_propose,normative_decision_review,normative_grant_is_effective,project_calculation_list,project_calculation_read,project_calculation_record,project_deliverable_bytes,project_deliverable_create,project_deliverable_finalize,project_deliverable_list,project_deliverable_read,project_deliverable_transition,project_deliverable_validate,project_workspace_create,project_workspace_list"
 OUVERTES="$(q "select coalesce(string_agg(distinct p.proname, ', '
                                  order by p.proname), '(aucune)')
                  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -411,11 +418,13 @@ OUVERTES="$(q "select coalesce(string_agg(distinct p.proname, ', '
                   and not has_function_privilege('public', p.oid, 'EXECUTE')")"
 detail "atteintes par eurostruct_authority_backend: $OUVERTES"
 if [[ "$OUVERTES" == "$ATTENDUES" ]]; then
-  sur surface-du-backend "le backend authentifie atteint exactement les douze"
-  detail "fonctions declarees — sept sur le chemin normatif (trois primitives"
-  detail "de decision, la relecture du dossier gele, deux derivations d'acteur,"
-  detail "la lecture d'efficacite) et cinq sur le chemin de travail (projets,"
-  detail "calcul, historique, reouverture). Ni plus, ni moins."
+  sur surface-du-backend "le backend authentifie atteint exactement les"
+  detail "dix-neuf fonctions declarees — sept sur le chemin normatif (trois"
+  detail "primitives de decision, la relecture du dossier gele, deux"
+  detail "derivations d'acteur, la lecture d'efficacite), cinq sur le chemin de"
+  detail "travail (projets, calcul, historique, reouverture) et sept sur celui"
+  detail "des livrables (brouillon, liste, relecture, transition, attestation,"
+  detail "emission, octets). Ni plus, ni moins."
 elif [[ "$OUVERTES" == "(aucune)" ]]; then
   rouge surface-du-backend "le backend authentifie n'atteint RIEN: le chemin"
   detail "nominal du quatre-yeux n'existe pas."

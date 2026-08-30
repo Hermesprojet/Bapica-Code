@@ -30,7 +30,7 @@ from .base import FabriqueConnexionPostgres
 from .config import Reglages, charger
 from . import erreurs
 from .erreurs import installer_gestionnaires
-from .routes import autorite, calculs, projets, referentiel, sante
+from .routes import autorite, calculs, livrables, projets, referentiel, sante
 
 _journal = logging.getLogger("eurostruct.api")
 
@@ -110,6 +110,11 @@ def creer_application(reglages: Reglages | None = None) -> FastAPI:
     # l'autre. L'ordre d'enregistrement n'a aucun effet sur le routage —
     # aucun prefixe ne se recouvre — et rend l'exigence lisible.
     app.include_router(projets.routeur)
+    # LES LIVRABLES PARTAGENT LE PREFIXE `/v1/projects` ET NE LE RECOUVRENT
+    # PAS: aucune de leurs routes n'a la forme d'une route de calcul. Elles
+    # sont montees apres parce qu'elles exigent une contrainte de plus — un
+    # magasin d'objets — et que l'ordre rend cette dependance lisible.
+    app.include_router(livrables.routeur)
     return app
 
 

@@ -289,3 +289,224 @@ class PostgresAtelier:
             "verifications": _json_ou_none(ligne["verifications"]) or [],
             "created_at": _texte(ligne["created_at"]),
         }
+
+    # ---------------------------------------------------------- livrables
+    #
+    # LES SEPT GESTES DU PARCOURS DE RELECTURE. Ils rendent atteignable la
+    # machine à états que 0005 et 0009 avaient construite sans porte : rien
+    # ici ne décide qui peut valider, quel enchaînement d'états est permis, ni
+    # ce qu'une signature fige. Tout cela est dans PostgreSQL, et ces méthodes
+    # ne font que le demander. Réécrire un seul de ces contrôles ici donnerait
+    # deux frontières, dont la plus faible finirait par décider.
+
+    def creer_livrable(
+        self, preuve: Any, *, project_id: str, calculation_id: str,
+        kind: str, filename: str, media_type: str, storage_backend: str,
+        storage_path: str, sha256: str, size_bytes: int,
+        watermark: str | None = None, supersedes_id: str | None = None,
+    ) -> str:
+        """Enregistre un brouillon dont les octets sont **déjà déposés**.
+
+        L'ORDRE N'EST PAS NÉGOCIABLE, ET IL EST CHEZ L'APPELANT : déposer les
+        octets, les relire, vérifier leur empreinte, PUIS appeler ceci. Une
+        ligne écrite avant le dépôt promettrait un document introuvable si
+        l'écriture échouait ensuite ; l'inverse ne laisse au pire qu'un objet
+        que personne ne référence.
+
+        AUCUN CONTEXTE NORMATIF N'EST PASSÉ. Pays, région, date, version du
+        moteur, build et identité d'exécution sont COPIÉS du calcul par la
+        primitive. Les faire venir d'ici rouvrirait exactement la substitution
+        que 0019 a fermée.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select project_deliverable_create("
+                "%s::uuid, %s::uuid, %s::deliverable_kind, %s, %s, %s, %s, "
+                "%s, %s::bigint, %s, %s::uuid)",
+                (project_id, calculation_id, kind, filename, media_type,
+                 storage_backend, storage_path, sha256, size_bytes,
+                 watermark, supersedes_id),
+            )
+            ligne = u.curseur.fetchone()
+            if not ligne or not ligne[0]:
+                raise ConfirmationDomainError(
+                    "la creation n'a rendu aucun identifiant de livrable. On "
+                    "refuse plutot que d'annoncer un document introuvable."
+                )
+            return str(ligne[0])
+
+    def livrables(self, preuve: Any, *, project_id: str) -> list[dict[str, Any]]:
+        """Les livrables du projet, du plus récent au plus ancien."""
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer("select * from project_deliverable_list(%s::uuid)",
+                       (project_id,))
+            return [self._livrable_resume(ligne) for ligne in self._lignes(u)]
+
+    @staticmethod
+    def _livrable_resume(ligne: dict[str, Any]) -> dict[str, Any]:
+        """Les champs communs à la liste et à la relecture.
+
+        ``validated_at`` EST LU AVEC UN DÉFAUT, et c'est nécessaire : la liste
+        rend cette colonne sous ce nom, la relecture la rend sous ``signed_at``
+        — le nom qu'elle porte dans ``validations``. Les deux primitives sont
+        justes ; c'est cette projection qui doit accepter les deux formes,
+        plutôt que d'échouer sur un ``KeyError`` au premier appel de relecture.
+        """
+        return {
+            "deliverable_id": _texte(ligne["deliverable_id"]),
+            "calculation_id": _texte(ligne["calculation_id"]),
+            "kind": ligne["kind"],
+            "filename": ligne["filename"],
+            "media_type": ligne["media_type"],
+            "sha256": ligne["sha256"],
+            "size_bytes": int(ligne["size_bytes"]),
+            "state": ligne["state"],
+            "revision": int(ligne["revision"]),
+            "supersedes_id": _texte(ligne["supersedes_id"]),
+            "watermark": ligne["watermark"],
+            "last_reason": ligne["last_reason"],
+            "engine_version": ligne["engine_version"],
+            "engine_build_sha": ligne["engine_build_sha"],
+            "execution_identity": ligne["execution_identity"],
+            "validation_id": _texte(ligne["validation_id"]),
+            "validator_name": ligne["validator_name"],
+            "validated_at": _texte(ligne.get("validated_at")
+                                   or ligne.get("signed_at")),
+            "generated_at": _texte(ligne["generated_at"]),
+        }
+
+    def relire_livrable(self, preuve: Any, *, project_id: str,
+                        deliverable_id: str) -> dict[str, Any]:
+        """Un livrable, son contexte figé, son attestation et son histoire.
+
+        L'HISTORIQUE VIENT DU MÊME APPEL. Deux appels séparés pourraient
+        tomber de part et d'autre d'une transition et montrer un état qui ne
+        correspond pas à son journal.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select * from project_deliverable_read(%s::uuid, %s::uuid)",
+                (project_id, deliverable_id))
+            lignes = self._lignes(u)
+        if not lignes:
+            raise ConfirmationDomainError(
+                f"livrable {deliverable_id}: introuvable dans ce projet. On "
+                "refuse plutot que d'afficher un document vide."
+            )
+        ligne = lignes[0]
+        detail = self._livrable_resume(ligne)
+        detail.update({
+            "inputs_hash": ligne["inputs_hash"],
+            "ndp_as_of": _texte(ligne["ndp_as_of"]),
+            "validator_role": ligne["validator_role"],
+            "professional_id": ligne["professional_id"],
+            "statement": ligne["statement"],
+            "reservations": ligne["reservations"],
+            "validated_at": _texte(ligne["signed_at"]),
+            "transitions": [
+                {
+                    "from_state": t.get("from_state"),
+                    "to_state": t.get("to_state"),
+                    "actor_id": t.get("actor_id"),
+                    "reason": t.get("reason"),
+                    "occurred_at": t.get("occurred_at"),
+                }
+                for t in (_json_ou_none(ligne["transitions"]) or [])
+            ],
+        })
+        return detail
+
+    def octets_du_livrable(self, preuve: Any, *, project_id: str,
+                           deliverable_id: str) -> dict[str, Any]:
+        """Où sont les octets, et ce qu'ils doivent peser.
+
+        LE CHEMIN NE TRAVERSE PAS JUSQU'À L'ÉCRAN. Il sert au backend à aller
+        chercher le fichier ; l'exposer donnerait au navigateur la carte du
+        magasin, dont il n'a aucun usage légitime.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select * from project_deliverable_bytes(%s::uuid, %s::uuid)",
+                (project_id, deliverable_id))
+            lignes = self._lignes(u)
+        if not lignes:
+            raise ConfirmationDomainError(
+                f"livrable {deliverable_id}: introuvable dans ce projet."
+            )
+        ligne = lignes[0]
+        return {
+            "storage_backend": ligne["storage_backend"],
+            "storage_path": ligne["storage_path"],
+            "sha256": ligne["sha256"],
+            "size_bytes": int(ligne["size_bytes"]),
+            "filename": ligne["filename"],
+            "media_type": ligne["media_type"],
+            "state": ligne["state"],
+            "watermark": ligne["watermark"],
+        }
+
+    def transition_livrable(self, preuve: Any, *, project_id: str,
+                            deliverable_id: str, to_state: str,
+                            reason: str | None = None) -> str:
+        """Soumettre à la relecture, ou revenir au brouillon avec un motif.
+
+        ELLE NE CONDUIT QU'À ``draft`` OU ``review``, et la primitive le
+        refuse autrement. ``validated`` exige une attestation nominative,
+        ``final`` exige qu'elle existe déjà : les deux ont leur propre porte,
+        avec leurs propres contrôles d'habilitation.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select project_deliverable_transition("
+                "%s::uuid, %s::uuid, %s::deliverable_state, %s)",
+                (project_id, deliverable_id, to_state, reason))
+            ligne = u.curseur.fetchone()
+            if not ligne or not ligne[0]:
+                raise ConfirmationDomainError(
+                    "la transition n'a rendu aucun etat."
+                )
+            return str(ligne[0])
+
+    def attester_livrable(self, preuve: Any, *, project_id: str,
+                          deliverable_id: str, statement: str,
+                          reservations: str | None = None) -> str:
+        """L'attestation métier, et le passage à ``validated``, en un seul acte.
+
+        NI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION NE SONT PASSÉS. Les trois
+        sortent de ``organization_members`` sous l'identité du jeton. Les
+        passer d'ici laisserait attester sous le nom de quelqu'un d'autre.
+
+        UN SEUL APPEL POUR DEUX ÉCRITURES. La primitive insère la validation
+        et fait basculer le livrable dans la même transaction : deux ordres
+        depuis Python laisseraient, sur incident au second, une attestation
+        orpheline — c'est-à-dire une signature qui ne porte sur rien.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select project_deliverable_validate("
+                "%s::uuid, %s::uuid, %s, %s)",
+                (project_id, deliverable_id, statement, reservations))
+            ligne = u.curseur.fetchone()
+            if not ligne or not ligne[0]:
+                raise ConfirmationDomainError(
+                    "l'attestation n'a rendu aucun identifiant."
+                )
+            return str(ligne[0])
+
+    def emettre_livrable(self, preuve: Any, *, project_id: str,
+                         deliverable_id: str) -> str:
+        """L'émission. Séparée de l'attestation, et délibérément.
+
+        Valider, c'est répondre du calcul ; émettre, c'est mettre le document
+        en circulation. Les fondre ferait de toute relecture une publication.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select project_deliverable_finalize(%s::uuid, %s::uuid)",
+                (project_id, deliverable_id))
+            ligne = u.curseur.fetchone()
+            if not ligne or not ligne[0]:
+                raise ConfirmationDomainError(
+                    "l'emission n'a rendu aucun etat."
+                )
+            return str(ligne[0])

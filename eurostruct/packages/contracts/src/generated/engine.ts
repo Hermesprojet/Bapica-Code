@@ -14,6 +14,14 @@
 
 /* eslint-disable */
 
+/** Ce que le validateur écrit, et **rien d'autre**. NI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION. Les trois sortent de ``organization_members`` sous l'identité du jeton. Les accepter ici donnerait l'illusion qu'ils comptent, alors que PostgreSQL les écrase de toute façon — et l'illusion est pire que l'absence, parce qu'un écran finirait par les afficher. NI IDENTIFIANT DE CALCUL, NI EMPREINTE. L'attestation porte sur le calcul du livrable et sur les octets réellement enregistrés ; les faire venir du corps laisserait attester un calcul et en signer un autre. */
+export interface AttestationDemande {
+  /** Réserves émises par le validateur. Elles font partie de l'attestation et sont conservées avec elle. */
+  reservations?: string | null;
+  /** Ce que le validateur atteste, dans ses termes. Repris tel quel dans la ligne de validation, horodaté et figé. */
+  statement: string;
+}
+
 /** The decision was spent. Exactly once: a replay is refused. */
 export interface AuthorityDecisionConsumed {
   consumed: boolean;
@@ -343,9 +351,83 @@ export interface JournalDTO {
   title: string;
 }
 
+export interface ListeLivrables {
+  deliverables?: Livrable[];
+}
+
 /** Les projets des organisations de l'appelant, et rien d'autre. */
 export interface ListeProjets {
   projects: Projet[];
+}
+
+/** Un livrable, tel que la liste du projet le montre. ``state`` EST LA SEULE VÉRITÉ SUR L'ÉTAT. ``is_final`` en est dérivé en base et ne traverse pas jusqu'ici : deux champs pour un même fait finissent par se contredire, et c'est l'écran qui affiche le mauvais. */
+export interface Livrable {
+  calculation_id: string;
+  deliverable_id: string;
+  engine_build_sha?: string | null;
+  engine_version: string;
+  execution_identity?: string | null;
+  filename: string;
+  generated_at: string;
+  kind: string;
+  last_reason?: string | null;
+  media_type: string;
+  revision: number;
+  /** Empreinte des octets réellement enregistrés. La route de téléchargement la revérifie sur ce qu'elle sert. */
+  sha256: string;
+  size_bytes: number;
+  /** brouillon (draft), en relecture (review), validé (validated), émis (final). */
+  state: string;
+  supersedes_id?: string | null;
+  validated_at?: string | null;
+  validation_id?: string | null;
+  validator_name?: string | null;
+  /** Le filigrane RÉELLEMENT apposé sur les octets. Il dit ce qui est vrai du document pour toujours — « PROJET — NON SIGNABLE » — et jamais son état de workflow, qui change. */
+  watermark?: string | null;
+}
+
+/** Créer un brouillon **depuis un calcul déjà enregistré**. UN SEUL CHAMP, ET C'EST TOUT CE QUE LE CLIENT SAIT. Le contenu du document est produit sur le serveur à partir des données gelées du calcul ; sa nature, son nom, ses octets, leur empreinte, leur taille, le contexte normatif, la version du moteur, le build et l'identité d'exécution sont tous dérivés. Il n'y a donc rien d'autre à envoyer. ``kind`` N'EST PAS UN CHAMP NON PLUS. Le produit sait produire une note de calcul HTML autonome, et rien d'autre aujourd'hui. Offrir le choix entre huit natures de document dont sept n'existent pas ferait promettre à l'écran des livrables qu'aucune route ne produit. */
+export interface LivrableCreation {
+  /** Le calcul enregistré dont ce livrable est tiré. Il doit appartenir au projet du chemin, avoir abouti, et porter une identité d'exécution vérifiable. */
+  calculation_id: string;
+}
+
+/** Un livrable, son contexte figé, son attestation et son histoire. L'HISTORIQUE VIENT DU MÊME APPEL QUE L'ÉTAT. Deux appels séparés pourraient tomber de part et d'autre d'une transition et montrer un état qui ne correspond pas à son journal. */
+export interface LivrableDetail {
+  calculation_id: string;
+  deliverable_id: string;
+  engine_build_sha?: string | null;
+  engine_version: string;
+  execution_identity?: string | null;
+  filename: string;
+  generated_at: string;
+  inputs_hash?: string | null;
+  kind: string;
+  last_reason?: string | null;
+  media_type: string;
+  /** « PROJET — NON SIGNABLE », quand des paramètres nationaux non confirmés ont pu servir. */
+  mention?: string | null;
+  ndp_as_of?: string | null;
+  /** La mention obligatoire: ce document doit être vérifié et signé par un ingénieur habilité. */
+  notice: string;
+  /** Numéro d'inscription à l'ordre professionnel, figé au moment de l'attestation depuis l'adhésion. */
+  professional_id?: string | null;
+  reservations?: string | null;
+  revision: number;
+  /** Empreinte des octets réellement enregistrés. La route de téléchargement la revérifie sur ce qu'elle sert. */
+  sha256: string;
+  size_bytes: number;
+  /** brouillon (draft), en relecture (review), validé (validated), émis (final). */
+  state: string;
+  statement?: string | null;
+  supersedes_id?: string | null;
+  transitions?: Transition[];
+  validated_at?: string | null;
+  validation_id?: string | null;
+  validator_name?: string | null;
+  validator_role?: string | null;
+  /** Le filigrane RÉELLEMENT apposé sur les octets. Il dit ce qui est vrai du document pour toujours — « PROJET — NON SIGNABLE » — et jamais son état de workflow, qui change. */
+  watermark?: string | null;
 }
 
 export interface MaterialsDTO {
@@ -531,10 +613,27 @@ export interface ReinforcementChoiceDTO {
   top?: BarRowDTO[];
 }
 
+/** Renvoyer une pièce en relecture vers le brouillon, **avec un motif**. LE MOTIF EST OBLIGATOIRE, ET LA BASE LE REFUSE VIDE ELLE AUSSI. Celui qui reprend le document doit savoir ce qui lui est reproché ; un retour muet est une décision qu'on ne peut pas relire six mois plus tard. */
+export interface RetourAuBrouillon {
+  /** Ce qui est reproché à la pièce. Repris dans l'historique des transitions et affiché à celui qui la reprend. */
+  reason: string;
+}
+
 export type SourceTypeDTO =
   | "national_annex"
   | "en_recommended"
   | "national_regulation";
+
+/** Un pas dans le parcours de relecture, horodaté et attribué. */
+export interface Transition {
+  /** Qui a provoqué la transition. Dérivé de la session, jamais du corps de la requête. */
+  actor_id?: string | null;
+  /** L'état quitté. Absent pour la création du brouillon. */
+  from_state?: string | null;
+  occurred_at: string;
+  reason?: string | null;
+  to_state: string;
+}
 
 /** How far a national value has been verified — see TICKET 1.1. */
 export type ValidationStatusDTO =

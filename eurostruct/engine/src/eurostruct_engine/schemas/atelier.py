@@ -17,9 +17,11 @@ mauvaise organisation, où il resterait visible par les mauvaises personnes.
 
 CE QU'AUCUNE DE CES RÉPONSES NE DIT
 ------------------------------------
-« Final », « signable », « validé ». Un calcul enregistré est un calcul
-enregistré. La validation nominative par un ingénieur habilité est un autre
-geste, dans une autre table, et il n'existe pas encore.
+« Signable ». Un calcul enregistré est un calcul enregistré. La validation par
+un ingénieur habilité est un **autre geste, dans une autre table** — celui que
+portent ``AttestationDemande`` et le parcours de livrables plus bas — et ce
+qu'elle enregistre est une attestation métier authentifiée, jamais une
+signature électronique qualifiée.
 """
 
 from __future__ import annotations
@@ -32,13 +34,20 @@ from .common import CountryCode, DesignSituationDTO, QuantityDTO, Strict
 from .ec2_beam import MaterialsDTO, RectangularSectionDTO
 
 __all__ = [
+    "AttestationDemande",
     "CalculDeProjetRequest",
     "CalculEnregistre",
     "CalculResume",
     "HistoriqueCalculs",
+    "ListeLivrables",
     "ListeProjets",
+    "Livrable",
+    "LivrableCreation",
+    "LivrableDetail",
     "Projet",
     "ProjetCreation",
+    "RetourAuBrouillon",
+    "Transition",
 ]
 
 
@@ -238,3 +247,170 @@ class CalculDeProjetRequest(Strict):
         default=None,
         description="Aire des barres réellement disposées. Omise, la "
                     "vérification porte sur l'aire strictement requise.")
+
+
+# =====================================================================
+# LES LIVRABLES ET LEUR PARCOURS DE RELECTURE
+#
+# CE QU'AUCUN DE CES CORPS NE PORTE, ET POURQUOI CHAQUE ABSENCE COMPTE
+# ---------------------------------------------------------------------
+# Ni ``org_id``, ni identité du validateur, ni rôle, ni numéro d'inscription
+# professionnelle, ni empreinte, ni version de moteur, ni identité
+# d'exécution. Tout cela est **dérivé côté serveur** : l'organisation du
+# projet, l'adhésion de l'appelant, et les colonnes gelées du calcul.
+#
+# Un corps qui accepterait ``validator_name`` laisserait signer sous le nom
+# de quelqu'un d'autre ; un corps qui accepterait ``sha256`` laisserait
+# enregistrer l'empreinte d'octets qu'on n'a pas produits. Ces champs ne sont
+# pas « ignorés » : ``Strict`` les refuse par un 422, pour que le client sache
+# que sa valeur n'a aucun effet plutôt que de le croire.
+#
+# CE QUE CES RÉPONSES NE DISENT JAMAIS
+# --------------------------------------
+# Qu'un document est « signé électroniquement ». Ce que le produit enregistre
+# est une **attestation métier authentifiée** : un membre actif, nommé,
+# porteur du rôle de validation, atteste avoir relu ce calcul-là. Le nom est
+# le même ici, dans PostgreSQL et à l'écran.
+# =====================================================================
+
+
+class LivrableCreation(Strict):
+    """Créer un brouillon **depuis un calcul déjà enregistré**.
+
+    UN SEUL CHAMP, ET C'EST TOUT CE QUE LE CLIENT SAIT. Le contenu du document
+    est produit sur le serveur à partir des données gelées du calcul ; sa
+    nature, son nom, ses octets, leur empreinte, leur taille, le contexte
+    normatif, la version du moteur, le build et l'identité d'exécution sont
+    tous dérivés. Il n'y a donc rien d'autre à envoyer.
+
+    ``kind`` N'EST PAS UN CHAMP NON PLUS. Le produit sait produire une note de
+    calcul HTML autonome, et rien d'autre aujourd'hui. Offrir le choix entre
+    huit natures de document dont sept n'existent pas ferait promettre à
+    l'écran des livrables qu'aucune route ne produit.
+    """
+
+    calculation_id: str = Field(
+        description="Le calcul enregistré dont ce livrable est tiré. Il doit "
+                    "appartenir au projet du chemin, avoir abouti, et porter "
+                    "une identité d'exécution vérifiable.")
+
+
+class RetourAuBrouillon(Strict):
+    """Renvoyer une pièce en relecture vers le brouillon, **avec un motif**.
+
+    LE MOTIF EST OBLIGATOIRE, ET LA BASE LE REFUSE VIDE ELLE AUSSI. Celui qui
+    reprend le document doit savoir ce qui lui est reproché ; un retour muet
+    est une décision qu'on ne peut pas relire six mois plus tard.
+    """
+
+    reason: str = Field(
+        min_length=1, max_length=4000,
+        description="Ce qui est reproché à la pièce. Repris dans l'historique "
+                    "des transitions et affiché à celui qui la reprend.")
+
+
+class AttestationDemande(Strict):
+    """Ce que le validateur écrit, et **rien d'autre**.
+
+    NI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION. Les trois sortent de
+    ``organization_members`` sous l'identité du jeton. Les accepter ici
+    donnerait l'illusion qu'ils comptent, alors que PostgreSQL les écrase de
+    toute façon — et l'illusion est pire que l'absence, parce qu'un écran
+    finirait par les afficher.
+
+    NI IDENTIFIANT DE CALCUL, NI EMPREINTE. L'attestation porte sur le calcul
+    du livrable et sur les octets réellement enregistrés ; les faire venir du
+    corps laisserait attester un calcul et en signer un autre.
+    """
+
+    statement: str = Field(
+        min_length=1, max_length=8000,
+        description="Ce que le validateur atteste, dans ses termes. Repris "
+                    "tel quel dans la ligne de validation, horodaté et figé.")
+    reservations: str | None = Field(
+        default=None, max_length=8000,
+        description="Réserves émises par le validateur. Elles font partie de "
+                    "l'attestation et sont conservées avec elle.")
+
+
+class Transition(Strict):
+    """Un pas dans le parcours de relecture, horodaté et attribué."""
+
+    from_state: str | None = Field(
+        default=None,
+        description="L'état quitté. Absent pour la création du brouillon.")
+    to_state: str
+    actor_id: str | None = Field(
+        default=None,
+        description="Qui a provoqué la transition. Dérivé de la session, "
+                    "jamais du corps de la requête.")
+    reason: str | None = None
+    occurred_at: str
+
+
+class Livrable(Strict):
+    """Un livrable, tel que la liste du projet le montre.
+
+    ``state`` EST LA SEULE VÉRITÉ SUR L'ÉTAT. ``is_final`` en est dérivé en
+    base et ne traverse pas jusqu'ici : deux champs pour un même fait finissent
+    par se contredire, et c'est l'écran qui affiche le mauvais.
+    """
+
+    deliverable_id: str
+    calculation_id: str
+    kind: str
+    filename: str
+    media_type: str
+    sha256: str = Field(
+        description="Empreinte des octets réellement enregistrés. La route de "
+                    "téléchargement la revérifie sur ce qu'elle sert.")
+    size_bytes: int = Field(ge=0)
+    state: str = Field(
+        description="brouillon (draft), en relecture (review), validé "
+                    "(validated), émis (final).")
+    revision: int = Field(ge=1)
+    supersedes_id: str | None = None
+    watermark: str | None = Field(
+        default=None,
+        description="Le filigrane RÉELLEMENT apposé sur les octets. Il dit ce "
+                    "qui est vrai du document pour toujours — « PROJET — NON "
+                    "SIGNABLE » — et jamais son état de workflow, qui change.")
+    last_reason: str | None = None
+    engine_version: str
+    engine_build_sha: str | None = None
+    execution_identity: str | None = None
+    validation_id: str | None = None
+    validator_name: str | None = None
+    validated_at: str | None = None
+    generated_at: str
+
+
+class LivrableDetail(Livrable):
+    """Un livrable, son contexte figé, son attestation et son histoire.
+
+    L'HISTORIQUE VIENT DU MÊME APPEL QUE L'ÉTAT. Deux appels séparés
+    pourraient tomber de part et d'autre d'une transition et montrer un état
+    qui ne correspond pas à son journal.
+    """
+
+    inputs_hash: str | None = None
+    ndp_as_of: str | None = None
+    validator_role: str | None = None
+    professional_id: str | None = Field(
+        default=None,
+        description="Numéro d'inscription à l'ordre professionnel, figé au "
+                    "moment de l'attestation depuis l'adhésion.")
+    statement: str | None = None
+    reservations: str | None = None
+    transitions: list[Transition] = Field(default_factory=list)
+    notice: str = Field(
+        description="La mention obligatoire: ce document doit être vérifié et "
+                    "signé par un ingénieur habilité.")
+    mention: str | None = Field(
+        default=None,
+        description="« PROJET — NON SIGNABLE », quand des paramètres "
+                    "nationaux non confirmés ont pu servir.")
+
+
+class ListeLivrables(Strict):
+    deliverables: list[Livrable] = Field(default_factory=list)

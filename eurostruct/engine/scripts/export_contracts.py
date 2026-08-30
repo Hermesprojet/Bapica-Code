@@ -39,12 +39,19 @@ from eurostruct_engine.schemas.autorite import (  # noqa: E402
     AuthorityReviewDraftRequest,
 )
 from eurostruct_engine.schemas.atelier import (  # noqa: E402
+    AttestationDemande,
     CalculDeProjetRequest,
     CalculEnregistre,
     HistoriqueCalculs,
+    ListeLivrables,
     ListeProjets,
+    Livrable,
+    LivrableCreation,
+    LivrableDetail,
     Projet,
     ProjetCreation,
+    RetourAuBrouillon,
+    Transition,
 )
 from eurostruct_engine.schemas.common import (  # noqa: E402
     EngineErrorDTO,
@@ -100,6 +107,19 @@ ROOTS = [
     CalculDeProjetRequest,
     HistoriqueCalculs,
     CalculEnregistre,
+    # LES LIVRABLES ET LEUR PARCOURS DE RELECTURE. L'ecran affiche un etat,
+    # propose des actions, et POSTE trois corps: creer un brouillon, renvoyer
+    # au brouillon avec un motif, attester. Les trois sont volontairement
+    # minces — un identifiant de calcul, un motif, un texte — et c'est
+    # exactement ce que le type genere impose au navigateur: aucun champ pour
+    # nommer une organisation, un validateur, une empreinte ou un etat.
+    LivrableCreation,
+    RetourAuBrouillon,
+    AttestationDemande,
+    Transition,
+    Livrable,
+    LivrableDetail,
+    ListeLivrables,
 ]
 
 TS_OUT = REPO / "packages" / "contracts" / "src" / "generated" / "engine.ts"

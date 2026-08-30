@@ -372,6 +372,24 @@ echo "==> atelier: projet, calcul, historique, reouverture"
 etape "atelier de projet" \
   "$HERE/atelier_projet.sh" "${DB_NAME:0:20}at"
 
+# LE LIVRABLE: DU BROUILLON A L'EMISSION.
+#
+# La machine a etats `draft -> review -> validated -> final` existait depuis
+# 0005 et n'avait AUCUNE porte: le backend authentifie n'atteint que les
+# fonctions qu'on lui declare, et aucune ne touchait `deliverables` ni
+# `validations`. Ce harnais eprouve le parcours entier — octets deposes et
+# RELUS avant d'etre promis, attestation metier authentifiee dont le nom, le
+# role et le numero d'inscription sont derives de l'adhesion, emission qui
+# l'exige, indice suivant pour corriger — plus les refus qui le bordent.
+#
+# IL EST PLUS LOURD QUE LES AUTRES, ET POUR UNE RAISON: une attestation ne peut
+# porter que sur un calcul STRICT abouti, et le mode strict ne s'ouvre que par
+# le quatre-yeux. Le decor confirme donc les parametres par les routes du
+# produit avant de calculer, exactement comme un bureau d'etudes le ferait.
+echo "==> livrable: brouillon, relecture, attestation, emission"
+etape "livrable et validation" \
+  "$HERE/livrable_validation.sh" "${DB_NAME:0:20}lv"
+
 echo "==> quatre-yeux explicite (6.3c)"
 etape "quatre-yeux explicite" \
   "$HERE/authority_four_eyes.sh" "${DB_NAME:0:20}fy"

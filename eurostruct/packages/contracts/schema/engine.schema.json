@@ -1,5 +1,37 @@
 {
   "$defs": {
+    "AttestationDemande": {
+      "additionalProperties": false,
+      "description": "Ce que le validateur écrit, et **rien d'autre**.\n\nNI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION. Les trois sortent de\n``organization_members`` sous l'identité du jeton. Les accepter ici\ndonnerait l'illusion qu'ils comptent, alors que PostgreSQL les écrase de\ntoute façon — et l'illusion est pire que l'absence, parce qu'un écran\nfinirait par les afficher.\n\nNI IDENTIFIANT DE CALCUL, NI EMPREINTE. L'attestation porte sur le calcul\ndu livrable et sur les octets réellement enregistrés ; les faire venir du\ncorps laisserait attester un calcul et en signer un autre.",
+      "properties": {
+        "reservations": {
+          "anyOf": [
+            {
+              "maxLength": 8000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Réserves émises par le validateur. Elles font partie de l'attestation et sont conservées avec elle.",
+          "title": "Reservations"
+        },
+        "statement": {
+          "description": "Ce que le validateur atteste, dans ses termes. Repris tel quel dans la ligne de validation, horodaté et figé.",
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "statement"
+      ],
+      "title": "AttestationDemande",
+      "type": "object"
+    },
     "AuthorityDecisionConsumed": {
       "additionalProperties": false,
       "description": "The decision was spent. Exactly once: a replay is refused.",
@@ -1486,6 +1518,20 @@
       "title": "JournalDTO",
       "type": "object"
     },
+    "ListeLivrables": {
+      "additionalProperties": false,
+      "properties": {
+        "deliverables": {
+          "items": {
+            "$ref": "#/$defs/Livrable"
+          },
+          "title": "Deliverables",
+          "type": "array"
+        }
+      },
+      "title": "ListeLivrables",
+      "type": "object"
+    },
     "ListeProjets": {
       "additionalProperties": false,
       "description": "Les projets des organisations de l'appelant, et rien d'autre.",
@@ -1502,6 +1548,453 @@
         "projects"
       ],
       "title": "ListeProjets",
+      "type": "object"
+    },
+    "Livrable": {
+      "additionalProperties": false,
+      "description": "Un livrable, tel que la liste du projet le montre.\n\n``state`` EST LA SEULE VÉRITÉ SUR L'ÉTAT. ``is_final`` en est dérivé en\nbase et ne traverse pas jusqu'ici : deux champs pour un même fait finissent\npar se contredire, et c'est l'écran qui affiche le mauvais.",
+      "properties": {
+        "calculation_id": {
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "deliverable_id": {
+          "title": "Deliverable Id",
+          "type": "string"
+        },
+        "engine_build_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Build Sha"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "execution_identity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Identity"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "generated_at": {
+          "title": "Generated At",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Reason"
+        },
+        "media_type": {
+          "title": "Media Type",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "sha256": {
+          "description": "Empreinte des octets réellement enregistrés. La route de téléchargement la revérifie sur ce qu'elle sert.",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "state": {
+          "description": "brouillon (draft), en relecture (review), validé (validated), émis (final).",
+          "title": "State",
+          "type": "string"
+        },
+        "supersedes_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supersedes Id"
+        },
+        "validated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validated At"
+        },
+        "validation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validation Id"
+        },
+        "validator_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validator Name"
+        },
+        "watermark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le filigrane RÉELLEMENT apposé sur les octets. Il dit ce qui est vrai du document pour toujours — « PROJET — NON SIGNABLE » — et jamais son état de workflow, qui change.",
+          "title": "Watermark"
+        }
+      },
+      "required": [
+        "deliverable_id",
+        "calculation_id",
+        "kind",
+        "filename",
+        "media_type",
+        "sha256",
+        "size_bytes",
+        "state",
+        "revision",
+        "engine_version",
+        "generated_at"
+      ],
+      "title": "Livrable",
+      "type": "object"
+    },
+    "LivrableCreation": {
+      "additionalProperties": false,
+      "description": "Créer un brouillon **depuis un calcul déjà enregistré**.\n\nUN SEUL CHAMP, ET C'EST TOUT CE QUE LE CLIENT SAIT. Le contenu du document\nest produit sur le serveur à partir des données gelées du calcul ; sa\nnature, son nom, ses octets, leur empreinte, leur taille, le contexte\nnormatif, la version du moteur, le build et l'identité d'exécution sont\ntous dérivés. Il n'y a donc rien d'autre à envoyer.\n\n``kind`` N'EST PAS UN CHAMP NON PLUS. Le produit sait produire une note de\ncalcul HTML autonome, et rien d'autre aujourd'hui. Offrir le choix entre\nhuit natures de document dont sept n'existent pas ferait promettre à\nl'écran des livrables qu'aucune route ne produit.",
+      "properties": {
+        "calculation_id": {
+          "description": "Le calcul enregistré dont ce livrable est tiré. Il doit appartenir au projet du chemin, avoir abouti, et porter une identité d'exécution vérifiable.",
+          "title": "Calculation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "calculation_id"
+      ],
+      "title": "LivrableCreation",
+      "type": "object"
+    },
+    "LivrableDetail": {
+      "additionalProperties": false,
+      "description": "Un livrable, son contexte figé, son attestation et son histoire.\n\nL'HISTORIQUE VIENT DU MÊME APPEL QUE L'ÉTAT. Deux appels séparés\npourraient tomber de part et d'autre d'une transition et montrer un état\nqui ne correspond pas à son journal.",
+      "properties": {
+        "calculation_id": {
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "deliverable_id": {
+          "title": "Deliverable Id",
+          "type": "string"
+        },
+        "engine_build_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Build Sha"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "execution_identity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Identity"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "generated_at": {
+          "title": "Generated At",
+          "type": "string"
+        },
+        "inputs_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Inputs Hash"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Reason"
+        },
+        "media_type": {
+          "title": "Media Type",
+          "type": "string"
+        },
+        "mention": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "« PROJET — NON SIGNABLE », quand des paramètres nationaux non confirmés ont pu servir.",
+          "title": "Mention"
+        },
+        "ndp_as_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ndp As Of"
+        },
+        "notice": {
+          "description": "La mention obligatoire: ce document doit être vérifié et signé par un ingénieur habilité.",
+          "title": "Notice",
+          "type": "string"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Numéro d'inscription à l'ordre professionnel, figé au moment de l'attestation depuis l'adhésion.",
+          "title": "Professional Id"
+        },
+        "reservations": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reservations"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "sha256": {
+          "description": "Empreinte des octets réellement enregistrés. La route de téléchargement la revérifie sur ce qu'elle sert.",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "state": {
+          "description": "brouillon (draft), en relecture (review), validé (validated), émis (final).",
+          "title": "State",
+          "type": "string"
+        },
+        "statement": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statement"
+        },
+        "supersedes_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supersedes Id"
+        },
+        "transitions": {
+          "items": {
+            "$ref": "#/$defs/Transition"
+          },
+          "title": "Transitions",
+          "type": "array"
+        },
+        "validated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validated At"
+        },
+        "validation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validation Id"
+        },
+        "validator_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validator Name"
+        },
+        "validator_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validator Role"
+        },
+        "watermark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le filigrane RÉELLEMENT apposé sur les octets. Il dit ce qui est vrai du document pour toujours — « PROJET — NON SIGNABLE » — et jamais son état de workflow, qui change.",
+          "title": "Watermark"
+        }
+      },
+      "required": [
+        "deliverable_id",
+        "calculation_id",
+        "kind",
+        "filename",
+        "media_type",
+        "sha256",
+        "size_bytes",
+        "state",
+        "revision",
+        "engine_version",
+        "generated_at",
+        "notice"
+      ],
+      "title": "LivrableDetail",
       "type": "object"
     },
     "MaterialsDTO": {
@@ -2428,6 +2921,24 @@
       "title": "ReinforcementChoiceDTO",
       "type": "object"
     },
+    "RetourAuBrouillon": {
+      "additionalProperties": false,
+      "description": "Renvoyer une pièce en relecture vers le brouillon, **avec un motif**.\n\nLE MOTIF EST OBLIGATOIRE, ET LA BASE LE REFUSE VIDE ELLE AUSSI. Celui qui\nreprend le document doit savoir ce qui lui est reproché ; un retour muet\nest une décision qu'on ne peut pas relire six mois plus tard.",
+      "properties": {
+        "reason": {
+          "description": "Ce qui est reproché à la pièce. Repris dans l'historique des transitions et affiché à celui qui la reprend.",
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "RetourAuBrouillon",
+      "type": "object"
+    },
     "SourceTypeDTO": {
       "enum": [
         "national_annex",
@@ -2436,6 +2947,64 @@
       ],
       "title": "SourceTypeDTO",
       "type": "string"
+    },
+    "Transition": {
+      "additionalProperties": false,
+      "description": "Un pas dans le parcours de relecture, horodaté et attribué.",
+      "properties": {
+        "actor_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Qui a provoqué la transition. Dérivé de la session, jamais du corps de la requête.",
+          "title": "Actor Id"
+        },
+        "from_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "L'état quitté. Absent pour la création du brouillon.",
+          "title": "From State"
+        },
+        "occurred_at": {
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "to_state": {
+          "title": "To State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "to_state",
+        "occurred_at"
+      ],
+      "title": "Transition",
+      "type": "object"
     },
     "ValidationStatusDTO": {
       "description": "How far a national value has been verified — see TICKET 1.1.",
