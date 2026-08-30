@@ -39,6 +39,7 @@ from eurostruct_engine.schemas.autorite import (  # noqa: E402
     AuthorityReviewDraftRequest,
 )
 from eurostruct_engine.schemas.atelier import (  # noqa: E402
+    CalculDeProjetRequest,
     CalculEnregistre,
     HistoriqueCalculs,
     ListeProjets,
@@ -93,6 +94,10 @@ ROOTS = [
     ListeProjets,
     Projet,
     ProjetCreation,
+    # LE CALCUL DE PROJET NE NOMME AUCUN REFERENTIEL. Le type genere est ce
+    # qui l'impose au navigateur: pays, region et date n'y figurent pas, donc
+    # l'ecran ne peut pas les envoyer meme par erreur.
+    CalculDeProjetRequest,
     HistoriqueCalculs,
     CalculEnregistre,
 ]

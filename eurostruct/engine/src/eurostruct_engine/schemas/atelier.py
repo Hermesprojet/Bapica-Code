@@ -28,9 +28,11 @@ from typing import Any
 
 from pydantic import Field
 
-from .common import CountryCode, Strict
+from .common import CountryCode, DesignSituationDTO, QuantityDTO, Strict
+from .ec2_beam import MaterialsDTO, RectangularSectionDTO
 
 __all__ = [
+    "CalculDeProjetRequest",
     "CalculEnregistre",
     "CalculResume",
     "HistoriqueCalculs",
@@ -54,6 +56,11 @@ class Projet(Strict):
     name: str
     reference: str | None = None
     country: CountryCode
+    region: str | None = Field(
+        default=None,
+        description="Région sous-nationale quand elle change les paramètres "
+                    "(Wallonie / Vlaanderen / Bruxelles, Land, Comunidad "
+                    "autónoma). Figée à la création, comme le pays et la date.")
     ndp_as_of: str = Field(
         description="Date de référence du projet (ISO 8601). Elle résout "
                     "l'édition d'Annexe Nationale en vigueur, norme par "
@@ -81,6 +88,11 @@ class ProjetCreation(Strict):
     name: str = Field(min_length=1, max_length=200)
     reference: str | None = Field(default=None, max_length=100)
     country: CountryCode
+    region: str | None = Field(
+        default=None, max_length=100,
+        description="Région sous-nationale, quand elle change les paramètres "
+                    "nationaux. Elle se fige à la création avec le pays et la "
+                    "date: un calcul ne pourra plus en désigner une autre.")
     ndp_as_of: str = Field(
         description="Date de référence, ISO 8601 (AAAA-MM-JJ). Elle résout "
                     "l'édition d'Annexe Nationale en vigueur et se fige à la "
@@ -155,3 +167,55 @@ class CalculEnregistre(Strict):
                     "paramètres nationaux non confirmés ont pu servir. Bien "
                     "plus forte que `notice`: celle-ci dit « pas encore "
                     "signé », celle-là « pas signable du tout ».")
+
+
+class CalculDeProjetRequest(Strict):
+    """Un calcul de flexion **sur un projet**. Il ne nomme aucun référentiel.
+
+    CE QU'IL NE PORTE PAS, ET POURQUOI CHAQUE ABSENCE COMPTE
+    ---------------------------------------------------------
+    ``project_id``
+        Il est dans le chemin. Le laisser aussi dans le corps donnerait deux
+        sources pour une même question, et la note pourrait nommer un dossier
+        autre que celui où elle est rangée.
+
+    ``country``, ``region``, ``as_of``
+        Ils décident **quelle édition d'Annexe Nationale s'applique**, donc
+        quelles valeurs entrent dans les formules. Ils sont figés sur le
+        projet à sa création. Les accepter ici laissait — mesuré — un calcul
+        français aboutir sur un projet belge, avec une ligne enregistrée qui
+        se contredisait : ``request.country = FR`` et
+        ``calculations.ndp_as_of`` repris du projet.
+
+    ``Strict`` INTERDIT LES CHAMPS SUPPLÉMENTAIRES, si bien qu'un client qui
+    envoie encore l'un des quatre reçoit un **422** — une réponse — plutôt
+    qu'un champ silencieusement ignoré. Écraser aurait marché tant qu'une
+    seule route existe ; refuser dit au client que son champ n'a pas d'effet.
+
+    CE QU'IL PORTE, ET QUI EST BIEN À LUI
+    --------------------------------------
+    La géométrie, les matériaux, la situation de projet, le moment, le
+    ferraillage éventuellement retenu, la provenance des entrées, et
+    ``strict_ndp``. Tout cela change d'un calcul à l'autre par nature.
+    """
+
+    element: str = Field(
+        default="poutre", max_length=100,
+        description="Repère de l'élément, tel qu'il apparaîtra sur la note.")
+    strict_ndp: bool = Field(
+        default=True,
+        description="Quand vrai, un paramètre national non confirmé provoque "
+                    "un refus. Exigé pour tout livrable destiné à être signé.")
+
+    section: RectangularSectionDTO
+    materials: MaterialsDTO
+    situation: DesignSituationDTO = DesignSituationDTO.PERSISTENT
+
+    M_Ed: QuantityDTO = Field(
+        description="Moment de calcul issu de la combinaison EN 1990 "
+                    "déterminante. Le moteur ne construit pas les "
+                    "combinaisons.")
+    A_s_provided: QuantityDTO | None = Field(
+        default=None,
+        description="Aire des barres réellement disposées. Omise, la "
+                    "vérification porte sur l'aire strictement requise.")

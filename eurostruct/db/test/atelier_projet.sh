@@ -234,7 +234,8 @@ export EUROSTRUCT_ATELIER_ACTEUR_B="$ACTEUR_B"
 export EUROSTRUCT_ATELIER_ORG_A="$ORG_A"
 export EUROSTRUCT_ATELIER_ORG_B="$ORG_B"
 
-python3 -m pytest "$RACINE/api/tests/test_atelier_postgres.py" -q \
+python3 -m pytest "$RACINE/api/tests/test_atelier_postgres.py" \
+        "$RACINE/api/tests/test_contexte_normatif_du_projet.py" \
         -p no:cacheprovider --no-header
 CODE=$?
 unset EUROSTRUCT_E2E_DSN EUROSTRUCT_E2E_DSN_OBS \

@@ -167,6 +167,21 @@ export interface CalcStepDTO {
   value: number;
 }
 
+/** Un calcul de flexion **sur un projet**. Il ne nomme aucun référentiel. CE QU'IL NE PORTE PAS, ET POURQUOI CHAQUE ABSENCE COMPTE --------------------------------------------------------- ``project_id`` Il est dans le chemin. Le laisser aussi dans le corps donnerait deux sources pour une même question, et la note pourrait nommer un dossier autre que celui où elle est rangée. ``country``, ``region``, ``as_of`` Ils décident **quelle édition d'Annexe Nationale s'applique**, donc quelles valeurs entrent dans les formules. Ils sont figés sur le projet à sa création. Les accepter ici laissait — mesuré — un calcul français aboutir sur un projet belge, avec une ligne enregistrée qui se contredisait : ``request.country = FR`` et ``calculations.ndp_as_of`` repris du projet. ``Strict`` INTERDIT LES CHAMPS SUPPLÉMENTAIRES, si bien qu'un client qui envoie encore l'un des quatre reçoit un **422** — une réponse — plutôt qu'un champ silencieusement ignoré. Écraser aurait marché tant qu'une seule route existe ; refuser dit au client que son champ n'a pas d'effet. CE QU'IL PORTE, ET QUI EST BIEN À LUI -------------------------------------- La géométrie, les matériaux, la situation de projet, le moment, le ferraillage éventuellement retenu, la provenance des entrées, et ``strict_ndp``. Tout cela change d'un calcul à l'autre par nature. */
+export interface CalculDeProjetRequest {
+  /** Aire des barres réellement disposées. Omise, la vérification porte sur l'aire strictement requise. */
+  A_s_provided?: QuantityDTO | null;
+  /** Moment de calcul issu de la combinaison EN 1990 déterminante. Le moteur ne construit pas les combinaisons. */
+  M_Ed: QuantityDTO;
+  /** Repère de l'élément, tel qu'il apparaîtra sur la note. */
+  element?: string;
+  materials: MaterialsDTO;
+  section: RectangularSectionDTO;
+  situation?: DesignSituationDTO;
+  /** Quand vrai, un paramètre national non confirmé provoque un refus. Exigé pour tout livrable destiné à être signé. */
+  strict_ndp?: boolean;
+}
+
 /** Un calcul rouvert : les MÊMES entrées, les MÊMES résultats. ``request`` est la requête exacte reçue par le moteur, pas une reconstruction. ``inputs_hash`` en est l'empreinte, et permet à l'écran de dire « ce sont bien ces entrées-là » sans faire confiance au transport. ``ndp_snapshot`` est l'état du portillon normatif **au moment du calcul**. Il change quand une confirmation arrive ou est révoquée ; le relire aujourd'hui donnerait l'état d'aujourd'hui pour un calcul d'hier. */
 export interface CalculEnregistre {
   calculation_id: string;
@@ -423,6 +438,8 @@ export interface Projet {
   organization_name: string;
   project_id: string;
   reference?: string | null;
+  /** Région sous-nationale quand elle change les paramètres (Wallonie / Vlaanderen / Bruxelles, Land, Comunidad autónoma). Figée à la création, comme le pays et la date. */
+  region?: string | null;
 }
 
 /** Ce qu'un ingénieur saisit pour ouvrir un projet. ``ndp_as_of`` N'EST PAS DÉCORATIVE. Elle résout l'édition d'Annexe Nationale en vigueur, norme par norme, et se fige à la création : sans elle, le référentiel dépendrait de la date à laquelle le calcul est lancé — c'est-à-dire du hasard. */
@@ -434,6 +451,8 @@ export interface ProjetCreation {
   /** Facultatif, et jamais cru sur parole: la base le confronte aux appartenances. Nécessaire uniquement quand l'appelant appartient à plusieurs organisations. */
   organization_id?: string | null;
   reference?: string | null;
+  /** Région sous-nationale, quand elle change les paramètres nationaux. Elle se fige à la création avec le pays et la date: un calcul ne pourra plus en désigner une autre. */
+  region?: string | null;
 }
 
 /** Where a value came from. ``document_extraction`` values must already have been confirmed by a human before the orchestrator submits them: ``confirmed_by`` and ``confirmed_at`` are how the engine's output can state that the gate was passed. */

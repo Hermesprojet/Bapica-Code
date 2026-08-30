@@ -38,6 +38,7 @@ from eurostruct_engine.exceptions import EurostructEngineError
 from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
 from eurostruct_engine.ndp.postgres_provider import AuthentificationRequise
 from eurostruct_engine.schemas.atelier import (
+    CalculDeProjetRequest,
     CalculEnregistre,
     CalculResume,
     HistoriqueCalculs,
@@ -136,6 +137,7 @@ def creer(corps: ProjetCreation,
             reference=corps.reference,
             country=corps.country.value if hasattr(corps.country, "value")
             else str(corps.country),
+            region=corps.region,
             ndp_as_of=corps.ndp_as_of,
             organization_id=corps.organization_id,
         )
@@ -164,42 +166,56 @@ def creer(corps: ProjetCreation,
               response_model=CalculEnregistre, status_code=201)
 def calculer_et_enregistrer(
     project_id: str,
-    requete: Ec2BeamFlexureRequest,
+    corps: CalculDeProjetRequest,
     ouvert: Any = Depends(ouvrir_atelier),
     lecture: Any = Depends(provider_de_lecture),
 ) -> CalculEnregistre:
-    """Lance le calcul, puis l'enregistre **entièrement ou pas du tout**.
+    """Lance le calcul **dans le référentiel du projet**, puis l'enregistre.
+
+    LE CONTEXTE NORMATIF NE VIENT PAS DU CORPS, ET C'EST LE CORRECTIF.
+    ``CalculDeProjetRequest`` ne porte ni ``project_id``, ni ``country``, ni
+    ``region``, ni ``as_of`` : les quatre sont lus **sur le projet**, chargé
+    sous l'identité authentifiée, et la requête moteur est construite ici.
+
+    Mesuré avant : un corps annonçant ``country=FR`` et ``as_of=2030-01-01``
+    sur un projet belge daté de 2024 obtenait un **201**. Le moteur appliquait
+    le référentiel français ; PostgreSQL écrivait ``ndp_as_of`` depuis le
+    projet. La ligne enregistrée se contredisait elle-même, et c'est elle
+    qu'un audit lit des années plus tard.
+
+    LA GARANTIE N'EST PAS ICI, ELLE EST DOUBLÉE ICI.
+    ``project_calculation_record`` confronte elle-même les quatre champs au
+    projet et refuse l'écart (0019). Cette route ne peut pas produire une
+    requête divergente ; la primitive garantit que la prochaine ne le pourra
+    pas non plus.
 
     LE MOTEUR EST LE MÊME, ET IL N'EST PAS RÉÉCRIT. ``run_ec2_beam_flexure``
-    est appelé exactement comme par la route exploratoire : cette route ajoute
-    la persistance, pas une seconde façon de calculer.
-
-    ``project_id`` VIENT DU CHEMIN, PAS DU CORPS. Le champ ``project_id`` de la
-    requête moteur est un **libellé de note** — c'est là que vivait
-    ``DEMO-001``. Il est écrasé par l'identifiant réel avant le calcul, si bien
-    qu'aucune note ne peut porter un projet différent de celui où elle est
-    enregistrée.
+    est appelé exactement comme par la route exploratoire.
 
     UN REFUS EST ENREGISTRÉ COMME REFUS. Le mode strict qui refuse faute de
     paramètre national confirmé n'est pas une panne : c'est une réponse du
-    moteur. Elle est écrite avec ``status='refused'`` et son motif, puis rendue
-    en **422**. L'omettre ferait disparaître de l'historique exactement les
-    calculs qu'un audit cherche ; la ranger en succès serait pire.
+    moteur. Elle est écrite avec ``status='refused'`` et son motif structuré,
+    puis rendue en **422**.
     """
-    # L'IDENTIFIANT REEL REMPLACE LE LIBELLE, AVANT LE CALCUL. `Ec2BeamFlexure
-    # Request` est `frozen=True`: on reconstruit plutôt que de muter, ce qui
-    # garantit aussi que la requête enregistrée est celle qui a servi.
-    requete = requete.model_copy(update={"project_id": project_id})
-    empreinte = _empreinte_des_entrees(requete)
     jeton = _jeton_de(ouvert)
-    strict = bool(requete.strict_ndp)
+
+    # LE PROJET D'ABORD, ET SOUS L'IDENTITE AUTHENTIFIEE. Il porte le
+    # referentiel; le charger avant de calculer evite de faire tourner le
+    # moteur pour un projet qu'on n'a pas le droit de lire.
+    try:
+        projet = _projet_de(ouvert, jeton, project_id)
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        ouvert.fermer()
+        raise _refus(cause) from cause
+
+    requete = _requete_moteur(projet, corps)
+    empreinte = _empreinte_des_entrees(requete)
+    strict = bool(corps.strict_ndp)
 
     # LE REFUS DU MOTEUR EST `EurostructEngineError`, PAS `ConfirmationDomain
-    # Error` — et la premiere redaction n'attrapait que la seconde. Mesure du
-    # jour: le refus strict traversait la route sans etre enregistre, le
-    # gestionnaire global rendait un 422 parfaitement correct, et l'historique
-    # restait vide. Un refus qui ne laisse pas de trace est un refus que
-    # l'audit ne verra jamais.
+    # Error`. Mesure d'un lot precedent: n'attraper que la seconde laissait le
+    # refus strict traverser sans etre enregistre — un 422 parfaitement
+    # correct, et un historique vide.
     refus: EurostructEngineError | None = None
     reponse = None
     try:
@@ -211,13 +227,13 @@ def calculer_et_enregistrer(
         if lecture is not None:
             lecture.fermer()
 
+    # LE CORPS ENREGISTRE EST L'OBJET MEME QUI A SERVI, pas une
+    # reconstruction: `charge` sort de `requete`, apres l'appel au moteur.
     charge = requete.model_dump(mode="json")
     try:
         if refus is not None:
             # LE MOTIF ENREGISTRE EST CELUI QUE LE CLIENT RECOIT, octet pour
             # octet: `error_of` est la seule traduction, et elle sert aux deux.
-            # Deux redactions du meme refus divergeraient, et c'est celle de la
-            # base qu'un audit lirait des annees plus tard.
             ouvert.atelier.enregistrer_calcul(
                 jeton, project_id=project_id, status="refused",
                 inputs_hash=empreinte, strict_ndp=strict,
@@ -229,36 +245,26 @@ def calculer_et_enregistrer(
             # ENREGISTRE D'ABORD, RENDU ENSUITE. Rendre le 422 avant d'ecrire
             # perdrait la trace a la premiere deconnexion du client — et c'est
             # precisement sur un refus qu'un client abandonne.
-            #
-            # L'EXCEPTION EST RELEVEE TELLE QUELLE: le gestionnaire global rend
-            # le meme corps que la route exploratoire, avec `preflight` et la
-            # liste des parametres bloquants. La retraduire ici donnerait deux
-            # formes de refus pour un seul moteur.
             raise refus
 
-        corps = reponse.model_dump(mode="json")
+        corps_moteur = reponse.model_dump(mode="json")
         identifiant = ouvert.atelier.enregistrer_calcul(
             jeton, project_id=project_id, status="succeeded",
             inputs_hash=empreinte, strict_ndp=strict,
-            engine_version=corps["engine_version"],
+            engine_version=corps_moteur["engine_version"],
             request=charge,
-            ndp_snapshot=corps.get("ndp"),
+            ndp_snapshot=corps_moteur.get("ndp"),
             # `results.payload` PORTE LE DOCUMENT, `verifications` L'INDEX.
-            #
-            # Les deux existent et aucun n'est redondant. La table est ce qui
-            # rend « quels calculs ne passent pas » interrogeable en SQL —
-            # l'index `(status, utilisation desc)` de 0001 est la pour cela.
-            # Le payload est le rapport TEL QUE LE MOTEUR L'A PRODUIT, avec
-            # la reference citable de chaque clause, que la table ne porte
-            # pas: la recomposer a l'affichage ferait dire a l'ecran autre
-            # chose que ce qui ira dans la note.
+            # Les deux existent et aucun n'est redondant: la table rend « quels
+            # calculs ne passent pas » interrogeable en SQL, le payload porte
+            # la reference CITABLE de chaque clause, que la table n'a pas.
             result={
-                "element": corps.get("element"),
-                "result": corps.get("result"),
-                "verification": corps.get("verification"),
+                "element": corps_moteur.get("element"),
+                "result": corps_moteur.get("result"),
+                "verification": corps_moteur.get("verification"),
             },
-            journal=corps.get("journal"),
-            verifications=_verifications_a_plat(corps.get("verification")),
+            journal=corps_moteur.get("journal"),
+            verifications=_verifications_a_plat(corps_moteur.get("verification")),
         )
         relu = ouvert.atelier.rouvrir_calcul(
             jeton, project_id=project_id, calculation_id=identifiant)
@@ -314,6 +320,52 @@ def rouvrir(project_id: str, calculation_id: str,
 # ===========================================================================
 # CE QUI SERT AUX CINQ, ET QUI N'EST PAS UNE ROUTE
 # ===========================================================================
+def _projet_de(ouvert: Any, jeton: str, project_id: str) -> dict[str, Any]:
+    """Le projet, sous l'identité authentifiée. Ou un refus qui ne dit rien.
+
+    IL PASSE PAR LA LISTE, ET C'EST VOULU. ``project_workspace_list()`` filtre
+    déjà sur les appartenances : chercher le projet dedans donne le même refus
+    — « introuvable » — qu'il n'existe pas ou qu'il appartienne à une autre
+    organisation. Une lecture directe par identifiant demanderait une seconde
+    primitive, donc une seconde règle de visibilité, et c'est toujours la plus
+    faible qui finit par décider.
+    """
+    for p in ouvert.atelier.projets(jeton):
+        if p["project_id"] == project_id:
+            return p
+    raise ConfirmationDomainError(
+        "projet introuvable ou hors de vos organisations."
+    )
+
+
+def _requete_moteur(projet: dict[str, Any],
+                    corps: CalculDeProjetRequest) -> Ec2BeamFlexureRequest:
+    """La requête moteur : la matière vient du corps, le référentiel du projet.
+
+    LES QUATRE CHAMPS NORMATIFS SONT ÉCRITS ICI, ET NULLE PART AILLEURS.
+    ``project_id``, ``country``, ``region`` et ``as_of`` sortent du projet
+    chargé en base. Aucun n'existe dans ``CalculDeProjetRequest`` : il n'y a
+    donc aucun endroit d'où un client pourrait les faire venir.
+
+    ``region`` VOYAGE TELLE QUELLE, ``None`` COMPRIS. La primitive compare la
+    région de la requête à celle du projet avec ``is distinct from`` : les
+    normaliser différemment ici ferait refuser des calculs corrects.
+    """
+    return Ec2BeamFlexureRequest(
+        project_id=projet["project_id"],
+        country=projet["country"],
+        region=projet.get("region"),
+        as_of=projet["ndp_as_of"],
+        element=corps.element,
+        strict_ndp=corps.strict_ndp,
+        section=corps.section,
+        materials=corps.materials,
+        situation=corps.situation,
+        M_Ed=corps.M_Ed,
+        A_s_provided=corps.A_s_provided,
+    )
+
+
 def _jeton_de(ouvert: Any) -> str:
     """Le jeton porteur de la requête courante.
 

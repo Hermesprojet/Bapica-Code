@@ -27,7 +27,7 @@ import {
 import {
   calculerEtEnregistrer, creerProjet, historiqueDuProjet, listerProjets,
   rouvrirCalcul,
-  type CalculEnregistre, type Projet,
+  type CalculDeProjetRequest, type CalculEnregistre, type Projet,
 } from "@/lib/atelier";
 import type { CalculResume } from "@contracts/generated/engine";
 import { FournisseurAuth, useAuth } from "@/lib/authentification";
@@ -101,6 +101,16 @@ function Ecran() {
   //: consommation incremente pour que le bandeau redemande.
   const [revision, setRevision] = useState(0);
 
+  //: LE REFERENTIEL EFFECTIF. Avec un projet, il vient du projet — et de lui
+  //: seul. Le selecteur de pays du formulaire ne decide plus rien: il est
+  //: verrouille, et sa valeur affichee est celle du dossier.
+  //:
+  //: LES DEUX BANDEAUX LE SUIVENT. Le plan de charge NDP et les decisions
+  //: d'autorite portaient sur `champs.pays`: un ingenieur travaillant sur un
+  //: projet belge pouvait confirmer des parametres francais depuis le meme
+  //: ecran, et lire l'etat d'un referentiel qui n'etait pas le sien.
+  const paysEffectif: Pays = projet ? (projet.country as Pays) : champs.pays;
+
   const majuscule = (k: keyof Champs) => (e: { target: { value: string } }) =>
     setChamps((c) => ({ ...c, [k]: e.target.value }));
 
@@ -109,21 +119,10 @@ function Ecran() {
   const changerPays = (e: { target: { value: string } }) =>
     setChamps((c) => ({ ...c, pays: e.target.value as Pays }));
 
-  /**
-   * La requête, telle que le moteur la recevra.
-   *
-   * `project_id` PORTE LE PROJET RÉEL QUAND IL Y EN A UN. Sans projet, c'est
-   * un repère de note exploratoire — et il est nommé comme tel, plutôt que
-   * `DEMO-001`, qui ressemblait à un identifiant et n'en était pas un. Sur la
-   * route de l'atelier, le serveur l'écrase de toute façon par celui du
-   * chemin: aucune note ne peut porter un projet différent de celui où elle
-   * est enregistrée.
-   */
-  function requeteCourante(): Ec2BeamFlexureRequest {
+  /** La matière du calcul : géométrie, matériaux, moment. Aucun référentiel. */
+  function matiere() {
     return {
-      project_id: projet?.project_id ?? "exploratoire",
       element: champs.element,
-      country: champs.pays,
       strict_ndp: champs.strict,
       M_Ed: { value: Number(champs.M_Ed), unit: "kN*m" },
       section: {
@@ -135,12 +134,36 @@ function Ecran() {
     };
   }
 
+  /**
+   * La requête EXPLORATOIRE. Elle nomme son référentiel, parce qu'aucun projet
+   * ne le fixe : c'est une aide au dimensionnement, et rien n'en est écrit.
+   *
+   * `project_id` y est un repère de note — nommé « exploratoire », plutôt que
+   * `DEMO-001` qui ressemblait à un identifiant et n'en était pas un.
+   */
+  function requeteExploratoire(): Ec2BeamFlexureRequest {
+    return { project_id: "exploratoire", country: champs.pays, ...matiere() };
+  }
+
+  /**
+   * Le corps du calcul DE PROJET. Il ne peut pas nommer un référentiel.
+   *
+   * Le type généré ne porte ni `project_id`, ni `country`, ni `region`, ni
+   * `as_of` : les quatre viennent du projet, lus côté serveur. Mesuré avant ce
+   * verrou : un corps annonçant `country=FR` et `as_of=2030-01-01` sur un
+   * projet belge daté de 2024 obtenait un 201, et la ligne enregistrée se
+   * contredisait.
+   */
+  function corpsDeProjet(): CalculDeProjetRequest {
+    return matiere();
+  }
+
   /** Calcul EXPLORATOIRE. Rien n'est écrit, et l'écran le dit. */
   async function soumettre(e: React.FormEvent) {
     e.preventDefault();
     setEnCours(true);
     setIssue(null);
-    setIssue(await verifierFlexion(requeteCourante()));
+    setIssue(await verifierFlexion(requeteExploratoire()));
     setEnCours(false);
   }
 
@@ -155,10 +178,9 @@ function Ecran() {
     if (!projet) return;
     setEnCours(true);
     setIssue(null);
-    const requete = requeteCourante();
     try {
       const calcul = await calculerEtEnregistrer(
-        auth.porteur, projet.project_id, requete);
+        auth.porteur, projet.project_id, corpsDeProjet());
       setIssue(issueDepuisEnregistre(calcul));
     } catch (cause) {
       setIssue(issueDepuisErreur(cause));
@@ -180,9 +202,9 @@ function Ecran() {
       <ConfigurationManquante />
       <Connexion />
       <Atelier projet={projet} surSelection={setProjet} />
-      <DecisionsAutorite pays={champs.pays}
+      <DecisionsAutorite pays={paysEffectif}
                          surConsommation={() => setRevision((n) => n + 1)} />
-      <Referentiel pays={champs.pays} revision={revision} />
+      <Referentiel pays={paysEffectif} revision={revision} />
 
       <form onSubmit={soumettre}>
         <fieldset>
@@ -224,13 +246,37 @@ function Ecran() {
             </div>
             <div>
               <label htmlFor="pays">Pays</label>
-              <select id="pays" value={champs.pays} onChange={changerPays}>
+              {/* VERROUILLE SUR LE PROJET. Le pays, la région et la date de
+                  référence désignent ensemble l'édition d'Annexe Nationale
+                  applicable: ils se figent à la création du projet, et aucun
+                  calcul du dossier ne peut en désigner d'autres. Le champ
+                  reste VISIBLE — masquer le référentiel appliqué serait pire
+                  que de le montrer inerte. */}
+              <select id="pays" value={paysEffectif} onChange={changerPays}
+                      disabled={!!projet}
+                      title={projet
+                        ? "Figé sur le projet: le référentiel d'un dossier ne "
+                          + "change pas d'un calcul à l'autre."
+                        : undefined}>
                 <option value="BE">Belgique</option>
                 <option value="FR">France</option>
                 <option value="ES">Espagne</option>
                 <option value="DE">Allemagne</option>
               </select>
             </div>
+            {projet && (
+              <div>
+                <label htmlFor="ctx">Référentiel du projet</label>
+                <input id="ctx" readOnly value={
+                  `${projet.country}`
+                  + `${projet.region ? " — " + projet.region : ""}`
+                  + ` — ${projet.ndp_as_of}`} />
+                <span className="aide">
+                  Figé à la création. Il résout l&apos;édition
+                  d&apos;Annexe Nationale en vigueur.
+                </span>
+              </div>
+            )}
             <div>
               <label htmlFor="element">Repère</label>
               <input id="element" value={champs.element}
@@ -375,6 +421,7 @@ function Atelier({ projet, surSelection }: {
   const [ouvrirCreation, setOuvrirCreation] = useState(false);
   const [nom, setNom] = useState("");
   const [reference, setReference] = useState("");
+  const [region, setRegion] = useState("");
   const [pays, setPays] = useState<Pays>("BE");
   const [dateRef, setDateRef] = useState(
     () => new Date().toISOString().slice(0, 10));
@@ -406,6 +453,10 @@ function Atelier({ projet, surSelection }: {
     try {
       const cree = await creerProjet(auth.porteur, {
         name: nom, reference: reference || null, country: pays,
+        // LA CHAINE VIDE N'EST PAS UNE REGION. `null` et `""` se compareraient
+        // differemment au contexte du calcul, et la base refuserait alors des
+        // calculs corrects.
+        region: region.trim() || null,
         ndp_as_of: dateRef, organization_id: null,
       });
       setProjets((liste) => [cree, ...(liste ?? [])]);
@@ -413,6 +464,7 @@ function Atelier({ projet, surSelection }: {
       setOuvrirCreation(false);
       setNom("");
       setReference("");
+      setRegion("");
     } catch (cause) {
       setErreur(String(cause));
     } finally {
@@ -452,7 +504,9 @@ function Atelier({ projet, surSelection }: {
 
       {projet && (
         <p className="aide">
-          {projet.organization_name} — référentiel figé au {projet.ndp_as_of}.
+          {projet.organization_name} — {projet.country}
+          {projet.region ? ` / ${projet.region}` : ""}, référentiel figé au
+          {" "}{projet.ndp_as_of}.
         </p>
       )}
 
@@ -478,6 +532,15 @@ function Atelier({ projet, surSelection }: {
                 <option value="ES">Espagne</option>
                 <option value="DE">Allemagne</option>
               </select>
+            </div>
+            <div>
+              <label htmlFor="p-region">Région</label>
+              <input id="p-region" value={region}
+                     onChange={(e) => setRegion(e.target.value)} />
+              <span className="aide">
+                Facultative. Elle change les paramètres nationaux là où ils
+                sont régionalisés (Wallonie, Land, Comunidad autónoma).
+              </span>
             </div>
             <div>
               <label htmlFor="p-date">Date de référence</label>

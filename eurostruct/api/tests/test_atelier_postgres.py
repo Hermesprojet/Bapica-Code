@@ -161,15 +161,13 @@ def _requete_de_calcul(strict: bool = False) -> dict:
     confirme sur cette base neuve, et le mode strict refuserait — ce qui est
     le comportement JUSTE, et fait l'objet de son propre cas.
 
-    ``project_id`` EST DELIBEREMENT FAUX ICI. La route doit l'ecraser par
-    l'identifiant du chemin: si elle ne le faisait pas, la note porterait un
-    projet different de celui ou elle est enregistree, et le cas
-    `test_le_project_id_du_corps_ne_survit_pas` le verrait.
+    LE CORPS NE NOMME AUCUN REFERENTIEL. Ni `project_id`, ni `country`, ni
+    `region`, ni `as_of`: les quatre sont figes sur le projet, et le contrat
+    du calcul de projet les refuse. C'est ce que
+    `test_contexte_normatif_du_projet.py` etablit champ par champ.
     """
     return {
-        "project_id": "DEMO-001",
         "element": "P1",
-        "country": "BE",
         "strict_ndp": strict,
         "section": {"b": {"value": 300.0, "unit": "mm"},
                     "h": {"value": 500.0, "unit": "mm"},
@@ -310,12 +308,12 @@ def test_un_calcul_enregistre_porte_tout_ce_qui_permet_de_le_relire(
     assert nb_ver >= 1, "aucune verification: le calcul est enregistre a moitie"
 
 
-def test_le_project_id_du_corps_ne_survit_pas(client, jeton):
-    """« DEMO-001 » N'A PLUS AUCUN EFFET.
+def test_le_project_id_vient_du_chemin_et_de_lui_seul(client, jeton):
+    """« DEMO-001 » N'A PLUS AUCUN ENDROIT D'OU VENIR.
 
-    Le champ `project_id` de la requete moteur est un libelle de note. La route
-    l'ecrase par l'identifiant du chemin AVANT le calcul: sans cela, une note
-    porterait un projet different de celui ou elle est enregistree.
+    Le corps ne porte plus `project_id`: la requete moteur le recoit du
+    PROJET charge en base. Une note ne peut donc pas nommer un dossier autre
+    que celui ou elle est rangee.
     """
     projet = _projet_neuf(client, jeton, ACTEUR_A, "FICTIF — libelle")
     r = client.post(

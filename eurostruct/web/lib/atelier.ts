@@ -23,8 +23,8 @@
  * monde — chacun d'eux porte le jeton, et le serveur en tire l'identité.
  */
 import type {
+  CalculDeProjetRequest,
   CalculEnregistre,
-  Ec2BeamFlexureRequest,
   HistoriqueCalculs,
   ListeProjets,
   Projet,
@@ -33,6 +33,7 @@ import type {
 import { appelProtege, type PorteurDeJeton } from "@/lib/transport";
 
 export type {
+  CalculDeProjetRequest,
   CalculEnregistre,
   HistoriqueCalculs,
   ListeProjets,
@@ -85,13 +86,15 @@ export async function creerProjet(
  * sauvegardé, et un client pourrait enregistrer des nombres que le moteur n'a
  * jamais produits.
  *
- * `project_id` DANS LE CORPS EST UN LIBELLÉ DE NOTE, et le serveur l'écrase
- * par celui du chemin. C'est là que vivait `DEMO-001`.
+ * LE CORPS NE NOMME AUCUN RÉFÉRENTIEL, et le type l'impose : ni `project_id`,
+ * ni `country`, ni `region`, ni `as_of`. Les quatre sont figés sur le projet
+ * et lus côté serveur. L'écran ne peut donc pas les envoyer, même par erreur —
+ * et s'il le tentait, le contrat `extra="forbid"` répondrait 422.
  */
 export async function calculerEtEnregistrer(
   porteur: PorteurDeJeton,
   projectId: string,
-  requete: Ec2BeamFlexureRequest,
+  requete: CalculDeProjetRequest,
 ): Promise<CalculEnregistre> {
   const enregistre = await appelProtege<CalculEnregistre>(
     `/v1/projects/${encodeURIComponent(projectId)}/calculations/ec2/beam-flexure`,

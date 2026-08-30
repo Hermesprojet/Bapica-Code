@@ -140,6 +140,7 @@ class PostgresAtelier:
                     "name": ligne["name"],
                     "reference": ligne["reference"],
                     "country": ligne["country"],
+                    "region": ligne["region"],
                     "ndp_as_of": _texte(ligne["ndp_as_of"]),
                     "created_at": _texte(ligne["created_at"]),
                     "calculation_count": int(ligne["calculation_count"]),
@@ -148,19 +149,23 @@ class PostgresAtelier:
             ]
 
     def creer_projet(self, preuve: Any, *, name: str, reference: str | None,
-                     country: str, ndp_as_of: str,
+                     country: str, ndp_as_of: str, region: str | None = None,
                      organization_id: str | None = None) -> str:
         """Crée un projet, dans une organisation de l'appelant.
 
         ``organization_id`` est confronté aux appartenances par la primitive.
         Ce n'est pas une affirmation qu'on croit : c'est un choix parmi celles
         de l'appelant, et la base refuse tout autre.
+
+        ``region`` SE FIGE AVEC LE PAYS ET LA DATE. Les trois ensemble
+        désignent l'édition d'Annexe Nationale applicable ; aucun calcul du
+        projet ne pourra en désigner d'autres.
         """
         with RefusSqlTraduits(), self._unite(preuve) as u:
             u.executer(
                 "select project_workspace_create("
-                "%s, %s, %s::country_code, %s::date, %s::uuid)",
-                (name, reference, country, ndp_as_of, organization_id),
+                "%s, %s, %s::country_code, %s::date, %s::uuid, %s)",
+                (name, reference, country, ndp_as_of, organization_id, region),
             )
             ligne = u.curseur.fetchone()
             if not ligne or not ligne[0]:
