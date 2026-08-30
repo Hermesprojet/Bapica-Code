@@ -158,6 +158,30 @@ jobs:
       - name: Pilote PostgreSQL (contrat du provider)
         run: pip install psycopg2-binary
 
+      # LA TRANCHE APPLICATIVE, PARCE QUE `run.sh` L'EXECUTE MAINTENANT.
+      #
+      # `db/test/api_e2e.sh` est entre dans `run.sh` au commit 2e342ec. Ce job
+      # n'installait pas le paquet: le harnais rendait 4 (NON EXECUTE), et
+      # `run.sh` sort en 1 des qu'une surface n'a pas tourne — c'est voulu,
+      # une garantie qu'on n'a pas pu verifier n'est pas verte. Le job est
+      # donc rouge depuis 2e342ec, pour l'outillage et non pour le produit.
+      #
+      # L'extra `dev` porte `httpx`, qu'exige `fastapi.testclient.TestClient`.
+      # C'est exactement l'ecart qui avait rendu l'autre workflow rouge: le
+      # poste de developpement l'avait installe a la main, le runner non.
+      #
+      # L'ETAPE VERIFIE SON PROPRE EFFET. Installer sans controler laisserait
+      # le harnais rendre 4 en silence, et le rouge reviendrait sans dire
+      # pourquoi.
+      - name: Tranche applicative (surface api_e2e de run.sh)
+        run: |
+          pip install -e "api[dev]"   # `defaults.working-directory: eurostruct`
+          python - <<'PY'
+          import eurostruct_api, fastapi, jwt
+          from fastapi.testclient import TestClient   # exige httpx
+          print("API prete:", fastapi.__version__, "| TestClient importable")
+          PY
+
       # La preuve, AVANT de laisser les harnais toucher le cluster: leurs
       # barrieres refusent-elles vraiment ? L'auto-test les met en echec seize
       # fois, avec des temoins portant les noms canoniques, et verifie qu'ils
