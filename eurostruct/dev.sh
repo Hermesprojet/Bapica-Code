@@ -108,12 +108,24 @@ fi
 # SANS MAGASIN, L'API REFUSE DE CREER UN LIVRABLE, par un 503 qui nomme la
 # variable. Le calcul, lui, continue: produire un document et enregistrer un
 # calcul sont deux choses differentes.
-if [[ -z "${EUROSTRUCT_STORAGE_DIR:-}" ]]; then
-  EUROSTRUCT_STORAGE_DIR="$ICI/.livrables"
-  export EUROSTRUCT_STORAGE_DIR
+#
+# LE DISQUE EST LE MAGASIN DU POSTE DE TRAVAIL, ET C'EST TOUT CE QU'IL EST.
+# Deux instances d'API derriere un repartiteur ne le partagent pas. Pour
+# eprouver le magasin objet ici, declarer `EUROSTRUCT_STORAGE_BACKEND=s3` et
+# les `EUROSTRUCT_S3_*` avant d'appeler ce script — ce script NE CREE alors ni
+# repertoire ni compartiment: provisionner le second est une decision de
+# deploiement, pas un effet de bord d'un demarrage.
+if [[ "${EUROSTRUCT_STORAGE_BACKEND:-local}" == "s3" ]]; then
+  echo "--> livrables: magasin objet « ${EUROSTRUCT_S3_BUCKET:-?} »" \
+       "(EUROSTRUCT_STORAGE_BACKEND=s3, aucun repli sur le disque)"
+else
+  if [[ -z "${EUROSTRUCT_STORAGE_DIR:-}" ]]; then
+    EUROSTRUCT_STORAGE_DIR="$ICI/.livrables"
+    export EUROSTRUCT_STORAGE_DIR
+  fi
+  mkdir -p "$EUROSTRUCT_STORAGE_DIR"
+  echo "--> livrables: ${EUROSTRUCT_STORAGE_DIR}"
 fi
-mkdir -p "$EUROSTRUCT_STORAGE_DIR"
-echo "--> livrables: ${EUROSTRUCT_STORAGE_DIR}"
 
 echo "--> API sur http://127.0.0.1:$PORT_API"
 "$PYTHON" -m uvicorn eurostruct_api.app:app \

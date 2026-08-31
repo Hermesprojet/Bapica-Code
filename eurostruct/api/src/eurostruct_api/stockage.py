@@ -41,20 +41,33 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Final, Protocol
+from urllib.parse import quote
+
+from .s3 import ClientS3, ReglagesS3, S3Refuse
 
 __all__ = [
+    "VARIABLE_BACKEND",
     "VARIABLE_RACINE",
     "ObjetIntrouvable",
     "OctetsAlteres",
     "Stockage",
     "StockageIndisponible",
     "StockageLocal",
+    "StockageS3",
     "chemin_de_livrable",
+    "disposition_de_fichier",
     "empreinte",
     "stockage_configure",
 ]
+
+#: LE BACKEND DECLARE. `local` ou `s3`, et rien d'autre — une valeur inconnue
+#: est refusee plutot que ramenee au defaut: retomber sur le disque local parce
+#: qu'on a mal orthographie « s3 » ecrirait les livrables d'une production sur
+#: un disque ephemere, sans un mot.
+VARIABLE_BACKEND: Final[str] = "EUROSTRUCT_STORAGE_BACKEND"
 
 #: LA VARIABLE, ET UNE SEULE. Deux noms acceptés deviendraient deux façons de
 #: configurer le même fait, dont une oubliée quelque part.
@@ -96,9 +109,18 @@ class Stockage(Protocol):
     #: retrouver.
     nom: str
 
-    def deposer(self, chemin: str, octets: bytes) -> None: ...
+    def deposer(self, chemin: str, octets: bytes,
+                media_type: str = "application/octet-stream") -> None: ...
 
     def lire(self, chemin: str) -> bytes: ...
+
+    #: LE FLUX EXISTE POUR NE PAS TENIR UN OBJET ENTIER EN MEMOIRE. Une note
+    #: de calcul pese quelques dizaines de kilo-octets; un futur dossier de
+    #: revue avec ses pieces jointes ne fera pas cette promesse. La route de
+    #: telechargement consomme ce flux, et verifie l'empreinte AU FIL de sa
+    #: lecture.
+    def lire_en_flux(self, chemin: str,
+                     taille_bloc: int = 65536) -> Iterator[bytes]: ...
 
 
 def empreinte(octets: bytes) -> str:
@@ -191,8 +213,13 @@ class StockageLocal:
             )
         return cible
 
-    def deposer(self, chemin: str, octets: bytes) -> None:
+    def deposer(self, chemin: str, octets: bytes,
+                media_type: str = "application/octet-stream") -> None:
         """Écrit les octets, **atomiquement**.
+
+        ``media_type`` EST ACCEPTE ET IGNORE. Un système de fichiers n'a pas de
+        notion de type de contenu ; l'accepter garde la même signature pour les
+        deux magasins, et le type reste porté par la ligne en base.
 
         L'ÉCRITURE PASSE PAR UN FICHIER TEMPORAIRE PUIS UN ``rename``. Une
         écriture directe interrompue — conteneur tué, disque plein — laisserait
@@ -217,6 +244,22 @@ class StockageLocal:
                 f"depot impossible sous « {self.racine} »: {cause.strerror}"
             ) from cause
 
+    def lire_en_flux(self, chemin: str,
+                     taille_bloc: int = 65536) -> Iterator[bytes]:
+        cible = self._absolu(chemin)
+        try:
+            fichier = cible.open("rb")
+        except FileNotFoundError as cause:
+            raise ObjetIntrouvable(
+                f"aucun octet a l'emplacement « {chemin} »"
+            ) from cause
+        with fichier:
+            while True:
+                bloc = fichier.read(taille_bloc)
+                if not bloc:
+                    return
+                yield bloc
+
     def lire(self, chemin: str) -> bytes:
         cible = self._absolu(chemin)
         try:
@@ -231,6 +274,109 @@ class StockageLocal:
             ) from cause
 
 
+class StockageS3:
+    """Un compartiment S3-compatible, prive, adresse par contenu.
+
+    IL EST REEL, ET EPROUVE CONTRE UN MinIO REEL — localement et en
+    integration continue. Cela etablit LE PROTOCOLE, et rien d'autre : ni AWS
+    S3, ni aucun fournisseur particulier n'a ete joint depuis ce depot. Le mot
+    « Supabase » n'apparait pas ici, et ``SUPABASE_UNVERIFIED`` reste vrai.
+
+    LE COMPARTIMENT N'EST PAS CREE PAR LE PRODUIT. Un service qui creerait le
+    sien au demarrage masquerait une erreur de configuration : il ecrirait dans
+    un compartiment neuf au lieu de refuser parce que celui qu'on a nomme
+    n'existe pas — et les livrables partiraient dans le vide, sans un mot.
+    """
+
+    nom = "s3"
+
+    def __init__(self, client: ClientS3) -> None:
+        self.client = client
+
+    def deposer(self, chemin: str, octets: bytes,
+                media_type: str = "application/octet-stream") -> None:
+        """Depose, sans jamais ecraser en silence un objet divergent.
+
+        LA CLE DERIVE DU CONTENU: deux depots des memes octets visent la meme
+        clé, et le second est sans effet. Un objet DEJA PRESENT sous cette clé
+        avec une AUTRE taille est donc une contradiction — la clé ne designe
+        plus son contenu — et l'ecraser effacerait la seule trace du probleme.
+        """
+        if len(octets) > TAILLE_MAX:
+            raise StockageIndisponible(
+                f"objet de {len(octets)} octets: au-dela de la borne de "
+                f"{TAILLE_MAX} octets."
+            )
+        try:
+            existante = self.client.taille(chemin)
+        except S3Refuse as cause:
+            raise StockageIndisponible(str(cause)) from cause
+
+        if existante is not None:
+            if existante == len(octets):
+                # MEME CLE, MEME TAILLE: la clé derive du contenu, l'objet est
+                # deja la. Le re-deposer serait un aller-retour pour rien; la
+                # relecture de l'appelant verifiera l'empreinte de toute facon.
+                return
+            raise OctetsAlteres(
+                f"un objet de {existante} octets occupe deja la cle « {chemin} » "
+                f"alors que le document en pese {len(octets)}. La cle derive de "
+                "l'empreinte du contenu: cette divergence signale une "
+                "corruption ou une collision, et l'ecraser en effacerait la "
+                "seule trace."
+            )
+
+        try:
+            self.client.deposer(chemin, octets, media_type)
+        except S3Refuse as cause:
+            raise StockageIndisponible(str(cause)) from cause
+
+    def lire(self, chemin: str) -> bytes:
+        try:
+            return self.client.lire(chemin)
+        except S3Refuse as cause:
+            if cause.statut == 404:
+                raise ObjetIntrouvable(
+                    f"aucun octet a l'emplacement « {chemin} »"
+                ) from cause
+            raise StockageIndisponible(str(cause)) from cause
+
+    def lire_en_flux(self, chemin: str,
+                     taille_bloc: int = 65536) -> Iterator[bytes]:
+        try:
+            yield from self.client.lire_en_flux(chemin, taille_bloc)
+        except S3Refuse as cause:
+            if cause.statut == 404:
+                raise ObjetIntrouvable(
+                    f"aucun octet a l'emplacement « {chemin} »"
+                ) from cause
+            raise StockageIndisponible(str(cause)) from cause
+
+
+def disposition_de_fichier(nom: str) -> str:
+    """L'en-tete ``Content-Disposition``, sur les DEUX formes exigees.
+
+    UN NOM ACCENTUE CASSE LA FORME SIMPLE. ``filename="note-Liège.html"`` n'est
+    pas representable en ISO-8859-1 pour tous les caracteres, et un octet non
+    ASCII dans un en-tete HTTP est au mieux ignore, au pire tronque. La RFC
+    6266 repond par deux parametres:
+
+    * ``filename`` — un repli ASCII, que les clients anciens comprennent;
+    * ``filename*`` — la forme RFC 5987, ``UTF-8''`` suivie du nom encode.
+
+    LES GUILLEMETS ET LES RETOURS A LA LIGNE SONT RETIRES DU REPLI, pas
+    echappes: un nom de fichier qui contiendrait ``"`` refermerait le parametre
+    et permettrait d'en injecter un autre. Le nom exact reste disponible dans
+    ``filename*``, ou l'encodage pour-cent le rend inoffensif.
+    """
+    ascii_sur = "".join(
+        c if (c.isalnum() or c in "-_. ") else "-"
+        for c in nom.encode("ascii", "replace").decode("ascii")
+    ).strip() or "document"
+    return (f'attachment; filename="{ascii_sur}"; '
+            f"filename*=UTF-8''{quote(nom, safe='')}")
+
+
 def stockage_configure() -> Stockage:
     """Le magasin déclaré, ou un refus qui dit comment le déclarer.
 
@@ -239,9 +385,20 @@ def stockage_configure() -> Stockage:
     redémarrage, en laissant derrière eux des lignes qui promettent des
     documents introuvables. Le refus est la seule réponse qui ne ment pas.
 
-    :raises StockageIndisponible: rien n'est déclaré, ou la racine déclarée
-        n'est pas un répertoire utilisable en écriture.
+    :raises StockageIndisponible: rien n'est déclaré, ou la configuration du
+        magasin déclaré est incomplète ou inutilisable.
     """
+    backend = (os.environ.get(VARIABLE_BACKEND) or "").strip().lower()
+    if backend == "s3":
+        return _stockage_s3()
+    if backend not in ("", "local"):
+        # AUCUN REPLI SUR UNE VALEUR INCONNUE. « s4 », « S3 » mal recopie, un
+        # espace de trop: ramener cela au disque local ecrirait les livrables
+        # d'une production sur un disque ephemere, sans un mot.
+        raise StockageIndisponible(
+            f"{VARIABLE_BACKEND} vaut « {backend} », qui n'est pas un magasin "
+            "connu. Les deux valeurs acceptees sont « local » et « s3 »."
+        )
     brut = (os.environ.get(VARIABLE_RACINE) or "").strip()
     if not brut:
         raise StockageIndisponible(
@@ -263,3 +420,76 @@ def stockage_configure() -> Stockage:
             "pas le droit d'ecrire."
         )
     return StockageLocal(racine)
+
+
+#: LES SIX VARIABLES SANS LESQUELLES UN MAGASIN S3 N'EXISTE PAS.
+#:
+#: Aucune n'a de valeur par defaut, et c'est le point: deviner une region, un
+#: compartiment ou un endpoint ferait ecrire des livrables quelque part plutot
+#: que de refuser.
+_S3_REQUISES: Final[tuple[str, ...]] = (
+    "EUROSTRUCT_S3_ENDPOINT",
+    "EUROSTRUCT_S3_REGION",
+    "EUROSTRUCT_S3_BUCKET",
+    "EUROSTRUCT_S3_ACCESS_KEY_ID",
+    "EUROSTRUCT_S3_SECRET_ACCESS_KEY",
+)
+
+
+def _booleen(nom: str, defaut: bool) -> bool:
+    brut = (os.environ.get(nom) or "").strip().lower()
+    if not brut:
+        return defaut
+    if brut in ("1", "true", "oui", "yes", "on"):
+        return True
+    if brut in ("0", "false", "non", "no", "off"):
+        return False
+    raise StockageIndisponible(
+        f"{nom} vaut « {brut} », qui n'est ni vrai ni faux. Une valeur "
+        "ambigue sur un reglage de securite ne se devine pas."
+    )
+
+
+def _stockage_s3() -> Stockage:
+    """Le magasin objet declare, ou un refus qui NOMME ce qui manque.
+
+    LE REFUS NE PORTE AUCUN SECRET. Il nomme les VARIABLES absentes, jamais
+    leurs valeurs — un message d'erreur voyage dans des journaux, des tickets
+    et parfois des captures d'ecran.
+
+    IL NE RETOMBE PAS SUR LE DISQUE LOCAL. Un magasin objet mal configure en
+    production doit refuser: ecrire sur un disque de conteneur ferait
+    disparaitre les livrables au prochain redemarrage, en laissant en base des
+    lignes qui promettent des documents introuvables.
+    """
+    manquantes = [v for v in _S3_REQUISES if not (os.environ.get(v) or "").strip()]
+    if manquantes:
+        raise StockageIndisponible(
+            f"{VARIABLE_BACKEND}=s3, mais la configuration est incomplete: "
+            + ", ".join(manquantes)
+            + ". Aucune de ces valeurs ne se devine, et aucun repli sur le "
+              "disque local n'est fait."
+        )
+
+    ca = (os.environ.get("EUROSTRUCT_S3_CA_BUNDLE") or "").strip() or None
+    if ca and not os.path.isfile(ca):
+        raise StockageIndisponible(
+            f"EUROSTRUCT_S3_CA_BUNDLE designe « {ca} », qui n'est pas un "
+            "fichier lisible."
+        )
+
+    reglages = ReglagesS3(
+        endpoint=os.environ["EUROSTRUCT_S3_ENDPOINT"].strip(),
+        region=os.environ["EUROSTRUCT_S3_REGION"].strip(),
+        bucket=os.environ["EUROSTRUCT_S3_BUCKET"].strip(),
+        access_key_id=os.environ["EUROSTRUCT_S3_ACCESS_KEY_ID"].strip(),
+        secret_access_key=os.environ["EUROSTRUCT_S3_SECRET_ACCESS_KEY"],
+        prefixe=(os.environ.get("EUROSTRUCT_S3_PREFIX") or "").strip(),
+        chemin_style=_booleen("EUROSTRUCT_S3_PATH_STYLE", True),
+        verifier_tls=_booleen("EUROSTRUCT_S3_VERIFY_TLS", True),
+        ca_bundle=ca,
+        chiffrement=(os.environ.get("EUROSTRUCT_S3_SSE") or "").strip() or None,
+        kms_key_id=(os.environ.get("EUROSTRUCT_S3_SSE_KMS_KEY_ID")
+                    or "").strip() or None,
+    )
+    return StockageS3(ClientS3(reglages))

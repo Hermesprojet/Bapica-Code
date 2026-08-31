@@ -249,6 +249,122 @@ jobs:
           EUROSTRUCT_CLUSTER_JETABLE: oui-cluster-jetable-et-isole
         run: ./db/test/run.sh
 
+  stockage:
+    name: Magasin d'objets (MinIO reel, volume neuf, redemarrage)
+    runs-on: ubuntu-latest
+    # POURQUOI CE JOB EXISTE, ET POURQUOI IL EST SEPARE DE `schema`
+    # -------------------------------------------------------------
+    # Les livrables ne vivaient que sur le DISQUE LOCAL du conteneur d'API.
+    # Deux instances derriere un repartiteur ne partagent pas ce disque: la
+    # moitie des telechargements aurait rendu 503 sur des livrables
+    # parfaitement enregistres. Un adaptateur S3 ferme ce defaut — a condition
+    # d'etre eprouve contre un serveur REEL, pas contre un faux client.
+    #
+    # IL EST SEPARE PARCE QU'IL EXIGE DOCKER. `db/test/run.sh` tourne aussi
+    # sur des postes sans demon Docker; y inscrire ce harnais le rendrait
+    # rouge pour l'outillage et non pour le produit — exactement le defaut que
+    # `api_e2e.sh` avait cause au commit 2e342ec.
+    #
+    # CE QU'IL ETABLIT: le protocole S3 tel que MinIO l'implemente. Ni AWS S3
+    # ni Supabase Storage ne sont joints d'ici, et `SUPABASE_UNVERIFIED` reste
+    # vrai.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # LE MOTEUR: le harnais lit l'edition en vigueur dans le registre
+      # national pour poser la portee des habilitations du quatre-yeux. Une
+      # edition inventee ferait refuser la proposition bien avant que le
+      # magasin d'objets ne soit atteint.
+      - name: Moteur (registre national lu par le harnais)
+        run: pip install -e engine
+
+      - name: Pilote PostgreSQL
+        run: |
+          pip install psycopg2-binary
+          python -c "import psycopg2; print('pilote present:', psycopg2.__version__)"
+
+      # L'EXTRA `dev` PORTE `httpx`, qu'exige `fastapi.testclient.TestClient`.
+      # Sans lui, les deux phases du harnais echouent a la COLLECTE — pas sur
+      # une assertion — et le rouge ne dirait rien du magasin d'objets.
+      #
+      # L'ETAPE VERIFIE SON PROPRE EFFET, `TestClient` compris.
+      - name: Tranche applicative
+        run: |
+          pip install -e "api[dev]"
+          python - <<'PY'
+          import fastapi, jwt, eurostruct_api
+          from fastapi.testclient import TestClient   # exige httpx
+          from eurostruct_api.s3 import ClientS3      # l'adaptateur eprouve ici
+          print("API prete:", fastapi.__version__, "| S3 importable")
+          PY
+
+      - name: Client PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      # L'IMAGE EST TIREE EXPLICITEMENT, ET EPINGLEE.
+      #
+      # Separement du harnais, et c'est deliberé: un echec de `pull` doit se
+      # lire comme un echec de `pull`, pas comme un magasin d'objets qui ne
+      # demarre pas. La version est LUE DANS `compose.yaml` — la composition et
+      # la preuve ne peuvent donc pas deriver l'une de l'autre.
+      - name: Image MinIO (epinglee, identique a la composition)
+        run: |
+          set -euo pipefail
+          IMAGE="$(grep -m1 -oE 'minio/minio:RELEASE\.[0-9A-Za-z.-]+' compose.yaml)"
+          [ -n "$IMAGE" ] || { echo "aucune image MinIO epinglee dans compose.yaml" >&2; exit 1; }
+          echo "image de la composition: $IMAGE"
+          docker pull "$IMAGE"
+          echo "EUROSTRUCT_MINIO_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      # LES HUIT ETAPES: volume neuf, compartiment cree par notre propre
+      # signature SigV4, depot par les routes reelles, arret de l'API et
+      # redemarrage de MinIO, telechargement dans un processus neuf,
+      # comparaison du SHA, refus inter-organisations, destruction propre.
+      - name: Depot, redemarrage, relecture (huit etapes)
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGUSER: postgres
+          # Le conteneur `services:` de ce job est cree pour lui et detruit
+          # avec lui. La declaration est faite ICI, dans le workflow, et jamais
+          # dans les scripts: un harnais qui se donnerait a lui-meme son
+          # consentement ne serait plus une barriere.
+          EUROSTRUCT_CLUSTER_JETABLE: oui-cluster-jetable-et-isole
+        run: ./db/test/stockage_s3.sh escs3ci
+
+      # LA DESTRUCTION EST DANS LE PIEGE DE SORTIE DU HARNAIS. Celle-ci couvre
+      # l'annulation du job, ou le piege ne tourne pas. Elle ne vise QUE le
+      # prefixe que le harnais se donne, sur un runner ephemere qui ne porte
+      # rien d'autre.
+      - name: Reste-t-il un conteneur ou un volume du harnais
+        if: always()
+        run: |
+          set -u
+          for nom in $(docker ps -aq --filter 'name=^esc-s3-' 2>/dev/null); do
+            docker rm -f "$nom" || true
+          done
+          for vol in $(docker volume ls -q --filter 'name=^esc-s3-' 2>/dev/null); do
+            docker volume rm "$vol" || true
+          done
+          echo "conteneurs esc-s3-* restants: $(docker ps -aq --filter 'name=^esc-s3-' | wc -l)"
+          echo "volumes esc-s3-* restants:    $(docker volume ls -q --filter 'name=^esc-s3-' | wc -l)"
+
   composition:
     name: Composition de production (images construites, pile demarree)
     runs-on: ubuntu-latest

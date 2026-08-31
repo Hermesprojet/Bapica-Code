@@ -93,6 +93,80 @@ services:
     # composition semblerait « en cours de demarrage » indefiniment.
     restart: "no"
 
+  # LE MAGASIN D'OBJETS. Un MinIO REEL, qui parle le protocole S3.
+  #
+  # POURQUOI IL REMPLACE LE DISQUE LOCAL
+  # -------------------------------------
+  # Un volume nomme repoussait le probleme d'un cran, il ne le fermait pas.
+  # DEUX INSTANCES D'API DERRIERE UN REPARTITEUR NE PARTAGENT PAS UN DISQUE:
+  # la moitie des telechargements rendrait 503 sur des livrables parfaitement
+  # enregistres. Et un document conserve dix ans au titre de la decennale ne
+  # peut pas dependre du disque d'une machine.
+  #
+  # CE QUE CE SERVICE ETABLIT, ET CE QU'IL N'ETABLIT PAS. Il fait tourner le
+  # PROTOCOLE en local; il ne dit rien d'AWS S3 ni de Supabase Storage, qu'on
+  # n'a pas joints. `SUPABASE_UNVERIFIED` reste vrai.
+  #
+  # LA VERSION EST EPINGLEE. `latest` ferait changer le magasin d'une
+  # composition a l'autre sans qu'un seul fichier du depot ne bouge — ce qu'un
+  # enregistrement conserve dix ans ne supporte pas.
+  objets:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data"]
+    environment:
+      # LES MEMES VALEURS QUE CELLES QUE L'API PRESENTE. Une composition ou le
+      # magasin et son client ne partagent pas les identifiants demarre
+      # parfaitement, et refuse chaque depot.
+      MINIO_ROOT_USER: ${EUROSTRUCT_S3_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${EUROSTRUCT_S3_SECRET_ACCESS_KEY}
+    # AUCUN PORT PUBLIE. Le compartiment est PRIVE et n'est joint que par le
+    # reseau de la composition: l'exposer sur l'hote « pour regarder avec un
+    # navigateur » est la facon la plus courante de laisser un magasin de
+    # documents ouvert sur un reseau d'entreprise.
+    volumes:
+      - objets:/data
+    healthcheck:
+      # `curl` EST DANS L'IMAGE — verifie, pas suppose. La sonde INTERROGE le
+      # service; elle ne cherche pas un processus.
+      test: ["CMD-SHELL",
+             "curl -fsS http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  # LE COMPARTIMENT EST PROVISIONNE ICI, PAS PAR LE PRODUIT.
+  #
+  # `StockageS3` NE CREE AUCUN COMPARTIMENT dans le chemin de service, et c'est
+  # deliberé: un service qui creerait le sien au demarrage masquerait une
+  # erreur de configuration — il ecrirait dans un compartiment NEUF au lieu de
+  # refuser parce que celui qu'on a nomme n'existe pas, et les livrables
+  # partiraient dans le vide, sans un mot.
+  #
+  # LES IDENTIFIANTS PASSENT PAR `MC_HOST_*`, JAMAIS PAR `argv`. Une commande
+  # qui porte un secret le montre a `docker inspect` et a tout `ps` du
+  # conteneur.
+  #
+  # `mc anonymous set none` EST EXPLICITE, pas decoratif: un compartiment
+  # public exposerait des notes de calcul nominatives a qui devine une URL.
+  objets-init:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc mb --ignore-existing "esc/${EUROSTRUCT_S3_BUCKET:-eurostruct-livrables}"
+        && mc anonymous set none "esc/${EUROSTRUCT_S3_BUCKET:-eurostruct-livrables}"
+    environment:
+      MC_HOST_esc: >-
+        http://${EUROSTRUCT_S3_ACCESS_KEY_ID}:${EUROSTRUCT_S3_SECRET_ACCESS_KEY}@objets:9000
+    depends_on:
+      objets:
+        condition: service_healthy
+    # ELLE NE REDEMARRE PAS. Un provisionnement qui echoue doit rester echoue
+    # et visible.
+    restart: "no"
+
   api:
     build:
       context: .
@@ -119,13 +193,43 @@ services:
       # d'ENREGISTRER: une ligne conservee dix ans ne peut pas designer un code
       # qu'elle ne sait pas nommer.
       EUROSTRUCT_BUILD_SHA: ${EUROSTRUCT_BUILD_SHA:-}
-      # LE MAGASIN D'OBJETS, SUR UN VOLUME NOMME.
+      # LE MAGASIN D'OBJETS.
       #
-      # PAS DANS LA COUCHE ECRIVABLE DU CONTENEUR: elle disparait a chaque
-      # `docker compose up --force-recreate`, en laissant en base des lignes
-      # qui promettent des documents introuvables. Un volume survit au
-      # conteneur, ce qui est le minimum qu'un livrable conserve dix ans exige.
+      # `s3` PAR DEFAUT, ET C'EST LE CHANGEMENT DE CE LOT. Le disque local
+      # reste atteignable (`EUROSTRUCT_STORAGE_BACKEND=local`) pour un poste
+      # sans magasin objet, mais la composition de reference — celle qui
+      # repete le deploiement — passe par le protocole.
+      #
+      # AUCUN REPLI DE `s3` VERS LE DISQUE. Une configuration S3 incomplete
+      # fait REFUSER la creation d'un livrable par un 503 explicite; elle
+      # n'ecrit rien sur un disque de conteneur qui disparaitrait au prochain
+      # `--force-recreate`, en laissant en base des lignes qui promettent des
+      # documents introuvables.
+      EUROSTRUCT_STORAGE_BACKEND: ${EUROSTRUCT_STORAGE_BACKEND:-s3}
+      # LE REPLI DECLARE, utilise UNIQUEMENT si le backend vaut `local`. Le
+      # volume reste monte pour qu'un basculement ne perde pas ce qui y a ete
+      # ecrit avant.
       EUROSTRUCT_STORAGE_DIR: /var/lib/eurostruct/livrables
+      # LE COMPARTIMENT EST JOINT PAR LE RESEAU DE LA COMPOSITION. `objets`
+      # n'est pas publie sur l'hote, et le style CHEMIN est necessaire: un
+      # style « hote virtuel » exigerait un DNS par compartiment.
+      EUROSTRUCT_S3_ENDPOINT: ${EUROSTRUCT_S3_ENDPOINT:-http://objets:9000}
+      EUROSTRUCT_S3_REGION: ${EUROSTRUCT_S3_REGION:-us-east-1}
+      EUROSTRUCT_S3_BUCKET: ${EUROSTRUCT_S3_BUCKET:-eurostruct-livrables}
+      EUROSTRUCT_S3_PREFIX: ${EUROSTRUCT_S3_PREFIX:-livrables}
+      EUROSTRUCT_S3_PATH_STYLE: ${EUROSTRUCT_S3_PATH_STYLE:-oui}
+      EUROSTRUCT_S3_ACCESS_KEY_ID: ${EUROSTRUCT_S3_ACCESS_KEY_ID}
+      EUROSTRUCT_S3_SECRET_ACCESS_KEY: ${EUROSTRUCT_S3_SECRET_ACCESS_KEY}
+      # TLS. En clair sur le reseau interne d'une composition locale; chez un
+      # fournisseur, l'endpoint est en `https://` et la verification reste a
+      # `oui`. La desactiver est une decision qui doit s'ecrire.
+      EUROSTRUCT_S3_VERIFY_TLS: ${EUROSTRUCT_S3_VERIFY_TLS:-oui}
+      EUROSTRUCT_S3_CA_BUNDLE: ${EUROSTRUCT_S3_CA_BUNDLE:-}
+      # CHIFFREMENT AU REPOS, cote serveur. Vide ici: MinIO en composition
+      # locale n'a pas de KMS, et declarer `aws:kms` sans clé ferait refuser
+      # chaque depot. Chez un fournisseur qui le porte, `AES256` ou `aws:kms`.
+      EUROSTRUCT_S3_SSE: ${EUROSTRUCT_S3_SSE:-}
+      EUROSTRUCT_S3_SSE_KMS_KEY_ID: ${EUROSTRUCT_S3_SSE_KMS_KEY_ID:-}
     volumes:
       - livrables:/var/lib/eurostruct/livrables
     depends_on:
@@ -136,6 +240,11 @@ services:
       # rendrait des 500 jusqu'a ce qu'elles finissent — ou indefiniment si
       # elles echouent.
       init:
+        condition: service_completed_successfully
+      # LE COMPARTIMENT EXISTE AVANT QUE L'API NE SERVE. Sans cette attente,
+      # les premiers depots refuseraient par 503 pendant quelques secondes,
+      # pour une raison qui n'a rien a voir avec la demande.
+      objets-init:
         condition: service_completed_successfully
     ports:
       - "${API_PORT:-8000}:8000"
@@ -189,6 +298,11 @@ services:
 
 volumes:
   db:
-  # LES OCTETS DES LIVRABLES. Un volume nomme, parce qu'un document conserve
-  # dix ans ne peut pas vivre dans la couche ecrivable d'un conteneur.
+  # LE MAGASIN D'OBJETS. C'est lui qui porte les livrables depuis ce lot: le
+  # volume survit au conteneur MinIO, et le harnais `db/test/stockage_s3.sh`
+  # le prouve en redemarrant le serveur entre le depot et la relecture.
+  objets:
+  # LE REPLI SUR DISQUE, monte meme quand le backend est `s3`. Il n'est ecrit
+  # que si `EUROSTRUCT_STORAGE_BACKEND=local`; le garder evite qu'un
+  # basculement de backend perde ce qui y a ete depose avant.
   livrables:

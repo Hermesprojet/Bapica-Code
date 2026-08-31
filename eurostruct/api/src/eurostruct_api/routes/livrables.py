@@ -35,6 +35,7 @@ aucun écran ne l'appelle ainsi.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import zipfile
@@ -51,6 +52,7 @@ from eurostruct_engine.schemas.atelier import (
     RetourAuBrouillon,
 )
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import StreamingResponse
 
 from ..dependances import ouvrir_atelier
 from ..note import MEDIA_TYPE, rendre_note
@@ -59,6 +61,7 @@ from ..stockage import (
     OctetsAlteres,
     StockageIndisponible,
     chemin_de_livrable,
+    disposition_de_fichier,
     empreinte,
     stockage_configure,
 )
@@ -255,7 +258,7 @@ def _creer(ouvert: Any, corps: LivrableCreation, project_id: str,
         chemin = chemin_de_livrable(
             org_id=projet["organization_id"], project_id=project_id,
             sha256=sha, extension="html")
-        magasin.deposer(chemin, octets)
+        magasin.deposer(chemin, octets, MEDIA_TYPE)
         relus = magasin.lire(chemin)
         if empreinte(relus) != sha or len(relus) != len(octets):
             raise OctetsAlteres(
@@ -365,29 +368,22 @@ def telecharger(project_id: str, deliverable_id: str,
         ouvert.fermer()
 
     try:
-        magasin = stockage_configure()
-        if magasin.nom != localisation["storage_backend"]:
-            raise StockageIndisponible(
-                f"le livrable a ete depose dans le magasin "
-                f"« {localisation['storage_backend']} » et le service est "
-                f"configure avec « {magasin.nom} ». On refuse plutot que de "
-                "servir des octets venus d'ailleurs."
-            )
-        octets = magasin.lire(localisation["storage_path"])
-        if empreinte(octets) != localisation["sha256"]:
-            raise OctetsAlteres(
-                "les octets stockes ne portent plus l'empreinte enregistree. "
-                "Le document a ete altere depuis son depot: on refuse de le "
-                "servir."
-            )
+        magasin = _magasin_du_livrable(localisation)
+        # LE PREMIER BLOC EST LU ICI, HORS DU GENERATEUR, et c'est
+        # necessaire: un objet absent ou un magasin injoignable doit devenir un
+        # 503 AVANT que le moindre en-tete ne parte. Une fois la reponse
+        # commencee, il n'y a plus de code de statut a corriger.
+        flux = magasin.lire_en_flux(localisation["storage_path"])
+        premier = next(flux, b"")
     except (StockageIndisponible, ObjetIntrouvable, OctetsAlteres) as cause:
         raise _indisponible(cause) from cause
 
-    return Response(
-        content=octets, media_type=localisation["media_type"],
+    return StreamingResponse(
+        _servir_en_verifiant(premier, flux, localisation["sha256"]),
+        media_type=localisation["media_type"],
         headers={
-            "Content-Disposition":
-                f'attachment; filename="{localisation["filename"]}"',
+            "Content-Disposition": disposition_de_fichier(
+                localisation["filename"]),
             **_EN_TETES_DOCUMENT,
         },
     )
@@ -526,13 +522,10 @@ def dossier_de_revue(project_id: str, deliverable_id: str,
         ouvert.fermer()
 
     try:
-        magasin = stockage_configure()
-        if magasin.nom != localisation["storage_backend"]:
-            raise StockageIndisponible(
-                f"le livrable a ete depose dans le magasin "
-                f"« {localisation['storage_backend']} » et le service est "
-                f"configure avec « {magasin.nom} »."
-            )
+        magasin = _magasin_du_livrable(localisation)
+        # LE DOSSIER EST UNE ARCHIVE: il faut les octets ENTIERS pour les
+        # comprimer, et les verifier avant de les y mettre. Le flux n'a donc
+        # pas d'objet ici — ce que la borne de taille du magasin encadre deja.
         octets = magasin.lire(localisation["storage_path"])
         if empreinte(octets) != localisation["sha256"]:
             raise OctetsAlteres(
@@ -564,6 +557,55 @@ def dossier_de_revue(project_id: str, deliverable_id: str,
             **_EN_TETES_DOCUMENT,
         },
     )
+
+
+def _magasin_du_livrable(localisation: dict[str, Any]):
+    """Le magasin configure, s'il est bien CELUI qui detient ces octets.
+
+    UN LIVRABLE DEPOSE SUR S3 NE SE LIT PAS SUR LE DISQUE LOCAL. Servir « ce
+    qu'on trouve la ou on regarde aujourd'hui » rendrait un document d'un
+    autre deploiement, ou rien du tout, sans que la difference se voie.
+    """
+    magasin = stockage_configure()
+    if magasin.nom != localisation["storage_backend"]:
+        raise StockageIndisponible(
+            f"le livrable a ete depose dans le magasin "
+            f"« {localisation['storage_backend']} » et le service est "
+            f"configure avec « {magasin.nom} ». On refuse plutot que de "
+            "servir des octets venus d'ailleurs."
+        )
+    return magasin
+
+
+def _servir_en_verifiant(premier: bytes, reste, attendue: str):
+    """Sert les octets par blocs, en verifiant l'empreinte AU FIL DE L'EAU.
+
+    POURQUOI PAS UNE LECTURE COMPLETE PUIS UNE VERIFICATION. Elle tiendrait
+    l'objet entier en memoire — jusqu'a la borne de 32 Mio — pour chaque
+    telechargement concurrent. Une note pese quelques dizaines de kilo-octets;
+    un dossier de pieces jointes ne fera pas cette promesse.
+
+    CE QUE LE FLUX NE PEUT PAS FAIRE, ET QUI EST DIT ICI. L'empreinte n'est
+    connue qu'a la fin: les premiers blocs sont deja partis quand une
+    alteration se revele. Le generateur LEVE alors plutot que de conclure, et
+    le client recoit une reponse INTERROMPUE — un corps tronque, detectable,
+    au lieu d'un document complet et faux. L'empreinte attendue reste par
+    ailleurs lisible sur la fiche du livrable et dans le manifeste du dossier
+    de revue: un destinataire peut la verifier lui-meme.
+    """
+    calcul = hashlib.sha256()
+    if premier:
+        calcul.update(premier)
+        yield premier
+    for bloc in reste:
+        calcul.update(bloc)
+        yield bloc
+    if calcul.hexdigest() != attendue:
+        raise OctetsAlteres(
+            "les octets stockes ne portent plus l'empreinte enregistree. Le "
+            "document a ete altere depuis son depot: la reponse est "
+            "interrompue plutot que servie entiere."
+        )
 
 
 def _transition(ouvert: Any, project_id: str, deliverable_id: str,
