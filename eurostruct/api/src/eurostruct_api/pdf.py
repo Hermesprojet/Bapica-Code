@@ -419,7 +419,32 @@ def composer_pdf(titre: str, blocs: list[Bloc]) -> bytes:
                 p.y = depart - hauteur
             p.y -= 6
 
+    _paginer(titre, pages)
     return _assembler(titre, pages)
+
+
+def _paginer(titre: str, pages: list[_Page]) -> None:
+    """Le pied de page : le titre à gauche, « page N sur T » à droite.
+
+    UNE NOTE DE CALCUL FINIT RELIEE DANS UN DOSSIER, ET DES PAGES S'Y PERDENT.
+    Sans « sur T », personne ne peut constater qu'il manque la derniere ; sans
+    le titre, une page detachee n'appartient plus a rien. C'est la difference
+    entre un document imprimable et un document opposable.
+
+    IL S'ECRIT APRES LA COMPOSITION, ET IL LE FAUT: le total n'est connu
+    qu'une fois toutes les pages remplies. C'est aussi pourquoi il ne consomme
+    pas ``page.y`` — il vit SOUS la zone de contenu, dans la marge basse que
+    la composition ne descend jamais toucher.
+    """
+    total = len(pages)
+    corps = 7.5
+    ligne_y = MARGE - 18.0
+    for numero, page in enumerate(pages, start=1):
+        page.filet(MARGE, ligne_y + 10, PAGE_L - 2 * MARGE, 0.4)
+        page.texte(MARGE, ligne_y, titre, HELVETICA, corps)
+        compteur = f"page {numero} sur {total}"
+        page.texte(PAGE_L - MARGE - _largeur(compteur, HELVETICA, corps),
+                   ligne_y, compteur, HELVETICA, corps)
 
 
 def _assembler(titre: str, pages: list[_Page]) -> bytes:

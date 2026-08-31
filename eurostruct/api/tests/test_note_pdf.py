@@ -360,3 +360,55 @@ def test_un_document_sans_bloc_reste_un_pdf_valide():
 
     assert octets.startswith(b"%PDF-")
     assert _pages(octets) == 1
+
+
+# ===========================================================================
+# 7 — LE PIED DE PAGE
+# ===========================================================================
+def test_chaque_page_porte_son_numero_et_le_total():
+    """UNE NOTE FINIT RELIEE DANS UN DOSSIER, ET DES PAGES S'Y PERDENT.
+
+    Sans « sur T », personne ne peut constater qu'il manque la derniere; sans
+    le titre, une page detachee n'appartient plus a rien.
+    """
+    long_calcul = dict(CALCUL)
+    long_calcul["journal"] = {
+        "title": "Journal long",
+        "steps": [{"symbol": f"s{i}", "description": f"Étape {i}",
+                   "numeric": f"{i}", "formatted": f"{i}",
+                   "clause": {"cite": "EN 1992-1-1 §6.1"}}
+                  for i in range(120)],
+        "clauses": [],
+    }
+    octets = rendre_note_pdf(PROJET, long_calcul, notice=NOTICE,
+                             mention=MENTION)
+    lecteur = pypdf.PdfReader(io.BytesIO(octets))
+    total = len(lecteur.pages)
+    assert total >= 3
+
+    for numero, page in enumerate(lecteur.pages, start=1):
+        texte = page.extract_text()
+        assert f"page {numero} sur {total}" in texte, (
+            f"la page {numero} ne porte pas son numero")
+        # LE TITRE SUR CHAQUE PAGE: une feuille detachee doit dire d'ou elle
+        # vient.
+        assert "FICTIF Halle" in texte
+
+
+def test_le_pied_de_page_ne_recouvre_pas_le_contenu():
+    """IL VIT SOUS LA ZONE DE COMPOSITION, PAS DEDANS.
+
+    Un pied de page ecrit dans le flux consommerait de la hauteur utile et
+    decalerait tout; ecrit trop haut, il passerait SUR la derniere ligne. Le
+    cas verifie que la derniere ligne de contenu est toujours lisible.
+    """
+    octets = composer_pdf("Titre", [
+        Titre("Section", 1),
+        *[Paragraphe(f"Ligne de contenu numéro {i}.") for i in range(60)],
+        Paragraphe("DERNIÈRE LIGNE DU DOCUMENT."),
+    ])
+    texte = _texte(octets)
+
+    assert "DERNIÈRE LIGNE DU DOCUMENT." in texte
+    assert "Ligne de contenu numéro 0." in texte
+    assert "Ligne de contenu numéro 59." in texte
