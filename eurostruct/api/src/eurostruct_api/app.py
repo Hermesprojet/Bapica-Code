@@ -24,13 +24,20 @@ import logging
 
 from fastapi import FastAPI
 
-from . import __version__
+from . import __version__, erreurs
 from .auth.supabase import AuthentificateurSupabase
 from .base import FabriqueConnexionPostgres
 from .config import Reglages, charger
-from . import erreurs
 from .erreurs import installer_gestionnaires
-from .routes import autorite, calculs, livrables, projets, referentiel, sante
+from .routes import (
+    autorite,
+    calculs,
+    livrables,
+    organisations,
+    projets,
+    referentiel,
+    sante,
+)
 
 _journal = logging.getLogger("eurostruct.api")
 
@@ -115,6 +122,19 @@ def creer_application(reglages: Reglages | None = None) -> FastAPI:
     # sont montees apres parce qu'elles exigent une contrainte de plus — un
     # magasin d'objets — et que l'ordre rend cette dependance lisible.
     app.include_router(livrables.routeur)
+    # L'ENTREE — fonder son bureau, inviter, administrer les membres.
+    #
+    # MONTEE APRES L'ATELIER, ET C'EST LE CONTRAIRE DE L'ORDRE D'USAGE: on
+    # fonde son bureau AVANT d'avoir un projet. L'ordre ici ne dit rien du
+    # parcours, il dit ce que chaque routeur exige — et celui-ci exige la
+    # meme chose que l'atelier: une identite verifiee et une base.
+    #
+    # LES DEUX ROUTEURS SONT DISTINCTS PARCE QUE LEURS PREFIXES LE SONT. Un
+    # invite ne connait PAS l'organisation qui l'invite — c'est le secret qui
+    # la lui apprend — et une route sous `/v1/organizations/{org_id}/…`
+    # l'obligerait a nommer un identifiant qu'il n'a pas.
+    app.include_router(organisations.routeur)
+    app.include_router(organisations.routeur_invitations)
     return app
 
 

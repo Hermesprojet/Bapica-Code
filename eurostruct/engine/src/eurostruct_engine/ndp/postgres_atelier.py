@@ -517,3 +517,204 @@ class PostgresAtelier:
                     "l'emission n'a rendu aucun etat."
                 )
             return str(ligne[0])
+
+    # ------------------------------------------------------------- entrée
+    #
+    # LES SEPT GESTES DE L'ENTREE. Ils existent parce que, sans eux, un compte
+    # authentifie sans ligne dans `organization_members` arrivait devant un
+    # ecran vide et ne pouvait rien faire — jamais. Aucune route, aucune
+    # primitive ne permettait d'en sortir: la seule facon d'exister dans
+    # l'application etait un `insert` fait a la main par le proprietaire de la
+    # base.
+    #
+    # AUCUNE NE PREND L'IDENTITE DE CELUI QUI AGIT. Deux prennent celle de
+    # celui qui SUBIT — administrer l'adhesion d'un collegue — et la primitive
+    # refuse que ce soit l'appelant.
+    def fonder_organisation(self, preuve: Any, *, name: str, country: str,
+                            display_name: str | None = None,
+                            professional_id: str | None = None) -> str:
+        """Fonde un bureau et son propriétaire, **en une transaction**.
+
+        UN SECOND APPEL AVEC LE MÊME NOM REND LE MÊME BUREAU. C'est le
+        double-clic sur le formulaire, et la primitive le traite comme ce
+        qu'il est : une intention, pas deux. Deux bureaux jumeaux laisseraient
+        leur fondateur devant deux entrées dont il ne saurait pas laquelle est
+        la sienne.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select organization_bootstrap(%s, %s::country_code, %s, %s)",
+                (name, country, display_name, professional_id))
+            ligne = u.curseur.fetchone()
+            if not ligne or not ligne[0]:
+                raise ConfirmationDomainError(
+                    "la fondation n'a rendu aucun identifiant d'organisation. "
+                    "On refuse plutot que d'annoncer un bureau introuvable."
+                )
+            return str(ligne[0])
+
+    def emettre_invitation(self, preuve: Any, *, org_id: str, role: str,
+                           token_sha256: str, label: str | None,
+                           display_name: str | None,
+                           professional_id: str | None,
+                           validity_days: int) -> dict[str, Any]:
+        """Émet une invitation. **Le secret ne traverse pas cette méthode.**
+
+        Elle reçoit l'empreinte, déjà calculée par l'appelant. Le secret lui-
+        même n'entre ni dans le SQL, ni dans les journaux du serveur, ni dans
+        le plan de requête : il n'existe que dans la réponse HTTP.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select organization_invitation_create("
+                "%s::uuid, %s::org_role, %s, %s, %s, %s, "
+                "make_interval(days => %s))",
+                (org_id, role, token_sha256, label, display_name,
+                 professional_id, validity_days))
+            ligne = u.curseur.fetchone()
+            if not ligne or not ligne[0]:
+                raise ConfirmationDomainError(
+                    "l'emission n'a rendu aucun identifiant d'invitation."
+                )
+            invitation_id = str(ligne[0])
+            # LA DATE D'EXPIRATION SE RELIT PAR LA PRIMITIVE, PAS PAR LA TABLE.
+            #
+            # Mesure du jour: un `select expires_at from
+            # organization_invitations` ecrit ici rendait « permission denied
+            # for table organization_invitations ». Le login de service n'a
+            # AUCUN privilege de table, et c'est exactement la propriete dont
+            # depend la borne d'annuaire de 0024 — le defaut etait dans ce
+            # module, pas dans la base: la base a refuse comme elle doit.
+            u.executer("select * from organization_invitation_list(%s::uuid)",
+                       (org_id,))
+            for invitation in self._lignes(u):
+                if _texte(invitation["invitation_id"]) == invitation_id:
+                    return {"invitation_id": invitation_id,
+                            "expires_at": _texte(invitation["expires_at"])}
+            raise ConfirmationDomainError(
+                "l'invitation vient d'etre emise et reste introuvable: on "
+                "refuse d'annoncer un lien qu'on ne peut pas relire."
+            )
+
+    def accepter_invitation(self, preuve: Any, *,
+                            token_sha256: str) -> dict[str, Any]:
+        """Consomme une invitation, sous identité authentifiée.
+
+        LE REFUS EST LE MÊME dans les quatre cas — inconnue, expirée,
+        révoquée, déjà consommée. Distinguer « ce lien n'existe pas » de « ce
+        lien a expiré » apprendrait à qui essaie des liens au hasard quand il
+        a visé juste.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer("select organization_invitation_accept(%s)",
+                       (token_sha256,))
+            ligne = u.curseur.fetchone()
+            if not ligne or not ligne[0]:
+                raise ConfirmationDomainError(
+                    "l'acceptation n'a rendu aucune organisation."
+                )
+            org_id = str(ligne[0])
+            u.executer("select * from project_workspace_organisations()")
+            for org in self._lignes(u):
+                if _texte(org["organization_id"]) == org_id:
+                    return {"organization_id": org_id,
+                            "organization_name": org["name"],
+                            "member_role": org["member_role"]}
+            raise ConfirmationDomainError(
+                "l'adhesion vient d'etre creee et reste invisible: on refuse "
+                "d'annoncer une entree qu'on ne peut pas relire."
+            )
+
+    def revoquer_invitation(self, preuve: Any, *, org_id: str,
+                            invitation_id: str) -> bool:
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select organization_invitation_revoke(%s::uuid, %s::uuid)",
+                (org_id, invitation_id))
+            ligne = u.curseur.fetchone()
+            return bool(ligne and ligne[0])
+
+    def invitations(self, preuve: Any, *, org_id: str) -> list[dict[str, Any]]:
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer("select * from organization_invitation_list(%s::uuid)",
+                       (org_id,))
+            return [
+                {
+                    "invitation_id": _texte(ligne["invitation_id"]),
+                    "role": ligne["role"],
+                    "label": ligne["label"],
+                    "display_name": ligne["display_name"],
+                    "professional_id": ligne["professional_id"],
+                    "created_at": _texte(ligne["created_at"]),
+                    "expires_at": _texte(ligne["expires_at"]),
+                    "accepted_at": _texte(ligne["accepted_at"]),
+                    "revoked_at": _texte(ligne["revoked_at"]),
+                    "state": ligne["state"],
+                }
+                for ligne in self._lignes(u)
+            ]
+
+    def membres(self, preuve: Any, *, org_id: str) -> list[dict[str, Any]]:
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer("select * from organization_member_list(%s::uuid)",
+                       (org_id,))
+            return [
+                {
+                    "user_id": _texte(ligne["user_id"]),
+                    "role": ligne["role"],
+                    "display_name": ligne["display_name"],
+                    "professional_id": ligne["professional_id"],
+                    "is_active": bool(ligne["is_active"]),
+                    "created_at": _texte(ligne["created_at"]),
+                    "deactivated_at": _texte(ligne["deactivated_at"]),
+                    "is_me": bool(ligne["is_me"]),
+                }
+                for ligne in self._lignes(u)
+            ]
+
+    def modifier_membre(self, preuve: Any, *, org_id: str, user_id: str,
+                        role: str | None, is_active: bool | None,
+                        display_name: str | None, professional_id: str | None,
+                        toucher_noms: bool) -> dict[str, Any]:
+        """Modifie l'adhésion d'un **collègue**, et relit le résultat.
+
+        LA RELECTURE N'EST PAS UNE POLITESSE. La primitive constate elle-même
+        son ``row_count`` — un ``update`` filtré par RLS toucherait zéro ligne
+        sans lever, et le refus se présenterait comme un succès — mais l'écran
+        doit afficher ce que la base porte, pas ce qu'il a demandé.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select organization_member_update("
+                "%s::uuid, %s::uuid, %s::org_role, %s::boolean, %s, %s, %s)",
+                (org_id, user_id, role, is_active, display_name,
+                 professional_id, toucher_noms))
+            u.executer("select * from organization_member_list(%s::uuid)",
+                       (org_id,))
+            for ligne in self._lignes(u):
+                if _texte(ligne["user_id"]) == user_id:
+                    return {"user_id": user_id, "role": ligne["role"],
+                            "is_active": bool(ligne["is_active"])}
+            raise ConfirmationDomainError(
+                "l'adhesion modifiee est introuvable a la relecture."
+            )
+
+    def organisations(self, preuve: Any) -> list[dict[str, Any]]:
+        """Les bureaux de l'appelant, et son rôle dans chacun.
+
+        SÉPARÉE DE ``projets`` DÉLIBÉRÉMENT. Un compte tout neuf a zéro projet
+        ET zéro organisation ; un compte qui vient de fonder son bureau a zéro
+        projet et UNE organisation. Les deux écrans à montrer ne sont pas les
+        mêmes, et une seule liste vide ne permet pas de les distinguer.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer("select * from project_workspace_organisations()")
+            return [
+                {
+                    "organization_id": _texte(ligne["organization_id"]),
+                    "name": ligne["name"],
+                    "country": ligne["country"],
+                    "member_role": ligne["member_role"],
+                }
+                for ligne in self._lignes(u)
+            ]

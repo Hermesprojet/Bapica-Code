@@ -390,6 +390,32 @@ echo "==> livrable: brouillon, relecture, attestation, emission"
 etape "livrable et validation" \
   "$HERE/livrable_validation.sh" "${DB_NAME:0:20}lv"
 
+# L'ENTREE DANS L'APPLICATION — et le seul decor du depot qui parte de ZERO
+# organisation.
+#
+# Tous les autres harnais posent d'avance les adhesions dont ils ont besoin;
+# aucun ne pouvait donc constater qu'on ne savait pas les creer. Celui-ci part
+# d'une base deployee sans un seul bureau, et exige qu'un compte authentifie
+# puisse en fonder un, y inviter quelqu'un par un lien a usage unique, et
+# administrer les roles — sans jamais s'elever lui-meme.
+#
+# IL EXIGE LES MEMES DEPENDANCES QUE `livrable_validation.sh`: PostgreSQL,
+# FastAPI, PyJWT, httpx. Ni node, ni Chromium, ni Docker — il entre donc dans
+# cette suite, contrairement aux parcours navigateur et au magasin objet.
+echo "==> entree: fonder son bureau, inviter, administrer les membres"
+etape "entree dans l'application" \
+  "$HERE/entree_application.sh" "${DB_NAME:0:20}en"
+
+# LE MAGASIN OBJET N'EST PAS DANS CETTE SUITE, ET C'EST LA MEME RAISON.
+#
+# `db/test/stockage_s3.sh` demarre un MinIO REEL dans un conteneur, sur un
+# volume neuf. Sans demon Docker il rend 4 (NON EXECUTE), et `run.sh` compte
+# une surface non executee comme ROUGE — a juste titre. L'inscrire ici rendrait
+# la suite rouge pour l'outillage sur tout poste sans Docker. Il a son propre
+# job en integration continue:
+#
+#   db/test/stockage_s3.sh <prefixe>   # volume neuf, depot, redemarrage, SHA
+
 # LES DEUX PARCOURS NAVIGATEUR NE SONT PAS DANS CETTE SUITE, ET C'EST VOULU.
 #
 # `parcours_atelier.sh` et `parcours_livrable.sh` dressent la pile entiere —
