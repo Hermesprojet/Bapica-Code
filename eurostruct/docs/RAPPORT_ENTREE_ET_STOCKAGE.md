@@ -337,14 +337,35 @@ harnais ci-dessous le montrent.
 
 ### L'intégration continue
 
-Verte sur **`240a874`**, **`d20a345`**, **`e07d6c7`**, **`2bfdb36`** —
-les quatre jobs du workflow `EUROSTRUCT` (Moteur, Schéma, **Magasin
-d'objets**, Composition) et le workflow `eurostruct — tests`.
+Verte sur **les cinq commits de code du lot** — `240a874`, `d20a345`,
+`e07d6c7`, `2bfdb36`, `4b4a2a5` — pour les quatre jobs du workflow
+`EUROSTRUCT` (Moteur de calcul, Schéma de données, **Magasin d'objets**,
+Composition de production) **et** pour le workflow `eurostruct — tests`.
 
-Le job `Magasin d'objets (MinIO réel, volume neuf, redémarrage)` exécute
-l'étape « Dépôt, redémarrage, relecture (huit étapes) » : **succès**. Le job
-`Composition de production` monte la pile avec MinIO dans `compose.yaml` :
-**succès**.
+**AUCUN COMMIT DE CE LOT N'A ÉTÉ POUSSÉ SANS QUE SA CI SOIT RELUE.** Un
+commit qui documente ne se dispense pas de la suite : les commits de rapport
+la subissent entière, et c'est voulu — un document qui décrit un état vert
+doit être poussé sur des octets que la CI a réellement acceptés.
+
+Relevé du dernier passage complet, workflow `EUROSTRUCT`, run `33367269311` :
+
+| Job | Étape décisive | Durée | Conclusion |
+|---|---|---|---|
+| Moteur de calcul | 17 étapes (golden, propriétés, hors-ligne, import) | 54 s | succès |
+| Schéma de données | « Migrations et garanties structurelles » | **19 min 06 s** | succès |
+| Magasin d'objets | « Dépôt, redémarrage, relecture (huit étapes) » | 21 s | succès |
+| Composition de production | « Composition depuis un volume vide » | 50 s | succès |
+
+Deux étapes méritent d'être citées parce qu'elles ne prouvent pas ce qu'on
+attendrait :
+
+* `Reste-t-il un conteneur ou un volume du harnais` — **succès**, c'est-à-dire
+  qu'il n'en reste aucun. Le harnais MinIO ne détruit que ce dont il peut
+  prouver la création, et cette étape le vérifie **après** lui.
+* `Construction des images (aucune publication)` — **33 s, succès**. C'est
+  précisément ce qui échoue dans l'environnement de développement de ce lot
+  (§8), et sa réussite ici est ce qui permet d'affirmer que le blocage est
+  l'autorité TLS du proxy, non le `Dockerfile`.
 
 ---
 
