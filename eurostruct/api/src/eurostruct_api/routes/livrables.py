@@ -236,6 +236,30 @@ def _creer(ouvert: Any, corps: LivrableCreation, project_id: str,
     try:
         projet = _projet_de(ouvert, jeton, project_id)
         _exiger_capacite(projet, "redaction")
+        # LE LIVRABLE REMPLACE SE VERIFIE ICI, ET C'EST UN CORRECTIF.
+        #
+        # `creer_livrable` controle deja que `supersedes_id` appartient au
+        # projet — mais elle le fait a la toute fin, APRES que cette fonction a
+        # depose les octets. Mesure du jour: une revision visant un
+        # identifiant qui n'est pas un livrable de ce projet rendait 422,
+        # n'ecrivait aucune ligne, et laissait un objet dans le magasin que
+        # plus rien ne referencait. Voir
+        # `test_une_revision_refusee_ne_laisse_pas_d_objet_que_rien_ne_reference`.
+        #
+        # CE N'EST PAS UN DETAIL DE PROPRETE. La politique du magasin
+        # (`docs/STOCKAGE.md` §5) interdit toute suppression par le produit:
+        # l'objet abandonne est DEFINITIF. Se tromper d'identifiant de
+        # livrable — une page rouverte, une URL recopiee — est l'erreur la
+        # plus banale qui soit, et elle ne doit pas couter une fuite.
+        #
+        # ON RELIT PLUTOT QUE D'AJOUTER UNE PRIMITIVE. `project_deliverable_read`
+        # figure deja parmi les fonctions declarees au backend, porte la meme
+        # borne de projet et la meme exigence de capacite. Ajouter une fonction
+        # d'existence elargirait la surface SQL du backend pour un controle que
+        # celle-ci fait deja.
+        if supersedes_id is not None:
+            ouvert.atelier.relire_livrable(
+                jeton, project_id=project_id, deliverable_id=supersedes_id)
     except (AuthentificationRequise, ConfirmationDomainError) as cause:
         ouvert.fermer()
         raise _refus(cause) from cause

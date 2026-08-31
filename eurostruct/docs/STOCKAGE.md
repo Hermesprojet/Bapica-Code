@@ -130,14 +130,44 @@ n'en existe aucun capable de supprimer un objet **tout court**.
    occupent une seule clé. Un orphelin est le résidu d'une tentative refusée
    après dépôt, et une note de calcul pèse quelques dizaines de kilo-octets.
 
-### Comment un orphelin apparaît, et pourquoi c'est rare
+### Comment un orphelin apparaît
 
-Le seul chemin connu est : les octets sont déposés, puis l'enregistrement de la
-ligne échoue. L'ordre des opérations le rend improbable — **l'autorisation est
-vérifiée avant tout dépôt** (c'était l'un des défauts fermés par la matrice
-d'autorisation ; voir `api/tests/test_autorisations.py`) — mais une panne entre
-le dépôt et le `commit` reste possible, et c'est très bien : elle laisse un
-objet inutile, pas une ligne menteuse.
+La forme est toujours la même : les octets sont déposés, puis l'enregistrement
+de la ligne échoue.
+
+**Cette section a affirmé qu'une panne en était le seul chemin. C'était faux, et
+la mesure l'a montré.** Un refus parfaitement ordinaire en produisait un autre :
+
+> `POST …/deliverables/{id}/revision` avec un `id` qui n'est pas un livrable de
+> ce projet. `supersedes_id` n'était contrôlé **nulle part** avant
+> `creer_livrable` : la route composait, **déposait**, relisait, puis appelait
+> la primitive — qui refusait à juste titre. Résultat : `422`, aucune ligne, et
+> un objet définitivement abandonné dans le compartiment.
+
+Se tromper d'identifiant de livrable — une page rouverte, une URL recopiée — est
+l'erreur la plus banale qui soit. Elle coûtait une fuite permanente, puisque
+rien ici ne supprime jamais.
+
+Le contrôle a été **remonté avant le dépôt**, dans
+`api/src/eurostruct_api/routes/livrables.py`, en relisant le livrable remplacé
+par `project_deliverable_read` — une fonction déjà déclarée au backend, qui
+porte la même borne de projet. Deux cas le tiennent :
+
+| Cas | Ce qu'il verrouille |
+|---|---|
+| `test_une_revision_refusee_ne_laisse_pas_d_objet_que_rien_ne_reference` | le chemin qui fuyait — mesuré rouge, puis vert |
+| `test_un_calcul_d_un_autre_projet_ne_laisse_pas_d_octets` | l'autre refus tardif, qui lui refusait **déjà** avant le dépôt |
+
+**Ce qui reste, et qui est irréductible** : une panne entre le dépôt et le
+`commit`. Elle laisse un objet inutile plutôt qu'une ligne menteuse, et c'est le
+bon compromis. C'est précisément ce résidu que le rapprochement en lecture seule
+existe pour rendre visible.
+
+**La leçon vaut plus que le correctif.** Une politique « on ne supprime jamais »
+n'est tenable que si l'on sait aussi **ne pas produire** ce qu'on ne pourra pas
+reprendre. Tout refus prononcé après un dépôt est une fuite définitive : l'ordre
+des opérations n'est pas un détail de propreté, c'est la condition de la
+politique.
 
 ### Ce qu'on fait à la place
 

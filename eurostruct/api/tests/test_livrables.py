@@ -47,6 +47,8 @@ import hashlib
 import json
 import os
 import time
+import uuid
+from pathlib import Path
 
 import jwt
 import pytest
@@ -1188,3 +1190,145 @@ def test_une_organisation_voisine_n_obtient_aucun_dossier_de_revue(
     r = client.get(f"/v1/projects/{projet['project_id']}/deliverables/"
                    f"{brouillon['deliverable_id']}/review-bundle")
     assert r.status_code == 401, r.text
+
+
+# ===========================================================================
+# 9 — UN REFUS NE DOIT RIEN LAISSER DANS LE MAGASIN
+#
+# LA POLITIQUE DES ORPHELINS REND CE POINT IRRATTRAPABLE. `docs/STOCKAGE.md`
+# etablit que RIEN n'est jamais supprime du magasin par le produit, et que
+# `ClientS3` n'a aucune methode de suppression. C'est une bonne regle: elle
+# rend impossible la suppression d'un objet encore reference.
+#
+# Mais elle a une contrepartie que rien ne mesurait: tout objet depose puis
+# abandonne reste la POUR TOUJOURS. Il n'existe aucun geste, aucune commande
+# et aucune route capable de le nommer, encore moins de le reprendre. Chaque
+# refus prononce APRES un depot est donc une fuite definitive.
+#
+# `_creer` le sait pour l'autorisation — le commentaire « un refus prononce
+# apres le depot laisse un objet orphelin » est ecrit a la ligne 233 — et
+# place le controle de capacite avant le magasin. Les cas ci-dessous
+# demandent si TOUS les refus ont recu le meme soin.
+# ===========================================================================
+def _objets_du_magasin(prefixe: str = "") -> set[str]:
+    """Les objets reellement presents sous la racine du magasin local.
+
+    ON REGARDE LE DISQUE, PAS LA BASE. Toute la question est justement de
+    savoir si les deux disent la meme chose; les interroger tous les deux par
+    le meme chemin ne prouverait rien.
+    """
+    racine = Path(MAGASIN)
+    if not racine.is_dir():
+        return set()
+    return {str(c.relative_to(racine)) for c in racine.rglob("*")
+            if c.is_file() and str(c.relative_to(racine)).startswith(prefixe)}
+
+
+@pytest.fixture()
+def projet_vierge(client, jeton) -> dict:
+    """Un projet NEUF, dont le prefixe de magasin n'a jamais rien recu.
+
+    POURQUOI PAS LE PROJET DU MODULE. Le chemin d'un livrable est derive de
+    son CONTENU: deux depots des memes octets ecrivent au meme endroit. Un
+    orphelin qui reprendrait le chemin d'un document deja depose serait
+    rigoureusement invisible a un comptage de fichiers — non pas parce qu'il
+    n'y en a pas, mais parce qu'on ne saurait pas le voir. Un projet neuf
+    donne un prefixe `org/projet/` vide, ou tout fichier qui apparait est
+    forcement ne de ce cas-ci.
+    """
+    r = client.post("/v1/projects",
+                    json={"name": "FICTIF Vierge", "reference": "FICTIF-ORPH",
+                          "country": PAYS, "region": "Wallonie",
+                          "ndp_as_of": "2024-01-15"},
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+@pytest.fixture()
+def calcul_du_projet_vierge(client, jeton, projet_vierge, calcul_strict) -> str:
+    """Un calcul abouti DANS ce projet neuf.
+
+    Il depend de `calcul_strict` uniquement pour son effet de bord: c'est lui
+    qui a confirme les parametres nationaux et ouvert le mode strict.
+    """
+    r = client.post(
+        f"/v1/projects/{projet_vierge['project_id']}"
+        "/calculations/ec2/beam-flexure",
+        json=_requete_de_calcul(strict=True),
+        headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    corps = r.json()
+    assert corps["status"] == "succeeded", corps
+    return corps["calculation_id"]
+
+
+def test_une_revision_refusee_ne_laisse_pas_d_objet_que_rien_ne_reference(
+        client, jeton, projet_vierge, calcul_du_projet_vierge):
+    """LE REFUS EST JUSTE, ET IL ARRIVE TROP TARD.
+
+    `supersedes_id` n'est controle NULLE PART avant `creer_livrable`: ni la
+    route, ni le module d'atelier ne le regardent. La sequence est donc
+    composer -> DEPOSER -> relire -> enregistrer, et c'est l'enregistrement
+    qui decouvre que le livrable remplace n'appartient pas au projet.
+
+    A cet instant les octets sont deja dans le magasin, aucune ligne ne les
+    reference, et aucun code de ce depot ne peut les reprendre.
+
+    LE CLIENT N'A RIEN FAIT D'ANORMAL. Se tromper d'identifiant de livrable
+    est l'erreur la plus banale qui soit — une page rouverte, un identifiant
+    d'un autre projet colle dans l'URL — et elle coute un objet definitif.
+    """
+    prefixe = f"{projet_vierge['organization_id']}/" \
+              f"{projet_vierge['project_id']}/"
+    assert not _objets_du_magasin(prefixe), (
+        "le decor est cense partir d'un prefixe vide")
+    avant = _observer("select count(*) from deliverables")[0][0]
+
+    inconnu = str(uuid.uuid4())
+    r = client.post(
+        f"/v1/projects/{projet_vierge['project_id']}"
+        f"/deliverables/{inconnu}/revision",
+        json={"calculation_id": calcul_du_projet_vierge},
+        headers=_entete(jeton(ACTEUR_A)))
+
+    assert r.status_code == 422, r.text
+    assert _observer("select count(*) from deliverables")[0][0] == avant, (
+        "aucune ligne ne doit naitre d'un refus")
+
+    apparus = _objets_du_magasin(prefixe)
+    assert not apparus, (
+        "LE REFUS A LAISSE DES OCTETS DERRIERE LUI. Objets deposes puis "
+        f"abandonnes sous « {prefixe} »: {sorted(apparus)}. Aucune ligne de "
+        "`deliverables` ne les reference, et la politique du magasin interdit "
+        "de les supprimer: ils sont definitifs."
+    )
+
+
+def test_un_calcul_d_un_autre_projet_ne_laisse_pas_d_octets(
+        client, jeton, projet_vierge, calcul_strict):
+    """LE MEME SOUPCON, SUR L'AUTRE REFUS TARDIF CONNU.
+
+    `test_un_calcul_d_un_autre_projet_ne_produit_pas_de_livrable` etablit
+    depuis longtemps qu'aucune LIGNE ne nait de ce chemin. Il ne regarde pas
+    le magasin — et la question n'est pas la meme.
+
+    Ce cas la pose. S'il passe du premier coup, il ne mesure pas un correctif:
+    il constate que `_octets_du_document` refuse AVANT le depot, et il verrouille
+    cet ordre pour la suite.
+    """
+    prefixe = f"{projet_vierge['organization_id']}/" \
+              f"{projet_vierge['project_id']}/"
+    assert not _objets_du_magasin(prefixe)
+
+    r = client.post(
+        f"/v1/projects/{projet_vierge['project_id']}/deliverables",
+        json={"calculation_id": calcul_strict},
+        headers=_entete(jeton(ACTEUR_A)))
+
+    assert r.status_code == 422, r.text
+    apparus = _objets_du_magasin(prefixe)
+    assert not apparus, (
+        "un calcul etranger au projet a tout de meme fait ecrire dans le "
+        f"magasin: {sorted(apparus)}"
+    )
