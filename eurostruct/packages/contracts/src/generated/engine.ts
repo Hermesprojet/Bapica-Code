@@ -14,6 +14,13 @@
 
 /* eslint-disable */
 
+/** La confirmation d'une modification, relue depuis la base. */
+export interface AdhesionModifiee {
+  is_active: boolean;
+  role: string;
+  user_id: string;
+}
+
 /** Ce que le validateur écrit, et **rien d'autre**. NI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION. Les trois sortent de ``organization_members`` sous l'identité du jeton. Les accepter ici donnerait l'illusion qu'ils comptent, alors que PostgreSQL les écrase de toute façon — et l'illusion est pire que l'absence, parce qu'un écran finirait par les afficher. NI IDENTIFIANT DE CALCUL, NI EMPREINTE. L'attestation porte sur le calcul du livrable et sur les octets réellement enregistrés ; les faire venir du corps laisserait attester un calcul et en signer un autre. */
 export interface AttestationDemande {
   /** Réserves émises par le validateur. Elles font partie de l'attestation et sont conservées avec elle. */
@@ -345,14 +352,72 @@ export interface HistoriqueCalculs {
   project_id: string;
 }
 
+/** Une invitation, telle que le panneau d'administration la montre. NI LE SECRET NI SON EMPREINTE. Le premier n'existe plus ; la seconde suffirait à reconnaître un lien intercepté ailleurs, et n'aide en rien l'écran. */
+export interface Invitation {
+  accepted_at: string | null;
+  created_at: string;
+  display_name: string | null;
+  expires_at: string;
+  invitation_id: string;
+  label: string | null;
+  professional_id: string | null;
+  revoked_at: string | null;
+  role: string;
+  /** pending | accepted | revoked | expired. Calculé par la base, pas par l'écran : deux horloges donneraient deux réponses. */
+  state: string;
+}
+
+/** Ce que l'invité obtient : une organisation, et son rôle dedans. */
+export interface InvitationAcceptee {
+  member_role: string;
+  organization_id: string;
+  organization_name: string;
+}
+
+/** Ce qu'un owner ou un admin saisit pour accueillir quelqu'un. AUCUNE ADRESSE ÉLECTRONIQUE. Une invitation liée à une adresse ouvre l'énumération des comptes : « invitez untel@exemple.fr » répondrait différemment selon que le compte existe ou non, et l'on apprendrait qui travaille où. ``label`` est un aide-mémoire libre pour l'émetteur ; il n'entre dans aucune décision. */
+export interface InvitationCreation {
+  /** Le nom professionnel sous lequel l'invité signera. POSÉ PAR L'ORGANISATION, jamais par l'invité : quelqu'un qui choisirait lui-même ce nom pourrait attester sous celui d'un autre. */
+  display_name?: string | null;
+  /** Aide-mémoire libre, pour que l'émetteur s'y retrouve. N'entre dans aucune décision. */
+  label?: string | null;
+  professional_id?: string | null;
+  /** Le rôle que l'invité aura. Un « admin » ne peut pas inviter un « owner » : il donnerait plus que son propre pouvoir. */
+  role: string;
+  /** Durée de validité du lien. Un lien qui n'expire jamais est un mot de passe permanent. */
+  validity_days?: number;
+}
+
+/** La réponse à une émission — et le SEUL endroit où le secret apparaît. ``token`` N'EST PAS EN BASE. PostgreSQL n'en détient que le sha256 : une fuite de sauvegarde, un journal trop bavard ou une lecture accidentelle ne rendent aucun lien utilisable. En contrepartie, ce secret ne peut pas être réaffiché : il faut le copier maintenant, ou révoquer et réémettre. */
+export interface InvitationEmise {
+  expires_at: string;
+  invitation_id: string;
+  organization_id: string;
+  role: string;
+  /** Le secret du lien, en clair, UNE SEULE FOIS. Il n'existe nulle part ailleurs — ni en base, ni dans les journaux. */
+  token: string;
+}
+
+/** Ce qu'un invité présente pour rejoindre un bureau. LE REFUS EST LE MÊME dans les quatre cas — inconnue, expirée, révoquée, déjà consommée. Distinguer « ce lien n'existe pas » de « ce lien a expiré » apprendrait à qui essaie des liens au hasard quand il a visé juste. */
+export interface JetonInvitation {
+  token: string;
+}
+
 export interface JournalDTO {
   clauses: string[];
   steps: CalcStepDTO[];
   title: string;
 }
 
+export interface ListeInvitations {
+  invitations: Invitation[];
+}
+
 export interface ListeLivrables {
   deliverables?: Livrable[];
+}
+
+export interface ListeMembres {
+  members: Membre[];
 }
 
 /** Les projets des organisations de l'appelant, et rien d'autre. */
@@ -437,6 +502,29 @@ export interface MaterialsDTO {
   steel_grade: string;
 }
 
+/** Une adhésion, telle que le panneau d'administration la montre. ``is_active = false`` NE FAIT PAS DISPARAÎTRE LA LIGNE, et c'est voulu depuis 0009 : une note de dix ans doit rester lisible et nommer son signataire. Ce qui disparaît, c'est l'accès. */
+export interface Membre {
+  created_at: string;
+  deactivated_at: string | null;
+  display_name: string | null;
+  is_active: boolean;
+  /** Vrai pour la ligne de l'appelant. L'écran s'en sert pour ne pas proposer des gestes que la base refuse de toute façon : on ne modifie pas sa propre adhésion. */
+  is_me: boolean;
+  professional_id: string | null;
+  role: string;
+  user_id: string;
+}
+
+/** Ce qu'un owner ou un admin change sur l'adhésion d'un collègue. LES CHAMPS ABSENTS NE SONT PAS TOUCHÉS. Envoyer ``role`` seul ne remet pas les noms à zéro : ``update_names`` doit être demandé explicitement, faute de quoi un formulaire partiel effacerait le nom sous lequel quelqu'un a signé. */
+export interface MembreModification {
+  display_name?: string | null;
+  is_active?: boolean | null;
+  professional_id?: string | null;
+  role?: string | null;
+  /** Sans lui, ``display_name`` et ``professional_id`` sont ignorés. Un formulaire partiel n'efface pas le nom sous lequel quelqu'un a signé. */
+  update_names?: boolean;
+}
+
 /** One published National Annex document, at one edition. */
 export interface NationalAnnexDTO {
   country_code: string;
@@ -493,6 +581,25 @@ export interface NdpSummaryDTO {
   strict: boolean;
   /** Parameters not yet confirmed against the published National Annex. */
   unverified: string[];
+}
+
+/** Un bureau, tel que l'écran d'entrée le montre. */
+export interface Organisation {
+  country: "BE" | "FR" | "ES" | "DE";
+  /** Le rôle de l'appelant DANS ce bureau. Dérivé de l'adhésion, jamais déclaré. */
+  member_role: string;
+  name: string;
+  organization_id: string;
+}
+
+/** Ce qu'une personne saisit pour fonder son bureau. AUCUN CHAMP NE DÉSIGNE LE FONDATEUR. C'est l'appelant, dérivé du jeton : fonder au nom de quelqu'un d'autre n'a pas de sens, et l'accepter dans le corps ferait de l'appartenance une simple affirmation. */
+export interface OrganisationCreation {
+  country: "BE" | "FR" | "ES" | "DE";
+  /** Le nom professionnel du fondateur dans ce bureau. Il figurera sur les attestations qu'il signera ; sans lui, la primitive d'attestation refuse. */
+  display_name?: string | null;
+  name: string;
+  /** Numéro d'inscription à l'ordre ou à la chambre professionnelle. Il n'est vérifié par personne ici, et aucune valeur n'est inventée : il est reproduit tel quel. */
+  professional_id?: string | null;
 }
 
 /** One branch of a parameter the National Annex makes conditional. Belgium's alpha_cc is 0,85 for axial force and bending, 1,0 otherwise. The frontend must never collapse this to one number for display without saying which case it shows. */

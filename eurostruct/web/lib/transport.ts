@@ -133,7 +133,19 @@ export class ApiInjoignable extends Error {
 }
 
 type Options = {
-  methode?: "GET" | "POST";
+  /**
+   * `PATCH` ET `DELETE` SONT ARRIVÉS AVEC L'ADMINISTRATION DES MEMBRES.
+   *
+   * Modifier une adhésion n'est pas la remplacer — un `PUT` obligerait
+   * l'écran à renvoyer les champs qu'il ne touche pas, c'est-à-dire à
+   * réaffirmer le nom sous lequel quelqu'un a signé à chaque changement de
+   * rôle. Révoquer une invitation n'est pas non plus une création.
+   *
+   * AUCUN DES DEUX N'EST IDEMPOTENT AU SENS DE CE TRANSPORT: rejouer une
+   * révocation après un 401 la refuserait une seconde fois, et rejouer un
+   * changement de rôle appliquerait deux fois une décision prise une.
+   */
+  methode?: "GET" | "POST" | "PATCH" | "DELETE";
   corps?: unknown;
   /**
    * L'appel peut-il être REPETE sans effet supplémentaire ?

@@ -53,6 +53,20 @@ from eurostruct_engine.schemas.atelier import (  # noqa: E402
     RetourAuBrouillon,
     Transition,
 )
+from eurostruct_engine.schemas.organisation import (  # noqa: E402
+    AdhesionModifiee,
+    Invitation,
+    InvitationAcceptee,
+    InvitationCreation,
+    InvitationEmise,
+    JetonInvitation,
+    ListeInvitations,
+    ListeMembres,
+    Membre,
+    MembreModification,
+    Organisation,
+    OrganisationCreation,
+)
 from eurostruct_engine.schemas.common import (  # noqa: E402
     EngineErrorDTO,
     NdpSummaryDTO,
@@ -120,6 +134,24 @@ ROOTS = [
     Livrable,
     LivrableDetail,
     ListeLivrables,
+    # L'ENTREE DANS L'APPLICATION. L'ecran d'un compte tout neuf n'a rien a
+    # afficher et tout a proposer: fonder son bureau, ou rejoindre celui de
+    # quelqu'un avec un lien. Les douze formes descendent du meme contrat que
+    # le reste — et l'une d'elles porte, une seule fois, le secret d'une
+    # invitation, ce qui est exactement la raison de ne pas la recopier a la
+    # main quelque part.
+    OrganisationCreation,
+    Organisation,
+    InvitationCreation,
+    InvitationEmise,
+    JetonInvitation,
+    InvitationAcceptee,
+    Invitation,
+    ListeInvitations,
+    Membre,
+    ListeMembres,
+    MembreModification,
+    AdhesionModifiee,
 ]
 
 TS_OUT = REPO / "packages" / "contracts" / "src" / "generated" / "engine.ts"

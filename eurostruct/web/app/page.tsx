@@ -34,6 +34,24 @@ import {
   type LivrableDetail, type Projet,
 } from "@/lib/atelier";
 import type { CalculResume } from "@contracts/generated/engine";
+import {
+  accepterInvitation,
+  emettreInvitation,
+  fonderOrganisation,
+  listerInvitations,
+  listerMembres,
+  listerOrganisations,
+  modifierMembre,
+  peutAdministrer,
+  revoquerInvitation,
+  ROLE_EXPLIQUE,
+  ROLES,
+  type Invitation,
+  type InvitationEmise,
+  type Membre,
+  type MembreModification,
+  type Organisation,
+} from "@/lib/organisation";
 import { FournisseurAuth, useAuth } from "@/lib/authentification";
 import { apiUrlConfiguree, DIAGNOSTIC_API_ABSENTE } from "@/lib/configuration";
 import {
@@ -205,7 +223,13 @@ function Ecran() {
 
       <ConfigurationManquante />
       <Connexion />
-      <Atelier projet={projet} surSelection={setProjet} />
+      {/* LE BUREAU AVANT L'ATELIER, ET C'EST L'ORDRE DU PARCOURS REEL: on
+          appartient a une organisation AVANT d'avoir un projet. Un compte tout
+          neuf voyait jusqu'ici un selecteur de projets vide, sans un mot sur ce
+          qui manquait. */}
+      <Bureau surChangement={() => setRevisionAtelier((n) => n + 1)} />
+      <Atelier projet={projet} surSelection={setProjet}
+               revision={revisionAtelier} />
       <DecisionsAutorite pays={paysEffectif}
                          surConsommation={() => setRevision((n) => n + 1)} />
       <Referentiel pays={paysEffectif} revision={revision} />
@@ -426,9 +450,16 @@ function issueDepuisErreur(cause: unknown): Issue {
  * aujourd'hui un refus nommé du serveur plutôt qu'un choix deviné, et le champ
  * viendra quand le cas se présentera vraiment.
  */
-function Atelier({ projet, surSelection }: {
+function Atelier({ projet, surSelection, revision = 0 }: {
   projet: Projet | null;
   surSelection: (p: Projet | null) => void;
+  //: CE QUE LA FONDATION D'UN BUREAU INCREMENTE.
+  //:
+  //: Sans lui, l'atelier demandait ses projets UNE fois, a la connexion.
+  //: Quelqu'un qui fondait son bureau juste apres restait devant un selecteur
+  //: vide et le meme refus qu'avant — le produit avait fait ce qu'il fallait,
+  //: et l'ecran disait le contraire.
+  revision?: number;
 }) {
   const auth = useAuth();
   const [projets, setProjets] = useState<Projet[] | null>(null);
@@ -457,7 +488,7 @@ function Atelier({ projet, surSelection }: {
         if (vivant) { setProjets(null); setErreur(String(cause)); }
       });
     return () => { vivant = false; };
-  }, [auth.connecte, auth.porteur, surSelection]);
+  }, [auth.connecte, auth.porteur, surSelection, revision]);
 
   if (!auth.connecte) return null;
 
@@ -573,6 +604,515 @@ function Atelier({ projet, surSelection }: {
         </form>
       )}
     </section>
+  );
+}
+
+
+/**
+ * LE BUREAU — LA PORTE D'ENTRÉE, ET L'ADMINISTRATION DE L'ÉQUIPE.
+ *
+ * CE QU'IL REMPLACE : RIEN. Il n'y avait rien. Un compte tout neuf,
+ * parfaitement authentifié, arrivait devant une liste de projets vide — pas
+ * une erreur, pas une explication, un écran nu — et aucun bouton ne permettait
+ * d'en sortir. La seule façon d'exister dans l'application était un `insert`
+ * fait à la main par le propriétaire de la base.
+ *
+ * DEUX ÉCRANS, ET LA DIFFÉRENCE COMPTE. « Zéro projet et zéro bureau » n'est
+ * pas « zéro projet et un bureau » : le premier appelle « créez votre bureau »,
+ * le second « créez votre premier projet ». Une seule liste vide ne permettait
+ * pas de les distinguer, et c'est pour cela que les organisations se
+ * demandent séparément des projets.
+ *
+ * AUCUN BOUTON DÉCORATIF. Le panneau d'administration n'apparaît que pour un
+ * `owner` ou un `admin`, et pour les autres l'écran EXPLIQUE au lieu de
+ * cacher. La frontière, elle, est dans PostgreSQL : `project_exiger_capacite`
+ * refuse quel que soit l'appelant, et la route la rejoue.
+ */
+function Bureau({ surChangement }: { surChangement: () => void }) {
+  const auth = useAuth();
+  const [bureaux, setBureaux] = useState<Organisation[] | null>(null);
+  const [choisi, setChoisi] = useState<string>("");
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+
+  //: LE FORMULAIRE DE FONDATION.
+  const [ouvrirFondation, setOuvrirFondation] = useState(false);
+  const [nomBureau, setNomBureau] = useState("");
+  const [paysBureau, setPaysBureau] = useState<Pays>("BE");
+  const [monNom, setMonNom] = useState("");
+  const [monOrdre, setMonOrdre] = useState("");
+
+  //: LE FORMULAIRE D'ADHÉSION PAR LIEN.
+  const [ouvrirAdhesion, setOuvrirAdhesion] = useState(false);
+  const [lien, setLien] = useState("");
+
+  const [enCours, setEnCours] = useState(false);
+
+  useEffect(() => {
+    if (!auth.connecte) { setBureaux(null); setChoisi(""); return; }
+    let vivant = true;
+    listerOrganisations(auth.porteur)
+      .then((liste) => {
+        if (!vivant) return;
+        setBureaux(liste);
+        setErreur(null);
+        // ON NE CHOISIT PAS A LA PLACE DE QUELQU'UN QUI A PLUSIEURS BUREAUX:
+        // on preselectionne seulement quand il n'y a pas d'ambiguite.
+        setChoisi((actuel) => actuel
+          || (liste.length === 1 ? liste[0].organization_id : ""));
+      })
+      .catch((cause) => {
+        // UNE PANNE N'EST PAS UNE ABSENCE DE BUREAU. Les confondre ferait
+        // proposer « créez votre organisation » à quelqu'un qui en a une, et
+        // il en créerait une seconde.
+        if (vivant) { setBureaux(null); setErreur(String(cause)); }
+      });
+    return () => { vivant = false; };
+  }, [auth.connecte, auth.porteur, revision]);
+
+  if (!auth.connecte) return null;
+
+  const courant = (bureaux ?? []).find((o) => o.organization_id === choisi)
+    ?? null;
+
+  async function fonder(e: React.FormEvent) {
+    e.preventDefault();
+    setEnCours(true);
+    setErreur(null);
+    try {
+      const cree = await fonderOrganisation(auth.porteur, {
+        name: nomBureau, country: paysBureau,
+        display_name: monNom.trim() || null,
+        professional_id: monOrdre.trim() || null,
+      });
+      setChoisi(cree.organization_id);
+      setOuvrirFondation(false);
+      setNomBureau("");
+      setRevision((n) => n + 1);
+      surChangement();
+    } catch (cause) {
+      setErreur(String(cause));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  async function rejoindre(e: React.FormEvent) {
+    e.preventDefault();
+    setEnCours(true);
+    setErreur(null);
+    try {
+      const entree = await accepterInvitation(auth.porteur, lien.trim());
+      setChoisi(entree.organization_id);
+      setOuvrirAdhesion(false);
+      setLien("");
+      setRevision((n) => n + 1);
+      surChangement();
+    } catch (cause) {
+      setErreur(String(cause));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  return (
+    <section className="bandeau" id="bureau">
+      <strong>Bureau</strong>
+      {erreur && <p role="alert">{erreur}</p>}
+
+      {bureaux !== null && bureaux.length === 0 && (
+        <div id="aucun-bureau">
+          <p>
+            Vous n&apos;appartenez à aucun bureau d&apos;études. Un projet
+            appartient à une organisation&nbsp;: sans elle, rien ne peut être
+            créé, et l&apos;écran resterait vide indéfiniment.
+          </p>
+          <div className="grille">
+            <button type="button" id="creer-bureau"
+                    onClick={() => { setOuvrirFondation((o) => !o);
+                                     setOuvrirAdhesion(false); }}>
+              {ouvrirFondation ? "Annuler" : "Créer mon organisation"}
+            </button>
+            <button type="button" id="rejoindre-bureau"
+                    onClick={() => { setOuvrirAdhesion((o) => !o);
+                                     setOuvrirFondation(false); }}>
+              {ouvrirAdhesion ? "Annuler" : "Rejoindre avec une invitation"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {bureaux !== null && bureaux.length > 0 && (
+        <div className="grille">
+          <div>
+            <label htmlFor="bureau-choisi">Organisation</label>
+            <select id="bureau-choisi" value={choisi}
+                    onChange={(e) => setChoisi(e.target.value)}>
+              <option value="">— choisir —</option>
+              {bureaux.map((o) => (
+                <option key={o.organization_id} value={o.organization_id}>
+                  {o.name} ({o.country}) — {o.member_role}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <button type="button" id="rejoindre-bureau"
+                    onClick={() => { setOuvrirAdhesion((o) => !o);
+                                     setOuvrirFondation(false); }}>
+              {ouvrirAdhesion ? "Annuler" : "Rejoindre avec une invitation"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {ouvrirFondation && (
+        <form onSubmit={fonder} id="formulaire-fondation">
+          <fieldset>
+            <legend>Créer mon organisation</legend>
+            <div className="grille">
+              <div>
+                <label htmlFor="nom-bureau">Nom du bureau</label>
+                <input id="nom-bureau" value={nomBureau}
+                       onChange={(e) => setNomBureau(e.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="pays-bureau">Pays</label>
+                <select id="pays-bureau" value={paysBureau}
+                        onChange={(e) => setPaysBureau(e.target.value as Pays)}>
+                  <option value="BE">Belgique</option>
+                  <option value="FR">France</option>
+                  <option value="ES">Espagne</option>
+                  <option value="DE">Allemagne</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="mon-nom">Votre nom professionnel</label>
+                <input id="mon-nom" value={monNom}
+                       onChange={(e) => setMonNom(e.target.value)} />
+                <span className="aide">
+                  Il figurera sur les attestations que vous signerez. Sans lui,
+                  la base refuse d&apos;attester.
+                </span>
+              </div>
+              <div>
+                <label htmlFor="mon-ordre">
+                  Numéro d&apos;inscription (facultatif)
+                </label>
+                <input id="mon-ordre" value={monOrdre}
+                       onChange={(e) => setMonOrdre(e.target.value)} />
+                <span className="aide">
+                  Reproduit tel quel. Il n&apos;est vérifié par personne ici.
+                </span>
+              </div>
+            </div>
+            <button type="submit" id="valider-fondation"
+                    disabled={enCours || !nomBureau.trim()}>
+              {enCours ? "Création…" : "Créer le bureau"}
+            </button>
+          </fieldset>
+        </form>
+      )}
+
+      {ouvrirAdhesion && (
+        <form onSubmit={rejoindre} id="formulaire-adhesion">
+          <fieldset>
+            <legend>Rejoindre avec une invitation</legend>
+            <div>
+              <label htmlFor="lien-invitation">Lien reçu</label>
+              <input id="lien-invitation" value={lien}
+                     onChange={(e) => setLien(e.target.value)} />
+              <span className="aide">
+                Le lien est à usage unique et expire. Il ne dit pas de quel
+                bureau il vient&nbsp;: c&apos;est en le présentant que vous
+                l&apos;apprenez.
+              </span>
+            </div>
+            <button type="submit" id="valider-adhesion"
+                    disabled={enCours || !lien.trim()}>
+              {enCours ? "Adhésion…" : "Rejoindre"}
+            </button>
+          </fieldset>
+        </form>
+      )}
+
+      {courant && <Equipe organisation={courant} />}
+    </section>
+  );
+}
+
+/**
+ * L'ÉQUIPE DU BUREAU — membres et invitations, pour qui l'administre.
+ *
+ * POUR LES AUTRES, L'ÉCRAN EXPLIQUE AU LIEU DE CACHER. Un panneau qui
+ * disparaît sans un mot laisse chercher ce qu'on a mal fait ; un panneau qui
+ * dit « votre rôle n'administre pas les membres » se comprend tout de suite.
+ *
+ * LE SECRET D'UNE INVITATION N'EST MONTRÉ QU'UNE FOIS, ici, juste après son
+ * émission. Il n'existe nulle part ailleurs — ni en base, ni dans la liste
+ * ci-dessous, ni après un rechargement. Le recharger ne le ramènera pas : il
+ * faut révoquer et réémettre.
+ */
+function Equipe({ organisation }: { organisation: Organisation }) {
+  const auth = useAuth();
+  const [membres, setMembres] = useState<Membre[] | null>(null);
+  const [invitations, setInvitations] = useState<Invitation[] | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [enCours, setEnCours] = useState(false);
+
+  const [role, setRole] = useState<string>("engineer");
+  const [libelle, setLibelle] = useState("");
+  const [nomInvite, setNomInvite] = useState("");
+  const [ordreInvite, setOrdreInvite] = useState("");
+  //: LE LIEN TOUT JUSTE ÉMIS. Il vit dans l'état de ce composant, et nulle
+  //: part ailleurs: ni `localStorage`, ni URL. Un secret rangé dans le
+  //: navigateur survivrait à la session, ce qu'un lien à usage unique ne doit
+  //: pas faire.
+  const [lienEmis, setLienEmis] = useState<InvitationEmise | null>(null);
+
+  const administre = peutAdministrer(organisation);
+
+  useEffect(() => {
+    if (!administre) { setMembres(null); setInvitations(null); return; }
+    let vivant = true;
+    Promise.all([
+      listerMembres(auth.porteur, organisation.organization_id),
+      listerInvitations(auth.porteur, organisation.organization_id),
+    ])
+      .then(([m, i]) => {
+        if (!vivant) return;
+        setMembres(m); setInvitations(i); setErreur(null);
+      })
+      .catch((cause) => {
+        if (vivant) { setMembres(null); setInvitations(null);
+                      setErreur(String(cause)); }
+      });
+    return () => { vivant = false; };
+  }, [auth.porteur, organisation.organization_id, administre, revision]);
+
+  if (!administre) {
+    return (
+      <p id="pourquoi-pas-admin" className="aide">
+        Votre rôle dans ce bureau est «&nbsp;{organisation.member_role}
+        &nbsp;»&nbsp;: il n&apos;administre pas les membres. Inviter quelqu&apos;un,
+        changer un rôle ou révoquer un accès relève d&apos;un
+        «&nbsp;owner&nbsp;» ou d&apos;un «&nbsp;admin&nbsp;».
+      </p>
+    );
+  }
+
+  async function inviter(e: React.FormEvent) {
+    e.preventDefault();
+    setEnCours(true);
+    setErreur(null);
+    setLienEmis(null);
+    try {
+      const emise = await emettreInvitation(
+        auth.porteur, organisation.organization_id, {
+          role, label: libelle.trim() || null,
+          display_name: nomInvite.trim() || null,
+          professional_id: ordreInvite.trim() || null,
+          validity_days: 14,
+        });
+      setLienEmis(emise);
+      setLibelle(""); setNomInvite(""); setOrdreInvite("");
+      setRevision((n) => n + 1);
+    } catch (cause) {
+      setErreur(String(cause));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  async function revoquer(invitationId: string) {
+    setEnCours(true);
+    setErreur(null);
+    try {
+      await revoquerInvitation(auth.porteur, organisation.organization_id,
+                               invitationId);
+      setRevision((n) => n + 1);
+    } catch (cause) {
+      setErreur(String(cause));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  async function changer(userId: string, modification: MembreModification) {
+    setEnCours(true);
+    setErreur(null);
+    try {
+      await modifierMembre(auth.porteur, organisation.organization_id,
+                           userId, modification);
+      setRevision((n) => n + 1);
+    } catch (cause) {
+      setErreur(String(cause));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  return (
+    <div id="equipe">
+      <h3>Équipe de {organisation.name}</h3>
+      {erreur && <p role="alert">{erreur}</p>}
+
+      <table id="table-membres">
+        <thead>
+          <tr>
+            <th>Nom professionnel</th><th>Rôle</th><th>Inscription</th>
+            <th>État</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(membres ?? []).map((m) => (
+            <tr key={m.user_id} data-membre={m.user_id}>
+              <td>{m.display_name ?? <em>— aucun —</em>}</td>
+              <td data-role={m.role}>{m.role}</td>
+              <td>{m.professional_id ?? "—"}</td>
+              <td data-actif={m.is_active ? "oui" : "non"}>
+                {m.is_active ? "actif" : "révoqué"}
+              </td>
+              <td>
+                {m.is_me ? (
+                  // AUCUN BOUTON SUR SA PROPRE LIGNE, ET LA RAISON EST DITE.
+                  // La base refuse de toute façon: montrer un bouton qui
+                  // recevra un refus est pire que ne pas le montrer.
+                  <span className="aide">
+                    vous — on ne modifie pas sa propre adhésion
+                  </span>
+                ) : (
+                  <>
+                    <select aria-label={`Rôle de ${m.display_name ?? m.user_id}`}
+                            value={m.role} disabled={enCours}
+                            onChange={(e) => changer(m.user_id,
+                              { role: e.target.value, is_active: null,
+                                display_name: null, professional_id: null,
+                                update_names: false })}>
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                    <button type="button" disabled={enCours}
+                            data-action={m.is_active ? "desactiver" : "reactiver"}
+                            onClick={() => changer(m.user_id,
+                              { role: null, is_active: !m.is_active,
+                                display_name: null, professional_id: null,
+                                update_names: false })}>
+                      {m.is_active ? "Désactiver" : "Réactiver"}
+                    </button>
+                  </>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="aide">
+        Une adhésion désactivée <strong>ne disparaît pas</strong>&nbsp;: une note
+        de dix ans doit rester lisible et nommer son signataire. Ce qui
+        disparaît, c&apos;est l&apos;accès.
+      </p>
+
+      <form onSubmit={inviter} id="formulaire-invitation">
+        <fieldset>
+          <legend>Inviter quelqu&apos;un</legend>
+          <div className="grille">
+            <div>
+              <label htmlFor="role-invite">Rôle</label>
+              <select id="role-invite" value={role}
+                      onChange={(e) => setRole(e.target.value)}>
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>{r} — {ROLE_EXPLIQUE[r]}</option>
+                ))}
+              </select>
+              {organisation.member_role === "admin" && role === "owner" && (
+                <span className="aide" id="admin-pas-owner">
+                  Un «&nbsp;admin&nbsp;» ne peut pas inviter un
+                  «&nbsp;owner&nbsp;»&nbsp;: il donnerait plus que son propre
+                  pouvoir. La base refusera.
+                </span>
+              )}
+            </div>
+            <div>
+              <label htmlFor="libelle-invite">Aide-mémoire (facultatif)</label>
+              <input id="libelle-invite" value={libelle}
+                     onChange={(e) => setLibelle(e.target.value)} />
+              <span className="aide">
+                Pour vous y retrouver. Aucune adresse électronique n&apos;est
+                demandée ni stockée.
+              </span>
+            </div>
+            <div>
+              <label htmlFor="nom-invite">Nom professionnel de l&apos;invité</label>
+              <input id="nom-invite" value={nomInvite}
+                     onChange={(e) => setNomInvite(e.target.value)} />
+              <span className="aide">
+                Posé par vous, pas par l&apos;invité&nbsp;: quelqu&apos;un qui
+                choisirait ce nom pourrait attester sous celui d&apos;un autre.
+              </span>
+            </div>
+            <div>
+              <label htmlFor="ordre-invite">
+                Numéro d&apos;inscription (facultatif)
+              </label>
+              <input id="ordre-invite" value={ordreInvite}
+                     onChange={(e) => setOrdreInvite(e.target.value)} />
+            </div>
+          </div>
+          <button type="submit" id="emettre-invitation" disabled={enCours}>
+            {enCours ? "Émission…" : "Émettre le lien"}
+          </button>
+        </fieldset>
+      </form>
+
+      {lienEmis && (
+        <div id="lien-emis" role="status">
+          <p>
+            <strong>Copiez ce lien maintenant.</strong> Il n&apos;existe nulle
+            part ailleurs&nbsp;— la base n&apos;en connaît que l&apos;empreinte —
+            et il ne sera pas réaffiché. Il expire le{" "}
+            {lienEmis.expires_at.slice(0, 10)}.
+          </p>
+          <input id="secret-invitation" readOnly value={lienEmis.token}
+                 onFocus={(e) => e.currentTarget.select()} />
+        </div>
+      )}
+
+      <table id="table-invitations">
+        <thead>
+          <tr>
+            <th>Rôle</th><th>Aide-mémoire</th><th>État</th><th>Expire</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(invitations ?? []).map((i) => (
+            <tr key={i.invitation_id} data-invitation={i.invitation_id}>
+              <td>{i.role}</td>
+              <td>{i.label ?? "—"}</td>
+              <td data-etat={i.state}>{i.state}</td>
+              <td>{i.expires_at.slice(0, 10)}</td>
+              <td>
+                {i.state === "pending" ? (
+                  <button type="button" disabled={enCours}
+                          data-action="revoquer"
+                          onClick={() => revoquer(i.invitation_id)}>
+                    Révoquer
+                  </button>
+                ) : (
+                  // UNE INVITATION CONSOMMEE NE SE REVOQUE PAS: retirer le
+                  // lien ne retirerait personne du bureau, et laisserait
+                  // croire le contraire.
+                  <span className="aide">—</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

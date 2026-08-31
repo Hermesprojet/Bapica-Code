@@ -1,5 +1,30 @@
 {
   "$defs": {
+    "AdhesionModifiee": {
+      "additionalProperties": false,
+      "description": "La confirmation d'une modification, relue depuis la base.",
+      "properties": {
+        "is_active": {
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "role",
+        "is_active"
+      ],
+      "title": "AdhesionModifiee",
+      "type": "object"
+    },
     "AttestationDemande": {
       "additionalProperties": false,
       "description": "Ce que le validateur écrit, et **rien d'autre**.\n\nNI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION. Les trois sortent de\n``organization_members`` sous l'identité du jeton. Les accepter ici\ndonnerait l'illusion qu'ils comptent, alors que PostgreSQL les écrase de\ntoute façon — et l'illusion est pire que l'absence, parce qu'un écran\nfinirait par les afficher.\n\nNI IDENTIFIANT DE CALCUL, NI EMPREINTE. L'attestation porte sur le calcul\ndu livrable et sur les octets réellement enregistrés ; les faire venir du\ncorps laisserait attester un calcul et en signer un autre.",
@@ -1488,6 +1513,245 @@
       "title": "HistoriqueCalculs",
       "type": "object"
     },
+    "Invitation": {
+      "additionalProperties": false,
+      "description": "Une invitation, telle que le panneau d'administration la montre.\n\nNI LE SECRET NI SON EMPREINTE. Le premier n'existe plus ; la seconde\nsuffirait à reconnaître un lien intercepté ailleurs, et n'aide en rien\nl'écran.",
+      "properties": {
+        "accepted_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Accepted At"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "expires_at": {
+          "title": "Expires At",
+          "type": "string"
+        },
+        "invitation_id": {
+          "title": "Invitation Id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Professional Id"
+        },
+        "revoked_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revoked At"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "state": {
+          "description": "pending | accepted | revoked | expired. Calculé par la base, pas par l'écran : deux horloges donneraient deux réponses.",
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "invitation_id",
+        "role",
+        "label",
+        "display_name",
+        "professional_id",
+        "created_at",
+        "expires_at",
+        "accepted_at",
+        "revoked_at",
+        "state"
+      ],
+      "title": "Invitation",
+      "type": "object"
+    },
+    "InvitationAcceptee": {
+      "additionalProperties": false,
+      "description": "Ce que l'invité obtient : une organisation, et son rôle dedans.",
+      "properties": {
+        "member_role": {
+          "title": "Member Role",
+          "type": "string"
+        },
+        "organization_id": {
+          "title": "Organization Id",
+          "type": "string"
+        },
+        "organization_name": {
+          "title": "Organization Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "organization_id",
+        "organization_name",
+        "member_role"
+      ],
+      "title": "InvitationAcceptee",
+      "type": "object"
+    },
+    "InvitationCreation": {
+      "additionalProperties": false,
+      "description": "Ce qu'un owner ou un admin saisit pour accueillir quelqu'un.\n\nAUCUNE ADRESSE ÉLECTRONIQUE. Une invitation liée à une adresse ouvre\nl'énumération des comptes : « invitez untel@exemple.fr » répondrait\ndifféremment selon que le compte existe ou non, et l'on apprendrait qui\ntravaille où. ``label`` est un aide-mémoire libre pour l'émetteur ; il\nn'entre dans aucune décision.",
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le nom professionnel sous lequel l'invité signera. POSÉ PAR L'ORGANISATION, jamais par l'invité : quelqu'un qui choisirait lui-même ce nom pourrait attester sous celui d'un autre.",
+          "title": "Display Name"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aide-mémoire libre, pour que l'émetteur s'y retrouve. N'entre dans aucune décision.",
+          "title": "Label"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Professional Id"
+        },
+        "role": {
+          "description": "Le rôle que l'invité aura. Un « admin » ne peut pas inviter un « owner » : il donnerait plus que son propre pouvoir.",
+          "title": "Role",
+          "type": "string"
+        },
+        "validity_days": {
+          "default": 14,
+          "description": "Durée de validité du lien. Un lien qui n'expire jamais est un mot de passe permanent.",
+          "maximum": 90,
+          "minimum": 1,
+          "title": "Validity Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "InvitationCreation",
+      "type": "object"
+    },
+    "InvitationEmise": {
+      "additionalProperties": false,
+      "description": "La réponse à une émission — et le SEUL endroit où le secret apparaît.\n\n``token`` N'EST PAS EN BASE. PostgreSQL n'en détient que le sha256 : une\nfuite de sauvegarde, un journal trop bavard ou une lecture accidentelle ne\nrendent aucun lien utilisable. En contrepartie, ce secret ne peut pas être\nréaffiché : il faut le copier maintenant, ou révoquer et réémettre.",
+      "properties": {
+        "expires_at": {
+          "title": "Expires At",
+          "type": "string"
+        },
+        "invitation_id": {
+          "title": "Invitation Id",
+          "type": "string"
+        },
+        "organization_id": {
+          "title": "Organization Id",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "token": {
+          "description": "Le secret du lien, en clair, UNE SEULE FOIS. Il n'existe nulle part ailleurs — ni en base, ni dans les journaux.",
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "invitation_id",
+        "organization_id",
+        "role",
+        "expires_at",
+        "token"
+      ],
+      "title": "InvitationEmise",
+      "type": "object"
+    },
+    "JetonInvitation": {
+      "additionalProperties": false,
+      "description": "Ce qu'un invité présente pour rejoindre un bureau.\n\nLE REFUS EST LE MÊME dans les quatre cas — inconnue, expirée, révoquée,\ndéjà consommée. Distinguer « ce lien n'existe pas » de « ce lien a\nexpiré » apprendrait à qui essaie des liens au hasard quand il a visé\njuste.",
+      "properties": {
+        "token": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "title": "JetonInvitation",
+      "type": "object"
+    },
     "JournalDTO": {
       "additionalProperties": false,
       "properties": {
@@ -1518,6 +1782,23 @@
       "title": "JournalDTO",
       "type": "object"
     },
+    "ListeInvitations": {
+      "additionalProperties": false,
+      "properties": {
+        "invitations": {
+          "items": {
+            "$ref": "#/$defs/Invitation"
+          },
+          "title": "Invitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "invitations"
+      ],
+      "title": "ListeInvitations",
+      "type": "object"
+    },
     "ListeLivrables": {
       "additionalProperties": false,
       "properties": {
@@ -1530,6 +1811,23 @@
         }
       },
       "title": "ListeLivrables",
+      "type": "object"
+    },
+    "ListeMembres": {
+      "additionalProperties": false,
+      "properties": {
+        "members": {
+          "items": {
+            "$ref": "#/$defs/Membre"
+          },
+          "title": "Members",
+          "type": "array"
+        }
+      },
+      "required": [
+        "members"
+      ],
+      "title": "ListeMembres",
       "type": "object"
     },
     "ListeProjets": {
@@ -2024,6 +2322,142 @@
       "title": "MaterialsDTO",
       "type": "object"
     },
+    "Membre": {
+      "additionalProperties": false,
+      "description": "Une adhésion, telle que le panneau d'administration la montre.\n\n``is_active = false`` NE FAIT PAS DISPARAÎTRE LA LIGNE, et c'est voulu\ndepuis 0009 : une note de dix ans doit rester lisible et nommer son\nsignataire. Ce qui disparaît, c'est l'accès.",
+      "properties": {
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "deactivated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Deactivated At"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "is_active": {
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "is_me": {
+          "description": "Vrai pour la ligne de l'appelant. L'écran s'en sert pour ne pas proposer des gestes que la base refuse de toute façon : on ne modifie pas sa propre adhésion.",
+          "title": "Is Me",
+          "type": "boolean"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Professional Id"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "role",
+        "display_name",
+        "professional_id",
+        "is_active",
+        "created_at",
+        "deactivated_at",
+        "is_me"
+      ],
+      "title": "Membre",
+      "type": "object"
+    },
+    "MembreModification": {
+      "additionalProperties": false,
+      "description": "Ce qu'un owner ou un admin change sur l'adhésion d'un collègue.\n\nLES CHAMPS ABSENTS NE SONT PAS TOUCHÉS. Envoyer ``role`` seul ne remet pas\nles noms à zéro : ``update_names`` doit être demandé explicitement, faute\nde quoi un formulaire partiel effacerait le nom sous lequel quelqu'un a\nsigné.",
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Name"
+        },
+        "is_active": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Active"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Professional Id"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "update_names": {
+          "default": false,
+          "description": "Sans lui, ``display_name`` et ``professional_id`` sont ignorés. Un formulaire partiel n'efface pas le nom sous lequel quelqu'un a signé.",
+          "title": "Update Names",
+          "type": "boolean"
+        }
+      },
+      "title": "MembreModification",
+      "type": "object"
+    },
     "NationalAnnexDTO": {
       "additionalProperties": false,
       "description": "One published National Annex document, at one edition.",
@@ -2358,6 +2792,99 @@
         "parameters"
       ],
       "title": "NdpSummaryDTO",
+      "type": "object"
+    },
+    "Organisation": {
+      "additionalProperties": false,
+      "description": "Un bureau, tel que l'écran d'entrée le montre.",
+      "properties": {
+        "country": {
+          "enum": [
+            "BE",
+            "FR",
+            "ES",
+            "DE"
+          ],
+          "title": "Country",
+          "type": "string"
+        },
+        "member_role": {
+          "description": "Le rôle de l'appelant DANS ce bureau. Dérivé de l'adhésion, jamais déclaré.",
+          "title": "Member Role",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "organization_id": {
+          "title": "Organization Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "organization_id",
+        "name",
+        "country",
+        "member_role"
+      ],
+      "title": "Organisation",
+      "type": "object"
+    },
+    "OrganisationCreation": {
+      "additionalProperties": false,
+      "description": "Ce qu'une personne saisit pour fonder son bureau.\n\nAUCUN CHAMP NE DÉSIGNE LE FONDATEUR. C'est l'appelant, dérivé du jeton :\nfonder au nom de quelqu'un d'autre n'a pas de sens, et l'accepter dans le\ncorps ferait de l'appartenance une simple affirmation.",
+      "properties": {
+        "country": {
+          "enum": [
+            "BE",
+            "FR",
+            "ES",
+            "DE"
+          ],
+          "title": "Country",
+          "type": "string"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le nom professionnel du fondateur dans ce bureau. Il figurera sur les attestations qu'il signera ; sans lui, la primitive d'attestation refuse.",
+          "title": "Display Name"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Numéro d'inscription à l'ordre ou à la chambre professionnelle. Il n'est vérifié par personne ici, et aucune valeur n'est inventée : il est reproduit tel quel.",
+          "title": "Professional Id"
+        }
+      },
+      "required": [
+        "name",
+        "country"
+      ],
+      "title": "OrganisationCreation",
       "type": "object"
     },
     "ParameterVariantDTO": {
