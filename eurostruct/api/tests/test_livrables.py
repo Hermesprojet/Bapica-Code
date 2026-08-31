@@ -1332,3 +1332,155 @@ def test_un_calcul_d_un_autre_projet_ne_laisse_pas_d_octets(
         "un calcul etranger au projet a tout de meme fait ecrire dans le "
         f"magasin: {sorted(apparus)}"
     )
+
+
+# ===========================================================================
+# 10 — LA MEME NOTE, EN PDF, PAR LES MEMES ROUTES
+# ===========================================================================
+def _localisation(deliverable_id: str) -> tuple[str, str, str, int]:
+    """``(storage_backend, storage_path, sha256, size_bytes)``, lus EN BASE.
+
+    On interroge la base d'observation, pas la reponse HTTP: ce qui compte est
+    ce que la LIGNE enregistre, puisque c'est elle qui servira a retrouver les
+    octets dans dix ans.
+    """
+    lignes = _observer(
+        "select storage_backend, storage_path, sha256, size_bytes "
+        "  from deliverables where id = %s", (deliverable_id,))
+    assert lignes, f"aucune ligne de livrable pour {deliverable_id}"
+    return lignes[0]
+
+
+def _brouillon_pdf(client, jeton, projet, calcul_id: str) -> dict:
+    r = client.post(f"/v1/projects/{projet['project_id']}/deliverables",
+                    json={"calculation_id": calcul_id, "format": "pdf"},
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_un_brouillon_pdf_enregistre_sa_nature_et_son_type_reels(
+        client, jeton, projet, calcul_strict):
+    """LES QUATRE VALEURS SE DECIDENT ENSEMBLE, OU ELLES MENTENT.
+
+    Genre enregistre, type de media, extension du chemin, extension du nom de
+    fichier. Une ligne qui annoncerait `calculation_note_pdf` devant un objet
+    `.html` ferait servir l'un en promettant l'autre.
+    """
+    livrable = _brouillon_pdf(client, jeton, projet, calcul_strict)
+
+    assert livrable["kind"] == "calculation_note_pdf"
+    assert livrable["media_type"] == "application/pdf"
+    assert livrable["filename"].endswith(".pdf")
+
+    backend, chemin, sha, _ = _localisation(livrable["deliverable_id"])
+    assert backend == "local"
+    assert chemin.endswith(".pdf")
+    assert chemin.startswith(f"{projet['organization_id']}/"
+                             f"{projet['project_id']}/")
+    assert sha in chemin, "le chemin doit deriver de l'empreinte"
+
+
+def test_les_octets_pdf_telecharges_portent_l_empreinte_enregistree(
+        client, jeton, projet, calcul_strict):
+    livrable = _brouillon_pdf(client, jeton, projet, calcul_strict)
+    _, _, sha, taille = _localisation(livrable["deliverable_id"])
+
+    r = client.get(f"/v1/projects/{projet['project_id']}/deliverables/"
+                   f"{livrable['deliverable_id']}/download",
+                   headers=_entete(jeton(ACTEUR_A)))
+
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/pdf"
+    assert hashlib.sha256(r.content).hexdigest() == sha
+    assert len(r.content) == taille
+    assert r.content.startswith(b"%PDF-")
+    # RFC 6266: les deux formes du nom, et l'extension juste dans les deux.
+    disposition = r.headers["content-disposition"]
+    assert ".pdf" in disposition
+
+
+def test_le_pdf_servi_s_ouvre_avec_un_lecteur_tiers_et_porte_la_mention(
+        client, jeton, projet, calcul_exploratoire):
+    """LE TEMOIN EST EXTERIEUR, ET IL LIT LES OCTETS REELLEMENT SERVIS.
+
+    Pas le document composé en mémoire : ceux qui sont sortis du magasin et
+    ont traversé le transport. Un PDF valide à la composition et corrompu au
+    téléchargement passerait tous les autres cas.
+    """
+    pypdf = pytest.importorskip("pypdf")
+    import io
+
+    livrable = _brouillon_pdf(client, jeton, projet, calcul_exploratoire)
+    r = client.get(f"/v1/projects/{projet['project_id']}/deliverables/"
+                   f"{livrable['deliverable_id']}/download",
+                   headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 200, r.text
+
+    lecteur = pypdf.PdfReader(io.BytesIO(r.content))
+    texte = "\n".join(p.extract_text() for p in lecteur.pages)
+
+    # INTERDICTION N° 8: la mention de validation est sur TOUT document.
+    assert "n'est pas un livrable final" in texte
+    # Le calcul est exploratoire: le filigrane doit y etre.
+    assert "NON SIGNABLE" in texte
+    assert livrable["mention"], "la ligne doit porter le filigrane elle aussi"
+
+
+def test_deux_pdf_du_meme_calcul_ecrivent_au_meme_endroit(
+        client, jeton, projet, calcul_strict):
+    """LE PDF EST DETERMINISTE, DONC L'ADRESSAGE PAR CONTENU FONCTIONNE.
+
+    Si la composition inscrivait une date, les deux empreintes differeraient
+    et le magasin porterait deux objets pour un seul et meme calcul — sans
+    qu'aucun chiffre du document n'ait bouge. C'est ce cas qui le constate par
+    le chemin produit.
+    """
+    un = _brouillon_pdf(client, jeton, projet, calcul_strict)
+    deux = _brouillon_pdf(client, jeton, projet, calcul_strict)
+
+    assert un["deliverable_id"] != deux["deliverable_id"]
+    _, chemin_un, sha_un, _ = _localisation(un["deliverable_id"])
+    _, chemin_deux, sha_deux, _ = _localisation(deux["deliverable_id"])
+    assert sha_un == sha_deux, (
+        "deux compositions du meme calcul n'ont pas rendu les memes octets")
+    assert chemin_un == chemin_deux
+
+
+def test_le_pdf_et_le_html_du_meme_calcul_sont_deux_objets_distincts(
+        client, jeton, projet, calcul_strict):
+    """MEME CALCUL, DEUX FICHIERS — ET AUCUN NE DOIT ECRASER L'AUTRE.
+
+    Les chemins different par l'extension ET par l'empreinte. Le contraire
+    ferait qu'un depot PDF viendrait recouvrir la note HTML du meme calcul.
+    """
+    html = _brouillon(client, jeton, projet, calcul_strict)
+    pdf = _brouillon_pdf(client, jeton, projet, calcul_strict)
+
+    _, chemin_html, sha_html, _ = _localisation(html["deliverable_id"])
+    _, chemin_pdf, sha_pdf, _ = _localisation(pdf["deliverable_id"])
+
+    assert chemin_html != chemin_pdf
+    assert sha_html != sha_pdf
+    assert chemin_html.endswith(".html")
+    assert chemin_pdf.endswith(".pdf")
+
+
+def test_une_forme_inconnue_est_refusee_et_ne_depose_rien(
+        client, jeton, projet_vierge, calcul_du_projet_vierge):
+    """LE CHOIX EST BORNE PAR LE MODELE, DONC REFUSE AVANT TOUT DEPOT.
+
+    `Literal["html", "pdf"]` fait rendre 422 a la validation du corps: la
+    route n'est pas atteinte, et le magasin n'est pas touche.
+    """
+    prefixe = f"{projet_vierge['organization_id']}/" \
+              f"{projet_vierge['project_id']}/"
+    assert not _objets_du_magasin(prefixe)
+
+    r = client.post(
+        f"/v1/projects/{projet_vierge['project_id']}/deliverables",
+        json={"calculation_id": calcul_du_projet_vierge, "format": "docx"},
+        headers=_entete(jeton(ACTEUR_A)))
+
+    assert r.status_code == 422, r.text
+    assert not _objets_du_magasin(prefixe)

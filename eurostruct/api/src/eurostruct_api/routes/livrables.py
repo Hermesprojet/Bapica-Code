@@ -55,7 +55,13 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 from ..dependances import ouvrir_atelier
-from ..note import MEDIA_TYPE, rendre_note
+from ..note import (
+    MEDIA_TYPE,
+    MEDIA_TYPE_PDF,
+    rendre_note,
+    rendre_note_pdf,
+)
+from ..pdf import CaractereNonRepresentable
 from ..stockage import (
     ObjetIntrouvable,
     OctetsAlteres,
@@ -70,12 +76,23 @@ from .projets import _jeton_de, _projet_de, _refus
 
 routeur = APIRouter(prefix="/v1/projects", tags=["livrables"])
 
-#: LA SEULE NATURE DE DOCUMENT QUE LE PRODUIT SAIT REELLEMENT PRODUIRE.
+#: LES NATURES DE DOCUMENT QUE LE PRODUIT SAIT REELLEMENT PRODUIRE.
 #:
-#: `deliverable_kind` en enumere neuf, toutes attendues plus tard — PDF, DXF,
-#: IFC, tableur. Offrir le choix a l'ecran ferait promettre huit livrables
+#: `deliverable_kind` en enumere neuf, les autres attendues plus tard — DXF,
+#: IFC, tableur. Offrir le choix a l'ecran ferait promettre des livrables
 #: qu'aucune route ne produit.
 GENRE = "calculation_note_html"
+
+#: FORME DEMANDEE -> (genre enregistre, type de media, extension du chemin).
+#:
+#: LES TROIS SE DECIDENT ENSEMBLE, ET C'EST DELIBERE. Les laisser diverger
+#: donnerait une ligne annoncant un PDF devant un objet HTML: le
+#: telechargement servirait l'un en promettant l'autre, et l'empreinte
+#: enregistree ne dirait pas laquelle des deux est vraie.
+_FORMES: dict[str, tuple[str, str, str]] = {
+    "html": (GENRE, MEDIA_TYPE, "html"),
+    "pdf": ("calculation_note_pdf", MEDIA_TYPE_PDF, "pdf"),
+}
 
 #: LES EN-TETES QUI FERMENT LE DOCUMENT SERVI.
 #:
@@ -177,7 +194,8 @@ def _exiger_capacite(projet: dict[str, Any], capacite: str) -> None:
 
 
 def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
-                        calculation_id: str) -> tuple[bytes, str | None]:
+                        calculation_id: str,
+                        forme: str = "html") -> tuple[bytes, str | None]:
     """Produit les octets du livrable **depuis les données gelées**.
 
     LE MOTEUR N'EST PAS RELANCÉ. Le calcul est relu tel qu'il a été écrit —
@@ -197,11 +215,19 @@ def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
         )
 
     notice, mention = _mentions(bool(calcul.get("strict_ndp")))
+    # LES DEUX FORMES DISENT LA MEME CHOSE, ET C'EST LA REGLE. Meme calcul
+    # relu, meme notice, meme mention: seule la forme du fichier change. Un
+    # PDF qui affirmerait autre chose que le HTML du meme calcul serait un
+    # second document, pas un second format.
+    if forme == "pdf":
+        return rendre_note_pdf(projet, calcul, notice=notice,
+                               mention=mention), mention
     document = rendre_note(projet, calcul, notice=notice, mention=mention)
     return document.encode("utf-8"), mention
 
 
-def _nom_de_fichier(projet: dict[str, Any], calcul_id: str) -> str:
+def _nom_de_fichier(projet: dict[str, Any], calcul_id: str,
+                    forme: str = "html") -> str:
     """Un nom lisible, composé de caractères sûrs uniquement.
 
     IL NE SERT PAS À CONSTRUIRE LE CHEMIN DE STOCKAGE, qui dérive de
@@ -213,7 +239,11 @@ def _nom_de_fichier(projet: dict[str, Any], calcul_id: str) -> str:
         c for c in str(projet.get("reference") or projet.get("name") or "")
         if c.isalnum() or c in "-_")[:40]
     court = "".join(c for c in calcul_id if c.isalnum() or c == "-")[:36]
-    return f"note-{reference or 'projet'}-{court or 'calcul'}.html"
+    # L'EXTENSION SUIT LA FORME REELLEMENT PRODUITE. Un `.html` servi avec
+    # `application/pdf` ferait enregistrer au navigateur un fichier que son
+    # systeme ouvrirait avec le mauvais programme.
+    suffixe = "pdf" if forme == "pdf" else "html"
+    return f"note-{reference or 'projet'}-{court or 'calcul'}.{suffixe}"
 
 
 def _creer(ouvert: Any, corps: LivrableCreation, project_id: str,
@@ -270,19 +300,32 @@ def _creer(ouvert: Any, corps: LivrableCreation, project_id: str,
         ouvert.fermer()
         raise _indisponible(cause) from cause
 
+    # LA FORME EST LE SEUL CHOIX DU CLIENT, ET TOUT LE RESTE EN DECOULE:
+    # genre enregistre, type de media, extension du chemin, extension du nom
+    # de fichier. Les laisser diverger donnerait une ligne qui annonce un PDF
+    # devant un objet HTML — et le telechargement servirait l'un en promettant
+    # l'autre.
+    forme = corps.format
+    genre, media, extension = _FORMES[forme]
+
     try:
         octets, filigrane = _octets_du_document(
-            ouvert, jeton, projet, corps.calculation_id)
+            ouvert, jeton, projet, corps.calculation_id, forme)
     except (AuthentificationRequise, ConfirmationDomainError) as cause:
         ouvert.fermer()
         raise _refus(cause) from cause
+    except CaractereNonRepresentable as cause:
+        # LE DOCUMENT AURAIT PERDU UN SYMBOLE. On refuse plutot que de servir
+        # une note ou `eps_s` serait devenu autre chose.
+        ouvert.fermer()
+        raise _indisponible(cause) from cause
 
     sha = empreinte(octets)
     try:
         chemin = chemin_de_livrable(
             org_id=projet["organization_id"], project_id=project_id,
-            sha256=sha, extension="html")
-        magasin.deposer(chemin, octets, MEDIA_TYPE)
+            sha256=sha, extension=extension)
+        magasin.deposer(chemin, octets, media)
         relus = magasin.lire(chemin)
         if empreinte(relus) != sha or len(relus) != len(octets):
             raise OctetsAlteres(
@@ -297,8 +340,9 @@ def _creer(ouvert: Any, corps: LivrableCreation, project_id: str,
     try:
         livrable_id = ouvert.atelier.creer_livrable(
             jeton, project_id=project_id, calculation_id=corps.calculation_id,
-            kind=GENRE, filename=_nom_de_fichier(projet, corps.calculation_id),
-            media_type=MEDIA_TYPE, storage_backend=magasin.nom,
+            kind=genre,
+            filename=_nom_de_fichier(projet, corps.calculation_id, forme),
+            media_type=media, storage_backend=magasin.nom,
             storage_path=chemin, sha256=sha, size_bytes=len(octets),
             watermark=filigrane, supersedes_id=supersedes_id)
         return _detail(ouvert.atelier.relire_livrable(

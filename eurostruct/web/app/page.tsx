@@ -1198,10 +1198,10 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
    * a rien a corriger dans la demande, et inviter l'ingenieur a la reformuler
    * lui ferait perdre son temps.
    */
-  async function produire(calculationId: string) {
+  async function produire(calculationId: string, format: "html" | "pdf") {
     try {
       await creerLivrable(auth.porteur, projet.project_id,
-                          { calculation_id: calculationId });
+                          { calculation_id: calculationId, format });
       setErreur(null);
       surLivrable();
     } catch (cause) {
@@ -1267,10 +1267,23 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
                       LIVRABLE: ses octets sont deposes, relus, et leur
                       empreinte enregistree — c'est ce document-la, et pas un
                       autre, qu'un ingenieur pourra attester. */}
+                  {/* DEUX BOUTONS, PARCE QU'IL Y A DEUX DOCUMENTS.
+                      Le meme calcul, les memes chiffres, la meme mention
+                      obligatoire: seule la forme du fichier change. Le HTML
+                      s'ouvre hors ligne dans un navigateur; le PDF se joint a
+                      un dossier. Aucun des deux n'est un brouillon "par
+                      defaut" qu'on convertirait ensuite — chacun est un
+                      livrable a part entiere, avec sa propre empreinte. */}
                   {c.status !== "refused" && peutRediger(projet) && (
-                    <button type="button"
-                            onClick={() => produire(c.calculation_id)}>
-                      Produire un brouillon
+                    <button type="button" id={`brouillon-html-${c.calculation_id}`}
+                            onClick={() => produire(c.calculation_id, "html")}>
+                      Produire un brouillon HTML
+                    </button>
+                  )}
+                  {c.status !== "refused" && peutRediger(projet) && (
+                    <button type="button" id={`brouillon-pdf-${c.calculation_id}`}
+                            onClick={() => produire(c.calculation_id, "pdf")}>
+                      Produire un brouillon PDF
                     </button>
                   )}
                 </td>

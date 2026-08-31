@@ -2016,11 +2016,21 @@
     },
     "LivrableCreation": {
       "additionalProperties": false,
-      "description": "Créer un brouillon **depuis un calcul déjà enregistré**.\n\nUN SEUL CHAMP, ET C'EST TOUT CE QUE LE CLIENT SAIT. Le contenu du document\nest produit sur le serveur à partir des données gelées du calcul ; sa\nnature, son nom, ses octets, leur empreinte, leur taille, le contexte\nnormatif, la version du moteur, le build et l'identité d'exécution sont\ntous dérivés. Il n'y a donc rien d'autre à envoyer.\n\n``kind`` N'EST PAS UN CHAMP NON PLUS. Le produit sait produire une note de\ncalcul HTML autonome, et rien d'autre aujourd'hui. Offrir le choix entre\nhuit natures de document dont sept n'existent pas ferait promettre à\nl'écran des livrables qu'aucune route ne produit.",
+      "description": "Créer un brouillon **depuis un calcul déjà enregistré**.\n\nLE CONTENU EST PRODUIT SUR LE SERVEUR à partir des données gelées du\ncalcul ; sa nature, son nom, ses octets, leur empreinte, leur taille, le\ncontexte normatif, la version du moteur, le build et l'identité\nd'exécution sont tous dérivés. Le client n'en nomme aucun.\n\n``kind`` N'EST PAS UN CHAMP. Le produit sait produire une note de calcul,\net rien d'autre aujourd'hui. Offrir le choix entre huit natures de document\ndont six n'existent pas ferait promettre à l'écran des livrables qu'aucune\nroute ne produit.\n\n``format`` EST LA SEULE EXCEPTION, ET CE N'EST PAS UNE VALEUR DERIVEE. Le\nmême calcul, les mêmes chiffres, la même mention obligatoire — seule la\nforme du fichier change. C'est un choix qui appartient au client : on lit\nune note à l'écran en HTML, on la joint à un dossier en PDF. Rien de ce que\nle document AFFIRME n'en dépend, et c'est ce qui distingue ce champ de ceux\nque la route refuse.",
       "properties": {
         "calculation_id": {
           "description": "Le calcul enregistré dont ce livrable est tiré. Il doit appartenir au projet du chemin, avoir abouti, et porter une identité d'exécution vérifiable.",
           "title": "Calculation Id",
+          "type": "string"
+        },
+        "format": {
+          "default": "html",
+          "description": "La forme du fichier produit. « html » est un document autonome qui s'ouvre hors ligne ; « pdf » est composé sans aucune date interne, afin que deux compositions du même calcul portent la même empreinte.",
+          "enum": [
+            "html",
+            "pdf"
+          ],
+          "title": "Format",
           "type": "string"
         }
       },

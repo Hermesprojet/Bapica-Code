@@ -39,13 +39,19 @@ from __future__ import annotations
 from html import escape
 from typing import Any
 
-__all__ = ["MEDIA_TYPE", "rendre_note"]
+from .pdf import Bloc, Champs, Paragraphe, Tableau, Titre, composer_pdf
+
+__all__ = ["MEDIA_TYPE", "MEDIA_TYPE_PDF", "rendre_note", "rendre_note_pdf"]
 
 #: `charset` DANS LE TYPE, PAS SEULEMENT DANS LE `<meta>`. Un navigateur qui
 #: ouvre le fichier depuis le disque lit le `<meta>`; un client qui le reçoit
 #: par HTTP lit l'en-tête. Les deux doivent dire UTF-8, sinon les accents des
 #: descriptions d'étapes sortent faux dans l'un des deux cas.
 MEDIA_TYPE = "text/html; charset=utf-8"
+#: LE TYPE DU PDF. Sans `charset`: un PDF est binaire, et annoncer un jeu de
+#: caracteres sur un flux binaire fait deviner a certains clients qu'il s'agit
+#: de texte — puis reencoder les octets qu'ils servent.
+MEDIA_TYPE_PDF = "application/pdf"
 
 #: LA FEUILLE DE STYLE EST EMBARQUEE, ET MINIMALE.
 #:
@@ -373,3 +379,231 @@ def rendre_note(projet: dict[str, Any], calcul: dict[str, Any],
         "</main>",
     ]
     return "\n".join(parties)
+
+
+# ===========================================================================
+# LA MEME NOTE, EN PDF
+# ===========================================================================
+# POURQUOI PAS UNE CONVERSION DU HTML. Convertir demanderait un moteur de rendu
+# — donc une dépendance lourde, non déterministe, et impossible à relire. On
+# compose donc le PDF depuis les MEMES DONNEES RELUES, jamais depuis le HTML.
+#
+# LA CONTREPARTIE EST UNE DUPLICATION DES LISTES DE CHAMPS, ET ELLE EST
+# ASSUMEE. Elle est gardée par `test_les_deux_rendus_portent_les_memes_faits`:
+# si l'un des deux documents cessait de porter un fait que l'autre porte, ce
+# cas rougirait. Une divergence silencieuse entre deux rendus du même calcul
+# serait bien pire que la répétition.
+
+
+def _p(valeur: Any) -> str:
+    """La même règle que ``_e``, mais en texte brut: pas d'échappement HTML."""
+    if valeur is None or valeur == "":
+        return "—"
+    return str(valeur)
+
+
+def _quantite_p(q: Any, decimales: int = 2) -> str:
+    """``{"value": 1.0, "unit": "mm"}`` -> ``1,00 mm``, en texte brut."""
+    if not isinstance(q, dict) or "value" not in q:
+        return _p(q)
+    try:
+        nombre = f"{float(q['value']):.{decimales}f}".replace(".", ",")
+    except (TypeError, ValueError):
+        return _p(q.get("value"))
+    unite = q.get("unit") or ""
+    return f"{nombre} {unite}" if unite else nombre
+
+
+def rendre_note_pdf(projet: dict[str, Any], calcul: dict[str, Any],
+                    notice: str, mention: str | None) -> bytes:
+    """La note de calcul en PDF. **Aucune date, donc des octets stables.**
+
+    Deux compositions du même calcul rendent les mêmes octets — c'est ce que
+    l'adressage par contenu exige, et c'est pourquoi ``composer_pdf``
+    n'inscrit ni date de création ni identifiant aléatoire.
+    """
+    paquet = calcul.get("result") or {}
+    resultat = paquet.get("result") or {}
+    rapport = paquet.get("verification") or {}
+    journal = calcul.get("journal") or {}
+    requete = calcul.get("request") or {}
+    ndp = calcul.get("ndp_snapshot") or {}
+
+    titre = (f"Note de calcul — {projet.get('name', '')} — "
+             f"{requete.get('element', '')}")
+
+    blocs: list[Bloc] = [
+        Titre(titre, 1),
+        Paragraphe("Vérification ELU en flexion simple, section "
+                   "rectangulaire — EN 1992-1-1 et son Annexe Nationale."),
+    ]
+
+    # LE FILIGRANE EN TETE, comme dans le HTML: un lecteur qui parcourt la
+    # premiere page doit savoir avant de lire les nombres qu'ils ne sont pas
+    # signables.
+    if mention:
+        blocs.append(Paragraphe(mention, gras=True, encadre=True))
+
+    blocs += [
+        Titre("Dossier"),
+        Champs([
+            ("Organisation", _p(projet.get("organization_name"))),
+            ("Projet", _p(projet.get("name"))),
+            ("Référence", _p(projet.get("reference"))),
+            ("Pays", _p(projet.get("country"))),
+            ("Région", _p(projet.get("region"))),
+            ("Date de référence normative", _p(projet.get("ndp_as_of"))),
+            ("Élément", _p(requete.get("element"))),
+            ("Calcul", _p(calcul.get("calculation_id"))),
+            ("Enregistré le", _p(calcul.get("created_at"))),
+        ]),
+    ]
+
+    section = requete.get("section") or {}
+    materiaux = requete.get("materials") or {}
+    blocs += [
+        Titre("Entrées"),
+        Champs([
+            ("Largeur b", _quantite_p(section.get("b"), 0)),
+            ("Hauteur h", _quantite_p(section.get("h"), 0)),
+            ("Hauteur utile d", _quantite_p(section.get("d"), 0)),
+            ("Moment M_Ed", _quantite_p(requete.get("M_Ed"), 2)),
+            ("Béton", _p(materiaux.get("concrete_grade"))),
+            ("Acier", _p(materiaux.get("steel_grade"))),
+            ("Situation de projet", _p(requete.get("situation"))),
+            ("Mode strict",
+             "oui" if calcul.get("strict_ndp") else "non (exploratoire)"),
+        ]),
+    ]
+
+    refus = calcul.get("refusal")
+    if refus:
+        blocs += [
+            Titre("Refus du moteur"),
+            Paragraphe(_p(refus.get("error")), gras=True, encadre=True),
+            Paragraphe(_p(refus.get("detail")), encadre=True),
+            Paragraphe("Un refus n'est pas une panne : le moteur a refusé de "
+                       "conclure, et cette note le dit sans nuance. Aucun "
+                       "résultat n'est produit.", encadre=True),
+        ]
+
+    if resultat:
+        lignes: list[list[str]] = []
+        for cle, libelle, dec in (
+            ("As_strength", "A_s requise par la résistance", 0),
+            ("As_min", "A_s,min — §9.2.1.1(1)", 0),
+            ("As_max", "A_s,max — §9.2.1.1(3)", 0),
+            ("As_required", "A_s requise", 0),
+            ("As_provided", "A_s disposée", 0),
+            ("x", "Axe neutre x", 1),
+            ("z", "Bras de levier z", 1),
+            ("M_Rd", "M_Rd", 2),
+        ):
+            if cle in resultat:
+                lignes.append([libelle, _quantite_p(resultat[cle], dec)])
+        for cle, libelle in (("mu", "μ"), ("xi", "ξ"), ("xi_lim", "ξ_lim"),
+                             ("eps_s", "ε_s"),
+                             ("utilisation", "Taux de travail")):
+            if cle in resultat:
+                # LE NOMBRE EST CELUI QUI EST ENREGISTRE. On pose la virgule
+                # decimale, on ne touche a rien d'autre — l'interdiction n° 9
+                # vaut aussi pour l'affichage.
+                brut = resultat[cle]
+                texte = (f"{float(brut):.3f}".replace(".", ",")
+                         if isinstance(brut, int | float) else _p(brut))
+                lignes.append([libelle, texte])
+        if lignes:
+            blocs += [Titre("Résultats"),
+                      Tableau(["Grandeur", "Valeur"], lignes, droite={1})]
+
+    controles = rapport.get("checks") or []
+    if controles:
+        lignes = []
+        for c in controles:
+            statut = str(c.get("status", ""))
+            taux = c.get("utilisation")
+            # AUCUN ARRONDI QUI FLATTE. `0,999` reste `0,999`.
+            taux_txt = (f"{float(taux) * 100:.1f}".replace(".", ",") + " %"
+                        if isinstance(taux, int | float) else "—")
+            clause = c.get("clause") or {}
+            cite = clause.get("cite") if isinstance(clause, dict) else clause
+            lignes.append([
+                _p(c.get("name")), _p(_STATUT.get(statut, statut)), taux_txt,
+                _p(c.get("acting")), _p(c.get("resisting")), _p(cite)])
+        blocs += [
+            Titre("Vérifications"),
+            Tableau(["Contrôle", "État", "Taux", "Sollicitant", "Résistant",
+                     "Clause"], lignes, droite={2}),
+        ]
+        if isinstance(rapport.get("max_utilisation"), int | float):
+            maxi = f"{float(rapport['max_utilisation']) * 100:.1f}".replace(
+                ".", ",")
+            blocs.append(Paragraphe(f"Taux de travail maximal : {maxi} %",
+                                    gras=True))
+
+    etapes = journal.get("steps") or []
+    if etapes:
+        lignes = []
+        for e in etapes:
+            clause = e.get("clause") or {}
+            cite = clause.get("cite") if isinstance(clause, dict) else clause
+            lignes.append([_p(e.get("symbol")), _p(e.get("description")),
+                           _p(e.get("numeric")), _p(e.get("formatted")),
+                           _p(cite)])
+        blocs += [
+            Titre(f"Journal de calcul — {_p(journal.get('title'))}"),
+            Tableau(["Symbole", "Description", "Application numérique",
+                     "Valeur", "Clause"], lignes, droite={3}),
+        ]
+        clauses = journal.get("clauses") or []
+        if clauses:
+            blocs.append(Paragraphe(
+                "Clauses citées : " + ", ".join(_p(c) for c in clauses)))
+
+    blocs += [
+        Titre("Référentiel national appliqué"),
+        Champs([
+            ("Pays", _p(ndp.get("country") or projet.get("country"))),
+            ("Région", _p(ndp.get("region") or projet.get("region"))),
+            ("Date de référence",
+             _p(ndp.get("as_of") or calcul.get("ndp_as_of"))),
+            ("Mode strict", "oui" if ndp.get("strict") else "non"),
+        ]),
+    ]
+    annexes = ndp.get("annexes") or []
+    if annexes:
+        blocs.append(Tableau(
+            ["Annexe", "Édition", "En vigueur depuis", "Source"],
+            [[_p(a.get("reference")), _p(a.get("edition")),
+              _p(a.get("effective_from")), _p(a.get("source_official"))]
+             for a in annexes]))
+    non_verifies = ndp.get("unverified") or []
+    if non_verifies:
+        blocs.append(Paragraphe(
+            "Paramètres nationaux non confirmés utilisés : "
+            + ", ".join(_p(p) for p in non_verifies), gras=True))
+
+    blocs += [
+        Titre("Traçabilité"),
+        Champs([
+            ("Moteur", _p(calcul.get("engine_version"))),
+            ("Build (SHA exact)", _p(calcul.get("engine_build_sha"))),
+            ("Empreinte des entrées", _p(calcul.get("inputs_hash"))),
+            ("Identité d'exécution", _p(calcul.get("execution_identity"))),
+            ("État", _p(calcul.get("status"))),
+        ]),
+        Paragraphe("L'empreinte des entrées désigne la requête. L'identité "
+                   "d'exécution désigne la requête, le référentiel réellement "
+                   "appliqué et le build : deux calculs de même identité "
+                   "doivent rendre le même résultat."),
+        Paragraphe(_p(notice), encadre=True),
+        Paragraphe("Ce document n'est pas un livrable final. Aucune "
+                   "validation nominative n'y figure : tant qu'un ingénieur "
+                   "habilité ne l'a pas signée, aucune mention de ce document "
+                   "ne peut se lire comme un engagement."),
+        Paragraphe("Document autonome : aucune police embarquée, aucune "
+                   "ressource externe. Aucune date n'y est inscrite, afin que "
+                   "deux compositions du même calcul portent la même "
+                   "empreinte."),
+    ]
+    return composer_pdf(titre, blocs)

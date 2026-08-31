@@ -423,8 +423,11 @@ try {
   //: ON DESIGNE LA LIGNE DU CALCUL, PAS « le bouton ». L'historique porte
   //: plusieurs calculs aboutis — le decor en a produit un par tour — et un
   //: selecteur par texte ne designerait aucun d'eux en particulier.
-  const bouton = page.locator(
-    `tr[data-calcul="${calculId}"] >> text=Produire un brouillon`);
+  //:
+  //: ET ON DESIGNE LA FORME PAR SON IDENTIFIANT, PAS PAR SON LIBELLE. Depuis
+  //: que l'ecran offre HTML *et* PDF, « text=Produire un brouillon » designe
+  //: DEUX boutons: Playwright refuse alors d'agir, et il a raison.
+  const bouton = page.locator(`#brouillon-html-${calculId}`);
   await bouton.waitFor({ timeout: 20000 });
   const brouillon = await corpsDe(
     "/deliverables", "POST", () => bouton.click());
@@ -440,6 +443,30 @@ try {
         `un calcul strict a produit le filigrane « ${brouillon.corps?.watermark} »`);
 
   await page.waitForSelector("#table-livrables", { timeout: 15000 });
+
+  // =======================================================================
+  // 4 bis — LE MEME CALCUL, EN PDF, PAR L'AUTRE BOUTON
+  // =======================================================================
+  //: LA SUITE D'API PROUVE QUE LA ROUTE PRODUIT UN PDF. Elle ne prouve pas
+  //: qu'un bouton l'atteint — c'est exactement la lecon du prevol CORS, ou
+  //: 32 cas verts coexistaient avec un panneau inatteignable.
+  ici("production du brouillon PDF");
+  const boutonPdf = page.locator(`#brouillon-pdf-${calculId}`);
+  await boutonPdf.waitFor({ timeout: 20000 });
+  const brouillonPdf = await corpsDe(
+    "/deliverables", "POST", () => boutonPdf.click());
+  exige(brouillonPdf.statut === 201,
+        `la production PDF a rendu ${brouillonPdf.statut}`);
+  exige(brouillonPdf.corps?.kind === "calculation_note_pdf",
+        `le PDF a ete enregistre comme « ${brouillonPdf.corps?.kind} »`);
+  exige(brouillonPdf.corps?.media_type === "application/pdf",
+        `type de media « ${brouillonPdf.corps?.media_type} »`);
+  exige(String(brouillonPdf.corps?.filename ?? "").endsWith(".pdf"),
+        `nom de fichier « ${brouillonPdf.corps?.filename} »`);
+  //: DEUX DOCUMENTS DISTINCTS POUR UN MEME CALCUL: leurs empreintes different,
+  //: donc leurs chemins aussi, donc aucun n'ecrase l'autre.
+  exige(brouillonPdf.corps?.sha256 !== empreinteEnregistree,
+        "le PDF et le HTML du meme calcul portent la meme empreinte");
 
   // =======================================================================
   // 5 — LES OCTETS TÉLÉCHARGÉS SONT CEUX QUI ONT ÉTÉ ENREGISTRÉS
@@ -718,7 +745,9 @@ if (echecs.length) {
 }
 console.log(
   "ok: A cree un projet BE/Wallonie, ouvre le mode strict par le quatre-yeux "
-  + "avec V, enregistre un calcul strict, produit un brouillon dont les octets "
+  + "avec V, enregistre un calcul strict, produit un brouillon HTML puis un "
+  + "brouillon PDF — deux documents distincts, aux empreintes differentes — "
+  + "dont les octets "
   + "telecharges portent l'empreinte enregistree et la conservent apres un "
   + "rechargement complet; le dossier de revue se telecharge et deux "
   + "telechargements rendent les memes octets; l'ecran de A n'offre aucun "

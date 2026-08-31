@@ -451,10 +451,12 @@ export interface Livrable {
   watermark?: string | null;
 }
 
-/** Créer un brouillon **depuis un calcul déjà enregistré**. UN SEUL CHAMP, ET C'EST TOUT CE QUE LE CLIENT SAIT. Le contenu du document est produit sur le serveur à partir des données gelées du calcul ; sa nature, son nom, ses octets, leur empreinte, leur taille, le contexte normatif, la version du moteur, le build et l'identité d'exécution sont tous dérivés. Il n'y a donc rien d'autre à envoyer. ``kind`` N'EST PAS UN CHAMP NON PLUS. Le produit sait produire une note de calcul HTML autonome, et rien d'autre aujourd'hui. Offrir le choix entre huit natures de document dont sept n'existent pas ferait promettre à l'écran des livrables qu'aucune route ne produit. */
+/** Créer un brouillon **depuis un calcul déjà enregistré**. LE CONTENU EST PRODUIT SUR LE SERVEUR à partir des données gelées du calcul ; sa nature, son nom, ses octets, leur empreinte, leur taille, le contexte normatif, la version du moteur, le build et l'identité d'exécution sont tous dérivés. Le client n'en nomme aucun. ``kind`` N'EST PAS UN CHAMP. Le produit sait produire une note de calcul, et rien d'autre aujourd'hui. Offrir le choix entre huit natures de document dont six n'existent pas ferait promettre à l'écran des livrables qu'aucune route ne produit. ``format`` EST LA SEULE EXCEPTION, ET CE N'EST PAS UNE VALEUR DERIVEE. Le même calcul, les mêmes chiffres, la même mention obligatoire — seule la forme du fichier change. C'est un choix qui appartient au client : on lit une note à l'écran en HTML, on la joint à un dossier en PDF. Rien de ce que le document AFFIRME n'en dépend, et c'est ce qui distingue ce champ de ceux que la route refuse. */
 export interface LivrableCreation {
   /** Le calcul enregistré dont ce livrable est tiré. Il doit appartenir au projet du chemin, avoir abouti, et porter une identité d'exécution vérifiable. */
   calculation_id: string;
+  /** La forme du fichier produit. « html » est un document autonome qui s'ouvre hors ligne ; « pdf » est composé sans aucune date interne, afin que deux compositions du même calcul portent la même empreinte. */
+  format?: "html" | "pdf";
 }
 
 /** Un livrable, son contexte figé, son attestation et son histoire. L'HISTORIQUE VIENT DU MÊME APPEL QUE L'ÉTAT. Deux appels séparés pourraient tomber de part et d'autre d'une transition et montrer un état qui ne correspond pas à son journal. */
