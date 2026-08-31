@@ -324,3 +324,51 @@ Le provisionnement est fait :
 Le harnais vérifie aussi, à chaque étape, que le **disque local reste vide** :
 `EUROSTRUCT_STORAGE_DIR` pointe sur un répertoire jetable, et un seul fichier
 qui y apparaîtrait révélerait un repli silencieux.
+
+---
+
+## 10. Sauvegarder, et revenir de la perte
+
+`db/test/stockage_s3.sh` établit que les octets survivent à un **redémarrage** —
+ce qui, en vérité, ne perd rien. Une rétention décennale a besoin d'autre chose :
+survivre à une **perte**. `db/test/sauvegarde_restauration.sh` pose cette
+question-là.
+
+**Un livrable vit dans deux systèmes, et c'est tout le piège.** La ligne est
+dans PostgreSQL — empreinte, taille, état, attestation, filiation. Les octets
+sont dans le magasin. Sauvegarder l'un sans l'autre ne donne pas une demi-
+sauvegarde : cela donne une base qui promet des documents introuvables, ou un
+compartiment d'objets que plus rien ne sait nommer.
+
+| Étape | Ce qu'elle fait |
+|---|---|
+| 1–3 | volume neuf, compartiment, un livrable déposé par les routes réelles |
+| 4 | **sauvegarde des deux moitiés** : `pg_dump -Fc`, et les objets tirés du compartiment **par le client du produit** |
+| 5 | **destruction totale** : la base est supprimée, le conteneur et le volume détruits — et on le constate |
+| 6 | **restauration des deux moitiés** : `pg_restore`, volume neuf, compartiment recréé, objets redéposés |
+| 7 | **les mêmes octets par la route réelle** — mêmes cas que la relecture après redémarrage ; ce qui change n'est pas ce qu'on vérifie, c'est ce qu'on a détruit avant |
+| 8 | **la moitié seule ne suffit pas** — objets détruits une seconde fois, base intacte : le téléchargement doit rendre 503 et le rapprochement dire `absent` |
+
+**L'étape 8 est celle qui donne sa valeur au harnais.** Un exploitant qui ne
+sauvegarde que PostgreSQL verrait un dump qui se restaure parfaitement, une base
+saine, des lignes complètes — et découvrirait au premier téléchargement que les
+documents n'existent plus. Le produit doit le **dire**, pas servir un vide.
+
+La sauvegarde des objets se fait **par `ClientS3.enumerer` et `lire`**, pas par
+`mc mirror` ni par la réplication d'un fournisseur. Ce n'est pas du purisme : ce
+qui nous intéresse est de savoir si **ce que le produit expose suffit** à écrire
+une procédure de sauvegarde. Si notre propre client ne sait pas parcourir le
+compartiment, aucun exploitant ne le peut à partir du produit seul.
+
+### Ce que ce harnais n'établit pas
+
+Ceci est un **harnais**, pas un plan de reprise. Pas de sauvegarde continue, pas
+de journal de transactions, pas de point de reprise dans le temps, pas de site
+distant, pas de chiffrement des sauvegardes, et aucune mesure de durée sur un
+volume réel. Ce qu'il établit est que **la matière nécessaire à une restauration
+est accessible et suffit**.
+
+La restauration se fait dans le **même cluster**, délibérément : le refus d'une
+restauration *inter-cluster* est le sujet de `db/test/cross_cluster_restore.sh`,
+et il est voulu. Ici on éprouve le cas d'exploitation courant — on a perdu les
+données, pas la machine.
