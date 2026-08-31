@@ -105,12 +105,13 @@ def _construire_application(cle):
     mémoire survivraient. Une seconde application construite de zéro est ce
     qui ressemble à un F5.
     """
+    from jwt.algorithms import RSAAlgorithm
+
     from eurostruct_api.app import creer_application
     from eurostruct_api.auth.jwks import TrousseauJwks
     from eurostruct_api.auth.supabase import AuthentificateurSupabase
     from eurostruct_api.base import FabriqueConnexionPostgres
     from eurostruct_api.config import Reglages, ReglagesAuth, ReglagesBase
-    from jwt.algorithms import RSAAlgorithm
 
     jwk = json.loads(RSAAlgorithm.to_jwk(cle.public_key()))
     jwk.update({"kid": KID, "alg": "RS256", "use": "sig"})
@@ -1095,7 +1096,17 @@ def test_le_dossier_de_revue_porte_le_document_et_son_rattachement(
     assert r.status_code == 200, r.text
     assert r.headers["content-type"].startswith("application/zip")
     assert "attachment" in r.headers["content-disposition"]
-    assert r.headers["content-disposition"].endswith('.zip"')
+    # LES DEUX FORMES DE LA RFC 6266, comme sur le telechargement du
+    # document. L'ancienne assertion regardait la FIN de l'en-tete: elle
+    # supposait que `filename=` etait le dernier champ, ce qui a cesse d'etre
+    # vrai des que `filename*` l'a suivi. On verifie le NOM, pas sa position.
+    disposition = r.headers["content-disposition"]
+    assert 'filename="dossier-revue-' in disposition
+    assert ".zip" in disposition
+    assert "filename*=UTF-8''" in disposition
+    #: LE NOM SUIT LE DOCUMENT ENREGISTRE, extension comprise: c'est ce qui
+    #: distingue le dossier d'une note HTML de celui d'une note PDF.
+    assert brouillon["filename"] in disposition
 
     archive = zipfile.ZipFile(io.BytesIO(r.content))
     noms = sorted(archive.namelist())
@@ -1484,3 +1495,49 @@ def test_une_forme_inconnue_est_refusee_et_ne_depose_rien(
 
     assert r.status_code == 422, r.text
     assert not _objets_du_magasin(prefixe)
+
+
+def test_le_dossier_de_revue_d_un_pdf_porte_le_pdf_et_un_nom_distinct(
+        client, jeton, projet, calcul_strict):
+    """DEUX DOSSIERS DU MEME CALCUL DOIVENT SE DISTINGUER AU TELECHARGEMENT.
+
+    Un relecteur qui demande le dossier de la note HTML puis celui de la note
+    PDF recevait deux archives PORTANT LE MEME NOM: son navigateur les range
+    en « (1) », et plus rien ne dit laquelle contient quoi.
+
+    LA CAUSE ETAIT UN NOM RECALCULE. Le nom de l'archive etait reconstruit
+    depuis le projet — `_nom_de_fichier(projet, calcul)` — au lieu de suivre le
+    document reellement enregistre. Recalculer une valeur qui existe deja est
+    exactement la façon dont deux verites divergent.
+    """
+    import io
+    import zipfile
+
+    html = _brouillon(client, jeton, projet, calcul_strict)
+    pdf = _brouillon_pdf(client, jeton, projet, calcul_strict)
+
+    noms = {}
+    for etiquette, livrable in (("html", html), ("pdf", pdf)):
+        r = client.get(f"/v1/projects/{projet['project_id']}/deliverables/"
+                       f"{livrable['deliverable_id']}/review-bundle",
+                       headers=_entete(jeton(ACTEUR_A)))
+        assert r.status_code == 200, r.text
+        noms[etiquette] = r.headers["content-disposition"]
+
+        with zipfile.ZipFile(io.BytesIO(r.content)) as archive:
+            manifeste = json.loads(archive.read("manifeste.json"))
+            octets = archive.read(f"documents/{livrable['filename']}")
+
+        # LES OCTETS DANS L'ARCHIVE SONT CEUX DU MAGASIN, a l'octet pres.
+        _, _, sha, taille = _localisation(livrable["deliverable_id"])
+        assert hashlib.sha256(octets).hexdigest() == sha
+        assert len(octets) == taille
+        assert manifeste["files"][0]["sha256_recorded"] == sha
+        assert manifeste["files"][0]["sha256_served"] == sha
+        if etiquette == "pdf":
+            assert octets.startswith(b"%PDF-"), (
+                "l'archive du PDF ne contient pas un PDF")
+
+    assert noms["html"] != noms["pdf"], (
+        "les deux dossiers se telechargent sous le meme nom: "
+        f"{noms['html']}")

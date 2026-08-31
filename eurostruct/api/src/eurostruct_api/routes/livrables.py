@@ -226,6 +226,18 @@ def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
     return document.encode("utf-8"), mention
 
 
+def _nom_sur(nom: str) -> str:
+    """Ne garde d'un nom enregistre que des caracteres surs.
+
+    IL VIENT DE LA BASE, PAS D'UN CORPS DE REQUETE — `_nom_de_fichier` l'y a
+    ecrit, et il est deja filtre. Le refiltrer ici coute une passe et supprime
+    une hypothese: le jour ou un autre chemin ecrira cette colonne, l'en-tete
+    ne portera toujours rien d'autre que ce qu'on accepte.
+    """
+    propre = "".join(c for c in nom if c.isalnum() or c in "-_.")[:120]
+    return propre or "document"
+
+
 def _nom_de_fichier(projet: dict[str, Any], calcul_id: str,
                     forme: str = "html") -> str:
     """Un nom lisible, composé de caractères sûrs uniquement.
@@ -616,12 +628,26 @@ def dossier_de_revue(project_id: str, deliverable_id: str,
             entree.external_attr = 0o644 << 16
             archive.writestr(entree, contenu)
 
-    nom = f"dossier-revue-{_nom_de_fichier(projet, detail['calculation_id'])}"
+    # LE NOM DE L'ARCHIVE SUIT LE DOCUMENT, IL NE LE RECALCULE PAS.
+    #
+    # Il etait reconstruit ici par `_nom_de_fichier(projet, calcul)`, puis son
+    # `.html` retire. Deux consequences, l'une mesuree, l'autre latente:
+    #
+    #   * MESUREE — les dossiers de la note HTML et de la note PDF du meme
+    #     calcul se telechargeaient sous LE MEME NOM. Le navigateur du
+    #     relecteur les range en « (1) », et plus rien ne dit laquelle
+    #     contient quoi.
+    #   * LATENTE — un nom recalcule reflete le projet d'AUJOURD'HUI, tandis
+    #     que le document dans l'archive porte celui du jour de sa creation.
+    #     Renommer un projet suffisait a les faire diverger.
+    #
+    # `detail['filename']` est le nom ENREGISTRE avec les octets. Son extension
+    # distingue les formes, et il ne bouge plus.
+    nom = f"dossier-revue-{_nom_sur(detail['filename'])}.zip"
     return Response(
         content=tampon.getvalue(), media_type="application/zip",
         headers={
-            "Content-Disposition":
-                f'attachment; filename="{nom.removesuffix(".html")}.zip"',
+            "Content-Disposition": disposition_de_fichier(nom),
             **_EN_TETES_DOCUMENT,
         },
     )
