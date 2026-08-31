@@ -20,6 +20,13 @@ embarquées.
 relecteur peut lire en entier. Un document opposable dix ans ne devrait pas
 dépendre d'un arbre de dépendances qu'on ne relit jamais.
 
+Pour la même raison, **le flux de page n'est pas compressé** : la sortie de
+``deflate`` n'est pas normalisée — ``zlib-ng`` et les forks vectorisés rendent
+d'autres octets — et l'empreinte d'un livrable aurait alors dépendu de la
+bibliothèque installée sur la machine qui l'a composé. Le contenu se lit
+d'ailleurs avec un simple éditeur de texte, ce qui n'est pas rien pour une
+pièce qu'on devra relire dans dix ans.
+
 CE QUE CE MODULE NE FAIT PAS
 ------------------------------
 Ni images, ni couleurs de fond, ni tableaux à bordures, ni césure, ni texte
@@ -38,7 +45,6 @@ que le calcul.
 """
 from __future__ import annotations
 
-import zlib
 from dataclasses import dataclass, field
 from typing import Final
 
@@ -482,12 +488,35 @@ def _assembler(titre: str, pages: list[_Page]) -> bytes:
     numeros_pages: list[int] = []
     for page in pages:
         flux = b"".join(page.morceaux)
-        # LA COMPRESSION EST DETERMINISTE: `zlib.compress` a niveau fixe rend
-        # les memes octets pour les memes entrees, sur toute plateforme.
-        comprime = zlib.compress(flux, 9)
-        n_flux = ajouter(b"<< /Length " + str(len(comprime)).encode("ascii")
-                         + b" /Filter /FlateDecode >>\nstream\n" + comprime
-                         + b"\nendstream")
+        # LE FLUX N'EST PAS COMPRIME, ET C'EST UN CHOIX CORRIGE.
+        #
+        # Il l'etait, avec ce commentaire: « la compression est deterministe,
+        # `zlib.compress` a niveau fixe rend les memes octets sur toute
+        # plateforme ». C'ETAIT FAUX. La sortie de `deflate` n'est pas
+        # normalisee: `zlib-ng`, les forks vectorises et certaines versions de
+        # zlib produisent des octets differents pour la meme entree. Python se
+        # lie a celui de la plateforme.
+        #
+        # POUR UN DOCUMENT ADRESSE PAR SON CONTENU, C'EST UNE DEPENDANCE DE
+        # TROP. L'empreinte d'un livrable aurait dependu de la bibliotheque
+        # installee sur la machine qui l'a compose: deux instances d'API
+        # derriere un repartiteur auraient pu ecrire DEUX objets pour un seul
+        # et meme calcul. Le mal n'est pas grand — chaque ligne resterait
+        # d'accord avec son objet — mais la propriete annoncee cesserait
+        # d'etre vraie, et une propriete a moitie vraie ne se verifie pas.
+        #
+        # LE COUT EST MESURE ET ASSUME: une note courante passe de 3 834 a
+        # 9 575 octets, une note de 120 etapes de 8 499 a 48 970. Pour une
+        # piece conservee dix ans, c'est negligeable — `docs/STOCKAGE.md`
+        # dimensionne deja le magasin en « quelques dizaines de kilo-octets »
+        # par note.
+        #
+        # ET IL Y A UN GAIN: un flux en clair se lit avec `strings` ou un
+        # editeur de texte. Un document opposable dont on peut inspecter le
+        # contenu sans outil est plus facile a auditer qu'un document qu'il
+        # faut d'abord decompresser.
+        n_flux = ajouter(b"<< /Length " + str(len(flux)).encode("ascii")
+                         + b" >>\nstream\n" + flux + b"\nendstream")
         n_page = ajouter(b"")
         numeros_pages.append(n_page)
         objets[n_page - 1] = (

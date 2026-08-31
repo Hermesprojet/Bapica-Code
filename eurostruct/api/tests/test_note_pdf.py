@@ -412,3 +412,30 @@ def test_le_pied_de_page_ne_recouvre_pas_le_contenu():
     assert "DERNIÈRE LIGNE DU DOCUMENT." in texte
     assert "Ligne de contenu numéro 0." in texte
     assert "Ligne de contenu numéro 59." in texte
+
+
+def test_le_flux_n_est_pas_comprime_et_se_lit_en_clair():
+    """L'EMPREINTE NE DOIT DEPENDRE QUE DU CODE DE CE DEPOT.
+
+    Le flux etait comprime par `zlib`, sous un commentaire affirmant que
+    « la compression est deterministe sur toute plateforme ». C'etait faux: la
+    sortie de `deflate` n'est pas normalisee — `zlib-ng` et les forks
+    vectorises rendent d'autres octets — et Python se lie a la bibliotheque de
+    la plateforme.
+
+    Pour un document ADRESSE PAR SON CONTENU, c'est une dependance de trop:
+    deux instances d'API derriere un repartiteur auraient pu ecrire deux
+    objets pour un seul et meme calcul.
+
+    LE GAIN SUPPLEMENTAIRE EST L'AUDITABILITE: le contenu se lit avec un
+    editeur de texte, sans rien decompresser.
+    """
+    octets = rendre_note_pdf(PROJET, CALCUL, notice=NOTICE, mention=MENTION)
+
+    assert b"/Filter" not in octets, "un filtre de flux est revenu"
+    assert b"FlateDecode" not in octets
+    # LE TEXTE EST LA, EN CLAIR, DANS LES OCTETS DU FICHIER.
+    assert b"Note de calcul" in octets
+    assert b"NON SIGNABLE" in octets
+    # ET LE FICHIER RESTE VALIDE POUR UN LECTEUR TIERS.
+    assert _pages(octets) >= 1

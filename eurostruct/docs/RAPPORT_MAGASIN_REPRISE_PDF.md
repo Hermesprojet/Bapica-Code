@@ -238,13 +238,13 @@ confirmés, taux de travail.
 
 | Commande | Sortie | Mesure |
 |---|---|---|
-| `./run_tests.sh --require-db` | **0** | `COMPLET`, 6 surfaces, API 348 collectés / 348 exécutés |
-| `db/test/livrable_validation.sh` | **0** | 58 cas (52 avant ce lot) |
+| `./run_tests.sh --require-db` | **0** | `COMPLET`, 6 surfaces, API 350 collectés / 350 exécutés |
+| `db/test/livrable_validation.sh` | **0** | 59 cas (52 avant ce lot) |
 | `db/test/stockage_s3.sh` | **0** | **10** étapes (8 avant), MinIO réel |
 | `db/test/sauvegarde_restauration.sh` | **0** | 8 étapes, destruction totale et retour |
 | `db/test/parcours_entree.sh` | **0** | 14 points, Chromium |
 | `db/test/parcours_livrable.sh` | **0** | HTML **et** PDF par les boutons |
 | `api && pytest tests/test_reconciliation.py` | **0** | 11 cas |
-| `api && pytest tests/test_note_pdf.py` | **0** | 16 cas, lecteur `pypdf` témoin |
+| `api && pytest tests/test_note_pdf.py` | **0** | 17 cas, lecteur `pypdf` témoin |
 | `web && npm run typecheck` / `build` | **0** / **0** | Next.js 16.3.3 |
 | `engine/scripts/export_contracts.py` | **0** | 64 types |
