@@ -90,3 +90,50 @@ def test_les_identifiants_ne_sont_pas_autorises(client):
                  "Access-Control-Request-Headers": "authorization"},
     )
     assert r.headers.get("access-control-allow-credentials") != "true"
+
+
+def test_content_disposition_est_expose_au_navigateur(client):
+    """UN EN-TETE NON EXPOSE EST INVISIBLE A `fetch`, ET LE CLIENT INVENTE.
+
+    L'ecran lit `Content-Disposition` pour savoir sous quel nom enregistrer un
+    livrable. `fetch` ne rend QUE les en-tetes declares dans
+    `Access-Control-Expose-Headers`; les autres existent dans la reponse et
+    restent illisibles depuis JavaScript.
+
+    MESURE DU JOUR, DANS UN VRAI CHROMIUM: le navigateur proposait
+    « livrable-<id>.html » pour une note PDF, parce que le client retombait
+    sur son nom de secours. Le systeme de l'utilisateur aurait ouvert un PDF
+    avec un lecteur HTML.
+
+    LE DEFAUT EXISTAIT DEJA POUR LE HTML et personne ne pouvait le voir: le
+    nom de secours finissait en `.html`, ce qui se trouvait etre juste. Il a
+    fallu un second format pour que le mensonge devienne visible.
+    """
+    r = client.get("/health", headers={"Origin": ORIGINE_LOCALE})
+
+    exposes = {c.strip().lower()
+               for c in (r.headers.get("access-control-expose-headers") or "")
+               .split(",") if c.strip()}
+    assert "content-disposition" in exposes, (
+        "sans cet en-tete expose, l'ecran ne peut pas lire le nom du fichier "
+        f"et en invente un. Exposes: {sorted(exposes)}")
+
+
+@pytest.mark.parametrize("entete", [
+    "content-disposition",
+    "x-eurostruct-rebar-rows",
+    "x-eurostruct-correlation-id",
+])
+def test_les_en_tetes_que_l_ecran_lit_sont_tous_exposes(client, entete):
+    """CHACUN EST LU PAR UN CHEMIN DE L'INTERFACE.
+
+    Le nom du fichier, le nombre de lignes de ferraillage, et l'identifiant de
+    correlation qu'un utilisateur doit pouvoir citer quand il signale une
+    panne. Un en-tete que le produit envoie mais que le navigateur cache est
+    un en-tete qui n'existe pas.
+    """
+    r = client.get("/health", headers={"Origin": ORIGINE_LOCALE})
+    exposes = {c.strip().lower()
+               for c in (r.headers.get("access-control-expose-headers") or "")
+               .split(",") if c.strip()}
+    assert entete in exposes

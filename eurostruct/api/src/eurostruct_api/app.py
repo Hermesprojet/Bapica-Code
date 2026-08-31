@@ -116,7 +116,29 @@ def creer_application(reglages: Reglages | None = None) -> FastAPI:
         # Sans `expose_headers`, le navigateur le recoit et le cache: seule
         # une personne ayant acces aux journaux pourrait relier une panne a sa
         # trace, et l'utilisateur qui la signale n'aurait rien a citer.
-        expose_headers=["X-Eurostruct-Rebar-Rows", erreurs.ENTETE_CORRELATION],
+        #
+        # `Content-Disposition` EST ARRIVE AVEC LE PDF, ET SON ABSENCE FAISAIT
+        # ENREGISTRER UN PDF SOUS UN NOM `.html`.
+        #
+        # Mesure du jour, dans un vrai Chromium: le navigateur proposait
+        # « livrable-c4d2960f-….html » pour une note PDF. `telechargerLivrable`
+        # lit pourtant l'en-tete — mais un en-tete NON EXPOSE est invisible a
+        # `fetch`, et le client retombait sur son nom de secours. Le systeme de
+        # l'utilisateur aurait ouvert un PDF avec un lecteur HTML.
+        #
+        # LE DEFAUT EXISTAIT DEJA POUR LE HTML, ET PERSONNE NE POUVAIT LE VOIR:
+        # le nom de secours finissait en `.html`, ce qui se trouvait etre juste.
+        # Il a fallu un second format pour que le mensonge devienne visible.
+        #
+        # C'est le meme piege que `allow_methods` au lot precedent: l'API
+        # repondait correctement, et le NAVIGATEUR n'en voyait rien. Aucune
+        # suite d'API ne peut l'attraper — `TestClient` n'applique aucune
+        # politique d'origine et lit tous les en-tetes.
+        expose_headers=[
+            "Content-Disposition",
+            "X-Eurostruct-Rebar-Rows",
+            erreurs.ENTETE_CORRELATION,
+        ],
     )
 
     installer_gestionnaires(app, mode_debogage=reglages.mode_debogage)

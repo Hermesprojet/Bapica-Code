@@ -389,9 +389,24 @@ export async function telechargerLivrable(
     throw new AppelRefuse(reponse.status, await reponse.text().catch(() => null));
   }
 
+  // LE NOM VIENT DU SERVEUR. Il est celui qui a ete ENREGISTRE avec les
+  // octets, extension comprise, et c'est ce qui distingue une note HTML d'une
+  // note PDF au moment de l'enregistrer.
+  //
+  // L'EN-TETE DOIT ETRE EXPOSE PAR CORS POUR ETRE LISIBLE ICI. Il ne l'etait
+  // pas: `fetch` rendait `null`, ce repli s'appliquait toujours, et son
+  // `.html` code en dur faisait enregistrer un PDF sous un nom `.html`. Le
+  // defaut etait invisible tant qu'il n'y avait qu'un seul format.
   const disposition = reponse.headers.get("content-disposition") ?? "";
   const trouve = /filename="([^"]+)"/.exec(disposition);
-  const nom = trouve?.[1] ?? `livrable-${deliverableId}.html`;
+  // LE REPLI NE DEVINE PLUS L'EXTENSION, IL LA DERIVE DU TYPE SERVI. Un nom
+  // de secours qui affirme un format est pire qu'un nom sans extension: il
+  // fait ouvrir le fichier avec le mauvais programme, sans rien signaler.
+  const type = (reponse.headers.get("content-type") ?? "").split(";")[0].trim();
+  const suffixe = type === "application/pdf" ? ".pdf"
+    : type === "text/html" ? ".html"
+    : type === "application/zip" ? ".zip" : "";
+  const nom = trouve?.[1] ?? `livrable-${deliverableId}${suffixe}`;
 
   const contenu = await reponse.blob();
   const url = URL.createObjectURL(contenu);

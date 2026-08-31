@@ -468,6 +468,31 @@ try {
   exige(brouillonPdf.corps?.sha256 !== empreinteEnregistree,
         "le PDF et le HTML du meme calcul portent la meme empreinte");
 
+  //: ET ON LE TELECHARGE, PAR LE NAVIGATEUR, POUR VERIFIER SES OCTETS.
+  //: Constater que la reponse de creation annonce un PDF ne dit rien de ce
+  //: qui sortira du magasin: le document traverse ensuite le depot, la
+  //: relecture, le transport et le navigateur.
+  const livrablePdfId = brouillonPdf.corps?.deliverable_id ?? "";
+  await page.waitForSelector(`tr[data-livrable="${livrablePdfId}"]`,
+                             { timeout: 15000 });
+  const recuPdf = await empreinteDuTelechargement(
+    () => page.click(`tr[data-livrable="${livrablePdfId}"] >> text=Télécharger`));
+  exige(recuPdf.sha256 === brouillonPdf.corps?.sha256,
+        `le sha256 du PDF recu (${recuPdf.sha256.slice(0, 16)}…) differe de `
+        + `celui enregistre (${String(brouillonPdf.corps?.sha256).slice(0, 16)}…)`);
+  exige(recuPdf.taille === brouillonPdf.corps?.size_bytes,
+        `taille recue ${recuPdf.taille}, enregistree ${brouillonPdf.corps?.size_bytes}`);
+  exige(recuPdf.nom.endsWith(".pdf"),
+        `le navigateur a propose d'enregistrer « ${recuPdf.nom} »`);
+  //: LES OCTETS SONT BIEN CEUX D'UN PDF, et le flux n'est pas comprime: la
+  //: mention obligatoire se lit DANS le fichier, sans rien decompresser.
+  exige(recuPdf.texte.startsWith("%PDF-"),
+        "les octets recus ne commencent pas par %PDF-");
+  exige(recuPdf.texte.includes("NON SIGNABLE") === false,
+        "un calcul strict ne doit pas porter le filigrane");
+  exige(recuPdf.texte.includes("livrable final"),
+        "la mention obligatoire ne se lit pas dans les octets du PDF");
+
   // =======================================================================
   // 5 — LES OCTETS TÉLÉCHARGÉS SONT CEUX QUI ONT ÉTÉ ENREGISTRÉS
   // =======================================================================
