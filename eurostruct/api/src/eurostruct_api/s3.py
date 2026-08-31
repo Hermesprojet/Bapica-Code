@@ -45,6 +45,7 @@ import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, Final
+from xml.etree import ElementTree
 
 __all__ = [
     "ALGORITHME",
@@ -239,8 +240,18 @@ class ClientS3:
     # ------------------------------------------------------------- requête
     def _envoyer(self, methode: str, cle: str, *, corps: bytes | None = None,
                  entetes_sup: dict[str, str] | None = None,
-                 flux: bool = False) -> ReponseS3:
+                 flux: bool = False,
+                 requete: dict[str, str] | None = None) -> ReponseS3:
+        # LES PARAMETRES DE REQUETE SONT SIGNES, PAS SEULEMENT ENVOYES. Ils
+        # entrent dans la requete canonique; les oublier de la signature donne
+        # « SignatureDoesNotMatch » sans indiquer lequel manque.
+        requete = requete or {}
         url, hote, chemin = self._url_et_chemin(cle)
+        if requete:
+            url = f"{url}?" + "&".join(
+                f"{urllib.parse.quote(c, safe='-_.~')}="
+                f"{urllib.parse.quote(v, safe='-_.~')}"
+                for c, v in sorted(requete.items()))
         maintenant = _dt.datetime.now(_dt.UTC)
         horodatage = maintenant.strftime("%Y%m%dT%H%M%SZ")
         date = maintenant.strftime("%Y%m%d")
@@ -259,7 +270,7 @@ class ClientS3:
             entetes["content-length"] = str(len(charge))
         entetes.update({c.lower(): v for c, v in (entetes_sup or {}).items()})
 
-        canonique = canoniser_requete(methode, chemin, {}, entetes,
+        canonique = canoniser_requete(methode, chemin, requete, entetes,
                                       empreinte_charge)
         signature = hmac.new(
             cle_de_signature(self.r.secret_access_key, date, self.r.region),
@@ -353,6 +364,60 @@ class ClientS3:
                 return None
             raise
         return int(reponse.entetes.get("content-length", "0"))
+
+    def enumerer(self, prefixe: str = "") -> list[tuple[str, int]]:
+        """Les objets sous ``prefixe`` : ``(chemin, taille)``, paginés.
+
+        POURQUOI CETTE METHODE EXISTE, ET POURQUOI ELLE ARRIVE SI TARD. Le
+        produit n'en a jamais eu besoin : il connaît le chemin d'un livrable
+        avant de le lire, puisque ce chemin est dérivé du contenu. Seul le
+        **rapprochement** a besoin de la question inverse — « qu'y a-t-il dans
+        le compartiment que la base ne nomme pas ? » — et c'est exactement la
+        question à laquelle on ne pouvait pas répondre.
+
+        LE CHEMIN RENDU EST RELATIF AU PREFIXE DECLARE, pas la clé brute. Un
+        appelant qui comparerait des clés brutes à des ``storage_path``
+        déclarerait orphelin tout le compartiment dès qu'un préfixe est
+        configuré.
+
+        ``ListObjectsV2`` PAGINE, ET ON SUIT LA PAGINATION. Un magasin de
+        production dépasse mille objets ; s'arrêter à la première page
+        présenterait les suivants comme absents — le pire des verdicts, parce
+        qu'il accuse un magasin sain.
+        """
+        base = self.r.prefixe.strip("/")
+        complet = f"{base}/{prefixe.lstrip('/')}" if base else prefixe.lstrip("/")
+
+        objets: list[tuple[str, int]] = []
+        jeton_suite: str | None = None
+        while True:
+            requete = {"list-type": "2", "max-keys": "1000"}
+            if complet:
+                requete["prefix"] = complet
+            if jeton_suite:
+                requete["continuation-token"] = jeton_suite
+
+            reponse = self._envoyer("GET", "", requete=requete)
+            racine = ElementTree.fromstring(reponse.lire_tout())
+            espace = ""
+            if racine.tag.startswith("{"):
+                espace = racine.tag[:racine.tag.index("}") + 1]
+
+            for contenu in racine.findall(f"{espace}Contents"):
+                cle = (contenu.findtext(f"{espace}Key") or "")
+                taille = int(contenu.findtext(f"{espace}Size") or "0")
+                if base:
+                    if not cle.startswith(f"{base}/"):
+                        continue
+                    cle = cle[len(base) + 1:]
+                if cle:
+                    objets.append((cle, taille))
+
+            tronquee = (racine.findtext(f"{espace}IsTruncated") or "").lower()
+            jeton_suite = racine.findtext(f"{espace}NextContinuationToken")
+            if tronquee != "true" or not jeton_suite:
+                break
+        return objets
 
     def creer_compartiment(self) -> None:
         """Crée le compartiment s'il n'existe pas. Réservé aux harnais.

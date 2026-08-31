@@ -172,14 +172,56 @@ politique.
 ### Ce qu'on fait à la place
 
 * **Constater**, jamais supprimer : un rapprochement en **lecture seule** entre
-  les clés du compartiment et les `storage_path` de la base. Il n'existe pas
-  encore ; quand il existera, il produira un rapport, pas une suppression.
+  les clés du compartiment et les `storage_path` de la base. **Il existe
+  maintenant** — `python3 -m eurostruct_api.reconciliation` — et il produit un
+  rapport, jamais une suppression. Détail au §5 bis.
 * **Supprimer se fait hors du produit**, par une personne, avec une décision
   écrite, sur des clés nommées une à une. Aucune suppression par motif large.
 * **Les harnais font exception, et de la seule façon acceptable** :
   `db/test/stockage_s3.sh` détruit le **volume Docker qu'il a créé**,
   c'est-à-dire un objet dont il peut prouver la création. Il ne supprime
   jamais un objet dans un compartiment qu'il n'a pas créé.
+
+## 5 bis. Le rapprochement — ce qu'il dit, ce qu'il ne fait pas
+
+    EUROSTRUCT_RECONCILIATION_DSN=… python3 -m eurostruct_api.reconciliation \
+        [--empreintes] [--json]
+
+**Quatre verdicts, et ils ne se valent pas.** Un rapprochement qui rendrait un
+seul nombre mélangerait une promesse rompue et quelques kilo-octets perdus ;
+ils ne réveillent pas les mêmes personnes.
+
+| Verdict | Ce que ça veut dire | Gravité |
+|---|---|---|
+| `absent` | une ligne promet un document que le magasin n'a pas ; son téléchargement rendra 503 | **le seul qui décrive une promesse rompue** |
+| `divergent` | l'objet est là, mais sa taille ou son empreinte ne sont pas celles enregistrées | une corruption, vue avant qu'un client la découvre |
+| `orphelin` | un objet que plus aucune ligne ne nomme | du gaspillage tracé — personne n'attend ce document |
+| `intact` | la ligne et l'objet s'accordent | — |
+
+`--empreintes` relit chaque objet et compare le sha256. Sans l'option, seule la
+taille est comparée : deux contenus différents de même longueur passeraient. Ce
+n'est pas le défaut parce que relire tout un magasin de production coûte cher —
+mais ne pas pouvoir le faire du tout laisserait une corruption silencieuse
+jusqu'au premier téléchargement.
+
+**Deux pièges, que des cas dédiés tiennent.** Les lignes portant un autre
+`storage_backend` sont **écartées**, jamais déclarées absentes — un déploiement
+qui a migré du disque vers S3 les verrait toutes rouges. Et plusieurs lignes
+peuvent partager une clé, puisque les clés dérivent du contenu : un objet n'est
+orphelin que si **aucune** ligne ne le nomme.
+
+**Il ne peut pas écrire, et ce n'est pas une promesse.** Sa transaction est
+ouverte `read only` : c'est PostgreSQL qui refuserait. Il n'a ni option
+`--supprimer`, ni mode `--reparer`, et `ClientS3` n'a de toute façon aucune
+méthode de suppression.
+
+**Ce n'est pas une route de l'API, délibérément.** Le rapprochement traverse
+**toutes** les organisations : c'est un geste d'exploitation, comme une
+sauvegarde. L'exposer par l'API exigerait d'élargir la surface SQL du backend
+authentifié à une lecture transverse de `deliverables` — exactement ce que la
+frontière des rôles interdit. Il se lance donc avec un rôle qui n'est **pas**
+celui du service, et sa variable de DSN est distincte pour que personne ne s'y
+trompe.
 
 ---
 
@@ -252,7 +294,7 @@ Le provisionnement est fait :
 
 ---
 
-## 9. Les huit étapes que la CI exécute
+## 9. Les dix étapes que la CI exécute
 
 `db/test/stockage_s3.sh`, contre un MinIO réel :
 
@@ -268,8 +310,16 @@ Le provisionnement est fait :
 7. le **refus inter-organisations** : le témoin lit l'objet dans le
    compartiment, et le membre du bureau voisin est refusé. C'est ce qui
    distingue « on ne vous le donne pas » de « il n'y est pas » ;
-8. la **destruction** du conteneur et du volume, tous deux créés ici, et rien
-   d'autre.
+8. l'**énumération** — `ListObjectsV2`, signée et paginée, contre le vrai
+   serveur. Le **préfixe déclaré est retiré** des chemins rendus : sans cela,
+   un rapprochement déclarerait tout le compartiment orphelin dès qu'un préfixe
+   est configuré, c'est-à-dire dans la composition de production ;
+9. le **rapprochement** — aucun `absent`, aucun `divergent`, le livrable du
+   harnais nommément `intact` ; puis un orphelin **injecté**, que l'outil nomme,
+   et qui est **toujours là** après. Un rapprochement qui ne verrait jamais
+   rien serait vert lui aussi ;
+10. la **destruction** du conteneur et du volume, tous deux créés ici, et rien
+    d'autre.
 
 Le harnais vérifie aussi, à chaque étape, que le **disque local reste vide** :
 `EUROSTRUCT_STORAGE_DIR` pointe sur un répertoire jetable, et un seul fichier

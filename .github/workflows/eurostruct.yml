@@ -332,11 +332,12 @@ jobs:
           docker pull "$IMAGE"
           echo "EUROSTRUCT_MINIO_IMAGE=$IMAGE" >> "$GITHUB_ENV"
 
-      # LES HUIT ETAPES: volume neuf, compartiment cree par notre propre
+      # LES DIX ETAPES: volume neuf, compartiment cree par notre propre
       # signature SigV4, depot par les routes reelles, arret de l'API et
       # redemarrage de MinIO, telechargement dans un processus neuf,
-      # comparaison du SHA, refus inter-organisations, destruction propre.
-      - name: Depot, redemarrage, relecture (huit etapes)
+      # comparaison du SHA, refus inter-organisations, ENUMERATION paginee,
+      # RAPPROCHEMENT base/compartiment, destruction propre.
+      - name: Depot, redemarrage, rapprochement (dix etapes)
         env:
           PGPASSWORD: postgres
           PGHOST: localhost

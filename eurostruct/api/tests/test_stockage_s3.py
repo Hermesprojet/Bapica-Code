@@ -202,6 +202,7 @@ class TestAvantRedemarrage:
         # produit, et sans faire confiance a la moindre assertion d'ici.
         Path(DOCUMENT).write_bytes(r.content)
         Path(ETAT).write_text(json.dumps({
+            "org_id": projet["organization_id"],
             "project_id": projet["project_id"],
             "deliverable_id": livrable["deliverable_id"],
             "filename": livrable["filename"],
@@ -432,3 +433,136 @@ class TestApresRedemarrage:
         fichier = manifeste["files"][0]
         assert fichier["sha256_recorded"] == etat["sha256"]
         assert fichier["sha256_served"] == etat["sha256"]
+
+    # =======================================================================
+    # ETAPE 9 — L'ENUMERATION, CONTRE UN VRAI SERVEUR
+    # =======================================================================
+    def test_l_enumeration_voit_l_objet_et_retire_le_prefixe(self):
+        """LE RAPPROCHEMENT NE PEUT PAS EXISTER SANS CETTE QUESTION.
+
+        Le produit n'a jamais eu besoin d'enumerer: il connait le chemin d'un
+        livrable avant de le lire, puisque ce chemin derive du contenu. Seul le
+        rapprochement pose la question inverse — « qu'y a-t-il dans le
+        compartiment que la base ne nomme pas ? ».
+
+        LE PREFIXE DOIT ETRE RETIRE, et c'est le piege. `ListObjectsV2` rend
+        des cles COMPLETES, prefixe declare compris; les comparer telles
+        quelles a des `storage_path` declarerait tout le compartiment orphelin
+        des qu'un prefixe est configure — c'est-a-dire dans la composition de
+        production, ou il en existe un.
+        """
+        etat = _lire_etat()
+        objets = dict(_client_brut().enumerer())
+
+        assert etat["storage_path"] in objets, (
+            "l'objet depose n'apparait pas dans l'enumeration. Cles vues: "
+            f"{sorted(objets)[:5]}")
+        assert objets[etat["storage_path"]] == etat["size_bytes"]
+
+        prefixe = os.environ.get("EUROSTRUCT_S3_PREFIX", "").strip("/")
+        if prefixe:
+            assert not any(c.startswith(f"{prefixe}/") for c in objets), (
+                "le prefixe declare n'a pas ete retire des chemins rendus")
+
+        # L'ENUMERATION BORNEE PAR UN PREFIXE D'ORGANISATION NE DEBORDE PAS.
+        sous = dict(_client_brut().enumerer(f"{etat['org_id']}/"))
+        assert etat["storage_path"] in sous
+        assert set(sous) <= set(objets)
+
+    # =======================================================================
+    # ETAPE 10 — LE RAPPROCHEMENT, ET SON INNOCUITE
+    # =======================================================================
+    def test_le_rapprochement_accorde_la_base_et_le_compartiment(self):
+        """CE QUE `docs/STOCKAGE.md` §5 PROMETTAIT SANS L'OUTILLER."""
+        from eurostruct_api.reconciliation import (
+            ABSENT,
+            DIVERGENT,
+            INTACT,
+            ORPHELIN,
+            rapprocher,
+        )
+        from eurostruct_api.stockage import stockage_configure
+
+        etat = _lire_etat()
+        lignes = [
+            {"id": i, "org_id": o, "project_id": p, "storage_path": c,
+             "sha256": s, "size_bytes": t, "storage_backend": b}
+            for (i, o, p, c, s, t, b) in _observer(
+                "select id::text, org_id::text, project_id::text, "
+                "       storage_path, sha256, size_bytes, storage_backend "
+                "  from deliverables")
+        ]
+        assert lignes, "le decor est cense porter au moins un livrable"
+
+        magasin = stockage_configure()
+        rapport = rapprocher(lignes, magasin, empreintes=True)
+
+        # AUCUNE PROMESSE ROMPUE, ET AUCUNE CORRUPTION. Ce sont les deux
+        # verdicts qui decrivent un service en faute; ils doivent etre a zero.
+        assert rapport.compte(ABSENT) == 0, [
+            c for c in rapport.constats if c.verdict == ABSENT]
+        assert rapport.compte(DIVERGENT) == 0, [
+            c for c in rapport.constats if c.verdict == DIVERGENT]
+
+        # LE LIVRABLE DE CE HARNAIS EST INTACT, nommement.
+        intacts = {c.chemin for c in rapport.constats if c.verdict == INTACT}
+        assert etat["storage_path"] in intacts
+
+        # DES ORPHELINS, IL Y EN A DEJA — ET C'EST UNE MESURE, PAS UN DEFAUT.
+        #
+        # `test_un_objet_divergent_n_est_jamais_ecrase_en_silence` depose un
+        # objet PAR LE CLIENT TEMOIN, sans qu'aucune ligne ne le reference:
+        # c'est exactement ce qu'est un orphelin. Le premier rapprochement
+        # jamais execute sur ce decor l'a trouve du premier coup, et ce cas ne
+        # doit pas pretendre le contraire — un decor « propre » qu'on aurait
+        # nettoye pour faire passer l'assertion ne prouverait plus rien.
+        deja = rapport.compte(ORPHELIN)
+
+        # ON EN INJECTE UN DE PLUS, dont on connait le chemin exact. Sans ce
+        # second temps, un rapprochement qui ne verrait jamais RIEN serait
+        # vert lui aussi.
+        perdu = f"{etat['org_id']}/{etat['project_id']}/{'e' * 64}.html"
+        _client_brut().deposer(perdu, b"FICTIF objet abandonne")
+
+        apres = rapprocher(lignes, magasin, empreintes=True)
+        assert apres.compte(ORPHELIN) == deja + 1
+        assert perdu in {c.chemin for c in apres.constats
+                         if c.verdict == ORPHELIN}
+        assert not apres.sain
+
+        # ET IL EST TOUJOURS LA. Le rapprochement CONSTATE; il ne reprend rien.
+        # Le volume entier est detruit a la sortie du harnais — c'est la seule
+        # suppression, et elle porte sur un objet dont il prouve la creation.
+        assert _client_brut().taille(perdu) == len(b"FICTIF objet abandonne")
+
+    def test_postgresql_refuse_lui_meme_toute_ecriture_du_rapprochement(self):
+        """« NE VEUT PAS ECRIRE » ET « NE PEUT PAS ECRIRE » NE SE VALENT PAS.
+
+        Le rapprochement ouvre sa transaction en lecture seule. Ce cas ne se
+        contente pas de le lire dans le code: il prend la MEME connexion,
+        preparee de la MEME facon, et demande a PostgreSQL d'ecrire. Le serveur
+        doit refuser.
+
+        Sans ce cas, la lecture seule ne serait qu'une intention d'auteur — et
+        un defaut futur qui glisserait un `update` dans le rapprochement
+        passerait toutes les autres assertions.
+        """
+        import psycopg2
+
+        from eurostruct_api.reconciliation import _lignes_de_livrables
+
+        connexion = psycopg2.connect(DSN_OBS)
+        try:
+            connexion.set_session(readonly=True)
+            lignes = _lignes_de_livrables(connexion)
+            assert lignes, "le decor est cense porter au moins un livrable"
+
+            with connexion.cursor() as curseur, pytest.raises(Exception) as pris:  # noqa: PT011
+                curseur.execute(
+                    "update deliverables set filename = filename")
+        finally:
+            connexion.close()
+
+        assert "read-only" in str(pris.value).lower(), (
+            "PostgreSQL n'a pas refuse l'ecriture pour la raison attendue: "
+            f"{pris.value}")

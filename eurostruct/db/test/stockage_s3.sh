@@ -13,8 +13,8 @@
 # enregistres. Et un document conserve dix ans au titre de la responsabilite
 # decennale ne peut pas dependre d'un disque de machine.
 #
-# LES HUIT ETAPES, DANS CET ORDRE
-# ---------------------------------
+# LES DIX ETAPES, DANS CET ORDRE
+# --------------------------------
 #   1. UN VOLUME NEUF — cree par ce harnais, et constate vide.
 #   2. LE COMPARTIMENT — cree par NOTRE PROPRE CLIENT S3, pas par un outil
 #      tiers: c'est le code du produit qui doit savoir parler ce protocole.
@@ -27,7 +27,14 @@
 #   7. LE REFUS INTER-ORGANISATIONS — le temoin lit l'objet dans le
 #      compartiment, et le membre du bureau voisin est refuse. C'est ce qui
 #      distingue « on ne vous le donne pas » de « il n'y est pas ».
-#   8. LA DESTRUCTION — conteneur et volume, tous deux crees ici, et rien
+#   8. L'ENUMERATION — `ListObjectsV2`, paginee et signee, contre le vrai
+#      serveur. Le prefixe declare est retire des chemins rendus: sans cela,
+#      un rapprochement declarerait tout le compartiment orphelin des qu'un
+#      prefixe est configure — c'est-a-dire en production.
+#   9. LE RAPPROCHEMENT — la base et le compartiment s'accordent; puis un
+#      orphelin est INJECTE, l'outil le nomme, et l'objet est TOUJOURS LA.
+#      Un rapprochement qui ne verrait jamais rien serait vert lui aussi.
+#  10. LA DESTRUCTION — conteneur et volume, tous deux crees ici, et rien
 #      d'autre. Aucun nettoyage par motif large.
 #
 # CE QUI EST ETABLI, ET CE QUI NE L'EST PAS
@@ -265,7 +272,7 @@ if [[ -n "$RESIDUS" ]]; then
   echo "      ECHEC: le volume n'est pas neuf; il porte deja: $RESIDUS" >&2
   exit 1
 fi
-echo "      1/8 volume neuf, MinIO en ecoute sur 127.0.0.1:$PORT_S3"
+echo "      1/10 volume neuf, MinIO en ecoute sur 127.0.0.1:$PORT_S3"
 
 # ===========================================================================
 # ETAPE 2 — LE COMPARTIMENT, CREE PAR LE CLIENT S3 DU PRODUIT
@@ -313,7 +320,7 @@ if ! docker exec "$CONTENEUR" test -d "/data/$COMPARTIMENT" 2>/dev/null; then
   echo "      ECHEC: /data/$COMPARTIMENT n'existe pas sur le volume." >&2
   exit 1
 fi
-echo "      2/8 compartiment « $COMPARTIMENT » cree par le client du produit"
+echo "      2/10 compartiment « $COMPARTIMENT » cree par le client du produit"
 
 # ===========================================================================
 # LE DECOR: base deployee, six adhesions, racine d'autorite, quatre-yeux.
@@ -555,7 +562,7 @@ if [[ "$NB_DISQUE" -ne 0 ]]; then
   echo "             magasin declare est objet: repli silencieux." >&2
   exit 1
 fi
-echo "      3/8 $NB_LIGNES livrable(s) deposes, objet present sur le volume"
+echo "      3/10 $NB_LIGNES livrable(s) deposes, objet present sur le volume"
 
 # ===========================================================================
 # ETAPE 4 — L'ARRET ET LE REDEMARRAGE
@@ -573,7 +580,7 @@ if ! attendre_minio 60; then
   echo "      ECHEC: MinIO n'a pas repondu apres redemarrage." >&2
   exit 1
 fi
-echo "      4/8 API arretee (processus detruit), MinIO redemarre"
+echo "      4/10 API arretee (processus detruit), MinIO redemarre"
 
 # ===========================================================================
 # ETAPES 5, 6 ET 7 — RELECTURE, EMPREINTE, CLOISONNEMENT
@@ -594,9 +601,55 @@ if ! SORTIE_CONSTAT="$(constater_octets_sur_le_volume relecture 2>&1)"; then
   echo "$SORTIE_CONSTAT" | sed 's/^/             /' >&2
   exit 1
 fi
-echo "      5/8 memes octets servis apres redemarrage"
-echo "      6/8 empreinte des octets servis = empreinte en base ($SHA_DEPOSE)"
-echo "      7/8 le bureau voisin est refuse sur un objet pourtant present"
+echo "      5/10 memes octets servis apres redemarrage"
+echo "      6/10 empreinte des octets servis = empreinte en base ($SHA_DEPOSE)"
+echo "      7/10 le bureau voisin est refuse sur un objet pourtant present"
+echo "      8/10 l'enumeration voit l'objet, prefixe declare retire"
+
+# LE PROGRAMME LUI-MEME, PAS SEULEMENT SA FONCTION.
+#
+# Les cas ci-dessus appellent `rapprocher()`. Ils ne disent RIEN de la
+# commande: ni qu'elle sait lire son DSN, ni qu'elle construit le magasin
+# depuis l'environnement, ni surtout que son CODE DE SORTIE distingue « tout
+# s'accorde » de « des ecarts existent ». Une supervision qui branche sur ce
+# code merite mieux qu'une promesse.
+#
+# ON ATTEND 1, PAS 0: la phase precedente a injecte un orphelin, et le decor
+# en portait deja un. Exiger 0 ici obligerait a nettoyer le magasin pour faire
+# passer le harnais — c'est-a-dire a effacer exactement ce qu'on veut voir.
+SORTIE_RAPPRO="$(EUROSTRUCT_RECONCILIATION_DSN="$EUROSTRUCT_E2E_DSN_OBS" \
+                 python3 -m eurostruct_api.reconciliation --empreintes --json \
+                 2>&1)"
+CODE_RAPPRO=$?
+if [[ $CODE_RAPPRO -ne 1 ]]; then
+  echo "      ECHEC: le rapprochement devait rendre 1 (des orphelins" >&2
+  echo "             existent), il a rendu $CODE_RAPPRO." >&2
+  echo "$SORTIE_RAPPRO" | sed 's/^/             /' >&2
+  exit 1
+fi
+if ! printf '%s' "$SORTIE_RAPPRO" | python3 -c '
+import json, sys
+rapport = json.load(sys.stdin)
+comptes = rapport["comptes"]
+absents = comptes["absent"]
+divergents = comptes["divergent"]
+assert absents == 0, "absent=%d" % absents
+assert divergents == 0, "divergent=%d" % divergents
+assert comptes["orphelin"] >= 1, "aucun orphelin nomme"
+assert comptes["intact"] >= 1, "aucun livrable intact"
+assert rapport["empreintes_verifiees"] is True
+# LES CONSTATS `intact` NE SONT PAS RENDUS: un rapport de supervision qui
+# listerait tout ce qui va bien serait illisible des le premier millier.
+assert all(c["verdict"] != "intact" for c in rapport["constats"])
+'; then
+  echo "      ECHEC: le rapport JSON du rapprochement ne tient pas." >&2
+  echo "$SORTIE_RAPPRO" | sed 's/^/             /' >&2
+  exit 1
+fi
+
+echo "      9/10 rapprochement: aucun absent, aucun divergent, le livrable"
+echo "           intact; un orphelin injecte est nomme, il est toujours la,"
+echo "           et la commande rend 1 comme une supervision l'attend"
 
 unset EUROSTRUCT_S3_ENDPOINT EUROSTRUCT_S3_REGION EUROSTRUCT_S3_BUCKET \
       EUROSTRUCT_S3_ACCESS_KEY_ID EUROSTRUCT_S3_SECRET_ACCESS_KEY \
@@ -609,7 +662,7 @@ unset EUROSTRUCT_S3_ENDPOINT EUROSTRUCT_S3_REGION EUROSTRUCT_S3_BUCKET \
       EUROSTRUCT_LIVRABLE_ACTEUR_N EUROSTRUCT_LIVRABLE_ACTEUR_B \
       EUROSTRUCT_LIVRABLE_ORG_A EUROSTRUCT_LIVRABLE_ORG_B
 
-echo "      8/8 destruction du conteneur et du volume (a la sortie)"
+echo "      10/10 destruction du conteneur et du volume (a la sortie)"
 echo ""
 echo "================================================="
 echo " Un volume neuf, un compartiment cree par notre"

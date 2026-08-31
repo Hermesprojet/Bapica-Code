@@ -123,6 +123,39 @@ class Stockage(Protocol):
                      taille_bloc: int = 65536) -> Iterator[bytes]: ...
 
 
+class MagasinLisible(Protocol):
+    """Ce qu'un **rapprochement** a le droit de faire, et rien de plus.
+
+    POURQUOI UN PROTOCOLE SEPARE PLUTOT QU'UN DRAPEAU. Un outil de constat qui
+    reçoit un ``Stockage`` complet *peut* écrire ; qu'il s'en abstienne relève
+    alors de la discipline de son auteur, et la discipline ne se vérifie pas.
+    Celui-ci ne reçoit qu'``enumerer``, ``lire`` et ``taille`` : la capacité
+    d'écrire n'est pas dans le type qu'il manipule.
+
+    CE N'EST PAS UNE PREUVE, ET IL NE FAUT PAS LA PRENDRE POUR TELLE. Python ne
+    fait respecter aucun protocole à l'exécution, et l'objet réellement passé
+    reste un magasin complet. La lecture seule se **mesure** ailleurs, par trois
+    cas qui ne dépendent d'aucune discipline :
+
+    * ``test_le_rapprochement_n_appelle_aucun_geste_d_ecriture`` passe un objet
+      qui **n'a pas** de méthode ``deposer`` — une tentative lèverait ;
+    * ``test_le_magasin_est_intact_apres_un_rapprochement`` photographie
+      chemins, tailles et empreintes avant et après ;
+    * dans ``db/test/stockage_s3.sh``, PostgreSQL refuse lui-même toute
+      écriture dans la transaction du rapprochement.
+
+    Ce type dit l'intention ; ces trois cas disent le fait.
+    """
+
+    nom: str
+
+    def enumerer(self, prefixe: str = "") -> list[tuple[str, int]]: ...
+
+    def lire(self, chemin: str) -> bytes: ...
+
+    def taille(self, chemin: str) -> int | None: ...
+
+
 def empreinte(octets: bytes) -> str:
     """Le sha256 hexadécimal minuscule des octets, tel qu'il part en base."""
     return hashlib.sha256(octets).hexdigest()
@@ -273,6 +306,38 @@ class StockageLocal:
                 f"lecture impossible sous « {self.racine} »: {cause.strerror}"
             ) from cause
 
+    def taille(self, chemin: str) -> int | None:
+        cible = self._absolu(chemin)
+        try:
+            return cible.stat().st_size
+        except FileNotFoundError:
+            return None
+        except OSError as cause:
+            raise StockageIndisponible(
+                f"lecture impossible sous « {self.racine} »: {cause.strerror}"
+            ) from cause
+
+    def enumerer(self, prefixe: str = "") -> list[tuple[str, int]]:
+        """Les objets présents sous la racine : ``(chemin relatif, taille)``.
+
+        LES DEPOTS EN COURS SONT IGNORES. ``deposer`` écrit d'abord un fichier
+        provisoire, puis le renomme ; un provisoire aperçu au vol n'est pas un
+        objet du magasin, et le compter en orphelin ferait mentir un
+        rapprochement lancé pendant que le service travaille.
+        """
+        if not self.racine.is_dir():
+            return []
+        depart = self.racine / prefixe if prefixe else self.racine
+        if not depart.is_dir():
+            return []
+        objets: list[tuple[str, int]] = []
+        for chemin in sorted(depart.rglob("*")):
+            if not chemin.is_file() or chemin.name.startswith("."):
+                continue
+            objets.append((str(chemin.relative_to(self.racine)),
+                           chemin.stat().st_size))
+        return objets
+
 
 class StockageS3:
     """Un compartiment S3-compatible, prive, adresse par contenu.
@@ -350,6 +415,18 @@ class StockageS3:
                 raise ObjetIntrouvable(
                     f"aucun octet a l'emplacement « {chemin} »"
                 ) from cause
+            raise StockageIndisponible(str(cause)) from cause
+
+    def taille(self, chemin: str) -> int | None:
+        try:
+            return self.client.taille(chemin)
+        except S3Refuse as cause:
+            raise StockageIndisponible(str(cause)) from cause
+
+    def enumerer(self, prefixe: str = "") -> list[tuple[str, int]]:
+        try:
+            return self.client.enumerer(prefixe)
+        except S3Refuse as cause:
             raise StockageIndisponible(str(cause)) from cause
 
 
