@@ -314,8 +314,11 @@ def calcul_strict(client, jeton, projet) -> str:
     c'est précisément ce qui rend une attestation possible : un calcul strict
     abouti n'a employé que des valeurs confirmées.
     """
-    restants = _blocages(client)
-    assert restants, "aucun blocage au depart: le mode strict serait deja ouvert"
+    # ON N'EXIGE PAS QU'IL Y AIT DES BLOCAGES AU DEPART, et c'est necessaire
+    # depuis qu'un second module partage cette base: le premier a deja ouvert
+    # le mode strict, et exiger le contraire ferait echouer un decor
+    # parfaitement valide. Ce qui compte est l'etat d'ARRIVEE — plus aucun
+    # blocage — et il est verifie plus bas.
     # LA BOUCLE RELIT LES BLOCAGES A CHAQUE TOUR. Confirmer une regle peut en
     # decouvrir d'autres — le prevol s'arrete au premier paquet manquant — et
     # une liste prise une fois pour toutes laisserait le calcul refuser encore.
@@ -752,6 +755,13 @@ def test_un_membre_desactive_n_atteste_pas(client, jeton, projet, en_relecture):
 
     La ligne d'adhésion survit — un ancien collaborateur doit rester lisible
     dans une note de dix ans — et le droit de signer, non.
+
+    DEPUIS 0023, IL N'ATTEINT MEME PLUS LE LIVRABLE. ``is_active`` est entré
+    dans ``project_actor_is_member``, donc dans la politique de lecture de
+    ``deliverables`` : la primitive ne trouve aucune ligne et refuse avant
+    d'avoir à parler de rôle. Le refus change de mot — « introuvable » plutôt
+    que « révoqué » — et ce n'est pas une régression : un accès coupé ne doit
+    rien apprendre, pas même l'existence de la pièce.
     """
     avant = _observer("select count(*) from validations")[0][0]
     r = client.post(
@@ -760,7 +770,8 @@ def test_un_membre_desactive_n_atteste_pas(client, jeton, projet, en_relecture):
         json={"statement": "FICTIF — je valide."},
         headers=_entete(jeton(ACTEUR_D)))
     assert r.status_code == 422, r.text
-    assert "revoque" in json.dumps(r.json()).lower()
+    message = json.dumps(r.json()).lower()
+    assert "revoque" in message or "introuvable" in message, r.text
     assert _observer("select count(*) from validations")[0][0] == avant
 
 
@@ -926,8 +937,11 @@ def test_une_transition_interdite_est_refusee(
     # ligne de journal n'etait ecrite mais que `last_reason` etait ecrase.
     # L'ecran affichait un motif de refus sur une piece que personne n'avait
     # refusee, sans que l'historique dise d'ou il venait.
+    # LE RETOUR AU BROUILLON EST UN GESTE DE RELECTEUR (0023): c'est donc V qui
+    # le tente ici. Le demander sous l'identite du redacteur eprouverait le
+    # controle de capacite, pas la transition — et ce cas-ci vise la seconde.
     r = client.post(f"{base}/draft", json={"reason": "FICTIF"},
-                    headers=_entete(jeton(ACTEUR_A)))
+                    headers=_entete(jeton(ACTEUR_V)))
     assert r.status_code == 422, r.text
     assert "deja" in json.dumps(r.json()).lower()
 
@@ -1032,7 +1046,6 @@ def test_le_projet_dit_le_role_de_l_appelant_dans_cette_organisation(
         ACTEUR_A: ("engineer", "FICTIF Ing. A", True),
         ACTEUR_V: ("validating_engineer", "FICTIF Ing. V (compte de test)", True),
         ACTEUR_W: ("viewer", "FICTIF Lecteur W", True),
-        ACTEUR_D: ("validating_engineer", "FICTIF Ing. D (revoque)", False),
         ACTEUR_N: ("validating_engineer", None, True),
     }
     for acteur, (role, nom, actif) in attendus.items():
@@ -1045,12 +1058,16 @@ def test_le_projet_dit_le_role_de_l_appelant_dans_cette_organisation(
         assert vus[0]["member_name"] == nom, acteur
         assert vus[0]["member_active"] is actif, acteur
 
-    # ET L'ORGANISATION VOISINE NE VOIT PAS CE PROJET DU TOUT: le role rendu
-    # n'ouvre rien, il decrit une appartenance qui doit d'abord exister.
-    r = client.get("/v1/projects", headers=_entete(jeton(ACTEUR_B)))
-    assert r.status_code == 200, r.text
-    assert all(p["project_id"] != projet["project_id"]
-               for p in r.json()["projects"])
+    # ET DEUX IDENTITES NE VOIENT PAS CE PROJET DU TOUT: celle de
+    # l'organisation voisine, et celle dont l'acces a ete REVOQUE. Le role
+    # rendu n'ouvre rien — il decrit une appartenance qui doit d'abord exister
+    # et etre active.
+    for absent, pourquoi in ((ACTEUR_B, "autre organisation"),
+                             (ACTEUR_D, "acces revoque")):
+        r = client.get("/v1/projects", headers=_entete(jeton(absent)))
+        assert r.status_code == 200, r.text
+        assert all(p["project_id"] != projet["project_id"]
+                   for p in r.json()["projects"]), pourquoi
 
 
 # ===========================================================================

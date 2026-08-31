@@ -592,18 +592,40 @@ try {
   exige(await ligne.locator("text=Soumettre à la relecture").count() === 0,
         "un livrable emis offre encore « Soumettre à la relecture »");
 
-  for (const [action, corps] of [["review", null],
-                                 ["draft", { reason: "FICTIF" }]]) {
-    const r = await depuisLaPage(
-      `/v1/projects/${projetId}/deliverables/${livrableId}/${action}`,
-      "POST", corps);
-    exige(r.statut === 422,
-          `la transition « ${action} » sur un livrable emis a rendu ${r.statut}`);
-  }
+  //: CHAQUE TRANSITION EST DEMANDEE PAR QUI A LA CAPACITE DE LA DEMANDER, et
+  //: c'est ce qui rend le refus concluant. Un retour au brouillon demande par
+  //: le redacteur serait refuse sur le ROLE, et ne dirait rien de
+  //: l'immuabilite d'un livrable emis. V a la capacite de valider: son refus
+  //: ne peut donc venir que de l'etat.
+  const retour = await depuisLaPage(
+    `/v1/projects/${projetId}/deliverables/${livrableId}/draft`,
+    "POST", { reason: "FICTIF" });
+  exige(retour.statut === 422,
+        `le retour au brouillon d'un livrable emis a rendu ${retour.statut}`);
 
   // =======================================================================
-  // 11 — LA RÉVISION
+  // 11 — LA RÉVISION, PAR LE RÉDACTEUR
   // =======================================================================
+  //: REVISER EST UN GESTE DE REDACTION (0023): l'ecran de V n'offre donc pas
+  //: le bouton, et c'est A qui reprend la main. La separation joue jusqu'au
+  //: bout — celui qui repond du calcul ne redige pas l'indice suivant.
+  ici("l'ecran du validateur n'offre pas la revision");
+  exige(await ligne.locator("text=Créer une révision").count() === 0,
+        "l'ecran du validateur offre « Créer une révision »");
+
+  ici("retour du redacteur");
+  await deconnecter();
+  await connecter(A);
+  await page.selectOption("#projet", projetId);
+  await page.waitForSelector("#table-livrables", { timeout: 20000 });
+
+  //: ET SOUS SON IDENTITE, LA SOUMISSION D'UN LIVRABLE EMIS EST REFUSEE PAR
+  //: L'ETAT, PAS PAR LE ROLE: A a la capacite de rediger.
+  const soumission = await depuisLaPage(
+    `/v1/projects/${projetId}/deliverables/${livrableId}/review`, "POST");
+  exige(soumission.statut === 422,
+        `la soumission d'un livrable emis a rendu ${soumission.statut}`);
+
   ici("creation d'une revision");
   const revision = await corpsDe(
     "/revision", "POST",

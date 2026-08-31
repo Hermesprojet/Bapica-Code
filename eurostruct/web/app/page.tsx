@@ -586,6 +586,23 @@ function Atelier({ projet, surSelection }: {
  * ROUVRIR NE RECALCULE RIEN. Le serveur rend ce qui a été enregistré ; relancer
  * le moteur donnerait le résultat d'aujourd'hui pour un calcul d'hier.
  */
+//: LA MATRICE, TELLE QUE L'ECRAN LA LIT.
+//:
+//: ELLE NE PROTEGE RIEN. La frontiere est dans `project_exiger_capacite()`
+//: (0023), qui refuse quel que soit l'appelant, et la route la rejoue avant
+//: de deposer le moindre octet. Ce qui est ici decide seulement de ce qu'on
+//: MONTRE — et de ce qu'on EXPLIQUE quand on ne montre pas.
+const REDACTEURS = ["owner", "admin", "engineer"];
+
+function peutRediger(p: Projet): boolean {
+  return p.member_active !== false && REDACTEURS.includes(p.member_role);
+}
+
+function peutValider(p: Projet): boolean {
+  return p.member_active !== false
+    && p.member_role === "validating_engineer";
+}
+
 function Historique({ projet, revision, surReouverture, surLivrable }: {
   projet: Projet;
   revision: number;
@@ -710,7 +727,7 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
                       LIVRABLE: ses octets sont deposes, relus, et leur
                       empreinte enregistree — c'est ce document-la, et pas un
                       autre, qu'un ingenieur pourra attester. */}
-                  {c.status !== "refused" && (
+                  {c.status !== "refused" && peutRediger(projet) && (
                     <button type="button"
                             onClick={() => produire(c.calculation_id)}>
                       Produire un brouillon
@@ -772,9 +789,10 @@ function Livrables({ projet, revision, surChangement }: {
   const [reserves, setReserves] = useState("");
   const [enCours, setEnCours] = useState(false);
 
-  //: L'HABILITATION VIENT DU SERVEUR, PAS DU NAVIGATEUR. Ces deux booléens ne
+  //: L'HABILITATION VIENT DU SERVEUR, PAS DU NAVIGATEUR. Ces trois booléens ne
   //: protègent rien: ils décident de ce qu'on montre et de ce qu'on explique.
-  const validateur = projet.member_role === "validating_engineer";
+  const redacteur = peutRediger(projet);
+  const validateur = peutValider(projet);
   const actif = projet.member_active !== false;
 
   useEffect(() => {
@@ -855,18 +873,43 @@ function Livrables({ projet, revision, surChangement }: {
           L'absence d'ingenieur habilite n'empeche ni les projets, ni les
           calculs, ni les brouillons: elle ferme l'attestation et l'emission,
           et c'est ce que cette ligne explique. */}
-      {!validateur && (
+      {/* CE QUI EST OUVERT, ET CE QUI NE L'EST PAS, DIT AVANT QU'ON L'ESSAIE.
+          Un bouton absent sans un mot ne s'explique pas; un bouton present
+          qui rend un refus apprend a ignorer les messages d'erreur. */}
+      {actif && redacteur && (
         <p className="aide" id="pourquoi-ferme">
           Vous êtes connecté comme <strong>{projet.member_role}</strong>
           {projet.member_name ? ` (${projet.member_name})` : ""} dans
-          {" "}{projet.organization_name}. Produire un brouillon et le
-          soumettre à la relecture vous est ouvert ; l&apos;attestation et
-          l&apos;émission sont réservées au rôle{" "}
+          {" "}{projet.organization_name}. Produire un brouillon, le réviser et
+          le soumettre à la relecture vous est ouvert ; le retour motivé,
+          l&apos;attestation et l&apos;émission sont réservés au rôle{" "}
           <strong>validating_engineer</strong>, celui de l&apos;ingénieur qui
           répond de l&apos;étude.
         </p>
       )}
-      {validateur && !actif && (
+      {actif && validateur && (
+        <p className="aide" id="pourquoi-ferme">
+          Vous êtes connecté comme <strong>validating_engineer</strong>
+          {projet.member_name ? ` (${projet.member_name})` : ""} dans
+          {" "}{projet.organization_name}. Le retour motivé, l&apos;attestation
+          et l&apos;émission vous reviennent. La rédaction d&apos;un brouillon
+          revient aux rôles <strong>owner</strong>, <strong>admin</strong> et{" "}
+          <strong>engineer</strong> : celui qui répond du calcul ne le rédige
+          pas, et c&apos;est ce qui donne un sens à « relu ».
+        </p>
+      )}
+      {actif && !redacteur && !validateur && (
+        <p className="aide" id="pourquoi-ferme">
+          Vous êtes connecté comme <strong>{projet.member_role}</strong>
+          {projet.member_name ? ` (${projet.member_name})` : ""} dans
+          {" "}{projet.organization_name}. Ce rôle donne accès à la lecture et
+          au téléchargement. La rédaction revient aux rôles{" "}
+          <strong>owner</strong>, <strong>admin</strong> et{" "}
+          <strong>engineer</strong>, la validation au rôle{" "}
+          <strong>validating_engineer</strong>.
+        </p>
+      )}
+      {!actif && (
         <p className="aide" role="alert" id="pourquoi-ferme">
           Votre accès à {projet.organization_name} a été révoqué : il ne peut
           plus engager le bureau d&apos;études. Les livrables restent lisibles.
@@ -920,7 +963,7 @@ function Livrables({ projet, revision, surChangement }: {
                           title="Le document et son manifeste de rattachement">
                     Dossier de revue
                   </button>
-                  {d.state === "draft" && (
+                  {d.state === "draft" && redacteur && (
                     <button type="button" disabled={enCours}
                             onClick={() => agir(() => soumettreALaRelecture(
                               auth.porteur, projet.project_id, d.deliverable_id))}>
@@ -934,7 +977,7 @@ function Livrables({ projet, revision, surChangement }: {
                       Émettre
                     </button>
                   )}
-                  {d.state === "final" && (
+                  {d.state === "final" && redacteur && (
                     <button type="button" disabled={enCours}
                             onClick={() => agir(() => reviserLivrable(
                               auth.porteur, projet.project_id, d.deliverable_id,
@@ -992,7 +1035,7 @@ function Livrables({ projet, revision, surChangement }: {
           {/* LE RETOUR AU BROUILLON EXIGE UN MOTIF, ICI COMME EN BASE. Le
               champ n'est pas une politesse: celui qui reprend le document doit
               savoir ce qui lui est reproche. */}
-          {ouvert.state === "review" && (
+          {ouvert.state === "review" && validateur && (
             <p>
               <label htmlFor="motif-retour">Motif du retour au brouillon</label>
               <input id="motif-retour" type="text" value={motif}
@@ -1010,7 +1053,7 @@ function Livrables({ projet, revision, surChangement }: {
           {/* LE PANNEAU D'ATTESTATION N'APPARAIT QUE POUR UN COMPTE HABILITE.
               Et quand il n'apparait pas, la ligne d'explication plus haut dit
               pourquoi — un bouton absent sans un mot ne s'explique pas. */}
-          {ouvert.state === "review" && validateur && actif && (
+          {ouvert.state === "review" && validateur && (
             <div id="panneau-attestation">
               <strong>Attestation métier authentifiée</strong>
               <p className="aide">

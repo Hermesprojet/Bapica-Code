@@ -127,6 +127,52 @@ def _detail(brut: dict[str, Any]) -> LivrableDetail:
     return LivrableDetail(**charge)
 
 
+#: LA MATRICE, TELLE QUE L'ECRAN ET LA ROUTE LA LISENT.
+#:
+#: ELLE NE PROTEGE RIEN, ET C'EST DELIBERE. La frontiere est dans
+#: `project_exiger_capacite()` (0023), qui refuse quel que soit l'appelant. Ce
+#: qui est ici sert a deux choses qu'un refus SQL ne peut pas rendre: NE PAS
+#: ECRIRE DANS LE MAGASIN pour une demande qu'on sait refusee, et dire a
+#: l'ecran quels boutons ont un sens.
+REDACTEURS = frozenset({"owner", "admin", "engineer"})
+VALIDATEURS = frozenset({"validating_engineer"})
+
+
+def _exiger_capacite(projet: dict[str, Any], capacite: str) -> None:
+    """Le precontrole d'autorisation, AVANT tout octet depose.
+
+    POURQUOI IL EXISTE ALORS QUE POSTGRESQL REFUSE DEJA. La route composait le
+    document, deposait ses octets, PUIS appelait la primitive — qui refusait.
+    Le magasin gardait un objet que plus aucune ligne ne referencait, et
+    qu'aucune reconciliation ne saurait rattacher a quoi que ce soit.
+
+    IL NE REMPLACE PAS LE CONTROLE FINAL. La primitive le rejoue apres le
+    depot, et c'est elle la frontiere: entre ce precontrole et l'ecriture, une
+    adhesion peut etre revoquee. Deux controles, et le dernier decide.
+
+    LE ROLE VIENT DU SERVEUR. `project_workspace_list()` le derive de
+    `organization_members` sous l'identite du jeton (0021, resserre par 0023);
+    il ne traverse jamais depuis le navigateur.
+    """
+    if not projet.get("member_active", True):
+        raise ConfirmationDomainError(
+            "votre acces a cette organisation a ete revoque: il n'ouvre plus "
+            "aucun geste, pas meme la lecture."
+        )
+    role = str(projet.get("member_role") or "")
+    permis = REDACTEURS if capacite == "redaction" else VALIDATEURS
+    if role not in permis:
+        raise ConfirmationDomainError(
+            f"le role « {role} » ne porte pas cette action. "
+            + ("La creation d'un brouillon, sa revision et sa soumission a la "
+               "relecture reviennent aux roles owner, admin et engineer."
+               if capacite == "redaction" else
+               "Le retour motive au brouillon, l'attestation et l'emission "
+               "reviennent a l'ingenieur qui repond de l'etude, porteur du "
+               "role validating_engineer.")
+        )
+
+
 def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
                         calculation_id: str) -> tuple[bytes, str | None]:
     """Produit les octets du livrable **depuis les données gelées**.
@@ -179,13 +225,25 @@ def _creer(ouvert: Any, corps: LivrableCreation, project_id: str,
     document introuvable.
     """
     jeton = _jeton_de(ouvert)
+
+    # L'AUTORISATION AVANT LE MAGASIN, ET AVANT MEME DE COMPOSER. Un refus
+    # prononce apres le depot laisse un objet orphelin; un refus prononce
+    # apres la composition ne laisse rien mais fait travailler le moteur de
+    # rendu pour personne. L'ordre le moins couteux est aussi le plus sur.
+    try:
+        projet = _projet_de(ouvert, jeton, project_id)
+        _exiger_capacite(projet, "redaction")
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        ouvert.fermer()
+        raise _refus(cause) from cause
+
     try:
         magasin = stockage_configure()
     except StockageIndisponible as cause:
+        ouvert.fermer()
         raise _indisponible(cause) from cause
 
     try:
-        projet = _projet_de(ouvert, jeton, project_id)
         octets, filigrane = _octets_du_document(
             ouvert, jeton, projet, corps.calculation_id)
     except (AuthentificationRequise, ConfirmationDomainError) as cause:
