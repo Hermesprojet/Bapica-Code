@@ -96,7 +96,21 @@ def creer_application(reglages: Reglages | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=list(reglages.origines),
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        # `PATCH` ET `DELETE` SONT ARRIVES AVEC L'ADMINISTRATION DES MEMBRES,
+        # ET LEUR ABSENCE A COUTE UN PARCOURS ENTIER.
+        #
+        # Mesure du jour, dans un vrai Chromium: « Response to preflight
+        # request doesn't pass access control check » sur le PATCH d'une
+        # adhesion. La route repondait parfaitement — la suite d'API le prouve
+        # — et le NAVIGATEUR n'y arrivait jamais: le prevol `OPTIONS` ne
+        # trouvait pas la methode dans `Access-Control-Allow-Methods`, et
+        # `fetch` echouait AVANT d'emettre la requete reelle. C'est exactement
+        # le defaut qu'aucune suite d'API ne peut voir, et que seul un parcours
+        # navigateur revele.
+        #
+        # LA LISTE RESTE ENUMEREE, JAMAIS `*`: un joker autoriserait aussi les
+        # methodes qu'on n'expose pas, et cesserait de dire ce que l'API fait.
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
         # L'IDENTIFIANT DE CORRELATION DOIT ETRE LISIBLE PAR L'INTERFACE.
         # Sans `expose_headers`, le navigateur le recoit et le cache: seule
