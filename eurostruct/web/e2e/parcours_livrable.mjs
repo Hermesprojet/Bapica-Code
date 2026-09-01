@@ -564,6 +564,26 @@ try {
         "apres rechargement, les octets telecharges ont change");
 
   // =======================================================================
+  // 6 bis — LA SUITE DU PARCOURS SE JOUE SUR LE PDF, ET C'EST LE SUJET
+  // =======================================================================
+  //: POURQUOI ON BASCULE ICI.
+  //:
+  //: Les etapes 4 a 6 ont eprouve le HTML: production, telechargement,
+  //: persistance apres F5. Tout ce qui suit — relecture, attestation,
+  //: emission — doit porter sur le PDF, parce que c'est le PDF qu'on
+  //: transmet, et parce que L'EMISSION N'A PAS LE MEME EFFET SELON LA PIECE:
+  //: seule celle d'une note PDF validee produit le document atteste. Emettre
+  //: le HTML emprunte le chemin historique et ne produit rien — ce qui est
+  //: correct, et ce que la suite d'API verifie de son cote.
+  //:
+  //: MESURE DU 01/09: le parcours attestait et emettait le HTML. La section
+  //: « 9 bis » ci-dessous, ecrite d'abord sans cette bascule, a echoue sur
+  //: « l'emission n'a produit aucun document atteste » — l'assertion visait
+  //: la bonne exigence, mais la mauvaise piece.
+  livrableId = livrablePdfId;
+  empreinteEnregistree = brouillonPdf.corps?.sha256 ?? "";
+
+  // =======================================================================
   // 7 — SOUMISSION À LA RELECTURE, ET CE QUE A NE PEUT PAS FAIRE
   // =======================================================================
   ici("soumission a la relecture");
@@ -854,8 +874,13 @@ console.log(
   + "rechargement complet; le dossier de revue se telecharge et deux "
   + "telechargements rendent les memes octets; l'ecran de A n'offre aucun "
   + "panneau d'attestation et "
-  + "dit pourquoi, la route le refuse aussi; V atteste sous le nom et le "
-  + "numero d'inscription de SON adhesion, emet, et le livrable emis ne se "
+  + "dit pourquoi, la route le refuse aussi; V atteste le PDF sous le nom et "
+  + "le numero d'inscription de SON adhesion, puis l'emet — l'emission "
+  + "produit un SECOND PDF, nomme « PDF émis avec attestation » dans l'ecran, "
+  + "qui derive de l'original sans le remplacer, se telecharge, cite le "
+  + "SHA-256 de l'original dans ses octets et dit qu'il n'est pas une "
+  + "signature qualifiee, tandis que l'original reste byte-identique; le "
+  + "livrable emis ne se "
   + "modifie plus — ni par bouton, ni par route; une revision d'indice 2 le "
   + "remplace; B ne voit pas le projet et obtient un refus qui ne laisse rien "
   + "filtrer; aucun jeton persiste.",
