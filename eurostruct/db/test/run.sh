@@ -186,6 +186,20 @@ trap rendre_le_decor EXIT
 # et le decor global reste derriere (voir harnais_piege_signaux).
 harnais_piege_signaux
 
+# LE CONTROLE LE MOINS CHER DE LA SUITE, ET DONC LE PREMIER.
+#
+# Il ne touche ni base ni cluster: il lit des fichiers. Sa place en tete n'est
+# pas une commodite, c'est le sujet. Une liste de demontage desynchronisee du
+# plan de controle ne se manifeste qu'APRES coup — le harnais fautif passe au
+# vert, laisse un role derriere lui, et ce sont les etapes SUIVANTES qui
+# refusent de demarrer. Le symptome est alors a des dizaines de minutes de sa
+# cause, sur des surfaces qui sont VERTES en isole. C'est arrive deux fois
+# (26/08, 01/09), et le diagnostic a coute une campagne complete a chaque fois.
+# Ici, la cause se nomme elle-meme, en une seconde, avant la premiere base.
+echo "==> demontage canonique"
+etape "demontage canonique des roles" \
+  "$HERE/demontage_canonique.sh"
+
 echo "==> oracle comportemental des primitives de portee"
 etape "oracle de portee des roles" \
   "$HERE/role_reach_oracle.sh" "${DB_NAME}_oracle"

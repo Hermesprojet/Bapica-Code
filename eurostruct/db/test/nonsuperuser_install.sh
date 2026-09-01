@@ -81,14 +81,26 @@ MIGRATEUR=esc_migrator
 PLAN=esc_control_plane
 ROLES_SB="$MIGRATEUR $PLAN esc_authenticator esc_service_role"
 CANONIQUES="eurostruct_normative_writer eurostruct_normative_bootstrap eurostruct_normative_activator eurostruct_deployment"
-# LE SEPTIEME ROLE CANONIQUE. `eurostruct_authority_backend` est cree par la
+# LES ROLES QUE LA PHASE 0 CREE. `eurostruct_authority_backend` est cree par la
 # PHASE 0 depuis 6.3c: il doit donc etre exige absent AVANT, enregistre pour
 # le demontage, et detruit APRES, exactement comme les six autres. Mesure du
 # 26/08: il ne l'etait pas ici, et il survivait a ce harnais — les sept suites
 # suivantes de `run.sh` refusaient alors de demarrer sur « ces roles existent
 # deja ». Un role oublie dans une liste de demontage n'est pas un detail: il
 # arrete tout ce qui vient apres.
-SERVICES="normative_backend normative_governance eurostruct_authority_backend"
+#
+# `eurostruct_reconciliation` A REJOUE LA MEME SCENE, LE 01/09.
+#
+# La phase 0 le cree desormais aussi (0026 exige qu'il preexiste: le compte de
+# rapprochement est provisionne par le plan de controle, jamais par une
+# migration). Ce harnais l'a donc cree sans le rendre, et il a survecu — en
+# rendant ROUGES « les cinq couches de separation » et « terminaison de la
+# matrice sur signal », toutes deux VERTES en isole. La lecon etait ecrite
+# quatre lignes plus haut depuis le 26/08; elle n'avait pas ete appliquee a un
+# role ajoute apres coup. `demontage_canonique.sh` la rend desormais
+# structurelle: la liste se derive du sceau, elle ne se maintient plus a la
+# main.
+SERVICES="normative_backend normative_governance eurostruct_authority_backend eurostruct_reconciliation"
 MDP='FICTIF-nonsuperuser'
 
 # La connexion vient de l'ENVIRONNEMENT, jamais d'argv (6.3b6a, securite des

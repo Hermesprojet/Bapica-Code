@@ -199,9 +199,20 @@ if [[ "$ETAT" != "ACTIVE" ]]; then
 fi
 
 # --- 2. LES ROLES APPLICATIFS EXISTENT -------------------------------------
+#
+# `eurostruct_reconciliation` EN FAIT PARTIE, ET SON ABSENCE SE VOIT ICI.
+#
+# Il est cree par le plan de controle, jamais par une migration — 0026 EXIGE
+# qu'il preexiste et refuse sinon. Une pile composee depuis zero dont l'image
+# PostgreSQL ne poserait pas le sceau echouerait donc a la migration; mais si
+# 0026 venait un jour a le creer lui-meme « pour depanner », la pile
+# resterait verte tout en ayant perdu la separation qui veut que le compte de
+# rapprochement soit provisionne par l'infrastructure. Le nommer ici fait de
+# sa presence une assertion, pas un effet de bord.
 MANQUANTS="$(psql_admin "
   select coalesce(string_agg(r, ', '), '') from unnest(array[
     'eurostruct_normative_writer','eurostruct_authority_backend',
+    'eurostruct_reconciliation',
     'normative_backend','normative_governance']) r
    where not exists (select 1 from pg_roles where rolname = r)")"
 [[ -z "$MANQUANTS" ]] || echoue "roles applicatifs absents: $MANQUANTS"
