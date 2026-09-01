@@ -749,9 +749,9 @@ def _reponse_de_verification(etude: Any, *, calculation_id: str,
         is_exploratory=etude.is_exploratory,
         may_be_finalised=etude.may_be_finalised,
         requires_additional_analysis=etude.requires_additional_analysis,
-        inputs_hash=etude.inputs_hash,
+        engineering_inputs_hash=etude.engineering_inputs_hash,
         ndp_snapshot_id=etude.ndp_snapshot_id,
-        fingerprint=etude.fingerprint,
+        calculation_fingerprint=etude.calculation_fingerprint,
         engine_version=etude.engine_version,
         engine_build_sha=build,
         execution_identity=identite,
@@ -797,11 +797,10 @@ def verifier_poutre_completement(
     qui pourrait le nommer laisserait choisir qui atteste.
     """
     from eurostruct_engine.ec2.beam_verification import (
-        preflight_beam,
+        resolve_beam_context,
         verify_beam,
     )
-    from eurostruct_engine.ndp.registry import load_parameter_set
-
+    
     jeton = _jeton_de(ouvert)
     try:
         projet = _projet_de(ouvert, jeton, project_id)
@@ -831,31 +830,42 @@ def verifier_poutre_completement(
     strict = bool(corps.strict_ndp)
 
     try:
-        # --- 3. LE PRÉFLIGHT, ET IL PARLE AVANT LE MOTEUR -----------------
-        if strict:
-            prevol = preflight_beam(
-                country=pays, region=region, as_of=as_of, strict=True,
-                provider=lecture.provider if lecture else None)
-            if not prevol.ready:
-                # ZÉRO ÉCRITURE. Aucun calcul n'a été tenté: il n'y a rien à
-                # enregistrer, et une ligne « refused » laisserait croire que
-                # le moteur a répondu.
-                raise HTTPException(
-                    status_code=422,
-                    detail={
-                        "error": "referentiel_incomplet",
-                        "what": "preflight strict",
-                        "detail": (
-                            "le mode strict exige des paramètres nationaux "
-                            "confirmés; ceux-ci ne le sont pas. Aucun calcul "
-                            "n'a été lancé et rien n'a été enregistré."),
-                        "blocking": [b.to_dict() for b in prevol.blocking],
-                        "provider_identity": prevol.provider_identity,
-                    },
-                )
+        # --- 3. LE REFERENTIEL EST RESOLU UNE FOIS, ET UNE SEULE ----------
+        #
+        # `resolve_beam_context` applique les confirmations du provider et rend
+        # LE jeu sur lequel tout ce qui suit travaille: le preflight, les cinq
+        # modules, l'instantane normatif, l'identite d'execution et la
+        # persistance.
+        #
+        # LA REDACTION PRECEDENTE PERDAIT CE TRAVAIL. Elle appelait
+        # `preflight_beam(provider=)` puis rechargeait le referentiel BRUT par
+        # `load_parameter_set`: le jeu resolu etait jete entre le preflight et
+        # le moteur. Le defaut est silencieux et grave — un preflight strict
+        # « pret » suivi d'un calcul strict qui refuse, sur le meme dossier, a
+        # la meme seconde. Aucun ecran ne permet de diagnostiquer cela.
+        contexte = resolve_beam_context(
+            country=pays, region=region, as_of=as_of, strict=strict,
+            provider=lecture.provider if lecture else None)
 
-        params = load_parameter_set(pays, region=region, strict=strict,
-                                    as_of=as_of)
+        if strict and not contexte.preflight.ready:
+            # ZÉRO ÉCRITURE. Aucun calcul n'a été tenté: il n'y a rien à
+            # enregistrer, et une ligne « refused » laisserait croire que
+            # le moteur a répondu.
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "referentiel_incomplet",
+                    "what": "preflight strict",
+                    "detail": (
+                        "le mode strict exige des paramètres nationaux "
+                        "confirmés; ceux-ci ne le sont pas. Aucun calcul "
+                        "n'a été lancé et rien n'a été enregistré."),
+                    "blocking": [b.to_dict()
+                                 for b in contexte.preflight.blocking],
+                    "provider_identity": contexte.preflight.provider_identity,
+                },
+            )
+
         entree = _entree_moteur(corps)
 
         # --- 4. LE MOTEUR -------------------------------------------------
@@ -877,9 +887,18 @@ def verifier_poutre_completement(
             "as_of": as_of.isoformat(),
             **corps.model_dump(mode="json"),
         }
-        identite = _identite(charge, None, build)
+
+        # UNE SEULE IDENTITE D'EXECUTION, CALCULEE ICI ET NULLE PART AILLEURS.
+        # Elle se calcule APRES la resolution du referentiel et AVANT
+        # l'execution, si bien qu'une seule valeur circule: le moteur la
+        # recoit, la base l'enregistre, la reponse la rend, la note la cite.
+        # La rediger deux fois — une avec `ndp=None`, une avec l'instantane —
+        # donnait deux valeurs pour une meme execution, et une note qui cite la
+        # premiere ne se rattache a aucune ligne.
+        identite = contexte.execution_identity(charge, engine_build=build)
+
         try:
-            etude = verify_beam(entree, params=params,
+            etude = verify_beam(entree, params=contexte.parameters,
                                 execution_identity=identite)
         except EurostructEngineError as cause:
             # UNE SAISIE FAUSSE NE DEVIENT PAS UN DOSSIER. Contrairement à la
@@ -893,13 +912,17 @@ def verifier_poutre_completement(
                         "detail": str(cause)},
             ) from cause
 
-        identite = _identite(charge, etude.ndp_summary, build)
-
         # --- 5. LA PERSISTANCE, EN UN SEUL APPEL --------------------------
         calcul_id = ouvert.atelier.enregistrer_calcul(
             jeton, project_id=project_id,
             status=_STATUT_SQL[etude.status],
-            inputs_hash=etude.inputs_hash,
+            # LA COLONNE `inputs_hash` EST DOCUMENTEE COMME L'EMPREINTE DE LA
+            # TOTALITE DES ENTREES: on y depose donc `calculation_fingerprint`,
+            # qui couvre la technique ET le contexte normatif. Y mettre la
+            # seule empreinte technique ferait partager la colonne a deux
+            # etudes menees sous des annexes differentes — et la colonne
+            # mentirait sur ce qu'elle porte.
+            inputs_hash=etude.calculation_fingerprint,
             strict_ndp=etude.strict_ndp,
             engine_version=etude.engine_version,
             request=charge,
@@ -1000,9 +1023,9 @@ def _reponse_relue(relu: dict[str, Any], charge: dict[str, Any]) -> Any:
         may_be_finalised=bool(charge.get("may_be_finalised")),
         requires_additional_analysis=bool(
             charge.get("requires_additional_analysis")),
-        inputs_hash=charge.get("inputs_hash", ""),
+        engineering_inputs_hash=charge.get("engineering_inputs_hash", ""),
         ndp_snapshot_id=charge.get("ndp_snapshot_id", ""),
-        fingerprint=charge.get("fingerprint", ""),
+        calculation_fingerprint=charge.get("calculation_fingerprint", ""),
         engine_version=charge.get("engine_version", ""),
         engine_build_sha=str(relu.get("engine_build_sha") or ""),
         execution_identity=str(relu.get("execution_identity") or ""),

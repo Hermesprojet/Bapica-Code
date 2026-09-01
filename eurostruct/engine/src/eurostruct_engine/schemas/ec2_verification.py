@@ -187,9 +187,20 @@ class Ec2BeamVerificationResponse(Strict):
     may_be_finalised: bool
     requires_additional_analysis: bool
 
-    inputs_hash: str
+    #: LES QUATRE EMPREINTES, ET AUCUNE NE SE SUBSTITUE A UNE AUTRE.
+    #:
+    #:   engineering_inputs_hash   géométrie, sollicitations, ferraillage
+    #:   ndp_snapshot_id           le référentiel exact, résolu
+    #:   calculation_fingerprint   l'étude complète: technique + référentiel
+    #:   execution_identity        l'étude complète + moteur et build
+    #:
+    #: La rédaction précédente appelait la première `inputs_hash` et la
+    #: déposait dans la colonne SQL du même nom, laquelle promet la TOTALITÉ
+    #: des entrées. Deux études identiques sous des annexes différentes la
+    #: partageaient donc.
+    engineering_inputs_hash: str
     ndp_snapshot_id: str
-    fingerprint: str
+    calculation_fingerprint: str
 
     engine_version: str
     engine_build_sha: str

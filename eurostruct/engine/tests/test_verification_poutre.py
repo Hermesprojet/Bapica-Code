@@ -128,7 +128,7 @@ def test_les_cinq_sections_sont_evaluees(params) -> None:
 def test_l_orchestrateur_est_deterministe(params) -> None:
     a = verify_beam(_entree(), params=params)
     b = verify_beam(_entree(), params=params)
-    assert a.inputs_hash == b.inputs_hash
+    assert a.engineering_inputs_hash == b.engineering_inputs_hash
     assert [s.utilisation for s in a.sections] == [s.utilisation for s in b.sections]
 
 
@@ -406,10 +406,10 @@ def test_le_resultat_porte_son_contexte_normatif(params) -> None:
     assert etude.strict_ndp is False
     assert etude.preflight_ready in (True, False)
     assert len(etude.ndp_snapshot_id) == 64
-    assert len(etude.fingerprint) == 64
+    assert len(etude.calculation_fingerprint) == 64
     for cle in ("strict_ndp", "country", "region", "ndp_as_of",
-                "preflight_ready", "ndp_snapshot_id", "fingerprint",
-                "is_exploratory"):
+                "preflight_ready", "ndp_snapshot_id",
+                "calculation_fingerprint", "is_exploratory"):
         assert cle in etude.to_dict()
 
 
@@ -422,7 +422,7 @@ def test_la_region_entre_dans_l_instantane_et_dans_l_empreinte() -> None:
     assert b.region == "Wallonie"
     assert b.ndp_summary["region"] == "Wallonie"
     assert a.ndp_snapshot_id != b.ndp_snapshot_id
-    assert a.fingerprint != b.fingerprint
+    assert a.calculation_fingerprint != b.calculation_fingerprint
 
 
 def test_le_pays_la_date_et_le_mode_strict_changent_l_empreinte() -> None:
@@ -456,8 +456,8 @@ def test_le_pays_la_date_et_le_mode_strict_changent_l_empreinte() -> None:
         "BE", strict=False, as_of=AS_OF))
     b = verify_beam(_entree(), params=load_parameter_set(
         "BE", region="Wallonie", strict=False, as_of=AS_OF))
-    assert a.inputs_hash == b.inputs_hash, "les nombres saisis sont identiques"
-    assert a.fingerprint != b.fingerprint, "mais pas le referentiel"
+    assert a.engineering_inputs_hash == b.engineering_inputs_hash, "les nombres saisis sont identiques"
+    assert a.calculation_fingerprint != b.calculation_fingerprint, "mais pas le referentiel"
 
 
 # ---------------------------------------------------------------------------

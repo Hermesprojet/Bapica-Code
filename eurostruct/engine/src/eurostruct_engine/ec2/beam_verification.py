@@ -72,6 +72,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -108,6 +109,7 @@ __all__ = [
     "STATUT_ECHOUE",
     "STATUT_NON_EVALUE",
     "STATUT_PASSE",
+    "BeamContext",
     "BeamGeometry",
     "BeamPreflight",
     "BeamVerification",
@@ -118,6 +120,7 @@ __all__ = [
     "TransverseLinks",
     "preflight_beam",
     "required_parameters_for_beam",
+    "resolve_beam_context",
     "verify_beam",
 ]
 
@@ -336,7 +339,7 @@ class BeamVerification:
     sections: tuple[SectionOutcome, ...]
     #: `passed`, `failed` ou `incomplete`.
     status: str
-    inputs_hash: str
+    engineering_inputs_hash: str
     bar_spacing: Quantity
     drawing_spec: BeamSectionSpec
     ndp_summary: dict[str, Any]
@@ -402,7 +405,7 @@ class BeamVerification:
             "element": self.element,
             "status": self.status,
             "inputs": self.inputs.to_dict(),
-            "inputs_hash": self.inputs_hash,
+            "engineering_inputs_hash": self.engineering_inputs_hash,
             "sections": [s.to_dict() for s in self.sections],
             "bar_spacing": fmt(self.bar_spacing),
             "engine_version": self.engine_version,
@@ -418,19 +421,28 @@ class BeamVerification:
                           if self.ndp_as_of is not None else None),
             "preflight_ready": self.preflight_ready,
             "ndp_snapshot_id": self.ndp_snapshot_id,
-            "fingerprint": self.fingerprint,
+            "calculation_fingerprint": self.calculation_fingerprint,
         }
 
     @property
-    def fingerprint(self) -> str:
-        """L'empreinte de l'ETUDE: entree gelee ET contexte normatif.
+    def calculation_fingerprint(self) -> str:
+        """L'empreinte de l'ETUDE COMPLETE: technique ET contexte normatif.
 
-        Deux etudes aux memes nombres mais sous un pays, une region, une date
-        ou un mode strict differents ne sont pas la meme etude, et ne doivent
-        pas partager une empreinte.
+        LES QUATRE EMPREINTES NE SE SUBSTITUENT PAS L'UNE A L'AUTRE:
+
+            engineering_inputs_hash   geometrie, sollicitations, ferraillage
+            ndp_snapshot_id           le referentiel exact, resolu
+            calculation_fingerprint   l'etude complete (les deux ci-dessus)
+            execution_identity        l'etude complete + moteur et build
+
+        La redaction precedente appelait la premiere `inputs_hash` et la
+        deposait dans la colonne SQL du meme nom — laquelle est documentee
+        comme l'empreinte de la TOTALITE des entrees. Deux etudes identiques
+        sous des annexes differentes la partageaient donc, et la colonne
+        mentait sur ce qu'elle portait.
         """
         return hashlib.sha256(
-            f"{self.inputs_hash}:{self.ndp_snapshot_id}".encode()
+            f"{self.engineering_inputs_hash}:{self.ndp_snapshot_id}".encode()
         ).hexdigest()
 
 
@@ -541,39 +553,95 @@ def required_parameters_for_beam(country_code: str | None = None
     return tuple(sorted(union))
 
 
-def preflight_beam(*, country: str, as_of: date, region: str | None = None,
-                   strict: bool = True,
-                   provider: Any = None) -> BeamPreflight:
-    """Reunit en UNE reponse ce qui bloque les cinq modules.
+@dataclass(frozen=True, slots=True)
+class BeamContext:
+    """Le référentiel RÉSOLU, et tout ce qui en découle. Une seule fois.
 
-    Le mode strict ne doit pas echouer cinq fois de suite: un ingenieur qui
-    corrige un parametre pour se voir refuser sur le suivant, puis le suivant,
-    ne sait jamais ou il en est.
+    CE QUE CETTE CLASSE FERME
+    ---------------------------
+    La route appelait `preflight_beam(provider=)` — qui applique les
+    confirmations et rend un jeu où seuls les paramètres confirmés sont
+    utilisables — puis rechargeait le référentiel BRUT par
+    `load_parameter_set`. Le travail du provider était jeté entre le préflight
+    et le moteur.
 
-    `strict` VAUT VRAI PAR DEFAUT, ET C'EST LE SUJET.
+    Le défaut est silencieux et grave: un préflight strict « prêt » suivi d'un
+    calcul strict qui refuse, sur le même dossier, à la même seconde. Personne
+    ne peut diagnostiquer cela depuis l'écran.
 
-    Une premiere redaction chargeait le jeu avec `strict=False` en dur. Elle ne
-    signalait donc AUCUNE valeur `pending_verification` — un preflight qui se
-    declare pret sur un referentiel dont rien n'est releve. Un preflight
-    permissif par defaut est pire que pas de preflight: il rassure.
-
-    `region` EST TRANSMISE. Elle ne l'etait pas: le jeu revenait sans elle, et
-    une region qui modifie un parametre etait ignoree en silence.
-
-    LES CONFIRMATIONS VIENNENT DU VRAI PROVIDER, quand il y en a un. Sans
-    provider, ou avec des confirmations insuffisantes, les valeurs en attente
-    RESTENT bloquantes: c'est le fait produit sur le referentiel livre.
-
-    `not_representable` bloque MEME EN MODE NON STRICT: une formule que le
-    modele scalaire ne sait pas porter ne devient pas portable parce qu'on a
-    baisse les exigences.
-
-    Aucune valeur n'est confirmee ici, et aucun ingenieur n'est sollicite.
+    `parameters` EST LE MÊME OBJET que celui sur lequel le préflight a conclu.
+    Pas un jeu rechargé avec les mêmes arguments: deux lectures du même
+    référentiel ne sont égales que tant que rien ne les distingue, et le jour
+    où quelque chose les distingue, c'est exactement ce défaut qui revient.
     """
-    jeu = load_parameter_set(country, region=region, strict=strict, as_of=as_of)
-    pays = jeu.registry.country_code
-    cles = required_parameters_for_beam(pays)
 
+    country: str
+    region: str | None
+    as_of: date
+    strict: bool
+    #: Le jeu résolu — confirmations appliquées quand un provider en a fourni.
+    parameters: ParameterSet
+    preflight: BeamPreflight
+    ndp_snapshot: dict[str, Any]
+    ndp_snapshot_id: str
+
+    @property
+    def preflight_parameters(self) -> ParameterSet:
+        """Le jeu sur lequel le préflight a conclu. C'est le même."""
+        return self.parameters
+
+    def execution_identity(self, request: Mapping[str, Any], *,
+                           engine_build: str) -> str:
+        """L'identité de CETTE exécution, calculée UNE fois.
+
+        Elle se calcule après la résolution du référentiel et avant
+        l'exécution, si bien qu'une seule valeur circule: le moteur la reçoit,
+        la base l'enregistre, la réponse la rend, la note la cite.
+
+        La rédaction précédente la calculait avec `ndp=None`, la passait au
+        moteur, puis la RECALCULAIT avec l'instantané pour la persistance.
+        L'étude portait donc une identité et la base une autre — et une note
+        qui cite la première ne se rattache à aucune ligne.
+        """
+        from ..ndp.execution import identite_execution
+        from ..version import ENGINE_NAME, ENGINE_VERSION
+
+        return identite_execution(
+            request=dict(request), ndp_snapshot=self.ndp_snapshot,
+            engine_name=ENGINE_NAME, engine_version=ENGINE_VERSION,
+            build_sha=engine_build,
+        ).digest
+
+
+def resolve_beam_context(*, country: str, as_of: date,
+                         region: str | None = None, strict: bool = True,
+                         provider: Any = None) -> BeamContext:
+    """Le point d'entrée UNIQUE: résout le référentiel, puis conclut dessus.
+
+    Tout ce qui suit — les cinq modules, l'instantané normatif, l'identité
+    d'exécution, la persistance — travaille sur le jeu que cette fonction
+    rend. Aucune seconde lecture brute n'est permise entre le préflight et le
+    moteur, et c'est la raison d'être de cet objet.
+    """
+    jeu, identite, fictif = _jeu_resolu(
+        country=country, region=region, as_of=as_of, strict=strict,
+        provider=provider)
+    prevol = _preflight_sur(jeu, country=country, region=region, as_of=as_of,
+                            strict=strict, provider_identity=identite,
+                            provider_is_fictional=fictif)
+    return BeamContext(
+        country=jeu.registry.country_code, region=region, as_of=as_of,
+        strict=strict, parameters=jeu, preflight=prevol,
+        ndp_snapshot=jeu.summary(), ndp_snapshot_id=_empreinte_normative(jeu),
+    )
+
+
+def _jeu_resolu(*, country: str, region: str | None, as_of: date,
+                strict: bool, provider: Any
+                ) -> tuple[ParameterSet, str | None, bool | None]:
+    """Le jeu, confirmations appliquées quand il y a un provider."""
+    jeu = load_parameter_set(country, region=region, strict=strict,
+                             as_of=as_of)
     identite = None
     fictif = None
     if provider is not None:
@@ -581,12 +649,22 @@ def preflight_beam(*, country: str, as_of: date, region: str | None = None,
         fictif = getattr(provider, "is_fictional", None)
         if strict:
             # LE PONT EXISTANT, PAS UN NOUVEAU. `confirmer_depuis_le_provider`
-            # confronte chaque parametre aux attestations qui le visent et rend
-            # un jeu ou SEULS les parametres confirmes sont utilisables.
+            # confronte chaque paramètre aux attestations qui le visent et rend
+            # un jeu où SEULS les paramètres confirmés sont utilisables.
             from ..ndp.passerelle import confirmer_depuis_le_provider
 
-            jeu, _ = confirmer_depuis_le_provider(jeu, cles, provider=provider)
+            jeu, _ = confirmer_depuis_le_provider(
+                jeu, required_parameters_for_beam(jeu.registry.country_code),
+                provider=provider)
+    return jeu, identite, fictif
 
+
+def _preflight_sur(jeu: ParameterSet, *, country: str, region: str | None,
+                   as_of: date, strict: bool, provider_identity: str | None,
+                   provider_is_fictional: bool | None) -> BeamPreflight:
+    """Le préflight, sur un jeu DÉJÀ résolu. Il ne recharge rien."""
+    pays = jeu.registry.country_code
+    cles = required_parameters_for_beam(pays)
     rapport = jeu.preflight(cles)
 
     # QUI RECLAME QUOI. Un meme parametre sert plusieurs modules; il apparait
@@ -600,9 +678,6 @@ def preflight_beam(*, country: str, as_of: date, region: str | None = None,
                 bloquants.append(ModuleBlocker(
                     module=module,
                     parameter=bp.key,
-                    # `clause` du registre est une CHAINE, pas un `Clause`.
-                    # Appeler `.cite()` dessus levait un AttributeError — la
-                    # premiere execution du preflight l'a dit.
                     clause=bp.clause or bp.parameter_name,
                     annex=bp.national_annex_reference or bp.standard,
                     reason=bp.reason,
@@ -610,15 +685,27 @@ def preflight_beam(*, country: str, as_of: date, region: str | None = None,
                 ))
 
     return BeamPreflight(
-        country=pays,
-        region=region,
-        as_of=as_of,
-        strict=strict,
+        country=pays, region=region, as_of=as_of, strict=strict,
         blocking=tuple(sorted(bloquants, key=lambda b: (b.module, b.parameter))),
         required=cles,
-        provider_identity=identite,
-        provider_is_fictional=fictif,
+        provider_identity=provider_identity,
+        provider_is_fictional=provider_is_fictional,
     )
+
+
+def preflight_beam(*, country: str, as_of: date, region: str | None = None,
+                   strict: bool = True,
+                   provider: Any = None) -> BeamPreflight:
+    """Le préflight seul, pour qui ne veut pas encore calculer.
+
+    C'EST UNE FACADE SUR `resolve_beam_context`, PAS UN SECOND CHEMIN. Elle
+    existe pour l'écran qui interroge le référentiel avant toute saisie; elle
+    resout exactement de la meme facon, si bien qu'un preflight rendu ici et un
+    calcul lance ensuite ne peuvent pas se contredire.
+    """
+    return resolve_beam_context(country=country, as_of=as_of, region=region,
+                                strict=strict, provider=provider).preflight
+
 
 # ---------------------------------------------------------------------------
 # L'orchestrateur
@@ -714,7 +801,7 @@ def verify_beam(inputs: BeamVerificationInput, *, params: ParameterSet,
         inputs=inputs,
         sections=sections,
         status=_statut_global(sections),
-        inputs_hash=_empreinte(inputs),
+        engineering_inputs_hash=_empreinte(inputs),
         bar_spacing=entraxe,
         drawing_spec=spec,
         ndp_summary=params.summary(),
