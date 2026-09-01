@@ -40,14 +40,13 @@ import pytest
 from eurostruct_engine.ec2 import ExposureClass, StructuralSystem
 from eurostruct_engine.ec2.anchorage import BondCondition
 
-# LE MODULE N'EXISTE PAS ENCORE. C'est le sujet de ce lot, et cet import est la
-# premiere preuve rouge: l'application ne sait pas produire cette etude.
 from eurostruct_engine.ec2.beam_verification import (
     BeamGeometry,
     BeamVerificationInput,
     LongitudinalBars,
     TransverseLinks,
     preflight_beam,
+    required_parameters_for_beam,
     verify_beam,
 )
 from eurostruct_engine.exceptions import InconsistentInput
@@ -232,6 +231,64 @@ def test_un_refus_ne_laisse_aucune_etude_partielle(params) -> None:
                     params=params)
 
 
+@pytest.mark.parametrize("libelle,remplace", [
+    ("V_Ed negatif", {"V_Ed": Q_(-10, "kN")}),
+    ("M_Ed negatif", {"M_Ed": Q_(-10, "kN*m")}),
+    ("M_qp negatif", {"M_qp": Q_(-10, "kN*m")}),
+    ("M_char negatif", {"M_char": Q_(-10, "kN*m")}),
+    ("fluage negatif", {"phi_creep": -1.0}),
+    ("cot(theta) nul", {"cot_theta": 0.0}),
+    ("largeur nulle", {"geometry": BeamGeometry(
+        b=Q_(0, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm"),
+        l_eff=Q_(6000, "mm"))}),
+    ("hauteur negative", {"geometry": BeamGeometry(
+        b=Q_(300, "mm"), h=Q_(-600, "mm"), d=Q_(550, "mm"),
+        l_eff=Q_(6000, "mm"))}),
+    ("portee nulle", {"geometry": BeamGeometry(
+        b=Q_(300, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm"),
+        l_eff=Q_(0, "mm"))}),
+    ("enrobage impossible", {"cover": Q_(140, "mm")}),
+    ("diametre d'etrier nul", {"links": TransverseLinks(
+        legs=2, diameter=Q_(0, "mm"), spacing=Q_(150, "mm"))}),
+    ("espacement d'etrier negatif", {"links": TransverseLinks(
+        legs=2, diameter=Q_(10, "mm"), spacing=Q_(-150, "mm"))}),
+    ("une seule barre", {"bars": LongitudinalBars(
+        count=1, diameter=Q_(20, "mm"))}),
+])
+def test_une_saisie_invalide_est_refusee_pas_conservee(
+        params, libelle, remplace) -> None:
+    """CES CAS SONT DES REFUS, PAS DES ETUDES INCOMPLETES.
+
+    Une redaction precedente attrapait tout `InconsistentInput` remonte d'un
+    module et le transformait en `not_evaluated`. Trop large: une saisie
+    reellement fausse — un moment negatif, un fluage negatif — serait devenue
+    un dossier « incomplete » au lieu d'etre refusee. Le filet est desormais
+    pose AVANT les modules, et rien ne l'attrape apres.
+    """
+    with pytest.raises(InconsistentInput):
+        verify_beam(_entree(**remplace), params=params)
+
+
+def test_une_dependance_amont_est_dite_par_un_code_pas_par_un_texte(
+        params) -> None:
+    """`prerequisite_failed:flexure` se teste, se traduit et se stocke.
+
+    La dispense de §7.4.2 n'a pas de sens sous une flexion non satisfaite, et
+    `check_span_depth` le dit lui-meme. Mais on ne l'APPELLE pas pour attraper
+    son refus et en deviner la cause dans un message: la dependance est
+    declaree en amont.
+    """
+    etude = verify_beam(
+        _entree(bars=LongitudinalBars(count=3, diameter=Q_(16, "mm"))),
+        params=params)
+    fleche = _section(etude, "deflection")
+    assert fleche.status == "not_evaluated"
+    assert fleche.reason == "prerequisite_failed:flexure"
+    assert _section(etude, "flexure").status == "failed"
+    assert etude.status == "failed", (
+        "un rouge certain prime sur le silence qu'il provoque")
+
+
 # ---------------------------------------------------------------------------
 # Les rouges: executes, non satisfaits, avec taux ET remede
 # ---------------------------------------------------------------------------
@@ -284,18 +341,26 @@ def test_une_fissuration_excessive_est_visible_avec_son_taux(params) -> None:
 
 
 def test_une_dispense_non_acquise_demande_un_calcul_explicite(params) -> None:
-    """LE VOCABULAIRE EST LE SUJET.
+    """LE VOCABULAIRE EST LE SUJET, ET IL A SON PROPRE ETAT.
 
-    Une dispense non acquise n'est pas un echec de la poutre: c'est l'annonce
-    qu'un calcul de fleche reste a faire. Le dire autrement ferait refuser des
-    poutres correctes.
+    Une dispense non acquise n'est ni un echec de la poutre, ni un silence: le
+    module a TOURNE, et il conclut qu'un calcul explicite de fleche reste a
+    faire. La ranger dans `failed` ferait refuser des poutres correctes; la
+    ranger dans `not_evaluated` cacherait qu'on sait quelque chose.
     """
     etude = verify_beam(_entree(geometry=BeamGeometry(
         b=Q_(300, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm"),
         l_eff=Q_(12000, "mm"))), params=params)
     fleche = _section(etude, "deflection")
-    assert fleche.status == "failed"
+    assert fleche.status == "additional_analysis_required"
+    #: LE MODULE A TOURNE: il y a donc un taux, contrairement a un silence.
+    assert fleche.utilisation is not None
     assert "calcul explicite" in (fleche.remedy or "").lower()
+    assert "echec de la poutre" in (fleche.remedy or "")
+
+    #: LE VERDICT GLOBAL EST `incomplete`, PAS `failed`.
+    assert etude.status == "incomplete"
+    assert etude.requires_additional_analysis
     assert not etude.may_be_finalised
 
 
@@ -311,13 +376,185 @@ def test_une_etude_rouge_se_conserve_mais_ne_se_finalise_pas(params) -> None:
     assert etude.to_dict(), "une etude rouge reste exploitable pour diagnostic"
 
 
-def test_une_etude_verte_peut_etre_finalisee(params) -> None:
-    assert verify_beam(_entree(), params=params).may_be_finalised
+def test_une_etude_verte_mais_exploratoire_ne_se_finalise_pas(params) -> None:
+    """LE CAS DECISIF, ET IL EST DANGEREUX PARCE QU'IL PARAIT VERT.
+
+    `params` est charge avec `strict=False`. Les cinq sections sont
+    satisfaites, le statut est `passed`, tous les taux sont sous 1,0 — et
+    l'etude reste EXPLORATOIRE: elle a tourne sur des valeurs nationales que
+    personne n'a relevees.
+
+    Faire de `may_be_finalised` un synonyme de « statut passed » laisserait
+    signer cela. C'est precisement ce que la premiere redaction faisait.
+    """
+    etude = verify_beam(_entree(), params=params)
+
+    assert etude.status == "passed"
+    assert all(s.status == "passed" for s in etude.sections)
+
+    assert not etude.strict_ndp
+    assert etude.is_exploratory
+    assert not etude.may_be_finalised, (
+        "une etude exploratoire ne se finalise pas, meme entierement verte")
+
+
+def test_le_resultat_porte_son_contexte_normatif(params) -> None:
+    """Sans lui, rien en aval ne distingue un vert exploratoire d'un signable."""
+    etude = verify_beam(_entree(), params=params)
+    assert etude.country == "BE"
+    assert etude.ndp_as_of == AS_OF
+    assert etude.strict_ndp is False
+    assert etude.preflight_ready in (True, False)
+    assert len(etude.ndp_snapshot_id) == 64
+    assert len(etude.fingerprint) == 64
+    for cle in ("strict_ndp", "country", "region", "ndp_as_of",
+                "preflight_ready", "ndp_snapshot_id", "fingerprint",
+                "is_exploratory"):
+        assert cle in etude.to_dict()
+
+
+def test_la_region_entre_dans_l_instantane_et_dans_l_empreinte() -> None:
+    sans = load_parameter_set(PAYS, strict=False, as_of=AS_OF)
+    avec = load_parameter_set(PAYS, region="Wallonie", strict=False, as_of=AS_OF)
+    a = verify_beam(_entree(), params=sans)
+    b = verify_beam(_entree(), params=avec)
+
+    assert b.region == "Wallonie"
+    assert b.ndp_summary["region"] == "Wallonie"
+    assert a.ndp_snapshot_id != b.ndp_snapshot_id
+    assert a.fingerprint != b.fingerprint
+
+
+def test_le_pays_la_date_et_le_mode_strict_changent_l_empreinte() -> None:
+    """Les memes nombres sous un autre referentiel ne sont pas la meme etude.
+
+    ON COMPARE LES INSTANTANES, PAS DES ETUDES COMPLETES, ET C'EST FORCE: en
+    mode strict, sans confirmations, `verify_beam` REFUSE — ce qui est le
+    comportement correct et precisement ce que la correction 1 installe. Faire
+    tourner une etude stricte ici pour comparer son empreinte demanderait de
+    contourner le refus, donc de tester autre chose que le produit.
+    """
+    from eurostruct_engine.ec2.beam_verification import _empreinte_normative
+
+    reference = _empreinte_normative(
+        load_parameter_set("BE", strict=False, as_of=AS_OF))
+    variantes = {
+        "date": load_parameter_set("BE", strict=False, as_of=date(2025, 1, 1)),
+        "strict": load_parameter_set("BE", strict=True, as_of=AS_OF),
+        "region": load_parameter_set("BE", region="Wallonie", strict=False,
+                                     as_of=AS_OF),
+        "pays": load_parameter_set("FR", strict=False, as_of=AS_OF),
+    }
+    for nom, jeu in variantes.items():
+        assert _empreinte_normative(jeu) != reference, (
+            f"changer « {nom} » n'a pas change l'instantane normatif")
+
+    #: ET L'EMPREINTE DE L'ETUDE EN HERITE: elle combine l'entree gelee et
+    #: l'instantane, donc deux etudes aux memes nombres sous des referentiels
+    #: differents ne la partagent pas.
+    a = verify_beam(_entree(), params=load_parameter_set(
+        "BE", strict=False, as_of=AS_OF))
+    b = verify_beam(_entree(), params=load_parameter_set(
+        "BE", region="Wallonie", strict=False, as_of=AS_OF))
+    assert a.inputs_hash == b.inputs_hash, "les nombres saisis sont identiques"
+    assert a.fingerprint != b.fingerprint, "mais pas le referentiel"
 
 
 # ---------------------------------------------------------------------------
 # Le preflight global: cinq modules, UNE reponse
 # ---------------------------------------------------------------------------
+def test_le_preflight_est_strict_par_defaut_et_bloque_sans_provider() -> None:
+    """BE_STRICT_BLOCKED_WITHOUT_CONFIRMED_PROVIDER_DATA.
+
+    Le referentiel livre ne porte aucune valeur relevee. En mode strict — le
+    DEFAUT — le preflight doit donc bloquer, et nommer chaque parametre en
+    attente. Une premiere redaction chargeait le jeu avec `strict=False` en
+    dur: elle se declarait prete sur un referentiel dont rien n'etait releve.
+    Un preflight permissif par defaut est pire que pas de preflight: il
+    rassure.
+    """
+    pf = preflight_beam(country="BE", as_of=AS_OF)
+    assert pf.strict is True, "le preflight doit etre strict par defaut"
+    assert not pf.ready
+    assert pf.blocking
+    assert any(b.reason == "pending_verification" for b in pf.blocking), (
+        "sans provider, les valeurs non relevees doivent bloquer")
+    assert pf.provider_identity is None
+
+
+def test_le_preflight_non_strict_laisse_passer_les_valeurs_transcrites() -> None:
+    """BE_EXPLORATORY_FIVE_SECTIONS_EXECUTABLE.
+
+    Hors mode strict les valeurs transcrites sont utilisables — mais le
+    resultat reste exploratoire, ce que `test_une_etude_verte_mais_exploratoire`
+    verifie de son cote.
+    """
+    pf = preflight_beam(country="BE", as_of=AS_OF, strict=False)
+    assert pf.strict is False
+    assert pf.ready, (
+        "hors mode strict, le referentiel belge ne doit plus bloquer: "
+        f"{[b.to_dict() for b in pf.blocking]}")
+
+
+def test_le_preflight_transmet_la_region() -> None:
+    """Elle ne l'etait pas: une region qui modifie un parametre etait ignoree."""
+    pf = preflight_beam(country="BE", as_of=AS_OF, region="Wallonie",
+                        strict=False)
+    assert pf.region == "Wallonie"
+    assert pf.to_dict()["region"] == "Wallonie"
+
+
+def test_le_preflight_reunit_l_union_des_cinq_modules() -> None:
+    """Un parametre partage apparait pour CHAQUE module qui le reclame."""
+    #: L'UNION DEPEND DU PAYS, et c'est un defaut que la premiere redaction
+    #: portait: `beam_shear.required_parameters` prend un `country_code`, et un
+    #: pays dont les regles typees sont transcrites n'exige plus les scalaires
+    #: qu'elles remplacent. En omettant le pays, le preflight belge rendait
+    #: sept bloquants que le calcul ne reclame pas — plus severe que le moteur,
+    #: donc faux.
+    union = required_parameters_for_beam("BE")
+    assert len(union) == len(set(union)), "l'union ne doit pas doublonner"
+    pf = preflight_beam(country="BE", as_of=AS_OF)
+    assert set(pf.required) == set(union)
+
+    sans_pays = required_parameters_for_beam()
+    assert set(union) < set(sans_pays), (
+        "la Belgique doit reclamer STRICTEMENT MOINS de scalaires que le jeu "
+        "generique: ses regles typees en remplacent sept")
+
+
+def test_le_preflight_strict_applique_les_confirmations_du_provider() -> None:
+    """Le pont existe deja: `confirmer_depuis_le_provider`.
+
+    On ne verifie pas ici qu'un provider FICTIF debloque le calcul — il ne le
+    doit pas. On verifie que le provider est REELLEMENT interroge et que son
+    identite est inscrite: un preflight qui ignorerait le provider rendrait le
+    meme resultat, et rien ne le distinguerait.
+    """
+    from eurostruct_engine.ndp.confirmation import InMemoryConfirmationProvider
+
+    provider = InMemoryConfirmationProvider(confirmations=(), revocations=())
+    pf = preflight_beam(country="BE", as_of=AS_OF, provider=provider)
+
+    assert pf.provider_identity is not None
+    assert pf.provider_is_fictional is True
+    #: SANS CONFIRMATION SUFFISANTE, LES PARAMETRES EN ATTENTE RESTENT
+    #: BLOQUANTS. C'est le fait produit sur le referentiel livre, pas une
+    #: limite du pont.
+    assert not pf.ready
+
+
+def test_not_representable_bloque_meme_hors_mode_strict() -> None:
+    """FR_EXPLORATORY_SLS_NOT_EVALUATED_FORMULA_MODEL_GAP.
+
+    Une formule que le modele scalaire ne sait pas porter ne devient pas
+    portable parce qu'on a baisse les exigences.
+    """
+    pf = preflight_beam(country="FR", as_of=AS_OF, strict=False)
+    assert not pf.ready
+    assert any(b.reason == "not_representable" for b in pf.blocking)
+
+
 def test_le_preflight_reunit_les_bloquants_des_cinq_modules() -> None:
     """Le mode strict ne doit pas echouer cinq fois de suite.
 
