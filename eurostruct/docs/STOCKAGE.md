@@ -225,6 +225,80 @@ trompe.
 
 ---
 
+## 5 ter. Proposer une suppression — sans jamais supprimer
+
+`api/src/eurostruct_api/orphelins.py` transforme un constat de rapprochement en
+**proposition**, et s'arrête là. Le module n'a aucun code de suppression, aucun
+mode autre que `dry-run`, et un test lit son propre texte source pour refuser
+que `delete_object`, `os.remove`, `unlink(` ou un verbe HTTP `DELETE` y entrent
+un jour.
+
+### Les trois conditions d'une candidature
+
+| Condition | Valeur | Ce qu'elle empêche |
+|---|---|---|
+| **Deux scans séparés** | ≥ **24 h** entre le premier et le dernier | Proposer un objet déposé une seconde avant le scan, dans la fenêtre entre le dépôt et l'écriture de sa ligne. |
+| **Âge de grâce** | **30 jours** depuis l'écriture de l'objet | Traiter en déchet un objet écrit ce mois-ci. |
+| **Octets identiques** | même SHA-256 aux deux scans | Proposer la suppression du **second** objet en croyant parler du premier, quand une clé a été réécrite entre-temps. |
+
+Les deux durées sont configurables ; ce sont les valeurs par défaut.
+
+### Ce que le manifeste porte
+
+Format versionné `eurostruct/orphan-proposal` v1 — un outil qui ne connaît pas
+la version doit **refuser** le manifeste, pas l'interpréter au mieux. Pour
+chaque candidat : backend, clé, taille, empreinte, date d'écriture, première et
+dernière détection, nombre de scans, raison.
+
+**Les objets écartés sont nommés eux aussi, avec leur motif.** Un manifeste qui
+ne montrerait que ses candidats ne permettrait pas de distinguer « rien ne
+remplit les conditions » de « le scan n'a rien vu ». En particulier, une clé
+redevenue référencée entre deux scans apparaît comme écartée : c'est
+l'information qui dit que la fenêtre dépôt/enregistrement était en cause.
+
+Le manifeste a une **empreinte stable** — sérialisation à clés triées, ordre des
+candidats fixé. C'est ce que l'outil de maintenance devra exiger : un manifeste
+transmis puis retouché à la main ne doit pas passer pour la proposition qui a
+été relue.
+
+### Le journal des scans est fourni, pas tenu par ce module
+
+Les scans antérieurs arrivent **en argument**. Le module ne lit ni n'écrit aucun
+fichier de son propre chef : c'est l'opérateur qui conserve le journal, en
+*append-only*, là où l'application n'écrit pas. Un module qui tiendrait lui-même
+la mémoire de ses scans pourrait la réécrire, et « vu deux fois » cesserait
+d'être une preuve.
+
+### Ce qui n'existe pas, et qu'il faudra écrire
+
+L'outil qui **exécute** réellement une suppression est un programme **séparé**,
+hors de l'API applicative. Son contrat :
+
+* n'accepter qu'un manifeste produit ici, et en vérifier l'empreinte ;
+* **double contrôle opérateur** — deux identités distinctes autorisent ;
+* refuser tout objet dont l'empreinte ou la taille a changé depuis la
+  proposition ;
+* journaliser chaque suppression avec les deux identités qui l'ont autorisée.
+
+**Il n'existe pas.** Aucune ligne de ce dépôt ne supprime d'objet, et l'identité
+applicative ne doit porter **aucun** droit de suppression sur le compartiment.
+
+### Le rôle PostgreSQL de lecture — contrat, non encore implémenté
+
+Le rapprochement doit tourner sous un rôle **`NOLOGIN`** en lecture seule, avec
+un compte **`LOGIN`** distinct fourni par l'infrastructure et qui en hérite ;
+exposition minimale (`select` sur `deliverables` seul), aucune écriture, aucun
+secret dans Git, et des **tests négatifs** prouvant qu'`insert`, `update` et
+`delete` sont refusés par le serveur — pas seulement absents du code.
+
+Aujourd'hui, la garantie tient à `set transaction read only`, posé par
+`reconciliation.py` : PostgreSQL refuse toute écriture pour la durée de la
+transaction, y compris une écriture qu'un défaut de ce fichier tenterait. C'est
+réel, mais c'est le programme qui la demande. Le rôle dédié la rendrait
+**structurelle**. **Ce n'est pas fait.**
+
+---
+
 ## 6. Le téléchargement
 
 Les octets partent **en flux**, par blocs, et l'empreinte est calculée **au fil
