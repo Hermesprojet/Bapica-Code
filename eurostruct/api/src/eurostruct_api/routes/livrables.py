@@ -41,15 +41,11 @@ import json
 import zipfile
 from typing import Any
 
+from eurostruct_engine.drawing.beam_section import rendre_dxf
+from eurostruct_engine.drawing.svg import MEDIA_TYPE_SVG, rendre_svg
 from eurostruct_engine.exceptions import ReinforcementNotVerified
 from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
 from eurostruct_engine.ndp.postgres_provider import AuthentificationRequise
-from eurostruct_engine.schemas.ec2_beam import (
-    Ec2BeamFlexureRequest,
-    Ec2BeamSectionRequest,
-)
-from eurostruct_engine.service import verify_and_render_beam_section
-
 from eurostruct_engine.schemas.atelier import (
     AttestationDemande,
     ListeLivrables,
@@ -58,6 +54,11 @@ from eurostruct_engine.schemas.atelier import (
     LivrableDetail,
     RetourAuBrouillon,
 )
+from eurostruct_engine.schemas.ec2_beam import (
+    Ec2BeamFlexureRequest,
+    Ec2BeamSectionRequest,
+)
+from eurostruct_engine.service import verify_and_model_beam_section
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 
@@ -165,6 +166,23 @@ def _detail(brut: dict[str, Any]) -> LivrableDetail:
 #: l'ecran quels boutons ont un sens.
 REDACTEURS = frozenset({"owner", "admin", "engineer"})
 VALIDATEURS = frozenset({"validating_engineer"})
+#: TOUS LES ROLES DE PROJET. Regarder n'engage rien; ce qui protege la lecture,
+#: c'est l'appartenance elle-meme — `_projet_de` ne rend un projet qu'a un
+#: membre — et l'exigence qu'elle soit ACTIVE, controlee ci-dessous.
+LECTEURS = REDACTEURS | VALIDATEURS
+
+#: CAPACITE -> ROLES QUI LA PORTENT.
+#:
+#: UNE TABLE PLUTOT QU'UN TERNAIRE, ET C'EST UN CORRECTIF. La version
+#: precedente lisait « REDACTEURS si capacite == "redaction", sinon
+#: VALIDATEURS »: n'importe quel nom mal orthographie tombait donc
+#: silencieusement du cote des validateurs. Un controle d'autorisation ne doit
+#: pas avoir de branche « sinon » qui accorde quoi que ce soit.
+_CAPACITES: dict[str, frozenset[str]] = {
+    "redaction": REDACTEURS,
+    "validation": VALIDATEURS,
+    "lecture": LECTEURS,
+}
 
 
 def _exiger_capacite(projet: dict[str, Any], capacite: str) -> None:
@@ -188,8 +206,15 @@ def _exiger_capacite(projet: dict[str, Any], capacite: str) -> None:
             "votre acces a cette organisation a ete revoque: il n'ouvre plus "
             "aucun geste, pas meme la lecture."
         )
+    # UNE CAPACITE INCONNUE REFUSE. Elle ne peut venir que d'une faute de
+    # frappe dans le code de la route: mieux vaut un 422 immediat qu'un
+    # controle qui porte sur autre chose que ce que son appelant croit.
+    permis = _CAPACITES.get(capacite)
+    if permis is None:
+        raise ConfirmationDomainError(
+            f"capacite inconnue: « {capacite} ». Aucun geste n'est ouvert."
+        )
     role = str(projet.get("member_role") or "")
-    permis = REDACTEURS if capacite == "redaction" else VALIDATEURS
     if role not in permis:
         raise ConfirmationDomainError(
             f"le role « {role} » ne porte pas cette action. "
@@ -240,9 +265,16 @@ def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
     return document.encode("utf-8"), mention
 
 
-def _octets_du_dessin(calcul: dict[str, Any], ferraillage: Any,
-                      mention: str | None, lecture: Any = None) -> bytes:
-    """Le DXF, **verifie puis dessine**, depuis la requete GELEE du calcul.
+def _modele_du_dessin(calcul: dict[str, Any], ferraillage: Any,
+                      mention: str | None, lecture: Any = None) -> Any:
+    """Le modele geometrique, **verifie avant d'exister**, depuis la requete
+    GELEE du calcul.
+
+    C'EST LE POINT OU LE DXF ET L'APERCU SE REJOIGNENT. Les deux appellent
+    cette fonction, recoivent le meme objet gele, et ne recalculent rien. Un
+    apercu qui montrerait autre chose que le fichier telecharge serait un
+    defaut grave — l'ingenieur valide ce qu'il voit — et cette structure le
+    rend impossible plutot que de le surveiller.
 
     CE QUE LE NAVIGATEUR ENVOIE, ET CE QU'IL N'ENVOIE PAS
     ------------------------------------------------------
@@ -279,14 +311,14 @@ def _octets_du_dessin(calcul: dict[str, Any], ferraillage: Any,
     gelee = calcul.get("request") or {}
     try:
         requete = Ec2BeamFlexureRequest(**gelee)
-    except Exception as cause:  # noqa: BLE001 — un calcul illisible est un refus
+    except Exception as cause:
         raise ConfirmationDomainError(
             "la requete gelee de ce calcul n'est pas relisible: aucun dessin "
             "ne peut en etre tire sans risquer de representer autre chose."
         ) from cause
 
     try:
-        document, _tableau, _reponse = verify_and_render_beam_section(
+        modele, _tableau, _reponse = verify_and_model_beam_section(
             Ec2BeamSectionRequest(
                 calculation=requete,
                 reinforcement=ferraillage,
@@ -296,9 +328,15 @@ def _octets_du_dessin(calcul: dict[str, Any], ferraillage: Any,
         )
     except ReinforcementNotVerified as cause:
         raise ConfirmationDomainError(str(cause)) from cause
+    return modele
 
+
+def _octets_du_dessin(calcul: dict[str, Any], ferraillage: Any,
+                      mention: str | None, lecture: Any = None) -> bytes:
+    """Les octets du DXF, transcrits depuis le modele gele."""
+    modele = _modele_du_dessin(calcul, ferraillage, mention, lecture)
     tampon = io.StringIO()
-    document.write(tampon)
+    rendre_dxf(modele).write(tampon)
     return tampon.getvalue().encode("utf-8")
 
 
@@ -460,6 +498,62 @@ def creer(project_id: str, corps: LivrableCreation,
     """
     return _creer(ouvert, corps, project_id, supersedes_id=None,
                   lecture=lecture)
+
+
+@routeur.post("/{project_id}/deliverables/preview")
+def previsualiser(project_id: str, corps: LivrableCreation,
+                  ouvert: Any = Depends(ouvrir_atelier),
+                  lecture: Any = Depends(provider_de_lecture)) -> Response:
+    """L'aperçu SVG du dessin, **sans rien déposer ni enregistrer**.
+
+    POURQUOI UN APERÇU, ET POURQUOI CELUI-CI
+    ------------------------------------------
+    Choisir un ferraillage sans le voir revient à télécharger, ouvrir un
+    logiciel de CAO, regarder, revenir, corriger. L'aperçu supprime ce
+    va-et-vient — à une condition : qu'il montre **exactement** ce que le
+    fichier contiendra.
+
+    C'est pourquoi il ne dessine rien lui-même. Il appelle le même
+    `_modele_du_dessin` que la création du livrable, reçoit le même objet gelé,
+    et le transcrit. Deux implémentations indépendantes de la géométrie
+    concorderaient le jour où on les écrit et divergeraient à la première
+    correction de l'une des deux, sans que rien ne le signale.
+
+    CE N'EST PAS UN LIVRABLE, ET LE PRODUIT NE FAIT PAS SEMBLANT
+    -------------------------------------------------------------
+    Aucun octet n'est déposé, aucune ligne n'est écrite, aucune empreinte n'est
+    conservée : il n'y a rien à retrouver dix ans plus tard, et c'est voulu.
+    L'image porte « APERCU NON CONTRACTUEL » **dans le dessin**, parce qu'une
+    image se copie et se transmet sans le bouton qui l'a produite.
+
+    LA CAPACITÉ EXIGÉE EST `lecture`, PAS `redaction`. Regarder n'engage rien.
+    Le ferraillage envoyé ne devient une décision qu'au moment où il produit un
+    livrable, et ce moment-là exige d'écrire.
+
+    UN FERRAILLAGE QUI NE VÉRIFIE PAS N'A PAS D'APERÇU. Le même refus que pour
+    le fichier : un dessin qui échoue à sa propre vérification ressemble trait
+    pour trait à un dessin valide, à l'écran comme sur le papier.
+    """
+    jeton = _jeton_de(ouvert)
+    try:
+        projet = _projet_de(ouvert, jeton, project_id)
+        _exiger_capacite(projet, "lecture")
+        calcul = ouvert.atelier.rouvrir_calcul(
+            jeton, project_id=project_id, calculation_id=corps.calculation_id)
+        if not (calcul.get("result") or {}).get("result"):
+            raise ConfirmationDomainError(
+                "ce calcul n'a produit aucun resultat: il a ete refuse par le "
+                "moteur. Il n'y a rien a dessiner, meme en apercu."
+            )
+        _notice, mention = _mentions(bool(calcul.get("strict_ndp")))
+        modele = _modele_du_dessin(calcul, corps.reinforcement, mention, lecture)
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        raise _refus(cause) from cause
+    finally:
+        ouvert.fermer()
+
+    return Response(content=rendre_svg(modele).encode("utf-8"),
+                    media_type=MEDIA_TYPE_SVG, headers=_EN_TETES_DOCUMENT)
 
 
 @routeur.post("/{project_id}/deliverables/{deliverable_id}/revision",

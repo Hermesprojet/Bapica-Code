@@ -27,8 +27,8 @@ import {
 import {
   attesterLivrable, calculerEtEnregistrer, creerLivrable, creerProjet,
   emettreLivrable, historiqueDuProjet, listerLivrables, listerProjets,
-  relireLivrable, renvoyerAuBrouillon, reviserLivrable, rouvrirCalcul,
-  soumettreALaRelecture, telechargerDossierDeRevue,
+  previsualiserDessin, relireLivrable, renvoyerAuBrouillon, reviserLivrable,
+  rouvrirCalcul, soumettreALaRelecture, telechargerDossierDeRevue,
   telechargerLivrable, telechargerNote,
   type CalculDeProjetRequest, type CalculEnregistre, type Livrable,
   type LivrableDetail, type Projet,
@@ -1143,6 +1143,36 @@ function peutValider(p: Projet): boolean {
     && p.member_role === "validating_engineer";
 }
 
+/**
+ * Le choix des barres, tel que l'écran le tient.
+ *
+ * DES CHAÎNES, PAS DES NOMBRES, et c'est délibéré : un champ qu'on vide pour
+ * le retaper passerait par `NaN` si l'état était numérique, et l'aperçu
+ * partirait avec une valeur que personne n'a saisie. La conversion se fait une
+ * fois, au moment d'envoyer, par `enChoix`.
+ */
+type ChoixBarres = {
+  nombre: string; diametre: string; enrobage: string;
+  cadre: string; espacement: string;
+};
+
+/** Une poutre courante. Un point de départ à corriger, jamais une réponse. */
+const FERRAILLAGE_INITIAL: ChoixBarres = {
+  nombre: "4", diametre: "20", enrobage: "30",
+  cadre: "8", espacement: "200",
+};
+
+/** Le corps que l'API attend, composé au dernier moment. */
+function enChoix(c: ChoixBarres) {
+  return {
+    cover: Number(c.enrobage),
+    link_diameter: Number(c.cadre),
+    link_spacing: Number(c.espacement),
+    bottom: [{ count: Number(c.nombre), diameter: Number(c.diametre),
+               mark: "A1" }],
+  };
+}
+
 function Historique({ projet, revision, surReouverture, surLivrable }: {
   projet: Projet;
   revision: number;
@@ -1152,6 +1182,14 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
   const auth = useAuth();
   const [lignes, setLignes] = useState<CalculResume[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  /* LE CHOIX DES BARRES EST UNE DÉCISION D'INGÉNIEUR, et c'est la seule chose
+     que cet écran envoie pour un plan. `As_required` dit combien d'acier il
+     faut ; il ne dit jamais comment le disposer. Tout le reste — section,
+     matériaux, effort, référentiel normatif — est relu dans le calcul gelé,
+     côté serveur, et rien d'ici ne peut l'influencer. */
+  const [planPour, setPlanPour] = useState<string | null>(null);
+  const [barres, setBarres] = useState(FERRAILLAGE_INITIAL);
+  const [apercu, setApercu] = useState<string | null>(null);
 
   useEffect(() => {
     let vivant = true;
@@ -1198,10 +1236,13 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
    * a rien a corriger dans la demande, et inviter l'ingenieur a la reformuler
    * lui ferait perdre son temps.
    */
-  async function produire(calculationId: string, format: "html" | "pdf") {
+  async function produire(calculationId: string,
+                          format: "html" | "pdf" | "dxf") {
     try {
-      await creerLivrable(auth.porteur, projet.project_id,
-                          { calculation_id: calculationId, format });
+      await creerLivrable(auth.porteur, projet.project_id, {
+        calculation_id: calculationId, format,
+        ...(format === "dxf" ? { reinforcement: enChoix(barres) } : {}),
+      });
       setErreur(null);
       surLivrable();
     } catch (cause) {
@@ -1211,6 +1252,33 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
               + "peut pas conserver les octets du livrable. Aucune ligne n'a "
               + "ete ecrite."
             : `${cause.statut} — ${cause.detail}`)
+        : String(cause));
+    }
+  }
+
+  /**
+   * Demande l'aperçu du plan, sans rien créer.
+   *
+   * IL VIENT DU MÊME MODÈLE GÉOMÉTRIQUE QUE LE DXF, et c'est la seule raison
+   * pour laquelle le regarder veut dire quelque chose. Le navigateur ne
+   * dessine rien : il reçoit une image produite par le serveur à partir du
+   * calcul gelé, et l'affiche telle quelle.
+   *
+   * UN FERRAILLAGE QUI NE VÉRIFIE PAS N'A PAS D'APERÇU. Le serveur refuse des
+   * deux côtés — image et fichier — parce qu'un dessin faux ressemble trait
+   * pour trait à un dessin juste.
+   */
+  async function previsualiser(calculationId: string) {
+    try {
+      setApercu(await previsualiserDessin(
+        auth.porteur, projet.project_id,
+        { calculation_id: calculationId, format: "dxf",
+          reinforcement: enChoix(barres) }));
+      setErreur(null);
+    } catch (cause) {
+      setApercu(null);
+      setErreur(cause instanceof AppelRefuse
+        ? `${cause.statut} — ${cause.detail ?? "aperçu refusé."}`
         : String(cause));
     }
   }
@@ -1286,13 +1354,119 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
                       Produire un brouillon PDF
                     </button>
                   )}
+                  {/* LE PLAN N'EST PAS UNE NOTE DE PLUS. Il demande une
+                      décision que le calcul ne contient pas — le nombre et le
+                      diamètre des barres — et c'est pourquoi il ouvre un
+                      formulaire au lieu de produire aussitôt. */}
+                  {c.status !== "refused" && peutRediger(projet) && (
+                    <button type="button" id={`plan-${c.calculation_id}`}
+                            onClick={() => {
+                              setApercu(null);
+                              setPlanPour(planPour === c.calculation_id
+                                ? null : c.calculation_id);
+                            }}>
+                      {planPour === c.calculation_id
+                        ? "Fermer le plan" : "Plan de ferraillage…"}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {planPour && (
+        <PlanDeFerraillage
+          calculationId={planPour}
+          barres={barres} surBarres={setBarres}
+          apercu={apercu}
+          surApercu={() => previsualiser(planPour)}
+          surDxf={() => produire(planPour, "dxf")} />
+      )}
     </section>
+  );
+}
+
+/**
+ * Le choix des barres, son aperçu, et le plan qu'on en tire.
+ *
+ * DEUX ACTIONS, ET ELLES NE SONT PAS DE MÊME NATURE. « Prévisualiser » ne
+ * crée rien : le serveur renvoie une image qui porte, dans le dessin lui-même,
+ * « APERÇU NON CONTRACTUEL ». « Télécharger le plan DXF » écrit un LIVRABLE —
+ * octets déposés, relus, empreinte enregistrée — que quelqu'un pourra attester
+ * et qu'on pourra retrouver dix ans plus tard.
+ *
+ * L'IMAGE VIENT DU MÊME MODÈLE GÉOMÉTRIQUE QUE LE FICHIER. C'est la seule
+ * raison pour laquelle la regarder veut dire quelque chose : ce qui est à
+ * l'écran est ce que le DXF contiendra, aux mêmes millimètres.
+ */
+function PlanDeFerraillage({ calculationId, barres, surBarres, apercu,
+                             surApercu, surDxf }: {
+  calculationId: string;
+  barres: ChoixBarres;
+  surBarres: (c: ChoixBarres) => void;
+  apercu: string | null;
+  surApercu: () => void;
+  surDxf: () => void;
+}) {
+  const champ = (cle: keyof ChoixBarres, etiquette: string, unite: string) => (
+    <label key={cle}>
+      {etiquette}
+      <input type="number" min="1" step="1" value={barres[cle]}
+             id={`ferraillage-${cle}`}
+             onChange={(e) => surBarres({ ...barres, [cle]: e.target.value })} />
+      <span className="aide">{unite}</span>
+    </label>
+  );
+
+  return (
+    <div className="bandeau" id="plan-de-ferraillage"
+         data-calcul={calculationId}>
+      <strong>Plan de ferraillage</strong>
+      {/* CE QUE CET ÉCRAN N'ENVOIE PAS, dit à celui qui le remplit. La
+          section, les matériaux, l'effort et le référentiel sont relus dans
+          le calcul : personne ne peut faire dessiner ici une poutre qui n'a
+          pas été vérifiée. */}
+      <p className="aide">
+        Le nombre et le diamètre des barres sont votre décision : le calcul dit
+        combien d&apos;acier il faut, jamais comment le disposer. La section,
+        les matériaux, l&apos;effort et le référentiel normatif sont relus dans
+        le calcul enregistré et ne se saisissent pas ici.
+      </p>
+      <div className="grille">
+        {champ("nombre", "Barres inférieures", "n")}
+        {champ("diametre", "Diamètre", "mm")}
+        {champ("enrobage", "Enrobage", "mm")}
+        {champ("cadre", "Cadres Ø", "mm")}
+        {champ("espacement", "Espacement", "mm")}
+      </div>
+      <p>
+        <button type="button" id="previsualiser" onClick={surApercu}>
+          Prévisualiser
+        </button>
+        <button type="button" id="telecharger-dxf" onClick={surDxf}>
+          Télécharger le plan DXF
+        </button>
+      </p>
+      {apercu && (
+        <>
+          {/* LE SVG VIENT DU SERVEUR ET N'EST PAS RÉÉCRIT ICI. Il est inséré
+              tel quel: le réinterpréter dans le navigateur rouvrirait la
+              porte à une seconde géométrie, celle-là même que tout ce lot
+              ferme. La route qui le produit sert `image/svg+xml` avec
+              `nosniff` et une CSP `default-src 'none'`. */}
+          <div id="apercu-plan" role="img"
+               aria-label="Aperçu non contractuel de la coupe"
+               dangerouslySetInnerHTML={{ __html: apercu }} />
+          <p className="aide">
+            Aperçu non contractuel. Le fichier DXF fait foi, et il porte la
+            mention de validation obligatoire : aucun plan n&apos;engage un
+            bureau d&apos;études tant qu&apos;un ingénieur habilité ne l&apos;a
+            pas relu et attesté.
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 

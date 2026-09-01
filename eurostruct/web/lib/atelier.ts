@@ -278,6 +278,49 @@ export async function creerLivrable(
 }
 
 /**
+ * L'aperçu SVG du plan, avant d'en faire un livrable.
+ *
+ * IL NE CRÉE RIEN. Aucun octet n'est déposé, aucune ligne n'est écrite : c'est
+ * un coup d'œil, et le serveur le dit dans l'image elle-même — « APERÇU NON
+ * CONTRACTUEL ». Le fichier qui fera foi est le DXF, et il vient du **même**
+ * modèle géométrique que cette image.
+ *
+ * LE SVG EST REÇU COMME TEXTE, PAS COMME JSON. `appelProtege` désérialise ;
+ * ici il n'y a rien à désérialiser, et le passer par `JSON.parse` échouerait
+ * sur le premier chevron.
+ */
+export async function previsualiserDessin(
+  porteur: PorteurDeJeton,
+  projectId: string,
+  brouillon: LivrableCreation,
+): Promise<string> {
+  const jeton = await porteur.jetonUtilisable();
+  if (!jeton) throw new SessionExpiree();
+
+  let reponse: Response;
+  try {
+    reponse = await fetch(
+      `${base()}/v1/projects/${encodeURIComponent(projectId)}`
+      + "/deliverables/preview",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${jeton}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(brouillon),
+      },
+    );
+  } catch (cause) {
+    throw new ApiInjoignable(cause);
+  }
+  if (!reponse.ok) {
+    throw new AppelRefuse(reponse.status, await reponse.text().catch(() => null));
+  }
+  return reponse.text();
+}
+
+/**
  * Émet l'indice suivant, qui remplace celui-ci.
  *
  * C'EST LE SEUL MOYEN DE CORRIGER APRÈS ATTESTATION. Un livrable validé ou

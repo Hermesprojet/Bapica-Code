@@ -16,7 +16,8 @@ from datetime import date
 from typing import Any
 
 from .basis import DesignSituation
-from .drawing.beam_section import BarRow, BeamSectionSpec, build_beam_section
+from .drawing.beam_section import BarRow, BeamSectionSpec, rendre_dxf
+from .drawing.modele import ModeleSection, construire_modele
 from .ec2.beam_flexure import (
     RectangularSection,
     design_flexure,
@@ -172,10 +173,15 @@ def run_ec2_beam_flexure(
     )
 
 
-def render_beam_section(
+def model_beam_section(
     req: BeamSectionDrawingRequest,
-) -> tuple[Any, list[RebarScheduleRowDTO]]:
-    """Build the DXF document and the rebar schedule for a cross-section."""
+) -> tuple[ModeleSection, list[RebarScheduleRowDTO]]:
+    """Build the frozen geometric model and the rebar schedule.
+
+    LE POINT D'ENTREE UNIQUE DE LA GEOMETRIE. Le DXF et l'apercu SVG partent
+    tous deux d'ici: ils recoivent le meme objet, ce qui rend impossible qu'ils
+    decrivent deux poutres differentes.
+    """
     spec = BeamSectionSpec(
         b=req.b,
         h=req.h,
@@ -201,8 +207,17 @@ def render_beam_section(
         date=req.date,
         mention=req.mention,
     )
-    doc, schedule = build_beam_section(spec)
-    return doc, [RebarScheduleRowDTO.model_validate(r.to_dict()) for r in schedule]
+    modele = construire_modele(spec)
+    return modele, [RebarScheduleRowDTO.model_validate(r.to_dict())
+                    for r in modele.nomenclature]
+
+
+def render_beam_section(
+    req: BeamSectionDrawingRequest,
+) -> tuple[Any, list[RebarScheduleRowDTO]]:
+    """Build the DXF document and the rebar schedule for a cross-section."""
+    modele, schedule = model_beam_section(req)
+    return rendre_dxf(modele), schedule
 
 
 def provided_area(rows: list[BarRowDTO]) -> Quantity:
@@ -217,11 +232,12 @@ def provided_area(rows: list[BarRowDTO]) -> Quantity:
     return Q_(total, "mm**2")
 
 
-def verify_and_render_beam_section(
+def verify_and_model_beam_section(
     req: Ec2BeamSectionRequest,
     provider: Any = None,
-) -> tuple[Any, list[RebarScheduleRowDTO], Ec2BeamFlexureResponse]:
-    """Verify the chosen bars, then draw them. Never one without the other.
+) -> tuple[ModeleSection, list[RebarScheduleRowDTO], Ec2BeamFlexureResponse]:
+    """Verify the chosen bars, then build the geometric model. Never one
+    without the other.
 
     The drawing is built from ``req.calculation.section`` — the very geometry
     the verification just ran on — so the plan cannot describe a beam that was
@@ -275,8 +291,23 @@ def verify_and_render_beam_section(
         date=req.date,
         mention=req.mention,
     )
-    doc, schedule = render_beam_section(dessin)
-    return doc, schedule, reponse
+    modele, schedule = model_beam_section(dessin)
+    return modele, schedule, reponse
+
+
+def verify_and_render_beam_section(
+    req: Ec2BeamSectionRequest,
+    provider: Any = None,
+) -> tuple[Any, list[RebarScheduleRowDTO], Ec2BeamFlexureResponse]:
+    """Le meme geste que ci-dessus, rendu en DXF.
+
+    L'APERCU ET LE FICHIER PARTENT DU MEME MODELE. Cette fonction et celle qui
+    produit le SVG appellent toutes deux :func:`verify_and_model_beam_section`;
+    aucune des deux ne recalcule une coordonnee. C'est la seule facon d'etre
+    sur que l'ingenieur telecharge la poutre qu'il a regardee.
+    """
+    modele, schedule, reponse = verify_and_model_beam_section(req, provider=provider)
+    return rendre_dxf(modele), schedule, reponse
 
 
 def error_of(exc: EurostructEngineError) -> EngineErrorDTO:
