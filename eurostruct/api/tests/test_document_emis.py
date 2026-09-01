@@ -202,6 +202,60 @@ def test_le_document_emis_se_telecharge_et_porte_l_attestation(
     assert "signature" in bas and "qualifi" in bas
 
 
+def test_le_document_nomme_l_outil_sans_se_mettre_a_la_place_de_l_ingenieur(
+        client, jeton, projet, calcul_strict):
+    """UN PDF ANONYME NE SE RATTACHE A RIEN; UN PDF QUI SE CERTIFIE MENT.
+
+    Le document doit dire par quoi il a ete compose — sinon le destinataire
+    tient un fichier sans provenance. Mais l'identite de l'outil ne doit pas
+    glisser vers celle d'un garant: le seul acteur qui engage sa
+    responsabilite est l'ingenieur nomme dans l'attestation. Ce test tient les
+    DEUX bouts, parce qu'ils se contredisent si on n'y prend pas garde.
+    """
+    note = _attestee(client, jeton, projet, calcul_strict)
+    emis_id = _emettre(client, jeton, projet,
+                       note["deliverable_id"]).json()["issued_deliverable_id"]
+    r = client.get(f"{_base(projet)}{emis_id}/download",
+                   headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 200, r.text
+
+    pypdf = pytest.importorskip("pypdf")
+    lu = pypdf.PdfReader(__import__("io").BytesIO(r.content))
+    texte = "\n".join(page.extract_text() or "" for page in lu.pages)
+    # LES ESPACES SONT NORMALISES AVANT TOUTE RECHERCHE, et ce n'est pas une
+    # commodite: `pdf.py` replie les paragraphes a la largeur de la page, si
+    # bien qu'une locution de trois mots peut etre coupee par un saut de ligne.
+    # Premiere redaction de ce test: rouge sur « ni auteur ni garant », alors
+    # que la phrase ETAIT dans le document — elle s'ecrivait « ni auteur ni\n
+    # garant ». Chercher dans le texte brut, c'est faire dependre l'assertion
+    # de la largeur de la page.
+    plat = " ".join(texte.split())
+    bas = plat.lower()
+
+    # 1. L'OUTIL EST NOMME.
+    assert "EUROSTRUCT" in plat, "le document ne dit pas par quoi il est compose"
+    assert "automatiquement" in bas, "il ne dit pas qu'il est produit sans main"
+
+    # 2. ET IL DECLINE TOUTE PART DANS LE CONTENU TECHNIQUE.
+    assert "ni auteur ni garant" in bas, (
+        "l'outil ne decline pas sa responsabilite sur le contenu technique")
+
+    # 3. AUCUN VOCABULAIRE D'ORGANISME AGREE. Ces mots feraient passer un
+    #    logiciel pour une autorite d'accreditation; le document en serait
+    #    faux.
+    #
+    #    « certifi » N'EST PAS DANS CETTE LISTE, ET C'EST REFLECHI: il a un
+    #    usage HONNETE ici — « ce document ne certifie rien » est exactement
+    #    ce qu'on veut pouvoir ecrire. Interdire la sous-chaine interdirait la
+    #    denegation en meme temps que la pretention. Les mots retenus n'ont
+    #    aucun emploi legitime sur cette page, meme nies.
+    for interdit in ("agrément", "agrement", "accrédit", "accredit",
+                     "homologu"):
+        assert interdit not in bas, (
+            f"le document emis emploie « {interdit} »: un outil n'agree rien, "
+            f"et cette place appartient a l'ingenieur")
+
+
 def test_les_deux_pdf_survivent_a_un_redemarrage_de_l_api(
         client, client_neuf, jeton, projet, calcul_strict):
     """F5 NE PROUVE RIEN; UNE APPLICATION RECONSTRUITE, SI."""

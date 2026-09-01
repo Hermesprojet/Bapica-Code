@@ -40,6 +40,7 @@ from .pdf import Bloc, Champs, Paragraphe, Tableau, Titre, composer_pdf
 __all__ = [
     "MENTION_DOCUMENT_EMIS",
     "MENTION_PAS_UNE_SIGNATURE_QUALIFIEE",
+    "SIGNATURE_OUTIL",
     "ZONE_LOGO",
     "rendre_attestation_pdf",
 ]
@@ -63,6 +64,22 @@ MENTION_PAS_UNE_SIGNATURE_QUALIFIEE = (
 #: place est réservée; l'organisation la remplira quand elle fournira sa
 #: propre identité visuelle.
 ZONE_LOGO = ""
+
+#: L'IDENTITÉ DE L'OUTIL, ET SEULEMENT DE L'OUTIL.
+#:
+#: Le document doit dire par quoi il a été composé — sans cela, un destinataire
+#: reçoit un PDF anonyme et n'a aucun moyen de savoir à qui poser une question.
+#: Mais cette ligne nomme le LOGICIEL, jamais un bureau d'études, jamais un
+#: organisme de certification: le seul acteur qui engage sa responsabilité ici
+#: est l'ingénieur nommé dans l'attestation, et rien ne doit venir partager
+#: cette place avec lui. C'est pour la même raison qu'elle est en pied et non
+#: en tête: l'outil n'est pas le sujet du document.
+SIGNATURE_OUTIL = (
+    "Composé par EUROSTRUCT — plateforme d'études structurelles assistées. "
+    "Ce document est produit automatiquement à partir des données figées du "
+    "calcul et de l'attestation enregistrée; EUROSTRUCT n'est ni auteur ni "
+    "garant du contenu technique, qui relève de l'ingénieur nommé ci-dessus."
+)
 
 
 def _p(valeur: Any) -> str:
@@ -159,6 +176,11 @@ def rendre_attestation_pdf(projet: dict[str, Any],
             "note au format HTML — ne sont pas couvertes par elle : le "
             "dossier de revue les énumère séparément."),
         Paragraphe(MENTION_PAS_UNE_SIGNATURE_QUALIFIEE, encadre=True),
+
+        # L'OUTIL SIGNE EN DERNIER, ET EN PETIT. Voir SIGNATURE_OUTIL: il
+        # nomme le logiciel pour qu'un destinataire sache d'où vient le
+        # fichier, et décline toute part dans le contenu technique.
+        Paragraphe(SIGNATURE_OUTIL),
     ]
 
     if ZONE_LOGO:
