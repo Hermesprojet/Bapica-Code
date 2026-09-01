@@ -122,6 +122,23 @@ create policy deliverables_reconciliation_read on deliverables
 -- ce role herite comme tout le monde. Les primitives metier ont deja vu leur
 -- droit `PUBLIC` revoque (0023, 0025); ce bloc constate qu'aucune ne lui est
 -- ouverte, plutot que d'en faire l'hypothese.
+--
+-- LE CONTROLE PORTE SUR LES OCTROIS **DIRECTS**, PAS SUR LE PRIVILEGE EFFECTIF.
+--
+-- `has_function_privilege` rend vrai des qu'un droit existe, y compris herite
+-- de PUBLIC. Or « PUBLIC ne doit pas executer les primitives » est un fait
+-- que le PLAN DE CONTROLE possede deja, avec son propre point de mise a mort
+-- nomme. Le reprendre ici a fait fumer les deux detecteurs pour un seul
+-- incendie: la mutation W1 — « les metadonnees du sceau redeviennent
+-- publiques » — a bascule de `killed_runtime` a `killed_install_assertion`,
+-- et le harnais de terminaison sur signal, qui a besoin que W1 vive jusqu'au
+-- runtime, est tombe. Mesure: W1 tue en runtime a c9688b8, tue a
+-- l'installation apres l'ajout de ce bloc.
+--
+-- CHAQUE CONTROLE POSSEDE UN FAIT, ET UN SEUL. Celui-ci possede « la
+-- migration 0026 n'a rien octroye a ce role au-dela des colonnes »; le sceau
+-- possede « PUBLIC n'execute pas les primitives ». `aclexplode` ne montre que
+-- les octrois nommes: PUBLIC y apparait avec un `grantee` nul, qu'on ecarte.
 do $$
 declare
   ouvertes text;
@@ -129,16 +146,20 @@ begin
   select string_agg(p.proname, ', ' order by p.proname) into ouvertes
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
    where n.nspname = 'public'
      and p.proname like any (array['project\_%', 'organization\_%',
                                    'normative\_%'])
-     and has_function_privilege('eurostruct_reconciliation', p.oid, 'EXECUTE');
+     and a.privilege_type = 'EXECUTE'
+     and a.grantee <> 0
+     and pg_get_userbyid(a.grantee) = 'eurostruct_reconciliation';
 
   if ouvertes is not null then
     raise exception
-      'RECONCILIATION_0026_PRIMITIVES_ATTEIGNABLES: le role de rapprochement '
-      'peut executer %. Un outil de constat qui peut appeler une primitive '
-      'metier n''est plus un outil de constat.', ouvertes;
+      'RECONCILIATION_0026_PRIMITIVES_OCTROYEES: cette migration a octroye '
+      'l''execution de % au role de rapprochement. Un outil de constat qui '
+      'peut appeler une primitive metier n''est plus un outil de constat.',
+      ouvertes;
   end if;
 end
 $$;
@@ -147,57 +168,77 @@ $$;
 -- ---------------------------------------------------------------------
 -- 3. CE QUE CETTE MIGRATION DOIT AVOIR OBTENU
 -- ---------------------------------------------------------------------
+-- TOUS LES CONTROLES CI-DESSOUS PORTENT SUR LES OCTROIS **DIRECTS**, jamais
+-- sur le privilege effectif. Meme raison qu'en section 2: `has_*_privilege`
+-- rend vrai des qu'un droit existe, y compris herite de PUBLIC — et « PUBLIC
+-- n'a rien » est un fait que d'autres controles possedent deja, avec leurs
+-- propres points de mise a mort nommes.
+--
+-- CE QUE CETTE MIGRATION POSSEDE: « elle n'a rien octroye a ce role au-dela
+-- des sept colonnes ». Ce que le role peut REELLEMENT faire, une fois tous
+-- les plans empiles, est mesure contre un serveur vivant par
+-- `db/test/reconciliation_role.sh` — preuve plus forte qu'une postcondition,
+-- et qui n'appartient pas ici.
 do $$
 declare
   lues     text;
   ecritures text;
   tables   text;
 begin
-  -- LES COLONNES LUES SONT EXACTEMENT CELLES QU'ON A VOULUES.
-  select string_agg(a.attname, ',' order by a.attname) into lues
+  -- LES COLONNES OCTROYEES SONT EXACTEMENT CELLES QU'ON A VOULUES.
+  select string_agg(distinct a.attname, ',' order by a.attname) into lues
     from pg_attribute a
+    cross join lateral aclexplode(a.attacl) acl
    where a.attrelid = 'public.deliverables'::regclass
      and a.attnum > 0 and not a.attisdropped
-     and has_column_privilege('eurostruct_reconciliation',
-                              a.attrelid, a.attname, 'SELECT');
+     and acl.privilege_type = 'SELECT'
+     and acl.grantee <> 0
+     and pg_get_userbyid(acl.grantee) = 'eurostruct_reconciliation';
 
   if lues is distinct from
      'id,org_id,project_id,sha256,size_bytes,storage_backend,storage_path' then
     raise exception
-      'RECONCILIATION_0026_COLONNES: le role lit « % ». Il doit lire les six '
-      'colonnes du rapprochement et l''identifiant, ni plus ni moins.',
-      coalesce(lues, '(aucune)');
+      'RECONCILIATION_0026_COLONNES: cette migration a octroye « % ». Elle '
+      'doit octroyer les six colonnes du rapprochement et l''identifiant, ni '
+      'plus ni moins.', coalesce(lues, '(aucune)');
   end if;
 
-  -- AUCUNE ECRITURE, NULLE PART.
-  select string_agg(format('%s:%s', c.relname, p.priv), ', '
-                    order by c.relname, p.priv)
+  -- AUCUNE ECRITURE OCTROYEE, NULLE PART.
+  select string_agg(format('%s:%s', c.relname, acl.privilege_type), ', '
+                    order by c.relname, acl.privilege_type)
     into ecritures
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
-    cross join lateral (values ('INSERT'), ('UPDATE'), ('DELETE'),
-                               ('TRUNCATE')) as p(priv)
+    cross join lateral aclexplode(c.relacl) acl
    where n.nspname = 'public' and c.relkind in ('r', 'p')
-     and has_table_privilege('eurostruct_reconciliation', c.oid, p.priv);
+     and acl.privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE')
+     and acl.grantee <> 0
+     and pg_get_userbyid(acl.grantee) = 'eurostruct_reconciliation';
 
   if ecritures is not null then
     raise exception
-      'RECONCILIATION_0026_ECRITURE_OUVERTE: le role peut ecrire: %. Le '
-      'rapprochement ne modifie rien, et le droit doit le dire.', ecritures;
+      'RECONCILIATION_0026_ECRITURE_OCTROYEE: cette migration a octroye: %. '
+      'Le rapprochement ne modifie rien, et le droit doit le dire.', ecritures;
   end if;
 
-  -- AUCUNE AUTRE TABLE EN LECTURE.
-  select string_agg(c.relname, ', ' order by c.relname) into tables
+  -- AUCUNE AUTRE TABLE, ET AUCUN DROIT DE TABLE ENTIERE SUR CELLE-CI.
+  --
+  -- Un `grant select` sur la table donnerait aussi le nom du fichier,
+  -- l'attestation et l'identite du validateur: c'est precisement ce que
+  -- l'octroi par colonnes evite, et il faut le constater.
+  select string_agg(distinct c.relname, ', ' order by c.relname) into tables
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
+    cross join lateral aclexplode(c.relacl) acl
    where n.nspname = 'public' and c.relkind in ('r', 'p')
-     and c.relname <> 'deliverables'
-     and has_table_privilege('eurostruct_reconciliation', c.oid, 'SELECT');
+     and acl.grantee <> 0
+     and pg_get_userbyid(acl.grantee) = 'eurostruct_reconciliation';
 
   if tables is not null then
     raise exception
-      'RECONCILIATION_0026_SURFACE_TROP_LARGE: le role lit aussi %. Il ne '
-      'doit voir que les livrables.', tables;
+      'RECONCILIATION_0026_SURFACE_TROP_LARGE: cette migration a octroye un '
+      'droit de TABLE ENTIERE sur %. Le rapprochement lit des colonnes '
+      'nommees, pas des tables.', tables;
   end if;
 end
 $$;
