@@ -146,7 +146,8 @@ AUTORITES=(eurostruct_normative_writer eurostruct_normative_bootstrap
 # deja ». Un role oublie dans une liste de demontage n'est pas un detail: il
 # arrete tout ce qui vient apres.
 SERVICES=(normative_backend normative_governance
-          eurostruct_authority_backend)
+          eurostruct_authority_backend
+            eurostruct_reconciliation)
 DEPLOIEMENT=eurostruct_deployment
 CANONIQUES=("${AUTORITES[@]}" "${SERVICES[@]}" "$DEPLOIEMENT")
 

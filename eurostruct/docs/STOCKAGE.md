@@ -283,19 +283,50 @@ hors de l'API applicative. Son contrat :
 **Il n'existe pas.** Aucune ligne de ce dépôt ne supprime d'objet, et l'identité
 applicative ne doit porter **aucun** droit de suppression sur le compartiment.
 
-### Le rôle PostgreSQL de lecture — contrat, non encore implémenté
+### Le rôle PostgreSQL de lecture — `eurostruct_reconciliation`
 
-Le rapprochement doit tourner sous un rôle **`NOLOGIN`** en lecture seule, avec
-un compte **`LOGIN`** distinct fourni par l'infrastructure et qui en hérite ;
-exposition minimale (`select` sur `deliverables` seul), aucune écriture, aucun
-secret dans Git, et des **tests négatifs** prouvant qu'`insert`, `update` et
-`delete` sont refusés par le serveur — pas seulement absents du code.
+`set transaction read only` est réel — PostgreSQL refuse alors toute écriture —
+mais c'est le **programme** qui le demande. Cela protège contre un défaut de ce
+fichier-là ; pas contre un autre programme qui se connecterait avec le même
+compte, ni contre une version future du même fichier où la ligne aurait
+disparu. **Un droit ne se demande pas** : il est absent, et rien dans la
+session ne peut le rendre présent.
 
-Aujourd'hui, la garantie tient à `set transaction read only`, posé par
-`reconciliation.py` : PostgreSQL refuse toute écriture pour la durée de la
-transaction, y compris une écriture qu'un défaut de ce fichier tenterait. C'est
-réel, mais c'est le programme qui la demande. Le rôle dédié la rendrait
-**structurelle**. **Ce n'est pas fait.**
+Le rôle est créé **`NOLOGIN`** par le plan de contrôle
+(`db/control_plane/0001_normative_seal.sql`) : on ne s'y connecte pas, un
+compte **`LOGIN`** distinct — fourni par l'infrastructure, hors de ce dépôt —
+s'y rattache. Mêler l'identité et la capacité ferait de la rotation d'un mot de
+passe une modification de droits.
+
+La migration `0026` lui donne exactement :
+
+| Ce qu'il peut | Ce qu'il ne peut pas |
+|---|---|
+| `usage` sur le schéma `public` | Écrire quoi que ce soit, nulle part |
+| `select` sur **sept colonnes** de `deliverables` : `id`, `org_id`, `project_id`, `storage_backend`, `storage_path`, `sha256`, `size_bytes` | Lire `filename`, `kind`, `validation_id`, `watermark`, `media_type` — c'est-à-dire, pour tous les bureaux, qui a signé quoi |
+| Lire à travers une politique `for select` nommée, sans clause `with check` | Lire une autre table |
+| — | Appeler la moindre primitive métier |
+
+**Ce qu'il voit est transversal, et il faut le dire.** Le rapprochement compare
+l'ensemble du magasin à l'ensemble des lignes : le porteur de ce rôle voit donc
+l'existence de chaque livrable de chaque organisation — son projet, son
+empreinte, sa taille et son chemin. Le chemin dérive de l'empreinte (§4) et ne
+porte aucun nom choisi par un humain ; il révèle qu'un livrable existe, pas ce
+qu'il contient. Cet accès appartient à l'**exploitation**, jamais à
+l'application.
+
+**Une politique de lecture lui est ouverte, et c'est nécessaire.**
+`deliverables` est en RLS forcée et ses politiques visent des acteurs
+applicatifs : un rôle d'exploitation membre d'aucune organisation lirait
+**zéro** ligne — et un rapprochement qui ne voit rien conclut « tout est
+orphelin », ce qui serait faux et dangereux.
+
+`db/test/reconciliation_role.sh` le mesure en neuf contrôles, dont quatre
+négatifs : `INSERT`, `UPDATE`, `DELETE` et `TRUNCATE` sont refusés par le
+serveur à un compte qui ne se rattache qu'à ce rôle, et aucune primitive
+`project_*`, `organization_*` ou `normative_*` ne lui est atteignable. Un
+contrôle positif accompagne les autres : il lit **vraiment** la ligne du décor
+— sans lui, « ne voit rien » et « il n'y a rien à voir » se confondraient.
 
 ---
 

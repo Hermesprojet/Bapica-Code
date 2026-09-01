@@ -77,7 +77,8 @@ JETON="$(harnais_jeton)"
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator normative_backend
             normative_governance eurostruct_deployment
-            eurostruct_authority_backend)
+            eurostruct_authority_backend
+            eurostruct_reconciliation)
 
 # `anon` et `authenticated` sont crees par `00_supabase_stub.sql`, qui est
 # applique dans chaque decor. Ils sont GLOBAUX comme les autres et doivent donc

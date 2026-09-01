@@ -82,7 +82,8 @@ JETON="$(harnais_jeton)"
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator normative_backend
             normative_governance eurostruct_deployment
-            eurostruct_authority_backend)
+            eurostruct_authority_backend
+            eurostruct_reconciliation)
 exiger_roles_absents "parcours_entree.sh" \
   "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" || exit 2
 

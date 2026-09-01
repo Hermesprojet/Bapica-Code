@@ -85,7 +85,8 @@ exiger_cluster_jetable "db/test/run.sh" || exit 2
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator
             normative_backend normative_governance eurostruct_deployment
-            eurostruct_authority_backend)
+            eurostruct_authority_backend
+            eurostruct_reconciliation)
 
 # BLOQUANT, et place ICI: avant l'oracle, avant les migrations, avant tout
 # test. Le rouge d'une sous-surface ne suffirait pas — `etape()` continue
@@ -389,6 +390,16 @@ etape "atelier de projet" \
 echo "==> livrable: brouillon, relecture, attestation, emission"
 etape "livrable et validation" \
   "$HERE/livrable_validation.sh" "${DB_NAME:0:20}lv"
+
+# LE ROLE DE RAPPROCHEMENT — CE QU'IL LIT, ET CE QU'IL NE PEUT PAS.
+#
+# `reconciliation.py` pose `set transaction read only`, ce qui est reel mais
+# DEMANDE par le programme. Ce harnais mesure l'absence du droit lui-meme:
+# INSERT, UPDATE, DELETE, TRUNCATE et l'appel des primitives metier, tous
+# refuses par PostgreSQL a un compte qui ne se rattache qu'a ce role.
+echo "==> role de rapprochement: lecture seule, prouvee par le droit"
+etape "role de rapprochement" \
+  "$HERE/reconciliation_role.sh" "${DB_NAME:0:20}rr"
 
 # L'ENTREE DANS L'APPLICATION — et le seul decor du depot qui parte de ZERO
 # organisation.

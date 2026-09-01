@@ -254,6 +254,27 @@ begin
                   where rolname = 'eurostruct_authority_backend') then
     create role eurostruct_authority_backend nologin;
   end if;
+
+  -- LE RAPPROCHEMENT LIT, ET NE PEUT RIEN D'AUTRE.
+  --
+  -- `reconciliation.py` confronte les lignes de `deliverables` aux objets du
+  -- magasin. Il traverse TOUTES les organisations — c'est un geste
+  -- d'exploitation, comme une sauvegarde — et il ne doit rien pouvoir ecrire.
+  --
+  -- CE QUE `set transaction read only` NE SUFFIT PAS A GARANTIR. Ce reglage
+  -- est DEMANDE par le programme: il protege contre un defaut de ce
+  -- fichier-la, pas contre un programme different qui se connecterait avec le
+  -- meme compte. Le droit, lui, ne se demande pas — il est absent ou present.
+  --
+  -- IL EST NOLOGIN, ET C'EST LE POINT. On ne s'y connecte pas: un compte
+  -- LOGIN distinct, fourni par l'infrastructure et hors de ce depot, s'y
+  -- rattache. Un role porteur de droits qui serait aussi un compte de
+  -- connexion melerait l'identite et la capacite, et sa rotation deviendrait
+  -- une modification de droits.
+  if not exists (select 1 from pg_roles
+                  where rolname = 'eurostruct_reconciliation') then
+    create role eurostruct_reconciliation nologin;
+  end if;
 end
 $$;
 
