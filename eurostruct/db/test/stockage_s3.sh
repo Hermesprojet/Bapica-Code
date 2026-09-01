@@ -19,6 +19,10 @@
 #   2. LE COMPARTIMENT — cree par NOTRE PROPRE CLIENT S3, pas par un outil
 #      tiers: c'est le code du produit qui doit savoir parler ce protocole.
 #   3. LE DEPOT — par les routes reelles du produit, depuis un calcul strict.
+#      EN HTML *ET* EN PDF. Un PDF est binaire: octets nuls, sequences valides
+#      dans aucun encodage, table de references croisees comptee a l'octet. Un
+#      reencodage en route le casserait SANS changer sa taille — seule
+#      l'empreinte le dirait, et elle est verifiee des deux cotes.
 #   4. L'ARRET ET LE REDEMARRAGE — le processus d'API est DETRUIT, et le
 #      conteneur MinIO redemarre. Plus une connexion, plus un cache.
 #   5. LE TELECHARGEMENT — dans un processus NEUF, qui ne cree rien.

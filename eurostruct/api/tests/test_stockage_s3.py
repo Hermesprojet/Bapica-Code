@@ -66,6 +66,10 @@ ETAT = os.environ.get("EUROSTRUCT_S3_ETAT", "")
 #: ce qui transforme « notre client relit ce qu'il a écrit » en « ces octets-là
 #: sont sur ce disque-là ».
 DOCUMENT = os.environ.get("EUROSTRUCT_S3_DOCUMENT", "")
+#: L'ETAT DU LIVRABLE PDF. Un second fichier plutot qu'une cle de plus dans le
+#: premier: la phase de relecture doit pouvoir dire « le PDF n'a pas ete
+#: depose » plutot que de lire `None` dans un etat par ailleurs complet.
+ETAT_PDF = (ETAT + ".pdf.json") if ETAT else ""
 BACKEND = (os.environ.get("EUROSTRUCT_STORAGE_BACKEND") or "").strip().lower()
 BUCKET = os.environ.get("EUROSTRUCT_S3_BUCKET", "")
 DISQUE_TEMOIN = os.environ.get("EUROSTRUCT_STORAGE_DIR", "")
@@ -211,6 +215,53 @@ class TestAvantRedemarrage:
             "size_bytes": taille,
         }, indent=2), encoding="utf-8")
 
+    def test_un_pdf_traverse_le_magasin_objet_sans_perdre_un_octet(
+            self, client, jeton, projet, calcul_strict):
+        """UN CORPS BINAIRE N'EST PAS UN CORPS DE TEXTE, ET SigV4 LE SIGNE.
+
+        Tout ce qui precede a depose du HTML. Un PDF est binaire: il porte des
+        octets nuls, des sequences qui ne sont valides dans aucun encodage, et
+        une table de references croisees dont chaque decalage est compte a
+        l'octet. Le moindre reencodage en route — par notre client, par
+        `urllib`, par le serveur — le casserait, et il le casserait
+        SILENCIEUSEMENT: le fichier ferait toujours la bonne taille.
+
+        L'empreinte le dirait, et c'est pourquoi on la verifie des deux cotes.
+        """
+        r = client.post(
+            f"/v1/projects/{projet['project_id']}/deliverables",
+            json={"calculation_id": calcul_strict, "format": "pdf"},
+            headers=_entete(jeton(ACTEUR_A)))
+        assert r.status_code == 201, r.text
+        livrable = r.json()
+        assert livrable["media_type"] == "application/pdf"
+
+        backend, chemin, sha, taille = _localisation(livrable["deliverable_id"])
+        assert backend == "s3", "le PDF n'est pas parti dans le magasin objet"
+        assert chemin.endswith(".pdf")
+
+        # LE TEMOIN LIT LE COMPARTIMENT, PAS LE PRODUIT.
+        octets = _client_brut().lire(chemin)
+        assert hashlib.sha256(octets).hexdigest() == sha
+        assert len(octets) == taille
+        assert octets.startswith(b"%PDF-")
+        assert octets.rstrip().endswith(b"%%EOF"), (
+            "la fin du fichier a ete perdue en route")
+
+        # ET LA TAILLE ANNONCEE PAR LE SERVEUR S'ACCORDE — c'est `HEAD`, donc
+        # une seconde source, distincte de la lecture.
+        assert _client_brut().taille(chemin) == taille
+
+        Path(ETAT_PDF).write_text(json.dumps({
+            "org_id": projet["organization_id"],
+            "project_id": projet["project_id"],
+            "deliverable_id": livrable["deliverable_id"],
+            "filename": livrable["filename"],
+            "storage_path": chemin,
+            "sha256": sha,
+            "size_bytes": taille,
+        }, indent=2), encoding="utf-8")
+
     def test_un_second_brouillon_identique_ne_duplique_pas_l_objet(
             self, client, jeton, projet, calcul_strict):
         """LA CLÉ DÉRIVE DU CONTENU : deux dépôts identiques, un seul objet.
@@ -304,6 +355,46 @@ class TestApresRedemarrage:
         octets = _client_brut().lire(etat["storage_path"])
         assert hashlib.sha256(octets).hexdigest() == etat["sha256"]
         assert len(octets) == etat["size_bytes"]
+
+    def test_le_pdf_revient_octet_pour_octet_apres_redemarrage(
+            self, client, jeton):
+        """LE CAS BINAIRE DE LA RELECTURE.
+
+        Le HTML survit deja au redemarrage. Un PDF met la question autrement:
+        ses octets ne forment aucun texte valide, sa table de references
+        croisees compte les decalages a l'octet, et un seul octet reecrit le
+        rend illisible — sans changer sa taille.
+
+        On verifie donc les MEMES octets par DEUX chemins: la route du produit,
+        et le temoin qui lit le compartiment de l'exterieur.
+        """
+        contenu = Path(ETAT_PDF).read_text(encoding="utf-8")
+        assert contenu.strip(), (
+            f"le fichier d'etat PDF « {ETAT_PDF} » est vide: la phase de depot "
+            "n'a pas depose de PDF, et il n'y a rien a relire.")
+        etat = json.loads(contenu)
+
+        r = client.get(
+            f"/v1/projects/{etat['project_id']}/deliverables/"
+            f"{etat['deliverable_id']}/download",
+            headers=_entete(jeton(ACTEUR_A)))
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"] == "application/pdf"
+        assert hashlib.sha256(r.content).hexdigest() == etat["sha256"]
+        assert len(r.content) == etat["size_bytes"]
+        assert r.content.startswith(b"%PDF-")
+        assert r.content.rstrip().endswith(b"%%EOF")
+
+        # LE TEMOIN, SUR LE VOLUME REDEMARRE: memes octets, exactement.
+        du_compartiment = _client_brut().lire(etat["storage_path"])
+        assert du_compartiment == r.content, (
+            "les octets servis par la route different de ceux du compartiment")
+
+        # LE NOM PROPOSE AU TELECHARGEMENT PORTE ENCORE `.pdf`, sous les deux
+        # formes de la RFC 6266.
+        disposition = r.headers["content-disposition"]
+        assert etat["filename"] in disposition
+        assert ".pdf" in disposition
 
     def test_le_disque_local_n_a_jamais_rien_recu(self):
         """AUCUN REPLI, MÊME EN COPIE. Le témoin est un répertoire vide."""

@@ -301,7 +301,10 @@ Le provisionnement est fait :
 1. un **volume neuf**, créé par le harnais et constaté vide ;
 2. le **compartiment**, créé par notre propre signature SigV4 — pas par un
    outil tiers ;
-3. le **dépôt** d'un livrable par les routes réelles, depuis un calcul strict ;
+3. le **dépôt** d'un livrable par les routes réelles, depuis un calcul strict —
+   en **HTML et en PDF**. Le PDF est binaire : un réencodage en route le
+   casserait sans changer sa taille, et seule l'empreinte le dirait ; elle est
+   donc vérifiée par la route **et** par le témoin qui lit le compartiment ;
 4. l'**arrêt de l'API** (le processus est détruit) et le **redémarrage** du
    serveur MinIO ;
 5. le **téléchargement** dans un processus neuf, qui ne crée rien ;
