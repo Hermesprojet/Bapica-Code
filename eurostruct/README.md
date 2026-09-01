@@ -187,7 +187,10 @@ Trois points bloquants, énoncés sans détour :
    Inventer une citation aurait été pire que son absence.
 
 3. **Pas de comparaison croisée** avec SCIA / Robot / RFEM, ni d'ouverture
-   manuelle des DXF dans AutoCAD, BricsCAD et LibreCAD.
+   manuelle des DXF dans AutoCAD, BricsCAD et LibreCAD. Cette dernière ne
+   demande **aucune licence à acheter** — elle se fait dans l'AutoCAD d'un
+   futur utilisateur et dans LibreCAD ; grille de contrôle et valeurs attendues
+   dans `docs/DESSIN_DXF.md`.
 
 Le produit n'est pas commercialisable tant que ces trois points ne sont pas
 levés par un ingénieur structure agréé de chaque pays visé.

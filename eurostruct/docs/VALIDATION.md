@@ -136,6 +136,16 @@ normalisés, style de cotation lié à une police présente dans le fichier,
 géométrie à l'échelle vraie. **L'ouverture effective dans AutoCAD, BricsCAD et
 LibreCAD reste une recette manuelle.**
 
+Ce n'est **pas** un blocage de licence : aucune licence AutoCAD n'est
+nécessaire, ni pour développer, ni pour exploiter le produit, et la recette
+elle-même n'en demande aucune — elle se fait dans l'AutoCAD d'un futur
+utilisateur et dans LibreCAD. La grille de contrôle, avec les valeurs attendues
+tirées du code, est dans `docs/DESSIN_DXF.md` §4.
+
+**Aucun test AutoCAD réel n'a été exécuté à ce jour, et le produit ne prétend
+pas le contraire.** Ce qui est prouvé est la relecture indépendante par
+`ezdxf`, énumérée ci-dessus.
+
 ## 3. Contrat de versionnement
 
 | Incrément | Signification |

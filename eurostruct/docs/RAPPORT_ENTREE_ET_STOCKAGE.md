@@ -376,5 +376,5 @@ attendrait :
 | Validation par un ingénieur réel | **hors de ce dépôt**, à organiser par l'utilisateur |
 | Annexes Nationales officielles | registre **0 / 29** ; aucune valeur inventée |
 | Staging Supabase | `SUPABASE_UNVERIFIED` ; `supabase.com` est bloqué par le proxy de cet environnement |
-| Licence ODA / RealDWG | non tranchée ; aucun « DWG natif » n'est promis |
+| ~~Licence ODA / RealDWG~~ | **tranchée le 01/09/2026 — ce n'est plus un blocage du produit.** Aucune licence AutoCAD n'est nécessaire ; les dessins sont des DXF R2018 produits par `ezdxf` (MIT) ; le DWG natif n'est pas offert, et la décision ODA/RealDWG est différée jusqu'au jour où il deviendrait une exigence réelle. Reste une **recette manuelle** d'ouverture dans un AutoCAD réel et dans LibreCAD, qui ne demande d'acheter aucun logiciel — grille de contrôle dans `docs/DESSIN_DXF.md`. |
 | Build d'images Docker **dans cet environnement** | impossible : le conteneur de build ne fait pas confiance à l'autorité du proxy d'agent (`CERTIFICATE_VERIFY_FAILED` sur `pypi.org`). Sans rapport avec le code : la CI, elle, construit et démarre la composition avec succès. |
