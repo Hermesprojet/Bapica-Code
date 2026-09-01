@@ -39,6 +39,7 @@ import hashlib
 import io
 import json
 import zipfile
+from datetime import datetime, timezone, UTC
 from typing import Any
 
 from eurostruct_engine.drawing.beam_section import rendre_dxf
@@ -687,8 +688,88 @@ def _genres_absents() -> tuple[str, ...]:
     return tuple(g for g in _GENRES_CONNUS if g not in produits)
 
 
+def _instantane_de_revue(detail: dict[str, Any], fratrie: list[dict[str, Any]],
+                         pris_a: str) -> dict[str, Any]:
+    """CE QUI EXISTAIT POUR CE CALCUL AU MOMENT OU LE DOSSIER A ETE PRIS.
+
+    LE SILENCE SUR UN ARTEFACT SE LIT COMME SON APPROBATION, et c'est le
+    defaut que cette section ferme. Un meme calcul porte desormais plusieurs
+    documents — note HTML, note PDF, plan DXF. Le dossier de revue n'en
+    nommait qu'un: celui qu'on relisait. Qui recevait ce dossier pouvait en
+    conclure que l'etude entiere avait ete relue, alors que l'attestation ne
+    couvre qu'une piece.
+
+    L'INSTANTANE SE DATE LUI-MEME, et c'est un compromis assume. Le reste du
+    manifeste est deterministe — deux telechargements rendent les memes octets
+    — mais un inventaire sans date ne dirait pas DE QUAND il parle: un plan
+    produit apres coup n'y figurerait pas, et rien ne permettrait de s'en
+    apercevoir.
+
+    IL NE RATISSE PAS PLUS LARGE QUE LE CALCUL. Melanger les livrables des
+    autres calculs du projet ferait dire au dossier que l'attestation laisse
+    de cote des documents qui ne la concernent pas — aussi faux qu'un oubli.
+    """
+    return {
+        "calculation_id": detail["calculation_id"],
+        "taken_at": pris_a,
+        # ORDRE FIXE, PAR EMPREINTE. L'ordre de la primitive suit la date de
+        # creation; deux artefacts crees dans la meme seconde pourraient en
+        # sortir dans un ordre variable, et l'archive cesserait d'etre
+        # deterministe.
+        "artifacts": sorted(
+            ({
+                "deliverable_id": a["deliverable_id"],
+                "calculation_id": a["calculation_id"],
+                "kind": a["kind"],
+                "filename": a["filename"],
+                "media_type": a["media_type"],
+                "sha256": a["sha256"],
+                "size_bytes": a["size_bytes"],
+                "state": a["state"],
+                "revision": a["revision"],
+                "is_the_reviewed_one": (
+                    a["deliverable_id"] == detail["deliverable_id"]),
+            } for a in fratrie),
+            key=lambda a: (a["sha256"], a["deliverable_id"]),
+        ),
+    }
+
+
+def _portee_de_l_attestation(
+        detail: dict[str, Any],
+        instantane: dict[str, Any]) -> tuple[dict[str, Any] | None,
+                                             list[dict[str, Any]]]:
+    """Ce que l'attestation couvre, et ce qu'elle NE couvre PAS.
+
+    VALIDER LE PDF NE VALIDE PAS LE DXF. Un ingenieur atteste des octets
+    precis, identifies par leur empreinte; tout le reste lui reste etranger,
+    et le dossier doit l'ecrire plutot que de le laisser supposer.
+
+    Sans attestation, `couvre` vaut `null` et la liste est vide: des champs
+    absents se liraient moins clairement que des champs vides — le lecteur ne
+    saurait pas si la question a seulement ete posee.
+    """
+    if not detail.get("validation_id"):
+        return None, []
+    couvre = {
+        "deliverable_id": detail["deliverable_id"],
+        "kind": detail["kind"],
+        "filename": detail["filename"],
+        "sha256": detail["sha256"],
+    }
+    autres = [
+        {"deliverable_id": a["deliverable_id"], "kind": a["kind"],
+         "filename": a["filename"], "sha256": a["sha256"],
+         "state": a["state"]}
+        for a in instantane["artifacts"]
+        if a["deliverable_id"] != detail["deliverable_id"]
+    ]
+    return couvre, autres
+
+
 def _manifeste(projet: dict[str, Any], detail: dict[str, Any],
-               octets: bytes) -> dict[str, Any]:
+               octets: bytes, fratrie: list[dict[str, Any]],
+               pris_a: str) -> dict[str, Any]:
     """Ce que le dossier contient, et a quoi cela se rattache.
 
     TOUT VIENT DES DONNEES GELEES. Pas un champ n'est recalcule : le contexte
@@ -701,9 +782,15 @@ def _manifeste(projet: dict[str, Any], detail: dict[str, Any],
     manifeste qui n'en porterait qu'une ne permettrait pas de constater
     qu'elles s'accordent — il l'affirmerait.
     """
+    instantane = _instantane_de_revue(detail, fratrie, pris_a)
+    couvre, non_couverts = _portee_de_l_attestation(detail, instantane)
     return {
         "kind": "eurostruct/review-bundle",
-        "version": 1,
+        # VERSION 2: le manifeste porte desormais l'instantane du dossier et la
+        # portee exacte de l'attestation. Un lecteur qui saurait lire la
+        # version 1 ne trouverait pas ces sections; il doit pouvoir s'en
+        # apercevoir plutot que de conclure qu'il n'y a rien d'autre.
+        "version": 2,
         "organization": {
             "id": projet["organization_id"],
             "name": projet["organization_name"],
@@ -743,6 +830,8 @@ def _manifeste(projet: dict[str, Any], detail: dict[str, Any],
         }],
         # LES ARTEFACTS QUI N'EXISTENT PAS ENCORE SONT NOMMES.
         "artifacts_not_produced": list(_genres_absents()),
+        # CE QUI EXISTAIT POUR CE CALCUL, AU MOMENT OU LE DOSSIER A ETE PRIS.
+        "review_snapshot": instantane,
         # L'ATTESTATION, SI ELLE EXISTE. `null` partout ailleurs: un dossier de
         # revue d'un brouillon ne doit pas ressembler a celui d'une piece
         # attestee, et l'absence de champs le dirait moins clairement que des
@@ -757,6 +846,12 @@ def _manifeste(projet: dict[str, Any], detail: dict[str, Any],
             "statement": detail.get("statement"),
             "reservations": detail.get("reservations"),
             "signed_at": detail.get("validated_at"),
+            # LA PORTEE, DES DEUX COTES. `covers` nomme les octets attestes
+            # par leur empreinte; `does_not_cover` nomme tous les autres
+            # artefacts du meme calcul. Ne pas les nommer reviendrait a
+            # laisser supposer qu'ils le sont.
+            "covers": couvre,
+            "does_not_cover": non_couverts,
         },
         "transitions": detail.get("transitions") or [],
         "notice": MENTION_OBLIGATOIRE,
@@ -792,6 +887,14 @@ def dossier_de_revue(project_id: str, deliverable_id: str,
         projet = _projet_de(ouvert, jeton, project_id)
         detail = ouvert.atelier.relire_livrable(
             jeton, project_id=project_id, deliverable_id=deliverable_id)
+        # LA FRATRIE VIENT DE LA MEME SESSION QUE LA RELECTURE. Deux appels
+        # separes pourraient tomber de part et d'autre d'une creation, et
+        # l'instantane dirait alors qu'il n'existe rien d'autre alors qu'un
+        # plan vient d'etre produit.
+        fratrie = [
+            a for a in ouvert.atelier.livrables(jeton, project_id=project_id)
+            if a["calculation_id"] == detail["calculation_id"]
+        ]
         localisation = ouvert.atelier.octets_du_livrable(
             jeton, project_id=project_id, deliverable_id=deliverable_id)
     except (AuthentificationRequise, ConfirmationDomainError) as cause:
@@ -813,7 +916,13 @@ def dossier_de_revue(project_id: str, deliverable_id: str,
     except (StockageIndisponible, ObjetIntrouvable, OctetsAlteres) as cause:
         raise _indisponible(cause) from cause
 
-    manifeste = json.dumps(_manifeste(projet, detail, octets),
+    # LA SEULE DATE DU DOSSIER, ET ELLE EST DANS L'INSTANTANE.
+    #
+    # Le reste du manifeste ne porte que des valeurs gelees, et l'archive fige
+    # ses horodatages: deux telechargements rendent les memes octets a ce champ
+    # pres. C'est le prix pour qu'un inventaire dise DE QUAND il parle.
+    pris_a = datetime.now(UTC).replace(microsecond=0).isoformat()
+    manifeste = json.dumps(_manifeste(projet, detail, octets, fratrie, pris_a),
                            ensure_ascii=False, indent=2, sort_keys=True)
 
     tampon = io.BytesIO()
