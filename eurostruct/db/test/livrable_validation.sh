@@ -273,10 +273,17 @@ on conflict do nothing;
 -- L'ANNEXE FRANCAISE, POUR CONSTATER — PAS POUR CONTOURNER.
 --
 -- La France est le seul pays du referentiel livre dont un parametre est
--- `not_representable`: son NA rend k3 fonction de l'enrobage, une formule que
--- le modele scalaire ne sait pas porter. Sans un projet francais, ce fait ne
--- peut pas etre eprouve a la frontiere HTTP — et c'est precisement ce que la
--- verticale doit dire honnetement a l'utilisateur.
+-- « not_representable »: son NA rend k3 fonction de l'enrobage, une formule
+-- que le modele scalaire ne sait pas porter. Sans un projet francais, ce fait
+-- ne peut pas etre eprouve a la frontiere HTTP — et c'est precisement ce que
+-- la verticale doit dire honnetement a l'utilisateur.
+--
+-- LES GUILLEMETS SONT DES CHEVRONS, PAS DES ACCENTS GRAVES, et le paragraphe
+-- ci-dessus dit pourquoi: cet heredoc n'est pas quote. Mesure du 01/09:
+-- ecrire le nom du code entre accents graves a fait rougir le controle 19.5,
+-- trois paragraphes sous l'avertissement qui l'interdit. Le scanner avait
+-- raison — le shell aurait execute « not_representable » et glisse sa sortie
+-- vide dans le flux SQL.
 --
 -- LE DECOR POSE LE DOCUMENT, JAMAIS SES VALEURS: aucun parametre n'est insere,
 -- aucune valeur normative n'est inventee. Le moteur lit son propre registre.
