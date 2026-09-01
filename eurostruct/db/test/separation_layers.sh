@@ -64,6 +64,7 @@ MDP="FICTIF-sep5-$JETON"
 CANON=(eurostruct_normative_writer eurostruct_normative_bootstrap
        eurostruct_normative_activator normative_backend normative_governance
        eurostruct_deployment eurostruct_authority_backend
+       eurostruct_reconciliation
        anon authenticated service_role)
 # UN CLUSTER SALE PRODUIT UN DIAGNOSTIC SANS RAPPORT, ET C'EST MESURE.
 # Une base de diagnostic laissee derriere empeche `drop owned by` d'atteindre
@@ -77,7 +78,8 @@ CANON=(eurostruct_normative_writer eurostruct_normative_bootstrap
 exiger_roles_absents "db/test/separation_layers.sh" \
   eurostruct_normative_writer eurostruct_normative_bootstrap \
   eurostruct_normative_activator normative_backend normative_governance \
-  eurostruct_deployment eurostruct_authority_backend || exit 2
+  eurostruct_deployment eurostruct_authority_backend \
+  eurostruct_reconciliation || exit 2
 
 KO=0
 declare -A RESULTAT

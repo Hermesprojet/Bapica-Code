@@ -1339,10 +1339,12 @@ create policy normative_activation_ecriture on normative_activation
      [("""CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator
             normative_backend normative_governance eurostruct_deployment
-            eurostruct_authority_backend)""",
+            eurostruct_authority_backend
+            eurostruct_reconciliation)""",
        """CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             normative_backend normative_governance eurostruct_deployment
-            eurostruct_authority_backend)""")], False),
+            eurostruct_authority_backend
+            eurostruct_reconciliation)""")], False),
     ("8  la separation plan/migrateur est retiree", "8b", S,
      [("  if d_oid = m_oid or d_nom = m_nom then", "  if false then")], False),
 ]
