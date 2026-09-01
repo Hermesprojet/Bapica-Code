@@ -9,8 +9,8 @@
  * qu'un ingénieur peut réellement faire avec sa souris, ni de ce qui reste
  * après un F5.
  *
- * LES DOUZE FAITS
- * ----------------
+ * LES TREIZE FAITS
+ * -----------------
  *   1. A se connecte ;
  *   2. il crée un projet BE / Wallonie / date de référence ;
  *   3. il enregistre un calcul **strict** qui aboutit ;
@@ -23,6 +23,9 @@
  *   8. V, ingénieur validateur, atteste : son nom et son numéro d'inscription
  *      viennent de son adhésion, jamais de l'écran ;
  *   9. l'émission n'est possible qu'après cette attestation ;
+ *   9 bis. elle PRODUIT un second PDF, qui se télécharge depuis l'écran, cite
+ *      le SHA-256 de l'original dans ses octets, dit qu'il n'est pas une
+ *      signature qualifiée — et l'original reste byte-identique ;
  *  10. un livrable émis ne se modifie plus ;
  *  11. une révision est créée, avec l'indice suivant ;
  *  12. B, de l'autre organisation, n'obtient ni lecture ni téléchargement.
@@ -632,6 +635,80 @@ try {
   exige(emis.statut === 200, `l'emission a rendu ${emis.statut}`);
   exige(emis.corps?.state === "final",
         `apres emission l'etat est « ${emis.corps?.state} »`);
+
+  // =======================================================================
+  // 9 bis — L'ÉMISSION A PRODUIT UN SECOND DOCUMENT, ET IL CIRCULE
+  // =======================================================================
+  //: LE DEFAUT QUE CETTE SECTION FERME.
+  //:
+  //: Le parcours s'arretait a `state === "final"`. Il constatait donc que
+  //: l'emission avait REPONDU — jamais qu'elle avait PRODUIT quelque chose.
+  //: Or le PDF atteste est precisement ce qu'on transmet au client, et rien
+  //: ne l'exercait depuis un navigateur: la seule preuve de bout en bout
+  //: vivait dans pytest, cote serveur.
+  ici("le document emis apparait dans la liste");
+  const apresEmission = await depuisLaPage(
+    `/v1/projects/${projetId}/deliverables`, "GET");
+  exige(apresEmission.statut === 200,
+        `la liste apres emission a rendu ${apresEmission.statut}`);
+
+  const pieces = apresEmission.corps?.deliverables ?? [];
+  const docEmis = pieces.find((d) => d.kind === "issued_calculation_note_pdf");
+  exige(!!docEmis, "l'emission n'a produit aucun document atteste");
+  exige(docEmis?.state === "final",
+        `le document emis est en « ${docEmis?.state} » et non « final »`);
+  //: IL DERIVE, IL NE REMPLACE PAS. `supersedes_id` dirait « l'original est
+  //: perime »; c'est faux, et c'est l'original qui fait foi.
+  exige(docEmis?.derived_from_id === livrableId,
+        `le document emis derive de « ${docEmis?.derived_from_id } » `
+        + `et non de l'original`);
+  exige(!docEmis?.supersedes_id,
+        "le document emis se declare successeur de l'original: il en derive");
+
+  //: LES QUATRE PIECES SE DISTINGUENT DANS L'ECRAN, PAS SEULEMENT DANS L'API.
+  //: Rangees cote a cote, la note attestee et le document qui porte
+  //: l'attestation sont deux PDF; c'est le second qu'on transmet.
+  ici("l'ecran nomme chaque piece");
+  const ligneEmise = page.locator(`tr[data-livrable="${docEmis.deliverable_id}"]`);
+  await ligneEmise.waitFor({ timeout: 20000 });
+  exige(await ligneEmise.locator("text=PDF émis avec attestation").count() > 0,
+        "l'ecran ne nomme pas le document emis « PDF émis avec attestation »");
+
+  ici("telechargement du document emis");
+  const recuEmis = await empreinteDuTelechargement(
+    () => ligneEmise.locator("text=Télécharger").click());
+  exige(recuEmis.texte.startsWith("%PDF-"),
+        "les octets du document emis ne commencent pas par %PDF-");
+  exige(recuEmis.taille === docEmis.size_bytes,
+        `la taille recue (${recuEmis.taille}) differe de celle enregistree `
+        + `(${docEmis.size_bytes})`);
+  exige(recuEmis.sha256 === docEmis.sha256,
+        "le sha256 des octets recus differe de celui enregistre en base");
+
+  //: LE CAS DECISIF DE TOUTE CETTE FONCTIONNALITE.
+  //:
+  //: L'attestation porte sur des octets. Si le document emis ne CITE pas
+  //: l'empreinte de l'original, il n'atteste rien de verifiable: le
+  //: destinataire ne peut pas rattacher la declaration au fichier qu'il tient.
+  exige(recuEmis.texte.includes(empreinteEnregistree),
+        "le document emis ne cite pas le SHA-256 de l'original dans ses octets");
+  exige(recuEmis.sha256 !== empreinteEnregistree,
+        "le document emis a la meme empreinte que l'original");
+  //: ET IL DIT CE QU'IL N'EST PAS. Une attestation metier n'est pas une
+  //: signature qualifiee; le document le porte, en toutes lettres.
+  exige(/signature .lectronique qualifi/i.test(recuEmis.texte),
+        "le document emis ne dit pas qu'il n'est pas une signature qualifiee");
+
+  ici("l'original n'a pas bouge d'un octet");
+  //: LE PDF INITIAL RESTE BYTE-IDENTIQUE. Y ajouter l'attestation aurait
+  //: detruit le lien qu'elle etablit: son empreinte est ce sur quoi elle
+  //: porte. On le retelecharge APRES emission, et on le compare a l'empreinte
+  //: relevee AVANT.
+  const originalApres = await empreinteDuTelechargement(
+    () => page.click(`tr[data-livrable="${livrableId}"] >> text=Télécharger`));
+  exige(originalApres.sha256 === empreinteEnregistree,
+        `l'emission a modifie l'original: ${originalApres.sha256.slice(0, 16)}… `
+        + `au lieu de ${empreinteEnregistree.slice(0, 16)}…`);
 
   // =======================================================================
   // 10 — UN LIVRABLE ÉMIS NE SE MODIFIE PLUS
