@@ -422,6 +422,39 @@ class BeamVerification:
             "preflight_ready": self.preflight_ready,
             "ndp_snapshot_id": self.ndp_snapshot_id,
             "calculation_fingerprint": self.calculation_fingerprint,
+            # LA COUPE EST PERSISTEE AVEC L'ETUDE, ET C'EST NECESSAIRE.
+            #
+            # Le plan doit pouvoir etre produit apres un F5 et un redemarrage,
+            # sans que l'ingenieur ressaisisse son ferraillage et SANS que le
+            # moteur soit relance — relancer donnerait les nombres
+            # d'aujourd'hui sous la date d'hier. La coupe gelee est donc ecrite
+            # ici, et le dessin la relit telle quelle.
+            "drawing_spec": self.drawing_spec_dict,
+        }
+
+    @property
+    def drawing_spec_dict(self) -> dict[str, Any]:
+        """La coupe, en nombres purs, telle qu'elle sera redessinee.
+
+        On serialise les CHAMPS, pas l'objet: un `BeamSectionSpec` recompose a
+        partir de ceux-ci redonne exactement la meme geometrie, et le format
+        reste lisible dans la base.
+        """
+        s = self.drawing_spec
+        return {
+            "b": s.b, "h": s.h, "cover": s.cover,
+            "link_diameter": s.link_diameter,
+            "link_spacing": s.link_spacing,
+            "link_mark": s.link_mark,
+            "bottom": [{"count": r.count, "diameter": r.diameter,
+                        "mark": r.mark} for r in s.bottom],
+            "top": [{"count": r.count, "diameter": r.diameter,
+                     "mark": r.mark} for r in s.top],
+            "element": s.element,
+            "concrete_grade": s.concrete_grade,
+            "steel_grade": s.steel_grade,
+            "exposure_class": s.exposure_class,
+            "plot_scale": s.plot_scale,
         }
 
     @property

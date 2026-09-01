@@ -42,6 +42,7 @@ import zipfile
 from typing import Any
 
 from eurostruct_engine.drawing.beam_section import rendre_dxf
+from eurostruct_engine.drawing.modele import construire_modele, spec_depuis_dict
 from eurostruct_engine.drawing.svg import MEDIA_TYPE_SVG, rendre_svg
 from eurostruct_engine.exceptions import ReinforcementNotVerified
 from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
@@ -65,17 +66,17 @@ from fastapi.responses import StreamingResponse
 
 from ..attestation import rendre_attestation_pdf
 from ..dependances import ouvrir_atelier, provider_de_lecture
-from ..note_verification import (
-    est_note_de_verification,
-    rendre_note_verification,
-    rendre_note_verification_pdf,
-)
 from ..note import (
     MEDIA_TYPE,
     MEDIA_TYPE_DXF,
     MEDIA_TYPE_PDF,
     rendre_note,
     rendre_note_pdf,
+)
+from ..note_verification import (
+    est_note_de_verification,
+    rendre_note_verification,
+    rendre_note_verification_pdf,
 )
 from ..pdf import CaractereNonRepresentable
 from ..stockage import (
@@ -257,11 +258,47 @@ def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
     calcul = ouvert.atelier.rouvrir_calcul(
         jeton, project_id=projet["project_id"], calculation_id=calculation_id)
 
+    # LE PLUS PRECIS D'ABORD: un calcul REFUSE n'a pas de resultat, et le dire
+    # ainsi apprend a l'appelant ou lire le motif. Le controle d'etat qui suit
+    # ne le recouvre donc pas — il attrape l'autre cas, celui d'une etude qui a
+    # bien produit des nombres mais ne conclut pas.
     if not (calcul.get("result") or {}).get("result"):
         raise ConfirmationDomainError(
             "ce calcul n'a produit aucun resultat: il a ete refuse par le "
             "moteur, et son motif figure dans l'historique. Un livrable se "
             "lirait comme une conclusion, et il n'y en a pas."
+        )
+
+    # LE MEME REFUS QUE POSTGRESQL, MAIS A L'HEURE.
+    #
+    # `project_calculation_is_publishable` interdit deja qu'un calcul non
+    # abouti produise un document — mais elle est appelee par
+    # `project_deliverable_create`, c'est-a-dire APRES que cette fonction a
+    # compose les octets et que `_creer` les a deposes. Ce n'etait visible de
+    # personne tant qu'un calcul non abouti n'avait pas de resultat: le
+    # controle ci-dessus arretait tout avant. Une etude a cinq sections change
+    # cela — son cisaillement peut echouer alors que les cinq chapitres ont
+    # produit leurs nombres.
+    #
+    # Mesure du jour: une telle etude rendait bien 422 et n'ecrivait aucune
+    # ligne, en laissant un `.dxf` dans le magasin que plus rien ne
+    # referencait. Voir
+    # `test_une_etude_en_echec_n_a_pas_de_plan_et_ne_laisse_pas_d_octets`.
+    #
+    # LA POLITIQUE DU MAGASIN REND LA FUITE DEFINITIVE (`docs/STOCKAGE.md` §5):
+    # le produit ne supprime jamais, precisement pour ne pas pouvoir effacer un
+    # objet encore reference. Un refus prononce apres le depot coute donc un
+    # objet pour toujours.
+    #
+    # CE CONTROLE NE REMPLACE PAS CELUI DE LA BASE, IL LE PRECEDE. La base
+    # reste seule autorite: si les deux venaient a diverger, c'est elle qui
+    # tranche, et ce chemin-ci se contente d'arriver plus tot.
+    statut = str(calcul.get("status") or "")
+    if statut != "succeeded":
+        raise ConfirmationDomainError(
+            f"le calcul est dans l'etat « {statut} »: il ne conclut pas, et "
+            "un livrable se lirait comme une conclusion. Consulter le motif "
+            "dans l'historique."
         )
 
     notice, mention = _mentions(bool(calcul.get("strict_ndp")))
@@ -322,6 +359,23 @@ def _modele_du_dessin(calcul: dict[str, Any], ferraillage: Any,
     imprime alors un tiret — parce que la cle du livrable derive de son
     contenu: un horodatage ferait deux objets pour un seul et meme dessin.
     """
+    # UNE ETUDE COMPLETE PORTE DEJA SON FERRAILLAGE, ET SA COUPE.
+    #
+    # Le lot precedent exigeait du navigateur le choix des barres parce que la
+    # flexion seule ne le connait pas: `As_required` dit combien d'acier il
+    # faut, jamais comment le disposer. Une verification a cinq sections, elle,
+    # a DEJA recu ce choix — barres, cadres, espacement, enrobage — et l'a gele.
+    #
+    # Redemander ces valeurs a l'ecran serait pire qu'inutile: ce serait une
+    # SECONDE SOURCE, et le jour ou elle diverge, le plan montrerait autre chose
+    # que ce qui a ete verifie. On relit donc la coupe telle que l'etude l'a
+    # ecrite, sans relancer le moteur — le relancer donnerait les nombres
+    # d'aujourd'hui sous la date d'hier.
+    coupe = ((calcul.get("result") or {}).get("result") or {}).get(
+        "drawing_spec")
+    if coupe:
+        return construire_modele(spec_depuis_dict(coupe))
+
     if ferraillage is None:
         raise ConfirmationDomainError(
             "aucun ferraillage n'a ete fourni: un plan de ferraillage sans "

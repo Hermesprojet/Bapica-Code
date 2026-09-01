@@ -747,3 +747,196 @@ def test_les_octets_du_pdf_sont_deterministes(client, jeton, projet) -> None:
         empreintes.add(hashlib.sha256(octets).hexdigest())
     assert len(empreintes) == 1, (
         "deux compositions du meme dossier ont rendu des octets differents")
+
+
+# ---------------------------------------------------------------------------
+# 12. LE PLAN VIENT DE L'ETUDE, PAS D'UNE RESAISIE
+# ---------------------------------------------------------------------------
+def _dxf_de(client, jeton, projet, calcul_id):
+    return client.post(
+        f"/v1/projects/{projet['project_id']}/deliverables",
+        json={"calculation_id": calcul_id, "format": "dxf"},
+        headers=_entete(jeton(ACTEUR_A)))
+
+
+def test_le_dxf_se_produit_sans_ressaisir_le_ferraillage(
+        client, jeton, projet) -> None:
+    """L'ETUDE PORTE DEJA SES BARRES ET SES CADRES.
+
+    La flexion seule ne connait pas le CHOIX du ferraillage — `As_required`
+    dit combien d'acier il faut, jamais comment le disposer — et le navigateur
+    devait donc l'envoyer. Une etude a cinq sections l'a deja recu et gele.
+    Le redemander serait une SECONDE SOURCE, et le jour ou elle diverge, le
+    plan montrerait autre chose que ce qui a ete verifie.
+    """
+    cree = _verifier(client, jeton, projet).json()
+    r = _dxf_de(client, jeton, projet, cree["calculation_id"])
+    assert r.status_code == 201, r.text
+    assert r.json()["kind"] == "rebar_drawing_dxf"
+
+
+def test_le_dxf_dessine_exactement_la_section_calculee(
+        client, jeton, projet) -> None:
+    """AUCUNE AIRE D'ACIER NE VIENT DU NAVIGATEUR."""
+    cree = _verifier(client, jeton, projet).json()
+    livrable = _dxf_de(client, jeton, projet, cree["calculation_id"]).json()
+    octets = client.get(
+        f"/v1/projects/{projet['project_id']}/deliverables/"
+        f"{livrable['deliverable_id']}/download",
+        headers=_entete(jeton(ACTEUR_A))).content.decode("utf-8")
+
+    #: LES QUATRE BARRES DE 20 SONT DANS LA NOMENCLATURE, et l'entraxe derive
+    #: du meme modele que celui qui a servi a l'ELS.
+    assert "4" in octets and "20" in octets
+    coupe = _observer(
+        "select payload->'result'->'drawing_spec' from results "
+        " where calculation_id = %s", (cree["calculation_id"],))[0][0]
+    assert coupe["b"] == 300.0
+    assert coupe["cover"] == 40.0
+    assert coupe["link_diameter"] == 10.0
+    assert coupe["link_spacing"] == 150.0
+    assert coupe["bottom"][0]["count"] == 4
+    assert coupe["bottom"][0]["diameter"] == 20.0
+    assert coupe["exposure_class"] == "XC3"
+
+
+def test_changer_les_barres_change_les_octets_du_plan(
+        client, jeton, projet) -> None:
+    """LE PLAN SUIT L'ETUDE, ET NE SE CONTENTE PAS DE LUI RESSEMBLER.
+
+    Un dessin qui viendrait d'un gabarit — meme section, memes barres
+    dessinees quelles que soient les entrees — passerait tous les controles de
+    forme. Trois etudes qui different par le ferraillage doivent donner trois
+    fichiers differents, sans quoi rien ne prouve que le plan lit l'etude.
+    """
+    import hashlib
+
+    def _octets(**remplace):
+        c = _verifier(client, jeton, projet, **remplace).json()
+        assert c["status"] == "passed", c
+        liv = _dxf_de(client, jeton, projet, c["calculation_id"])
+        assert liv.status_code == 201, liv.text
+        return hashlib.sha256(client.get(
+            f"/v1/projects/{projet['project_id']}/deliverables/"
+            f"{liv.json()['deliverable_id']}/download",
+            headers=_entete(jeton(ACTEUR_A))).content).hexdigest()
+
+    a = _octets()
+    b = _octets(bars={"count": 5, "diameter": {"value": 20, "unit": "mm"}})
+    #: DES CADRES PLUS FORTS: l'etude passe toujours, et la coupe change —
+    #: le lit de barres se decale de l'epaisseur du cadre.
+    c = _octets(links={"legs": 2, "diameter": {"value": 12, "unit": "mm"},
+                       "spacing": {"value": 150, "unit": "mm"}})
+    assert len({a, b, c}) == 3, (
+        "changer les barres ou les cadres doit changer les octets du plan")
+
+
+@pytest.fixture()
+def projet_neuf(client, jeton) -> dict:
+    """Un projet belge NEUF, dont le prefixe de magasin n'a jamais rien recu.
+
+    Le chemin d'un livrable derive de son CONTENU: deux depots des memes
+    octets ecrivent au meme endroit. Un orphelin qui reprendrait le chemin
+    d'un document deja depose serait invisible a un comptage de fichiers —
+    non pas parce qu'il n'existe pas, mais parce qu'on ne saurait pas le voir.
+    """
+    r = client.post(
+        "/v1/projects",
+        json={"name": "FICTIF Halle ORPH", "reference": "FICTIF-VC-ORPH",
+              "country": "BE", "region": "Wallonie",
+              "ndp_as_of": "2024-01-15"},
+        headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_une_etude_en_echec_n_a_pas_de_plan_et_ne_laisse_pas_d_octets(
+        client, jeton, projet_neuf) -> None:
+    """UNE POUTRE QUI NE VERIFIE PAS N'A PAS DE PLAN, ET LE REFUS EST A L'HEURE.
+
+    Le fichier ne porte aucun verdict: un DXF de section echouee ressemble
+    trait pour trait a un DXF de section conforme, et c'est l'atelier qui le
+    lira. Le refus est donc juste — mais `project_calculation_is_publishable`
+    ne le prononce qu'a l'ENREGISTREMENT, c'est-a-dire APRES le depot.
+
+    Or la politique du magasin (`docs/STOCKAGE.md` §5) interdit toute
+    suppression par le produit: un objet depose puis abandonne est DEFINITIF.
+    Le meme soin que `_creer` prend deja pour l'autorisation et pour
+    `supersedes_id` est du a ce refus-ci.
+    """
+    from .test_livrables import _objets_du_magasin
+
+    prefixe = f"{projet_neuf['organization_id']}/" \
+              f"{projet_neuf['project_id']}/"
+    assert not _objets_du_magasin(prefixe), (
+        "le decor est cense partir d'un prefixe vide")
+    avant = _observer("select count(*) from deliverables")[0][0]
+
+    faible = _verifier(
+        client, jeton, projet_neuf,
+        links={"legs": 2, "diameter": {"value": 6, "unit": "mm"},
+               "spacing": {"value": 300, "unit": "mm"}}).json()
+    assert faible["status"] == "failed", faible
+
+    r = _dxf_de(client, jeton, projet_neuf, faible["calculation_id"])
+    assert r.status_code == 422, r.text
+    assert "ne conclut pas" in r.text
+    assert _observer("select count(*) from deliverables")[0][0] == avant, (
+        "aucune ligne ne doit naitre d'un refus")
+
+    apparus = _objets_du_magasin(prefixe)
+    assert not apparus, (
+        "LE REFUS A LAISSE DES OCTETS DERRIERE LUI. Objets deposes puis "
+        f"abandonnes sous « {prefixe} »: {sorted(apparus)}. Aucune ligne de "
+        "`deliverables` ne les reference, et la politique du magasin interdit "
+        "de les supprimer: ils sont definitifs."
+    )
+
+
+def test_l_apercu_svg_et_le_dxf_viennent_du_meme_modele(
+        client, jeton, projet) -> None:
+    """L'APERCU MONTRE LA COUPE GELEE, SANS FERRAILLAGE RESAISI NON PLUS.
+
+    `format` nomme le DOCUMENT vise — le plan de ferraillage — pas le codage
+    de l'image: l'apercu du plan est du SVG, parce qu'un navigateur ne lit pas
+    le DXF. Il appelle le meme `_modele_du_dessin` que le fichier, et c'est ce
+    qui interdit qu'il montre autre chose que ce qui sera telecharge.
+    """
+    cree = _verifier(client, jeton, projet).json()
+    apercu = client.post(
+        f"/v1/projects/{projet['project_id']}/deliverables/preview",
+        json={"calculation_id": cree["calculation_id"], "format": "dxf"},
+        headers=_entete(jeton(ACTEUR_A)))
+    assert apercu.status_code == 200, apercu.text
+    assert apercu.headers["content-type"].startswith("image/svg+xml")
+    assert "<svg" in apercu.text
+    #: L'APERCU N'EST PAS CONTRACTUEL, ET IL LE DIT.
+    assert "APERCU NON CONTRACTUEL" in apercu.text
+    #: LES BARRES DE L'ETUDE SONT DANS L'IMAGE, sans qu'aucune n'ait ete
+    #: renvoyee par le navigateur: le repere « A1 » vient de la coupe gelee.
+    assert "A1" in apercu.text
+
+
+def test_le_plan_survit_au_redemarrage_et_ne_relance_pas_le_moteur(
+        client, client_neuf, jeton, projet) -> None:
+    """Un processus neuf produit le MEME plan depuis la base seule."""
+    import hashlib
+
+    cree = _verifier(client, jeton, projet).json()
+    a = _dxf_de(client, jeton, projet, cree["calculation_id"]).json()
+    octets_a = client.get(
+        f"/v1/projects/{projet['project_id']}/deliverables/"
+        f"{a['deliverable_id']}/download",
+        headers=_entete(jeton(ACTEUR_A))).content
+
+    b = client_neuf.post(
+        f"/v1/projects/{projet['project_id']}/deliverables",
+        json={"calculation_id": cree["calculation_id"], "format": "dxf"},
+        headers=_entete(jeton(ACTEUR_A)))
+    assert b.status_code == 201, b.text
+    octets_b = client_neuf.get(
+        f"/v1/projects/{projet['project_id']}/deliverables/"
+        f"{b.json()['deliverable_id']}/download",
+        headers=_entete(jeton(ACTEUR_A))).content
+    assert (hashlib.sha256(octets_a).hexdigest()
+            == hashlib.sha256(octets_b).hexdigest())

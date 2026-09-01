@@ -47,6 +47,7 @@ __all__ = [
     "Texte",
     "construire_modele",
     "masse_kg",
+    "spec_depuis_dict",
 ]
 
 #: Mention obligatoire — cahier des charges §9, sur chaque page de chaque
@@ -535,3 +536,36 @@ def _cartouche(spec: BeamSectionSpec, txt_h: float,
         y -= txt_h * 1.2
 
     return cadre, elements
+
+
+def spec_depuis_dict(donnees: dict) -> BeamSectionSpec:
+    """Recompose une coupe depuis sa forme sérialisée.
+
+    LA COUPE EST GELÉE AVEC L'ÉTUDE, PAS RECALCULÉE À L'AFFICHAGE. Un plan
+    produit six mois plus tard doit montrer la section qui a été *vérifiée*,
+    pas celle qu'un moteur d'aujourd'hui déduirait des mêmes entrées. Cette
+    fonction est donc le seul chemin de retour, et elle ne complète aucune
+    valeur absente : ce qui n'a pas été gelé n'est pas inventé.
+    """
+    def _lits(cle: str) -> tuple[BarRow, ...]:
+        return tuple(
+            BarRow(count=int(r["count"]), diameter=float(r["diameter"]),
+                   mark=str(r.get("mark") or ""))
+            for r in (donnees.get(cle) or ()))
+
+    return BeamSectionSpec(
+        b=float(donnees["b"]),
+        h=float(donnees["h"]),
+        cover=float(donnees["cover"]),
+        link_diameter=float(donnees["link_diameter"]),
+        bottom=_lits("bottom"),
+        top=_lits("top"),
+        link_spacing=(None if donnees.get("link_spacing") is None
+                      else float(donnees["link_spacing"])),
+        link_mark=str(donnees.get("link_mark") or "C1"),
+        plot_scale=float(donnees.get("plot_scale") or 20.0),
+        element=str(donnees.get("element") or ""),
+        concrete_grade=str(donnees.get("concrete_grade") or ""),
+        steel_grade=str(donnees.get("steel_grade") or ""),
+        exposure_class=str(donnees.get("exposure_class") or ""),
+    )
