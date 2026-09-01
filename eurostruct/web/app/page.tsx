@@ -1502,6 +1502,21 @@ const ETATS: Record<string, string> = {
   final: "émis",
 };
 
+/**
+ * CE QU'EST CHAQUE PIÈCE, EN TOUTES LETTRES.
+ *
+ * Le nom de fichier ne suffit pas à distinguer la note qu'un ingénieur a
+ * attestée du document émis qui porte cette attestation : rangés côte à côte,
+ * ce sont deux PDF. Or c'est le second qu'on transmet, et le premier qui fait
+ * foi. Les nommer différemment est la seule façon de ne pas s'y tromper.
+ */
+const NATURES: Record<string, string> = {
+  calculation_note_html: "Note de calcul (HTML)",
+  calculation_note_pdf: "Note de calcul (PDF)",
+  issued_calculation_note_pdf: "PDF émis avec attestation",
+  rebar_drawing_dxf: "Plan de ferraillage (DXF)",
+};
+
 function Livrables({ projet, revision, surChangement }: {
   projet: Projet;
   revision: number;
@@ -1663,13 +1678,15 @@ function Livrables({ projet, revision, surChangement }: {
         <table id="table-livrables">
           <thead>
             <tr>
-              <th>Document</th><th>État</th><th>Indice</th>
+              <th>Nature</th><th>Document</th><th>État</th><th>Indice</th>
               <th>Filigrane</th><th>Validé par</th><th></th>
             </tr>
           </thead>
           <tbody>
             {lignes.map((d) => (
-              <tr key={d.deliverable_id} data-livrable={d.deliverable_id}>
+              <tr key={d.deliverable_id} data-livrable={d.deliverable_id}
+                  data-nature={d.kind}>
+                <td>{NATURES[d.kind] ?? d.kind}</td>
                 <td>{d.filename}</td>
                 <td data-etat={d.state}>{ETATS[d.state] ?? d.state}</td>
                 <td>{d.revision}</td>
@@ -1697,12 +1714,28 @@ function Livrables({ projet, revision, surChangement }: {
                       Soumettre à la relecture
                     </button>
                   )}
+                  {/* ÉMETTRE DIT CE QUE CELA PRODUIT. Pour une note en PDF,
+                      le geste ne se contente pas de changer un état: il écrit
+                      un SECOND document, immuable, qui porte l'attestation. Un
+                      bouton nommé « Émettre » tout court laisserait découvrir
+                      ce fichier après coup. */}
                   {d.state === "validated" && validateur && (
                     <button type="button" disabled={enCours}
+                            title={d.kind === "calculation_note_pdf"
+                              ? "Met la note en circulation ET produit le PDF émis qui porte l'attestation. L'original n'est pas modifié."
+                              : "Met la pièce en circulation. Seule une note en PDF donne lieu à un document attesté."}
                             onClick={() => agir(() => emettreLivrable(
                               auth.porteur, projet.project_id, d.deliverable_id))}>
-                      Émettre
+                      {d.kind === "calculation_note_pdf"
+                        ? "Émettre et attester" : "Émettre"}
                     </button>
+                  )}
+                  {/* CE QUI EST FERMÉ SE DIT, il ne disparaît pas. */}
+                  {d.state === "validated" && !validateur && (
+                    <span className="aide">
+                      L&apos;émission revient au rôle{" "}
+                      <strong>validating_engineer</strong>.
+                    </span>
                   )}
                   {d.state === "final" && redacteur && (
                     <button type="button" disabled={enCours}
@@ -1747,6 +1780,48 @@ function Livrables({ projet, revision, surChangement }: {
               <dt>Réserves du validateur</dt><dd>{ouvert.reservations}</dd>
             </>)}
           </dl>
+
+          {/* LES PIÈCES DU DOSSIER, PRÉSENTÉES SÉPARÉMENT.
+              Après l'émission, quatre choses existent pour le même calcul et
+              ne veulent pas dire la même chose : la note que l'ingénieur a
+              relue, le document émis qui porte son attestation, le plan — que
+              cette attestation NE couvre PAS — et le dossier de revue qui
+              énumère le tout. Les ranger dans une seule liste de fichiers
+              laisserait au lecteur le soin de deviner lequel transmettre. */}
+          <strong>Pièces du dossier de ce calcul</strong>
+          <ul id="pieces-du-dossier">
+            {(lignes ?? [])
+              .filter((d) => d.calculation_id === ouvert.calculation_id)
+              .map((d) => (
+                <li key={d.deliverable_id} data-piece={d.kind}>
+                  <strong>{NATURES[d.kind] ?? d.kind}</strong>
+                  {" — "}{ETATS[d.state] ?? d.state}
+                  {d.derived_from_id ? " — dérivé de la note attestée" : ""}
+                  {" "}
+                  <button type="button"
+                          onClick={() => telecharger(d.deliverable_id)}>
+                    Télécharger
+                  </button>
+                </li>
+              ))}
+            <li data-piece="review-bundle">
+              <strong>Dossier de revue</strong>
+              {" — l'archive du document, de son manifeste et de l'inventaire "}
+              {"de ce qui existe pour ce calcul "}
+              <button type="button"
+                      onClick={() => dossier(ouvert.deliverable_id)}>
+                Télécharger
+              </button>
+            </li>
+          </ul>
+          {ouvert.state === "final" && (
+            <p className="aide" id="portee-attestation">
+              L&apos;attestation porte sur la <strong>note de calcul</strong>{" "}
+              identifiée ci-dessus, et sur elle seule. Le plan de ferraillage
+              n&apos;est pas couvert par elle : le manifeste du dossier de revue
+              le dit explicitement, dans <code>does_not_cover</code>.
+            </p>
+          )}
 
           <strong>Historique</strong>
           <ol id="historique-livrable">
