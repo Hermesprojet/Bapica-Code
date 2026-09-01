@@ -41,7 +41,8 @@ from typing import Any
 
 from .pdf import Bloc, Champs, Paragraphe, Tableau, Titre, composer_pdf
 
-__all__ = ["MEDIA_TYPE", "MEDIA_TYPE_PDF", "rendre_note", "rendre_note_pdf"]
+__all__ = ["MEDIA_TYPE", "MEDIA_TYPE_DXF", "MEDIA_TYPE_PDF",
+           "rendre_note", "rendre_note_pdf"]
 
 #: `charset` DANS LE TYPE, PAS SEULEMENT DANS LE `<meta>`. Un navigateur qui
 #: ouvre le fichier depuis le disque lit le `<meta>`; un client qui le reçoit
@@ -52,6 +53,10 @@ MEDIA_TYPE = "text/html; charset=utf-8"
 #: caracteres sur un flux binaire fait deviner a certains clients qu'il s'agit
 #: de texte — puis reencoder les octets qu'ils servent.
 MEDIA_TYPE_PDF = "application/pdf"
+#: LE TYPE DU DXF. `image/vnd.dxf` est celui qu'enregistre l'IANA; c'est aussi
+#: celui que l'endpoint sans etat servait deja, et deux types pour un meme
+#: format feraient diverger ce que la ligne annonce de ce que la route sert.
+MEDIA_TYPE_DXF = "image/vnd.dxf"
 
 #: LA FEUILLE DE STYLE EST EMBARQUEE, ET MINIMALE.
 #:

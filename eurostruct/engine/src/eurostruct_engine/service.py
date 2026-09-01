@@ -199,6 +199,7 @@ def render_beam_section(
         exposure_class=req.exposure_class,
         index=req.index,
         date=req.date,
+        mention=req.mention,
     )
     doc, schedule = build_beam_section(spec)
     return doc, [RebarScheduleRowDTO.model_validate(r.to_dict()) for r in schedule]
@@ -218,6 +219,7 @@ def provided_area(rows: list[BarRowDTO]) -> Quantity:
 
 def verify_and_render_beam_section(
     req: Ec2BeamSectionRequest,
+    provider: Any = None,
 ) -> tuple[Any, list[RebarScheduleRowDTO], Ec2BeamFlexureResponse]:
     """Verify the chosen bars, then draw them. Never one without the other.
 
@@ -233,7 +235,11 @@ def verify_and_render_beam_section(
     calcul = req.calculation.model_copy(
         update={"A_s_provided": of_quantity(aire, "mm**2")}
     )
-    reponse = run_ec2_beam_flexure(calcul)
+    # LE PROVIDER VOYAGE JUSQU'ICI, ET IL LE FAUT. La verification du
+    # ferraillage rejoue le calcul: sans source de confirmation, le mode
+    # strict refuse — ce qui est le bon comportement, mais rendrait tout
+    # dessin impossible sur un calcul strict pourtant abouti.
+    reponse = run_ec2_beam_flexure(calcul, provider=provider)
 
     rapport = reponse.verification
     if not rapport.passed:
@@ -267,6 +273,7 @@ def verify_and_render_beam_section(
         exposure_class=req.exposure_class,
         index=req.index,
         date=req.date,
+        mention=req.mention,
     )
     doc, schedule = render_beam_section(dessin)
     return doc, schedule, reponse

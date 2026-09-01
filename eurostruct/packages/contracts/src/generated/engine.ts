@@ -150,6 +150,8 @@ export interface BeamSectionDrawingRequest {
   link_diameter: number;
   link_mark?: string;
   link_spacing?: number | null;
+  /** Mention supplementaire portee au cartouche, par exemple « PROJET — NON SIGNABLE » quand des parametres nationaux non confirmes ont pu servir. Distincte du filigrane « NON VALIDE », qui parle de la validation par un ingenieur et non du referentiel employe. */
+  mention?: string;
   plot_scale?: number;
   project?: string;
   steel_grade?: string;
@@ -332,6 +334,8 @@ export interface Ec2BeamSectionRequest {
   date?: string;
   exposure_class?: string;
   index?: string;
+  /** Mention supplementaire portee au cartouche du dessin. */
+  mention?: string;
   plot_scale?: number;
   reinforcement: ReinforcementChoiceDTO;
 }
@@ -455,8 +459,10 @@ export interface Livrable {
 export interface LivrableCreation {
   /** Le calcul enregistré dont ce livrable est tiré. Il doit appartenir au projet du chemin, avoir abouti, et porter une identité d'exécution vérifiable. */
   calculation_id: string;
-  /** La forme du fichier produit. « html » est un document autonome qui s'ouvre hors ligne ; « pdf » est composé sans aucune date interne, afin que deux compositions du même calcul portent la même empreinte. */
-  format?: "html" | "pdf";
+  /** La forme du fichier produit. « html » est un document autonome qui s'ouvre hors ligne ; « pdf » est composé sans aucune date interne, afin que deux compositions du même calcul portent la même empreinte ; « dxf » est le plan de ferraillage, en R2018, ouvrable par tout logiciel de CAO — aucune licence AutoCAD n'est requise. */
+  format?: "html" | "pdf" | "dxf";
+  /** Obligatoire pour « dxf », refusé partout ailleurs. C'est le CHOIX DE L'INGÉNIEUR — nombre de barres, diamètre, enrobage, cadres — et c'est la seule chose que le client apporte au dessin : la section, les matériaux, l'effort et le référentiel sont relus dans le calcul gelé. `A_s_provided` n'y figure pas : le moteur le dérive des barres, si bien qu'aucun appelant ne peut annoncer une aire que son ferraillage n'a pas. */
+  reinforcement?: ReinforcementChoiceDTO | null;
 }
 
 /** Un livrable, son contexte figé, son attestation et son histoire. L'HISTORIQUE VIENT DU MÊME APPEL QUE L'ÉTAT. Deux appels séparés pourraient tomber de part et d'autre d'une transition et montrer un état qui ne correspond pas à son journal. */

@@ -210,6 +210,9 @@ class Ec2BeamSectionRequest(Strict):
     exposure_class: str = ""
     index: str = "A"
     date: str = ""
+    mention: str = Field(
+        default="",
+        description="Mention supplementaire portee au cartouche du dessin.")
 
 
 class BeamSectionDrawingRequest(Strict):
@@ -237,6 +240,13 @@ class BeamSectionDrawingRequest(Strict):
     exposure_class: str = ""
     index: str = "A"
     date: str = ""
+    mention: str = Field(
+        default="",
+        description="Mention supplementaire portee au cartouche, par exemple "
+                    "« PROJET — NON SIGNABLE » quand des parametres nationaux "
+                    "non confirmes ont pu servir. Distincte du filigrane "
+                    "« NON VALIDE », qui parle de la validation par un "
+                    "ingenieur et non du referentiel employe.")
 
 
 class RebarScheduleRowDTO(Strict):

@@ -372,6 +372,7 @@ export EUROSTRUCT_LIVRABLE_ORG_A="$ORG_A"
 export EUROSTRUCT_LIVRABLE_ORG_B="$ORG_B"
 
 python3 -m pytest "$RACINE/api/tests/test_livrables.py" \
+        "$RACINE/api/tests/test_livrable_dxf.py" \
         "$RACINE/api/tests/test_autorisations.py" \
         -p no:cacheprovider --no-header
 CODE=$?

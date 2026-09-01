@@ -31,7 +31,11 @@ from typing import Any, Literal
 from pydantic import Field
 
 from .common import CountryCode, DesignSituationDTO, QuantityDTO, Strict
-from .ec2_beam import MaterialsDTO, RectangularSectionDTO
+from .ec2_beam import (
+    MaterialsDTO,
+    RectangularSectionDTO,
+    ReinforcementChoiceDTO,
+)
 
 __all__ = [
     "AttestationDemande",
@@ -314,12 +318,24 @@ class LivrableCreation(Strict):
         description="Le calcul enregistré dont ce livrable est tiré. Il doit "
                     "appartenir au projet du chemin, avoir abouti, et porter "
                     "une identité d'exécution vérifiable.")
-    format: Literal["html", "pdf"] = Field(
+    format: Literal["html", "pdf", "dxf"] = Field(
         default="html",
         description="La forme du fichier produit. « html » est un document "
                     "autonome qui s'ouvre hors ligne ; « pdf » est composé "
                     "sans aucune date interne, afin que deux compositions du "
-                    "même calcul portent la même empreinte.")
+                    "même calcul portent la même empreinte ; « dxf » est le "
+                    "plan de ferraillage, en R2018, ouvrable par tout logiciel "
+                    "de CAO — aucune licence AutoCAD n'est requise.")
+    reinforcement: ReinforcementChoiceDTO | None = Field(
+        default=None,
+        description="Obligatoire pour « dxf », refusé partout ailleurs. C'est "
+                    "le CHOIX DE L'INGÉNIEUR — nombre de barres, diamètre, "
+                    "enrobage, cadres — et c'est la seule chose que le client "
+                    "apporte au dessin : la section, les matériaux, l'effort "
+                    "et le référentiel sont relus dans le calcul gelé. "
+                    "`A_s_provided` n'y figure pas : le moteur le dérive des "
+                    "barres, si bien qu'aucun appelant ne peut annoncer une "
+                    "aire que son ferraillage n'a pas.")
 
 
 class RetourAuBrouillon(Strict):

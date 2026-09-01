@@ -41,8 +41,15 @@ import json
 import zipfile
 from typing import Any
 
+from eurostruct_engine.exceptions import ReinforcementNotVerified
 from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
 from eurostruct_engine.ndp.postgres_provider import AuthentificationRequise
+from eurostruct_engine.schemas.ec2_beam import (
+    Ec2BeamFlexureRequest,
+    Ec2BeamSectionRequest,
+)
+from eurostruct_engine.service import verify_and_render_beam_section
+
 from eurostruct_engine.schemas.atelier import (
     AttestationDemande,
     ListeLivrables,
@@ -54,9 +61,10 @@ from eurostruct_engine.schemas.atelier import (
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 
-from ..dependances import ouvrir_atelier
+from ..dependances import ouvrir_atelier, provider_de_lecture
 from ..note import (
     MEDIA_TYPE,
+    MEDIA_TYPE_DXF,
     MEDIA_TYPE_PDF,
     rendre_note,
     rendre_note_pdf,
@@ -92,6 +100,7 @@ GENRE = "calculation_note_html"
 _FORMES: dict[str, tuple[str, str, str]] = {
     "html": (GENRE, MEDIA_TYPE, "html"),
     "pdf": ("calculation_note_pdf", MEDIA_TYPE_PDF, "pdf"),
+    "dxf": ("rebar_drawing_dxf", MEDIA_TYPE_DXF, "dxf"),
 }
 
 #: LES EN-TETES QUI FERMENT LE DOCUMENT SERVI.
@@ -194,8 +203,9 @@ def _exiger_capacite(projet: dict[str, Any], capacite: str) -> None:
 
 
 def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
-                        calculation_id: str,
-                        forme: str = "html") -> tuple[bytes, str | None]:
+                        calculation_id: str, forme: str = "html",
+                        ferraillage: Any = None,
+                        lecture: Any = None) -> tuple[bytes, str | None]:
     """Produit les octets du livrable **depuis les données gelées**.
 
     LE MOTEUR N'EST PAS RELANCÉ. Le calcul est relu tel qu'il a été écrit —
@@ -215,6 +225,10 @@ def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
         )
 
     notice, mention = _mentions(bool(calcul.get("strict_ndp")))
+
+    if forme == "dxf":
+        return _octets_du_dessin(calcul, ferraillage, mention, lecture), mention
+
     # LES DEUX FORMES DISENT LA MEME CHOSE, ET C'EST LA REGLE. Meme calcul
     # relu, meme notice, meme mention: seule la forme du fichier change. Un
     # PDF qui affirmerait autre chose que le HTML du meme calcul serait un
@@ -224,6 +238,68 @@ def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
                                mention=mention), mention
     document = rendre_note(projet, calcul, notice=notice, mention=mention)
     return document.encode("utf-8"), mention
+
+
+def _octets_du_dessin(calcul: dict[str, Any], ferraillage: Any,
+                      mention: str | None, lecture: Any = None) -> bytes:
+    """Le DXF, **verifie puis dessine**, depuis la requete GELEE du calcul.
+
+    CE QUE LE NAVIGATEUR ENVOIE, ET CE QU'IL N'ENVOIE PAS
+    ------------------------------------------------------
+    Il envoie le CHOIX DES BARRES — nombre, diametre, enrobage, cadres. C'est
+    une decision d'ingenieur, pas une valeur derivable: `As_required` dit
+    combien d'acier il faut, jamais comment le disposer.
+
+    Il n'envoie ni la section, ni les materiaux, ni l'effort, ni le
+    referentiel: les quatre sont relus dans `calcul["request"]`, c'est-a-dire
+    la requete exacte que le moteur a recue et que la base a gelee. Un appelant
+    ne peut donc pas faire dessiner une poutre qui n'a pas ete verifiee.
+
+    C'EST LE DEFAUT DU 30/08, ET IL NE DOIT PAS REPARAITRE PAR UNE AUTRE PORTE.
+    L'ecran envoyait alors une section codee en dur a l'endpoint de dessin, qui
+    la dessinait correctement: l'ingenieur recevait le plan d'une poutre jamais
+    verifiee, portant la mention obligatoire et son propre repere.
+
+    RIEN N'EST PRODUIT SI LE FERRAILLAGE NE VERIFIE PAS. `verify_and_render_
+    beam_section` leve avant de dessiner, et cette fonction est appelee AVANT
+    tout depot: ni ligne, ni octet.
+
+    AUCUNE DATE N'ENTRE DANS LE FICHIER. `date` reste vide — le cartouche
+    imprime alors un tiret — parce que la cle du livrable derive de son
+    contenu: un horodatage ferait deux objets pour un seul et meme dessin.
+    """
+    if ferraillage is None:
+        raise ConfirmationDomainError(
+            "aucun ferraillage n'a ete fourni: un plan de ferraillage sans "
+            "barres ne represente rien. Le nombre et le diametre des barres "
+            "sont une decision d'ingenieur, et le produit ne la prend pas a "
+            "sa place."
+        )
+
+    gelee = calcul.get("request") or {}
+    try:
+        requete = Ec2BeamFlexureRequest(**gelee)
+    except Exception as cause:  # noqa: BLE001 — un calcul illisible est un refus
+        raise ConfirmationDomainError(
+            "la requete gelee de ce calcul n'est pas relisible: aucun dessin "
+            "ne peut en etre tire sans risquer de representer autre chose."
+        ) from cause
+
+    try:
+        document, _tableau, _reponse = verify_and_render_beam_section(
+            Ec2BeamSectionRequest(
+                calculation=requete,
+                reinforcement=ferraillage,
+                mention=mention or "",
+            ),
+            provider=lecture.provider if lecture else None,
+        )
+    except ReinforcementNotVerified as cause:
+        raise ConfirmationDomainError(str(cause)) from cause
+
+    tampon = io.StringIO()
+    document.write(tampon)
+    return tampon.getvalue().encode("utf-8")
 
 
 def _nom_sur(nom: str) -> str:
@@ -254,12 +330,16 @@ def _nom_de_fichier(projet: dict[str, Any], calcul_id: str,
     # L'EXTENSION SUIT LA FORME REELLEMENT PRODUITE. Un `.html` servi avec
     # `application/pdf` ferait enregistrer au navigateur un fichier que son
     # systeme ouvrirait avec le mauvais programme.
-    suffixe = "pdf" if forme == "pdf" else "html"
+    #
+    # ELLE EST LUE DANS `_FORMES`, ET N'EST PAS REECRITE ICI. La version
+    # precedente enumerait `pdf` puis retombait sur `html` : ajouter le DXF a
+    # `_FORMES` suffisait alors a faire servir un dessin nomme `.html`.
+    suffixe = _FORMES.get(forme, _FORMES["html"])[2]
     return f"note-{reference or 'projet'}-{court or 'calcul'}.{suffixe}"
 
 
 def _creer(ouvert: Any, corps: LivrableCreation, project_id: str,
-           supersedes_id: str | None) -> LivrableDetail:
+           supersedes_id: str | None, lecture: Any = None) -> LivrableDetail:
     """Le geste complet : produire, déposer, relire, vérifier, enregistrer.
 
     LA RELECTURE AVANT ENREGISTREMENT EST LE CŒUR DE CETTE FONCTION. Elle
@@ -322,7 +402,8 @@ def _creer(ouvert: Any, corps: LivrableCreation, project_id: str,
 
     try:
         octets, filigrane = _octets_du_document(
-            ouvert, jeton, projet, corps.calculation_id, forme)
+            ouvert, jeton, projet, corps.calculation_id, forme,
+            corps.reinforcement, lecture)
     except (AuthentificationRequise, ConfirmationDomainError) as cause:
         ouvert.fermer()
         raise _refus(cause) from cause
@@ -368,7 +449,8 @@ def _creer(ouvert: Any, corps: LivrableCreation, project_id: str,
 @routeur.post("/{project_id}/deliverables", response_model=LivrableDetail,
               status_code=201)
 def creer(project_id: str, corps: LivrableCreation,
-          ouvert: Any = Depends(ouvrir_atelier)) -> LivrableDetail:
+          ouvert: Any = Depends(ouvrir_atelier),
+          lecture: Any = Depends(provider_de_lecture)) -> LivrableDetail:
     """Crée un brouillon depuis un calcul enregistré.
 
     LE DOCUMENT EST COMPOSÉ ICI, PAS DANS LE NAVIGATEUR. Le client n'envoie
@@ -376,13 +458,15 @@ def creer(project_id: str, corps: LivrableCreation,
     taille, contexte normatif, version du moteur, build, identité d'exécution
     — est produit ou dérivé côté serveur.
     """
-    return _creer(ouvert, corps, project_id, supersedes_id=None)
+    return _creer(ouvert, corps, project_id, supersedes_id=None,
+                  lecture=lecture)
 
 
 @routeur.post("/{project_id}/deliverables/{deliverable_id}/revision",
               response_model=LivrableDetail, status_code=201)
 def reviser(project_id: str, deliverable_id: str, corps: LivrableCreation,
-            ouvert: Any = Depends(ouvrir_atelier)) -> LivrableDetail:
+            ouvert: Any = Depends(ouvrir_atelier),
+            lecture: Any = Depends(provider_de_lecture)) -> LivrableDetail:
     """Émet l'indice suivant, qui remplace celui-ci.
 
     C'EST LE SEUL MOYEN DE CORRIGER APRÈS ATTESTATION. Un livrable validé ou
@@ -390,7 +474,8 @@ def reviser(project_id: str, deliverable_id: str, corps: LivrableCreation,
     qu'une attestation garde un sens. Corriger, c'est publier l'indice
     suivant, qui référence celui qu'il remplace.
     """
-    return _creer(ouvert, corps, project_id, supersedes_id=deliverable_id)
+    return _creer(ouvert, corps, project_id, supersedes_id=deliverable_id,
+                  lecture=lecture)
 
 
 @routeur.get("/{project_id}/deliverables", response_model=ListeLivrables)

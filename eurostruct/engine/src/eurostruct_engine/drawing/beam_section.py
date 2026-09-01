@@ -45,6 +45,40 @@ __all__ = [
     "LEGAL_NOTICE",
 ]
 
+#: DEUX DESSINS DU MEME CALCUL DOIVENT DONNER LES MEMES OCTETS.
+#:
+#: L'adressage par contenu l'exige, et rien d'autre ne le garantit : le chemin
+#: de stockage d'un livrable derive de son SHA-256, si bien qu'un fichier dont
+#: les octets bougent d'une execution a l'autre se depose deux fois, sous deux
+#: chemins, et aucune relecture ne peut plus prouver qu'il s'agit du meme
+#: dessin. C'est la meme lecon que la compression zlib du PDF.
+#:
+#: Sans ce reglage, ``ezdxf`` estampille a l'ecriture quatre valeurs volatiles.
+#: Mesure faite sur deux rendus successifs d'une meme section (tailles egales,
+#: 63 994 octets, huit lignes differentes) :
+#:
+#:     -{519CC0F6-828B-4982-9AC4-6C13FD7FBCE4}   $FINGERPRINTGUID
+#:     +{FDA97C7E-8F29-489D-8FBA-885ECF5F7232}
+#:     -{7E13FDF5-4415-4F9A-83B7-EAAC59418340}   $VERSIONGUID
+#:     +{DB5681C2-676A-4857-B418-D9EF7CD0E489}
+#:     -1.4.4 @ 2026-09-01T07:14:25.870408+00:00 marqueur ezdxf
+#:     +1.4.4 @ 2026-09-01T07:14:25.895330+00:00
+#:
+#: plus les dates julienne ``$TDCREATE`` / ``$TDUPDATE``.
+#:
+#: Le nom de l'option dit « for testing » parce que c'est l'usage qu'en fait
+#: ``ezdxf`` ; son effet, lui, est exactement celui qu'il nous faut : des
+#: metadonnees fixes. Elle est posee au chargement du module et **jamais
+#: remise a False**, de sorte qu'aucune execution concurrente ne puisse
+#: tomber dans une fenetre ou elle serait desactivee. Elle vaut pour la
+#: creation du document autant que pour son ecriture — la date de creation
+#: est gravee des ``ezdxf.new()``.
+#:
+#: CE QUE CELA NE FAIT PAS PERDRE : la date reelle de production et l'identite
+#: du moteur ne vivent pas dans l'en-tete DXF mais dans la ligne de livrable
+#: (``created_at``, ``engine_build``), qui est la seule source opposable.
+ezdxf.options.write_fixed_meta_data_for_testing = True
+
 DIMSTYLE: Final = "EUROSTRUCT"
 
 #: Mandatory notice — cahier des charges §9, on every page of every deliverable.
@@ -113,6 +147,13 @@ class BeamSectionSpec:
     exposure_class: str = ""
     index: str = "A"
     date: str = ""
+    #: Additional notice carried by the title block — for instance
+    #: « PROJET — NON SIGNABLE » when unconfirmed national parameters may have
+    #: been used. DISTINCT from the draft watermark: that one says nobody has
+    #: validated the sheet, this one says the numbers themselves rest on
+    #: parameters no official source has confirmed. A drawing that carried only
+    #: the first would read as « just needs a signature », which would be false.
+    mention: str = ""
     #: Language of the notices printed on the sheet (§11: FR/NL/EN/ES/DE).
     language: Language = Language.FR
     #: False until an authorised engineer has validated the calculation. An
@@ -433,6 +474,16 @@ def _draw_cartouche(msp: Any, spec: BeamSectionSpec, txt_h: float) -> None:
 
     # Wrapped here rather than by a text engine: a DXF has no reflow, and the
     # notice must be legible whatever opens the file.
+    # LA MENTION AVANT LA NOTICE, ET EN PLUS GRAS. Elle dit que les nombres
+    # eux-memes reposent sur des parametres non confirmes; la notice dit qu'un
+    # ingenieur doit relire. Un lecteur qui ne lirait qu'une ligne doit lire
+    # celle-la.
+    if spec.mention:
+        y -= txt_h * 0.4
+        for chunk in _wrap(spec.mention, 64):
+            _text(msp, chunk, x0 + pad, y, txt_h * 1.1, layer=L_CARTOUCHE)
+            y -= txt_h * 1.5
+
     y -= txt_h * 0.4
     for chunk in _wrap(MANDATORY_NOTICE[spec.language], 78):
         _text(msp, chunk, x0 + pad, y, txt_h * 0.85, layer=L_CARTOUCHE)
