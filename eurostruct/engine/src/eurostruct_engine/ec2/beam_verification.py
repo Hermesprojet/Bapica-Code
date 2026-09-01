@@ -865,10 +865,26 @@ def _tente(cle: str, appel) -> SectionOutcome:
     try:
         return _depuis_rapport(cle, appel())
     except NationalAnnexIncomplete as exc:
+        # LA RAISON EST LE CODE TYPE DU REGISTRE, PAS LA PREMIERE LIGNE DU
+        # MESSAGE. Mesure du 01/09: cette premiere ligne dit « Calcul
+        # impossible pour FR au ... : 1 parametre bloquant » — vrai, et muet
+        # sur le POURQUOI. Or c'est le pourquoi qui decide de ce qu'un
+        # ingenieur doit faire: `not_representable` ne se resout pas par une
+        # confirmation.
         return SectionOutcome(
             key=cle, title=titre, basis=SECTION_BASIS[cle],
             status=STATUT_NON_EVALUE, utilisation=None,
-            reason=str(exc).strip().splitlines()[0])
+            reason=_raison_typee(exc))
+
+
+def _raison_typee(exc: NationalAnnexIncomplete) -> str:
+    """Les codes de blocage du registre, joints — jamais un texte libre."""
+    rapport = getattr(exc, "report", None)
+    codes = sorted({b.reason for b in getattr(rapport, "blocking", ())})
+    if not codes:
+        return str(exc).strip().splitlines()[0]
+    cles = sorted({b.key for b in rapport.blocking})
+    return f"{','.join(codes)}: {', '.join(cles)}"
 
 
 def _section_non_evaluee(cle: str, raison: str) -> SectionOutcome:

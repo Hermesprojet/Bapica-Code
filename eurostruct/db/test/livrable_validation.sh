@@ -269,6 +269,23 @@ values ('BE', 'EN 1992', '1-1', 'FICTIF NBN EN 1992-1-1 ANB',
         'FICTIF — edition de decor', date '2010-08-01',
         'FICTIF — organisme de decor')
 on conflict do nothing;
+
+-- L'ANNEXE FRANCAISE, POUR CONSTATER — PAS POUR CONTOURNER.
+--
+-- La France est le seul pays du referentiel livre dont un parametre est
+-- `not_representable`: son NA rend k3 fonction de l'enrobage, une formule que
+-- le modele scalaire ne sait pas porter. Sans un projet francais, ce fait ne
+-- peut pas etre eprouve a la frontiere HTTP — et c'est precisement ce que la
+-- verticale doit dire honnetement a l'utilisateur.
+--
+-- LE DECOR POSE LE DOCUMENT, JAMAIS SES VALEURS: aucun parametre n'est insere,
+-- aucune valeur normative n'est inventee. Le moteur lit son propre registre.
+insert into national_annexes (country_code, standard_family, part, reference,
+                              edition, effective_from, source_official)
+values ('FR', 'EN 1992', '1-1', 'FICTIF NF EN 1992-1-1/NA',
+        'FICTIF — edition de decor', date '2007-03-01',
+        'FICTIF — organisme de decor')
+on conflict do nothing;
 SQL
 )"
 if grep -q "ERROR" <<<"$DECOR_SORTIE"; then
@@ -285,11 +302,12 @@ NB_MEM=$(q "select count(*) from organization_members")
 NB_ACT=$(q "select count(*) from organization_members where is_active")
 NB_NOM=$(q "select count(*) from organization_members where display_name is not null")
 NB_ANX=$(q "select count(*) from national_annexes where country_code = 'BE'")
+NB_ANX_FR=$(q "select count(*) from national_annexes where country_code = 'FR'")
 if [[ "$NB_ORG" != "2" || "$NB_MEM" != "6" || "$NB_ACT" != "5"
-      || "$NB_NOM" != "5" || "$NB_ANX" == "0" ]]; then
+      || "$NB_NOM" != "5" || "$NB_ANX" == "0" || "$NB_ANX_FR" == "0" ]]; then
   echo "      ECHEC: le decor metier n'est pas pose." >&2
   echo "             org=$NB_ORG membres=$NB_MEM actifs=$NB_ACT" >&2
-  echo "             nommes=$NB_NOM annexes_BE=$NB_ANX" >&2
+  echo "             nommes=$NB_NOM annexes_BE=$NB_ANX annexes_FR=$NB_ANX_FR" >&2
   exit 1
 fi
 
@@ -377,6 +395,7 @@ python3 -m pytest "$RACINE/api/tests/test_livrables.py" \
         "$RACINE/api/tests/test_apercu_svg.py" \
         "$RACINE/api/tests/test_dossier_instantane.py" \
         "$RACINE/api/tests/test_document_emis.py" \
+        "$RACINE/api/tests/test_verification_complete.py" \
         "$RACINE/api/tests/test_autorisations.py" \
         -p no:cacheprovider --no-header
 CODE=$?

@@ -49,6 +49,10 @@ from eurostruct_engine.schemas.atelier import (
     ProjetCreation,
 )
 from eurostruct_engine.schemas.ec2_beam import Ec2BeamFlexureRequest
+from eurostruct_engine.schemas.ec2_verification import (
+    Ec2BeamVerificationRequest,
+    Ec2BeamVerificationResponse,
+)
 from eurostruct_engine.service import error_of, run_ec2_beam_flexure
 from fastapi import APIRouter, Depends, HTTPException, Response
 
@@ -592,3 +596,421 @@ def _en_calcul_enregistre(relu: dict[str, Any], strict: bool) -> CalculEnregistr
     if not strict:
         charge["mention"] = MENTION_NON_SIGNABLE
     return CalculEnregistre(**charge)
+
+
+# =====================================================================
+# LA VÉRIFICATION COMPLÈTE — les cinq sections, persistées
+# =====================================================================
+#
+# ELLE NE REMPLACE PAS LA FLEXION SIMPLE, ET C'EST DÉLIBÉRÉ. La route
+# `/calculations/ec2/beam-flexure` garde son contrat et ses résultats
+# bit-à-bit : un client qui ne vérifie qu'une flexion n'a pas à fournir des
+# étriers, un fluage et une classe d'exposition qu'il n'a pas.
+#
+# CE QUE CETTE ROUTE AJOUTE À LA PRÉCÉDENTE
+# -------------------------------------------
+# Un PRÉFLIGHT qui parle AVANT le moteur. En mode strict, il réunit les
+# bloquants des cinq modules en une seule réponse et refuse sans rien écrire.
+# Échouer cinq fois de suite n'apprend rien à personne ; écrire une ligne pour
+# un calcul qu'on n'a pas tenté serait pire.
+
+
+def _quantite(dto: Any) -> Any:
+    """Un ``QuantityDTO`` en grandeur du moteur."""
+    from eurostruct_engine.units import Q_
+
+    return Q_(dto.value, dto.unit)
+
+
+def _entree_moteur(corps: Any) -> Any:
+    """Le corps HTTP en entrée gelée du moteur.
+
+    AUCUNE GRANDEUR DÉRIVÉE N'EST CONSTRUITE ICI. `A_s`, `A_sw` et l'entraxe
+    sont calculés par l'orchestrateur depuis les barres, les branches et le
+    modèle géométrique partagé. Les fabriquer ici en ferait une seconde
+    source.
+    """
+    from eurostruct_engine.ec2 import ExposureClass, StructuralSystem
+    from eurostruct_engine.ec2.beam_verification import (
+        BeamGeometry,
+        BeamVerificationInput,
+        LongitudinalBars,
+        TransverseLinks,
+    )
+
+    g = corps.geometry
+    return BeamVerificationInput(
+        element=corps.element,
+        geometry=BeamGeometry(
+            b=_quantite(g.b), h=_quantite(g.h), d=_quantite(g.d),
+            l_eff=_quantite(g.l_eff)),
+        concrete_grade=corps.materials.concrete_grade,
+        steel_grade=corps.materials.steel_grade,
+        M_Ed=_quantite(corps.M_Ed), V_Ed=_quantite(corps.V_Ed),
+        M_char=_quantite(corps.M_char), M_qp=_quantite(corps.M_qp),
+        phi_creep=corps.phi_creep,
+        exposure_class=ExposureClass(corps.exposure_class),
+        system=StructuralSystem(corps.structural_system),
+        supports_brittle_partitions=corps.supports_brittle_partitions,
+        bars=LongitudinalBars(count=corps.bars.count,
+                              diameter=_quantite(corps.bars.diameter)),
+        links=TransverseLinks(legs=corps.links.legs,
+                              diameter=_quantite(corps.links.diameter),
+                              spacing=_quantite(corps.links.spacing)),
+        cot_theta=corps.cot_theta,
+        cover=_quantite(corps.cover),
+        anchorage_available=_quantite(corps.anchorage_available),
+        bond_condition=corps.bond_condition,
+        b_eff_over_b_w=corps.b_eff_over_b_w,
+    )
+
+
+#: LA CORRESPONDANCE DES STATUTS, ET ELLE EST LE VERROU DE LA FINALISATION.
+#:
+#: `project_calculation_is_publishable` n'accepte que `succeeded`. Une étude
+#: rouge ou incomplète enregistrée « succeeded » deviendrait donc publiable —
+#: c'est exactement ce qu'il ne faut pas. Seul `passed` y a droit ; tout le
+#: reste se conserve pour diagnostic sous un statut qui ferme la porte.
+_STATUT_SQL = {"passed": "succeeded", "failed": "failed",
+               "incomplete": "failed"}
+
+#: LA TABLE `verifications` EST UN INDEX, PAS LA VERITE.
+#:
+#: Son enum `check_status` ne connait que trois valeurs — `pass`, `fail`,
+#: `not_applicable` — la ou une section en a quatre. La correspondance est donc
+#: NECESSAIREMENT plus grossiere que le resultat, et c'est acceptable a une
+#: condition: aucun etat non satisfait ne doit devenir `pass`.
+#:
+#: `additional_analysis_required` va donc a `not_applicable` et non a `fail`:
+#: la dispense de fleche non acquise ne dit rien sur la conformite de la
+#: poutre, et l'ecrire `fail` en base ferait lire « poutre non conforme » a
+#: toute requete SQL. `results.payload` porte, lui, le statut exact des quatre.
+_STATUT_CHECK_SQL = {
+    "passed": "pass",
+    "failed": "fail",
+    "additional_analysis_required": "not_applicable",
+    "not_evaluated": "not_applicable",
+}
+
+
+def _ligne_de_section(section: Any) -> dict[str, Any]:
+    """Une section, aplatie en ligne de la table `verifications`.
+
+    La table exige `standard` et `clause` NON NULS, et elle a raison: « quels
+    calculs ne passent pas, et sur quelle clause » doit rester une question
+    SQL. `basis` porte les deux — « EN 1992-1-1 §6.1 » — et se coupe au
+    premier « § ».
+
+    INTERDICTION N° 9: `utilisation` traverse telle quelle, sans arrondi. Une
+    section non evaluee n'en a pas; 0.0 est alors le seul remplissage possible
+    d'une colonne non nulle, et le STATUT `not_applicable` a cote empeche de le
+    lire comme « rien ne sollicite cette section ».
+    """
+    base = section.basis or ""
+    norme, _, clause = base.partition("§")
+    return {
+        "name": section.title,
+        "standard": norme.strip() or "EN 1992-1-1",
+        "clause": ("§" + clause).strip() if clause else base,
+        "equation": None,
+        "utilisation": float(section.utilisation or 0.0),
+        "status": _STATUT_CHECK_SQL[section.status],
+        "acting": "",
+        "resisting": "",
+        "detail": section.reason,
+        "remedy": section.remedy,
+    }
+
+
+def _reponse_de_verification(etude: Any, *, calculation_id: str,
+                             build: str, identite: str) -> Any:
+    from eurostruct_engine.schemas.common import QuantityDTO
+    from eurostruct_engine.schemas.ec2_verification import (
+        Ec2BeamVerificationResponse,
+        SectionOutcomeDTO,
+    )
+    from eurostruct_engine.units import fmt
+
+    largeur, unite = fmt(etude.bar_spacing).split(" ", 1)
+    return Ec2BeamVerificationResponse(
+        calculation_id=calculation_id,
+        element=etude.element,
+        status=etude.status,
+        sections=tuple(
+            SectionOutcomeDTO(
+                key=s.key, title=s.title, basis=s.basis, status=s.status,
+                utilisation=s.utilisation, remedy=s.remedy, reason=s.reason)
+            for s in etude.sections),
+        strict_ndp=etude.strict_ndp,
+        country=etude.country,
+        region=etude.region,
+        ndp_as_of=etude.ndp_as_of.isoformat(),
+        preflight_ready=etude.preflight_ready,
+        is_exploratory=etude.is_exploratory,
+        may_be_finalised=etude.may_be_finalised,
+        requires_additional_analysis=etude.requires_additional_analysis,
+        inputs_hash=etude.inputs_hash,
+        ndp_snapshot_id=etude.ndp_snapshot_id,
+        fingerprint=etude.fingerprint,
+        engine_version=etude.engine_version,
+        engine_build_sha=build,
+        execution_identity=identite,
+        max_utilisation=etude.max_utilisation,
+        bar_spacing=QuantityDTO(value=float(largeur.replace(",", ".")),
+                                unit=unite),
+        notice=MENTION_OBLIGATOIRE,
+        # LA MENTION SUIT L'ÉTUDE, PAS LE BOUTON. Une étude exploratoire la
+        # porte dans la réponse elle-même : un autre client qui en tire une
+        # note doit la reproduire.
+        mention=None if etude.may_be_finalised else MENTION_NON_SIGNABLE,
+        inputs=etude.inputs.to_dict(),
+    )
+
+
+@routeur.post("/{project_id}/beam-verifications",
+              response_model=Ec2BeamVerificationResponse, status_code=201)
+def verifier_poutre_completement(
+    project_id: str,
+    corps: Ec2BeamVerificationRequest,
+    ouvert: Any = Depends(ouvrir_atelier),
+    lecture: Any = Depends(provider_de_lecture),
+) -> Any:
+    """Les cinq vérifications, dans le référentiel du projet, puis enregistrées.
+
+    L'ORDRE EST LA GARANTIE, ET IL EST LE SUJET DE CETTE ROUTE
+
+    1. le **projet** d'abord, sous l'identité authentifiée : il porte le
+       référentiel, et le charger avant de calculer évite de faire tourner le
+       moteur pour un dossier qu'on n'a pas le droit de lire ;
+    2. l'**identité de build**, sans laquelle la persistance ne pourrait pas
+       dire quel code a produit la ligne ;
+    3. le **préflight**, en mode strict — et il parle AVANT le moteur. Il rend
+       les bloquants des CINQ modules en une seule réponse, et **rien n'est
+       écrit** : il n'y a pas de calcul à enregistrer, pas même un refus,
+       parce qu'aucun calcul n'a été tenté ;
+    4. le **moteur**, dont un refus d'entrée incohérente est un 422 sans
+       écriture non plus : une saisie fausse ne devient pas un dossier ;
+    5. la **persistance**, en un seul appel de primitive.
+
+    LE PROVIDER VIENT DU COMPOSITION ROOT, JAMAIS DU CORPS. ``provider_de_
+    lecture`` le construit depuis l'état authentifié de l'application. Un corps
+    qui pourrait le nommer laisserait choisir qui atteste.
+    """
+    from eurostruct_engine.ec2.beam_verification import (
+        preflight_beam,
+        verify_beam,
+    )
+    from eurostruct_engine.ndp.registry import load_parameter_set
+
+    jeton = _jeton_de(ouvert)
+    try:
+        projet = _projet_de(ouvert, jeton, project_id)
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        ouvert.fermer()
+        if lecture is not None:
+            lecture.fermer()
+        raise _refus(cause) from cause
+
+    try:
+        build = identite_de_build()
+    except BuildInconnu as cause:
+        ouvert.fermer()
+        if lecture is not None:
+            lecture.fermer()
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "service_non_pret", "what": "identite de build",
+                    "detail": str(cause)},
+        ) from cause
+
+    from datetime import date as _date
+
+    pays = projet["country"]
+    region = projet.get("region")
+    as_of = _date.fromisoformat(projet["ndp_as_of"])
+    strict = bool(corps.strict_ndp)
+
+    try:
+        # --- 3. LE PRÉFLIGHT, ET IL PARLE AVANT LE MOTEUR -----------------
+        if strict:
+            prevol = preflight_beam(
+                country=pays, region=region, as_of=as_of, strict=True,
+                provider=lecture.provider if lecture else None)
+            if not prevol.ready:
+                # ZÉRO ÉCRITURE. Aucun calcul n'a été tenté: il n'y a rien à
+                # enregistrer, et une ligne « refused » laisserait croire que
+                # le moteur a répondu.
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "error": "referentiel_incomplet",
+                        "what": "preflight strict",
+                        "detail": (
+                            "le mode strict exige des paramètres nationaux "
+                            "confirmés; ceux-ci ne le sont pas. Aucun calcul "
+                            "n'a été lancé et rien n'a été enregistré."),
+                        "blocking": [b.to_dict() for b in prevol.blocking],
+                        "provider_identity": prevol.provider_identity,
+                    },
+                )
+
+        params = load_parameter_set(pays, region=region, strict=strict,
+                                    as_of=as_of)
+        entree = _entree_moteur(corps)
+
+        # --- 4. LE MOTEUR -------------------------------------------------
+        #
+        # LE CONTEXTE NORMATIF EST GELE AVEC LES ENTREES, et les quatre champs
+        # viennent du PROJET — jamais du corps, qui n'a pas le droit de les
+        # porter. La charge enregistree se lit donc seule: dix ans plus tard,
+        # un auditeur y trouve le dossier, le pays, la region et la date
+        # d'annexe qui ont reellement servi.
+        #
+        # `project_calculation_record` (0019) confronte ces quatre champs au
+        # projet et refuse l'ecart. Mesure du 01/09: sans eux, la primitive a
+        # refuse — « la requete porte le projet "(absent)" » — et elle avait
+        # raison. La garantie n'est donc pas ici, elle est DOUBLEE ici.
+        charge = {
+            "project_id": project_id,
+            "country": pays,
+            "region": region,
+            "as_of": as_of.isoformat(),
+            **corps.model_dump(mode="json"),
+        }
+        identite = _identite(charge, None, build)
+        try:
+            etude = verify_beam(entree, params=params,
+                                execution_identity=identite)
+        except EurostructEngineError as cause:
+            # UNE SAISIE FAUSSE NE DEVIENT PAS UN DOSSIER. Contrairement à la
+            # flexion — qui enregistre son refus parce que le moteur a
+            # répondu — un refus de COHÉRENCE porte sur ce que l'appelant a
+            # envoyé, pas sur le référentiel. Il n'y a rien à conserver.
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "entree_incoherente",
+                        "what": type(cause).__name__,
+                        "detail": str(cause)},
+            ) from cause
+
+        identite = _identite(charge, etude.ndp_summary, build)
+
+        # --- 5. LA PERSISTANCE, EN UN SEUL APPEL --------------------------
+        calcul_id = ouvert.atelier.enregistrer_calcul(
+            jeton, project_id=project_id,
+            status=_STATUT_SQL[etude.status],
+            inputs_hash=etude.inputs_hash,
+            strict_ndp=etude.strict_ndp,
+            engine_version=etude.engine_version,
+            request=charge,
+            ndp_snapshot=etude.ndp_summary,
+            execution_identity=identite,
+            engine_build=build,
+            # LA FORME DU PAYLOAD EST CELLE DU DEPOT, PAS UNE NOUVELLE.
+            # `results.payload` porte `{"result": ..., "verification": ...}`
+            # depuis la route de flexion, et la composition d'un livrable lit
+            # `payload["result"]`. Mesure du 01/09: en deposant l'etude a plat,
+            # la creation d'un brouillon repondait « ce calcul n'a produit
+            # aucun resultat » — elle cherchait une cle absente.
+            result={"result": etude.to_dict(),
+                    "verification": {
+                        "passed": etude.status == "passed",
+                        "max_utilisation": etude.max_utilisation,
+                        "checks": [_ligne_de_section(s)
+                                   for s in etude.sections]}},
+            # LES CINQ JOURNAUX, DANS L'ORDRE DES CHAPITRES. `0019` refuse un
+            # calcul « succeeded » sans journal, et elle a raison: c'est lui
+            # qui rend chaque nombre cliquable. Une section non evaluee n'en a
+            # pas — elle n'a pas tourne — et son absence se lit telle quelle.
+            journal={"sections": [
+                {"key": s.key, "title": s.title,
+                 "journal": (s.design.journal.to_dict()
+                             if s.design is not None else None)}
+                for s in etude.sections]},
+            verifications=[_ligne_de_section(s) for s in etude.sections],
+        )
+    finally:
+        if lecture is not None:
+            lecture.fermer()
+        ouvert.fermer()
+
+    return _reponse_de_verification(etude, calculation_id=calcul_id,
+                                    build=build, identite=identite)
+
+
+@routeur.get("/{project_id}/beam-verifications/{calculation_id}",
+             response_model=Ec2BeamVerificationResponse)
+def rouvrir_verification(
+    project_id: str, calculation_id: str,
+    ouvert: Any = Depends(ouvrir_atelier),
+) -> Any:
+    """Rouvre une étude complète : les MÊMES entrées, les MÊMES verdicts.
+
+    RIEN N'EST RECALCULÉ. Relancer les cinq modules à la relecture rendrait le
+    résultat d'aujourd'hui pour une étude d'hier — avec le code d'aujourd'hui
+    et l'état d'aujourd'hui du référentiel. Ce qui est rendu est ce que
+    `results.payload` porte, tel que l'orchestrateur l'a écrit.
+
+    UNE ÉTUDE EXPLORATOIRE ROUVERTE RESTE EXPLORATOIRE, et la réponse le dit
+    aussi fort qu'au premier jour: `mention` est reconstruite depuis
+    `may_be_finalised`, pas depuis un drapeau que la relecture pourrait
+    perdre.
+    """
+    try:
+        relu = ouvert.atelier.rouvrir_calcul(
+            _jeton_de(ouvert), project_id=project_id,
+            calculation_id=calculation_id)
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        raise _refus(cause) from cause
+    finally:
+        ouvert.fermer()
+
+    charge = (relu.get("result") or {}).get("result") or {}
+    if not charge.get("sections"):
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "pas_une_verification_complete",
+                    "what": "calcul",
+                    "detail": ("ce calcul n'est pas une vérification complète "
+                               "à cinq sections.")},
+        )
+    return _reponse_relue(relu, charge)
+
+
+def _reponse_relue(relu: dict[str, Any], charge: dict[str, Any]) -> Any:
+    """La réponse reconstruite depuis la ligne enregistrée, sans recalcul."""
+    from eurostruct_engine.schemas.common import QuantityDTO
+    from eurostruct_engine.schemas.ec2_verification import (
+        Ec2BeamVerificationResponse,
+        SectionOutcomeDTO,
+    )
+
+    largeur, unite = str(charge.get("bar_spacing", "0 mm")).split(" ", 1)
+    return Ec2BeamVerificationResponse(
+        calculation_id=str(relu["calculation_id"]),
+        element=charge.get("element", ""),
+        status=charge.get("status", ""),
+        sections=tuple(SectionOutcomeDTO(**s) for s in charge["sections"]),
+        strict_ndp=bool(relu.get("strict_ndp")),
+        country=charge.get("country", ""),
+        region=charge.get("region"),
+        ndp_as_of=charge.get("ndp_as_of") or "",
+        preflight_ready=bool(charge.get("preflight_ready")),
+        is_exploratory=bool(charge.get("is_exploratory")),
+        may_be_finalised=bool(charge.get("may_be_finalised")),
+        requires_additional_analysis=bool(
+            charge.get("requires_additional_analysis")),
+        inputs_hash=charge.get("inputs_hash", ""),
+        ndp_snapshot_id=charge.get("ndp_snapshot_id", ""),
+        fingerprint=charge.get("fingerprint", ""),
+        engine_version=charge.get("engine_version", ""),
+        engine_build_sha=str(relu.get("engine_build_sha") or ""),
+        execution_identity=str(relu.get("execution_identity") or ""),
+        max_utilisation=float(charge.get("max_utilisation") or 0.0),
+        bar_spacing=QuantityDTO(value=float(largeur.replace(",", ".")),
+                                unit=unite),
+        notice=MENTION_OBLIGATOIRE,
+        mention=(None if charge.get("may_be_finalised")
+                 else MENTION_NON_SIGNABLE),
+        inputs=charge.get("inputs") or {},
+    )
