@@ -406,6 +406,32 @@ if [[ $CODE -eq 0 ]]; then
   fi
 fi
 
+# LES ECHANTILLONS, QUAND ON LES DEMANDE — ET SEULEMENT ALORS.
+#
+# POURQUOI CETTE ETAPE EXISTE. Un rapport qui cite une empreinte doit pouvoir
+# montrer le fichier qui la porte. Recomposer un document a la main pour
+# l'illustrer reviendrait a fabriquer une piece qui ressemble a un livrable
+# sans en etre un — exactement ce que le produit s'interdit partout ailleurs.
+# Les octets copies ici sont ceux que les routes ont DEPOSES, relus et
+# enregistres, avec l'empreinte que la base a gardee.
+#
+# ELLE NE CHANGE RIEN AU VERDICT. Sans `EUROSTRUCT_ECHANTILLONS`, elle ne fait
+# rien; avec, elle copie et ne juge pas. Le harnais reste ce qu'il etait.
+if [[ $CODE -eq 0 && -n "${EUROSTRUCT_ECHANTILLONS:-}" ]]; then
+  if mkdir -p "$EUROSTRUCT_ECHANTILLONS" 2>/dev/null; then
+    # `-H` ET NON `--tag`: la sortie est la forme classique « empreinte  nom »,
+    # que `sha256sum -c` sait relire telle quelle.
+    ( cd "$MAGASIN" && find . -type f | sort | xargs -r sha256sum ) \
+      > "$EUROSTRUCT_ECHANTILLONS/SHA256SUMS" 2>/dev/null
+    ( cd "$MAGASIN" && find . -type f -exec cp --parents {} \
+        "$EUROSTRUCT_ECHANTILLONS/" \; ) 2>/dev/null
+    echo "      echantillons copies dans $EUROSTRUCT_ECHANTILLONS"
+  else
+    echo "      AVERTISSEMENT: $EUROSTRUCT_ECHANTILLONS n'a pas pu etre cree;" >&2
+    echo "                     aucun echantillon n'est copie." >&2
+  fi
+fi
+
 if [[ $CODE -eq 0 ]]; then
   echo ""
   echo "================================================="
