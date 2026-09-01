@@ -516,3 +516,234 @@ def test_l_identite_change_avec_le_referentiel(
     fr = client.post(_url(projet_fr), json=_corps(),
                      headers=_entete(jeton(ACTEUR_A))).json()
     assert be["execution_identity"] != fr["execution_identity"]
+
+
+# ---------------------------------------------------------------------------
+# 10. LA NOTE A CINQ CHAPITRES
+# ---------------------------------------------------------------------------
+def _note(client, jeton, projet, calcul_id, acteur=None):
+    return client.get(
+        f"/v1/projects/{projet['project_id']}/calculations/{calcul_id}/note.html",
+        headers=_entete(jeton(acteur or ACTEUR_A)))
+
+
+def test_la_note_porte_les_cinq_chapitres_dans_l_ordre(
+        client, jeton, projet) -> None:
+    """L'ORDRE EST FIXE: un lecteur qui compare deux dossiers en depend."""
+    cree = _verifier(client, jeton, projet).json()
+    r = _note(client, jeton, projet, cree["calculation_id"])
+    assert r.status_code == 200, r.text
+    html = r.text
+
+    #: LES APOSTROPHES SONT ECHAPPEES, et c'est correct: « l'ELU » sort
+    #: « l&#x27;ELU ». C'est au test de se conformer au document, pas
+    #: l'inverse — desechapper le rendu pour le tester reviendrait a tester
+    #: autre chose que ce qu'un navigateur affiche.
+    from html import escape
+
+    titres = ["Flexion simple a l'ELU", "Effort tranchant a l'ELU",
+              "Ancrages et recouvrements", "Etats limites de service",
+              "Limitation des fleches"]
+    positions = []
+    for index, titre in enumerate(titres, start=1):
+        marqueur = f"{index}. {escape(titre, quote=True)}"
+        assert marqueur in html, f"chapitre absent: {marqueur}"
+        positions.append(html.index(marqueur))
+    assert positions == sorted(positions), "les chapitres ne sont pas en ordre"
+
+
+def test_la_note_n_imprime_que_des_valeurs_venues_des_journaux(
+        client, jeton, projet) -> None:
+    """INTERDICTION N.1, RENDUE VERIFIABLE.
+
+    On collecte toutes les valeurs que les journaux persistes portent, puis on
+    verifie que chaque cellule numerique de la note figure dans cet ensemble —
+    ou parmi les taux d'utilisation, eux aussi calcules par le moteur. Un
+    renderer qui calculerait quoi que ce soit produirait une chaine absente des
+    deux.
+    """
+    import re
+
+    cree = _verifier(client, jeton, projet).json()
+    html = _note(client, jeton, projet, cree["calculation_id"]).text
+
+    brut = _observer("select journal from results where calculation_id = %s",
+                     (cree["calculation_id"],))[0][0]
+    legitimes = set()
+    for bloc in (brut or {}).get("sections", []):
+        for etape in ((bloc.get("journal") or {}).get("steps") or []):
+            if etape.get("formatted"):
+                legitimes.add(etape["formatted"])
+    assert legitimes, "aucun journal persiste: le test ne prouverait rien"
+
+    taux = {f"{s['utilisation']:.3f}" for s in cree["sections"]
+            if s["utilisation"] is not None}
+    imprimees = set(re.findall(r'<td class="nombre">([^<]+)</td>', html))
+    inexpliquees = imprimees - legitimes - taux - {"—"}
+    assert not inexpliquees, (
+        f"la note imprime des valeurs qu'aucun journal ne porte: "
+        f"{sorted(inexpliquees)[:5]}")
+
+
+def test_la_note_exploratoire_porte_la_mention_en_tete_et_en_pied(
+        client, jeton, projet) -> None:
+    cree = _verifier(client, jeton, projet).json()
+    html = _note(client, jeton, projet, cree["calculation_id"]).text
+    assert html.count("PROJET — NON SIGNABLE") >= 2, (
+        "la mention doit encadrer le document: un lecteur presse lit l'une "
+        "ou l'autre extremite, jamais les deux")
+
+
+def test_la_note_imprime_le_contexte_normatif_et_l_identite_de_la_base(
+        client, jeton, projet) -> None:
+    cree = _verifier(client, jeton, projet).json()
+    html = _note(client, jeton, projet, cree["calculation_id"]).text
+    identite = _observer(
+        "select execution_identity from calculations where id = %s",
+        (cree["calculation_id"],))[0][0]
+    assert identite in html, "l'identite imprimee n'est pas celle de la base"
+    for attendu in (cree["ndp_snapshot_id"], cree["calculation_fingerprint"],
+                    cree["engineering_inputs_hash"]):
+        assert attendu in html
+
+
+def test_une_section_non_evaluee_dit_pourquoi_sans_inventer(
+        client, jeton, projet_fr) -> None:
+    cree = client.post(_url(projet_fr), json=_corps(),
+                       headers=_entete(jeton(ACTEUR_A))).json()
+    html = _note(client, jeton, projet_fr, cree["calculation_id"]).text
+    assert "Non évalué" in html
+    assert "n'a pas pu être exécutée" in html
+    assert "ne vaut pas conformité" in html
+
+
+def test_une_dispense_non_acquise_n_est_pas_affichee_comme_non_conforme(
+        client, jeton, projet) -> None:
+    """L'ORANGE N'EST NI LE VERT NI LE ROUGE, et c'est tout l'interet."""
+    cree = _verifier(client, jeton, projet, geometry={
+        "b": {"value": 300, "unit": "mm"}, "h": {"value": 600, "unit": "mm"},
+        "d": {"value": 550, "unit": "mm"},
+        "l_eff": {"value": 12000, "unit": "mm"}}).json()
+    html = _note(client, jeton, projet, cree["calculation_id"]).text
+    #: DEUX TEXTES COEXISTENT, ET C'EST VOULU: la banniere de la note (avec
+    #: accents) et le remede que le MOTEUR a pose sur la section (sans
+    #: accents, comme tout le moteur). Les confondre ferait tester la
+    #: presence d'une phrase qui n'existe nulle part.
+    assert "Analyse complémentaire requise" in html
+    assert "calcul explicite de la flèche requis" in html      # banniere
+    assert "calcul explicite de la fleche requis" in html      # remede moteur
+    assert "un échec de la poutre" in html
+    assert cree["status"] == "incomplete"
+
+
+def test_une_section_rouge_affiche_son_taux_et_son_remede(
+        client, jeton, projet) -> None:
+    cree = _verifier(client, jeton, projet,
+                     bars={"count": 3,
+                           "diameter": {"value": 16, "unit": "mm"}}).json()
+    html = _note(client, jeton, projet, cree["calculation_id"]).text
+    assert "NON CONFORME" in html
+    assert "Action" in html
+    flexion = next(s for s in cree["sections"] if s["key"] == "flexure")
+    assert f"{flexion['utilisation']:.3f}" in html
+
+
+def test_la_note_ne_reexecute_pas_le_moteur(client, jeton, projet) -> None:
+    """DEUX LECTURES RENDENT LES MEMES OCTETS.
+
+    Une note qui relancerait le moteur donnerait les nombres d'aujourd'hui
+    sous la date d'hier — et rien ne le signalerait au lecteur.
+    """
+    cree = _verifier(client, jeton, projet).json()
+    a = _note(client, jeton, projet, cree["calculation_id"]).text
+    b = _note(client, jeton, projet, cree["calculation_id"]).text
+    assert a == b
+
+
+def test_l_ancienne_note_de_flexion_reste_une_note_de_flexion(
+        client, jeton, projet) -> None:
+    """AUCUNE REGRESSION: le composeur se choisit sur la structure."""
+    corps = {
+        "element": "P1", "strict_ndp": False,
+        "section": {"b": {"value": 300, "unit": "mm"},
+                    "h": {"value": 600, "unit": "mm"},
+                    "d": {"value": 550, "unit": "mm"}},
+        "materials": {"concrete_grade": "C30/37", "steel_grade": "B500B"},
+        "M_Ed": {"value": 250, "unit": "kN*m"},
+    }
+    r = client.post(
+        f"/v1/projects/{projet['project_id']}/calculations/ec2/beam-flexure",
+        json=corps, headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    html = _note(client, jeton, projet, r.json()["calculation_id"]).text
+    assert "Vérification ELU en flexion simple" in html
+    assert "Ancrages et recouvrements" not in html
+
+
+# ---------------------------------------------------------------------------
+# 11. LE BROUILLON PDF DE L'ETUDE COMPLETE
+# ---------------------------------------------------------------------------
+def _brouillon_pdf_de(client, jeton, projet, calcul_id):
+    return client.post(
+        f"/v1/projects/{projet['project_id']}/deliverables",
+        json={"calculation_id": calcul_id, "format": "pdf"},
+        headers=_entete(jeton(ACTEUR_A)))
+
+
+def test_le_brouillon_pdf_de_l_etude_complete_est_produit_et_filigrane(
+        client, jeton, projet) -> None:
+    cree = _verifier(client, jeton, projet).json()
+    r = _brouillon_pdf_de(client, jeton, projet, cree["calculation_id"])
+    assert r.status_code == 201, r.text
+    livrable = r.json()
+    assert livrable["kind"] == "calculation_note_pdf"
+    assert livrable["watermark"] == "PROJET — NON SIGNABLE"
+    assert livrable["size_bytes"] > 0
+
+
+def test_le_pdf_de_l_etude_complete_porte_les_cinq_chapitres(
+        client, jeton, projet) -> None:
+    """LE LECTEUR EST UN TIERS: `pypdf`, pas notre propre ecrivain."""
+    cree = _verifier(client, jeton, projet).json()
+    livrable = _brouillon_pdf_de(
+        client, jeton, projet, cree["calculation_id"]).json()
+    octets = client.get(
+        f"/v1/projects/{projet['project_id']}/deliverables/"
+        f"{livrable['deliverable_id']}/download",
+        headers=_entete(jeton(ACTEUR_A))).content
+    assert octets.startswith(b"%PDF-")
+
+    pypdf = pytest.importorskip("pypdf")
+    import io
+
+    lu = pypdf.PdfReader(io.BytesIO(octets))
+    texte = " ".join("\n".join(
+        (p.extract_text() or "") for p in lu.pages).split())
+    for chapitre in ("Flexion simple", "Effort tranchant", "Ancrages",
+                     "Etats limites de service", "Limitation des fleches"):
+        assert chapitre in texte, f"chapitre absent du PDF: {chapitre}"
+    #: LA MENTION EST SUR LE DOCUMENT, pas seulement dans les metadonnees.
+    assert "NON SIGNABLE" in texte
+
+
+def test_les_octets_du_pdf_sont_deterministes(client, jeton, projet) -> None:
+    """AUCUNE HORLOGE: deux compositions du meme dossier, memes octets.
+
+    L'adressage par contenu l'exige — deux depots du meme document doivent
+    tomber sur le meme chemin, sinon le magasin se remplit de doublons que
+    rien ne distingue.
+    """
+    import hashlib
+
+    cree = _verifier(client, jeton, projet).json()
+    empreintes = set()
+    for _ in range(2):
+        r = _brouillon_pdf_de(client, jeton, projet, cree["calculation_id"])
+        assert r.status_code == 201, r.text
+        octets = client.get(
+            f"/v1/projects/{projet['project_id']}/deliverables/"
+            f"{r.json()['deliverable_id']}/download",
+            headers=_entete(jeton(ACTEUR_A))).content
+        empreintes.add(hashlib.sha256(octets).hexdigest())
+    assert len(empreintes) == 1, (
+        "deux compositions du meme dossier ont rendu des octets differents")

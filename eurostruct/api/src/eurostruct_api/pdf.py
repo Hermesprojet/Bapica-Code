@@ -111,6 +111,30 @@ _EQUIVALENTS: Final[dict[str, str]] = {
     "“": '"', "”": '"',
     "…": "...",
     "−": "-",     # signe moins
+    #: LA FLECHE VIENT DES JOURNAUX DU MOTEUR, et elle y a un sens: « x -> y »
+    #: se lit « x conduit a y ». WinAnsi ne la porte pas, Symbol non plus.
+    #:
+    #: Mesure du 01/09: la note a cinq chapitres a fait REFUSER l'ecrivain PDF
+    #: — « le caractere « → » n'a de glyphe ni en WinAnsi ni dans la police
+    #: Symbol » — et ce refus etait JUSTE: perdre une fleche en silence
+    #: changerait le sens d'une etape de calcul. « -> » la rend sans perte,
+    #: exactement comme « -- » rend le tiret cadratin.
+    #:
+    #: Les documents qui n'en contiennent pas restent inchanges, octet pour
+    #: octet: la note de flexion garde les siens.
+    "→": "->",
+    "⟶": "->",
+    "←": "<-",
+    #: LES EXPOSANTS QUE WINANSI NE PORTE PAS.
+    #:
+    #: Il porte « ² » et « ³ » — ils restent donc tels quels, et les documents
+    #: existants ne bougent pas. Il ne porte pas les autres, et « mm⁴ » sort
+    #: d'un journal ELS bien reel: l'inertie de la section fissuree.
+    #: « mm^4 » se lit sans ambiguite; perdre le 4 en changerait le sens.
+    "⁰": "^0", "¹": "^1", "⁴": "^4", "⁵": "^5", "⁶": "^6",
+    "⁷": "^7", "⁸": "^8", "⁹": "^9", "⁻": "^-", "⁺": "^+",
+    "₀": "_0", "₁": "_1", "₂": "_2", "₃": "_3", "₄": "_4",
+    "₅": "_5", "₆": "_6", "₇": "_7", "₈": "_8", "₉": "_9",
 }
 
 

@@ -58,6 +58,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from ..dependances import ouvrir_atelier, provider_de_lecture
 from ..note import MEDIA_TYPE, rendre_note
+from ..note_verification import (
+    est_note_de_verification,
+    rendre_note_verification,
+)
 from .calculs import MENTION_NON_SIGNABLE, MENTION_OBLIGATOIRE
 
 routeur = APIRouter(prefix="/v1/projects", tags=["atelier"])
@@ -396,7 +400,13 @@ def note_html(project_id: str, calculation_id: str,
         )
 
     strict = bool(calcul.get("strict_ndp"))
-    document = rendre_note(
+    # LE COMPOSEUR EST CHOISI SUR LA STRUCTURE DE LA LIGNE, PAS SUR UN DRAPEAU.
+    # Une etude a cinq sections se reconnait a ses sections; un drapeau pose a
+    # cote peut mentir sur ce que la ligne contient, la structure non. La note
+    # de flexion garde ainsi son contrat et ses octets.
+    composer = (rendre_note_verification if est_note_de_verification(calcul)
+                else rendre_note)
+    document = composer(
         projet, calcul,
         notice=MENTION_OBLIGATOIRE,
         mention=None if strict else MENTION_NON_SIGNABLE,

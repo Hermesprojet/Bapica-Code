@@ -65,6 +65,11 @@ from fastapi.responses import StreamingResponse
 
 from ..attestation import rendre_attestation_pdf
 from ..dependances import ouvrir_atelier, provider_de_lecture
+from ..note_verification import (
+    est_note_de_verification,
+    rendre_note_verification,
+    rendre_note_verification_pdf,
+)
 from ..note import (
     MEDIA_TYPE,
     MEDIA_TYPE_DXF,
@@ -268,10 +273,17 @@ def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
     # relu, meme notice, meme mention: seule la forme du fichier change. Un
     # PDF qui affirmerait autre chose que le HTML du meme calcul serait un
     # second document, pas un second format.
+    # LE COMPOSEUR SE CHOISIT SUR LA STRUCTURE DE LA LIGNE, PAS SUR UN DRAPEAU:
+    # une etude a cinq sections se reconnait a ses sections. La note de flexion
+    # garde ainsi son contrat et ses octets.
     if forme == "pdf":
-        return rendre_note_pdf(projet, calcul, notice=notice,
-                               mention=mention), mention
-    document = rendre_note(projet, calcul, notice=notice, mention=mention)
+        composer = (rendre_note_verification_pdf
+                    if est_note_de_verification(calcul) else rendre_note_pdf)
+        return composer(projet, calcul, notice=notice,
+                        mention=mention), mention
+    document = (rendre_note_verification if est_note_de_verification(calcul)
+                else rendre_note)(projet, calcul, notice=notice,
+                                  mention=mention)
     return document.encode("utf-8"), mention
 
 
