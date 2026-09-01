@@ -478,15 +478,34 @@ def telecharger(project_id: str, deliverable_id: str,
 #: representer: c'est la valeur qui dit « pas de date » sans en inventer une.
 _EPOQUE_ZIP = (1980, 1, 1, 0, 0, 0)
 
-#: LES GENRES DE DOCUMENT QUE LE PRODUIT SAIT REELLEMENT PRODUIRE, ET LES
-#: AUTRES. Le manifeste les nomme tous les deux: un dossier qui listerait
-#: seulement ce qu'il contient laisserait croire que le reste n'existe pas
-#: parce qu'il n'a pas ete demande, alors qu'il n'existe pas du tout.
-_GENRES_ABSENTS = (
-    "calculation_note_pdf", "rebar_drawing_dxf", "rebar_drawing_pdf",
-    "connection_drawing_dxf", "schedule_xlsx", "quantities_xlsx",
-    "ifc_export", "model_json",
+#: TOUS LES GENRES QUE `deliverable_kind` ENUMERE, dans l'ordre des migrations
+#: (0001, puis `calculation_note_html` ajoute par 0020).
+_GENRES_CONNUS: tuple[str, ...] = (
+    "calculation_note_html", "calculation_note_pdf", "rebar_drawing_dxf",
+    "rebar_drawing_pdf", "connection_drawing_dxf", "schedule_xlsx",
+    "quantities_xlsx", "ifc_export", "model_json",
 )
+
+
+def _genres_absents() -> tuple[str, ...]:
+    """Ce que le produit ne sait PAS encore produire — **derive, jamais ecrit**.
+
+    LE MANIFESTE NOMME LES DEUX: un dossier qui listerait seulement ce qu'il
+    contient laisserait croire que le reste n'existe pas parce qu'il n'a pas
+    ete demande, alors qu'il n'existe pas du tout.
+
+    CETTE LISTE ETAIT ECRITE EN DUR, ET ELLE A CESSE D'ETRE VRAIE SANS QUE
+    RIEN NE BOUGE. Le jour ou la note PDF est apparue, chaque dossier de revue
+    s'est mis a declarer `calculation_note_pdf` non produit — y compris le
+    dossier D'UNE NOTE PDF. Le relecteur y lisait que le document qu'il tenait
+    entre les mains ne devrait pas exister.
+
+    Elle se derive donc de `_FORMES`, c'est-a-dire de ce que la route sait
+    reellement composer. Ajouter une forme la retire de cette liste sans que
+    personne ait a y penser — et c'est exactement la propriete qui manquait.
+    """
+    produits = {genre for genre, _media, _ext in _FORMES.values()}
+    return tuple(g for g in _GENRES_CONNUS if g not in produits)
 
 
 def _manifeste(projet: dict[str, Any], detail: dict[str, Any],
@@ -544,7 +563,7 @@ def _manifeste(projet: dict[str, Any], detail: dict[str, Any],
             "size_bytes": len(octets),
         }],
         # LES ARTEFACTS QUI N'EXISTENT PAS ENCORE SONT NOMMES.
-        "artifacts_not_produced": list(_GENRES_ABSENTS),
+        "artifacts_not_produced": list(_genres_absents()),
         # L'ATTESTATION, SI ELLE EXISTE. `null` partout ailleurs: un dossier de
         # revue d'un brouillon ne doit pas ressembler a celui d'une piece
         # attestee, et l'absence de champs le dirait moins clairement que des

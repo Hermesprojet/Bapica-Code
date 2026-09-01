@@ -1132,8 +1132,22 @@ def test_le_dossier_de_revue_porte_le_document_et_son_rattachement(
 
     # CE QUI N'EXISTE PAS EST NOMME. Un dossier qui listerait seulement ce
     # qu'il contient laisserait croire que le reste n'a pas ete demande.
-    assert "calculation_note_pdf" in m["artifacts_not_produced"]
-    assert "ifc_export" in m["artifacts_not_produced"]
+    #
+    # CETTE ASSERTION EXIGEAIT `calculation_note_pdf`, ET C'ETAIT LE MENSONGE
+    # LUI-MEME. Elle a ete ecrite quand la note PDF n'existait pas; le jour ou
+    # elle est apparue, personne ne l'a mise a jour, et le cas a continue de
+    # verifier que le produit declare absent un document qu'il produit.
+    #
+    # On verifie desormais DEUX proprietes, et aucune n'est un nom fige:
+    absents = m["artifacts_not_produced"]
+    #   1. ce que le produit sait produire n'y figure pas — a commencer par le
+    #      genre du document que ce dossier presente;
+    assert m["deliverable"]["kind"] not in absents
+    assert "calculation_note_pdf" not in absents
+    #   2. ce qui manque vraiment y figure encore. Sans ce second point, une
+    #      liste vide passerait.
+    assert "ifc_export" in absents
+    assert "model_json" in absents
 
     # ET IL NE SE DIT JAMAIS SIGNE ELECTRONIQUEMENT.
     assert m["attestation"]["kind"] == "attestation_metier_authentifiee"
@@ -1541,3 +1555,45 @@ def test_le_dossier_de_revue_d_un_pdf_porte_le_pdf_et_un_nom_distinct(
     assert noms["html"] != noms["pdf"], (
         "les deux dossiers se telechargent sous le meme nom: "
         f"{noms['html']}")
+
+
+def test_le_manifeste_ne_declare_pas_absent_un_document_qui_existe(
+        client, jeton, projet, calcul_strict):
+    """UN DOSSIER DE REVUE QUI MENT SUR SON PROPRE CONTENU.
+
+    `artifacts_not_produced` existe pour une bonne raison: un dossier qui
+    listerait seulement ce qu'il contient laisserait croire que le reste
+    n'existe pas parce qu'il n'a pas ete demande, alors qu'il n'existe pas du
+    tout. La liste etait ECRITE EN DUR — et le jour ou la note PDF est
+    apparue, elle a cesse d'etre vraie sans que rien ne bouge.
+
+    LE RELECTEUR EST LA PERSONNE QUE CELA TROMPE. Il ouvre le dossier d'une
+    note PDF, y lit « calculation_note_pdf: non produit », et en conclut que
+    le document qu'il tient entre les mains ne devrait pas exister.
+
+    Le pire cas est celui-ci: le dossier D'UN PDF affirme qu'aucun PDF n'est
+    produit.
+    """
+    import io
+    import zipfile
+
+    pdf = _brouillon_pdf(client, jeton, projet, calcul_strict)
+    r = client.get(f"/v1/projects/{projet['project_id']}/deliverables/"
+                   f"{pdf['deliverable_id']}/review-bundle",
+                   headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 200, r.text
+
+    with zipfile.ZipFile(io.BytesIO(r.content)) as archive:
+        manifeste = json.loads(archive.read("manifeste.json"))
+
+    absents = manifeste["artifacts_not_produced"]
+    assert "calculation_note_pdf" not in absents, (
+        "le dossier d'une note PDF declare que la note PDF n'est pas "
+        f"produite. Absents annonces: {absents}")
+    # ET LE GENRE DU DOCUMENT PRESENTE N'Y EST JAMAIS, quel qu'il soit.
+    assert manifeste["deliverable"]["kind"] not in absents
+
+    # CE QUI EST VRAIMENT ABSENT RESTE ANNONCE: la liste ne doit pas se vider
+    # pour faire passer le cas.
+    assert "ifc_export" in absents
+    assert "schedule_xlsx" in absents
