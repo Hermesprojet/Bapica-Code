@@ -35,6 +35,16 @@
 #  11. une revision est creee, avec l'indice suivant;
 #  12. B, de l'autre organisation, n'obtient ni lecture ni telechargement.
 #
+# ET LA SECONDE VERTICALE, SUR LE MEME DECOR
+# --------------------------------------------
+# `parcours_verification.mjs` eprouve la verification COMPLETE — cinq
+# chapitres, sept etapes de saisie, note, plan et apercu. Il partage ce decor
+# parce que le redresser a l'identique ferait deux decors a maintenir, dont un
+# qu'on ne regarde pas. Son fait decisif est ailleurs que dans les fichiers
+# produits: le corps de la requete de plan ne porte QUE l'identifiant du calcul
+# et le format — aucun ferraillage ne part du navigateur, parce que la coupe
+# est gelee avec l'etude.
+#
 # LE DECOR CONFIRME LES PARAMETRES AVANT DE CALCULER, ET C'EST UN DECOR.
 # Une attestation ne peut porter que sur un calcul STRICT abouti, et le mode
 # strict ne s'ouvre que par le quatre-yeux. Le harnais fait donc passer les
@@ -507,12 +517,56 @@ if ! attendre_url "http://127.0.0.1:$PORT_WEB" 60 "$PID_WEB"; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. LE PARCOURS
+# 5. LES DEUX PARCOURS
 # ---------------------------------------------------------------------------
+# UN SEUL DECOR POUR DEUX VERTICALES, ET C'EST DELIBERE.
+#
+# Dresser la pile entiere — base, migrations, sceau, quatre-yeux, emetteur de
+# jetons, API, build de production de l'interface — coute plusieurs minutes. La
+# redresser a l'identique pour eprouver la verification complete donnerait un
+# second harnais dont chaque ligne serait la copie d'une autre: deux decors a
+# maintenir, et le jour ou l'un derive, c'est celui qu'on ne regarde pas.
+#
+# LES DEUX PARCOURS SONT INDEPENDANTS. Chacun cree SON projet et ne lit rien de
+# ce que l'autre a ecrit; l'ordre ne les lie pas. Mais les DEUX doivent passer:
+# le second ne rattrape pas le premier.
 EUROSTRUCT_WEB="http://127.0.0.1:$PORT_WEB" \
 EUROSTRUCT_API="http://127.0.0.1:$PORT_API" \
   node "$RACINE/web/e2e/parcours_livrable.mjs"
 CODE=$?
+
+# UN ECHEC DU PREMIER N'EMPECHE PAS D'EPROUVER LE SECOND, et c'est ce qui rend
+# le diagnostic utile: savoir si UNE verticale est cassee ou LES DEUX separe un
+# defaut d'ecran d'un decor qui n'a pas pris. Un « non execute » (4) est en
+# revanche un arret — le navigateur manque, et le second n'irait pas plus loin.
+if [[ $CODE -eq 0 || $CODE -eq 1 ]]; then
+  echo ""
+  EUROSTRUCT_WEB="http://127.0.0.1:$PORT_WEB" \
+  EUROSTRUCT_API="http://127.0.0.1:$PORT_API" \
+    node "$RACINE/web/e2e/parcours_verification.mjs"
+  CODE_VC=$?
+  [[ $CODE -eq 0 ]] && CODE=$CODE_VC
+fi
+
+# CE QUE LES SERVEURS ONT DIT PENDANT LE PARCOURS.
+#
+# Un parcours rouge se lit d'abord dans le navigateur — c'est ce que voit
+# l'ingenieur — mais certaines pannes n'y laissent qu'un « Failed to fetch »
+# qui ne nomme rien. Les journaux de l'API et de l'interface, eux, portent la
+# trace exacte, et sans eux le diagnostic recommence a zero: on relance dix
+# minutes de decor pour lire ce qu'on avait deja sous la main.
+#
+# ILS NE SORTENT QU'EN CAS D'ECHEC, et bornes: un parcours vert n'a rien a
+# dire, et un journal entier noierait le verdict.
+if [[ $CODE -ne 0 ]]; then
+  for duo in "api:$TMP/api.log" "interface:$TMP/web.log"; do
+    QUOI="${duo%%:*}"; FICHIER="${duo#*:}"
+    [[ -s "$FICHIER" ]] || continue
+    echo "" >&2
+    echo "      --- $QUOI, 25 dernieres lignes ---" >&2
+    tail -n 25 "$FICHIER" >&2
+  done
+fi
 
 if [[ $CODE -eq 0 ]]; then
   echo ""
@@ -525,6 +579,13 @@ if [[ $CODE -eq 0 ]]; then
   echo " livrable emis qui ne se modifie plus, un indice"
   echo " suivant, et une organisation voisine qui n'obtient"
   echo " rien."
-  echo "===================================================" 
+  echo ""
+  echo " Et la verticale complete: sept etapes qui disent"
+  echo " ce qui manque, un refus strict qui nomme les"
+  echo " parametres, cinq chapitres verifies, une note dont"
+  echo " les octets portent l'empreinte enregistree, un plan"
+  echo " produit SANS qu'aucun ferraillage ne parte du"
+  echo " navigateur, et les memes octets apres F5."
+  echo "==================================================="
 fi
 exit $CODE

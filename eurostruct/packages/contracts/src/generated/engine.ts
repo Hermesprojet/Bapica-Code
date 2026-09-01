@@ -699,6 +699,16 @@ export interface ParameterVariantDTO {
   value: number;
 }
 
+/** Un paramètre qui empêche le calcul, et le module qui le réclame. */
+export interface PreflightBlockerDTO {
+  annex: string;
+  clause: string;
+  detail: string;
+  module: string;
+  parameter: string;
+  reason: string;
+}
+
 /** Result of checking every required national parameter before running. Returned in full on refusal, so the user fixes the whole list in one pass. */
 export interface PreflightReportDTO {
   as_of: string;

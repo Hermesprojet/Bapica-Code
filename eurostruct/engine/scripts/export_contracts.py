@@ -82,6 +82,7 @@ from eurostruct_engine.schemas.ec2_beam import (  # noqa: E402
 from eurostruct_engine.schemas.ec2_verification import (  # noqa: E402
     Ec2BeamVerificationRequest,
     Ec2BeamVerificationResponse,
+    PreflightBlockerDTO,
 )
 
 #: Root models. Their transitive dependencies are emitted automatically.
@@ -102,6 +103,19 @@ ROOTS = [
     # conformite. Le type genere le lui interdit a la compilation.
     Ec2BeamVerificationRequest,
     Ec2BeamVerificationResponse,
+    # CE QUI BLOQUE, ET QUI LE RECLAME.
+    #
+    # Un refus de preflight n'est pas une panne: c'est une liste de travail, et
+    # l'ecran doit pouvoir la lire. Cette forme ne se confond pas avec
+    # `BlockingParameterDTO`, qui nomme une cle du registre sans dire quel
+    # module la reclame — or un meme `gamma_C` sert quatre modules sur cinq.
+    #
+    # MESURE DU 01/09, AU NAVIGATEUR. L'ecran lisait `key` et `standard` sur
+    # des objets qui portent `parameter` et `module`: les onze parametres
+    # bloquants s'affichaient sans nom, et l'ingenieur restait sans liste de
+    # travail devant un refus qui en portait une. Le type genere ferme cette
+    # porte a la compilation.
+    PreflightBlockerDTO,
     # La requete que l'interface envoie: elle porte le calcul ET le
     # ferraillage choisi, si bien que le dessin ne peut pas decrire une autre
     # section que celle qui vient d'etre verifiee.

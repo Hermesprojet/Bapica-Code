@@ -3295,6 +3295,46 @@
       "title": "ParameterVariantDTO",
       "type": "object"
     },
+    "PreflightBlockerDTO": {
+      "additionalProperties": false,
+      "description": "Un paramètre qui empêche le calcul, et le module qui le réclame.",
+      "properties": {
+        "annex": {
+          "title": "Annex",
+          "type": "string"
+        },
+        "clause": {
+          "title": "Clause",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "module": {
+          "title": "Module",
+          "type": "string"
+        },
+        "parameter": {
+          "title": "Parameter",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "module",
+        "parameter",
+        "clause",
+        "annex",
+        "reason",
+        "detail"
+      ],
+      "title": "PreflightBlockerDTO",
+      "type": "object"
+    },
     "PreflightReportDTO": {
       "additionalProperties": false,
       "description": "Result of checking every required national parameter before running.\n\nReturned in full on refusal, so the user fixes the whole list in one pass.",

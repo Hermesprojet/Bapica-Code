@@ -300,6 +300,38 @@ def evaluer_parametre(
         return _refus(cle, "aucun dossier de revue n'a ete presente pour ce "
                            "parametre. Sans dossier, il n'y a rien a confirmer.")
 
+    # UNE FICHE D'ATTENTE NE SE CONFIRME PAS, ET AUCUN NOMBRE DE REGARDS N'Y
+    # CHANGE RIEN.
+    #
+    # Confirmer, c'est declarer « j'ai lu l'annexe publiee et c'est bien cette
+    # valeur ». Une fiche dont la provenance n'est pas nationale ne porte pas
+    # une valeur relevee: elle marque la place d'une valeur a lire, ou elle
+    # recopie la recommandation de l'Eurocode. La confirmer reviendrait a
+    # signer un blanc.
+    #
+    # `NationalParameter.__post_init__` l'interdit deja — c'est la
+    # contradiction que ce champ existe pour rendre impossible — mais il
+    # l'interdit en LEVANT, et tres loin d'ici. Mesure du 01/09, au navigateur:
+    # le quatre-yeux allait au bout sur `w_max`, `k1_stress_limit` et
+    # `K_span_depth`, `_jeu_superpose` construisait l'objet contradictoire, et
+    # l'ingenieur recevait un 500 — donc, sans en-tete CORS, un « Failed to
+    # fetch » qui ne nommait rien. Le refus etait juste; il arrivait sous forme
+    # de panne.
+    #
+    # ON REFUSE DONC ICI, EN NOMMANT LA CAUSE. Le parametre reste bloquant, le
+    # mode strict reste ferme, et c'est le comportement voulu: la valeur manque
+    # dans le REGISTRE, et aucun chemin d'autorite ne l'y met.
+    if not parametre.value_provenance.is_national:
+        return _refus(
+            cle,
+            "la fiche porte une provenance "
+            f"« {parametre.value_provenance.value} »: aucune valeur n'y a ete "
+            "relevee dans l'Annexe Nationale publiee. Un dossier de revue ne "
+            "peut pas confirmer ce qui n'a pas ete lu — il signerait un blanc. "
+            "Ce parametre reste bloquant tant que sa valeur n'est pas "
+            "transcrite depuis l'annexe."
+        )
+
     ecart = _ecart_de_sujet(parametre, paquet)
     if ecart is not None:
         return _refus(cle, ecart)

@@ -114,7 +114,7 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
           const vide = manquants[e.cle].length > 0;
           return (
             <li key={e.cle}>
-              <button type="button"
+              <button type="button" id={`etape-${e.cle}`}
                       className={"etape"
                         + (i === etape ? " active" : "")
                         + (vide ? " incomplete" : " remplie")}
@@ -181,7 +181,8 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
                   setEtape((n) => Math.min(ETAPES.length - 1, n + 1))}>
           Suivant
         </button>
-        <button type="button" disabled={enCours || !!blocage} onClick={lancer}
+        <button type="button" id="lancer-verification"
+                disabled={enCours || !!blocage} onClick={lancer}
                 title={blocage ?? "Enregistre l'étude sur le projet"}>
           {enCours ? "Vérification en cours…" : "Vérifier les cinq chapitres"}
         </button>
@@ -190,7 +191,9 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
       {/* LE MOTIF EST ÉCRIT, PAS SEULEMENT SURVOLÉ. Une infobulle ne se lit
           pas au clavier et ne s'imprime pas. */}
       {blocage && (
-        <p className="aide manque" role="status">{blocage}</p>
+        <p className="aide manque" id="pourquoi-bloque" role="status">
+          {blocage}
+        </p>
       )}
       {!blocage && !champs.strict && (
         <p className="bandeau alerte" role="status">

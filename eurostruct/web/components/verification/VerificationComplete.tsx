@@ -24,7 +24,15 @@
  * section. Chaque action porte donc son empêchement, écrit.
  */
 import { useState } from "react";
-import type { BlockingParameterDTO } from "@contracts/generated/engine";
+//: LA FORME EXACTE QUE LA ROUTE REND, PAS SA VOISINE.
+//:
+//: `BlockingParameterDTO` nomme une cle du registre; `PreflightBlockerDTO`
+//: nomme le PARAMETRE et le MODULE qui le reclame — un meme `gamma_C` sert
+//: quatre modules sur cinq. Mesure du 01/09, au navigateur: l'ecran lisait
+//: `key` et `standard` sur ces objets-la, et les onze parametres bloquants
+//: s'affichaient sans nom. Un refus qui porte une liste de travail devenait
+//: illisible.
+import type { PreflightBlockerDTO } from "@contracts/generated/engine";
 import { EtudeGuidee } from "./EtudeGuidee";
 import { SyntheseEtude } from "./SyntheseEtude";
 import {
@@ -40,11 +48,20 @@ import { AppelRefuse, SessionExpiree, type PorteurDeJeton } from "@/lib/transpor
 /** Les rôles qui peuvent écrire sur un dossier. La frontière reste en base. */
 const REDACTEURS = ["owner", "admin", "engineer"];
 
+/** Les cinq chapitres, du nom que le moteur leur donne au nom qu'on lit. */
+const MODULE_LISIBLE: Record<string, string> = {
+  flexure: "flexion",
+  shear: "effort tranchant",
+  anchorage: "ancrage",
+  serviceability: "ouverture des fissures",
+  deflection: "flèche",
+};
+
 /** Ce que la dernière tentative a produit. Jamais un mélange des deux. */
 type Etat =
   | { type: "vide" }
   | { type: "etude"; etude: Ec2BeamVerificationResponse }
-  | { type: "refus"; message: string; bloquants: BlockingParameterDTO[] }
+  | { type: "refus"; message: string; bloquants: PreflightBlockerDTO[] }
   | { type: "panne"; message: string };
 
 export function VerificationComplete({ projet, porteur, surEnregistrement }: {
@@ -100,7 +117,7 @@ export function VerificationComplete({ projet, porteur, surEnregistrement }: {
       )}
 
       {etat.type === "refus" && (
-        <div className="bandeau refus" role="alert">
+        <div className="bandeau refus" id="refus-verification" role="alert">
           <strong>Vérification refusée — rien n&apos;a été enregistré</strong>
           {etat.message}
           {etat.bloquants.length > 0 && (
@@ -112,13 +129,14 @@ export function VerificationComplete({ projet, porteur, surEnregistrement }: {
               </p>
               <ul className="bloquants">
                 {etat.bloquants.map((b, i) => (
-                  <li key={`${b.key}-${i}`}>
-                    <code>{b.key}</code> — {b.detail}
+                  <li key={`${b.module}-${b.parameter}-${i}`}>
+                    <code>{b.parameter}</code> — {b.detail}
                     <span className="clause">
-                      {b.standard}
-                      {b.clause ? ` ${b.clause}` : ""}
-                      {b.national_annex_reference
-                        ? ` — ${b.national_annex_reference}` : ""}
+                      {`${b.clause} — ${b.annex}`}
+                      {/* QUI LE RECLAME. Un meme parametre sert plusieurs
+                          chapitres: sans le module, l'ingenieur ne sait pas
+                          ce qu'il debloque en le faisant confirmer. */}
+                      {` — reclame par : ${MODULE_LISIBLE[b.module] ?? b.module}`}
                     </span>
                   </li>
                 ))}
@@ -201,23 +219,26 @@ function ActionsEtude({ projet, porteur, etude, surLivrable }: {
     <div className="actions-etude">
       <h3>Documents</h3>
       <div className="rangee-boutons">
-        <button type="button" disabled={!!empechement || !!travail}
+        <button type="button" id="etude-note-html"
+                disabled={!!empechement || !!travail}
                 title={empechement ?? "Note de calcul à cinq chapitres, HTML"}
                 onClick={produire("html", "note-html")}>
           {travail === "note-html" ? "Composition…" : "Note de calcul (HTML)"}
         </button>
-        <button type="button" disabled={!!empechement || !!travail}
+        <button type="button" id="etude-note-pdf"
+                disabled={!!empechement || !!travail}
                 title={empechement ?? "Note de calcul à cinq chapitres, PDF"}
                 onClick={produire("pdf", "note-pdf")}>
           {travail === "note-pdf" ? "Composition…" : "Note de calcul (PDF)"}
         </button>
-        <button type="button" disabled={!!empechement || !!travail}
+        <button type="button" id="etude-plan-dxf"
+                disabled={!!empechement || !!travail}
                 title={empechement
                   ?? "Plan de ferraillage DXF R2018, depuis la coupe gelée"}
                 onClick={produire("dxf", "plan")}>
           {travail === "plan" ? "Transcription…" : "Plan de ferraillage (DXF)"}
         </button>
-        <button type="button" className="secondaire"
+        <button type="button" className="secondaire" id="etude-apercu"
                 disabled={!!empechement || !!travail} onClick={voir}
                 title={empechement ?? "Aperçu non contractuel, sans dépôt"}>
           {travail === "apercu" ? "Rendu…" : "Aperçu du plan"}
@@ -226,7 +247,9 @@ function ActionsEtude({ projet, porteur, etude, surLivrable }: {
 
       {/* LE MOTIF EST ÉCRIT, PAS SEULEMENT SURVOLÉ. */}
       {empechement && (
-        <p className="aide manque" role="status">{empechement}</p>
+        <p className="aide manque" id="pourquoi-pas-de-document" role="status">
+          {empechement}
+        </p>
       )}
       {!empechement && (
         <p className="aide">
@@ -238,7 +261,7 @@ function ActionsEtude({ projet, porteur, etude, surLivrable }: {
       {echec && <p className="bandeau refus" role="alert">{echec}</p>}
 
       {apercu && (
-        <div className="apercu-plan"
+        <div className="apercu-plan" id="apercu-du-plan"
              /* Le SVG vient du serveur, composé par le moteur de dessin: il
                 n'est jamais assemblé à partir d'une saisie du navigateur. */
              dangerouslySetInnerHTML={{ __html: apercu }} />
@@ -274,13 +297,13 @@ function enEtatDeRefus(cause: unknown): Etat {
  * afficherait une liste vide sur un refus qui en porte une — et l'ingénieur
  * conclurait qu'il n'y a rien à faire.
  */
-function bloquantsDe(cause: AppelRefuse): BlockingParameterDTO[] {
+function bloquantsDe(cause: AppelRefuse): PreflightBlockerDTO[] {
   const c = cause.corps;
   const noyau = (c && typeof c === "object" && "detail" in c)
     ? (c as { detail: unknown }).detail : c;
   if (!noyau || typeof noyau !== "object") return [];
   const liste = (noyau as { blocking?: unknown }).blocking;
-  return Array.isArray(liste) ? liste as BlockingParameterDTO[] : [];
+  return Array.isArray(liste) ? liste as PreflightBlockerDTO[] : [];
 }
 
 function enPhrase(cause: unknown): string {

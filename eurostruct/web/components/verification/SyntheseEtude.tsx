@@ -46,10 +46,11 @@ export function SyntheseEtude({ etude, actions }: {
     : etude.status === "failed" ? "refus" : "alerte";
 
   return (
-    <section aria-labelledby="titre-synthese">
+    <section aria-labelledby="titre-synthese" id="synthese-etude"
+             data-calcul={etude.calculation_id} data-statut={etude.status}>
       <h2 id="titre-synthese">Étude {etude.element}</h2>
 
-      <div className={`bandeau ${classe}`} role="status">
+      <div className={`bandeau ${classe}`} id="verdict-etude" role="status">
         <strong>{VERDICT[etude.status] ?? etude.status}</strong>
         {etude.notice}
       </div>
@@ -85,12 +86,13 @@ export function SyntheseEtude({ etude, actions }: {
           fréquente, l'étude exploratoire, ne se corrige pas en modifiant la
           section. */}
       {raison ? (
-        <p className="bandeau alerte" role="status">
+        <p className="bandeau alerte" id="pourquoi-non-finalisable"
+           role="status">
           <strong>Cette étude ne peut pas être finalisée</strong>
           {raison}
         </p>
       ) : (
-        <p className="bandeau ok" role="status">
+        <p className="bandeau ok" id="etude-finalisable" role="status">
           <strong>Étude finalisable</strong>
           Les cinq chapitres sont vérifiés sous des paramètres nationaux
           confirmés. La signature reste un acte humain, qu&apos;aucun calcul ne
@@ -109,7 +111,7 @@ function LigneChapitre({ section }: { section: SectionOutcomeDTO }) {
   const etat = ETAT_LISIBLE[section.status] ?? section.status;
   return (
     <>
-      <tr>
+      <tr id={`chapitre-${section.key}`} data-etat={section.status}>
         <th scope="row">{section.title}</th>
         <td className="clause">{section.basis}</td>
         <td>

@@ -119,6 +119,26 @@ _EC2_FLEXION = (
     "eurostruct_engine.ec2.beam_flexure:design_flexure",
 )
 
+#: LES DEUX PREMIERES RACINES SONT COMMUNES A TOUS LES MODULES.
+#:
+#: `ParameterSet.get` va chercher la valeur; `usable_in_strict_mode` est le
+#: portillon qui decide si elle a le droit de servir. Aucun module ne lit un
+#: parametre national autrement, et une confirmation qui ne les couvrirait pas
+#: laisserait le portillon changer sans etre invalidee.
+_LECTURE = (
+    "eurostruct_engine.ndp.registry:ParameterSet.get",
+    "eurostruct_engine.ndp.model:NationalParameter.usable_in_strict_mode",
+)
+
+#: Les racines des quatre autres chapitres. Chacune est LA FONCTION ou le
+#: nombre entre dans une formule; tout ce qu'elle appelle est trouve par
+#: fermeture.
+_EC2_CISAILLEMENT = (*_LECTURE, "eurostruct_engine.ec2.beam_shear:design_shear")
+_EC2_ANCRAGE = (*_LECTURE, "eurostruct_engine.ec2.anchorage:design_anchorage")
+_EC2_SERVICE = (
+    *_LECTURE, "eurostruct_engine.ec2.serviceability:design_serviceability")
+_EC2_FLECHE = (*_LECTURE, "eurostruct_engine.ec2.deflection:check_span_depth")
+
 _EC2_11 = "EN 1992-1-1"
 
 #: rule_id -> les RACINES du code qui le lit et l'applique.
@@ -127,16 +147,52 @@ _EC2_11 = "EN 1992-1-1"
 #: C'est le comportement fail-closed voulu: ajouter une regle au registre sans
 #: dire par ou le code y entre laisserait signer une attestation qui ne couvre
 #: rien.
-CHEMIN_DE_CODE: dict[str, tuple[str, ...]] = {
-    f"{_EC2_11}:{nom}": _EC2_FLEXION
-    for nom in (
-        "gamma_C_persistent", "gamma_S_persistent",
-        "gamma_C_accidental", "gamma_S_accidental",
-        "alpha_cc",
-        "k1_redistribution", "k2_redistribution",
-        "As_min_coeff", "As_min_floor", "As_max_ratio",
+#:
+#: MESURE DU 01/09, AU NAVIGATEUR: ce fail-closed FERMAIT LA VERTICALE ENTIERE.
+#: Seules les dix regles de flexion etaient declarees; les onze autres que
+#: reclament l'effort tranchant, l'ancrage, l'ouverture des fissures et la
+#: fleche n'avaient aucun chemin de code, donc aucune empreinte, donc aucune
+#: confirmation possible. Le mode strict ne pouvait pas s'ouvrir pour une
+#: verification complete — pas parce qu'un ingenieur n'avait pas releve les
+#: valeurs, mais parce que le produit ne savait pas nommer le code qui les
+#: applique. Le refus etait juste; c'est la carte qui manquait.
+#:
+#: UN PARAMETRE PARTAGE PORTE LES RACINES DE CHAQUE MODULE QUI LE LIT.
+#: `gamma_C_persistent` sert quatre chapitres sur cinq: une empreinte qui ne
+#: couvrirait que la flexion laisserait corriger `design_shear` sous une
+#: confirmation acquise, sans l'invalider.
+def _chemins() -> dict[str, tuple[str, ...]]:
+    par_regle: dict[str, list[str]] = {}
+    modules = (
+        (_EC2_FLEXION, ("gamma_C_persistent", "gamma_S_persistent",
+                        "gamma_C_accidental", "gamma_S_accidental",
+                        "alpha_cc", "k1_redistribution", "k2_redistribution",
+                        "As_min_coeff", "As_min_floor", "As_max_ratio")),
+        (_EC2_CISAILLEMENT, ("gamma_C_persistent", "gamma_S_persistent",
+                             "gamma_C_accidental", "gamma_S_accidental",
+                             "alpha_cc", "C_Rd_c_coeff", "v_min_coeff",
+                             "k1_shear", "cot_theta_min")),
+        (_EC2_ANCRAGE, ("gamma_C_persistent", "gamma_S_persistent",
+                        "gamma_C_accidental", "gamma_S_accidental",
+                        "alpha_ct")),
+        (_EC2_SERVICE, ("k1_stress_limit", "k3_steel_stress", "w_max",
+                        "k3_crack_spacing", "k4_crack_spacing")),
+        (_EC2_FLECHE, ("K_span_depth",)),
     )
-}
+    for racines, noms in modules:
+        for nom in noms:
+            # DEDUPLIQUE ET ORDONNE: l'empreinte se calcule sur cette liste, et
+            # deux ordres differents pour un meme ensemble de racines
+            # donneraient deux empreintes pour un meme code.
+            atteintes = par_regle.setdefault(f"{_EC2_11}:{nom}", [])
+            for r in racines:
+                if r not in atteintes:
+                    atteintes.append(r)
+    return {regle: tuple(sorted(racines))
+            for regle, racines in par_regle.items()}
+
+
+CHEMIN_DE_CODE: dict[str, tuple[str, ...]] = _chemins()
 
 
 def regles_avec_implementation() -> tuple[str, ...]:
