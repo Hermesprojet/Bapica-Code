@@ -86,6 +86,30 @@ __all__ = [
 #: CE QUE CELA NE FAIT PAS PERDRE : la date reelle de production et l'identite
 #: du moteur ne vivent pas dans l'en-tete DXF mais dans la ligne de livrable
 #: (``created_at``, ``engine_build``), qui est la seule source opposable.
+#:
+#: CE REGLAGE EST NECESSAIRE, ET IL N'EST PAS SUFFISANT — MESURE DU 01/09.
+#:
+#: Huit rendus de la MEME coupe, dans huit processus distincts, ont rendu DEUX
+#: empreintes (quatre chacune), pour une taille identique de 63 993 octets. Le
+#: diff fait huit lignes, toutes dans la section ``CLASSES``: les
+#: enregistrements ``LAYOUT`` et ``ACDBPLACEHOLDER`` echangent leur place.
+#:
+#: La cause est dans ``ezdxf`` 1.4.4 et non ici: en R2018,
+#: ``REQUIRED_CLASSES`` retombe sur ``REQ_R2004``, qui ne cite aucune des deux;
+#: elles ne sont donc enregistrees que par la boucle finale de
+#: ``add_required_classes``, qui itere le ``set[str]`` rendu par
+#: ``EntityDB.dxf_types_in_use`` — donc dans un ordre qui depend de
+#: ``PYTHONHASHSEED``.
+#:
+#: A L'INTERIEUR D'UN PROCESSUS, LES OCTETS SONT STABLES, et c'est ce que le
+#: parcours navigateur constate en reproduisant le plan apres un rechargement
+#: complet. D'un processus a l'autre, ils ne le sont pas: deux plans du meme
+#: dessin portent alors deux empreintes, donc deux chemins de stockage, et le
+#: magasin ne supprime jamais.
+#:
+#: Le correctif touche une bibliotheque tierce et merite sa propre preuve
+#: rouge — un rendu repete en SOUS-PROCESSUS, sans quoi le test ne mesure rien.
+#: Voir ``docs/TICKET_DXF_DETERMINISME.md``.
 ezdxf.options.write_fixed_meta_data_for_testing = True
 
 DIMSTYLE: Final = "EUROSTRUCT"

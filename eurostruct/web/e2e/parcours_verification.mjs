@@ -68,6 +68,9 @@ const DATE_REF = "2024-03-01";
 const echecs = [];
 const exige = (ok, message) => { if (!ok) echecs.push(message); };
 
+/** Ce que le parcours a produit, imprime a la fin quand il est vert. */
+const bilan = [];
+
 let etapeCourante = "demarrage";
 const ici = (nom) => { etapeCourante = nom; };
 
@@ -791,6 +794,30 @@ try {
   });
   exige(!/eyJ[A-Za-z0-9_-]{10,}/.test(tout),
         "quelque chose qui ressemble a un JWT est persiste dans le navigateur");
+
+  // =======================================================================
+  // CE QUE CE PARCOURS A REELLEMENT PRODUIT
+  // =======================================================================
+  //: LES CHIFFRES SORTENT DU PARCOURS, PAS D'UN RAPPORT ECRIT A COTE.
+  //:
+  //: Un compte rendu qui affirme « le PDF fait tant d'octets » sans que rien
+  //: ne l'ait mesure vieillit en silence: il reste vrai a l'ecrit longtemps
+  //: apres avoir cesse de l'etre. Ces lignes sont produites par l'execution
+  //: qui vient de reussir, et elles changent avec elle.
+  //:
+  //: L'EMPREINTE DU PDF EST LIEE A L'EXECUTION, celle du DXF ne l'est pas. La
+  //: note porte la version du moteur et son build — que le harnais renouvelle
+  //: a chaque lancement — tandis que le plan ne porte ni date ni build: il ne
+  //: decrit qu'une geometrie. Deux executions donnent donc deux notes
+  //: differentes et le MEME plan, et c'est ce qu'on veut des deux cotes.
+  bilan.push(`etude       ${calculId}`);
+  bilan.push(`  empreinte du calcul  ${etude.corps?.calculation_fingerprint}`);
+  bilan.push(`  instantane normatif  ${etude.corps?.ndp_snapshot_id}`);
+  bilan.push(`  identite d'execution ${etude.corps?.execution_identity}`);
+  bilan.push(`note PDF    sha256 ${noteRecue?.sha256} `
+             + `(${noteRecue?.taille} octets, ${noteRecue?.nom})`);
+  bilan.push(`plan DXF    sha256 ${planRecu?.sha256} `
+             + `(${planRecu?.taille} octets, ${planRecu?.nom})`);
 } catch (cause) {
   echecs.push(`exception a l'etape « ${etapeCourante} »: ${cause}`);
   try {
@@ -836,3 +863,7 @@ console.log(
   + "les documents en disant pourquoi, et la route refuse aussi; aucun jeton "
   + "persiste.",
 );
+if (bilan.length) {
+  console.log("");
+  bilan.forEach((l) => console.log("   " + l));
+}
