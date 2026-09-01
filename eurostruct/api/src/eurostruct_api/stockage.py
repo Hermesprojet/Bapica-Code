@@ -45,6 +45,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Final, Protocol
 from urllib.parse import quote
+from uuid import uuid4
 
 from .s3 import ClientS3, ReglagesS3, S3Refuse
 
@@ -259,6 +260,19 @@ class StockageLocal:
         un fichier tronqué à l'emplacement définitif, portant le nom d'une
         empreinte qu'il ne vérifie plus. ``rename`` sur le même système de
         fichiers est atomique : le fichier est absent, ou complet.
+
+        LE NOM TEMPORAIRE EST UNIQUE PAR ÉCRITURE, ET C'EST UN CORRECTIF.
+        Il ne portait que le PID. Deux dépôts **concurrents du même objet dans
+        le même processus** — deux requêtes servies par le pool de threads,
+        deux émissions simultanées de la même note — visaient donc le même
+        fichier temporaire : la première le renommait, la seconde ne le
+        retrouvait plus et rendait 503 alors que les octets étaient bel et
+        bien en place. Mesuré par
+        ``test_deux_emissions_simultanees_ne_produisent_qu_un_document``.
+
+        ÉCRASER UNE CIBLE EXISTANTE EST SANS DANGER ICI : le chemin dérive du
+        SHA-256 du contenu, donc deux écritures au même endroit portent les
+        mêmes octets.
         """
         if len(octets) > TAILLE_MAX:
             raise StockageIndisponible(
@@ -267,7 +281,8 @@ class StockageLocal:
             )
         cible = self._absolu(chemin)
         cible.parent.mkdir(parents=True, exist_ok=True)
-        provisoire = cible.with_name(f".{cible.name}.{os.getpid()}.partiel")
+        provisoire = cible.with_name(
+            f".{cible.name}.{os.getpid()}.{uuid4().hex}.partiel")
         try:
             provisoire.write_bytes(octets)
             provisoire.replace(cible)

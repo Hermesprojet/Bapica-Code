@@ -433,6 +433,8 @@ export interface ListeProjets {
 export interface Livrable {
   calculation_id: string;
   deliverable_id: string;
+  /** Le livrable dont celui-ci DÉRIVE, sans le remplacer. Distinct de `supersedes_id` : un indice remplace, un document émis atteste. Renseigné sur le document émis, qui référence la note dont l'empreinte est attestée. */
+  derived_from_id?: string | null;
   engine_build_sha?: string | null;
   engine_version: string;
   execution_identity?: string | null;
@@ -469,12 +471,16 @@ export interface LivrableCreation {
 export interface LivrableDetail {
   calculation_id: string;
   deliverable_id: string;
+  /** Le livrable dont celui-ci DÉRIVE, sans le remplacer. Distinct de `supersedes_id` : un indice remplace, un document émis atteste. Renseigné sur le document émis, qui référence la note dont l'empreinte est attestée. */
+  derived_from_id?: string | null;
   engine_build_sha?: string | null;
   engine_version: string;
   execution_identity?: string | null;
   filename: string;
   generated_at: string;
   inputs_hash?: string | null;
+  /** Le document émis produit par l'émission de CE livrable — un second PDF, immuable, qui porte l'attestation et référence l'original par son empreinte. Renseigné sur la note d'origine, jamais sur le document émis lui-même. */
+  issued_deliverable_id?: string | null;
   kind: string;
   last_reason?: string | null;
   media_type: string;

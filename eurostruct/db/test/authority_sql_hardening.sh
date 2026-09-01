@@ -422,7 +422,7 @@ echo "      -- surface-du-backend: ce que le backend authentifie atteint, et rie
 #
 # L'ORDRE EST CELUI DE `order by p.proname`, et non celui du recit ci-dessus:
 # la comparaison porte sur la chaine entiere.
-ATTENDUES="normative_authenticated_actor,normative_authenticated_actor_or_null,normative_decision_approve,normative_decision_consume,normative_decision_propose,normative_decision_review,normative_grant_is_effective,organization_bootstrap,organization_invitation_accept,organization_invitation_create,organization_invitation_list,organization_invitation_revoke,organization_member_list,organization_member_update,project_calculation_list,project_calculation_read,project_calculation_record,project_deliverable_bytes,project_deliverable_create,project_deliverable_finalize,project_deliverable_list,project_deliverable_read,project_deliverable_transition,project_deliverable_validate,project_workspace_create,project_workspace_list,project_workspace_organisations"
+ATTENDUES="normative_authenticated_actor,normative_authenticated_actor_or_null,normative_decision_approve,normative_decision_consume,normative_decision_propose,normative_decision_review,normative_grant_is_effective,organization_bootstrap,organization_invitation_accept,organization_invitation_create,organization_invitation_list,organization_invitation_revoke,organization_member_list,organization_member_update,project_calculation_list,project_calculation_read,project_calculation_record,project_deliverable_bytes,project_deliverable_create,project_deliverable_finalize,project_deliverable_issue_attestation,project_deliverable_list,project_deliverable_read,project_deliverable_transition,project_deliverable_validate,project_workspace_create,project_workspace_list,project_workspace_organisations"
 OUVERTES="$(q "select coalesce(string_agg(distinct p.proname, ', '
                                  order by p.proname), '(aucune)')
                  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -433,12 +433,13 @@ OUVERTES="$(q "select coalesce(string_agg(distinct p.proname, ', '
 detail "atteintes par eurostruct_authority_backend: $OUVERTES"
 if [[ "$OUVERTES" == "$ATTENDUES" ]]; then
   sur surface-du-backend "le backend authentifie atteint exactement les"
-  detail "vingt-sept fonctions declarees — sept sur le chemin normatif (trois"
+  detail "vingt-huit fonctions declarees — sept sur le chemin normatif (trois"
   detail "primitives de decision, la relecture du dossier gele, deux"
   detail "derivations d'acteur, la lecture d'efficacite), cinq sur le chemin de"
-  detail "travail (projets, calcul, historique, reouverture), sept sur celui"
+  detail "travail (projets, calcul, historique, reouverture), huit sur celui"
   detail "des livrables (brouillon, liste, relecture, transition, attestation,"
-  detail "emission, octets) et huit sur celui de l'entree (fonder, lister ses"
+  detail "emission, document emis, octets) et huit sur celui de l'entree"
+  detail "(fonder, lister ses"
   detail "bureaux, emettre / accepter / revoquer / lister une invitation,"
   detail "lister et administrer les membres). Ni plus, ni moins."
 elif [[ "$OUVERTES" == "(aucune)" ]]; then

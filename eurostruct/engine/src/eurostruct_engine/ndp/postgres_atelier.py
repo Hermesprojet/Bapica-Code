@@ -370,6 +370,7 @@ class PostgresAtelier:
             "state": ligne["state"],
             "revision": int(ligne["revision"]),
             "supersedes_id": _texte(ligne["supersedes_id"]),
+            "derived_from_id": _texte(ligne["derived_from_id"]),
             "watermark": ligne["watermark"],
             "last_reason": ligne["last_reason"],
             "engine_version": ligne["engine_version"],
@@ -515,6 +516,39 @@ class PostgresAtelier:
             if not ligne or not ligne[0]:
                 raise ConfirmationDomainError(
                     "l'emission n'a rendu aucun etat."
+                )
+            return str(ligne[0])
+
+    def emettre_avec_attestation(
+            self, preuve: Any, *, project_id: str, source_id: str,
+            filename: str, media_type: str, storage_backend: str,
+            storage_path: str, sha256: str, size_bytes: int) -> str:
+        """Émet la note **et** enregistre le document attesté, d'un seul geste.
+
+        LES DEUX MOITIÉS N'ONT DE SENS QU'ENSEMBLE, et c'est pourquoi une
+        seule primitive les porte. Un original passé à ``final`` sans document
+        émis laisserait un livrable en circulation dont l'attestation reste
+        invisible ; un document émis sans original ``final`` attesterait une
+        pièce qui n'a pas été mise en circulation.
+
+        LES OCTETS SONT DÉJÀ DÉPOSÉS ET RELUS quand cette méthode est appelée.
+        Elle ne reçoit que leur description — chemin, empreinte, taille —
+        parce que la base ne doit jamais référencer un objet qu'on n'a pas su
+        relire.
+
+        :returns: l'identifiant du document émis. Un second appel après une
+            réponse perdue rend **le même**, sans écrire de doublon.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select project_deliverable_issue_attestation("
+                "  %s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s::bigint)",
+                (project_id, source_id, filename, media_type,
+                 storage_backend, storage_path, sha256, size_bytes))
+            ligne = u.curseur.fetchone()
+            if not ligne or not ligne[0]:
+                raise ConfirmationDomainError(
+                    "l'emission n'a rendu aucun document emis."
                 )
             return str(ligne[0])
 

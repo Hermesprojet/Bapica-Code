@@ -42,6 +42,7 @@ __all__ = [
     "CalculDeProjetRequest",
     "CalculEnregistre",
     "CalculResume",
+    "EmissionDemande",
     "HistoriqueCalculs",
     "ListeLivrables",
     "ListeProjets",
@@ -338,6 +339,20 @@ class LivrableCreation(Strict):
                     "aire que son ferraillage n'a pas.")
 
 
+class EmissionDemande(Strict):
+    """L'émission ne prend AUCUN paramètre, et ce modèle vide le dit.
+
+    POURQUOI UN MODÈLE SANS CHAMP PLUTÔT QU'AUCUN MODÈLE. Une route sans corps
+    déclaré ignore silencieusement ce qu'on lui envoie : un client qui
+    joindrait `{"validator_name": "…"}` recevrait 200 et pourrait croire que sa
+    valeur a servi. Avec ce modèle, `extra="forbid"` lui répond 422 et lui
+    apprend que l'identité du validateur ne se dicte pas — elle sort de son
+    adhésion, côté serveur.
+
+    Le corps reste FACULTATIF : émettre sans rien envoyer est le geste normal.
+    """
+
+
 class RetourAuBrouillon(Strict):
     """Renvoyer une pièce en relecture vers le brouillon, **avec un motif**.
 
@@ -413,6 +428,12 @@ class Livrable(Strict):
                     "(validated), émis (final).")
     revision: int = Field(ge=1)
     supersedes_id: str | None = None
+    derived_from_id: str | None = Field(
+        default=None,
+        description="Le livrable dont celui-ci DÉRIVE, sans le remplacer. "
+                    "Distinct de `supersedes_id` : un indice remplace, un "
+                    "document émis atteste. Renseigné sur le document émis, "
+                    "qui référence la note dont l'empreinte est attestée.")
     watermark: str | None = Field(
         default=None,
         description="Le filigrane RÉELLEMENT apposé sur les octets. Il dit ce "
@@ -453,6 +474,12 @@ class LivrableDetail(Livrable):
         default=None,
         description="« PROJET — NON SIGNABLE », quand des paramètres "
                     "nationaux non confirmés ont pu servir.")
+    issued_deliverable_id: str | None = Field(
+        default=None,
+        description="Le document émis produit par l'émission de CE livrable — "
+                    "un second PDF, immuable, qui porte l'attestation et "
+                    "référence l'original par son empreinte. Renseigné sur la "
+                    "note d'origine, jamais sur le document émis lui-même.")
 
 
 class ListeLivrables(Strict):

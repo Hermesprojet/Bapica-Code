@@ -102,7 +102,10 @@ def test_le_dossier_nomme_les_autres_artefacts_du_meme_calcul(
     assert dessin["filename"] == plan["filename"]
     assert dessin["state"] == plan["state"]
     assert instantane["calculation_id"] == calcul_strict
-    assert instantane["taken_at"], "l'instantane doit se dater lui-meme"
+    # L'INSTANTANE SE DATE PAR SES PROPRES ARTEFACTS, jamais par l'horloge:
+    # une horloge rendrait le dossier non deterministe.
+    assert instantane["artifacts_as_of"] == max(
+        a["generated_at"] for a in [note, plan])
 
 
 def test_l_instantane_ne_liste_pas_les_artefacts_d_un_autre_calcul(
@@ -178,15 +181,15 @@ def test_le_dossier_reste_deterministe_avec_l_instantane(
         client, jeton, projet, calcul_strict):
     """UN DOSSIER DONT L'EMPREINTE BOUGE NE PEUT RIEN ATTESTER.
 
-    L'instantane se date lui-meme; ce champ est donc EXCLU de la comparaison,
-    et tout le reste doit coincider. C'est le compromis assume: le lecteur
-    doit savoir QUAND le dossier a ete constitue, mais deux dossiers pris a la
-    meme seconde doivent porter les memes octets.
+    RIEN N'EST EXCLU DE LA COMPARAISON, et c'est un correctif. La premiere
+    version de l'instantane portait l'heure de l'horloge: deux telechargements
+    separes par une seconde donnaient des octets differents, et
+    `test_deux_telechargements_du_dossier_rendent_les_memes_octets` est tombe.
+    L'instantane se date desormais par le plus recent de ses propres
+    artefacts — une valeur qui vient des donnees, donc stable.
     """
     note = _brouillon_pdf(client, jeton, projet, calcul_strict)
     a = _manifeste_du_dossier(client, jeton, projet, note["deliverable_id"])
     b = _manifeste_du_dossier(client, jeton, projet, note["deliverable_id"])
 
-    a["review_snapshot"].pop("taken_at")
-    b["review_snapshot"].pop("taken_at")
     assert a == b

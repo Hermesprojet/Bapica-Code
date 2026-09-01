@@ -375,6 +375,7 @@ python3 -m pytest "$RACINE/api/tests/test_livrables.py" \
         "$RACINE/api/tests/test_livrable_dxf.py" \
         "$RACINE/api/tests/test_apercu_svg.py" \
         "$RACINE/api/tests/test_dossier_instantane.py" \
+        "$RACINE/api/tests/test_document_emis.py" \
         "$RACINE/api/tests/test_autorisations.py" \
         -p no:cacheprovider --no-header
 CODE=$?

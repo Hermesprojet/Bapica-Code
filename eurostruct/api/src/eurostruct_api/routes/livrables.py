@@ -39,7 +39,6 @@ import hashlib
 import io
 import json
 import zipfile
-from datetime import datetime, timezone, UTC
 from typing import Any
 
 from eurostruct_engine.drawing.beam_section import rendre_dxf
@@ -49,6 +48,7 @@ from eurostruct_engine.ndp.confirmation import ConfirmationDomainError
 from eurostruct_engine.ndp.postgres_provider import AuthentificationRequise
 from eurostruct_engine.schemas.atelier import (
     AttestationDemande,
+    EmissionDemande,
     ListeLivrables,
     Livrable,
     LivrableCreation,
@@ -63,6 +63,7 @@ from eurostruct_engine.service import verify_and_model_beam_section
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 
+from ..attestation import rendre_attestation_pdf
 from ..dependances import ouvrir_atelier, provider_de_lecture
 from ..note import (
     MEDIA_TYPE,
@@ -147,8 +148,16 @@ def _mentions(strict: bool) -> tuple[str, str | None]:
     return MENTION_OBLIGATOIRE, None if strict else MENTION_NON_SIGNABLE
 
 
-def _detail(brut: dict[str, Any]) -> LivrableDetail:
+def _detail(brut: dict[str, Any],
+            document_emis: str | None = None) -> LivrableDetail:
+    """La projection d'une ligne relue vers le contrat rendu au client.
+
+    `LivrableDetail` EST GELE, et c'est voulu: une reponse qu'on peut retoucher
+    apres coup finit par dire autre chose que ce qui a ete lu. Le document
+    emis est donc passe ICI, a la construction, et non ecrit sur l'objet.
+    """
     charge = dict(brut)
+    charge["issued_deliverable_id"] = document_emis
     # LE FILIGRANE ENREGISTRE DIT DEJA SI DES PARAMETRES NON CONFIRMES ONT PU
     # SERVIR: il a ete calcule au moment ou les octets ont ete produits, et il
     # est fige avec eux. Le recalculer depuis l'etat d'aujourd'hui ferait dire
@@ -339,6 +348,23 @@ def _octets_du_dessin(calcul: dict[str, Any], ferraillage: Any,
     tampon = io.StringIO()
     rendre_dxf(modele).write(tampon)
     return tampon.getvalue().encode("utf-8")
+
+
+def _nom_du_document_emis(projet: dict[str, Any],
+                          source: dict[str, Any]) -> str:
+    """Le nom du document émis, dérivé de celui qu'il atteste.
+
+    IL DIT CE QU'IL EST DÈS LE NOM DE FICHIER. Rangés côte à côte dans un
+    dossier, l'original et le document émis ne doivent pas se ressembler : le
+    second porte l'attestation, le premier non, et c'est le second qu'on
+    transmet.
+    """
+    reference = "".join(
+        c for c in str(projet.get("reference") or projet.get("name") or "")
+        if c.isalnum() or c in "-_")[:40]
+    court = "".join(c for c in str(source.get("deliverable_id") or "")
+                    if c.isalnum() or c == "-")[:36]
+    return f"attestation-{reference or 'projet'}-{court or 'livrable'}.pdf"
 
 
 def _nom_sur(nom: str) -> str:
@@ -688,8 +714,8 @@ def _genres_absents() -> tuple[str, ...]:
     return tuple(g for g in _GENRES_CONNUS if g not in produits)
 
 
-def _instantane_de_revue(detail: dict[str, Any], fratrie: list[dict[str, Any]],
-                         pris_a: str) -> dict[str, Any]:
+def _instantane_de_revue(detail: dict[str, Any],
+                         fratrie: list[dict[str, Any]]) -> dict[str, Any]:
     """CE QUI EXISTAIT POUR CE CALCUL AU MOMENT OU LE DOSSIER A ETE PRIS.
 
     LE SILENCE SUR UN ARTEFACT SE LIT COMME SON APPROBATION, et c'est le
@@ -699,19 +725,28 @@ def _instantane_de_revue(detail: dict[str, Any], fratrie: list[dict[str, Any]],
     conclure que l'etude entiere avait ete relue, alors que l'attestation ne
     couvre qu'une piece.
 
-    L'INSTANTANE SE DATE LUI-MEME, et c'est un compromis assume. Le reste du
-    manifeste est deterministe — deux telechargements rendent les memes octets
-    — mais un inventaire sans date ne dirait pas DE QUAND il parle: un plan
-    produit apres coup n'y figurerait pas, et rien ne permettrait de s'en
-    apercevoir.
+    IL SE DATE PAR SES PROPRES ARTEFACTS, ET C'EST UN CORRECTIF.
+    ------------------------------------------------------------
+    La premiere version portait l'heure de l'horloge, `now()`. Elle rendait le
+    dossier NON DETERMINISTE: deux telechargements separes par une seconde
+    donnaient des octets differents, et
+    `test_deux_telechargements_du_dossier_rendent_les_memes_octets` est tombe
+    des que la seconde a change. Un dossier dont l'empreinte bouge ne peut
+    rien attester — on ne peut plus dire « voici le dossier que j'ai relu ».
+
+    `artifacts_as_of` est donc la date du PLUS RECENT artefact enumere. Elle
+    dit ce qu'une horloge disait — jusqu'ou l'inventaire porte — mais elle le
+    dit avec une valeur qui vient des donnees, donc stable. Un plan produit
+    apres coup fait avancer cette date; l'ancien dossier garde la sienne.
 
     IL NE RATISSE PAS PLUS LARGE QUE LE CALCUL. Melanger les livrables des
     autres calculs du projet ferait dire au dossier que l'attestation laisse
     de cote des documents qui ne la concernent pas — aussi faux qu'un oubli.
     """
+    dates = [str(a["generated_at"]) for a in fratrie if a.get("generated_at")]
     return {
         "calculation_id": detail["calculation_id"],
-        "taken_at": pris_a,
+        "artifacts_as_of": max(dates) if dates else None,
         # ORDRE FIXE, PAR EMPREINTE. L'ordre de la primitive suit la date de
         # creation; deux artefacts crees dans la meme seconde pourraient en
         # sortir dans un ordre variable, et l'archive cesserait d'etre
@@ -721,6 +756,7 @@ def _instantane_de_revue(detail: dict[str, Any], fratrie: list[dict[str, Any]],
                 "deliverable_id": a["deliverable_id"],
                 "calculation_id": a["calculation_id"],
                 "kind": a["kind"],
+                "derived_from_id": a.get("derived_from_id"),
                 "filename": a["filename"],
                 "media_type": a["media_type"],
                 "sha256": a["sha256"],
@@ -768,8 +804,7 @@ def _portee_de_l_attestation(
 
 
 def _manifeste(projet: dict[str, Any], detail: dict[str, Any],
-               octets: bytes, fratrie: list[dict[str, Any]],
-               pris_a: str) -> dict[str, Any]:
+               octets: bytes, fratrie: list[dict[str, Any]]) -> dict[str, Any]:
     """Ce que le dossier contient, et a quoi cela se rattache.
 
     TOUT VIENT DES DONNEES GELEES. Pas un champ n'est recalcule : le contexte
@@ -782,7 +817,7 @@ def _manifeste(projet: dict[str, Any], detail: dict[str, Any],
     manifeste qui n'en porterait qu'une ne permettrait pas de constater
     qu'elles s'accordent — il l'affirmerait.
     """
-    instantane = _instantane_de_revue(detail, fratrie, pris_a)
+    instantane = _instantane_de_revue(detail, fratrie)
     couvre, non_couverts = _portee_de_l_attestation(detail, instantane)
     return {
         "kind": "eurostruct/review-bundle",
@@ -916,13 +951,9 @@ def dossier_de_revue(project_id: str, deliverable_id: str,
     except (StockageIndisponible, ObjetIntrouvable, OctetsAlteres) as cause:
         raise _indisponible(cause) from cause
 
-    # LA SEULE DATE DU DOSSIER, ET ELLE EST DANS L'INSTANTANE.
-    #
-    # Le reste du manifeste ne porte que des valeurs gelees, et l'archive fige
-    # ses horodatages: deux telechargements rendent les memes octets a ce champ
-    # pres. C'est le prix pour qu'un inventaire dise DE QUAND il parle.
-    pris_a = datetime.now(UTC).replace(microsecond=0).isoformat()
-    manifeste = json.dumps(_manifeste(projet, detail, octets, fratrie, pris_a),
+    # AUCUNE HORLOGE N'ENTRE DANS LE DOSSIER, et c'est ce qui le rend
+    # attestable: deux telechargements rendent exactement les memes octets.
+    manifeste = json.dumps(_manifeste(projet, detail, octets, fratrie),
                            ensure_ascii=False, indent=2, sort_keys=True)
 
     tampon = io.BytesIO()
@@ -1083,19 +1114,109 @@ def attester(project_id: str, deliverable_id: str, corps: AttestationDemande,
 @routeur.post("/{project_id}/deliverables/{deliverable_id}/final",
               response_model=LivrableDetail)
 def emettre(project_id: str, deliverable_id: str,
+            corps: EmissionDemande | None = None,
             ouvert: Any = Depends(ouvrir_atelier)) -> LivrableDetail:
-    """Émet le livrable. Impossible sans attestation nominative préalable.
+    """Émet le livrable, **et produit le document attesté**.
 
     SÉPARÉE DE L'ATTESTATION, ET DÉLIBÉRÉMENT. Valider, c'est répondre du
     calcul ; émettre, c'est mettre le document en circulation. Les fondre
     ferait de toute relecture une publication.
+
+    CE QUE L'ÉMISSION AJOUTE, ET POURQUOI
+    ---------------------------------------
+    Le nom du validateur, son rôle, son inscription, sa déclaration, ses
+    réserves et la date vivaient dans la base — c'est-à-dire là où le
+    destinataire du document ne les voit pas. Le PDF qu'on lui transmettait ne
+    portait rien de tout cela.
+
+    Le retoucher pour y ajouter l'attestation était exclu : **son empreinte
+    est ce sur quoi l'attestation porte**. Émettre produit donc un SECOND PDF,
+    immuable, qui référence l'original par son SHA-256 sans le modifier d'un
+    bit.
+
+    L'ORDRE EST LE SEUL QUI NE MENTE PAS : composer, déposer, **relire**,
+    vérifier l'empreinte, puis appeler la primitive qui bascule l'original et
+    enregistre le document émis **dans une seule transaction**. Si cette
+    transaction échoue après le dépôt, l'objet devient un orphelin que le
+    scanner détecte — coût accepté. L'inverse ne l'est pas : la base ne doit
+    jamais référencer des octets qu'on n'a pas su relire.
+
+    UNE SECONDE TENTATIVE NE COÛTE PAS UN SECOND DOCUMENT. Le PDF émis est
+    composé depuis des données gelées : il retombe sur les mêmes octets, donc
+    sur le même chemin, et la primitive rend le document déjà émis.
     """
     jeton = _jeton_de(ouvert)
     try:
-        ouvert.atelier.emettre_livrable(
+        projet = _projet_de(ouvert, jeton, project_id)
+        # LA CAPACITE AVANT LE MAGASIN. Un refus prononcé après le dépôt
+        # laisserait un objet que plus rien ne référencerait, et la politique
+        # du magasin interdit au produit de le supprimer.
+        _exiger_capacite(projet, "validation")
+        source = ouvert.atelier.relire_livrable(
             jeton, project_id=project_id, deliverable_id=deliverable_id)
-        return _detail(ouvert.atelier.relire_livrable(
-            jeton, project_id=project_id, deliverable_id=deliverable_id))
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        ouvert.fermer()
+        raise _refus(cause) from cause
+
+    # SEULE UNE NOTE EN PDF DONNE LIEU A UN DOCUMENT ATTESTE. Les autres
+    # s'emettent comme avant, et il ne faut PAS le leur retirer.
+    #
+    # Un plan de ferraillage se transmet tel quel: il ne porte pas
+    # d'attestation nominative de calcul, et lui en fabriquer une laisserait
+    # croire qu'un ingenieur repond du dessin comme il repond des nombres. La
+    # note HTML, elle, est un format de lecture. Refuser de les emettre aurait
+    # ete une REGRESSION que la suite existante a mesuree: ils s'emettaient
+    # avant ce lot, et rien ne justifie de le leur enlever.
+    if source.get("kind") != "calculation_note_pdf":
+        try:
+            ouvert.atelier.emettre_livrable(
+                jeton, project_id=project_id, deliverable_id=deliverable_id)
+            return _detail(ouvert.atelier.relire_livrable(
+                jeton, project_id=project_id, deliverable_id=deliverable_id))
+        except (AuthentificationRequise, ConfirmationDomainError) as cause:
+            raise _refus(cause) from cause
+        finally:
+            ouvert.fermer()
+
+    try:
+        magasin = stockage_configure()
+    except StockageIndisponible as cause:
+        ouvert.fermer()
+        raise _indisponible(cause) from cause
+
+    try:
+        octets = rendre_attestation_pdf(projet, source)
+    except CaractereNonRepresentable as cause:
+        ouvert.fermer()
+        raise _indisponible(cause) from cause
+
+    sha = empreinte(octets)
+    try:
+        chemin = chemin_de_livrable(
+            org_id=projet["organization_id"], project_id=project_id,
+            sha256=sha, extension="pdf")
+        magasin.deposer(chemin, octets, MEDIA_TYPE_PDF)
+        relus = magasin.lire(chemin)
+        if empreinte(relus) != sha or len(relus) != len(octets):
+            raise OctetsAlteres(
+                f"les octets relus depuis « {chemin} » ne portent pas "
+                "l'empreinte deposee. Le livrable n'est PAS emis: une "
+                "attestation qu'on ne sait pas relire n'atteste rien."
+            )
+    except (StockageIndisponible, ObjetIntrouvable, OctetsAlteres) as cause:
+        ouvert.fermer()
+        raise _indisponible(cause) from cause
+
+    try:
+        emis = ouvert.atelier.emettre_avec_attestation(
+            jeton, project_id=project_id, source_id=deliverable_id,
+            filename=_nom_du_document_emis(projet, source),
+            media_type=MEDIA_TYPE_PDF, storage_backend=magasin.nom,
+            storage_path=chemin, sha256=sha, size_bytes=len(octets))
+        return _detail(
+            ouvert.atelier.relire_livrable(
+                jeton, project_id=project_id, deliverable_id=deliverable_id),
+            document_emis=emis)
     except (AuthentificationRequise, ConfirmationDomainError) as cause:
         raise _refus(cause) from cause
     finally:

@@ -1872,6 +1872,19 @@
           "title": "Deliverable Id",
           "type": "string"
         },
+        "derived_from_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le livrable dont celui-ci DÉRIVE, sans le remplacer. Distinct de `supersedes_id` : un indice remplace, un document émis atteste. Renseigné sur le document émis, qui référence la note dont l'empreinte est attestée.",
+          "title": "Derived From Id"
+        },
         "engine_build_sha": {
           "anyOf": [
             {
@@ -2077,6 +2090,19 @@
           "title": "Deliverable Id",
           "type": "string"
         },
+        "derived_from_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le livrable dont celui-ci DÉRIVE, sans le remplacer. Distinct de `supersedes_id` : un indice remplace, un document émis atteste. Renseigné sur le document émis, qui référence la note dont l'empreinte est attestée.",
+          "title": "Derived From Id"
+        },
         "engine_build_sha": {
           "anyOf": [
             {
@@ -2124,6 +2150,19 @@
           ],
           "default": null,
           "title": "Inputs Hash"
+        },
+        "issued_deliverable_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le document émis produit par l'émission de CE livrable — un second PDF, immuable, qui porte l'attestation et référence l'original par son empreinte. Renseigné sur la note d'origine, jamais sur le document émis lui-même.",
+          "title": "Issued Deliverable Id"
         },
         "kind": {
           "title": "Kind",
