@@ -126,3 +126,54 @@ ul.bloquants code { font-size: .85rem; }
 
 .pied { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--trait);
         color: var(--encre-douce); font-size: .82rem; }
+
+/* ---------------------------------------------------------------------------
+   LA VERIFICATION COMPLETE — sept etapes, cinq chapitres.
+
+   LES QUATRE ETATS D'UN CHAPITRE ONT QUATRE APPARENCES, et c'est le seul
+   endroit ou cela se decide. Les ramener a deux couleurs — vert / rouge —
+   ferait peindre en vert une section NON EVALUEE, c'est-a-dire une section qui
+   n'a jamais tourne. C'est le cas francais: son Annexe Nationale rend k3
+   fonction de l'enrobage, et le modele scalaire ne sait pas la porter.
+   --------------------------------------------------------------------------- */
+ol.etapes { display: flex; flex-wrap: wrap; gap: .35rem; list-style: none;
+            margin: .5rem 0 1rem; padding: 0; }
+button.etape { display: flex; align-items: center; gap: .4rem;
+               background: var(--papier); color: var(--encre);
+               border: 1px solid var(--trait); border-radius: 999px;
+               padding: .3rem .7rem; font-size: .8rem; cursor: pointer;
+               margin: 0; }
+button.etape .rang { font-variant-numeric: tabular-nums; font-weight: 600;
+                     color: var(--encre-douce); }
+button.etape.active { border-color: #6b8afd; box-shadow: 0 0 0 1px #6b8afd; }
+button.etape.incomplete .rang { color: var(--alerte); }
+button.etape.remplie .rang { color: var(--ok); }
+
+.navigation-etapes { display: flex; flex-wrap: wrap; gap: .5rem;
+                     align-items: center; }
+
+.manque { color: var(--alerte); }
+
+/* Les quatre etats, et aucune fusion. */
+.etat { display: inline-block; border-radius: 999px; padding: .1rem .55rem;
+        font-size: .78rem; border: 1px solid var(--trait); }
+.etat.ok { background: var(--ok-fond); color: var(--ok);
+           border-color: var(--ok); }
+.etat.ko { background: var(--refus-fond); color: var(--refus);
+           border-color: var(--refus-trait); }
+.etat.attente { background: var(--alerte-fond); color: var(--alerte);
+                border-color: var(--alerte-trait); }
+/* NON EVALUE: ni vert, ni rouge, ni orange. Le silence a son apparence. */
+.etat.silence { background: transparent; color: var(--encre-douce); }
+
+.actions-etude { margin: 1rem 0; }
+.actions-etude h3 { font-size: .95rem; margin: 1rem 0 .5rem; }
+.rangee-boutons { display: flex; flex-wrap: wrap; gap: .5rem; }
+.apercu-plan { margin-top: 1rem; background: var(--papier);
+               border: 1px solid var(--trait); border-radius: 10px;
+               padding: .5rem; overflow-x: auto; }
+.apercu-plan svg { max-width: 100%; height: auto; }
+
+details > summary { cursor: pointer; color: var(--encre-douce);
+                    font-size: .85rem; margin: 1rem 0 .5rem; }
+details code { font-size: .78rem; word-break: break-all; }

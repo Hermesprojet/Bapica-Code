@@ -61,6 +61,7 @@ import {
   type AuthorityReviewDossier,
 } from "@/lib/autorite";
 import { AppelRefuse, SessionExpiree } from "@/lib/transport";
+import { VerificationComplete } from "@/components/verification/VerificationComplete";
 
 type Champs = {
   b: string; h: string; d: string; M_Ed: string;
@@ -216,9 +217,9 @@ function Ecran() {
 
   return (
     <main>
-      <h1>EUROSTRUCT — flexion simple, section rectangulaire</h1>
+      <h1>EUROSTRUCT — poutre en béton armé</h1>
       <p className="sous-titre">
-        Vérification ELU selon EN 1992-1-1 et son Annexe Nationale.
+        Vérification selon EN 1992-1-1 et son Annexe Nationale.
       </p>
 
       <ConfigurationManquante />
@@ -234,6 +235,28 @@ function Ecran() {
                          surConsommation={() => setRevision((n) => n + 1)} />
       <Referentiel pays={paysEffectif} revision={revision} />
 
+      {/* LA VERTICALE COMPLETE, AVANT LA FLEXION SEULE, ET C'EST L'ORDRE DE
+          L'UTILITE. Une poutre qui « passe en flexion » n'est pas une poutre
+          verifiee: il lui manque l'effort tranchant, l'ancrage, l'ouverture
+          des fissures et la fleche. L'ecran ne proposait que le premier des
+          cinq chapitres, et rien ne disait que les quatre autres restaient a
+          faire ailleurs.
+
+          LE FORMULAIRE DE FLEXION RESTE, INTACT. Il sert au coup d'oeil
+          rapide — une section, un moment, un ordre de grandeur — et ses
+          parcours navigateur reposent sur ses identifiants. Le supprimer
+          aurait ete une refonte; le laisser sous son propre titre dit ce
+          qu'il est. */}
+      <VerificationComplete
+        projet={projet} porteur={auth.porteur}
+        surEnregistrement={() => setRevisionAtelier((n) => n + 1)} />
+
+      <h2>Flexion seule — vérification rapide</h2>
+      <p className="aide">
+        Un seul chapitre sur cinq. Utile pour un ordre de grandeur ; il ne
+        remplace pas la vérification complète ci-dessus, et une section qui
+        « passe en flexion » n&apos;est pas une section vérifiée.
+      </p>
       <form onSubmit={soumettre}>
         <fieldset>
           <legend>Section</legend>

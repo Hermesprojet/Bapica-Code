@@ -505,6 +505,33 @@
       "title": "BarRowDTO",
       "type": "object"
     },
+    "BeamGeometryDTO": {
+      "additionalProperties": false,
+      "description": "La section et la portée, une seule fois pour les cinq modules.",
+      "properties": {
+        "b": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "d": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "h": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "l_eff": {
+          "$ref": "#/$defs/QuantityDTO",
+          "description": "Portée utile, §5.3.2.2. Elle sert à la dispense du calcul de flèche."
+        }
+      },
+      "required": [
+        "b",
+        "h",
+        "d",
+        "l_eff"
+      ],
+      "title": "BeamGeometryDTO",
+      "type": "object"
+    },
     "BeamSectionDrawingRequest": {
       "additionalProperties": false,
       "description": "Input of the DXF cross-section generator.\n\nKept as the **drawing** contract: it knows a geometry and bars, and nothing\nabout whether they were verified. :class:`Ec2BeamSectionRequest` is what a\nclient should send; this one is what the renderer consumes once the check\nhas passed.",
@@ -1444,6 +1471,265 @@
       "title": "Ec2BeamSectionRequest",
       "type": "object"
     },
+    "Ec2BeamVerificationRequest": {
+      "additionalProperties": false,
+      "description": "Une vérification complète **sur un projet**.\n\nElle ne nomme aucun référentiel : voir le docstring du module.",
+      "properties": {
+        "M_Ed": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "M_char": {
+          "$ref": "#/$defs/QuantityDTO",
+          "description": "Moment sous combinaison caractéristique. Il majore M_qp par nature."
+        },
+        "M_qp": {
+          "$ref": "#/$defs/QuantityDTO",
+          "description": "Moment sous combinaison quasi-permanente."
+        },
+        "V_Ed": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "anchorage_available": {
+          "$ref": "#/$defs/QuantityDTO",
+          "description": "Longueur d'ancrage réellement disponible. L'ingénieur seul connaît l'about dont il dispose ; sans elle, l'ancrage serait le seul chapitre sans verdict."
+        },
+        "b_eff_over_b_w": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "B Eff Over B W"
+        },
+        "bars": {
+          "$ref": "#/$defs/LongitudinalBarsDTO"
+        },
+        "bond_condition": {
+          "default": "good",
+          "title": "Bond Condition",
+          "type": "string"
+        },
+        "cot_theta": {
+          "description": "Inclinaison des bielles retenue par l'ingénieur. Une borne nationale peut la refuser, et c'est un refus juste.",
+          "title": "Cot Theta",
+          "type": "number"
+        },
+        "cover": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "element": {
+          "default": "poutre",
+          "maxLength": 100,
+          "title": "Element",
+          "type": "string"
+        },
+        "exposure_class": {
+          "examples": [
+            "XC3"
+          ],
+          "title": "Exposure Class",
+          "type": "string"
+        },
+        "geometry": {
+          "$ref": "#/$defs/BeamGeometryDTO"
+        },
+        "links": {
+          "$ref": "#/$defs/TransverseLinksDTO"
+        },
+        "materials": {
+          "$ref": "#/$defs/VerificationMaterialsDTO"
+        },
+        "phi_creep": {
+          "description": "Coefficient de fluage φ(∞,t0), §3.1.4. Fourni par l'ingénieur, jamais deviné : il dépend du rayon moyen, de l'humidité et de l'âge au chargement.",
+          "title": "Phi Creep",
+          "type": "number"
+        },
+        "strict_ndp": {
+          "default": true,
+          "description": "Quand vrai, un paramètre national non confirmé bloque AVANT le calcul, et rien n'est enregistré.",
+          "title": "Strict Ndp",
+          "type": "boolean"
+        },
+        "structural_system": {
+          "description": "Ligne du Tableau 7.4N. Aucun défaut.",
+          "examples": [
+            "simply_supported"
+          ],
+          "title": "Structural System",
+          "type": "string"
+        },
+        "supports_brittle_partitions": {
+          "default": false,
+          "description": "Aucune géométrie ne le révèle : c'est une donnée.",
+          "title": "Supports Brittle Partitions",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "geometry",
+        "materials",
+        "M_Ed",
+        "V_Ed",
+        "M_char",
+        "M_qp",
+        "phi_creep",
+        "exposure_class",
+        "structural_system",
+        "bars",
+        "links",
+        "cot_theta",
+        "cover",
+        "anchorage_available"
+      ],
+      "title": "Ec2BeamVerificationRequest",
+      "type": "object"
+    },
+    "Ec2BeamVerificationResponse": {
+      "additionalProperties": false,
+      "description": "L'étude enregistrée, telle que le serveur la rend et la relit.",
+      "properties": {
+        "bar_spacing": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "calculation_fingerprint": {
+          "title": "Calculation Fingerprint",
+          "type": "string"
+        },
+        "calculation_id": {
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "country": {
+          "title": "Country",
+          "type": "string"
+        },
+        "element": {
+          "title": "Element",
+          "type": "string"
+        },
+        "engine_build_sha": {
+          "title": "Engine Build Sha",
+          "type": "string"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "engineering_inputs_hash": {
+          "title": "Engineering Inputs Hash",
+          "type": "string"
+        },
+        "execution_identity": {
+          "title": "Execution Identity",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "title": "Inputs",
+          "type": "object"
+        },
+        "is_exploratory": {
+          "title": "Is Exploratory",
+          "type": "boolean"
+        },
+        "max_utilisation": {
+          "title": "Max Utilisation",
+          "type": "number"
+        },
+        "may_be_finalised": {
+          "title": "May Be Finalised",
+          "type": "boolean"
+        },
+        "mention": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mention"
+        },
+        "ndp_as_of": {
+          "title": "Ndp As Of",
+          "type": "string"
+        },
+        "ndp_snapshot_id": {
+          "title": "Ndp Snapshot Id",
+          "type": "string"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        },
+        "preflight_ready": {
+          "title": "Preflight Ready",
+          "type": "boolean"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Region"
+        },
+        "requires_additional_analysis": {
+          "title": "Requires Additional Analysis",
+          "type": "boolean"
+        },
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/SectionOutcomeDTO"
+          },
+          "title": "Sections",
+          "type": "array"
+        },
+        "status": {
+          "description": "passed | failed | incomplete",
+          "title": "Status",
+          "type": "string"
+        },
+        "strict_ndp": {
+          "title": "Strict Ndp",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "calculation_id",
+        "element",
+        "status",
+        "sections",
+        "strict_ndp",
+        "country",
+        "region",
+        "ndp_as_of",
+        "preflight_ready",
+        "is_exploratory",
+        "may_be_finalised",
+        "requires_additional_analysis",
+        "engineering_inputs_hash",
+        "ndp_snapshot_id",
+        "calculation_fingerprint",
+        "engine_version",
+        "engine_build_sha",
+        "execution_identity",
+        "max_utilisation",
+        "bar_spacing",
+        "notice"
+      ],
+      "title": "Ec2BeamVerificationResponse",
+      "type": "object"
+    },
     "EngineErrorDTO": {
       "additionalProperties": false,
       "description": "A refusal. The API returns this with HTTP 422, never a partial result.",
@@ -2367,6 +2653,27 @@
         "notice"
       ],
       "title": "LivrableDetail",
+      "type": "object"
+    },
+    "LongitudinalBarsDTO": {
+      "additionalProperties": false,
+      "description": "Le lit tendu. ``A_s`` s'en DÉRIVE et ne se saisit jamais à côté.",
+      "properties": {
+        "count": {
+          "maximum": 40,
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "diameter": {
+          "$ref": "#/$defs/QuantityDTO"
+        }
+      },
+      "required": [
+        "count",
+        "diameter"
+      ],
+      "title": "LongitudinalBarsDTO",
       "type": "object"
     },
     "MaterialsDTO": {
@@ -3565,6 +3872,75 @@
       "title": "RetourAuBrouillon",
       "type": "object"
     },
+    "SectionOutcomeDTO": {
+      "additionalProperties": false,
+      "description": "Le verdict d'un des cinq chapitres.",
+      "properties": {
+        "basis": {
+          "title": "Basis",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Code machine quand la cause est une dépendance, p. ex. « prerequisite_failed:flexure ».",
+          "title": "Reason"
+        },
+        "remedy": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remedy"
+        },
+        "status": {
+          "description": "passed | failed | additional_analysis_required | not_evaluated. Une section non évaluée n'est JAMAIS conforme.",
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "utilisation": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Absent quand la section n'a pas tourné : un taux suppose un calcul.",
+          "title": "Utilisation"
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "basis",
+        "status"
+      ],
+      "title": "SectionOutcomeDTO",
+      "type": "object"
+    },
     "SourceTypeDTO": {
       "enum": [
         "national_annex",
@@ -3632,6 +4008,31 @@
       "title": "Transition",
       "type": "object"
     },
+    "TransverseLinksDTO": {
+      "additionalProperties": false,
+      "description": "Les cadres. ``A_sw`` se dérive des branches et du diamètre.",
+      "properties": {
+        "diameter": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "legs": {
+          "maximum": 12,
+          "minimum": 1,
+          "title": "Legs",
+          "type": "integer"
+        },
+        "spacing": {
+          "$ref": "#/$defs/QuantityDTO"
+        }
+      },
+      "required": [
+        "legs",
+        "diameter",
+        "spacing"
+      ],
+      "title": "TransverseLinksDTO",
+      "type": "object"
+    },
     "ValidationStatusDTO": {
       "description": "How far a national value has been verified — see TICKET 1.1.",
       "enum": [
@@ -3642,6 +4043,31 @@
       ],
       "title": "ValidationStatusDTO",
       "type": "string"
+    },
+    "VerificationMaterialsDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "concrete_grade": {
+          "examples": [
+            "C30/37"
+          ],
+          "title": "Concrete Grade",
+          "type": "string"
+        },
+        "steel_grade": {
+          "examples": [
+            "B500B"
+          ],
+          "title": "Steel Grade",
+          "type": "string"
+        }
+      },
+      "required": [
+        "concrete_grade",
+        "steel_grade"
+      ],
+      "title": "VerificationMaterialsDTO",
+      "type": "object"
     },
     "VerificationReportDTO": {
       "additionalProperties": false,

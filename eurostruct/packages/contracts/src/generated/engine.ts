@@ -132,6 +132,15 @@ export interface BarRowDTO {
   mark: string;
 }
 
+/** La section et la portée, une seule fois pour les cinq modules. */
+export interface BeamGeometryDTO {
+  b: QuantityDTO;
+  d: QuantityDTO;
+  h: QuantityDTO;
+  /** Portée utile, §5.3.2.2. Elle sert à la dispense du calcul de flèche. */
+  l_eff: QuantityDTO;
+}
+
 /** Input of the DXF cross-section generator. Kept as the **drawing** contract: it knows a geometry and bars, and nothing about whether they were verified. :class:`Ec2BeamSectionRequest` is what a client should send; this one is what the renderer consumes once the check has passed. */
 export interface BeamSectionDrawingRequest {
   /** Width, mm */
@@ -340,6 +349,65 @@ export interface Ec2BeamSectionRequest {
   reinforcement: ReinforcementChoiceDTO;
 }
 
+/** Une vérification complète **sur un projet**. Elle ne nomme aucun référentiel : voir le docstring du module. */
+export interface Ec2BeamVerificationRequest {
+  M_Ed: QuantityDTO;
+  /** Moment sous combinaison caractéristique. Il majore M_qp par nature. */
+  M_char: QuantityDTO;
+  /** Moment sous combinaison quasi-permanente. */
+  M_qp: QuantityDTO;
+  V_Ed: QuantityDTO;
+  /** Longueur d'ancrage réellement disponible. L'ingénieur seul connaît l'about dont il dispose ; sans elle, l'ancrage serait le seul chapitre sans verdict. */
+  anchorage_available: QuantityDTO;
+  b_eff_over_b_w?: number | null;
+  bars: LongitudinalBarsDTO;
+  bond_condition?: string;
+  /** Inclinaison des bielles retenue par l'ingénieur. Une borne nationale peut la refuser, et c'est un refus juste. */
+  cot_theta: number;
+  cover: QuantityDTO;
+  element?: string;
+  exposure_class: string;
+  geometry: BeamGeometryDTO;
+  links: TransverseLinksDTO;
+  materials: VerificationMaterialsDTO;
+  /** Coefficient de fluage φ(∞,t0), §3.1.4. Fourni par l'ingénieur, jamais deviné : il dépend du rayon moyen, de l'humidité et de l'âge au chargement. */
+  phi_creep: number;
+  /** Quand vrai, un paramètre national non confirmé bloque AVANT le calcul, et rien n'est enregistré. */
+  strict_ndp?: boolean;
+  /** Ligne du Tableau 7.4N. Aucun défaut. */
+  structural_system: string;
+  /** Aucune géométrie ne le révèle : c'est une donnée. */
+  supports_brittle_partitions?: boolean;
+}
+
+/** L'étude enregistrée, telle que le serveur la rend et la relit. */
+export interface Ec2BeamVerificationResponse {
+  bar_spacing: QuantityDTO;
+  calculation_fingerprint: string;
+  calculation_id: string;
+  country: string;
+  element: string;
+  engine_build_sha: string;
+  engine_version: string;
+  engineering_inputs_hash: string;
+  execution_identity: string;
+  inputs?: Record<string, unknown>;
+  is_exploratory: boolean;
+  max_utilisation: number;
+  may_be_finalised: boolean;
+  mention?: string | null;
+  ndp_as_of: string;
+  ndp_snapshot_id: string;
+  notice: string;
+  preflight_ready: boolean;
+  region: string | null;
+  requires_additional_analysis: boolean;
+  sections: SectionOutcomeDTO[];
+  /** passed | failed | incomplete */
+  status: string;
+  strict_ndp: boolean;
+}
+
 /** A refusal. The API returns this with HTTP 422, never a partial result. */
 export interface EngineErrorDTO {
   clause?: string | null;
@@ -507,6 +575,12 @@ export interface LivrableDetail {
   validator_role?: string | null;
   /** Le filigrane RÉELLEMENT apposé sur les octets. Il dit ce qui est vrai du document pour toujours — « PROJET — NON SIGNABLE » — et jamais son état de workflow, qui change. */
   watermark?: string | null;
+}
+
+/** Le lit tendu. ``A_s`` s'en DÉRIVE et ne se saisit jamais à côté. */
+export interface LongitudinalBarsDTO {
+  count: number;
+  diameter: QuantityDTO;
 }
 
 export interface MaterialsDTO {
@@ -746,6 +820,20 @@ export interface RetourAuBrouillon {
   reason: string;
 }
 
+/** Le verdict d'un des cinq chapitres. */
+export interface SectionOutcomeDTO {
+  basis: string;
+  key: string;
+  /** Code machine quand la cause est une dépendance, p. ex. « prerequisite_failed:flexure ». */
+  reason?: string | null;
+  remedy?: string | null;
+  /** passed | failed | additional_analysis_required | not_evaluated. Une section non évaluée n'est JAMAIS conforme. */
+  status: string;
+  title: string;
+  /** Absent quand la section n'a pas tourné : un taux suppose un calcul. */
+  utilisation?: number | null;
+}
+
 export type SourceTypeDTO =
   | "national_annex"
   | "en_recommended"
@@ -762,12 +850,24 @@ export interface Transition {
   to_state: string;
 }
 
+/** Les cadres. ``A_sw`` se dérive des branches et du diamètre. */
+export interface TransverseLinksDTO {
+  diameter: QuantityDTO;
+  legs: number;
+  spacing: QuantityDTO;
+}
+
 /** How far a national value has been verified — see TICKET 1.1. */
 export type ValidationStatusDTO =
   | "confirmed"
   | "pending_verification"
   | "deprecated"
   | "not_representable";
+
+export interface VerificationMaterialsDTO {
+  concrete_grade: string;
+  steel_grade: string;
+}
 
 export interface VerificationReportDTO {
   checks: CheckDTO[];

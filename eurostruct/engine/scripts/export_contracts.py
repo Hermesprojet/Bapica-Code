@@ -79,11 +79,29 @@ from eurostruct_engine.schemas.ec2_beam import (  # noqa: E402
     Ec2BeamSectionRequest,
     RebarScheduleRowDTO,
 )
+from eurostruct_engine.schemas.ec2_verification import (  # noqa: E402
+    Ec2BeamVerificationRequest,
+    Ec2BeamVerificationResponse,
+)
 
 #: Root models. Their transitive dependencies are emitted automatically.
 ROOTS = [
     Ec2BeamFlexureRequest,
     Ec2BeamFlexureResponse,
+    # LA VERIFICATION COMPLETE — CINQ CHAPITRES, UNE SEULE SAISIE.
+    #
+    # C'est la forme la plus dangereuse a recopier a la main, pour deux
+    # raisons opposees. Ce qu'elle PORTE d'abord: dix-sept entrees dont
+    # `phi_creep`, `structural_system` ou `anchorage_available`, qu'aucune
+    # geometrie ne revele et qu'un ecran ne peut pas deviner.
+    #
+    # Ce qu'elle N'A PAS ensuite, et c'est le plus important: ni `status`, ni
+    # `may_be_finalised`, ni empreinte, ni `A_s`, ni pays. Un ecran qui
+    # recopierait la forme finirait par ajouter l'un de ces champs « pour
+    # afficher », et le jour ou il le POSTE, un client deciderait de sa propre
+    # conformite. Le type genere le lui interdit a la compilation.
+    Ec2BeamVerificationRequest,
+    Ec2BeamVerificationResponse,
     # La requete que l'interface envoie: elle porte le calcul ET le
     # ferraillage choisi, si bien que le dessin ne peut pas decrire une autre
     # section que celle qui vient d'etre verifiee.
