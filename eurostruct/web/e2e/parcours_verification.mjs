@@ -168,8 +168,25 @@ page.on("console", (m) => {
  */
 async function consommerRefus(depuis, { statut, chemin, nombre = 1 }, quoi) {
   const motif = new RegExp(`status of ${statut}\\b`);
-  const correspond = (c) => motif.test(c.texte) && c.url.includes(chemin);
+  return consommerCris(
+    depuis,
+    { correspond: (c) => motif.test(c.texte) && c.url.includes(chemin), nombre },
+    quoi, `refus ${statut} sur « ${chemin} »`);
+}
 
+/**
+ * Le corps de `consommerRefus`, pour les cris qui ne sont pas des refus HTTP.
+ *
+ * UNE REQUETE AVORTEE N'A PAS DE STATUT. Chromium inscrit `net::ERR_FAILED`
+ * et non `status of 503`: la panne reseau que ce parcours provoque expres
+ * pour eprouver le message affiche ne se reconnait donc pas au meme motif.
+ *
+ * TOUT LE RESTE EST IDENTIQUE, et c'est le point: meme attente bornee, meme
+ * battement de trop, meme exigence de nombre exact, et surtout — on ne retire
+ * de la liste QUE ce qu'on a reconnu.
+ */
+async function consommerCris(depuis, { correspond, nombre = 1 }, quoi,
+                             libelle) {
   const limite = Date.now() + 8000;
   while (Date.now() < limite
          && criees.slice(depuis).filter(correspond).length < nombre) {
@@ -187,8 +204,7 @@ async function consommerRefus(depuis, { statut, chemin, nombre = 1 }, quoi) {
   exige(autres.length === 0,
         `${quoi}: cri(s) inattendu(s) — ${autres.slice(0, 3).map(enClair).join(" | ")}`);
   exige(attendus.length === nombre,
-        `${quoi}: ${attendus.length} refus ${statut} sur « ${chemin} », `
-        + `${nombre} attendu(s)`);
+        `${quoi}: ${attendus.length} × ${libelle}, ${nombre} attendu(s)`);
 
   //: ON NE RETIRE QUE CE QU'ON A RECONNU. Une troncature seche
   //: (`criees.length = depuis`) effacerait aussi les cris inattendus qu'on
@@ -1082,6 +1098,154 @@ try {
         "quelque chose qui ressemble a un JWT est persiste dans le navigateur");
 
   // =======================================================================
+  // 13 — CE QUE L'ÉCRAN DIT QUAND ÇA SE PASSE MAL
+  // =======================================================================
+  //: POURQUOI CE BLOC EXISTE, ET POURQUOI ICI.
+  //:
+  //: Les phrases d'erreur ont ete reecrites — un ingenieur lisait
+  //: « AppelRefuse: l'API a refuse (422). » et « TypeError: Failed to fetch ».
+  //: Rien ne les eprouvait: le parcours ne provoque ni panne reseau, ni 422 de
+  //: validation, ni 401. J'ai ecrit dans le rapport precedent que ces chemins
+  //: n'etaient pas couverts; les voici couverts.
+  //:
+  //: ON INTERCEPTE LA REPONSE, PAS L'ECRAN. `page.route` fait repondre le
+  //: reseau autrement; tout le reste — transport, traduction, rendu — est le
+  //: code de production, exactement celui qui tourne chez l'ingenieur.
+  //:
+  //: LE CHEMIN CHOISI EST CELUI DU LANCEMENT D'ETUDE, et ce n'est pas un
+  //: detail: c'est une commande NON IDEMPOTENTE. Rejouer une verification
+  //: apres un 401 creerait une seconde etude que personne n'a demandee.
+  //:
+  //: CE BLOC VIENT APRES LE BALAYAGE DES STOCKAGES, parce que son dernier
+  //: geste FERME la session: le balayage ne prouverait plus rien sur une
+  //: session deja close.
+  ici("messages d'erreur: validation, reseau, session");
+
+  //: CE QU'UN ECRAN NE DOIT JAMAIS MONTRER. Noms de classes JavaScript,
+  //: libelles internes du navigateur, fragments de trace, objets non rendus.
+  const INTERDITS = ["TypeError", "Failed to fetch", "NetworkError",
+                     "ApiInjoignable", "AppelRefuse", "SessionExpiree",
+                     "ConfigurationAbsente", "[object Object]", "    at ",
+                     "webpack", "node_modules"];
+  const interditsDans = (texte, ou) => {
+    for (const mot of INTERDITS) {
+      exige(!texte.includes(mot),
+            `${ou}: l'ecran affiche « ${mot} », un libelle technique brut. `
+            + `Texte: « ${texte.slice(0, 200)} »`);
+    }
+  };
+
+  const CHEMIN_ETUDE = "**/beam-verifications";
+  let coups = 0;
+  async function intercepter(repondre) {
+    coups = 0;
+    await page.route(CHEMIN_ETUDE, async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      coups += 1;
+      await repondre(route);
+    });
+  }
+  //: LE NAVIGATEUR REFUSERAIT UNE REPONSE FABRIQUEE SANS EN-TETE CORS: la page
+  //: est servie depuis un autre port que l'API. Sans lui, les trois gestes
+  //: mesureraient un refus de CORS et non ce qu'on croit mesurer.
+  const CORS = { "Access-Control-Allow-Origin": "*" };
+
+  // --- 13a. UN 422 DE VALIDATION, SOUS SA FORME DE LISTE ------------------
+  //: `detail` est ici une LISTE d'objets `{loc, msg}` — la forme que FastAPI
+  //: rend quand le corps ne satisfait pas le modele. `JSON.stringify` en
+  //: faisait un pave a l'ecran, le champ fautif noye dedans.
+  await intercepter((route) => route.fulfill({
+    status: 422, contentType: "application/json", headers: CORS,
+    body: JSON.stringify({ detail: [
+      { type: "missing", loc: ["body", "M_Ed"], msg: "Field required" },
+      { type: "greater_than", loc: ["body", "section", "b"],
+        msg: "Input should be greater than 0" },
+    ] }),
+  }));
+  let avant = criees.length;
+  await page.click("#lancer-verification");
+  await page.waitForSelector("#refus-verification", { timeout: 20000 });
+  const refus422 = await page.locator("#refus-verification").innerText();
+  exige(refus422.includes("M_Ed") && refus422.includes("Field required"),
+        `le refus de validation ne nomme pas le champ et son message: `
+        + `« ${refus422.slice(0, 200)} »`);
+  exige(refus422.includes("section.b"),
+        `le second champ fautif n'est pas nomme: « ${refus422.slice(0, 200)} »`);
+  //: ET SURTOUT: PAS DE PAVE JSON. C'est le defaut qu'on ferme.
+  exige(!refus422.includes('"loc"') && !refus422.includes('"type"'),
+        `le refus affiche le JSON brut du serveur: « ${refus422.slice(0, 200)} »`);
+  interditsDans(refus422, "refus de validation");
+  await consommerRefus(avant, { statut: 422, chemin: "/beam-verifications" },
+                       "422 de validation intercepte");
+  await page.unroute(CHEMIN_ETUDE);
+
+  // --- 13b. UNE PANNE RESEAU ---------------------------------------------
+  //: LA REQUETE N'ARRIVE NULLE PART. C'est le cas ou le navigateur rejette
+  //: avec `TypeError: Failed to fetch` — exact, et inutilisable.
+  await intercepter((route) => route.abort("failed"));
+  avant = criees.length;
+  await page.click("#lancer-verification");
+  await page.waitForFunction(
+    () => (document.body.innerText || "").includes("n'a pas repondu")
+       || (document.body.innerText || "").includes("n'a pas répondu"),
+    null, { timeout: 20000 });
+  const panne = await page.locator(".bandeau.refus[role=alert]").first()
+    .innerText();
+  //: L'ADRESSE APPELEE ET LE GESTE A FAIRE, tous les deux.
+  exige(panne.includes(API),
+        `le message de panne ne nomme pas l'adresse appelee (${API}): `
+        + `« ${panne.slice(0, 200)} »`);
+  exige(/[Vv]erifiez|[Vv]érifiez/.test(panne),
+        `le message de panne ne dit pas quoi faire: « ${panne.slice(0, 200)} »`);
+  interditsDans(panne, "panne reseau");
+  //: UNE REQUETE AVORTEE N'A PAS DE STATUT: elle crie `net::ERR_FAILED`.
+  await consommerCris(
+    avant,
+    { correspond: (c) => /ERR_FAILED|Failed to load resource/.test(c.texte)
+                         && c.url.includes("/beam-verifications") },
+    "panne reseau provoquee", "cri de requete avortee");
+  await page.unroute(CHEMIN_ETUDE);
+
+  // --- 13c. UN 401 SUR UNE COMMANDE NON IDEMPOTENTE -----------------------
+  //: DEUX FAITS, ET LE SECOND EST LE PLUS IMPORTANT:
+  //:   * l'ecran redemande la connexion — la session est FERMEE, pas gardee
+  //:     ouverte a faire 401 a chaque appel;
+  //:   * la commande N'EST PAS REJOUEE. Le transport ne rafraichit et ne
+  //:     repete que les appels declares idempotents; une verification ne
+  //:     l'est pas, et un rejeu creerait une seconde etude.
+  await intercepter((route) => route.fulfill({
+    status: 401, contentType: "application/json", headers: CORS,
+    body: JSON.stringify({ detail: "jeton expire ou revoque." }),
+  }));
+  avant = criees.length;
+  await page.click("#lancer-verification");
+  //: L'ECRAN DE CONNEXION REVIENT: `abandonner()` a vide la seule copie du
+  //: jeton, et le formulaire reparait.
+  await page.waitForSelector("#mdp", { timeout: 20000 });
+  await page.waitForTimeout(500);
+  exige(coups === 1,
+        `la commande non idempotente est partie ${coups} fois apres un 401: `
+        + "un rejeu creerait une seconde etude");
+  await consommerRefus(avant, { statut: 401, chemin: "/beam-verifications" },
+                       "401 sur commande non idempotente");
+  await page.unroute(CHEMIN_ETUDE);
+
+  // --- 13d. RIEN DE SENSIBLE N'EST RESTE A L'ECRAN ------------------------
+  //: APRES LES TROIS GESTES, on relit tout le document. Un message d'erreur
+  //: est l'endroit ou un jeton, une adresse d'emetteur ou un corps interne
+  //: fuient le plus facilement — c'est la que le code de debogage s'ecrit.
+  const ecran = await page.evaluate(() => document.body.innerText || "");
+  exige(!/eyJ[A-Za-z0-9_-]{10,}/.test(ecran),
+        "quelque chose qui ressemble a un JWT est affiche a l'ecran");
+  for (const secret of ["Bearer ", "apikey", "/auth/v1", "anon_key",
+                        "ANON_KEY"]) {
+    exige(!ecran.includes(secret),
+          `l'ecran affiche « ${secret} »: un element d'authentification `
+          + "n'a rien a faire dans un message");
+  }
+  interditsDans(ecran, "ecran complet apres les trois pannes");
+
+  // =======================================================================
   // LE BILAN DES CRIS, SUR TOUT LE PARCOURS
   // =======================================================================
   //: LES CONTROLES INTERMEDIAIRES REGARDENT DES MOMENTS PRECIS — chargement,
@@ -1163,7 +1327,12 @@ console.log(
   + "traverser les sept etapes avec « Suivant » puis revenir avec "
   + "« Precedent » ne perd pas le focus quand le bouton se ferme; a 360 px de "
   + "large la page ne deborde pas — le tableau defile dans sa propre boite, "
-  + "pas le document; aucun jeton "
+  + "pas le document; sous reponses interceptees, un 422 de validation FastAPI "
+  + "nomme le champ fautif et son message plutot qu'un pave JSON, une panne "
+  + "reseau affiche l'adresse appelee et le geste a faire sans un seul libelle "
+  + "technique, et un 401 sur une commande NON idempotente ferme la session "
+  + "sans la rejouer — aucun jeton ni element d'authentification a l'ecran; "
+  + "aucun jeton "
   + "persiste; et la page n'a crie NULLE PART — ni erreur d'hydratation, ni "
   + "exception non rattrapee, ni erreur de console, hors les refus 422 que ce "
   + "parcours provoque expres et le 404 de la route inconnue qu'il visite.",
