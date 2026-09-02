@@ -27,7 +27,7 @@
  * figés sur le projet ; l'étape 1 les AFFICHE, en lecture seule, parce que
  * masquer le référentiel appliqué serait pire que de le montrer inerte.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CHAMPS_INITIAUX, ETAPES, EXPOSITIONS, SYSTEMES,
   champsManquants, enRequete, etudeComplete,
@@ -96,6 +96,43 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
   }
 
   const courante = ETAPES[etape];
+
+  // -------------------------------------------------------------------------
+  // LE FOCUS NE DOIT PAS TOMBER QUAND UN BOUTON SE FERME SOUS LUI.
+  //
+  // « Précédent » se désactive en arrivant à l'étape 1, « Suivant » à
+  // l'étape 7. Un navigateur qui voit disparaître l'élément focalisé rend le
+  // focus au `body` : la tabulation suivante repart du HAUT du document —
+  // au-dessus de l'atelier, du bureau, de la connexion. Au clavier, traverser
+  // les sept étapes avec « Suivant » perdait donc la place à la dernière, et
+  // il fallait une vingtaine de tabulations pour revenir.
+  //
+  // On décide la cible AU MOMENT DU GESTE, pas dans l'effet : quand l'effet
+  // s'exécute, React a déjà posé `disabled` et le navigateur a déjà déplacé
+  // le focus, donc `document.activeElement` ne dit plus d'où l'on vient.
+  // -------------------------------------------------------------------------
+  const precedent = useRef<HTMLButtonElement>(null);
+  const suivant = useRef<HTMLButtonElement>(null);
+  const focusApres = useRef<"precedent" | "suivant" | null>(null);
+
+  useEffect(() => {
+    const ou = focusApres.current;
+    focusApres.current = null;
+    if (ou === "suivant") suivant.current?.focus();
+    if (ou === "precedent") precedent.current?.focus();
+  }, [etape]);
+
+  function reculer() {
+    const vers = Math.max(0, etape - 1);
+    focusApres.current = vers === 0 ? "suivant" : null;
+    setEtape(vers);
+  }
+
+  function avancer() {
+    const vers = Math.min(ETAPES.length - 1, etape + 1);
+    focusApres.current = vers === ETAPES.length - 1 ? "precedent" : null;
+    setEtape(vers);
+  }
 
   return (
     <section aria-labelledby="titre-etude">
@@ -171,14 +208,14 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
       </fieldset>
 
       <div className="navigation-etapes">
-        <button type="button" className="secondaire" disabled={etape === 0}
-                onClick={() => setEtape((n) => Math.max(0, n - 1))}>
+        <button type="button" className="secondaire" ref={precedent}
+                id="etape-precedente" disabled={etape === 0}
+                onClick={reculer}>
           Précédent
         </button>
-        <button type="button" className="secondaire"
-                disabled={etape === ETAPES.length - 1}
-                onClick={() =>
-                  setEtape((n) => Math.min(ETAPES.length - 1, n + 1))}>
+        <button type="button" className="secondaire" ref={suivant}
+                id="etape-suivante" disabled={etape === ETAPES.length - 1}
+                onClick={avancer}>
           Suivant
         </button>
         <button type="button" id="lancer-verification"

@@ -162,8 +162,16 @@ async function _demander(
         body: JSON.stringify(charge),
       },
     );
-  } catch (cause) {
-    return { type: "refus", message: `Supabase injoignable (${String(cause)}).` };
+  } catch {
+    // NI LE LIBELLE DU NAVIGATEUR, NI L'URL DE L'EMETTEUR. Le premier
+    // (« TypeError: Failed to fetch ») n'apprend rien; la seconde est une
+    // adresse de projet Supabase, et l'ecran de connexion n'a pas a l'afficher
+    // a quelqu'un qui n'est pas encore authentifie.
+    return {
+      type: "refus",
+      message: "Le service d'authentification n'a pas repondu. Verifiez votre "
+        + "connexion reseau, puis reessayez.",
+    };
   }
 
   const corps: unknown = await reponse.json().catch(() => null);

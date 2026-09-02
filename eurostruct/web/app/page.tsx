@@ -62,6 +62,10 @@ import {
   type AuthorityReviewDossier,
 } from "@/lib/autorite";
 import { AppelRefuse, SessionExpiree } from "@/lib/transport";
+//: LA TRADUCTION DES PANNES EN PHRASES, EN UN SEUL ENDROIT. Vingt endroits de
+//: cet écran affichaient `String(cause)`, c'est-à-dire le nom de la classe
+//: JavaScript suivi du libellé interne du navigateur.
+import { enClair } from "@/lib/messages";
 import { VerificationComplete } from "@/components/verification/VerificationComplete";
 
 type Champs = {
@@ -454,12 +458,15 @@ function issueDepuisEnregistre(calcul: CalculEnregistre): Issue {
   };
 }
 
-/** Une erreur de transport, dite comme telle et jamais comme un résultat. */
+/**
+ * Une erreur de transport, dite comme telle et jamais comme un résultat.
+ *
+ * `cause.message` DISAIT « l'API a refuse (422). » ET RIEN DE PLUS: le motif
+ * du serveur — celui qui nomme le paramètre à faire relever — dormait dans
+ * `cause.corps`, jamais affiché. `enClair` le remonte.
+ */
 function issueDepuisErreur(cause: unknown): Issue {
-  if (cause instanceof AppelRefuse) {
-    return { type: "panne", message: `${cause.statut} — ${cause.message}` };
-  }
-  return { type: "panne", message: String(cause) };
+  return { type: "panne", message: enClair(cause) };
 }
 
 /**
@@ -509,7 +516,7 @@ function Atelier({ projet, surSelection, revision = 0 }: {
       .catch((cause) => {
         // UNE PANNE N'EST PAS UNE LISTE VIDE. Les confondre ferait afficher
         // « aucun projet » à quelqu'un qui en a douze.
-        if (vivant) { setProjets(null); setErreur(String(cause)); }
+        if (vivant) { setProjets(null); setErreur(enClair(cause)); }
       });
     return () => { vivant = false; };
   }, [auth.connecte, auth.porteur, surSelection, revision]);
@@ -536,7 +543,7 @@ function Atelier({ projet, surSelection, revision = 0 }: {
       setReference("");
       setRegion("");
     } catch (cause) {
-      setErreur(String(cause));
+      setErreur(enClair(cause));
     } finally {
       setEnCours(false);
     }
@@ -689,7 +696,7 @@ function Bureau({ surChangement }: { surChangement: () => void }) {
         // UNE PANNE N'EST PAS UNE ABSENCE DE BUREAU. Les confondre ferait
         // proposer « créez votre organisation » à quelqu'un qui en a une, et
         // il en créerait une seconde.
-        if (vivant) { setBureaux(null); setErreur(String(cause)); }
+        if (vivant) { setBureaux(null); setErreur(enClair(cause)); }
       });
     return () => { vivant = false; };
   }, [auth.connecte, auth.porteur, revision]);
@@ -715,7 +722,7 @@ function Bureau({ surChangement }: { surChangement: () => void }) {
       setRevision((n) => n + 1);
       surChangement();
     } catch (cause) {
-      setErreur(String(cause));
+      setErreur(enClair(cause));
     } finally {
       setEnCours(false);
     }
@@ -733,7 +740,7 @@ function Bureau({ surChangement }: { surChangement: () => void }) {
       setRevision((n) => n + 1);
       surChangement();
     } catch (cause) {
-      setErreur(String(cause));
+      setErreur(enClair(cause));
     } finally {
       setEnCours(false);
     }
@@ -910,7 +917,7 @@ function Equipe({ organisation }: { organisation: Organisation }) {
       })
       .catch((cause) => {
         if (vivant) { setMembres(null); setInvitations(null);
-                      setErreur(String(cause)); }
+                      setErreur(enClair(cause)); }
       });
     return () => { vivant = false; };
   }, [auth.porteur, organisation.organization_id, administre, revision]);
@@ -943,7 +950,7 @@ function Equipe({ organisation }: { organisation: Organisation }) {
       setLibelle(""); setNomInvite(""); setOrdreInvite("");
       setRevision((n) => n + 1);
     } catch (cause) {
-      setErreur(String(cause));
+      setErreur(enClair(cause));
     } finally {
       setEnCours(false);
     }
@@ -957,7 +964,7 @@ function Equipe({ organisation }: { organisation: Organisation }) {
                                invitationId);
       setRevision((n) => n + 1);
     } catch (cause) {
-      setErreur(String(cause));
+      setErreur(enClair(cause));
     } finally {
       setEnCours(false);
     }
@@ -971,7 +978,7 @@ function Equipe({ organisation }: { organisation: Organisation }) {
                            userId, modification);
       setRevision((n) => n + 1);
     } catch (cause) {
-      setErreur(String(cause));
+      setErreur(enClair(cause));
     } finally {
       setEnCours(false);
     }
@@ -1220,7 +1227,7 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
     historiqueDuProjet(auth.porteur, projet.project_id)
       .then((h) => { if (vivant) { setLignes(h.calculations); setErreur(null); } })
       .catch((cause) => {
-        if (vivant) { setLignes(null); setErreur(String(cause)); }
+        if (vivant) { setLignes(null); setErreur(enClair(cause)); }
       });
     return () => { vivant = false; };
   }, [auth.porteur, projet.project_id, revision]);
@@ -1248,7 +1255,7 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
     } catch (cause) {
       setErreur(cause instanceof AppelRefuse
         ? `${cause.statut} — la note n'a pas pu etre produite.`
-        : String(cause));
+        : enClair(cause));
     }
   }
 
@@ -1276,7 +1283,7 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
               + "peut pas conserver les octets du livrable. Aucune ligne n'a "
               + "ete ecrite."
             : `${cause.statut} — ${cause.detail}`)
-        : String(cause));
+        : enClair(cause));
     }
   }
 
@@ -1303,7 +1310,7 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
       setApercu(null);
       setErreur(cause instanceof AppelRefuse
         ? `${cause.statut} — ${cause.detail ?? "aperçu refusé."}`
-        : String(cause));
+        : enClair(cause));
     }
   }
 
@@ -1566,7 +1573,7 @@ function Livrables({ projet, revision, surChangement }: {
     listerLivrables(auth.porteur, projet.project_id)
       .then((l) => { if (vivant) { setLignes(l); setErreur(null); } })
       .catch((cause) => {
-        if (vivant) { setLignes(null); setErreur(String(cause)); }
+        if (vivant) { setLignes(null); setErreur(enClair(cause)); }
       });
     return () => { vivant = false; };
   }, [auth.porteur, projet.project_id, revision]);
@@ -1588,7 +1595,7 @@ function Livrables({ projet, revision, surChangement }: {
       surChangement();
     } catch (cause) {
       setErreur(cause instanceof AppelRefuse
-        ? `${cause.statut} — ${cause.detail}` : String(cause));
+        ? `${cause.statut} — ${cause.detail}` : enClair(cause));
     } finally {
       setEnCours(false);
     }
@@ -1599,7 +1606,7 @@ function Livrables({ projet, revision, surChangement }: {
       setOuvert(await relireLivrable(auth.porteur, projet.project_id, id));
       setErreur(null);
     } catch (cause) {
-      setErreur(String(cause));
+      setErreur(enClair(cause));
     }
   }
 
@@ -1609,7 +1616,7 @@ function Livrables({ projet, revision, surChangement }: {
       setErreur(null);
     } catch (cause) {
       setErreur(cause instanceof AppelRefuse
-        ? `${cause.statut} — ${cause.detail}` : String(cause));
+        ? `${cause.statut} — ${cause.detail}` : enClair(cause));
     }
   }
 
@@ -1627,7 +1634,7 @@ function Livrables({ projet, revision, surChangement }: {
       setErreur(null);
     } catch (cause) {
       setErreur(cause instanceof AppelRefuse
-        ? `${cause.statut} — ${cause.detail}` : String(cause));
+        ? `${cause.statut} — ${cause.detail}` : enClair(cause));
     }
   }
 
@@ -2252,7 +2259,7 @@ function DecisionsAutorite(
       } else if (cause instanceof AppelRefuse) {
         noter(nom, `refus ${cause.statut}`, cause.detail);
       } else {
-        noter(nom, "panne", String(cause));
+        noter(nom, "panne", enClair(cause));
       }
     } finally {
       setEnCours(false);

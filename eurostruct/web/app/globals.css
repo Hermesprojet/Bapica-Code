@@ -177,3 +177,33 @@ button.etape.remplie .rang { color: var(--ok); }
 details > summary { cursor: pointer; color: var(--encre-douce);
                     font-size: .85rem; margin: 1rem 0 .5rem; }
 details code { font-size: .78rem; word-break: break-all; }
+
+/* ---------------------------------------------------------------------------
+   ECRAN ETROIT — telephone tenu debout, fenetre reduite a cote d'un plan.
+
+   CE QUI DEBORDAIT, ET CE QUE CELA COUTAIT. Le tableau des membres a cinq
+   colonnes, celui des livrables six, et une empreinte SHA-256 fait
+   soixante-quatre caracteres sans une espace. Sous 40 rem, ces trois-la
+   poussaient la LARGEUR DE LA PAGE: le document entier partait vers la droite,
+   et avec lui les boutons de gauche — « Precedent », « Verifier les cinq
+   chapitres » — qu'il fallait aller rechercher en faisant defiler
+   horizontalement un ecran qui n'a pas de barre pour cela.
+
+   LE DEFILEMENT EST DONC BORNE A CE QUI DEBORDE. Le tableau glisse dans sa
+   propre boite; la page, elle, ne bouge pas. La regle est sous media query:
+   `display: block` sur un tableau lui fait perdre sa largeur pleine, ce qui
+   serait une regression sur un ecran large ou rien ne deborde.
+   --------------------------------------------------------------------------- */
+@media (max-width: 40rem) {
+  main { padding: 1.25rem .85rem 3rem; }
+
+  table { display: block; overflow-x: auto; }
+
+  /* UNE EMPREINTE N'A PAS D'ESPACE OU SE COUPER: sans cela, un `code` de 64
+     caracteres impose sa largeur a tout ce qui le contient. */
+  code { overflow-wrap: anywhere; }
+
+  /* Un bouton par ligne plutot qu'un mot par ligne: « Plan de ferraillage
+     (DXF) » se replie sur trois lignes dans une colonne de 150 px. */
+  .rangee-boutons button, .navigation-etapes button { flex: 1 1 100%; }
+}

@@ -110,9 +110,26 @@ export class AppelRefuse extends Error {
     if (c && typeof c === "object" && "detail" in c) {
       const d = (c as { detail: unknown }).detail;
       if (typeof d === "string") return d;
+      if (Array.isArray(d)) {
+        // UN 422 DE VALIDATION FastAPI: `detail` est une LISTE d'objets
+        // `{loc, msg, type}`. `JSON.stringify` en faisait un pave de JSON a
+        // l'ecran — le champ fautif y etait, noye. On nomme le champ et on
+        // reprend le message du serveur, sans en composer un autre.
+        const lignes = d.map((x) => {
+          const o = (x ?? {}) as { loc?: unknown; msg?: unknown };
+          const ou = Array.isArray(o.loc)
+            ? o.loc.filter((p) => p !== "body").join(".") : "";
+          const quoi = typeof o.msg === "string" ? o.msg : "";
+          return ou && quoi ? `${ou} : ${quoi}` : (quoi || ou);
+        }).filter((s) => s.length > 0);
+        if (lignes.length) return lignes.join(" ; ");
+      }
       if (d && typeof d === "object" && "detail" in d) {
         return String((d as { detail: unknown }).detail);
       }
+      // LE MOTIF DU SERVEUR SOUS UNE FORME QU'ON N'ATTENDAIT PAS. On le rend
+      // quand meme: le remplacer par « sans motif lisible » effacerait la
+      // seule chose que le serveur ait dite.
       return JSON.stringify(d);
     }
     return `reponse ${this.statut}`;
@@ -127,7 +144,14 @@ export class ApiInjoignable extends Error {
     // donc l'adresse sans passer par la garde, et on dit « non configuree »
     // quand il n'y en a pas.
     const adresse = configuration().apiUrl.trim() || "(adresse non configuree)";
-    super(`l'API n'a pas repondu (${String(cause)}). Voir ${adresse}.`);
+    // LE LIBELLE DU NAVIGATEUR NE VA PAS A L'ECRAN. `String(cause)` donnait
+    // « TypeError: Failed to fetch » — exact, et inutilisable par un ingenieur
+    // en bureau d'etudes. La cause reste attachee a l'erreur (`{ cause }`),
+    // donc lisible dans la console par qui debogue, sans etre affichee.
+    super(`Le serveur EUROSTRUCT n'a pas repondu a l'adresse ${adresse}. `
+          + "Verifiez qu'il est demarre et joignable depuis ce poste, puis "
+          + "reessayez.",
+          { cause });
     this.name = "ApiInjoignable";
   }
 }

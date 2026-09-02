@@ -1001,6 +1001,69 @@ try {
                        "controle mutant (injection assumee)");
 
   // =======================================================================
+  // 11 — LE FOCUS NE TOMBE PAS QUAND UN BOUTON SE FERME SOUS LUI
+  // =======================================================================
+  //: MESURE, PAS RELECTURE. « Precedent » se desactive a l'etape 1, « Suivant »
+  //: a l'etape 7. Un navigateur rend alors le focus au `body`, et la
+  //: tabulation suivante repart du HAUT du document: au clavier, arriver au
+  //: bout des sept etapes faisait perdre sa place.
+  //:
+  //: On traverse les etapes AVEC LE BOUTON, pas avec les pastilles, parce que
+  //: c'est le bouton qui se ferme. Puis on demande au navigateur ce qu'il a
+  //: sous le focus — `BODY` est la reponse du defaut.
+  ici("le focus survit a la fermeture du bouton de navigation");
+  await page.click("#etape-dossier");
+  for (let i = 0; i < 6; i++) await page.click("#etape-suivante");
+  await page.waitForTimeout(200);
+  const focusEnFin = await page.evaluate(
+    () => document.activeElement?.id || document.activeElement?.tagName);
+  exige(focusEnFin === "etape-precedente",
+        `au bout des sept etapes le focus est sur « ${focusEnFin} » et non `
+        + "sur « etape-precedente »: le bouton s'est ferme sous le focus, et "
+        + "la tabulation repart du haut du document");
+  for (let i = 0; i < 6; i++) await page.click("#etape-precedente");
+  await page.waitForTimeout(200);
+  const focusAuDebut = await page.evaluate(
+    () => document.activeElement?.id || document.activeElement?.tagName);
+  exige(focusAuDebut === "etape-suivante",
+        `revenu a la premiere etape le focus est sur « ${focusAuDebut} » et `
+        + "non sur « etape-suivante »");
+
+  // =======================================================================
+  // 12 — SUR UN ÉCRAN ÉTROIT, LA PAGE NE PART PAS VERS LA DROITE
+  // =======================================================================
+  //: LE DEBORDEMENT SE MESURE, IL NE SE REGARDE PAS. Un tableau a cinq
+  //: colonnes ou une empreinte de soixante-quatre caracteres impose sa largeur
+  //: a la PAGE: le document glisse vers la droite, et les boutons de gauche
+  //: partent avec lui. `scrollWidth > clientWidth` sur `documentElement` est
+  //: exactement ce fait, et rien d'autre.
+  //:
+  //: 360 x 720 est un telephone courant tenu debout.
+  ici("affichage sur ecran etroit");
+  await page.setViewportSize({ width: 360, height: 720 });
+  await page.waitForTimeout(300);
+  const etroit = await page.evaluate(() => {
+    const r = document.documentElement;
+    const large = [];
+    for (const n of document.querySelectorAll("main *")) {
+      const b = n.getBoundingClientRect();
+      if (b.right > r.clientWidth + 1) {
+        large.push(`${n.tagName.toLowerCase()}${n.id ? "#" + n.id : ""}`
+                   + ` (droite ${Math.round(b.right)})`);
+      }
+    }
+    return { page: r.scrollWidth, fenetre: r.clientWidth,
+             large: large.slice(0, 6) };
+  });
+  exige(etroit.page <= etroit.fenetre + 1,
+        `a 360 px la page fait ${etroit.page} px de large pour une fenetre de `
+        + `${etroit.fenetre} px. Ce qui deborde: `
+        + (etroit.large.join(", ") || "(rien de nomme)"));
+  //: ON REVIENT A LA FENETRE D'ORIGINE: la suite du parcours ne doit pas
+  //: heriter d'un ecran de telephone sans l'avoir demande.
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  // =======================================================================
   // AUCUN JETON N'EST PERSISTÉ
   // =======================================================================
   ici("balayage des stockages");
@@ -1096,7 +1159,11 @@ console.log(
   + "part du navigateur; l'apercu sort du meme modele et se dit non "
   + "contractuel; apres un rechargement complet l'etude se relit a l'identique "
   + "et le meme plan ressort avec les memes octets; une etude en echec ferme "
-  + "les documents en disant pourquoi, et la route refuse aussi; aucun jeton "
+  + "les documents en disant pourquoi, et la route refuse aussi; au clavier, "
+  + "traverser les sept etapes avec « Suivant » puis revenir avec "
+  + "« Precedent » ne perd pas le focus quand le bouton se ferme; a 360 px de "
+  + "large la page ne deborde pas — le tableau defile dans sa propre boite, "
+  + "pas le document; aucun jeton "
   + "persiste; et la page n'a crie NULLE PART — ni erreur d'hydratation, ni "
   + "exception non rattrapee, ni erreur de console, hors les refus 422 que ce "
   + "parcours provoque expres et le 404 de la route inconnue qu'il visite.",

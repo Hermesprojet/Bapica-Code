@@ -73,6 +73,7 @@ export type Issue =
 //: jeton, et `appelPublic` ne sait pas en joindre — c'est ce qui empeche qu'un
 //: `Authorization` se retrouve un jour sur une route qui ne l'exige pas.
 import { appelPublic, base } from "@/lib/transport";
+import { enClair } from "@/lib/messages";
 
 /**
  * Lance la vérification en flexion.
@@ -91,7 +92,7 @@ export async function verifierFlexion(
     // l'ingenieur verifier un serveur qui n'a jamais ete appele.
     adresse = base();
   } catch (cause) {
-    return { type: "panne", message: String(cause) };
+    return { type: "panne", message: enClair(cause) };
   }
   try {
     reponse = await fetch(`${adresse}/v1/calculations/ec2/beam-flexure`, {
@@ -99,12 +100,16 @@ export async function verifierFlexion(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requete),
     });
-  } catch (cause) {
+  } catch {
+    // LE LIBELLE DU NAVIGATEUR NE VA PAS A L'ECRAN. « TypeError: Failed to
+    // fetch » est exact, et inutilisable par un ingenieur: ce qui l'aide,
+    // c'est l'adresse appelee et le geste a faire.
     return {
       type: "panne",
       message:
-        `l'API n'a pas repondu (${String(cause)}). Verifiez qu'elle tourne ` +
-        `sur ${adresse} — voir eurostruct/api/README.md.`,
+        `Le serveur EUROSTRUCT n'a pas repondu a l'adresse ${adresse}. ` +
+        "Verifiez qu'il est demarre et joignable depuis ce poste — voir " +
+        "eurostruct/api/README.md.",
     };
   }
 
@@ -145,7 +150,7 @@ export async function telechargerDxf(
     // de l'API, et ne doit pas se dire comme telle.
     cible = urlDxf();
   } catch (cause) {
-    return { ok: false, message: String(cause) };
+    return { ok: false, message: enClair(cause) };
   }
   let reponse: Response;
   try {
@@ -154,8 +159,12 @@ export async function telechargerDxf(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requete),
     });
-  } catch (cause) {
-    return { ok: false, message: `l'API n'a pas repondu (${String(cause)}).` };
+  } catch {
+    return {
+      ok: false,
+      message: `Le serveur EUROSTRUCT n'a pas repondu a l'adresse ${cible}. `
+        + "Verifiez qu'il est demarre et joignable depuis ce poste.",
+    };
   }
   if (!reponse.ok) {
     const corps: unknown = await reponse.json().catch(() => null);

@@ -44,9 +44,18 @@ import {
   type Ec2BeamVerificationRequest, type Ec2BeamVerificationResponse,
 } from "@/lib/verification";
 import { AppelRefuse, SessionExpiree, type PorteurDeJeton } from "@/lib/transport";
+import { enClair } from "@/lib/messages";
 
 /** Les rôles qui peuvent écrire sur un dossier. La frontière reste en base. */
 const REDACTEURS = ["owner", "admin", "engineer"];
+
+/** Ce qui est en train de se produire, du nom interne au nom qu'on lit. */
+const LIBELLE_TRAVAIL: Record<string, string> = {
+  "note-html": "Composition de la note de calcul (HTML)",
+  "note-pdf": "Composition de la note de calcul (PDF)",
+  plan: "Transcription du plan de ferraillage en DXF",
+  apercu: "Rendu de l'aperçu du plan",
+};
 
 /** Les cinq chapitres, du nom que le moteur leur donne au nom qu'on lit. */
 const MODULE_LISIBLE: Record<string, string> = {
@@ -206,6 +215,26 @@ function ActionsEtude({ projet, porteur, etude, surLivrable }: {
       surLivrable();
     });
 
+  /**
+   * POURQUOI *CE* BOUTON-LÀ EST FERMÉ.
+   *
+   * Il y avait deux causes et une seule phrase : pendant une génération, les
+   * trois autres boutons se grisaient en affichant l'empêchement de l'étude —
+   * ou, quand l'étude n'en avait aucun, leur libellé habituel, comme si rien
+   * ne se passait. Un bouton fermé le temps d'un rendu n'a pas la même cause
+   * qu'un bouton fermé parce que l'étude ne conclut pas.
+   */
+  function ferme(sien: string, sinon: string): string {
+    if (empechement) return empechement;
+    if (!travail) return sinon;
+    return travail === sien
+      ? "Demande partie : le serveur compose le document."
+      : `Un document est déjà en cours de production (${
+          LIBELLE_TRAVAIL[travail] ?? travail}). Attendez qu'il aboutisse : `
+        + "chacun relit la même étude gelée, et les enchaîner ne changerait "
+        + "rien au résultat.";
+  }
+
   const voir = () => agir("apercu", async () => {
     //: `format: "dxf"` nomme le DOCUMENT visé — le plan de ferraillage — pas
     //: le codage de l'image: un navigateur ne lit pas le DXF, l'aperçu est
@@ -218,32 +247,49 @@ function ActionsEtude({ projet, porteur, etude, surLivrable }: {
   return (
     <div className="actions-etude">
       <h3>Documents</h3>
-      <div className="rangee-boutons">
+      <div className="rangee-boutons" aria-busy={!!travail}>
         <button type="button" id="etude-note-html"
                 disabled={!!empechement || !!travail}
-                title={empechement ?? "Note de calcul à cinq chapitres, HTML"}
+                title={ferme("note-html",
+                             "Note de calcul à cinq chapitres, HTML")}
                 onClick={produire("html", "note-html")}>
           {travail === "note-html" ? "Composition…" : "Note de calcul (HTML)"}
         </button>
         <button type="button" id="etude-note-pdf"
                 disabled={!!empechement || !!travail}
-                title={empechement ?? "Note de calcul à cinq chapitres, PDF"}
+                title={ferme("note-pdf",
+                             "Note de calcul à cinq chapitres, PDF")}
                 onClick={produire("pdf", "note-pdf")}>
           {travail === "note-pdf" ? "Composition…" : "Note de calcul (PDF)"}
         </button>
         <button type="button" id="etude-plan-dxf"
                 disabled={!!empechement || !!travail}
-                title={empechement
-                  ?? "Plan de ferraillage DXF R2018, depuis la coupe gelée"}
+                title={ferme(
+                  "plan",
+                  "Plan de ferraillage DXF R2018, depuis la coupe gelée")}
                 onClick={produire("dxf", "plan")}>
           {travail === "plan" ? "Transcription…" : "Plan de ferraillage (DXF)"}
         </button>
         <button type="button" className="secondaire" id="etude-apercu"
                 disabled={!!empechement || !!travail} onClick={voir}
-                title={empechement ?? "Aperçu non contractuel, sans dépôt"}>
+                title={ferme("apercu",
+                             "Aperçu non contractuel, sans dépôt")}>
           {travail === "apercu" ? "Rendu…" : "Aperçu du plan"}
         </button>
       </div>
+
+      {/* CE QUI SE PASSE, ECRIT — PAS SEULEMENT UN LIBELLE QUI CHANGE.
+          Le seul signe d'une génération en cours était le mot « Composition… »
+          sur le bouton qu'on venait de cliquer: rien ne le disait aux trois
+          autres, rien ne l'annonçait à un lecteur d'écran, et un PDF de cent
+          kilo-octets se fait attendre assez pour qu'on reclique. */}
+      {travail && (
+        <p className="aide" id="production-en-cours" role="status">
+          {LIBELLE_TRAVAIL[travail] ?? "Production en cours"} — la demande est
+          partie. Le document sort de l&apos;étude enregistrée&nbsp;; il
+          n&apos;y a rien à ressaisir, et rien à relancer.
+        </p>
+      )}
 
       {/* LE MOTIF EST ÉCRIT, PAS SEULEMENT SURVOLÉ. */}
       {empechement && (
@@ -306,7 +352,14 @@ function bloquantsDe(cause: AppelRefuse): PreflightBlockerDTO[] {
   return Array.isArray(liste) ? liste as PreflightBlockerDTO[] : [];
 }
 
+/**
+ * `AppelRefuse` REND SON MOTIF SEUL, sans le préfixe « Le serveur a refusé ».
+ *
+ * Ici le refus s'affiche déjà sous un bandeau qui le nomme — « Vérification
+ * refusée », « Un document n'a pas pu être produit » — et répéter le cadre
+ * dans la phrase le dirait deux fois. Pour tout le reste, `enClair`.
+ */
 function enPhrase(cause: unknown): string {
   if (cause instanceof AppelRefuse) return cause.detail;
-  return cause instanceof Error ? cause.message : String(cause);
+  return enClair(cause);
 }
