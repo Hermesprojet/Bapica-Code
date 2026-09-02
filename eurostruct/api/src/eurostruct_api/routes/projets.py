@@ -810,7 +810,7 @@ def verifier_poutre_completement(
         resolve_beam_context,
         verify_beam,
     )
-    
+
     jeton = _jeton_de(ouvert)
     try:
         projet = _projet_de(ouvert, jeton, project_id)
