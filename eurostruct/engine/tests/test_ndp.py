@@ -502,3 +502,82 @@ def test_provenance_is_derived_conservatively_when_absent() -> None:
     assert w.source_type.value == "national_annex"
     assert w.value_provenance is ValueProvenance.NATIONAL_ANNEX_PENDING
     assert not w.value_provenance.is_national
+
+
+# ---------------------------------------------------------------------------
+# Le portillon du mode strict — mesure du 30/08/2026
+# ---------------------------------------------------------------------------
+def test_un_fichier_du_depot_ne_peut_pas_ouvrir_le_mode_strict(
+    tmp_path, monkeypatch,
+) -> None:
+    """Ce que ce cas a trouve, et qui etait vrai avant lui.
+
+    En basculant deux champs de ``be.json`` — ``validation_status`` a
+    ``confirmed`` et ``value_provenance`` a ``national_annex`` — un calcul
+    belge en mode **strict** aboutissait, et se declarait signable. Le
+    verificateur etait la chaine de caracteres qu'on avait bien voulu ecrire.
+
+    Le depot annoncait pourtant le contraire, en toutes lettres, dans
+    ``confirmation.py``:
+
+        « aucun fichier editable du depot ne peut rendre une regle REELLE
+        strict-ready »
+
+    Une garantie que rien n'exerce ne se distingue pas d'une garantie perdue:
+    ``assert_provider_is_usable_in_production`` gardait un chemin que le calcul
+    ne prend pas.
+
+    LE CAS FAIT L'EDITION, il ne la simule pas. Verifier que la fonction de
+    lecture refuse une chaine ne prouverait rien sur le chemin reel: c'est
+    ``load_country_registry`` qui lit le fichier, et c'est lui qui doit
+    refuser.
+    """
+    import json
+    import shutil
+
+    from eurostruct_engine.ndp import registry as _registry
+
+    donnees = tmp_path / "data"
+    shutil.copytree(_registry._DATA_DIR, donnees)
+
+    be = donnees / "be.json"
+    brut = json.loads(be.read_text(encoding="utf-8"))
+    bascules = 0
+    for annexe in brut["annexes"]:
+        for item in annexe["parameters"].values():
+            if item.get("validation_status") == "pending_verification":
+                item["validation_status"] = "confirmed"
+                item["value_provenance"] = "national_annex"
+                item["source_type"] = "national_annex"
+                item["verified_at"] = "2026-08-30"
+                item["verified_by"] = "personne-qui-n-existe-pas"
+                bascules += 1
+    assert bascules > 0, "le jeu belge n'a plus de parametre a basculer"
+    be.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(_registry, "_DATA_DIR", donnees)
+    _registry.load_country_registry.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="ne peut pas porter le statut"):
+            _registry.load_country_registry("BE")
+    finally:
+        # Le cache est global: le laisser charge depuis `tmp_path` ferait
+        # dependre les cas suivants de l'ordre d'execution.
+        _registry.load_country_registry.cache_clear()
+
+
+def test_les_statuts_transcriptibles_excluent_confirmed() -> None:
+    """La liste est la regle; ce cas empeche qu'on l'elargisse par megarde."""
+    from eurostruct_engine.ndp.registry import STATUTS_TRANSCRIPTIBLES
+
+    assert ValidationStatus.CONFIRMED.value not in STATUTS_TRANSCRIPTIBLES
+    attendus = {"pending_verification", "deprecated", "not_representable"}
+    assert set(STATUTS_TRANSCRIPTIBLES) == attendus
+
+
+def test_un_statut_inconnu_dans_un_fichier_est_refuse_nommement() -> None:
+    """Un statut inconnu ne doit pas se lire comme un statut permissif."""
+    from eurostruct_engine.ndp.registry import _statut_transcrit
+
+    with pytest.raises(ValueError, match="statut de validation inconnu"):
+        _statut_transcrit("valide", "BE", "EN 1992-1-1:essai")

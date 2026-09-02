@@ -159,3 +159,25 @@ class InconsistentInput(EurostructEngineError):
 
 class UnitError(EurostructEngineError):
     """A quantity was supplied in a physically wrong dimension."""
+
+
+class ReinforcementNotVerified(EurostructEngineError):
+    """The chosen bars fail their own checks, so nothing is drawn.
+
+    A drawing is an instruction to a site. Producing one from an arrangement
+    that fails its verification would put a plan in the hands of someone with
+    no way of knowing: the drawing carries the bars, never the utilisation.
+
+    This is **not** an input error. The request was well formed and the
+    calculation ran; the verdict is an engineering one. The refusal therefore
+    names the check that fails and by how much, so the engineer adds steel
+    rather than guesses.
+    """
+
+    def __init__(
+        self, detail: str, *, utilisation: float, failing: tuple[str, ...] = ()
+    ) -> None:
+        self.detail = detail
+        self.utilisation = utilisation
+        self.failing = failing
+        super().__init__(detail)

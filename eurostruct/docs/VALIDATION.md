@@ -29,6 +29,10 @@
 | Aucun document ne présente le logiciel comme signataire | ✅ | `test_legal.py::test_no_document_presents_the_software_as_signatory` |
 | Mentions légales en FR/NL/EN/ES/DE | ✅ | `test_legal.py`, paramétré sur les 5 langues |
 | Immuabilité des documents signés | ✅ | `db/test/01_guarantees.sql`, test 5 |
+| Étude à **cinq chapitres** enchaînés en un passage, quatre états par chapitre | ✅ | `test_beam_verification.py` — `passed` / `failed` / `additional_analysis_required` / `not_evaluated`, jamais fusionnés |
+| Le **plan DXF** rend les mêmes octets d'un processus à l'autre | ✅ | `test_dxf_determinisme.py` — 5 germes × 2 exécutions en sous-processus, rendus concurrents, garde-fou falsifié |
+| La **note PDF** rend les mêmes octets d'un processus à l'autre | ✅ | `web/e2e/recette_production.mjs` — recomposée après redémarrage de l'API : identifiant de livrable différent, mêmes octets ; aucun `/CreationDate`, `/ModDate`, `/Producer` ni `/ID` dans le fichier |
+| Le plan décrit la poutre **vérifiée**, pas une autre | ✅ | La coupe est gelée avec l'étude ; le navigateur n'envoie que l'identifiant du calcul et le format |
 
 ## 2. Ce qui n'est PAS garanti — points bloquants avant commercialisation
 
@@ -38,8 +42,17 @@
 
 Les jeux de NDP livrés (`engine/src/eurostruct_engine/ndp/data/*.json`)
 contiennent les **valeurs recommandées par l'Eurocode**, pas celles des Annexes
-Nationales. Les 4 pays × 22 paramètres portent tous le statut
+Nationales. Les 4 pays × **29 paramètres** portent tous le statut
 `pending_verification`, et l'édition de chaque annexe est `NON RELEVE`.
+
+Le chemin de confirmation à quatre yeux, lui, fonctionne : un ingénieur propose
+depuis l'annexe publiée, un second approuve, la décision consommée devient un
+effet normatif. **Il bute en Belgique sur `EN 1992-1-1:w_max`**, que la
+NBN EN 1992-1-1 ANB ne relève pas au Tableau 7.1N. Douze des treize paramètres
+réclamés par les cinq chapitres se confirment ; celui-là est refusé nommément,
+et EUROSTRUCT ne l'invente pas. Une vérification **complète** en mode strict
+reste donc fermée en Belgique tant que cette valeur n'est pas transcrite depuis
+un document officiel.
 
 Conséquence voulue : **le moteur refuse de calculer en mode strict**, le mode
 par défaut. Le préflight rend la liste complète des bloquants en un passage :
@@ -135,6 +148,16 @@ audit `ezdxf` sans erreur, aller-retour sauvegarde/relecture, calques
 normalisés, style de cotation lié à une police présente dans le fichier,
 géométrie à l'échelle vraie. **L'ouverture effective dans AutoCAD, BricsCAD et
 LibreCAD reste une recette manuelle.**
+
+Ce n'est **pas** un blocage de licence : aucune licence AutoCAD n'est
+nécessaire, ni pour développer, ni pour exploiter le produit, et la recette
+elle-même n'en demande aucune — elle se fait dans l'AutoCAD d'un futur
+utilisateur et dans LibreCAD. La grille de contrôle, avec les valeurs attendues
+tirées du code, est dans `docs/DESSIN_DXF.md` §4.
+
+**Aucun test AutoCAD réel n'a été exécuté à ce jour, et le produit ne prétend
+pas le contraire.** Ce qui est prouvé est la relecture indépendante par
+`ezdxf`, énumérée ci-dessus.
 
 ## 3. Contrat de versionnement
 

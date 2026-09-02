@@ -665,6 +665,13 @@ EOF
 }
 
 harnais_verrou_rendre() {
+  # LA CAPTURE DE DIAGNOSTIC MEURT ICI, ET DANS AUCUN HARNAIS EN PARTICULIER.
+  # C'est le dernier geste de teardown que TOUS partagent: la placer ailleurs
+  # reviendrait a la recopier vingt-cinq fois, ce qui est exactement la
+  # divergence que `esc_diag_rapporter` existe pour supprimer. Les identifiants
+  # ont deja atteint stderr au moment du refus; ce qui disparait ici est le
+  # fichier, pas l'information.
+  esc_diag_capture_fermer
   [[ -n "${HARNAIS_VERROU_PID:-}" ]] || return 0
   # Fermer l'entree du co-processus termine `psql`, donc la session, donc le
   # verrou. Aucun `pg_advisory_unlock` explicite: on veut que la liberation
@@ -802,4 +809,708 @@ detruire_roles_crees() {
   done
   HARNAIS_ROLES_CREES=()
   return $(( echecs > 0 ))
+}
+
+
+# ==========================================================================
+# LE DIAGNOSTIC D'INSTALLATION — LA SOURCE DE VERITE N'EST JAMAIS TRONQUEE
+# ==========================================================================
+# CE QUI A ETE MESURE. Douze sites de harnais rapportaient un refus
+# d'installation ainsi:
+#
+#     grep -m1 ERROR <<<"$sortie" | cut -c1-200
+#     grep -oE "AUTHORITY_[A-Z0-9_]+" <<<"$sortie" | head -4
+#
+# La premiere ligne est un affichage — legitime. Mais la sortie complete
+# n'etait conservee NULLE PART: le tampon `$sortie` mourait avec le scenario.
+# Deux mutations (B' et B=) ont ete comptees SURVIVED parce que
+# `AUTHORITY_COMPOSITION_*` tombait au-dela du 200e caractere de la ligne
+# ERROR, et rien ne subsistait pour contredire l'affichage. Corriger le seul
+# affichage aurait recree la divergence au treizieme site: ils passent tous
+# par cette fonction.
+#
+# LE CONTRAT
+#   * la totalite de la sortie est ecrite dans un fichier de capture, sans
+#     aucune coupe — c'est la source de verite;
+#   * les identifiants sont extraits DE CE FICHIER, jamais d'un tampon coupe;
+#   * le raccourcissement ne concerne QUE la ligne lue par un humain;
+#   * le fichier est supprime au teardown, pas avant: un diagnostic detruit
+#     avant d'etre lu ne vaut pas mieux qu'un diagnostic tronque.
+#
+# CE QU'IL NE FAIT PAS: deviner. Si aucun identifiant n'apparait, il le DIT —
+# « aucun identifiant d'invariant » est une information, pas un silence.
+ESC_DIAG_MOTIF='(AUTHORITY|PRECONDITION|NORMATIVE|MIGRATION|HARNAIS)_[A-Z0-9_]{4,}'
+ESC_DIAG_LARGEUR=200        # affichage humain seulement
+ESC_DIAG_IDS_MAX=12         # affichage humain seulement; la capture les a tous
+ESC_DIAG_CAPTURE=""
+ESC_DIAG_APPELS=0
+
+esc_diag_capture_ouvrir() {
+  [[ -n "$ESC_DIAG_CAPTURE" && -f "$ESC_DIAG_CAPTURE" ]] && return 0
+  ESC_DIAG_CAPTURE="$(mktemp "${TMPDIR:-/tmp}/esc_diag_XXXXXXXX")" || {
+    ESC_DIAG_CAPTURE=""; return 1; }
+  return 0
+}
+
+# Supprime la capture. A appeler au TEARDOWN — jamais entre deux controles:
+# le fichier est ce qui reste quand l'affichage a menti.
+esc_diag_capture_fermer() {
+  [[ -n "$ESC_DIAG_CAPTURE" ]] || return 0
+  rm -f "$ESC_DIAG_CAPTURE"
+  ESC_DIAG_CAPTURE=""
+  return 0
+}
+
+# esc_diag_rapporter <etiquette> <sortie-integrale>
+#
+# N'emet PAS le « ECHEC: » — l'appelant garde son propre `echoue`, qui porte
+# la comptabilite du harnais. Celle-ci n'ecrit que le corps du diagnostic.
+esc_diag_rapporter() {
+  local etiquette="$1" contenu="${2-}" debut ids n=0 id
+  ESC_DIAG_APPELS=$((ESC_DIAG_APPELS + 1))
+  if esc_diag_capture_ouvrir; then
+    debut=$(( $(wc -c <"$ESC_DIAG_CAPTURE" 2>/dev/null || echo 0) + 1 ))
+    printf '=== %s ===\n%s\n' "$etiquette" "$contenu" >>"$ESC_DIAG_CAPTURE"
+    # L'EXTRACTION LIT LE FICHIER, PAS UN TAMPON. `tail -c +N` borne la
+    # lecture a ce que CET appel vient d'ecrire: la capture est cumulative,
+    # les identifiants rapportes ne le sont pas.
+    ids=$(tail -c "+$debut" "$ESC_DIAG_CAPTURE" | grep -oE "$ESC_DIAG_MOTIF" | sort -u)
+  else
+    # Sans fichier on extrait quand meme du contenu INTEGRAL en memoire.
+    # Degradation de la tracabilite, jamais de la detection.
+    ids=$(grep -oE "$ESC_DIAG_MOTIF" <<<"$contenu" | sort -u)
+    echo "              (capture indisponible: diagnostic en memoire seule)" >&2
+  fi
+
+  # 1. LA LIGNE HUMAINE — raccourcie, et elle seule.
+  #
+  # `iconv -c` N'EST PAS DECORATIF. Mesure faite en rejouant la campagne:
+  # `LC_CTYPE=POSIX` fait travailler `cut -c` en OCTETS, pas en caracteres. Une
+  # coupe au milieu d'un tiret cadratin (« — », E2 80 94) laissait un `E2`
+  # orphelin dans la sortie, et le lanceur de campagne mourait en
+  # `UnicodeDecodeError: invalid continuation byte` — une campagne entiere
+  # perdue sur un octet d'affichage. `-c` supprime la sequence incomplete.
+  grep -m1 -iE 'ERROR|ERREUR|FATAL|REFUS' <<<"$contenu" \
+    | cut -c1-"$ESC_DIAG_LARGEUR" \
+    | { iconv -c -f UTF-8 -t UTF-8 2>/dev/null || cat; } \
+    | sed 's/^/              /' >&2
+
+  # 2. LES IDENTIFIANTS — issus du contenu integral.
+  if [[ -z "$ids" ]]; then
+    echo "              aucun identifiant d'invariant dans la sortie" >&2
+  else
+    while IFS= read -r id; do
+      [[ -n "$id" ]] || continue
+      n=$((n + 1))
+      if (( n <= ESC_DIAG_IDS_MAX )); then
+        echo "              invariant: $id" >&2
+      fi
+    done <<<"$ids"
+    if (( n > ESC_DIAG_IDS_MAX )); then
+      echo "              ... et $(( n - ESC_DIAG_IDS_MAX )) autre(s), tous dans la capture" >&2
+    fi
+  fi
+
+  # 3. OU EST LA VERITE.
+  [[ -n "$ESC_DIAG_CAPTURE" ]] \
+    && echo "              capture integrale: $ESC_DIAG_CAPTURE" >&2
+  return 0
+}
+
+
+# ==========================================================================
+# LE CYCLE DE VIE D'UN DECOR — le teardown s'execute sur TOUS les chemins
+# ==========================================================================
+# CE QUI A ETE MESURE. Dans `authority_closure.sh`, `decor_poser` rendait 1
+# sur six chemins de refus — creation des trois roles, creation de la base,
+# phase 0, phase 1, etat final — et AUCUN n'appelait `decor_deposer`. Un seul
+# refus a l'installation laissait donc les six roles canoniques dans le
+# cluster; le decor suivant echouait en « phase 0 refusee », puis tous les
+# autres, et le harnais rendait « rien d'evalue » — ce qu'une campagne de
+# mutation lit comme un SURVIVANT. Une contamination du scenario suivant est
+# une erreur d'infrastructure, jamais une mise a mort.
+#
+# LE MECANISME EST DANS LA BIBLIOTHEQUE, et pas recopie dans chaque harnais,
+# pour la meme raison que le diagnostic: douze recopies divergent, une seule
+# se corrige.
+#
+#   esc_decor_ouvrir <nom> <fonction-de-teardown>
+#   esc_decor_fermer                       -> teardown, UNE SEULE FOIS
+#   esc_decor_abandonner [<code>]          -> teardown puis rend <code> (1)
+#
+# CINQ CHEMINS DE SORTIE, ET LE TEARDOWN LES COUVRE TOUS:
+#   1. succes                  -> `esc_decor_fermer` explicite
+#   2. erreur SQL              -> refus d'installation, `esc_decor_abandonner`
+#   3. erreur shell            -> le trap EXIT du harnais appelle `fermer`
+#   4. interruption            -> trap dedie TERM/INT/HUP, pose par `ouvrir`
+#   5. echec DANS le teardown  -> signale, jamais avale: `ESC_DECOR_TEARDOWN_KO`
+#                                 passe a 1 et le harnais sort en « non
+#                                 executee », pas en « vert ».
+#
+# IDEMPOTENT PAR CONSTRUCTION: `fermer` appele deux fois n'execute qu'un
+# teardown. Sans cela le trap EXIT redetruirait un decor deja rendu et le
+# second passage rapporterait des echecs de nettoyage imaginaires.
+ESC_DECOR_NOM=""
+ESC_DECOR_TEARDOWN=""
+ESC_DECOR_ARME=0
+ESC_DECOR_TEARDOWN_KO=0
+ESC_DECOR_FERMETURES=0
+
+esc_decor_ouvrir() {       # esc_decor_ouvrir <nom> <fonction>
+  local nom="${1:?usage: esc_decor_ouvrir <nom> <fonction>}"
+  local fn="${2:?usage: esc_decor_ouvrir <nom> <fonction>}"
+  if ! declare -F "$fn" >/dev/null 2>&1; then
+    echo "REFUS: « $fn » n'est pas une fonction: le teardown ne serait" >&2
+    echo "       jamais execute, et le decor « $nom » fuirait." >&2
+    return 2
+  fi
+  if (( ESC_DECOR_ARME )); then
+    # Un decor ouvert par-dessus un autre masquerait le teardown du premier.
+    echo "REFUS: le decor « $ESC_DECOR_NOM » est encore ouvert." >&2
+    return 2
+  fi
+  ESC_DECOR_NOM="$nom"; ESC_DECOR_TEARDOWN="$fn"; ESC_DECOR_ARME=1
+  # SON PROPRE TRAP. Il ne remplace pas le trap EXIT du harnais: il s'ajoute,
+  # rend le decor, puis sort avec le code conventionnel du signal.
+  trap 'trap "" TERM INT HUP; esc_decor_fermer; exit 143' TERM
+  trap 'trap "" TERM INT HUP; esc_decor_fermer; exit 130' INT
+  trap 'trap "" TERM INT HUP; esc_decor_fermer; exit 129' HUP
+  return 0
+}
+
+esc_decor_fermer() {
+  (( ESC_DECOR_ARME )) || return 0
+  local fn="$ESC_DECOR_TEARDOWN" nom="$ESC_DECOR_NOM"
+  # DESARME D'ABORD: si le teardown lui-meme echoue ou est interrompu, on ne
+  # le relance pas en boucle depuis son propre trap.
+  ESC_DECOR_ARME=0; ESC_DECOR_TEARDOWN=""; ESC_DECOR_NOM=""
+  ESC_DECOR_FERMETURES=$((ESC_DECOR_FERMETURES + 1))
+  if ! "$fn"; then
+    ESC_DECOR_TEARDOWN_KO=1
+    echo "      ECHEC NETTOYAGE: le teardown du decor « $nom » a echoue." >&2
+    echo "              L'execution suivante partirait d'un etat qu'elle" >&2
+    echo "              croirait propre." >&2
+  fi
+  harnais_piege_signaux
+  return 0
+}
+
+# Le chemin de refus: rend le decor PUIS le code d'echec, en un seul geste,
+# pour qu'aucun `return 1` ne puisse a nouveau oublier le teardown.
+esc_decor_abandonner() {
+  local code="${1:-1}"
+  esc_decor_fermer
+  return "$code"
+}
+
+
+# ==========================================================================
+# LE CANAL MACHINE — l'attribution ne se lit plus dans la prose
+# ==========================================================================
+# CE QUI A ETE MESURE, ET QUI CONDAMNE L'ANCIEN MECANISME. La campagne des 103
+# controles sur `3d0acc2` a rendu ONZE survivants. Six d'entre eux n'etaient
+# pas des garanties perdues: le harnais AVAIT rougi, et le lanceur n'avait pas
+# su le rattacher, parce qu'il cherchait la chaine « ROUGE: <point>. » dans une
+# sortie destinee a un humain.
+#
+#   SEP1  le harnais ecrit « ECHEC: A: ... »      -> deux-points, pas un point
+#   F2    le harnais ecrit « ROUGE: PR. D5. ... » -> un prefixe avant le point
+#   F3    idem
+#   MF2   la mutation tue A L'INSTALLATION        -> aucun point d'execution
+#   MF4   idem
+#   MF1   la mutation eteint MF1 et fait rougir MF2, MF3 et MF4
+#
+# Une ponctuation decide donc si une garantie compte comme defendue. C'est
+# inacceptable: le verdict d'une campagne ne peut pas dependre de la mise en
+# forme d'un message.
+#
+# LE PRINCIPE: DEUX CANAUX, JAMAIS UN SEUL.
+#   * la SORTIE HUMAINE reste libre — prose, accents, longueur, ponctuation;
+#   * le CANAL MACHINE est un JSONL strict, versionne, que seul le lanceur lit.
+#
+# Rien de ce qui est ecrit pour l'humain n'entre dans le calcul du verdict.
+ESC_CANAL_PROTOCOLE=2
+ESC_CANAL="${ESC_CANAL:-}"
+
+# esc_evt <point_id> <statut> <phase> [cle=valeur ...]
+#
+#   statut : ROUGE | SUR | NON_PARCOURU | INFRA
+#   phase  : installation | runtime | teardown
+#
+# Cles reconnues: scenario, chemin, invariant, diagnostic, code, effet,
+# terminal (« oui »/« non », defaut « oui »).
+#
+# L'ECHAPPEMENT EST FAIT PAR PYTHON, PAS A LA MAIN. Un `sed` d'echappement
+# JSON echoue sur les guillemets, les barres obliques inverses, les sauts de
+# ligne et l'UTF-8 — c'est-a-dire sur exactement ce que les diagnostics
+# PostgreSQL contiennent. Un evenement mal forme invalide la campagne entiere;
+# il ne doit donc jamais etre produit par negligence de citation.
+#
+# PROTOCOLE 2 — CE QUE LE LANCEUR DECLARE, ET POURQUOI CE N'EST PAS AU HARNAIS
+#
+#   ESC_RUN_ID         identifiant de la campagne
+#   ESC_SHA            SHA du candidat gele
+#   ESC_CONTROLE_ID    la MUTATION eprouvee (« S1 », « MF1 »)
+#   ESC_POINT_ATTENDU  le point de controle cense rougir
+#
+# Le harnais ne sait pas quelle mutation on lui applique — il ne peut donc pas
+# nommer le controle. Le lanceur, lui, le sait: c'est lui qui l'a posee.
+#
+# `terminal` NE VAUT QUE POUR LE POINT ATTENDU. Un harnais peut legitimement
+# rougir sur plusieurs points au cours d'une meme execution; si chacun etait
+# terminal, l'invariant « un seul verdict terminal par controle » se
+# declencherait a tort et la campagne entiere deviendrait invalide. Les autres
+# rouges sont enregistres — ils sont un fait — mais ils n'attribuent rien.
+esc_evt() {
+  [[ -n "$ESC_CANAL" ]] || return 0
+  local point="${1:?esc_evt <point_id> <statut> <phase> [cle=valeur ...]}"
+  local statut="${2:?statut}" phase="${3:?phase}"
+  shift 3
+  ESC_EVT_POINT="$point" ESC_EVT_STATUT="$statut" ESC_EVT_PHASE="$phase" \
+  ESC_EVT_PROTO="${ESC_CANAL_PROTOCOLE:-2}" ESC_EVT_FICHIER="$ESC_CANAL" \
+  ESC_EVT_RUN="${ESC_RUN_ID:-}" ESC_EVT_SHA="${ESC_SHA:-}" \
+  ESC_EVT_CTRL="${ESC_CONTROLE_ID:-}" ESC_EVT_ATTENDU="${ESC_POINT_ATTENDU:-}" \
+  python3 - "$@" <<'FINPY'
+import json, os, sys, time
+
+point = os.environ["ESC_EVT_POINT"]
+attendu = os.environ.get("ESC_EVT_ATTENDU") or ""
+manquants = [n for n in ("ESC_EVT_RUN", "ESC_EVT_SHA", "ESC_EVT_CTRL")
+             if not os.environ.get(n)]
+if manquants:
+    # UN EVENEMENT SANS CONTEXTE NE PEUT PAS ETRE RATTACHE. Le taire serait
+    # pire que refuser: la campagne conclurait NOT_RUN sans savoir pourquoi.
+    print(f"esc_evt: contexte absent {manquants} — le lanceur doit declarer "
+          f"ESC_RUN_ID, ESC_SHA et ESC_CONTROLE_ID", file=sys.stderr)
+    sys.exit(2)
+
+evt = {
+    "protocole":  int(os.environ["ESC_EVT_PROTO"]),
+    "run_id":     os.environ["ESC_EVT_RUN"],
+    "sha":        os.environ["ESC_EVT_SHA"],
+    "controle_id": os.environ["ESC_EVT_CTRL"],
+    "point_id":   point,
+    "statut":     os.environ["ESC_EVT_STATUT"],
+    "phase":      os.environ["ESC_EVT_PHASE"],
+    # SEQUENCE MONOTONE, en nanosecondes: elle ordonne sans ambiguite deux
+    # harnais qui ecrivent en parallele dans le meme canal, et sert
+    # d'horodatage. Deux evenements du meme controle ne peuvent pas la
+    # partager — le lecteur refuse les doublons (controle, seq).
+    "seq":        time.time_ns(),
+    "horodatage": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    "terminal":   (point == attendu) if attendu else True,
+    "scenario_id": None, "chemin": None, "invariant": None,
+    "diagnostic": None, "code": None, "effet": None,
+}
+CLES = {"scenario": "scenario_id", "chemin": "chemin", "invariant": "invariant",
+        "nature": "_nature", "detail": "_detail",
+        "code": "code", "effet": "effet", "terminal": "terminal"}
+nature = detail = None
+for arg in sys.argv[1:]:
+    if "=" not in arg:
+        print(f"esc_evt: argument sans « = »: {arg!r}", file=sys.stderr)
+        sys.exit(2)
+    cle, _, valeur = arg.partition("=")
+    if cle not in CLES:
+        print(f"esc_evt: cle inconnue {cle!r}", file=sys.stderr)
+        sys.exit(2)
+    champ = CLES[cle]
+    if champ == "terminal":
+        evt[champ] = valeur.strip().lower() in {"oui", "true", "1"}
+    elif champ == "_nature":
+        nature = valeur
+    elif champ == "_detail":
+        detail = valeur
+    elif champ == "code":
+        try:
+            evt[champ] = int(valeur)
+        except ValueError:
+            evt[champ] = None
+    else:
+        evt[champ] = valeur
+
+# LE DIAGNOSTIC EST STRUCTURE, PAS UNE PROSE. Une prose libre redevient vite
+# ce qu'on analyse, et l'on retombe dans la faute que le canal supprime.
+if nature is not None or detail is not None:
+    evt["diagnostic"] = {"nature": nature, "detail": detail}
+
+if evt["statut"] not in {"ROUGE", "SUR", "NON_PARCOURU", "INFRA"}:
+    print(f"esc_evt: statut invalide {evt['statut']!r}", file=sys.stderr)
+    sys.exit(2)
+if evt["phase"] not in {"installation", "runtime", "teardown"}:
+    print(f"esc_evt: phase invalide {evt['phase']!r}", file=sys.stderr)
+    sys.exit(2)
+
+# UNE SEULE LIGNE, TOUJOURS. `ensure_ascii=False` garde l'UTF-8 lisible; les
+# sauts de ligne des diagnostics sont echappes par `json.dumps` lui-meme.
+ligne = json.dumps(evt, ensure_ascii=False, separators=(",", ":"))
+assert "\n" not in ligne, "un evenement ne peut pas contenir de saut de ligne"
+# ECRITURE ATOMIQUE: `O_APPEND` sous la taille de PIPE_BUF garantit qu'une
+# ligne ne s'entrelace pas avec celle d'un autre harnais. C'est ce qui rend
+# « JSON tronque = campagne invalide » utilisable: une troncature devient
+# alors le signe d'un vrai defaut, pas d'une course d'ecriture.
+with open(os.environ["ESC_EVT_FICHIER"], "a", encoding="utf-8") as f:
+    f.write(ligne + "\n")
+FINPY
+}
+
+# ==========================================================================
+# LA MIGRATION D'UN HARNAIS VERS LE CANAL — deux primitives, et c'est tout
+# ==========================================================================
+# CE QUE CES DEUX FONCTIONS REMPLACENT: le traducteur de prose. Un harnais
+# migre DECLARE son point au moment ou il rend son verdict, au lieu de laisser
+# quelqu'un le deviner ensuite dans une sortie destinee a un humain.
+#
+# LE POINT EST UN ARGUMENT, PAS UNE EXTRACTION. Le lire dans le texte du
+# message serait le meme mecanisme qu'avant, deplace d'un cran: le harnais
+# CONNAIT son point, il n'a pas a le relire.
+#
+# `esc_conclure` FERME LE CAS OU RIEN N'A ROUGI. Sans elle, un point qui passe
+# ne produirait AUCUN evenement, et le lanceur conclurait NOT_RUN — « pas
+# mesure » — la ou il faut lire SURVIVED — « la garantie a ete retiree et rien
+# n'a rougi ». Les deux sont des echecs, mais ils ne se corrigent pas de la
+# meme facon, et les confondre efface la distinction.
+#
+# UN SEUL VERDICT TERMINAL PAR POINT, ET LE PREMIER ROUGE GAGNE.
+#
+# C'est la regle qu'appliquait deja le traducteur de prose: il rendait
+# `[_evt(...)]` sur la PREMIERE ligne rouge portant le point, et s'arretait la.
+# Un harnais migre doit s'y tenir, sinon deux chemins qui rougissent le meme
+# point produisent deux verdicts terminaux — `double_terminal`, la faute que la
+# campagne compte, mesuree le 29/08 sur `provider_contract` par un autre
+# chemin: un harnais qui se relance lui-meme.
+#
+# ELLE EST REELLEMENT EN JEU ICI. Dans `migration_postconditions.sh`, QUATRE
+# verdicts declares partagent un point (`m0011-verte`,
+# `m0011-privilege-sans-effet`, `m0011-appel-neutralise`, `m0011-atomicite`
+# portent tous `Y1`), et une mutation qui vise `Y1` en fait rougir plusieurs.
+#
+# LES TROUS SONT DIFFERES, ET C'EST LE POINT DELICAT.
+#
+# Un chemin non atteint n'est pas un chemin sain: il vaut `NOT_RUN` — « on ne
+# sait rien » — et jamais `SURVIVED` — « la garantie retiree n'a rien casse ».
+# Mais l'emettre AUSSITOT le graverait avant qu'un rouge plus tardif, sur le
+# meme point, ait pu se produire: le premier verdict tient, et le controle
+# serait declare non mesure alors qu'il a ete tue. On retient donc le trou,
+# et `esc_conclure` ne le rend que si RIEN n'a rougi.
+#
+# Le ROUGE, lui, part immediatement: un harnais tue en cours de route doit
+# laisser son rouge derriere lui, pas un silence.
+ESC_POINTS_RENDUS=""      # points ayant deja rendu un verdict TERMINAL
+ESC_POINTS_TROUES=""      # points dont un chemin n'a pas ete atteint, en attente
+declare -A ESC_TROU_MOTIF=()
+
+# ==========================================================================
+# LES POINTS QU'UN HARNAIS SAIT EMETTRE — DECLARES, ET VERIFIABLES AVANT VOL
+# ==========================================================================
+# CE QUE CETTE DECLARATION EXISTE POUR EMPECHER, MESURE DEUX FOIS LE 29/08:
+#
+#   * la conversion de `authority_closure.sh` exigeait un chiffre apres la
+#     lettre — `A1`, `H7` — et manquait `D`, `E`, `F`, `G`. Trois de ces
+#     points sont des points du REGISTRE: les controles D, E et G seraient
+#     devenus NOT_RUN, « non mesures », apres avoir ete tues pendant des
+#     semaines. Rien dans le harnais ne l'aurait dit;
+#   * le controle `D2` attendait le point `D`, que son scenario n'emet pas.
+#     Le traducteur masquait l'ecart en retombant sur une detection generique
+#     de refus d'installation.
+#
+# Les deux fautes ont la meme forme: UN POINT ATTENDU QUE PERSONNE N'EMET. La
+# campagne complete finit par le voir — `not_run == 0` echoue — mais quatre-
+# vingt-dix minutes plus tard, et seulement si on la lance.
+#
+# POURQUOI UNE DECLARATION ET NON UN SCANNER. On a essaye le scanner: une
+# expression reguliere sur les sites d'appel. Elle a rate `2b` dans
+# `finalisation_contract.sh`, parce que l'appel y est en milieu de ligne —
+# `|| { rouge_point 2b "..."`. Un scanner qui rate un site rend un faux
+# manquant, c'est-a-dire un refus injustifie; le rendre laxiste pour eviter
+# cela le rend aveugle. Une declaration explicite ne se devine pas.
+#
+# ET ELLE EST TENUE HONNETE PAR L'EXECUTION: emettre un point non declare
+# imprime une faute. La declaration ne peut donc pas deriver en silence par
+# rapport a ce que le harnais fait reellement.
+ESC_POINTS_DECLARES=""
+
+# esc_points_declares <point...> — a appeler une fois, avant tout verdict.
+esc_points_declares() { ESC_POINTS_DECLARES=" $* "; }
+
+# Rend 0 si le point est declare (ou si le harnais ne declare rien encore).
+_esc_point_connu() {
+  [[ -z "$ESC_POINTS_DECLARES" ]] && return 0
+  case "$ESC_POINTS_DECLARES" in *" $1 "*) return 0 ;; esac
+  # ON EMET QUAND MEME. Un point non declare est une faute de DECLARATION,
+  # pas une raison de perdre un vrai rouge: taire l'evenement transformerait
+  # une erreur de tenue de liste en absence de preuve.
+  echo "FAUTE DE DECLARATION: le point « $1 » est emis mais n'est pas dans" >&2
+  echo "       esc_points_declares. L'evenement part quand meme; c'est la" >&2
+  echo "       declaration qu'il faut corriger, pas l'emission." >&2
+  return 0
+}
+
+# esc_point_rouge <point> [cle=valeur ...] — emis tout de suite, une seule fois.
+esc_point_rouge() {
+  local pt="${1:?esc_point_rouge <point> [cle=valeur ...]}"
+  shift
+  case "$ESC_POINTS_RENDUS" in
+    *" $pt "*) return 0 ;;          # premier rouge gagne, comme le traducteur
+  esac
+  _esc_point_connu "$pt"
+  ESC_POINTS_RENDUS="$ESC_POINTS_RENDUS $pt "
+  esc_evt "$pt" ROUGE runtime "$@"
+}
+
+# esc_point_troue <point> <motif> — differe jusqu'a `esc_conclure`.
+esc_point_troue() {
+  local pt="${1:?esc_point_troue <point> <motif>}"
+  shift
+  _esc_point_connu "$pt"
+  ESC_POINTS_TROUES="$ESC_POINTS_TROUES $pt "
+  [[ -n "${ESC_TROU_MOTIF[$pt]:-}" ]] || ESC_TROU_MOTIF[$pt]="$*"
+}
+
+# esc_conclure — a appeler une fois, avant de sortir.
+esc_conclure() {
+  [[ -n "${ESC_CANAL:-}" ]] || return 0
+  [[ -n "${ESC_POINT_ATTENDU:-}" ]] || return 0
+  case "$ESC_POINTS_RENDUS" in
+    *" $ESC_POINT_ATTENDU "*) return 0 ;;
+  esac
+  case "$ESC_POINTS_TROUES" in
+    *" $ESC_POINT_ATTENDU "*)
+      esc_evt "$ESC_POINT_ATTENDU" NON_PARCOURU runtime \
+        nature=chemin_non_atteint \
+        detail="${ESC_TROU_MOTIF[$ESC_POINT_ATTENDU]:-chemin non atteint}"
+      return 0 ;;
+  esac
+  esc_evt "$ESC_POINT_ATTENDU" SUR runtime nature=point_non_rouge \
+    detail="le point attendu n'a pas rougi: la garantie retiree n'a rien casse"
+}
+
+# esc_evt_rouge / esc_evt_sur — raccourcis de lisibilite, meme protocole.
+esc_evt_rouge() { esc_evt "$1" ROUGE   "${2:-runtime}" "${@:3}"; }
+esc_evt_sur()   { esc_evt "$1" SUR     "${2:-runtime}" "${@:3}"; }
+esc_evt_trou()  { esc_evt "$1" NON_PARCOURU "${2:-runtime}" "${@:3}"; }
+esc_evt_infra() { esc_evt "$1" INFRA   "${2:-runtime}" "${@:3}"; }
+
+# ==========================================================================
+# UNE VALEUR LUE DANS LA BASE NE SE RECOLLE PAS DANS DU SQL
+# ==========================================================================
+# Trente et un sites lisaient une valeur DANS LA BASE — le manifeste — et la
+# recollaient dans un litteral SQL. Avec `2>&1`, ce qui est PIRE: en cas
+# d'echec la variable porte un message d'erreur francais, plein d'apostrophes.
+# La valeur casse alors l'instruction, et le harnais lit une ERREUR DE SYNTAXE
+# comme s'il lisait un REFUS. Mesure sur PostgreSQL 16.13:
+#
+#     V="ERROR:  le plan « x » n'est pas separe"
+#     select '$V'   ->  ERROR: syntax error at or near "est"
+#
+# POURQUOI PAS LA VARIABLE psql, QUI SERAIT LA FORME CANONIQUE. Parce qu'elle
+# ne marche pas ici, et c'est mesure:
+#
+#     psql -tA -v v="abc'def" -c    "select :'v'"   -> ERROR: syntax error
+#     psql -tA -v v="abc'def"     <<<"select :'v'"  -> abc'def
+#
+# psql N'INTERPOLE PAS ses variables dans une chaine `-c`, et vingt-sept des
+# trente et un sites sont des `-c`. Y passer imposerait l'entree standard,
+# donc `ON_ERROR_STOP` — sans lui une erreur SQL rend ZERO — et le code de
+# sortie passerait de 1 a 3 sur quinze harnais. Changement de semantique
+# d'echec, pour un gain nul: on double donc les apostrophes ici.
+#
+# C'EST COMPLET, ET SEULEMENT PARCE QUE `standard_conforming_strings` VAUT
+# `on` — lu, non suppose (PostgreSQL 16.13). Sous cette condition la barre
+# oblique inverse est litterale, et doubler l'apostrophe est la seule
+# echappement necessaire. Mesure d'aller-retour, valeur portant apostrophe,
+# barre oblique et guillemets francais: identique a l'original, octet pour
+# octet.
+#
+#     esc_litteral "$M"   ->   'valeur''citee'
+#
+# Rend le litteral AVEC ses quotes: on ecrit `f($(esc_litteral "$M"))`, jamais
+# `f('$(esc_litteral "$M")')`.
+esc_litteral() {
+  local v="${1-}"
+  printf "'%s'" "${v//\'/\'\'}"
+}
+
+# ==========================================================================
+# L'INSTRUMENT — un appel SQL qui ne peut pas mentir en silence
+# ==========================================================================
+# CE QUI A ETE MESURE, ET QUI JUSTIFIE CE SOCLE. Quatre fautes d'instrument ont
+# produit, dans ce jalon, des conclusions FAUSSES sur le produit:
+#
+#   1. `create trigger <nom> ON <table> BEFORE ...` est refuse. Envoyee vers
+#      /dev/null, la DDL echouait, le declencheur n'existait pas, et les cinq
+#      variantes de `search_path` rendaient « contournee ». Conclusion fausse.
+#   2. `return old` depuis un BEFORE UPDATE ANNULE l'ecriture. Le verdict
+#      « la ligne n'a pas change » etait vrai quoi que la garde decide: le
+#      controle mesurait un fait que rien ne produisait.
+#   3. psql POURSUIT apres une erreur dans un heredoc sans ON_ERROR_STOP. Le
+#      verdict tire de la DERNIERE LIGNE voyait le `select` final reussir et
+#      declarait « passe » alors que la commande testee avait echoue.
+#   4. Un heredoc NON QUOTE execute les backticks qu'il contient. Mesure:
+#      « -- voir `whoami` pour le detail » fait parvenir « -- voir root pour le
+#      detail » a psql. Ce qui ressemble a de la prose SQL est du shell.
+#
+# LE CONTRAT DE `esc_sql`
+#   * `ON_ERROR_STOP=1` TOUJOURS: la premiere erreur arrete le lot;
+#   * stdout ET stderr sont captures, jamais jetes;
+#   * le code rendu est celui de psql, jamais celui d'un `tail` ou d'un `grep`;
+#   * la sortie integrale reste dans `ESC_SQL_SORTIE`, lisible par l'appelant;
+#   * un echec passe par `esc_diag_rapporter`: l'identifiant d'invariant
+#     atteint le lecteur meme si le message est long.
+ESC_SQL_SORTIE=""
+ESC_SQL_CODE=0
+
+# esc_sql <raccourci-psql> <etiquette>   — le SQL est lu sur STDIN
+esc_sql() {
+  local raccourci="${1:?usage: esc_sql <raccourci> <etiquette>}"
+  local etiquette="${2:-sql}"
+  local entree; entree="$(cat)"
+  ESC_SQL_SORTIE="$("$raccourci" -v ON_ERROR_STOP=1 <<<"$entree" 2>&1)"
+  ESC_SQL_CODE=$?
+  if (( ESC_SQL_CODE != 0 )); then
+    esc_diag_rapporter "$etiquette" "$ESC_SQL_SORTIE"
+  fi
+  return $ESC_SQL_CODE
+}
+
+# esc_sql_valeur <raccourci> <etiquette> <requete>  — une valeur scalaire.
+# Rend 1 si la requete echoue; la valeur est dans `ESC_SQL_SORTIE`.
+esc_sql_valeur() {
+  local raccourci="$1" etiquette="$2" requete="$3"
+  ESC_SQL_SORTIE="$("$raccourci" -v ON_ERROR_STOP=1 -tAc "$requete" 2>&1)"
+  ESC_SQL_CODE=$?
+  (( ESC_SQL_CODE == 0 )) || esc_diag_rapporter "$etiquette" "$ESC_SQL_SORTIE"
+  return $ESC_SQL_CODE
+}
+
+# esc_catalogue_exige <raccourci> <etiquette> <requete-de-comptage> <attendu>
+#
+# UNE DDL N'EST PAS TENUE POUR POSEE PARCE QU'ELLE A ETE ENVOYEE. C'est la
+# faute n. 1 ci-dessus: le catalogue est la seule preuve. Rend 1 et diagnostique
+# si le compte differe.
+esc_catalogue_exige() {
+  local raccourci="$1" etiquette="$2" requete="$3" attendu="$4"
+  esc_sql_valeur "$raccourci" "$etiquette" "$requete" || return 1
+  if [[ "$ESC_SQL_SORTIE" != "$attendu" ]]; then
+    echo "      POSTCONDITION DE DECOR NON TENUE ($etiquette):" >&2
+    echo "              attendu « $attendu », catalogue « $ESC_SQL_SORTIE »" >&2
+    echo "              La DDL a ete ENVOYEE, pas posee. Tout scenario qui" >&2
+    echo "              suivrait mesurerait autre chose que ce qu'il annonce." >&2
+    return 1
+  fi
+  return 0
+}
+
+
+# ==========================================================================
+# LA COMPTABILITE DES VERDICTS — un statut UNIQUE par controle declare
+# ==========================================================================
+# CE QUI A ETE MESURE, ET QUI EST CORRIGE ICI. `authority_root_of_trust.sh`
+# comptait des APPELS, pas des controles: son attaque 10 bouclait sur `update`
+# puis `delete` et emettait DEUX verdicts. Quatorze attaques rendaient donc
+# « 4 rouges et 11 sures » — quinze. L'arithmetique le disait a chaque
+# execution, et personne ne l'avait lue.
+#
+# UN COMPTEUR QUI PEUT MENTIR SUR SON PROPRE TOTAL N'ATTESTE RIEN DU PRODUIT.
+# La comptabilite est donc structurelle, et partagee: un harnais ecrit demain
+# ne peut pas redemarrer la meme derive dans son coin.
+#
+#   * les controles sont DECLARES d'avance — `verdicts_declarer 1 2 3 ...`;
+#   * `verdict <id> <ROUGE|SUR|NON_PARCOURU> <texte>` en enregistre UN, et un
+#     seul: un second verdict pour le meme id est lui-meme une faute;
+#   * un controle declare qui ne rend aucun verdict est une faute;
+#   * un verdict pour un controle non declare est une faute;
+#   * et l'egalite est VERIFIEE en fin de course:
+#
+#         declares == executes == rouges + surs + non_parcourus
+#
+# Aucune de ces fautes n'est un avertissement: chacune force la sortie en
+# echec. Une sous-observation se COMBINE en un verdict unique avant d'etre
+# enregistree — c'est au harnais de trancher, pas au compteur de deviner.
+#
+# TROIS STATUTS, ET LEUR SENS EXACT
+#   ROUGE         l'attaque a ABOUTI. L'invariant vise n'est pas defendu.
+#   SUR           elle a ete REFUSEE, et le refus est attribue a la protection
+#                 visee — jamais a une autre.
+#   NON_PARCOURU  le chemin n'a pas ete ATTEINT. Ni rouge, ni assurance: un
+#                 trou. C'est la lecon de 6.3b6e — une surface non executee
+#                 n'est pas un verdict.
+VERDICTS_DECLARES=()
+declare -A VERDICTS=()
+VERDICTS_KO=0
+VERDICTS_ROUGES=0; VERDICTS_SURS=0; VERDICTS_NON_PARCOURUS=0
+VERDICTS_EXECUTES=0
+
+verdicts_declarer() { VERDICTS_DECLARES=("$@"); }
+
+verdict_faute() {
+  echo "      FAUTE DE COMPTABILITE: $*" >&2
+  VERDICTS_KO=1
+}
+
+verdict() {                # verdict <id> <statut> <texte...>
+  local id="$1" statut="$2"; shift 2
+  local connu=0 x
+  for x in "${VERDICTS_DECLARES[@]}"; do [[ "$x" == "$id" ]] && connu=1; done
+  if (( ! connu )); then
+    verdict_faute "verdict rendu pour « $id », qui n'est pas declare."
+    return 1
+  fi
+  if [[ -n "${VERDICTS[$id]:-}" ]]; then
+    verdict_faute "second verdict pour « $id » (« ${VERDICTS[$id]} » puis « $statut »)."
+    return 1
+  fi
+  VERDICTS[$id]="$statut"
+  case "$statut" in
+    ROUGE)        echo "      ROUGE: $*" ;;
+    SUR)          echo "      deja sur: $*" ;;
+    NON_PARCOURU) echo "      NON PARCOURU: $*" >&2 ;;
+    *) verdict_faute "statut « $statut » inconnu pour « $id »"; return 1 ;;
+  esac
+  return 0
+}
+
+verdicts_verifier() {
+  local id
+  VERDICTS_ROUGES=0; VERDICTS_SURS=0; VERDICTS_NON_PARCOURUS=0; VERDICTS_EXECUTES=0
+  for id in "${VERDICTS_DECLARES[@]}"; do
+    case "${VERDICTS[$id]:-}" in
+      ROUGE)        VERDICTS_ROUGES=$((VERDICTS_ROUGES + 1)) ;;
+      SUR)          VERDICTS_SURS=$((VERDICTS_SURS + 1)) ;;
+      NON_PARCOURU) VERDICTS_NON_PARCOURUS=$((VERDICTS_NON_PARCOURUS + 1)) ;;
+      "") verdict_faute "« $id » est declare mais n'a rendu AUCUN verdict."; continue ;;
+    esac
+    VERDICTS_EXECUTES=$((VERDICTS_EXECUTES + 1))
+  done
+  local total=$(( VERDICTS_ROUGES + VERDICTS_SURS + VERDICTS_NON_PARCOURUS ))
+  if (( ${#VERDICTS_DECLARES[@]} != VERDICTS_EXECUTES )); then
+    verdict_faute "declares=${#VERDICTS_DECLARES[@]} != executes=$VERDICTS_EXECUTES"
+  fi
+  if (( VERDICTS_EXECUTES != total )); then
+    verdict_faute "executes=$VERDICTS_EXECUTES != rouges+surs+non_parcourus=$total"
+  fi
+  return $VERDICTS_KO
+}
+
+verdicts_resume() {        # verdicts_resume <titre>
+  local id
+  echo ""
+  echo "      statut de chacun des ${#VERDICTS_DECLARES[@]} controles declares:"
+  for id in "${VERDICTS_DECLARES[@]}"; do
+    printf '                %-28s %s\n' "$id" "${VERDICTS[$id]:-<AUCUN VERDICT>}"
+  done
+  echo ""
+  echo "================================================="
+  echo " ${1:-controles}:"
+  echo "   declares            ${#VERDICTS_DECLARES[@]}"
+  echo "   executes            $VERDICTS_EXECUTES"
+  echo "   dont rouges         $VERDICTS_ROUGES"
+  echo "   dont surs           $VERDICTS_SURS"
+  echo "   dont non parcourus  $VERDICTS_NON_PARCOURUS"
+  if (( VERDICTS_KO )); then
+    echo "   ARITHMETIQUE INVALIDE — voir les fautes de comptabilite ci-dessus"
+  else
+    echo "   invariant tenu: declares == executes == rouges + surs + non_parcourus"
+  fi
+  echo "================================================="
 }

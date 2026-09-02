@@ -71,6 +71,28 @@ le créateur d'un rôle reçoit `admin=t, inherit=f, set=f`, donné par `postgre
 Cet ADMIN est **toléré pour lui seul**, jamais avec `SET` ni `USAGE`, et son
 identité est figée à l'installation par **OID et par nom**.
 
+#### Le plan de contrôle est un point de concentration, et cela se dit
+
+Puisqu'il détient l'`ADMIN OPTION` sur `eurostruct_authority_backend`, **qui
+entre dans le rôle du plan de contrôle peut enrôler qui il veut** dans le rôle
+qui détient `INSERT` sur les tables d'autorité — sans qu'aucune ligne de
+`pg_auth_members` ne nomme cette personne sur le backend.
+
+Ce chemin est **transitif et invisible à une lecture ligne à ligne**. Il a été
+trouvé en écrivant la falsification du contrôle censé le couvrir : le scénario
+posait un porteur d'`ADMIN` en ligne **directe**, que la lecture ligne à ligne
+voit déjà — la couche transitive n'était donc jamais atteinte, et une mutation
+qui l'aurait retirée aurait survécu.
+
+Ce qui le contient aujourd'hui : `assert_authority_backend_membership()`
+interroge `pg_has_role(..., 'MEMBER WITH ADMIN OPTION')`, qui est transitive
+par construction, et refuse tout porteur qui n'est pas le résidu de
+provisionnement lui-même. Contrôle `postcondition-admin-en-chaine`,
+falsification `PM2`.
+
+Ce qui ne le contient pas : rien n'empêche un superutilisateur d'enrôler
+quelqu'un dans le plan de contrôle. C'est cohérent avec la ligne suivante.
+
 ### Superutilisateur — hors modèle, explicitement
 
 Un superutilisateur PostgreSQL peut désactiver n'importe quel déclencheur,
@@ -162,6 +184,20 @@ plan par OID **et** par nom, l'empreinte des déclarations gelées et le
 
 * **Le vol d'identifiants du plan de contrôle.** Qui se connecte comme lui
   approuve ; c'est le sens même du rôle.
+* **Le porteur applicatif de l'identité — il n'existe pas.** Aucun provider
+  PostgreSQL n'existe dans ce dépôt : aucun module n'importe `psycopg`,
+  `psycopg2`, `asyncpg`, `sqlalchemy` ni `sqlite3` (l'isolation du moteur est
+  délibérée et testée), aucun code applicatif n'appelle les trois primitives de
+  décision, et rien ne pose `eurostruct.actor_id` en dehors des harnais.
+
+  La base garantit qu'un acteur **est posé** et par **quel rôle**. Elle ne peut
+  pas garantir qu'il vient d'une authentification, ni que le contexte est purgé
+  après `COMMIT`, après `ROLLBACK` ou après une erreur, ni qu'une connexion de
+  pool ne le fuit pas au locataire suivant. Ces quatre points sont
+  `pending_verification` — ni verts ni rouges : il n'y a pas de code à mesurer.
+  Le contrat que ce provider devra honorer est écrit dans
+  `MATRICE_QUATRE_YEUX.md`, § 4.2.
+
 * **La mise a niveau d'une base en service.** `tools/deploy_eurostruct.sh`
   installe et vérifie ; il ne met pas à niveau une base déjà `ACTIVE`. Une
   migration ajoutée au dépôt y produit `ACTIVE_SCHEMA_UPGRADE_REQUIRED` sans

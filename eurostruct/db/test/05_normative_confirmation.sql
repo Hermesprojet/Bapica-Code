@@ -330,15 +330,40 @@ $$;
 
 
 -- ---------------------------------------------------------------------
--- 5. Un second amorcage est refuse
+-- 5. Un second amorcage est refuse — DEUX PORTES, EPROUVEES SEPAREMENT
 -- ---------------------------------------------------------------------
+-- DEPUIS 6.3c IL Y A DEUX REFUS POSSIBLES, ET LES CONFONDRE FERAIT PASSER LE
+-- TEST POUR LA MAUVAISE RAISON. Un second amorcage nommant QUELQU'UN D'AUTRE
+-- est arrete par le MANDAT, avant meme d'atteindre la table; c'est un refus
+-- reel, mais il ne dit rien de la singularite. On eprouve donc les deux:
+--
+--   a) un principal etranger au mandat        -> refus par le mandat;
+--   b) LE principal du mandat, une fois de plus -> refus par la SINGULARITE,
+--      qui est la propriete que cette section existe pour etablir.
 do $$
 declare ok boolean := false;
 begin
   begin
     perform bootstrap_normative_administrator(
       '77777777-7777-7777-7777-777777777777', 'FICTIF Autre',
-      'FICTIF — seconde tentative.');
+      'FICTIF — seconde tentative, principal etranger au mandat.');
+  exception when insufficient_privilege then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'un amorcage nommant un principal ETRANGER au mandat a ete accepte: '
+      'le mandat ne prealloue donc rien';
+  end if;
+end
+$$;
+
+do $$
+declare ok boolean := false;
+begin
+  begin
+    perform bootstrap_normative_administrator(
+      '44444444-4444-4444-4444-444444444444', 'FICTIF Racine, encore',
+      'FICTIF — seconde tentative, MEME principal que le mandat.');
   exception when unique_violation then ok := true;
   end;
   if not ok then
@@ -356,14 +381,15 @@ $$;
 do $$
 declare ok boolean := false;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   begin
     insert into normative_authorisation_grants
-      (grantee_id, permission, country_code, standard_family, part, reason)
+      (grantee_id, permission, country_code, standard_family, part, reason, parent_grant_id)
     values ('44444444-4444-4444-4444-444444444444',
             'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
-            'FICTIF — auto-attribution');
+            'FICTIF — auto-attribution',
+         (select id from normative_authorisation_grants where origin = 'bootstrap'));
   exception when insufficient_privilege then ok := true;
   end;
   if not ok then
@@ -381,8 +407,8 @@ $$;
 do $$
 declare ok boolean := false;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   begin
     perform t_confirmer(p_idem => 'FICTIF-admin-tente');
   exception when insufficient_privilege then ok := true;
@@ -402,33 +428,33 @@ $$;
 do $$
 declare n bigint;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
 
   insert into normative_authorisation_grants
     (id, grantee_id, grantee_name, permission, country_code, standard_family,
-     part, reason)
+     part, reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-000000000001',
           '55555555-5555-5555-5555-555555555555', 'FICTIF Relecteur Un',
           'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
-          'FICTIF — relecture EC2 belge partie 1-1');
+          'FICTIF — relecture EC2 belge partie 1-1', (select id from normative_authorisation_grants where origin = 'bootstrap'));
 
   -- Portee restreinte a UNE edition: sert au test 9.
   insert into normative_authorisation_grants
     (id, grantee_id, grantee_name, permission, country_code, standard_family,
-     part, edition, reason)
+     part, edition, reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-000000000002',
           '66666666-6666-6666-6666-666666666666', 'FICTIF Relecteur Deux',
           'can_validate_normative_reference', 'BE', 'EN 1992', '1-1', '2010',
-          'FICTIF — relecture EC2 belge, edition 2010 uniquement');
+          'FICTIF — relecture EC2 belge, edition 2010 uniquement', (select id from normative_authorisation_grants where origin = 'bootstrap'));
 
   insert into normative_authorisation_grants
     (id, grantee_id, grantee_name, permission, country_code, standard_family,
-     part, reason)
+     part, reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-000000000003',
           '77777777-7777-7777-7777-777777777777', 'FICTIF Revocateur',
           'can_revoke_normative_confirmation', 'BE', 'EN 1992', '1-1',
-          'FICTIF — retrait de confirmations EC2 belge');
+          'FICTIF — retrait de confirmations EC2 belge', (select id from normative_authorisation_grants where origin = 'bootstrap'));
 
   -- 23b. Audit d'octroi
   select count(*) into n from audit_log
@@ -443,13 +469,14 @@ $$;
 do $$
 declare ok boolean := false;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   begin
     insert into normative_authorisation_grants
-      (grantee_id, grantee_name, permission, reason)
+      (grantee_id, grantee_name, permission, reason, parent_grant_id)
     values ('55555555-5555-5555-5555-555555555555', 'FICTIF Relecteur Un',
-            'can_validate_normative_reference', 'FICTIF — portee absente');
+            'can_validate_normative_reference', 'FICTIF — portee absente',
+            (select id from normative_authorisation_grants where origin = 'bootstrap'));
   exception when check_violation then ok := true;
   end;
   if not ok then
@@ -471,8 +498,8 @@ do $$
 declare c record; avant timestamptz; n bigint;
 begin
   avant := now();
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
 
   -- La fabrique PRETEND etre quelqu'un d'autre, a une autre date, sous une
   -- autre habilitation. Le serveur doit tout ecraser.
@@ -532,8 +559,8 @@ $$;
 do $$
 declare ok boolean;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
 
   -- Autre pays
   ok := false;
@@ -560,8 +587,8 @@ begin
   if not ok then raise exception 'confirmation acceptee hors de la partie habilitee'; end if;
 
   -- Autre edition, pour le verificateur dont l'octroi est limite a 2010
-  perform set_config('request.jwt.claim.sub',
-                     '66666666-6666-6666-6666-666666666666', true);
+  perform set_config('request.jwt.claim.sub', '66666666-6666-6666-6666-666666666666', true);
+  perform set_config('eurostruct.actor_id', '66666666-6666-6666-6666-666666666666', true);
   ok := false;
   begin
     perform t_confirmer(p_edition_annexe => '2018',
@@ -587,8 +614,8 @@ $$;
 do $$
 declare ok boolean;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
 
   ok := false;
   begin
@@ -621,8 +648,8 @@ $$;
 do $$
 declare ok boolean := false;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
   begin
     perform t_confirmer(p_idem => 'FICTIF-idem-1', p_rule => 'test.autre.regle');
   exception when unique_violation then ok := true;
@@ -640,8 +667,8 @@ $$;
 do $$
 declare ok boolean := false; n bigint;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   insert into normative_authorisation_revocations (grant_id, reason)
   values ('9a000000-0000-0000-0000-000000000002',
           'FICTIF — fin de mission du relecteur 2.');
@@ -663,8 +690,8 @@ begin
     raise exception 'l''octroi revoque est encore actif';
   end if;
 
-  perform set_config('request.jwt.claim.sub',
-                     '66666666-6666-6666-6666-666666666666', true);
+  perform set_config('request.jwt.claim.sub', '66666666-6666-6666-6666-666666666666', true);
+  perform set_config('eurostruct.actor_id', '66666666-6666-6666-6666-666666666666', true);
   begin
     perform t_confirmer(p_idem => 'FICTIF-apres-revocation');
   exception when insufficient_privilege then ok := true;
@@ -689,8 +716,8 @@ begin
   -- L'administrateur des habilitations n'a PAS ce pouvoir. C'est le coeur de
   -- la separation: distribuer des habilitations et defaire le travail d'un
   -- relecteur sont deux choses.
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   ok := false;
   begin
     insert into normative_rule_confirmation_revocations
@@ -707,8 +734,8 @@ begin
   end if;
 
   -- Un autre verificateur non plus.
-  perform set_config('request.jwt.claim.sub',
-                     '66666666-6666-6666-6666-666666666666', true);
+  perform set_config('request.jwt.claim.sub', '66666666-6666-6666-6666-666666666666', true);
+  perform set_config('eurostruct.actor_id', '66666666-6666-6666-6666-666666666666', true);
   ok := false;
   begin
     insert into normative_rule_confirmation_revocations
@@ -732,8 +759,8 @@ $$;
 do $$
 declare cible uuid; r record; ok boolean := false; n bigint;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '66666666-6666-6666-6666-666666666666', true);
+  perform set_config('request.jwt.claim.sub', '66666666-6666-6666-6666-666666666666', true);
+  perform set_config('eurostruct.actor_id', '66666666-6666-6666-6666-666666666666', true);
   select id into cible from normative_rule_confirmations
    where idempotency_key = 'FICTIF-idem-2';
 
@@ -805,8 +832,8 @@ begin
   select id into cible from normative_rule_confirmations
    where idempotency_key = 'FICTIF-idem-1';
 
-  perform set_config('request.jwt.claim.sub',
-                     '77777777-7777-7777-7777-777777777777', true);
+  perform set_config('request.jwt.claim.sub', '77777777-7777-7777-7777-777777777777', true);
+  perform set_config('eurostruct.actor_id', '77777777-7777-7777-7777-777777777777', true);
   insert into normative_rule_confirmation_revocations
     (confirmation_id, revoked_by, revoked_by_name, revoked_at,
      authorisation_scope, reason)
@@ -927,19 +954,20 @@ begin
    where idempotency_key = 'FICTIF-idem-1';
 
   -- Le nom se corrige par un NOUVEL octroi: l'octroi est immuable.
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   insert into normative_authorisation_revocations (grant_id, reason)
   values ('9a000000-0000-0000-0000-000000000001',
           'FICTIF — correction du nom lisible.');
   insert into normative_authorisation_grants
     (id, grantee_id, grantee_name, permission, country_code, standard_family,
-     part, reason)
+     part, reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-000000000004',
           '55555555-5555-5555-5555-555555555555',
           'FICTIF Relecteur Un (nom corrige)',
           'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
-          'FICTIF — nom corrige apres mariage.');
+          'FICTIF — nom corrige apres mariage.',
+       (select id from normative_authorisation_grants where origin = 'bootstrap'));
 
   select verifier_name into apres from normative_rule_confirmations
    where idempotency_key = 'FICTIF-idem-1';
@@ -960,8 +988,8 @@ $$;
 do $$
 declare c record;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
   perform t_confirmer(p_rule => 'test.apres.nouvel.octroi',
                       p_idem => 'FICTIF-idem-nouvel-octroi');
   select * into c from normative_rule_confirmations
@@ -984,17 +1012,18 @@ $$;
 do $$
 declare ok boolean := false;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
 
   -- Portee RIGOUREUSEMENT identique: refuse a la source.
   begin
     insert into normative_authorisation_grants
       (grantee_id, grantee_name, permission, country_code, standard_family,
-       part, reason)
+       part, reason, parent_grant_id)
     values ('55555555-5555-5555-5555-555555555555', 'FICTIF Relecteur Un',
             'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
-            'FICTIF — doublon de portee identique');
+            'FICTIF — doublon de portee identique',
+         (select id from normative_authorisation_grants where origin = 'bootstrap'));
   exception when unique_violation then ok := true;
   end;
   if not ok then
@@ -1008,28 +1037,30 @@ begin
   -- refuser a l'insertion; c'est la resolution qui doit refuser.
   insert into normative_authorisation_grants
     (id, grantee_id, grantee_name, permission, country_code, standard_family,
-     reason)
+     reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-0000000000a1',
           '77777777-7777-7777-7777-777777777777', 'FICTIF Revocateur',
           'can_manage_normative_authorisations', 'BE', 'EN 1992',
-          'FICTIF — portee pays+norme');
+          'FICTIF — portee pays+norme',
+       (select id from normative_authorisation_grants where origin = 'bootstrap'));
   insert into normative_authorisation_grants
-    (id, grantee_id, grantee_name, permission, country_code, part, reason)
+    (id, grantee_id, grantee_name, permission, country_code, part, reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-0000000000a2',
           '77777777-7777-7777-7777-777777777777', 'FICTIF Revocateur',
           'can_manage_normative_authorisations', 'BE', '1-1',
-          'FICTIF — portee pays+partie');
+          'FICTIF — portee pays+partie',
+       (select id from normative_authorisation_grants where origin = 'bootstrap'));
 
   ok := false;
-  perform set_config('request.jwt.claim.sub',
-                     '77777777-7777-7777-7777-777777777777', true);
+  perform set_config('request.jwt.claim.sub', '77777777-7777-7777-7777-777777777777', true);
+  perform set_config('eurostruct.actor_id', '77777777-7777-7777-7777-777777777777', true);
   begin
     insert into normative_authorisation_grants
       (grantee_id, grantee_name, permission, country_code, standard_family,
-       part, reason)
+       part, reason, parent_grant_id)
     values ('88888888-8888-8888-8888-888888888888', 'FICTIF Inconnu',
             'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
-            'FICTIF — octroi sous habilitation ambigue');
+            'FICTIF — octroi sous habilitation ambigue', '9a000000-0000-0000-0000-0000000000a1');
   exception when cardinality_violation then ok := true;
   end;
   if not ok then
@@ -1040,21 +1071,21 @@ begin
 
   -- Lever l'ambiguite en revoquant l'un des deux: la resolution redevient
   -- possible, sans aucune colonne mutable.
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   insert into normative_authorisation_revocations (grant_id, reason)
   values ('9a000000-0000-0000-0000-0000000000a2',
           'FICTIF — portee redondante retiree.');
 
-  perform set_config('request.jwt.claim.sub',
-                     '77777777-7777-7777-7777-777777777777', true);
+  perform set_config('request.jwt.claim.sub', '77777777-7777-7777-7777-777777777777', true);
+  perform set_config('eurostruct.actor_id', '77777777-7777-7777-7777-777777777777', true);
   insert into normative_authorisation_grants
     (id, grantee_id, grantee_name, permission, country_code, standard_family,
-     part, reason)
+     part, reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-0000000000a3',
           '88888888-8888-8888-8888-888888888888', 'FICTIF Inconnu',
           'can_validate_normative_reference', 'BE', 'EN 1992', '1-1',
-          'FICTIF — octroi apres levee de l''ambiguite');
+          'FICTIF — octroi apres levee de l''ambiguite', '9a000000-0000-0000-0000-0000000000a1');
 end
 $$;
 
@@ -1064,18 +1095,19 @@ $$;
 do $$
 declare c record;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   insert into normative_authorisation_grants
     (id, grantee_id, grantee_name, permission, country_code, standard_family,
-     part, edition, reason)
+     part, edition, reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-0000000000b1',
           '88888888-8888-8888-8888-888888888888', 'FICTIF Inconnu Specifique',
           'can_validate_normative_reference', 'BE', 'EN 1992', '1-1', '2010',
-          'FICTIF — portee plus etroite, edition 2010');
+          'FICTIF — portee plus etroite, edition 2010',
+       (select id from normative_authorisation_grants where origin = 'bootstrap'));
 
-  perform set_config('request.jwt.claim.sub',
-                     '88888888-8888-8888-8888-888888888888', true);
+  perform set_config('request.jwt.claim.sub', '88888888-8888-8888-8888-888888888888', true);
+  perform set_config('eurostruct.actor_id', '88888888-8888-8888-8888-888888888888', true);
   perform t_confirmer(p_rule => 'test.specificite', p_idem => 'FICTIF-spec');
   select * into c from normative_rule_confirmations
    where idempotency_key = 'FICTIF-spec';
@@ -1106,8 +1138,8 @@ $$;
 do $$
 declare premiere uuid; seconde uuid; actives bigint;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
 
   premiere := t_confirmer(p_rule => 'test.resignature', p_idem => 'FICTIF-rs-1');
 
@@ -1160,8 +1192,8 @@ $$;
 do $$
 declare ok boolean := false;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
   begin
     perform t_confirmer(p_rule => 'test.resignature', p_idem => 'FICTIF-rs-3');
   exception when unique_violation then ok := true;
@@ -1271,8 +1303,8 @@ begin
 
   set local role authenticated;
   -- Un utilisateur ORDINAIRE, titulaire d'aucune habilitation.
-  perform set_config('request.jwt.claim.sub',
-                     '99999999-9999-9999-9999-999999999999', true);
+  perform set_config('request.jwt.claim.sub', '99999999-9999-9999-9999-999999999999', true);
+  perform set_config('eurostruct.actor_id', '99999999-9999-9999-9999-999999999999', true);
 
   select count(*) into n from normative_authorisation_grants;
   if n <> 0 then
@@ -1307,8 +1339,8 @@ do $$
 declare n bigint;
 begin
   set local role authenticated;
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
   select count(*) into n from normative_rule_confirmations;
   if n = 0 then
     raise exception 'un signataire ne voit meme pas ce qu''il a signe';
@@ -1782,8 +1814,8 @@ $$;
 do $$
 declare ok boolean;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
 
   -- Les projections jsonb sont DERIVEES des payloads: ce que le client met
   -- dans stack_snapshot et evidence_items est ecrase, pas cru.
@@ -1845,8 +1877,8 @@ $$;
 do $$
 declare ok boolean := false;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
   begin
     perform t_confirmer(p_rule => 'test.coherence', p_sub_country => 'FR',
                         p_idem => 'FICTIF-coh-pays');
@@ -1865,8 +1897,8 @@ $$;
 do $$
 declare ok boolean;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
   ok := false;
   begin
     insert into normative_rule_confirmations (
@@ -1902,8 +1934,8 @@ $$;
 do $$
 declare c record; g record; r record;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
   perform t_confirmer(p_rule => 'test.horodatage', p_idem => 'FICTIF-hor-1');
   select * into c from normative_rule_confirmations
    where idempotency_key = 'FICTIF-hor-1';
@@ -1914,15 +1946,16 @@ begin
     raise exception 'created_at client (1999) a survecu: %', c.created_at;
   end if;
 
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   insert into normative_authorisation_grants
     (id, grantee_id, grantee_name, permission, country_code, standard_family,
-     part, granted_at, reason)
+     part, granted_at, reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-0000000000c1',
           '66666666-6666-6666-6666-666666666666', 'FICTIF Relecteur Deux',
           'can_validate_normative_reference', 'BE', 'EN 1993', '1-1',
-          timestamptz '1999-01-01', 'FICTIF — horodatage fourni par le client');
+          timestamptz '1999-01-01', 'FICTIF — horodatage fourni par le client',
+       (select id from normative_authorisation_grants where origin = 'bootstrap'));
   select * into g from normative_authorisation_grants
    where id = '9a000000-0000-0000-0000-0000000000c1';
   if g.granted_at < timestamptz '2000-01-01' then
@@ -1955,8 +1988,8 @@ $$;
 do $$
 declare ok boolean := false; n bigint; dernier uuid;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
 
   -- Ne laisser qu'UN seul administrateur actif.
   for dernier in
@@ -1988,21 +2021,49 @@ begin
       'personne et l''amorcage ne peut pas etre rejoue';
   end if;
 
-  -- Et la voie normale reste ouverte: octroyer a un autre, PUIS retirer.
+  -- LA « VOIE NORMALE » N'EN EST PLUS UNE, ET IL FAUT LE DIRE ICI.
+  --
+  -- Cette section affirmait qu'octroyer a un autre PUIS retirer restait
+  -- possible. Depuis 0012, l'efficacite est transitive: la releve est
+  -- deleguee SOUS l'amorcage, donc elle s'eteint a l'instant ou l'amorcage
+  -- est retire. Mesure avant correction: le retrait etait ACCEPTE, la releve
+  -- devenait inefficace, et il ne restait ZERO administrateur efficace — pour
+  -- toujours, l'amorcage etant singulier.
+  --
+  -- La garde de couverture ecarte desormais les descendants du retire et
+  -- exige leur EFFICACITE. Le retrait doit donc etre refuse, et ce refus est
+  -- la propriete a etablir: il n'existe pas de passation par revocation de la
+  -- racine. Une procedure de « bris de glace » releve d'une decision
+  -- distincte, qui sera proposee avant d'etre implementee — 0010 le disait
+  -- deja, et rien ici ne l'anticipe.
   insert into normative_authorisation_grants
-    (id, grantee_id, grantee_name, permission, reason)
+    (id, grantee_id, grantee_name, permission, reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-0000000000d1',
           '77777777-7777-7777-7777-777777777777', 'FICTIF Revocateur',
           'can_manage_normative_authorisations',
-          'FICTIF — releve de l''administration.');
-  insert into normative_authorisation_revocations (grant_id, reason)
-  values (dernier, 'FICTIF — passation effectuee.');
+          'FICTIF — releve tentee de l''administration.',
+       (select id from normative_authorisation_grants where origin = 'bootstrap'));
 
-  select count(*) into n from normative_authorisation_grants g
-   where g.permission = 'can_manage_normative_authorisations'
-     and normative_grant_is_active(g.id);
-  if n <> 1 then
-    raise exception 'apres passation, % administrateurs actifs', n;
+  ok := false;
+  begin
+    insert into normative_authorisation_revocations (grant_id, reason)
+    values (dernier, 'FICTIF — passation tentee.');
+  exception when restrict_violation then ok := true;
+  end;
+  if not ok then
+    raise exception
+      'la racine a ete retiree au motif qu''une releve DELEGUEE SOUS ELLE '
+      'existe: cette releve s''eteint avec elle, et il ne resterait aucun '
+      'administrateur efficace — sans amorcage possible pour en refaire un';
+  end if;
+
+  -- ET LA RELEVE, ELLE, EST BIEN EFFICACE tant que la racine tient. Sans
+  -- cette moitie, la garde serait satisfaite par un systeme qui refuse toute
+  -- delegation d'administration.
+  if not normative_grant_is_effective('9a000000-0000-0000-0000-0000000000d1') then
+    raise exception
+      'la releve deleguee n''est pas efficace alors que la racine tient: la '
+      'delegation d''administration ne fonctionnerait plus du tout';
   end if;
 end
 $$;
@@ -2019,25 +2080,35 @@ $$;
 do $$
 declare ok boolean := false; a_id uuid; b_id uuid; autre uuid; n bigint;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '77777777-7777-7777-7777-777777777777', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
 
-  -- A: administration GLOBALE (portee entierement NULL).
-  insert into normative_authorisation_grants
-    (id, grantee_id, grantee_name, permission, reason)
-  values ('9a000000-0000-0000-0000-0000000000e1',
-          '44444444-4444-4444-4444-444444444444', 'FICTIF Admin Global',
-          'can_manage_normative_authorisations',
-          'FICTIF — administration de toutes les juridictions.')
-  returning id into a_id;
+  -- A EST L'OCTROI D'AMORCAGE LUI-MEME, ET CE N'EST PAS UN RACCOURCI.
+  --
+  -- La version precedente fabriquait un administrateur global A « a cote » de
+  -- la racine. Depuis 0012, l'efficacite est TRANSITIVE: A descendrait de la
+  -- racine, et la boucle de nettoyage ci-dessous — qui retire tout autre
+  -- administrateur — retirerait la racine, donc A avec elle. Le monde que ce
+  -- test decrit (« un seul administrateur global, et ce n'est pas la racine »)
+  -- n'existe plus: tout administrateur global descend de la racine ou EST la
+  -- racine.
+  --
+  -- La propriete visee est intacte, et meme mieux posee: retirer LE global
+  -- alors que le seul restant ne couvre que la Belgique doit etre refuse.
+  select g.id into a_id from normative_authorisation_grants g
+   where g.origin = 'bootstrap';
+  if a_id is null then
+    raise exception 'precondition: aucun octroi d''amorcage en base';
+  end if;
 
-  -- B: administration BELGE uniquement.
+  -- B: administration BELGE uniquement, deleguee SOUS A.
   insert into normative_authorisation_grants
-    (id, grantee_id, grantee_name, permission, country_code, reason)
+    (id, grantee_id, grantee_name, permission, country_code, reason,
+     parent_grant_id)
   values ('9a000000-0000-0000-0000-0000000000e2',
           '55555555-5555-5555-5555-555555555555', 'FICTIF Admin Belge',
           'can_manage_normative_authorisations', 'BE',
-          'FICTIF — administration de la seule Belgique.')
+          'FICTIF — administration de la seule Belgique.', a_id)
   returning id into b_id;
 
   -- Les sections precedentes ont laisse d'AUTRES administrateurs de portee
@@ -2089,8 +2160,8 @@ begin
   -- l'aurait donc pas, et son refus viendrait du resolveur — jamais de la
   -- garde de couverture, qui ne serait alors jamais atteinte. Verifie: avec
   -- B en revocateur, le test passait au vert sur un autre motif.
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   begin
     insert into normative_authorisation_revocations (grant_id, reason)
     values (a_id, 'FICTIF — retrait de l''administrateur global.');
@@ -2106,8 +2177,8 @@ begin
   -- La reciproque doit rester possible: B est COUVERT par A (global), donc
   -- son retrait est legitime. Sans cette moitie, la garde serait satisfaite
   -- par un systeme qui refuse toute revocation.
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   insert into normative_authorisation_revocations (grant_id, reason)
   values (b_id, 'FICTIF — retrait du belge, couvert par le global.');
 
@@ -2127,26 +2198,32 @@ $$;
 do $$
 declare ok boolean := false;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   insert into normative_authorisation_grants
-    (id, grantee_id, grantee_name, permission, country_code, reason)
+    (id, grantee_id, grantee_name, permission, country_code, reason, parent_grant_id)
   values ('9a000000-0000-0000-0000-0000000000e3',
           '55555555-5555-5555-5555-555555555555', 'FICTIF Admin Belge 2',
           'can_manage_normative_authorisations', 'BE',
-          'FICTIF — administration belge.'),
+          'FICTIF — administration belge.',
+       (select id from normative_authorisation_grants where origin = 'bootstrap')),
          ('9a000000-0000-0000-0000-0000000000e4',
           '66666666-6666-6666-6666-666666666666', 'FICTIF Admin Francais',
           'can_manage_normative_authorisations', 'FR',
-          'FICTIF — administration francaise.');
+          'FICTIF — administration francaise.',
+       (select id from normative_authorisation_grants where origin = 'bootstrap'));
 
   -- La aussi, c'est le titulaire de la portee globale qui revoque: seul lui
   -- est habilite sur cette portee, et le refus attendu doit venir de la
   -- couverture, pas du resolveur.
+  --
+  -- LE GLOBAL EST L'OCTROI D'AMORCAGE, pour la meme raison qu'a la section
+  -- precedente: depuis 0012 tout administrateur global descend de lui ou EST
+  -- lui, et un descendant s'eteindrait avec lui.
   begin
     insert into normative_authorisation_revocations (grant_id, reason)
-    values ('9a000000-0000-0000-0000-0000000000e1',
-            'FICTIF — retrait du global avec BE et FR en place.');
+    select g.id, 'FICTIF — retrait du global avec BE et FR en place.'
+      from normative_authorisation_grants g where g.origin = 'bootstrap';
   exception when restrict_violation then ok := true;
   end;
   if not ok then
@@ -2742,8 +2819,8 @@ $$;
 do $$
 declare ok boolean; cas record;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
 
   for cas in
     select * from (values
@@ -2805,8 +2882,8 @@ $$;
 do $$
 declare ok boolean; pile text;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
 
   pile := replace(t_paquet('test.structure') ->> 'stack',
                   '"schema_version":"esc-stack/1"',
@@ -2835,8 +2912,8 @@ $$;
 do $$
 declare c record;
 begin
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
   perform t_confirmer(p_rule => 'test.structure', p_idem => 'FICTIF-struct-ok');
   select * into c from normative_rule_confirmations
    where idempotency_key = 'FICTIF-struct-ok';
@@ -2888,14 +2965,15 @@ do $$
 declare ok boolean := false;
 begin
   set local role authenticated;
-  perform set_config('request.jwt.claim.sub',
-                     '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true);
+  perform set_config('eurostruct.actor_id', '44444444-4444-4444-4444-444444444444', true);
   begin
     insert into normative_authorisation_grants
-      (grantee_id, grantee_name, permission, reason)
+      (grantee_id, grantee_name, permission, reason, parent_grant_id)
     values ('66666666-6666-6666-6666-666666666666', 'FICTIF Auto-octroi',
             'can_validate_normative_reference',
-            'FICTIF — insertion brute par un porteur de jeton.');
+            'FICTIF — insertion brute par un porteur de jeton.',
+         (select id from normative_authorisation_grants where origin = 'bootstrap'));
   exception when insufficient_privilege then ok := true;
   end;
   if not ok then
@@ -2917,8 +2995,8 @@ do $$
 declare n bigint;
 begin
   set local role authenticated;
-  perform set_config('request.jwt.claim.sub',
-                     '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('eurostruct.actor_id', '55555555-5555-5555-5555-555555555555', true);
   select count(*) into n
     from normative_rule_confirmation_revocations r
     join normative_rule_confirmations c on c.id = r.confirmation_id

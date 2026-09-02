@@ -68,14 +68,18 @@ do $$
 begin
   perform set_config('request.jwt.claim.sub',
                      'a1000000-0000-0000-0000-000000000001', true);
+  perform set_config('eurostruct.actor_id',
+                     'a1000000-0000-0000-0000-000000000001', true);
   insert into normative_authorisation_grants
     (grantee_id, grantee_name, permission,
-     country_code, standard_family, part, edition, reason)
+     country_code, standard_family, part, edition, reason, parent_grant_id)
   values ('a1000000-0000-0000-0000-000000000002',
           'FICTIF Verificateur Contrat Croise',
           'can_validate_normative_reference',
           'BE', 'EN 1992', '1-1', '2010',
-          'FICTIF — habilitation pour le controle de contrat croise.');
+          'FICTIF — habilitation pour le controle de contrat croise.',
+          (select id from normative_authorisation_grants
+            where origin = 'bootstrap'));
 end
 $$;
 
@@ -86,9 +90,10 @@ $$;
 -- migration — donc superutilisateur, qui contourne la RLS et detient tous les
 -- privileges. Il prouvait que la base accepte ce que le moteur produit, mais
 -- par un chemin QUE LE DEPLOIEMENT N'EMPRUNTE JAMAIS. Le chemin reel est
--- `normative_backend`, et c'est lui qu'il faut exercer: sinon une policy
--- manquante ou un privilege oublie resterait invisible ici et n'apparaitrait
--- qu'en production.
+-- `eurostruct_authority_backend` DEPUIS 0013 — c'etait `normative_backend`
+-- avant que 6.3c ne deplace l'ecriture normative derriere une frontiere. C'est
+-- lui qu'il faut exercer: sinon une policy manquante ou un privilege oublie
+-- resterait invisible ici et n'apparaitrait qu'en production.
 --
 -- Le payload est lu AVANT le changement de role: la table temporaire
 -- appartient a la session, et `normative_backend` n'y a pas acces.
@@ -99,7 +104,9 @@ begin
   select xc_paquet.p into p from xc_paquet;
   perform set_config('request.jwt.claim.sub',
                      'a1000000-0000-0000-0000-000000000002', true);
-  set local role normative_backend;
+  perform set_config('eurostruct.actor_id',
+                     'a1000000-0000-0000-0000-000000000002', true);
+  set local role eurostruct_authority_backend;
 
   insert into normative_rule_confirmations (
     country_code, standard_family, part, rule_id,
@@ -150,6 +157,8 @@ declare p jsonb; ok boolean := false; vu text;
 begin
   select xc_paquet.p into p from xc_paquet;
   perform set_config('request.jwt.claim.sub',
+                     'a1000000-0000-0000-0000-000000000002', true);
+  perform set_config('eurostruct.actor_id',
                      'a1000000-0000-0000-0000-000000000002', true);
   set local role authenticated;
   begin

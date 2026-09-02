@@ -111,7 +111,9 @@ exiger_leurres_inertes || exit 2
 JETON="$(harnais_jeton)"
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator normative_backend
-            normative_governance eurostruct_deployment)
+            normative_governance eurostruct_deployment
+            eurostruct_authority_backend
+            eurostruct_reconciliation)
 AUTORITES=(eurostruct_normative_writer eurostruct_normative_bootstrap
            eurostruct_normative_activator)
 exiger_roles_absents "deploy_recovery.sh" "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" || exit 2
@@ -1603,7 +1605,12 @@ t_historique() {
     # DANS le prefixe deja applique.
     insere)   printf 'begin;\nselect 1;\ncommit;\n' \
                 >"$COPIE/db/migrations/0004_zz_insertion.sql" ;;
-    suffixe)  cat >"$COPIE/db/migrations/0011_ajout_legitime.sql" <<'SQL'
+    # LE NUMERO EST 9999, ET CE N'EST PAS COSMETIQUE. Le fichier s'appelait
+    # « 0011_... » et TRIAIT donc AVANT `0011_authority_hardening.sql`: ce
+    # n'etait plus un suffixe mais une INSERTION dans le prefixe deja
+    # applique, exactement le geste que T10 verifie etre refuse. Le scenario
+    # mesurait donc l'inverse de ce qu'il annonce des que 0011 a existe.
+    suffixe)  cat >"$COPIE/db/migrations/9999_ajout_legitime.sql" <<'SQL'
 -- FICTIF — ajout EN SUFFIXE, le geste normal. Il doit etre accepte.
 begin;
 comment on schema public is 'ajout legitime en suffixe (harnais)';
@@ -1619,7 +1626,8 @@ SQL
   etat_fin=$(admb -tAc "select normative_activation_state()" 2>&1)
 
   if [[ "$geste" == "suffixe" ]]; then
-    if [[ $code -eq 0 && "$etat_fin" == "ACTIVE" && "$apres" == "11" ]]; then
+    if [[ $code -eq 0 && "$etat_fin" == "ACTIVE" \
+          && "$apres" == "$((MIGRATIONS_ATTENDUES + 1))" ]]; then
       echo "      ok: $nom. une migration ajoutee en suffixe est appliquee"
     else
       rouge "$nom. un ajout LEGITIME en suffixe est refuse."
@@ -1735,6 +1743,15 @@ fi
 #
 # T16 EST LE CAS POSITIF, et il n'est pas decoratif: sans lui, un controle qui
 # refuserait toute relance sur une base ACTIVE passerait pour correct.
+# LE NOMBRE DE MIGRATIONS SE COMPTE, IL NE S'ECRIT PAS EN DUR.
+#
+# Ces quatre scenarios exigeaient « dix inscrites ». Le chiffre etait juste par
+# accident: 0011 a 0014 ne s'inscrivaient PAS au registre — c'etait le defaut
+# corrige dans ce meme lot — et le decompte n'a bouge qu'une fois qu'elles ont
+# commence a s'y inscrire. Un attendu code en dur transforme une correction en
+# regression apparente, et se serait re-perime a la migration suivante.
+MIGRATIONS_ATTENDUES="$(ls "$DB_DIR"/migrations/*.sql | wc -l | tr -d ' ')"
+
 t_active() {
   local nom="$1" geste="$2" code
   local M5="0005_validation_workflow.sql"
@@ -1744,8 +1761,8 @@ t_active() {
   local etat inscrites
   etat=$(admb -tAc "select normative_activation_state()" 2>&1)
   inscrites=$(admb -tAc "select count(*) from normative_migration_ledger" 2>&1)
-  if [[ "$etat" != "ACTIVE" || "$inscrites" != "10" ]]; then
-    echoue "$nom. le decor n'est pas ACTIVE avec dix migrations (« $etat »,"
+  if [[ "$etat" != "ACTIVE" || "$inscrites" != "$MIGRATIONS_ATTENDUES" ]]; then
+    echoue "$nom. le decor n'est pas ACTIVE avec $MIGRATIONS_ATTENDUES migrations (« $etat »,"
     echoue "    $inscrites inscrite(s)); scenario non evalue"
     decor_deposer; return 1
   fi
@@ -1755,7 +1772,13 @@ t_active() {
                  >>"$COPIE/db/migrations/$M5" ;;
     disparue)  mv "$COPIE/db/migrations/$M5" \
                   "$COPIE/db/migrations/0005_renommee_active.sql" ;;
-    suffixe)   cat >"$COPIE/db/migrations/0011_ajout_sur_active.sql" <<'SQL'
+    # 9999 ET NON 0011, POUR LA MEME RAISON QU'EN T11: « 0011_... » trie AVANT
+    # `0011_authority_hardening.sql`, donc s'INSERE dans le prefixe deja
+    # applique au lieu de s'y ajouter. Le refus obtenu etait alors
+    # MIGRATION_HISTORY_DIVERGENCE (code 1) et non
+    # ACTIVE_SCHEMA_UPGRADE_REQUIRED (code 9): un refus, mais pas celui que ce
+    # scenario existe pour prouver.
+    suffixe)   cat >"$COPIE/db/migrations/9999_ajout_sur_active.sql" <<'SQL'
 -- FICTIF — migration ajoutee alors que la base est deja ACTIVE.
 begin;
 comment on schema public is 'ajout sur base active (harnais)';
@@ -1772,7 +1795,7 @@ SQL
 
   case "$geste" in
     identique)
-      if [[ $code -eq 0 && "$apres" == "10" ]]; then
+      if [[ $code -eq 0 && "$apres" == "$MIGRATIONS_ATTENDUES" ]]; then
         echo "      ok: $nom. depot identique: la relance idempotente est permise"
       else
         rouge "$nom. une relance sur une base ACTIVE intacte est refusee."
@@ -1782,11 +1805,11 @@ SQL
     suffixe)
       if [[ $code -eq 9 ]] \
          && grep -qF "ACTIVE_SCHEMA_UPGRADE_REQUIRED" <<<"$SORTIE_CMD" \
-         && [[ "$apres" == "10" ]]; then
+         && [[ "$apres" == "$MIGRATIONS_ATTENDUES" ]]; then
         echo "      ok: $nom. migration en suffixe sur ACTIVE: refus nomme, zero mutation"
       else
         rouge "$nom. une migration ajoutee sur une base ACTIVE n'est pas nommee."
-        detail "    code $code (9 attendu), $apres ligne(s) au registre (10 attendues)"
+        detail "    code $code (9 attendu), $apres ligne(s) au registre ($MIGRATIONS_ATTENDUES attendues)"
         detail "    $(grep -m1 -E '^(ECHEC|ACTIVE_|MIGRATION_)' <<<"$SORTIE_CMD" | cut -c1-140)"
         detail "    Sans ce refus, la commande annonce une relance reussie et"
         detail "    ignore silencieusement une migration du depot."
@@ -1795,7 +1818,7 @@ SQL
       local jeton="MIGRATION_CHECKSUM_MISMATCH"
       [[ "$geste" == "disparue" ]] && jeton="MIGRATION_HISTORY_DIVERGENCE"
       if [[ $code -ne 0 ]] && grep -qF "$jeton" <<<"$SORTIE_CMD" \
-         && [[ "$apres" == "10" ]]; then
+         && [[ "$apres" == "$MIGRATIONS_ATTENDUES" ]]; then
         echo "      ok: $nom. divergence detectee sur une base ACTIVE ($jeton)"
       else
         rouge "$nom. une base ACTIVE divergente du depot n'est pas detectee."

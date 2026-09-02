@@ -20,13 +20,17 @@ grant select, insert, update, delete on deliverable_state_transitions to authent
 -- ---------------------------------------------------------------------
 -- 1. Un livrable nait en 'draft'
 -- ---------------------------------------------------------------------
+-- LES CHEMINS DE CE DECOR SONT ADRESSES PAR LEUR CONTENU, comme l'exige
+-- `storage_path_derives_from_sha` (0020): un chemin qui ne contient pas
+-- l'empreinte du document ne permet pas de retrouver ses octets.
+
 insert into deliverables (id, org_id, project_id, calculation_id, kind, filename,
                           storage_path, sha256, size_bytes, engine_version,
                           generated_by)
 values ('aa000000-0000-0000-0000-000000000001',
         'aaaaaaaa-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000001',
         '66666666-0000-0000-0000-000000000001', 'calculation_note_pdf', 'note-B.pdf',
-        's3://note-B.pdf', 'sha256:b', 2048, '0.2.0',
+        's3://sha256:b/note-B.pdf', 'sha256:b', 2048, '0.2.0',
         '11111111-1111-1111-1111-111111111111');
 
 do $$
@@ -181,7 +185,7 @@ insert into deliverables (id, org_id, project_id, calculation_id, kind, filename
 values ('aa000000-0000-0000-0000-000000000002',
         'aaaaaaaa-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000001',
         '66666666-0000-0000-0000-000000000002', 'rebar_drawing_dxf', 'ferr.dxf',
-        's3://ferr.dxf', 'sha256:c', 4096, '0.2.0',
+        's3://sha256:c/ferr.dxf', 'sha256:c', 4096, '0.2.0',
         '11111111-1111-1111-1111-111111111111');
 
 update deliverables set state = 'review'
@@ -217,7 +221,7 @@ begin
                               generated_by, revision, supersedes_id)
     values ('aaaaaaaa-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000001',
             '66666666-0000-0000-0000-000000000001', 'calculation_note_pdf', 'note-C.pdf',
-            's3://note-C.pdf', 'sha256:d', 2048, '0.2.0',
+            's3://sha256:d/note-C.pdf', 'sha256:d', 2048, '0.2.0',
             '11111111-1111-1111-1111-111111111111',
             1, 'aa000000-0000-0000-0000-000000000001');
   exception when restrict_violation then ok := true;
@@ -235,7 +239,7 @@ insert into deliverables (id, org_id, project_id, calculation_id, kind, filename
 values ('aa000000-0000-0000-0000-000000000003',
         'aaaaaaaa-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000001',
         '66666666-0000-0000-0000-000000000001', 'calculation_note_pdf', 'note-C.pdf',
-        's3://note-C.pdf', 'sha256:d', 2048, '0.2.0',
+        's3://sha256:d/note-C.pdf', 'sha256:d', 2048, '0.2.0',
         '11111111-1111-1111-1111-111111111111',
         2, 'aa000000-0000-0000-0000-000000000001');
 

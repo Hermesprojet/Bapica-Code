@@ -51,15 +51,70 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import canal_lecture  # noqa: E402
+
+# --------------------------------------------------------------------------
+# LES ANOMALIES DU CANAL, AGREGEES SUR TOUTE LA CAMPAGNE
+# --------------------------------------------------------------------------
+# Une campagne ne se clot pas seulement sur « aucun survivant »: elle se clot
+# aussi sur « rien d'illisible n'a ete lu ». Un evenement d'un autre run, un
+# controle inconnu, un JSONL tronque — chacun signifie qu'on ignore ce que les
+# AUTRES lignes disaient. Ces compteurs sont donc exiges NULS, au meme titre
+# que les survivants.
+ANOMALIES = {"unknown_event": 0, "cross_run_event": 0,
+             "double_terminal": 0, "invalid_jsonl": 0}
+
+# --------------------------------------------------------------------------
+# L'IDENTITE DE LA CAMPAGNE — un run, un SHA, et rien qui puisse se confondre
+# --------------------------------------------------------------------------
+# `RUN_ID` distingue deux campagnes concurrentes et une capture oubliee dans le
+# scratch. `SHA_CANDIDAT` rattache chaque evenement a l'arbre EXACT eprouve.
+#
+# Le lot L4 a montre ce que leur absence coute: une execution verte de l'arbre
+# de travail avait ete attribuee a un SHA qui n'existait pas encore au moment
+# ou elle tournait. Le canal refuse desormais tout evenement portant un autre
+# run ou un autre SHA, et la campagne exige `cross_run_event == 0`.
+#
+# Le SHA est LU DANS LE DEPOT, jamais passe en argument: un SHA fourni a la
+# main peut mentir, `git rev-parse HEAD` dans l'espace de travail ne le peut
+# pas. `ESC_SHA_CANDIDAT` n'existe que pour les selftests, qui n'ont pas de
+# depot sous la main.
+RUN_ID = os.environ.get("ESC_RUN_ID") or f"run-{uuid.uuid4().hex[:16]}"
+
+
+def _sha_courant() -> str:
+    force = os.environ.get("ESC_SHA_CANDIDAT")
+    if force:
+        return force
+    try:
+        return subprocess.run(["git", "-C", ESPACE, "rev-parse", "HEAD"],
+                              capture_output=True, text=True,
+                              check=True).stdout.strip()
+    except Exception:
+        return "SHA_INCONNU"
 
 # `.../eurostruct/db/test/mutation_matrix.py` -> `.../eurostruct`: TROIS
 # remontees. Deux laissaient RACINE sur `.../db`, ou `git status -- db/...` ne
 # designe rien: la garde d'arbre propre passait alors sans rien constater.
 RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 M = "db/migrations/0010_normative_confirmation.sql"
+A13 = "db/migrations/0013_authenticated_actor.sql"
+A14 = "db/migrations/0014_four_eyes_decisions.sql"
+A11 = "db/migrations/0011_authority_hardening.sql"
+A12 = "db/migrations/0012_delegation_lineage.sql"
 S = "db/control_plane/0001_normative_seal.sql"
 R = "db/test/run.sh"
 H = "db/test/authority_closure.sh"
+LIB = "db/test/lib_harnais.sh"
+FACT = "engine/src/eurostruct_engine/ndp/provider_factory.py"
+BARR = "db/test/barriere_provider.py"
+SCAN = "db/test/verifier_heredocs.py"
+CSEL = "db/test/canal_selftest.py"
+PROV = "db/test/provider_contract.py"
+A15 = "db/migrations/0015_authority_manifest.sql"
 CMD = "tools/deploy_eurostruct.sh"
 # LES TROIS CIBLES DE 6.3b6e. Le registre vit dans la premiere migration,
 # l'applicateur au-dessus d'elle, et `0002` sert de temoin au controle statique
@@ -74,7 +129,8 @@ SCRATCH = os.environ.get("TMPDIR", "/tmp")
 
 def _git(*args, cwd=None, check=True):
     return subprocess.run(["git", *args], cwd=cwd or DEPOT,
-                          capture_output=True, text=True, check=check)
+                          capture_output=True, text=True, errors="replace",
+                          check=check)
 
 
 DEPOT = _git("rev-parse", "--show-toplevel",
@@ -336,13 +392,32 @@ def restaurer(fichier):
         open(f"{ESPACE}/{fichier}", "w").write(texte)
 
 
-def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
+SHA_CANDIDAT = None  # pose au premier lancement, depuis ESPACE
+
+
+def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu",
+           controle_id=None, point_attendu=None):
     env = dict(os.environ)
     env["TMPDIR"] = SCRATCH
     # LE CONSENTEMENT EST POSE ICI, EXPLICITEMENT. Sans lui les harnais
     # refusent — a juste titre — et la matrice conclurait sur des executions
     # qui n'ont pas eu lieu.
     env["EUROSTRUCT_CLUSTER_JETABLE"] = "oui-cluster-jetable-et-isole"
+    # LE CANAL MACHINE — un fichier par execution, jamais partage.
+    canal = os.path.join(SCRATCH, f"canal_{uuid.uuid4().hex}.jsonl")
+    env["ESC_CANAL"] = canal
+    # LE CONTEXTE DE L'EVENEMENT EST DECLARE PAR LE LANCEUR, PAS PAR LE HARNAIS.
+    # Le harnais ignore quelle mutation on lui applique; le lanceur l'a posee.
+    # Sans ces quatre valeurs un evenement ne peut etre rattache ni a la
+    # campagne, ni au SHA gele, ni au controle eprouve — et c'est exactement
+    # ainsi qu'une preuve finit par repondre pour un arbre qui n'existe plus.
+    global SHA_CANDIDAT
+    if SHA_CANDIDAT is None:
+        SHA_CANDIDAT = _sha_courant()
+    env["ESC_RUN_ID"] = RUN_ID
+    env["ESC_SHA"] = SHA_CANDIDAT
+    env["ESC_CONTROLE_ID"] = controle_id or ""
+    env["ESC_POINT_ATTENDU"] = point_attendu or ""
     # PRISE DE TEST: substitue le harnais. Elle sert au contre-exemple du
     # harnais qui sort IMMEDIATEMENT — precisement le cas ou le temoin retenait
     # les pipes. Inerte quand la variable est absente.
@@ -615,9 +690,17 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
         # les FIFO dans tous les cas. Voir le commentaire dans l'enveloppe.
         barriere = tempfile.mkdtemp(prefix="esc-barriere-", dir=SCRATCH)
         env["ESC_BARRIERE"] = barriere
+    # `errors="replace"` N'EST PAS DE LA COMPLAISANCE. Mesure du 28/08: un
+    # harnais avait emis un octet UTF-8 orphelin — `cut -c` travaille en octets
+    # sous `LC_CTYPE=POSIX` et avait coupe un tiret cadratin en deux — et
+    # `communicate()` levait `UnicodeDecodeError`. La campagne mourait sans
+    # rendre le moindre verdict: quatre-vingt-dix garanties perdues sur un
+    # octet d'affichage. Le harnais a ete corrige a la source; ce filet est la
+    # pour que la MESURE ne depende jamais de la propriete typographique de ce
+    # qu'elle observe.
     p = subprocess.Popen(argv, cwd=ESPACE, env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True, start_new_session=True)
+                         text=True, errors="replace", start_new_session=True)
     ENFANT = p
     try:
         sortie, erreur = p.communicate()
@@ -696,7 +779,128 @@ def lancer(harnais="db/test/finalisation_contract.sh", prefixe="mu"):
         finally:
             if _masque is not None:
                 signal.pthread_sigmask(signal.SIG_SETMASK, _masque)
-    return p.returncode, sortie + erreur
+    return p.returncode, sortie + erreur, canal
+
+
+# ==========================================================================
+# LES SEPT STATUTS TERMINAUX — un controle en rend EXACTEMENT un
+# ==========================================================================
+# La comptabilite precedente melangeait des choses de natures differentes sous
+# « non execute »: une cible perimee, un harnais qui refuse de demarrer et un
+# controle jamais atteint y tombaient ensemble. Or ces trois-la ne demandent
+# pas le meme travail, et les confondre a deja laisse une campagne se declarer
+# terminee alors qu'une garantie n'etait plus verifiee du tout.
+#
+#   KILLED_RUNTIME            la mutation a ete INSTALLEE, le chemin aval a ete
+#                             parcouru, et le contre-exemple permanent a rougi.
+#   KILLED_INSTALL_ASSERTION  la mutation n'a jamais pu etre installee: une
+#                             postcondition de migration l'a refusee EN LA
+#                             NOMMANT, et la transaction a ete annulee. C'est
+#                             une mise a mort, et la plus precoce possible.
+#   REDUNDANT_PROVEN          retirer UNE couche ne rougit pas — c'est voulu —
+#                             ET un controle combine prouve que retirer TOUTES
+#                             les couches rougit. Sans ce second controle, la
+#                             « redondance » ne serait qu'un trou nomme.
+#   SURVIVED                  la mutation a ete installee, le chemin parcouru,
+#                             et RIEN n'a rougi. Le controle ne porte rien.
+#   STALE                     la cible n'existe plus, ou existe en plusieurs
+#                             exemplaires. On ne sait RIEN de la garantie.
+#   INFRA_FAILURE             le harnais n'a pas tourne pour une raison
+#                             etrangere au scenario.
+#   NOT_RUN                   le controle n'a pas ete tente.
+#
+# UNE ERREUR ETRANGERE AU SCENARIO N'EST JAMAIS UNE MISE A MORT. C'est la
+# raison d'etre de la separation entre INFRA_FAILURE et les deux KILLED_*.
+KILLED_RUNTIME = "KILLED_RUNTIME"
+KILLED_INSTALL_ASSERTION = "KILLED_INSTALL_ASSERTION"
+REDUNDANT_PROVEN = "REDUNDANT_PROVEN"
+SURVIVED = "SURVIVED"
+STALE = "STALE"
+INFRA_FAILURE = "INFRA_FAILURE"
+NOT_RUN = "NOT_RUN"
+
+TERMINAUX = (KILLED_RUNTIME, KILLED_INSTALL_ASSERTION, REDUNDANT_PROVEN,
+             SURVIVED, STALE, INFRA_FAILURE, NOT_RUN)
+
+
+def _cibles(fichier, paires):
+    """Rend la liste [(fichier, paires), ...] d'un controle.
+
+    Un controle mutait UN fichier. `B=` doit en muter DEUX: la propriete des
+    tables vit dans 0010, et la postcondition qui refuse d'installer cette
+    mutation vit dans 0013. Prouver que la defense d'EXECUTION existe exige de
+    retirer les deux — sinon on ne mesure que la defense d'INSTALLATION, qui
+    masque l'autre.
+
+    Forme courte conservee: `fichier` est une chaine et `paires` la liste.
+    Forme longue: `fichier` est une liste de couples `(fichier, paires)`, et
+    `paires` vaut None.
+    """
+    if isinstance(fichier, str):
+        return [(fichier, paires)]
+    return list(fichier)
+
+
+def _code(nom):
+    """Le code court d'un controle: le premier mot de son nom (« C' », « T4' »)."""
+    return nom.split()[0]
+
+
+# LES MUTATIONS INTERCEPTEES A L'INSTALLATION, et le diagnostic EXACT attendu.
+#
+# Une mutation peut etre si profonde qu'une postcondition de migration la
+# refuse avant que le moindre harnais tourne. C'est le resultat le PLUS FORT
+# possible — rien ne s'installe —, et l'ancienne matrice n'avait pas de mot
+# pour le dire: elle le comptait « creux », c'est-a-dire l'inverse de la
+# verite. On exige donc le diagnostic NOMME, pas un echec quelconque.
+#: Lignes NON VIDES du refus d'un harnais qu'on reproduit dans le compte rendu.
+#: Six et non trois: les diagnostics de cette suite ouvrent par un titre, puis
+#: une phrase, et ne nomment la cause qu'ensuite. Trois s'arretait avant.
+LIGNES_DIAGNOSTIC = 6
+
+INSTALL_ASSERTION = {
+    "TP1": "AUTHORITY_MANIFEST_SEARCH_PATH",
+    "B": "PRECONDITION 0013: la table normative_authorisation_grants "
+         "appartient a",
+    # L'ASSERTION AGREGEE, AJOUTEE AU LOT PRECEDENT, INTERCEPTE DESORMAIS
+    # DEUX MUTATIONS QUI ATTEIGNAIENT AUPARAVANT LA COUCHE D'EXECUTION.
+    #
+    # Elles ont ete comptees SURVIVED dans la campagne de `85e3aea`, et le
+    # moteur avait raison de refuser de les dire tuees: rien ne lui disait
+    # qu'un refus a l'installation valait mise a mort. Le diagnostic exact a
+    # ete reproduit dans deux worktrees jetables, avec la preuve d'atomicite
+    # (zero ligne de registre, aucune table posee).
+    "B'": "AUTHORITY_COMPOSITION_FORCE_RLS_MISSING",
+    "B=": "AUTHORITY_COMPOSITION_TABLE_OWNER_MISMATCH",
+    # L'ENDOSSEMENT DU DONNEUR, ENFIN FALSIFIABLE. Il avait SURVECU deux
+    # fois — mute dans 0012 puis dans 0011 — parce que `0011` revoquait
+    # CREATE sans jamais verifier que la revocation avait pris: le seul
+    # controle capable de le voir arrivait deux migrations plus tard, quand
+    # une autre revocation, elle intacte, avait deja nettoye.
+    "GR1": "AUTHORITY_0011_SCHEMA_CREATE_RETAINED",
+}
+
+# LES REDONDANCES VOULUES ET LEUR PREUVE COMBINEE.
+#
+# « retirer une couche ne rougit pas » n'est acceptable que si l'on montre par
+# ailleurs que retirer TOUTES les couches rougit. Sans cela, « redondance
+# voulue » est un nom poli pour « aucune des deux ne porte ». Le pre-vol exige
+# que le controle combine soit DECLARE et RETENU dans la meme campagne.
+COMBINEE = {
+    "2":   "2b",
+    "3":   "3b",
+    "C":   "C+",
+    "C'":  "C'+",
+    "J'":  "J",
+    "P2":  "P2b",
+    "T4'": "T4",
+    # LES DEUX COUCHES DU REFUS DU FICTIF, ET LEUR COMBINEE. Mesure du 29/08:
+    # retirer la verification precoce laisse le crochet refuser; retirer le
+    # crochet laisse la verification precoce refuser. Seule `F1=` fait passer
+    # un authentificateur fictif.
+    "F1":  "F1=",
+    "F3":  "F1=",
+}
 
 
 def _tracer(nom, fichier):
@@ -731,68 +935,309 @@ def _tracer(nom, fichier):
         time.sleep(pause)
 
 
+def _diagnostiquer_survivant(sortie, point_attendu):
+    """Un survivant dont le harnais a ROUGI est presque toujours une faute
+    d'attribution, pas une garantie perdue.
+
+    NE CHANGE AUCUN VERDICT. Le survivant reste SURVIVED — un reclassement
+    par commentaire est precisement ce qu'on s'interdit. Ceci NOMME seulement
+    les points qui ont rougi, pour que le diagnostic causal parte d'un fait
+    au lieu d'une relecture a la main.
+
+    Mesure du 29/08: `2b` a survecu sur `a24e514` alors que le harnais avait
+    imprime « ROUGE ATTENDU (a fermer): 2b. ». Le registre attendait le point
+    « 2 ». Sept des onze survivants de `3d0acc2` etaient de la meme famille.
+    """
+    vus = []
+    for ligne in sortie.splitlines():
+        for forme in canal_lecture._FORMES:
+            m = forme.match(ligne)
+            if m and m.group("point") not in vus:
+                vus.append(m.group("point"))
+    if not vus:
+        print(f"        DIAGNOSTIC: aucun point n'a rougi — la garantie "
+              f"semble reellement perdue.")
+        return
+    autres = [v for v in vus if v != point_attendu]
+    if point_attendu in vus:
+        # LA PROSE ET LE CANAL SE CONTREDISENT, ET C'EST LA SIGNATURE D'UNE
+        # MIGRATION MAL CABLEE.
+        #
+        # L'ancienne redaction imprimait « le harnais a rougi sur ['Y1'], on
+        # attendait « Y1 » » — deux fois la meme valeur, comme si elles
+        # differaient. Mesuree le 29/08 en falsifiant volontairement la table
+        # `POINT_DE` de `migration_postconditions.sh`: le message ne nommait
+        # pas la faute qu'il venait pourtant de detecter.
+        #
+        # Ce que le fait signifie: le texte destine a l'humain annonce un rouge
+        # sur le point attendu, et le canal n'en porte pas. Pour un harnais
+        # MIGRE, l'emission est mal cablee — point errone dans sa table, ou
+        # site de verdict qui imprime sans emettre. Le verdict reste SURVIVED:
+        # on nomme la piste, on ne reclasse rien.
+        print(f"        DIAGNOSTIC: la sortie humaine annonce un rouge sur "
+              f"« {point_attendu} », le canal n'en porte pas.")
+        print("        Pour un harnais MIGRE, c'est l'emission qui est mal "
+              "cablee — point errone, ou site de verdict qui imprime sans "
+              "emettre. Le verdict reste SURVIVED.")
+        return
+    print(f"        DIAGNOSTIC: le harnais a rougi sur {vus}, on attendait "
+          f"« {point_attendu} ».")
+    if autres:
+        print(f"        Un point rouge NON attendu suggere une faute "
+              f"d'ATTRIBUTION, pas une garantie perdue. A verifier, pas a "
+              f"reclasser.")
+
+
 def essayer(nom, point, fichier, paires, redondant=False,
             harnais="db/test/finalisation_contract.sh", prefixe="mu"):
+    """Rend UN statut terminal. Jamais deux, jamais aucun."""
+    code_court = _code(nom)
+    # LE CONTROLE ET LE POINT SONT DEUX CHOSES. `code_court` nomme la MUTATION
+    # eprouvee; `point` nomme le POINT DE CONTROLE cense rougir. Les confondre
+    # est ce qui a permis a `MF1` d'etre declare tue par les rouges de `MF2`,
+    # `MF3` et `MF4` — un temoin implicite qui ne prouvait rien sur MF1.
+    controle_id = code_court
+    cibles = _cibles(fichier, paires)
+    textes_avant = {}
+    for f, _pr in cibles:
+        try:
+            textes_avant[f] = open(f"{ESPACE}/{f}").read()
+        except OSError as e:
+            print(f"  STALE {nom}\n        -> {f} illisible: {e}")
+            return STALE
+    posees = []
     try:
-        muter(fichier, paires)
+        for f, pr in cibles:
+            muter(f, pr)
+            posees.append(f)
     except MotifAbsent as motif:
-        print(f"  PERIME {nom}\n        -> le texte a muter n'existe plus: {motif}\n"
-              "        Le controle ne peut pas etre applique: il ne prouve RIEN "
-              "sur la garantie.")
-        return "perime"
-    # LE `try` COMMENCE DES QUE LE FICHIER EST MUTE. `_tracer()` etait au
-    # dehors, et il retient la matrice quand `ESC_MUTATION_PAUSE` est pose: un
-    # signal arrive pendant cette pause laissait la mutation en place sans
-    # jamais passer par `restaurer()`.
+        for f in posees:
+            restaurer(f)
+        print(f"  STALE {nom}\n        -> le texte a muter n'existe plus: {motif}")
+        return STALE
+    # LE PATCH A-T-IL REELLEMENT PRIS, DANS CHAQUE FICHIER ATTENDU ? Un
+    # `replace` qui ne change rien ne leve pas: il rend le meme texte. Le
+    # controle tournerait alors sur le CANDIDAT et se declarerait « survivant »
+    # — un faux rouge qui coute une journee.
+    inertes = [f for f, _ in cibles
+               if open(f"{ESPACE}/{f}").read() == textes_avant[f]]
+    if inertes:
+        for f, _ in cibles:
+            restaurer(f)
+        print(f"  INFRA {nom}\n        -> le patch n'a rien change dans "
+              f"{', '.join(inertes)}: la mutation n'a pas ete posee.")
+        return INFRA_FAILURE
     try:
-        _tracer(nom, fichier)
-        code, sortie = lancer(harnais, prefixe)
+        for f, _ in cibles:
+            _tracer(nom, f)
+        code, sortie, canal = lancer(harnais, prefixe,
+                                     controle_id=controle_id,
+                                     point_attendu=point)
     finally:
-        restaurer(fichier)
-    # Les points 2 et 8 se subdivisent (« 2a. », « 2b. », « 8b. »): un rouge sur
-    # une sous-verification EST un rouge du point. Une expression qui exigeait
-    # « 2. » exactement a fait passer pour hollow un controle qui avait
-    # parfaitement detecte la mutation.
-    # UNE SURFACE NON EXECUTEE N'EST PAS UN VERDICT (6.3b6c).
+        for f, _ in cibles:
+            restaurer(f)
+
+    # LE HARNAIS N'A PAS TOURNE: aucune conclusion sur la garantie.
     #
-    # Les codes 2 (refus de garde) et 3 (decor non rendu, verrou detenu)
-    # signifient que le harnais N'A PAS TOURNE. La version precedente les
-    # comptait comme « aucun rouge » et concluait « le controle ne porte
-    # rien » — mesure: lancee sans `EUROSTRUCT_CLUSTER_JETABLE`, la matrice a
-    # declare les DIX controles creux alors qu'aucun n'avait ete exerce.
-    # LE CODE 4 EST LUI AUSSI UN NON-VERDICT (6.3b6d). Il signifie « surface
-    # non executable ici » — pas de second cluster, pas d'ecoute TCP. Absent de
-    # cette liste, il tombait dans la branche normale et faisait conclure « le
-    # controle ne porte rien »: mesure, les trois mutations de
-    # `official_deployment.sh` ont ete declarees creuses alors que le harnais
-    # n'avait pas demarre. C'est exactement le defaut que les codes 2 et 3
-    # avaient deja produit en 6.3b6c, reintroduit par un code de plus.
+    # Codes 2 (refus de garde), 3 (decor non rendu, verrou detenu) et 4
+    # (surface non executable ici). Les compter « aucun rouge » a deja fait
+    # declarer dix controles creux alors qu'aucun n'avait ete exerce.
     if code in (2, 3, 4):
-        print(f"  NON EXECUTE {nom}\n        -> le harnais a refuse (code {code}), "
+        print(f"  INFRA {nom}\n        -> le harnais a refuse (code {code}), "
               f"aucune conclusion possible:")
-        for ligne in sortie.splitlines()[:3]:
-            if ligne.strip():
-                print("        " + ligne.strip()[:120])
-        return "non_execute"
-    # Les points se subdivisent (« 2a. », « 8b. », « A1. »): un rouge sur une
-    # sous-verification EST un rouge du point.
-    base = re.match(r"[0-9A-Z]+", point).group(0)
-    rougit = re.search(rf"^ *(ROUGE ATTENDU \(a fermer\)|ECHEC): {base}[0-9a-z]?\.",
-                       sortie, re.M) is not None
+        # ON FILTRE D'ABORD, ON TRONQUE ENSUITE — ET DANS CET ORDRE.
+        #
+        # La redaction precedente etait `sortie.splitlines()[:3]` puis
+        # `if ligne.strip()`: les lignes VIDES consommaient le budget sans rien
+        # afficher. Mesure du 29/08, refus du verrou de `provider_contract.sh`:
+        #
+        #   1  NON EXECUTE: ... n'a pas pu interroger le verrou de harnais.
+        #   2  (vide — comptee, non affichee)
+        #   3  La session du verrou n'a rendu ni « true » ni « false », mais:
+        #   4  psql: error: ... FATAL: role "root" does not exist   <-- LA CAUSE
+        #
+        # Le diagnostic s'arretait sur « mais: » — la ligne d'AVANT la cause.
+        # Il a fallu deux rejeux complets pour retrouver ce que la ligne 4
+        # disait deja. Un diagnostic tronque juste avant sa cause coute plus
+        # cher que pas de diagnostic: il donne l'illusion d'avoir ete lu.
+        utiles = [x.strip() for x in sortie.splitlines() if x.strip()]
+        for ligne in utiles[:LIGNES_DIAGNOSTIC]:
+            print("        " + ligne[:160])
+        # LA TRONCATURE EST DITE. Sinon on ne peut pas distinguer « le harnais
+        # n'en a pas dit plus » de « on a coupe avant la fin ».
+        if len(utiles) > LIGNES_DIAGNOSTIC:
+            print(f"        ... {len(utiles) - LIGNES_DIAGNOSTIC} ligne(s) de "
+                  f"plus (sortie complete dans le canal du lanceur)")
+        return INFRA_FAILURE
+
+    # MISE A MORT A L'INSTALLATION. On exige le diagnostic NOMME, sinon un
+    # echec quelconque — un decor casse, un cluster occupe — passerait pour une
+    # mise a mort. C'est exactement ce qu'INFRA_FAILURE existe pour separer.
+    motif_install = INSTALL_ASSERTION.get(code_court)
+    if motif_install:
+        if motif_install in sortie:
+            print(f"  ok    {nom}\n        -> INSTALLATION REFUSEE en nommant "
+                  f"l'invariant (code {code})")
+            return KILLED_INSTALL_ASSERTION
+        print(f"  ECHEC {nom}\n        -> l'installation n'a PAS refuse en "
+              f"nommant « {motif_install[:60]} » (code {code})")
+        for ligne in sortie.splitlines():
+            if re.match(r"^ *(ok|ROUGE|ECHEC)", ligne):
+                print("        " + ligne.strip()[:140])
+        return SURVIVED
+
+    # ----------------------------------------------------------------------
+    # L'ATTRIBUTION VIENT DU CANAL MACHINE, PLUS DE LA PROSE
+    # ----------------------------------------------------------------------
+    # CE QUI EST REMPLACE, ET POURQUOI. L'ancien mecanisme cherchait la chaine
+    # « ROUGE: <point>. » dans une sortie ECRITE POUR UN HUMAIN:
+    #
+    #     base = re.match(r"[0-9A-Z]+", point).group(0)
+    #     rougit = re.search(rf"^ *(ROUGE|ECHEC): {base}[0-9a-z]?\.", sortie, re.M)
+    #
+    # La campagne des 103 sur `3d0acc2` a rendu ONZE survivants. SEPT n'etaient
+    # pas des garanties perdues — le harnais avait rougi, et le lanceur n'avait
+    # pas su le rattacher:
+    #
+    #   SEP1  « ECHEC: A: ... »            deux-points au lieu d'un point
+    #   F2    « ROUGE: PR. D5. ... »       un prefixe humain avant le point
+    #   F3    idem
+    #   MF2   tuee A L'INSTALLATION        aucun point d'execution a trouver
+    #   MF4   idem
+    #   K1    idem
+    #   MF1   la prose nommait MF2, MF3, MF4 — jamais MF1
+    #
+    # Une ponctuation decidait si une garantie comptait comme defendue.
+    #
+    # LE CANAL EST LA SEULE AUTORITE DES QU'IL PORTE UN EVENEMENT. Un canal
+    # VIDE ne veut pas dire « rien n'a rougi »: il veut dire « ce harnais
+    # n'emet pas encore », et le controle devient NOT_RUN. C'est
+    # deliberement inconfortable — cela force la migration au lieu de la
+    # rendre facultative, et un controle non migre apparait pour ce qu'il est:
+    # non mesure.
+    try:
+        lec = canal_lecture.lire(canal, {controle_id or point},
+                                 run_id=RUN_ID, sha=SHA_CANDIDAT)
+    except canal_lecture.CanalInvalide as e:
+        ANOMALIES["invalid_jsonl"] += 1
+        print(f"  INFRA {nom}\n        -> canal machine invalide: {e}")
+        return INFRA_FAILURE
+    for _cle, _n in lec.anomalies().items():
+        ANOMALIES[_cle] += _n
+    if lec.fautes:
+        print(f"  INFRA {nom}\n        -> comptabilite du canal fautive:")
+        for f in lec.fautes[:3]:
+            print(f"        {f}")
+        return INFRA_FAILURE
+    if lec.evenements:
+        statut, motif = canal_lecture.verdict_du_controle(
+            lec, controle_id or point)
+        etiquettes = {
+            "KILLED_RUNTIME": ("ok   ", KILLED_RUNTIME),
+            "KILLED_INSTALL_ASSERTION": ("ok   ", KILLED_INSTALL_ASSERTION),
+            "SURVIVED": ("ECHEC", SURVIVED),
+            "NOT_RUN": ("INFRA", INFRA_FAILURE),
+            "INFRA_FAILURE": ("INFRA", INFRA_FAILURE),
+        }
+        marque, valeur = etiquettes[statut]
+        # LA REDONDANCE SE DECIDE ICI DESORMAIS, ET C'EST UNE CORRECTION.
+        #
+        # La branche `if redondant:` vivait APRES le canal et le traducteur.
+        # Elle n'etait donc atteinte que par un harnais MUET. Des que
+        # `finalisation_contract.sh` s'est mis a emettre, les controles `2` et
+        # `3` — declares redondants, couverts par `2b` et `3b` — sont passes de
+        # REDUNDANT_PROVEN a SURVIVED. La garantie n'avait pas bouge; le
+        # chemin qui la lisait, si.
+        #
+        # « Le point attendu n'a pas rougi » est exactement ce que
+        # `redondant=True` annonce: retirer UNE couche ne doit pas rougir,
+        # c'est le controle COMBINE qui prouve. Le canal le dit plus
+        # precisement que le code de sortie ne le disait.
+        if valeur is SURVIVED and redondant:
+            print(f"  ok    {nom}\n        -> reste vert: la seconde garantie "
+                  f"couvre; « {COMBINEE.get(code_court, '?')} » prouve le combine")
+            return REDUNDANT_PROVEN
+        print(f"  {marque} {nom}\n        -> {motif} (code {code})")
+        if valeur is SURVIVED:
+            _diagnostiquer_survivant(sortie, point)
+            for ligne in sortie.splitlines():
+                if re.match(r"^ *(ok|ROUGE|ECHEC)", ligne):
+                    print("        " + ligne.strip()[:140])
+        return valeur
+
+    # CANAL VIDE: le harnais n'emet pas encore. On ne bascule PAS sur un
+    # second mecanisme d'attribution — on ALIMENTE l'unique mecanisme par un
+    # traducteur d'entree, teste sur les formes exactes qui ont coute des
+    # survivants (« A: », « PR. D5. », refus d'installation).
+    #
+    # La difference n'est pas cosmetique. Deux mecanismes rendraient le verdict
+    # dependant de celui des deux qui a parle; un adaptateur alimente le seul
+    # mecanisme, et ses defauts se voient dans les evenements produits.
+    # LE TRADUCTEUR EST NOMME, ET IL REFUSE PAR DEFAUT. Passer le harnais
+    # n'est pas decoratif: `canal_lecture` rejette tout harnais qui n'est pas
+    # declare non migre, ce qui empeche un harnais MIGRE de retomber en
+    # silence sur les regex le jour ou son canal se tairait. Un canal muet
+    # doit rester distinguable d'un canal vert.
+    try:
+        traduits = canal_lecture.traduire_prose(
+            sortie, controle_id or point, point=point, harnais=harnais,
+            run_id=RUN_ID, sha=SHA_CANDIDAT)
+    except canal_lecture.TraducteurRefuse as e:
+        print(f"  INFRA {nom}\n        -> {e}")
+        return INFRA_FAILURE
+    if traduits:
+        lec.evenements.extend(traduits)
+        for e in traduits:
+            if e.get("terminal", True):
+                lec.terminaux.setdefault(e["controle_id"], e["statut"])
+        statut, motif = canal_lecture.verdict_du_controle(
+            lec, controle_id or point)
+        etiquettes = {
+            "KILLED_RUNTIME": ("ok   ", KILLED_RUNTIME),
+            "KILLED_INSTALL_ASSERTION": ("ok   ", KILLED_INSTALL_ASSERTION),
+            "SURVIVED": ("ECHEC", SURVIVED),
+            "NOT_RUN": ("INFRA", INFRA_FAILURE),
+            "INFRA_FAILURE": ("INFRA", INFRA_FAILURE),
+        }
+        marque, valeur = etiquettes[statut]
+        # LA REDONDANCE SE DECIDE ICI DESORMAIS, ET C'EST UNE CORRECTION.
+        #
+        # La branche `if redondant:` vivait APRES le canal et le traducteur.
+        # Elle n'etait donc atteinte que par un harnais MUET. Des que
+        # `finalisation_contract.sh` s'est mis a emettre, les controles `2` et
+        # `3` — declares redondants, couverts par `2b` et `3b` — sont passes de
+        # REDUNDANT_PROVEN a SURVIVED. La garantie n'avait pas bouge; le
+        # chemin qui la lisait, si.
+        #
+        # « Le point attendu n'a pas rougi » est exactement ce que
+        # `redondant=True` annonce: retirer UNE couche ne doit pas rougir,
+        # c'est le controle COMBINE qui prouve. Le canal le dit plus
+        # precisement que le code de sortie ne le disait.
+        if valeur is SURVIVED and redondant:
+            print(f"  ok    {nom}\n        -> reste vert: la seconde garantie "
+                  f"couvre; « {COMBINEE.get(code_court, '?')} » prouve le combine")
+            return REDUNDANT_PROVEN
+        print(f"  {marque} {nom}\n        -> {motif} [traduit] (code {code})")
+        return valeur
+
+    rougit = False
     if redondant:
         if code == 0:
-            print(f"  ok    {nom}\n        -> reste vert: la seconde garantie couvre (redondance voulue)")
-            return "redondant"
-        print(f"  note  {nom}\n        -> rougit (code {code}): la redondance n'en est pas une")
-        return "tue"
+            print(f"  ok    {nom}\n        -> reste vert: la seconde garantie "
+                  f"couvre; « {COMBINEE.get(code_court, '?')} » prouve le combine")
+            return REDUNDANT_PROVEN
+        print(f"  note  {nom}\n        -> rougit (code {code}): la redondance "
+              "n'en est pas une")
+        return KILLED_RUNTIME
     if rougit:
         print(f"  ok    {nom}\n        -> le point {point} rougit (code {code})")
-        return "tue"
-    print(f"  ECHEC {nom}\n        -> le point {point} reste VERT: le controle ne porte rien")
+        return KILLED_RUNTIME
+    print(f"  ECHEC {nom}\n        -> le point {point} reste VERT: le controle "
+          "ne porte rien")
     for ligne in sortie.splitlines():
         if re.match(r"^ *(ok|ROUGE|ECHEC)", ligne):
             print("        " + ligne.strip())
-    return "creux"
+    return SURVIVED
 
 
 # --------------------------------------------------------------------------
@@ -847,7 +1292,20 @@ CAS = [
      [("  if courant is distinct from p_manifeste then", "  if false then")], False),
     ("2  un seul des trois refus d'ecriture directe", "2", S,
      [MUT_INTENT], True),
-    ("2b LES TROIS refus d'ecriture directe", "2", S,
+    # LE POINT ATTENDU EST « 2b », PAS « 2 », ET LA CONFUSION A COUTE UN
+    # SURVIVANT. La campagne du 29/08 sur `a24e514` a rendu `2b` SURVIVED
+    # alors que le harnais avait bel et bien rougi:
+    #
+    #   ROUGE ATTENDU (a fermer): 2b. l'appel direct sans preparation n'est
+    #       pas refuse pour ce motif:
+    #       ERROR: null value in column "role_oid" ... not-null constraint
+    #
+    # Les trois gardes retirees, l'ecriture reste refusee — mais par une
+    # contrainte NOT NULL incidente, pas par la garde visee. Le harnais le
+    # dit; le registre cherchait le point « 2 » quand le harnais etiquette
+    # « 2b ». Verifie: ce rouge est ABSENT de la validation ordonnee verte,
+    # il ne parle donc que sous mutation.
+    ("2b LES TROIS refus d'ecriture directe", "2b", S,
      [MUT_INTENT, MUT_TXID, MUT_VERROU_RECORD], False),
     ("3  un seul des deux controles d'identite du plan", "3", S,
      [MUT_EXEMPTION], True),
@@ -872,12 +1330,21 @@ create policy normative_activation_ecriture on normative_activation
   for insert to eurostruct_normative_activator with check (true);""",
        """create policy normative_activation_activateur on normative_activation
   for all to eurostruct_normative_activator using (true) with check (true);""")], False),
+    # LE TEXTE MUTE SUIT LE CODE, SINON LE CONTROLE MEURT EN SILENCE. Mesure
+    # du 27/08: ce controle etait PERIME depuis que `eurostruct_authority_backend`
+    # a rejoint le jeu canonique de `run.sh` — la matrice le comptait « non
+    # execute », donc la garantie « l'activator doit figurer au jeu canonique »
+    # n'etait plus verifiee par mutation, sans que rien ne rougisse.
     ("7  l'activator quitte le jeu canonique", "7", R,
      [("""CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator
-            normative_backend normative_governance eurostruct_deployment)""",
+            normative_backend normative_governance eurostruct_deployment
+            eurostruct_authority_backend
+            eurostruct_reconciliation)""",
        """CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
-            normative_backend normative_governance eurostruct_deployment)""")], False),
+            normative_backend normative_governance eurostruct_deployment
+            eurostruct_authority_backend
+            eurostruct_reconciliation)""")], False),
     ("8  la separation plan/migrateur est retiree", "8b", S,
      [("  if d_oid = m_oid or d_nom = m_nom then", "  if false then")], False),
 ]
@@ -906,6 +1373,71 @@ SQL""")], False),
     ("B' la RLS des tables de preuve n'est plus forcee", "B1", M,
      [("alter table normative_authorisation_grants          force row level security;",
        "-- FORCE retire par mutation")], False),
+    # LES DEUX COUCHES DE « B », EPROUVEES SEPAREMENT.
+    #
+    # `B` ci-dessus ne peut PAS atteindre la defense d'execution: 0013 refuse
+    # d'installer la mutation, en nommant l'invariant, et la transaction est
+    # entierement annulee. C'est une mise a mort — la plus precoce possible —
+    # et non un controle creux. Mesure du 27/08 sur base jetable: registre a
+    # 12 lignes (0001 a 0012), aucune table, fonction ni policy de 0013.
+    #
+    # Reste a prouver que la defense d'EXECUTION existe elle aussi, et qu'elle
+    # n'est pas seulement masquee par la precedente. `B=` neutralise donc la
+    # postcondition de 0013 ET le `set role` de sa section F — le migrateur
+    # possede les tables, il peut donc y poser les policies — de sorte que le
+    # schema s'installe REELLEMENT avec des tables restees au migrateur. Le
+    # chemin aval est alors parcouru, et B1 doit rougir.
+    #
+    # Mesure du 27/08: « ROUGE: B1. APRES ACTIVATION, le migrateur possede
+    # encore: normative_authorisation_grants ».
+    ("B= la propriete reste au migrateur, postcondition neutralisee", "B1",
+     [(M, [("alter table normative_authorisation_grants          owner to eurostruct_normative_writer;",
+            "-- transfert retire par mutation")]),
+      (A13, [("    if o <> 'eurostruct_normative_writer' then",
+              "    if false then"),
+             ("""set role eurostruct_normative_writer;
+
+revoke insert on normative_authorisation_grants          from normative_backend;""",
+              """-- set role neutralise: le migrateur possede les tables
+
+revoke insert on normative_authorisation_grants          from normative_backend;""")])],
+     None, False),
+    # LES DEUX COUCHES DE « B' » ET DE « B= », comme pour « B ».
+    #
+    # L'interception a l'installation est la mise a mort la plus precoce, et
+    # elle est reelle. Mais elle MASQUE la couche d'execution: `B1` — « apres
+    # activation, le migrateur ne possede plus les tables, RLS forcee » — ne
+    # serait plus exerce par aucune mutation. On neutralise donc AUSSI la
+    # branche de l'agregee qui intercepte, pour que le schema s'installe et
+    # que le chemin aval soit parcouru.
+    ("B'= la RLS n'est plus forcee, agregee neutralisee", "B1",
+     [(M, [("alter table normative_authorisation_grants          force row level security;",
+            "-- FORCE retire par mutation")]),
+      (A14, [("""      if not (r.relrowsecurity and r.relforcerowsecurity) then
+        ecarts := ecarts || format(
+          'AUTHORITY_COMPOSITION_FORCE_RLS_MISSING: %s a rls=%s force=%s',
+          nom, r.relrowsecurity, r.relforcerowsecurity);
+      end if;""",
+              "      null;  -- branche FORCE RLS neutralisee par mutation")])],
+     None, False),
+    ("B== la propriete reste au migrateur, agregee neutralisee aussi", "B1",
+     [(M, [("alter table normative_authorisation_grants          owner to eurostruct_normative_writer;",
+            "-- transfert retire par mutation")]),
+      (A13, [("    if o <> 'eurostruct_normative_writer' then",
+              "    if false then"),
+             ("""set role eurostruct_normative_writer;
+
+revoke insert on normative_authorisation_grants          from normative_backend;""",
+              """-- set role neutralise: le migrateur possede les tables
+
+revoke insert on normative_authorisation_grants          from normative_backend;""")]),
+      (A14, [("""      if r.proprietaire <> 'eurostruct_normative_writer' then
+        ecarts := ecarts || format(
+          'AUTHORITY_COMPOSITION_TABLE_OWNER_MISMATCH: %s appartient a « %s »',
+          nom, r.proprietaire);
+      end if;""",
+              "      null;  -- branche proprietaire neutralisee par mutation")])],
+     None, False),
     ("C  un seul des deux refus de composition", "C2", S,
      [MUT_TXID], True),
     # TROIS garanties, pas deux: la preparation exige elle aussi le verrou, et
@@ -918,9 +1450,59 @@ SQL""")], False),
     # morte, et la meme-transaction exigee par l'ecriture de confiance.
     ("C'+ verrou de preparation, rederivation ET meme transaction", "C1", S,
      [MUT_VERROU_PREPARE, MUT_GC_INTENTION, MUT_TXID], False),
-    ("D  l'idempotence ne compare plus le manifeste", "D", S,
-     [("    perform normative_exiger_manifeste_approuve(p_manifeste);\n    perform assert_normative_topology();\n    return 'ACTIVE (deja finalise)';",
-       "    perform assert_normative_topology();\n    return 'ACTIVE (deja finalise)';")], False),
+    # DEUX SITES, DEUX GARANTIES — et l'ancien controle n'en mutait qu'UN.
+    #
+    # `normative_finalize_deployment` compare le manifeste a DEUX endroits, et
+    # ils ne disent pas la meme chose: le premier est le chemin rapide
+    # d'idempotence, AVANT le verrou; le second est la relecture APRES le
+    # verrou, qui est tout l'objet du verrou — c'est ce que voit le perdant
+    # d'une course. Les deux blocs sont textuellement IDENTIQUES.
+    #
+    # `muter()` remplace la PREMIERE occurrence. L'ancien controle « D »
+    # neutralisait donc toujours le chemin rapide, et jamais la relecture: la
+    # garantie du second site n'etait pas verifiee par mutation, et rien ne le
+    # disait. Le pre-vol l'a nomme le 27/08 en refusant une cible AMBIGUE.
+    #
+    # Chaque site est desormais ancre par son commentaire, qui lui est propre.
+    ("D  l'idempotence AVANT le verrou ne compare plus le manifeste", "D", S,
+     [("""  -- IDEMPOTENCE, avant meme le verrou: une finalisation deja faite ne doit ni
+  -- attendre ni echouer bruyamment.
+  if normative_activation_state() = 'ACTIVE' then
+    perform normative_exiger_manifeste_approuve(p_manifeste);""",
+       """  -- IDEMPOTENCE, avant meme le verrou: une finalisation deja faite ne doit ni
+  -- attendre ni echouer bruyamment.
+  if normative_activation_state() = 'ACTIVE' then""")], False),
+    # LE POINT ETAIT « D », ET C'ETAIT FAUX — mesure du 29/08.
+    #
+    # `D` eprouve l'idempotence AVANT le verrou; `D2` eprouve la relecture
+    # APRES. Deux mutations distinctes, deux scenarios distincts, et le harnais
+    # les distingue depuis toujours: il imprime « ROUGE: D. » pour l'une et
+    # « ROUGE: D2. » pour l'autre. Le registre, lui, attendait « D » pour les
+    # deux.
+    #
+    # POURQUOI PERSONNE NE L'A VU. Le traducteur cherchait « D » dans la prose
+    # et ne le trouvait pas sur la ligne « ROUGE: D2. » — verifie: aucune des
+    # trois formes ne rend « D » sur cette ligne. Il passait alors a sa SECONDE
+    # passe, la detection generique d'un refus d'installation, qui matchait le
+    # decor refuse et rendait KILLED_INSTALL_ASSERTION avec « invariant non
+    # nomme ». Le controle etait donc compte comme tue par une heuristique
+    # d'installation ANONYME, pour une mutation dont le point ne correspondait
+    # a rien.
+    #
+    # La migration du harnais a rendu l'ecart visible en une execution: le
+    # canal porte un rouge sur « D2 » et un SUR terminal sur « D », et le
+    # controle ressort SURVIVED. C'est exactement ce qu'un canal doit faire
+    # d'une attribution fausse — la montrer, au lieu de la reussir par hasard.
+    ("D2 la relecture APRES le verrou ne compare plus le manifeste", "D2", S,
+     [("""  -- COMMITTED, chaque instruction d'une fonction VOLATILE prend un nouvel
+  -- instantane: le perdant voit donc ici ce que le gagnant a valide pendant
+  -- qu'il attendait, et rend le meme resultat que s'il etait arrive apres.
+  if normative_activation_state() = 'ACTIVE' then
+    perform normative_exiger_manifeste_approuve(p_manifeste);""",
+       """  -- COMMITTED, chaque instruction d'une fonction VOLATILE prend un nouvel
+  -- instantane: le perdant voit donc ici ce que le gagnant a valide pendant
+  -- qu'il attendait, et rend le meme resultat que s'il etait arrive apres.
+  if normative_activation_state() = 'ACTIVE' then""")], False),
     ("E  une exemption de service redevient nominale", "E", S,
      [("""         p.oid = normative_control_plane_oid()
          and p.rolname = normative_control_plane()""",
@@ -929,6 +1511,56 @@ SQL""")], False),
      [("-- RESTAURATION INTER-CLUSTER — le cas le plus probable de ce refus.",
        "-- Transport de base — le cas le plus probable de ce refus."),
       ("CAS COURANT: RESTAURATION INTER-CLUSTER", "CAS COURANT: transport de base")], False),
+
+    # ----------------------------------------------------------------------
+    # LE CYCLE DE VIE DU DECOR — trois mutations, trois couches distinctes
+    # ----------------------------------------------------------------------
+    # CE QUI EST EN JEU. Un refus a l'installation qui ne rend pas le decor
+    # laisse les roles canoniques dans le cluster; tous les scenarios suivants
+    # echouent alors en « phase 0 refusee », le harnais rend « rien d'evalue »,
+    # et CETTE campagne lit ce silence comme un SURVIVANT. La contamination du
+    # scenario suivant est une erreur d'infrastructure, jamais une mise a mort:
+    # ces trois controles existent pour que la distinction reste verifiee.
+    #
+    # Le scenario H de `authority_closure.sh` est ce qui les tue. Mesure du
+    # 28/08 sur base jetable, en retirant `esc_decor_abandonner` du refus de
+    # phase 1: H3 rougit sur 12 residus — sept roles canoniques, trois roles de
+    # harnais, une base, neuf appartenances.
+    #
+    # LE POINT EST CELUI QUE LE HARNAIS IMPRIME, pas un identifiant de mutation.
+    # Premiere version: points « GC1 », « GC2 », « GC3 » — la campagne cherche
+    # `ROUGE: <point>.` et le harnais ecrivait `ROUGE: H3-H8.`. Les trois ont
+    # ete comptees SURVIVED alors que la sortie contenait le rouge. Les
+    # etiquettes du harnais ET les points de la matrice ont ete alignes.
+    #
+    # GC2 VISE UN AUTRE POINT QUE GC1, et ce n'est pas un detail: le refus de
+    # phase 0 et celui de phase 1 sont deux chemins distincts. GC2 survivait
+    # aussi parce qu'aucun scenario ne provoquait jamais un refus du sceau.
+    ("GC1 le refus de phase 1 ne rend plus le decor", "H3", H,
+     [("""      esc_diag_rapporter "decor $s / phase 1 / $(basename "$f")" "$sortie"
+      esc_decor_abandonner
+      return 1""",
+       """      esc_diag_rapporter "decor $s / phase 1 / $(basename "$f")" "$sortie"
+      return 1""")], False),
+    ("GC2 le refus de phase 0 ne rend plus le decor", "H6", H,
+     [("""    esc_diag_rapporter "decor $s / phase 0 (sceau)" "$sortie"
+    esc_decor_abandonner
+    return 1""",
+       """    esc_diag_rapporter "decor $s / phase 0 (sceau)" "$sortie"
+    return 1""")], False),
+    # LA COUCHE BIBLIOTHEQUE. `GC1` et `GC2` retirent l'APPEL; `GC3` vide la
+    # fonction appelee. Les deux preuves sont distinctes: un harnais peut
+    # appeler correctement un helper qui ne fait rien.
+    ("GC3 esc_decor_abandonner ne ferme plus le decor", "H3", LIB,
+     [("""esc_decor_abandonner() {
+  local code="${1:-1}"
+  esc_decor_fermer
+  return "$code"
+}""",
+       """esc_decor_abandonner() {
+  local code="${1:-1}"
+  return "$code"
+}""")], False),
 ]
 
 
@@ -1295,8 +1927,502 @@ if RECOPIES:
         print(f"             ... et {len(RECOPIES) - 12} autre(s)")
 if FILTRE:
     print(f"         (filtre: {' '.join(FILTRE)} — execution PARTIELLE)")
+# --------------------------------------------------------------------------
+# LA POSTCONDITION D'APPARTENANCE (0013) — trois couches, trois mutations
+# --------------------------------------------------------------------------
+# CES TROIS GARANTIES ONT ETE AJOUTEES SANS FALSIFICATION, et c'est
+# precisement ce que cette matrice existe pour empecher. Une postcondition
+# ecrite le meme jour que le controle qui la mesure n'a jamais ete eprouvee
+# CONTRE quoi que ce soit: rien ne dit que le vert vienne d'elle.
+#
+# Chaque couche est retiree SEPAREMENT. Les retirer ensemble dirait « l'une
+# des trois porte quelque chose » — ce qui est vrai de n'importe quel triplet
+# dont un membre travaille.
+# --------------------------------------------------------------------------
+# LES POSTCONDITIONS DE MIGRATION — l'appel, les branches, le diagnostic
+# --------------------------------------------------------------------------
+# CES GARANTIES VIENNENT D'ETRE AJOUTEES, ET C'EST EXACTEMENT LE MOMENT DE LES
+# FALSIFIER. Une postcondition ecrite le meme jour que le controle qui la
+# mesure n'a jamais ete eprouvee CONTRE quoi que ce soit.
+#
+# Quatre formes, et elles ne se recouvrent pas:
+#   * l'APPEL produit est retire — l'assertion existe encore, et ne sert plus
+#     a rien. C'est litteralement l'etat mesure AVANT ce lot;
+#   * une BRANCHE de l'assertion est neutralisee — l'appel demeure, mais il ne
+#     voit plus ce qu'il regardait;
+#   * le DIAGNOSTIC est remplace par un identifiant etranger — le refus a bien
+#     lieu, et plus personne ne peut le distinguer d'une panne quelconque;
+#   * l'assertion est presente mais JAMAIS ATTEINTE — cas particulier du
+#     premier, et le plus difficile a voir a la lecture.
+CAS_POSTCONDITIONS_MIGRATION = [
+    ("MC1 l'appel produit a la postcondition de 0011 est retire", "Y1", A11,
+     [("select assert_authority_surface_hardened();",
+       "-- appel retire par mutation")], False),
+    ("MC2 l'appel produit a la postcondition de 0012 est retire", "Y2", A12,
+     [("select assert_0012_lineage_surface();",
+       "-- appel retire par mutation")], False),
+    # LES DEUX APPELS DE 0014 ENSEMBLE, et c'est mesure: l'appel local seul
+    # retire, l'assertion AGREGEE attrape le meme ecart et la migration echoue
+    # toujours. Ne muter que le local mesurerait donc la defense en
+    # profondeur, pas l'appel.
+    ("MC3 les deux appels produits de 0014 sont retires", "Y3", A14,
+     [("""select assert_0014_decisions_surface();
+select assert_authority_composition();""",
+       "-- appels retires par mutation")], False),
+    # LA BRANCHE, ET NON L'APPEL. L'appel demeure; l'assertion ne regarde plus
+    # PUBLIC. C'est la forme qui survit a une relecture rapide du diff.
+    # MC4 ET AC1 NE VISENT PAS LA MEME DEFAILLANCE, et il a fallu la
+    # reecriture du controle PUBLIC pour que la distinction devienne nette:
+    #
+    #   AC1  la CONDITION n'est plus evaluee — on ne regarde plus;
+    #   MC4  la condition est evaluee, et l'ECART N'EST PAS ENREGISTRE — on
+    #        regarde, on voit, et on se tait. C'est la forme qui survit le
+    #        mieux a une relecture du diff.
+    ("MC4 l'ecart PUBLIC EXECUTE de 0014 n'est plus enregistre", "Y5", A14,
+     [("""      ecarts := ecarts || format(
+        'AUTHORITY_0014_PUBLIC_EXECUTE: PUBLIC detient EXECUTE sur %s '
+        '(proacl %s). Verifie par le privilege EFFECTIF, qui couvre le cas '
+        'de l''ACL absente', nom,
+        case when f_acl is null then 'NULL — droits par defaut, donc =X'
+             else 'explicite' end);""",
+       "      null;  -- ecart non enregistre par mutation")], False),
+    ("MC5 la branche du declencheur desactive ne regarde plus tgenabled", "Y7",
+     A14,
+     [("""       and not t.tgisinternal and t.tgenabled = 'O')""",
+       """       and not t.tgisinternal)""")], False),
+    # LE POINT EST « Y9 », ET NON « Y8 » — MESURE. La mutation laisse la
+    # branche EXIGER L'EXISTENCE de la policy: le controle « policy absente »
+    # (Y8) reste donc rouge de lui-meme, et la mutation a SURVECU au premier
+    # passage. Le seul controle qui la tue est « mauvais role » (Y9), ou la
+    # policy existe et ou seul le role a change — exactement ce que la
+    # mutation cesse de regarder.
+    ("MC6 la branche des policies ne compare plus roles ni commande", "Y9", A14,
+     [("""       and pol.polname = 'decisions_governance_read'
+       and pol.polcmd = 'r' and pol.polpermissive
+       and (select array_agg(rr.rolname::text order by rr.rolname) from pg_roles rr
+             where rr.oid = any(pol.polroles))
+           = array['normative_governance'])""",
+       """       and pol.polname = 'decisions_governance_read')""")], False),
+    # LE POINT FIXE NOMME de l'assertion agregee. Sans lui, le balayage est
+    # defini par la propriete, donc aveugle a une derive de propriete.
+    ("MC7 le point fixe nomme de l'agregee est retire", "Y4", A14,
+     [("""             'normative_decision_consume', 'check_normative_decision_transition',
+             'forbid_decision_delete', 'normative_authenticated_actor',
+             'bootstrap_normative_administrator']) as attendue""",
+       """             'normative_decision_consume']) as attendue
+     where false""")], False),
+    # LA REVOCATION DE `CREATE` SUR `public`, RENDUE INEFFICACE.
+    #
+    # Ce controle porte sur un DEFAUT REEL, mesure dans ce lot: un octroi fait
+    # par le proprietaire de la base est enregistre au nom de
+    # `pg_database_owner`, et un `REVOKE` emis sous l'identite propre du role
+    # ne retire RIEN — sans erreur ni WARNING visible. La correction endosse
+    # le donneur avant de revoquer. Retirer cet endossement remet exactement
+    # le defaut d'origine, et la postcondition doit le voir.
+    # L'ENDOSSEMENT DU DONNEUR EST RETIRE — et cette fois il est TUE.
+    #
+    # Provenance mesuree, endossement neutralise dans une copie jetable:
+    #
+    #   apres 0010 : pg_database_owner -> eurostruct_normative_writer
+    #   apres 0011 : pg_database_owner -> eurostruct_normative_writer (RESTE)
+    #
+    # L'octroi est pose SOUS `pg_database_owner`; la revocation emise par un
+    # role detenant un `CREATE ... WITH GRANT OPTION` explicite est resolue
+    # sous CE role, qui n'a jamais rien accorde. PostgreSQL ne trouve rien a
+    # retirer, et ne le dit pas.
+    #
+    # Le refus est desormais celui de `0011` elle-meme, avec son identifiant,
+    # et sans aucune ligne de registre: KILLED_INSTALL_ASSERTION.
+    ("GR1 l'endossement du donneur est retire de 0011", "Y1", A11,
+     [("""      execute format('set local role %I', donneur);
+      execute 'revoke create on schema public from '""",
+       """      execute 'revoke create on schema public from '""")], False),
+
+    # L'ACL `NULL` RELUE COMME UNE ABSENCE DE PRIVILEGE.
+    #
+    # C'est l'erreur que la mesure a rendue impossible a commettre par
+    # inadvertance, et qu'il faut donc rendre impossible a commettre tout
+    # court. `acldefault('f', owner)` vaut `{=X/owner, owner=X/owner}`:
+    # l'entree `=X` EST PUBLIC. Interroger `aclexplode(proacl)` seul rend un
+    # ensemble VIDE quand `proacl` est NULL — soit exactement la lecture
+    # inverse de la verite.
+    ("AC1 le privilege EFFECTIF de PUBLIC n'est plus interroge", "AC1", A14,
+     [("""    if has_function_privilege('public', f_oid, 'EXECUTE') then""",
+       """    if false then""")], False),
+    # LA FONCTION DECLENCHEUR SORTIE DE TOUT CONTROLE PRIVILEGIE. Elle ne
+    # s'appelle pas directement; elle s'execute a CHAQUE ECRITURE, avec le
+    # search_path de l'ecrivain. L'exempter du controle PUBLIC est mesure et
+    # justifie; l'exempter de tout ne l'est pas.
+    ("AC3 la fonction declencheur sort du balayage prive", "AC5", A14,
+     [("""     where n.nspname = 'public'
+       and pg_get_userbyid(p.proowner) in ('eurostruct_normative_writer',
+                                           'eurostruct_normative_bootstrap',
+                                           'eurostruct_normative_activator')
+  loop""",
+       """     where n.nspname = 'public'
+       and p.prorettype <> 'trigger'::regtype
+       and pg_get_userbyid(p.proowner) in ('eurostruct_normative_writer',
+                                           'eurostruct_normative_bootstrap',
+                                           'eurostruct_normative_activator')
+  loop""")], False),
+    # LA BRANCHE QUI CONSTATE LE PRIVILEGE RESTANT, plutot que la commande
+    # qui le retire — et il faut dire pourquoi.
+    #
+    # Le correctif de la revocation (endosser le donneur avant de revoquer)
+    # n'est INDISPENSABLE que dans la forme ou l'octroi vient d'un autre role
+    # que celui qui applique la migration. Mutee dans `0012` puis dans `0011`,
+    # sa neutralisation a SURVECU deux fois: dans les decors disponibles au
+    # moment ou ces migrations tournent, la revocation simple aboutit de toute
+    # facon. Le correctif est prouve par MESURE — `two_phase_deployment.sh` et
+    # `finalisation_contract.sh` etaient rouges, ils sont verts — et NON par
+    # une mutation. C'est dit ici plutot que masque par un controle qui
+    # viserait a cote.
+    #
+    # Ce qui EST falsifiable, c'est la branche qui CONSTATE le privilege
+    # restant. Sans elle, le privilege revient sans que rien ne l'annonce.
+    ("MC9 le CREATE restant sur public n'est plus constate", "Y13", A14,
+     [("""    ecarts := ecarts || format(
+      'AUTHORITY_COMPOSITION_SCHEMA_CREATE_RETAINED: le role d''autorite '
+      '« %s » conserve CREATE sur le schema public (donneur: %s). Il peut y '
+      'creer des objets pour toute la vie de la base',
+      r.rolname, r.donneurs);""",
+       "    null;  -- constat neutralise par mutation")], False),
+    # LE DIAGNOSTIC REMPLACE PAR UN IDENTIFIANT ETRANGER. Le refus a bien lieu;
+    # le controle ne peut plus le reconnaitre, et un refus qu'on ne reconnait
+    # pas ne se distingue pas d'une panne.
+    ("MC8 le diagnostic de 0011 devient un identifiant etranger", "Y1", A11,
+     [("'AUTHORITY_0011_SURFACE_NOT_HARDENED: surface d''autorite non durcie: %',",
+       "'ERREUR_QUELCONQUE: surface d''autorite non durcie: %',")], False),
+]
+
+CAS_POSTCONDITION = [
+    # H1 lit les LIGNES de `pg_auth_members`. Sans elle, il ne reste que les
+    # deux boucles `pg_has_role('USAGE'/'SET')` — et un membre declare-moins
+    # avec USAGE y serait vu... mais un membre EN TROP avec USAGE l'est aussi.
+    # On neutralise donc la branche qui NOMME le membre supplementaire.
+    ("PM1 le membre supplementaire n'est plus nomme", "PC1", A13,
+     [("""      ecarts := ecarts || format(
+        'membre SUPPLEMENTAIRE « %s » (admin=%s, inherit=%s, set=%s): il '
+        'n''est ni declare dans « eurostruct.authority_backend_logins », ni '
+        'le residu d''ADMIN que PostgreSQL impose au createur du role',
+        r.rolname, r.admin_option, r.inherit_option, r.set_option);""",
+       "      null;  -- H1 neutralise par mutation")], False),
+    # H2 est la seule couche transitive. Sans elle, un porteur d'ADMIN atteint
+    # par une CHAINE ne figure dans aucune ligne directe et passe entierement.
+    ("PM2 la chaine d'ADMIN n'est plus suivie", "PC2", A13,
+     [("""       and pg_has_role(p.rolname, 'eurostruct_authority_backend',
+                       'MEMBER WITH ADMIN OPTION')
+       and p.rolname <> all (admins)""",
+       "       and false  -- H2 neutralise par mutation")], False),
+    # LA BRANCHE D'ADMIN DE H1, isolee elle aussi. Un porteur d'ADMIN en
+    # LIGNE DIRECTE, sans INHERIT ni SET, n'est vu ni par les deux boucles
+    # `pg_has_role('USAGE'/'SET')` — elles repondent « false » — ni par la
+    # couche transitive, puisqu'il n'y a aucune chaine. C'est le chemin exact
+    # par lequel la contenance s'etait rouverte.
+    ("PM4 l'ADMIN en ligne directe n'est plus confronte au plan", "PC4", A13,
+     [("""      if normative_activation_state() = 'ACTIVE'
+         and not coalesce(r.membre_oid = normative_control_plane_oid()
+                          and r.rolname = normative_control_plane(), false)
+      then""",
+       """      if false
+      then""")], False),
+    # H3 est le seul sens « declare mais absent », et il n'est exige qu'en
+    # ACTIVE. Le neutraliser ne peut donc rien casser d'autre.
+    ("PM3 la declaration decorative n'est plus vue", "PC3", A13,
+     [("""  if normative_activation_state() = 'ACTIVE' then
+    foreach une_declaration in array declares loop""",
+       """  if false then
+    foreach une_declaration in array declares loop""")], False),
+]
+
+# --------------------------------------------------------------------------
+# LES DECLENCHEURS DE 0014 — le socle fige et l'effacement interdit
+# --------------------------------------------------------------------------
+# MEME RAISON: ils existaient depuis le premier jet de 0014 et n'etaient
+# exerces par AUCUN controle jusqu'a ce lot. Les mesurer une fois ne dit pas
+# qu'ils portent quelque chose; les retirer et voir rougir, si.
+CAS_DECLENCHEURS_0014 = [
+    ("DT1 le socle d'une decision n'est plus fige", "X1", A14,
+     [("""    raise exception
+      'decision %: son objet, sa portee, son proposant, sa source et sa '
+      'correlation sont figes a la creation. Seul l''etat progresse.', old.id
+      using errcode = 'insufficient_privilege';""",
+       "    null;  -- garde du socle retiree par mutation")], False),
+    ("DT2 une decision redevient effacable", "X4", A14,
+     [("""  raise exception
+    'une decision d''autorite ne s''efface pas: elle explique ce qui a ete '
+    'engage, et l''effacer effacerait la preuve de la decision.'
+    using errcode = 'insufficient_privilege';""",
+       "  return old;  -- interdiction d'effacement retiree par mutation")],
+     False),
+]
+
+# --------------------------------------------------------------------------
+# LE MANIFESTE (L3) — quatre garanties, quatre mutations
+# --------------------------------------------------------------------------
+# CE QUI EST EN JEU. `assert_authority_composition()` balaie `pg_proc` EN
+# FILTRANT PAR LE PROPRIETAIRE ATTENDU: une fonction dont le proprietaire
+# derive SORT du balayage, et l'assertion devient aveugle a la derive qu'elle
+# existe pour detecter. Mesure du 28/08 sur base jetable, en changeant le
+# proprietaire de `normative_decision_approve(uuid)`: le manifeste le voit,
+# l'agregee ne le voit pas.
+#
+# Chaque mutation retire UNE des quatre proprietes du manifeste.
+CAS_MANIFESTE = [
+    # ----------------------------------------------------------------------
+    # LE CONTEXTE D'EXECUTION DES DECLENCHEURS — deux couches, deux mutations
+    # ----------------------------------------------------------------------
+    # CE QUI EST EN JEU, MESURE LE 28/08 SUR DECOR VERIFIE. Une garde
+    # declencheur sans `search_path` epingle est CONTOURNABLE: il suffit de
+    # creer une table temporaire homonyme de celle qu'elle interroge, et `TEMP`
+    # est accorde a PUBLIC par defaut. Verdict = valeur ECRITE:
+    #
+    #   aucun search_path              -> CONTOURNEE
+    #   public, pg_temp                -> tient
+    #   pg_catalog, public, pg_temp    -> tient
+    #   pg_catalog, public             -> CONTOURNEE
+    #   pg_temp, pg_catalog, public    -> CONTOURNEE
+    #
+    # OMETTRE `pg_temp` NE LE FERME PAS: omis, il est consulte EN PREMIER pour
+    # les relations. Seule sa presence EN DERNIERE POSITION ferme le vecteur.
+    #
+    # LES DEUX MUTATIONS NE SONT PAS REDONDANTES, et c'est le point:
+    #
+    #   TP1  retire le chemin -> le MANIFESTE le voit (booleen chemin_epingle)
+    #        et 0015 refuse de s'installer;
+    #   TP1p garde un chemin mais DEPLACE pg_temp -> le booleen du manifeste ne
+    #        voit RIEN (le chemin existe), et seul le controle de POSITION
+    #        rougit. Une seule des deux couches ne suffirait pas.
+    ("TP1  le chemin d'une garde atteignable est retire", "TP1", A15,
+     [("alter function forbid_mutation()                       set search_path = pg_catalog, public, pg_temp;",
+       "-- chemin retire par mutation")], False),
+    # ----------------------------------------------------------------------
+    # LA SEPARATION MIGRATEUR / PLAN DE CONTROLE — ou repose-t-elle vraiment ?
+    # ----------------------------------------------------------------------
+    # `0015` RELACHE la distinction @MIGRATEUR/@PLAN quand les deux symboles se
+    # confondent. Ce relachement n'est acceptable que si l'etat confondu ne
+    # peut JAMAIS atteindre ACTIVE. Falsification combinee du 28/08 — symboles
+    # confondus, relaxation active, gardes de finalisation retirees une a une:
+    #
+    #   garde retiree                        ce qui refuse ensuite
+    #   -----------------------------------  ----------------------------------
+    #   raise exception d_oid = m_oid        la CHECK finalization_intent_
+    #                                        separates_roles
+    #   + la CHECK                           l'assertion de capacite residuelle
+    #                                        (« conserve 2 capacite(s) »)
+    #
+    # TROIS couches independantes, toutes a la finalisation. L'etat n'est
+    # jamais devenu ACTIVE. La defense repose donc bien la, et non sur le
+    # manifeste — qui, lui, ne prouve pas la separation et ne pretend pas le
+    # faire.
+    ("TP1p pg_temp quitte la derniere position", "TP1", S,
+     [("alter function forbid_activation_mutation()         set search_path = pg_catalog, public, pg_temp;",
+       "alter function forbid_activation_mutation()         set search_path = pg_catalog, public;")], False),
+    # MF3 — le sens realite -> manifeste. Sans lui, une fonction ajoutee au
+    # perimetre sans etre declaree passe inapercue: le manifeste ne parle plus
+    # que de ce qu'il connait deja.
+    ("MF3 le sens realite -> manifeste disparait", "MF3", A15,
+     [("""    if r.non_declaree then""",
+       """    if false then""")], False),
+    # MF2 — la decouverte se remet a filtrer par le proprietaire ATTENDU.
+    # C'est le defaut d'origine, reintroduit tel quel.
+    ("MF2 la decouverte filtre par le proprietaire attendu", "MF2", A15,
+     [("""        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public'
+         and (p.proname like 'normative\\_%' or p.proname like 'assert\\_%'""",
+       """        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public'
+         and pg_get_userbyid(p.proowner) in ('eurostruct_normative_writer',
+                                             'eurostruct_normative_bootstrap',
+                                             'eurostruct_normative_activator')
+         and (p.proname like 'normative\\_%' or p.proname like 'assert\\_%'""")], False),
+    # MF4 — PUBLIC lu par un role temoin au lieu du grantee 0. Mesure sur
+    # PG16: un role ordinaire peut detenir EXECUTE la ou PUBLIC ne l'a pas;
+    # le temoin rapporte alors une ouverture qui n'existe pas.
+    ("MF4 PUBLIC est lu par un role temoin", "MF4", A15,
+     [("""             exists (select 1
+                       from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                      where a.grantee = 0 and a.privilege_type = 'EXECUTE')
+               as public_acl,""",
+       """             has_function_privilege('normative_backend', p.oid, 'EXECUTE')
+               as public_acl,""")], False),
+    # MF1 — l'assertion ne leve plus. Le manifeste devient un document.
+    # LE POINT EST « MF1 », ET IL EXISTE MAINTENANT. La campagne des 103 a
+    # laisse MF1 survivre: les trois autres controles du manifeste rougissaient
+    # (ils constatent « l'assertion ne s'est pas plainte ») mais sous LEURS
+    # identifiants. `manifeste-refuse-vraiment` porte celui-ci, et ne mesure
+    # qu'une chose: face a un ecart reel, l'assertion doit LEVER.
+    ("MF1 l'assertion ne refuse plus", "MF1", A15,
+     [("""  if array_length(ecarts, 1) > 0 then
+    raise exception""",
+       """  if false then
+    raise exception""")], False),
+]
+
+
+# --------------------------------------------------------------------------
+# LA FACTORY ET SA BARRIERE (L3) — cinq garanties, cinq mutations
+# --------------------------------------------------------------------------
+# CE QUI EST EN JEU. Aucun consommateur produit n'existe: ces controles ne
+# prouvent pas qu'une route est sure, ils prouvent que la SEULE composition
+# offerte est fail-closed. Chacun retire une des cinq garanties.
+CAS_FACTORY = [
+    # F1 — le crochet n'est plus appele. Il existait deja et rien ne
+    # l'appelait hors des tests: c'est exactement l'etat qu'on quitte.
+    ("F1 le crochet de production n'est plus appele", "D3", FACT,
+     [("    assert_provider_is_usable_in_production(provider)",
+       "    pass  # crochet retire par mutation")], True),
+    # F2 — la conformite de la connexion n'est plus exigee.
+    #
+    # PREMIERE VERSION REJETEE, ET LA RAISON COMPTE: elle remplacait la PROSE
+    # du message de refus (« il n'existe aucun repli memoire »). Le motif
+    # etait bien unique, mais muter un texte ne change AUCUN comportement:
+    # `D4` serait reste vert et le controle aurait SURVECU sans rien apprendre.
+    # Une mutation doit retirer une garantie, pas une phrase.
+    ("F2 la conformite de la connexion n'est plus exigee", "D5", FACT,
+     [("    if connexion is None or not isinstance(connexion, Connexion):",
+       "    if False:")], False),
+    # F3 — l'authentificateur fictif n'est plus refuse par la factory.
+    # F1 ET F3 SONT DEUX COUCHES REDONDANTES, ET C'EST MESURE. La factory
+    # refuse un authentificateur fictif DEUX FOIS: une verification precoce —
+    # pour ne pas ouvrir de connexion vers un objet deja irrecevable — puis le
+    # crochet `assert_provider_is_usable_in_production`. Retirer l'une laisse
+    # l'autre refuser; seule la mutation COMBINEE fait passer le fictif.
+    ("F3 la verification precoce du fictif est retiree", "D3", FACT,
+     [('    if getattr(authentificateur, "est_fictif", True):',
+       '    if False:')], True),
+    ("F1= la verification precoce ET le crochet sont retires", "D3", FACT,
+     [('    if getattr(authentificateur, "est_fictif", True):',
+       '    if False:'),
+      ("    assert_provider_is_usable_in_production(provider)",
+       "    pass  # crochet retire par mutation")], False),
+    # F4 — la barriere ne suit plus les alias d'import. Un grep naif se
+    # contourne en une ligne; l'AST ne doit pas retomber a ce niveau.
+    ("F4 la barriere ne suit plus les alias d'import", "D9", BARR,
+     [("            return self.alias.get(f.id, f.id)",
+       "            return f.id")], False),
+    # F5 — la barriere accepte de conclure sur zero module. Mesure: `rglob`
+    # sur un fichier ne rend rien, et elle annoncait « aucun manquement ».
+    ("F5 la barriere conclut sur zero module", "D9", BARR,
+     [("""    if not fichiers:
+        print("REFUS: aucun module Python a inspecter — un controle qui ne "
+              "regarde rien ne vaut pas un controle reussi.", file=sys.stderr)
+        return 2""",
+       """    if False:
+        pass""")], False),
+    # F6 — un pilote manquant redevient un extincteur general. Il eteignait
+    # AUSSI la factory et la barriere, qui n'en ont pas besoin.
+    ("F6 un pilote absent eteint la couche Python", "D10", PROV,
+     [("""    if not PILOTE_PRESENT:""",
+       """    if PILOTE_PRESENT is None:""")], False),
+]
+
+
+CAS_SEPARATION = [
+    ("SEP1 la garde de separation du plan est retiree", "A", S,
+     [("""  if d_oid = m_oid or d_nom = m_nom then
+    raise exception
+      'le plan de controle derive est le migrateur lui-meme (« % »). '""",
+       """  if false then
+    raise exception
+      'le plan de controle derive est le migrateur lui-meme (« % »). '""")], False),
+]
+
+
+# --------------------------------------------------------------------------
+# SC1 A SC5 — AVEUGLER LE SCANNER DE COMPOSITION SQL
+# --------------------------------------------------------------------------
+# CE QUE CES CINQ CONTROLES ETABLISSENT, ET QUI N'EST PAS EVIDENT.
+#
+# Deux controles regardent le scanner, et ils ne disent PAS la meme chose:
+#
+#   19.5  balaie le CORPUS REEL (`db/test/*.sh`) et exige qu'il soit propre;
+#   19.9  fait tourner les CAS FABRIQUES et exige que le scanner les voie.
+#
+# Le corpus est propre. Un scanner devenu aveugle y rend donc ZERO, et 19.5
+# reste VERT pendant que la garantie a disparu. C'est exactement la faute qui
+# a produit les onze survivants de `3d0acc2`: prouver une garantie avec
+# l'exemple qu'elle couvre deja.
+#
+# MESURE DU 29/08 — TROIS DES CINQ NE SONT VUES QUE PAR 19.9:
+#
+#   SC1  detection des heredocs retiree        19.9 ROUGE   19.5 VERT
+#   SC2  refus sur zero fichier retire         19.9 ROUGE   19.5 VERT
+#   SC3  chemin de fichier plus accepte        19.9 ROUGE   19.5 VERT
+#   SC4  tolerance a la forme echappee otee    19.9 ROUGE   19.5 ROUGE
+#   SC5  detection des recollages retiree      19.9 ROUGE   19.5 ROUGE
+#
+# SC4 et SC5 rougissent AUSSI 19.5 — S4 parce que `deploy_recovery.sh` porte de
+# vraies formes echappees qui deviennent alors des fautes, S5 parce que le
+# compte de recollages tombe a zero et s'ecarte du plafond. Elles sont gardees,
+# mais ce sont SC1, SC2 et SC3 qui portent la demonstration.
+#
+# CIBLE UNIQUE POUR LES CINQ: `verifier_heredocs.py`. POINT ATTENDU: 19.9.
+# `harness_safety_selftest.sh` EMET SUR LE CANAL — il ne figure pas dans
+# `HARNAIS_NON_MIGRES`, donc aucun repli textuel n'est possible pour lui. Si
+# son canal se tait, le controle devient NOT_RUN, jamais vert.
+CAS_SCANNER = [
+    ('SC1 (S1) la detection des heredocs executants est neutralisee', "19.9", SCAN,
+     [('        if re.search(r"(?<!\\\\)`", texte) or re.search(r"(?<!\\\\)\\$\\(", texte):',
+       '        if False:')], False),
+    ('SC2 (S2) le refus de conclure sur zero fichier est neutralise', "19.9", SCAN,
+     [('    if not fichiers:\n        print("REFUS: aucun fichier .sh a inspecter — un controle qui ne "\n              "regarde rien ne vaut pas un controle reussi.", file=sys.stderr)\n        return 2',
+       '    if False:\n        pass')], False),
+    ("SC3 (S3) la prise en charge d'un chemin fichier est neutralisee", "19.9", SCAN,
+     [('        if racine.is_file():\n            fichiers.append(racine)\n        else:\n            fichiers.extend(sorted(racine.glob("*.sh")))',
+       '        fichiers.extend(sorted(racine.glob("*.sh")))')], False),
+    ('SC4 (S4) la tolerance des formes echappees est supprimee', "19.9", SCAN,
+     [('or re.search(r"(?<!\\\\)\\$\\(", texte):',
+       'or re.search(r"\\$\\(", texte):')], False),
+    ('SC5 (S5) la detection du recollage SQL est neutralisee', "19.9", SCAN,
+     [('    noms = _variables_lues_dans_la_base(lignes)\n    if not noms:\n        return []',
+       '    noms = _variables_lues_dans_la_base(lignes)\n    if True:\n        return []')], False),
+]
+
+
+# --------------------------------------------------------------------------
+# NT1 — LA PROPRETE DU CANAL DEVIENT FALSIFIABLE
+# --------------------------------------------------------------------------
+# `canal_selftest.py` laissait 108 fichiers `.jsonl` par execution — 27 par le
+# chemin normal, 81 par les trois sous-processus des preuves negatives, chaque
+# copie rejouant le chemin complet. Un harnais qui salit son `TMPDIR` finit
+# par masquer les residus qui comptent: bases, roles, verrous.
+#
+# CE QUE CETTE MUTATION VISE, ET POURQUOI CE N'EST PAS `liberer_espace()`.
+# Neutraliser l'appel explicite ne fait REAPPARAITRE aucun residu:
+# `TemporaryDirectory` porte son propre finaliseur et detruit le repertoire a
+# la sortie de l'interprete. L'appel rend le nettoyage DETERMINISTE, il n'est
+# pas ce qui evite la fuite.
+#
+# Ce qui l'evite, c'est que les fichiers naissent DANS le repertoire possede.
+# On fait donc rendre a `espace()` la RACINE du TMPDIR au lieu du repertoire
+# possede: les fichiers y retombent et y restent. Viser `dir=espace()`
+# directement etait AMBIGU — trois occurrences — et le pre-vol l'a refuse;
+# le point de decision, lui, est unique. Mesure du 29/08: une falsification
+# qui vise la mauvaise cause ne prouve rien, et celle-ci a d'abord vise la
+# mauvaise.
+#
+# POINT ATTENDU: 19.10, dans `harness_safety_selftest.sh`, qui EMET sur le
+# canal. Pas de traducteur possible: son silence serait NOT_RUN, jamais vert.
+CAS_PROPRETE = [
+    ("NT1 les fichiers du canal ne naissent plus dans l'espace possede",
+     "19.10", CSEL,
+     [("""    global _ESPACE
+    if _ESPACE is None:
+        _ESPACE = tempfile.TemporaryDirectory(prefix="canal-selftest-")
+    return _ESPACE.name""",
+       """    return tempfile.gettempdir()""")], False),
+]
+
+
 LOTS = [
     (CAS, {}),
+    (CAS_MANIFESTE,
+     dict(harnais="db/test/authority_sql_hardening.sh", prefixe="mf")),
+    (CAS_SEPARATION,
+     dict(harnais="db/test/two_phase_deployment.sh", prefixe="ms2")),
+    (CAS_FACTORY,
+     dict(harnais="db/test/provider_contract.sh", prefixe="mfa")),
     (CAS_AUTORITE, dict(harnais="db/test/authority_closure.sh", prefixe="mv")),
     (CAS_SCEAU, dict(harnais="db/test/seal_contract.sh", prefixe="ms")),
     (CAS_RESTAURATION,
@@ -1306,6 +2432,16 @@ LOTS = [
     (CAS_ACL_SCEAU, dict(harnais="db/test/seal_contract.sh", prefixe="mw")),
     (CAS_BARRIERE,
      dict(harnais="db/test/gate_protocol_selftest.sh", prefixe="mb")),
+    (CAS_POSTCONDITION,
+     dict(harnais="db/test/authority_role_frontier.sh", prefixe="mr")),
+    (CAS_DECLENCHEURS_0014,
+     dict(harnais="db/test/authority_four_eyes.sh", prefixe="mq")),
+    (CAS_POSTCONDITIONS_MIGRATION,
+     dict(harnais="db/test/migration_postconditions.sh", prefixe="mn")),
+    (CAS_SCANNER,
+     dict(harnais="db/test/harness_safety_selftest.sh", prefixe="msc")),
+    (CAS_PROPRETE,
+     dict(harnais="db/test/harness_safety_selftest.sh", prefixe="mnt")),
 ]
 
 TOTAL = sum(len(cas) for cas, _ in LOTS)
@@ -1321,30 +2457,182 @@ TOTAL = sum(len(cas) for cas, _ in LOTS)
 # IL N'ARRETE RIEN. Il annonce, et laisse la campagne mesurer tout ce qui est
 # encore mesurable: un controle perime ne doit pas priver les 63 autres de leur
 # verdict.
+def _doublons(lots):
+    """Les identifiants portes par PLUS D'UN controle, sur la matrice ENTIERE.
+
+    Deux controles portant le meme code rendraient DEUX verdicts sous UN nom.
+    Le compte global n'y verrait rien — `defini == tente` tiendrait, puisque
+    les deux sont bien tentes — mais le tableau par controle n'afficherait
+    qu'une ligne, et c'est la ligne SURVIVANTE qui disparaitrait la moitie du
+    temps. Un compte juste sur un tableau faux est pire qu'un compte faux:
+    il rassure.
+
+    Le controle porte sur TOUS les codes definis, pas seulement les retenus:
+    un doublon hors filtre reste un doublon des que le filtre tombe, et la
+    campagne complete n'a pas de filtre.
+    """
+    vus = {}
+    for cas, _ in lots:
+        for c in cas:
+            vus.setdefault(_code(c[0]), []).append(c[0])
+    return [
+        f"identifiant EN DOUBLE « {cc} » — {len(noms)} controles le portent: "
+        f"{', '.join(n[:40] for n in noms)}. Deux verdicts sous un nom font "
+        "disparaitre une ligne du tableau"
+        for cc, noms in sorted(vus.items()) if len(noms) > 1
+    ]
+
+
+def _points_declares(chemin_harnais):
+    """Points qu'un harnais MIGRE declare savoir emettre, ou None.
+
+    Rend None quand le harnais ne declare rien — soit qu'il ne soit pas encore
+    migre (il passe alors par le traducteur, qui lit sa prose), soit que le
+    fichier ne soit pas lisible. Dans les deux cas le pre-vol ne conclut pas:
+    « je n'ai pas trouve de declaration » n'est pas « le point n'existe pas ».
+
+    ON LIT UNE DECLARATION, ON NE SCANNE PAS LES SITES D'APPEL. Le scanner a
+    ete essaye: une expression reguliere sur les appels. Elle a rate `2b` dans
+    `finalisation_contract.sh`, ou l'appel est en milieu de ligne — `|| {
+    rouge_point 2b "..."`. Un scanner qui rate un site rend un faux manquant,
+    donc un refus injustifie; le rendre laxiste le rend aveugle.
+
+    UN HARNAIS SHELL QUI DELEGUE A PYTHON DECLARE DANS SON DELEGUE. C'est le
+    cas de `provider_contract.sh`, qui passe la main a `provider_contract.py`:
+    on regarde donc aussi le fichier de meme nom en `.py`.
+    """
+    import ast as _ast
+    for chemin in (chemin_harnais, os.path.splitext(chemin_harnais)[0] + ".py"):
+        try:
+            src = open(chemin, encoding="utf-8").read()
+        except OSError:
+            continue
+        # Shell: `esc_points_declares A1 A2 \` + continuations.
+        m = re.search(r"^esc_points_declares((?:[^\n\\]|\\\n)*)", src, re.M)
+        if m:
+            return set(m.group(1).replace("\\\n", " ").split())
+        # Python: `canal_lecture.declarer_points("A1", "A2", ...)`.
+        m = re.search(r"declarer_points\(", src)
+        if m:
+            debut = m.end() - 1
+            prof, i = 0, debut
+            while i < len(src):
+                if src[i] == "(":
+                    prof += 1
+                elif src[i] == ")":
+                    prof -= 1
+                    if prof == 0:
+                        break
+                i += 1
+            try:
+                return set(_ast.literal_eval("(" + src[debut + 1:i] + ")"))
+            except (SyntaxError, ValueError):
+                return None
+    return None
+
+
 def _prevol():
-    perimes = []
-    for cas, _ in LOTS:
+    """PROUVE ce qu'il avance, et INVALIDE la campagne avant tout lancement.
+
+    L'ancien pre-vol se contentait de constater qu'un motif etait absent, puis
+    laissait la campagne partir en comptant le controle « non execute ». Une
+    garantie cessait donc d'etre verifiee sans que rien ne rougisse — c'est
+    arrive au controle 7, et personne ne l'a vu pendant un passage complet.
+
+    Sept preuves — six par controle retenu, une sur la matrice entiere:
+
+      1. le fichier cible est lisible;
+      2. chaque motif y figure EXACTEMENT une fois — zero est une cible
+         disparue, deux est une cible ambigue, et une mutation ambigue ne dit
+         pas ce qu'elle a mute;
+      3. la mutation est DISTINCTE du candidat: `vieux != neuf`, sinon le
+         controle tourne sur le code d'origine et se declare survivant;
+      4. le harnais charge de la tuer existe et est executable;
+      5. si le controle est declare redondant, son controle COMBINE est
+         declare ET retenu dans cette campagne;
+      6. si le controle est declare intercepte a l'installation, un diagnostic
+         attendu est declare;
+      7. aucun identifiant n'est porte par deux controles — sur la matrice
+         ENTIERE, filtre ou non.
+
+    Tout manquement est un STALE, et un seul STALE invalide la campagne.
+    """
+    stale = list(_doublons(LOTS))
+    retenus = {_code(c[0]) for cas, _ in LOTS for c in cas if retenu(c)}
+    for cas, kw in LOTS:
         for c in cas:
             if not retenu(c):
                 continue
             nom, fichier, paires = c[0], c[2], c[3]
-            try:
-                src = open(f"{ESPACE}/{fichier}").read()
-            except OSError as e:
-                perimes.append(f"{nom} — {fichier} illisible: {e}")
-                continue
-            for vieux, _n in paires:
-                if vieux not in src:
-                    perimes.append(f"{nom} — {fichier}: {vieux.strip()[:70]!r}")
-    if perimes:
+            red = len(c) >= 5 and c[4] is True
+            cc = _code(nom)
+            for f, pr in _cibles(fichier, paires):
+                try:
+                    src = open(f"{ESPACE}/{f}").read()
+                except OSError as e:
+                    stale.append(f"{nom} — {f} illisible: {e}")
+                    continue
+                for vieux, neuf_txt in pr:
+                    n = src.count(vieux)
+                    if n == 0:
+                        stale.append(
+                            f"{nom} — cible ABSENTE de {f}: "
+                            f"{vieux.strip()[:70]!r}")
+                    elif n > 1:
+                        stale.append(
+                            f"{nom} — cible AMBIGUE dans {f} ({n} occurrences): "
+                            f"{vieux.strip()[:70]!r}")
+                    if vieux == neuf_txt:
+                        stale.append(
+                            f"{nom} — mutation IDENTIQUE au candidat dans {f}: "
+                            "elle ne muterait rien")
+            h = kw.get("harnais", "db/test/finalisation_contract.sh")
+            chemin_h = f"{ESPACE}/{h}"
+            if not os.path.isfile(chemin_h):
+                stale.append(f"{nom} — harnais absent: {h}")
+            elif not os.access(chemin_h, os.X_OK):
+                stale.append(f"{nom} — harnais non executable: {h}")
+            if red:
+                comb = COMBINEE.get(cc)
+                if not comb:
+                    stale.append(
+                        f"{nom} — declare REDONDANT sans controle combine "
+                        "declare: la redondance ne serait pas prouvee")
+                elif comb not in retenus:
+                    stale.append(
+                        f"{nom} — son controle combine « {comb} » n'est pas "
+                        "retenu dans cette campagne")
+            if cc in INSTALL_ASSERTION and not INSTALL_ASSERTION[cc].strip():
+                stale.append(f"{nom} — diagnostic d'installation vide")
+            # 8. LE POINT ATTENDU EST-IL EMIS PAR QUELQU'UN ?
+            #
+            # Seulement pour un harnais MIGRE: un harnais non migre passe par
+            # le traducteur, qui lit sa prose et ne declare rien.
+            #
+            # DEUX FAUTES REELLES, LE 29/08, QUE CE CONTROLE FERME. La
+            # conversion d'`authority_closure.sh` a manque huit sites parce que
+            # son motif exigeait un chiffre apres la lettre: les points `D`,
+            # `E` et `G` — trois controles du registre — n'etaient plus emis
+            # par personne. Et le controle `D2` attendait le point `D`, que son
+            # scenario n'emet pas. Les deux ont la meme forme, et la campagne
+            # complete ne les aurait nommees qu'apres quatre-vingt-dix minutes,
+            # via `not_run == 0`.
+            declares = _points_declares(chemin_h)
+            if declares is not None and c[1] not in declares:
+                stale.append(
+                    f"{nom} — le point « {c[1]} » n'est declare par AUCUN "
+                    f"emetteur de {h}. Un harnais migre qui n'emet pas le "
+                    f"point attendu rend le controle NOT_RUN, jamais tue.")
+    if stale:
         print()
-        print(f"PRE-VOL: {len(perimes)} controle(s) visent un texte qui n'existe "
-              "plus.")
-        print("         Ils seront comptes NON EXECUTES, jamais tues:")
-        for p in perimes:
-            print(f"           {p}")
+        print(f"PRE-VOL: {len(stale)} controle(s) ne peuvent PAS etre exerces.")
+        print("         La campagne est INVALIDE et n'est pas lancee: une cible")
+        print("         absente ou ambigue ne dit rien de la garantie, et un")
+        print("         controle qu'on ignore est une garantie qu'on abandonne.")
+        for x in stale:
+            print(f"           STALE  {x}")
         print()
-    return perimes
+    return stale
 
 
 # LA BOUCLE EST APLATIE, ET C'EST CE QUI REND LE DECOMPTE PARTIEL POSSIBLE.
@@ -1401,6 +2689,28 @@ def _entre_controles():
 try:
     PERIMES_PREVOL = _prevol()
     PLAT = [(c, kw) for cas, kw in LOTS for c in cas if retenu(c)]
+    # UN SEUL STALE ARRETE TOUT, ET AVANT LE PREMIER LANCEMENT. Laisser partir
+    # une campagne dont un controle ne peut pas etre exerce, c'est produire un
+    # compte rendu qui additionne des mesures et des absences de mesure.
+    # PRE-VOL SEUL. La consigne peut etre « eprouve l'instrument, ne lance pas
+    # encore la campagne »: sans ce mode il faudrait lancer 67 harnais pour
+    # savoir si les 67 cibles tiennent encore.
+    if "--prevol-seulement" in sys.argv:
+        nettoyer_espace()
+        if PERIMES_PREVOL:
+            print(f"PRE-VOL: {len(PERIMES_PREVOL)} controle(s) STALE — "
+                  "la campagne serait INVALIDE.")
+            sys.exit(2)
+        print(f"PRE-VOL: {len(PLAT)} controle(s) retenus, tous exercables.")
+        print("         stale 0 | ambiguous 0 | missing_combined_control 0 "
+              "| duplicate_id 0")
+        print("         Aucun controle n'a ete lance (--prevol-seulement).")
+        sys.exit(0)
+    if PERIMES_PREVOL:
+        nettoyer_espace()
+        print(f"MUTATIONS: campagne INVALIDE — {len(PERIMES_PREVOL)} controle(s) "
+              f"STALE au pre-vol, aucun controle n'a ete lance.")
+        sys.exit(2)
     for _c, _kw in PLAT:
         ACTIF = (_c[0], _c[2])
         ETATS.append(essayer(*_c, **_kw))
@@ -1426,14 +2736,46 @@ except Interruption as _sig:
 # existe pour rendre impossible ailleurs. Le decompte les nomme donc a part,
 # et « non executes » n'est jamais absorbe dans « executes ».
 DEFINIS = TOTAL
-PERIMES = ETATS.count("perime")
-NON_EXECUTES = ETATS.count("non_execute") + PERIMES
-CREUX = ETATS.count("creux")
-REDONDANTS = ETATS.count("redondant")
-TUES = ETATS.count("tue")
-EXERCES = len(ETATS)                      # retenus par le filtre
-EXECUTES = EXERCES - NON_EXECUTES         # qui ont rendu un verdict
-NON_EXERCES = DEFINIS - EXERCES           # ecartes par le filtre
+TENTES = len(ETATS)                       # un statut terminal a ete rendu
+KILLED_RT = ETATS.count(KILLED_RUNTIME)
+KILLED_IA = ETATS.count(KILLED_INSTALL_ASSERTION)
+REDONDANTS = ETATS.count(REDUNDANT_PROVEN)
+SURVIVANTS = ETATS.count(SURVIVED)
+STALES = ETATS.count(STALE)
+INFRAS = ETATS.count(INFRA_FAILURE)
+NON_LANCES = DEFINIS - TENTES             # jamais tentes: NOT_RUN
+
+# LES INVARIANTS DE LA CAMPAGNE, ECRITS COMME DES EQUATIONS.
+#
+# Une campagne acceptable n'a pas « peu » de survivants ou « presque » aucun
+# perime: elle en a ZERO, et le total se referme exactement. Ecrire les
+# egalites plutot que des seuils rend impossible le compte rendu qui additionne
+# des mesures et des absences de mesure.
+INV = [
+    ("defined == attempted", DEFINIS == TENTES),
+    ("defined == killed_runtime + killed_install_assertion + "
+     "redundant_proven + survived",
+     DEFINIS == KILLED_RT + KILLED_IA + REDONDANTS + SURVIVANTS),
+    ("survived == 0", SURVIVANTS == 0),
+    ("stale == 0", STALES == 0),
+    ("infra_failure == 0", INFRAS == 0),
+    ("not_run == 0", NON_LANCES == 0),
+    # LES ANOMALIES DU CANAL — exigees nulles au meme titre.
+    ("unknown_event == 0", ANOMALIES["unknown_event"] == 0),
+    ("invalid_jsonl == 0", ANOMALIES["invalid_jsonl"] == 0),
+    ("cross_run_event == 0", ANOMALIES["cross_run_event"] == 0),
+    ("double_terminal == 0", ANOMALIES["double_terminal"] == 0),
+]
+INV_TENUS = all(ok for _, ok in INV)
+
+# Anciens noms conserves pour le verdict d'interruption, qui les lit.
+PERIMES = STALES
+NON_EXECUTES = INFRAS + STALES + NON_LANCES
+CREUX = SURVIVANTS
+TUES = KILLED_RT + KILLED_IA
+EXERCES = TENTES
+EXECUTES = TENTES - INFRAS - STALES
+NON_EXERCES = NON_LANCES
 
 print()
 # --------------------------------------------------------------------------
@@ -1452,7 +2794,7 @@ if INTERRUPTION is not None:
     _ecartes = TOTAL - len(PLAT)
     print(f"MUTATIONS: definis {TOTAL} | termines {_termines} | "
           f"interrompu {_interrompu} | non commences {_non_commences + _ecartes} "
-          f"| perimes {ETATS.count('perime')} | creux {ETATS.count('creux')} "
+          f"| stale {ETATS.count(STALE)} | survived {ETATS.count(SURVIVED)} "
           f"| code {128 + _n}")
     if ACTIF:
         print(f"           controle actif : {ACTIF[0]}")
@@ -1476,33 +2818,45 @@ if FILTRE and EXERCES == 0:
     print(f"MUTATIONS: aucun controle ne correspond a « {' '.join(FILTRE)} ».")
     sys.exit(2)
 
-CODE = 1 if (CREUX or NON_EXECUTES) else 0
-print(f"MUTATIONS: definis {DEFINIS} | executes {EXECUTES} | "
-      f"non executes {NON_EXECUTES + NON_EXERCES} | echecs inexpliques {CREUX} "
-      f"| code {CODE}")
-print(f"           dont tues {TUES}, redondants voulus {REDONDANTS}"
-      + (f", ecartes par le filtre {NON_EXERCES}" if NON_EXERCES else "")
-      + (f", refuses par le harnais {NON_EXECUTES - PERIMES}"
-         if NON_EXECUTES - PERIMES else "")
-      + (f", PERIMES {PERIMES}" if PERIMES else ""))
+CODE = 0 if (INV_TENUS and not FILTRE) else 1
+print(f"MUTATIONS: defined {DEFINIS} | attempted {TENTES} | "
+      f"killed_runtime {KILLED_RT} | killed_install_assertion {KILLED_IA} | "
+      f"redundant_proven {REDONDANTS}")
+print(f"           survived {SURVIVANTS} | stale {STALES} | "
+      f"infra_failure {INFRAS} | not_run {NON_LANCES} | code {CODE}")
+print()
+print(f"           CANAL: unknown_event {ANOMALIES['unknown_event']} | "
+      f"invalid_jsonl {ANOMALIES['invalid_jsonl']} | "
+      f"cross_run_event {ANOMALIES['cross_run_event']} | "
+      f"double_terminal {ANOMALIES['double_terminal']}")
+print(f"           RUN {RUN_ID} | SHA {SHA_CANDIDAT}")
+print("           INVARIANTS DE CAMPAGNE:")
+for _libelle, _ok in INV:
+    print(f"             [{'ok' if _ok else 'NON'}] {_libelle}")
 
-if PERIMES:
-    print(f"           {PERIMES} controle(s) PERIMES: le texte a muter n'existe "
-          "plus.\n           La garantie visee n'est plus verifiee par mutation — "
-          "le controle\n           doit etre remis en face du code, pas retire.")
-if NON_EXECUTES - PERIMES:
-    print(f"           {NON_EXECUTES - PERIMES} controle(s) N'ONT PAS ETE EXERCES: "
-          "le harnais a refuse.\n           Ce n'est pas un echec de garantie — "
-          "c'est une absence de mesure.")
-if CREUX:
-    print(f"           {CREUX} controle(s) ont tourne SANS rougir: ceux-la ne "
-          "portent rien.")
-if NON_EXERCES:
-    # UNE EXECUTION FILTREE NE REND PAS LE VERDICT COMPLET. Elle dit ce qu'elle
-    # a exerce, et combien elle a laisse de cote.
-    print(f"           execution PARTIELLE (filtre): {NON_EXERCES} controle(s) "
-          "non exerces.\n           Ce compte rendu ne vaut PAS pour la matrice "
-          "entiere.")
-elif CODE == 0:
-    print(f"           les {DEFINIS} controles portent quelque chose.")
+if FILTRE:
+    print()
+    print("           EXECUTION FILTREE: ce compte rendu ne vaut PAS pour la")
+    print("           matrice entiere, et ne peut clore aucune campagne.")
+elif INV_TENUS:
+    print()
+    print(f"           Les {DEFINIS} controles portent quelque chose, et le")
+    print("           total se referme: aucun survivant, aucun perime, aucune")
+    print("           erreur d'infrastructure, aucun controle non lance.")
+else:
+    print()
+    print("           CAMPAGNE NON CONCLUANTE: au moins un invariant est faux.")
+    if SURVIVANTS:
+        print(f"           {SURVIVANTS} controle(s) SURVIVED: la garantie a ete")
+        print("           retiree et rien n'a rougi — ceux-la ne portent rien.")
+    if STALES:
+        print(f"           {STALES} controle(s) STALE: cible absente ou ambigue.")
+        print("           La garantie visee n'est plus verifiee par mutation —")
+        print("           le controle doit etre remis en face du code, pas retire.")
+    if INFRAS:
+        print(f"           {INFRAS} controle(s) INFRA_FAILURE: le harnais n'a pas")
+        print("           tourne. Ce n'est pas un echec de garantie, c'est une")
+        print("           absence de mesure.")
+    if NON_LANCES:
+        print(f"           {NON_LANCES} controle(s) NOT_RUN.")
 sys.exit(CODE)

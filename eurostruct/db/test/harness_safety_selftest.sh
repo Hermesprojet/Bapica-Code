@@ -85,7 +85,9 @@ echoue() { echo "      ECHEC: $*" >&2; KO=1; }
 # 6.3b6b. Le nombre de temoins attendus intacts suit (voir `temoins_intacts`).
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator
-            normative_backend normative_governance eurostruct_deployment)
+            normative_backend normative_governance eurostruct_deployment
+            eurostruct_authority_backend
+            eurostruct_reconciliation)
 
 adm() { psql -X -q -d postgres "$@"; }
 
@@ -705,10 +707,39 @@ elif ! kill -0 "$PID_INT" 2>/dev/null; then
   echoue "  constaterait un nettoyage NORMAL, pas un nettoyage apres coupure."
 else
   # Les deux faits sont etablis: on coupe.
-  kill -TERM "$PID_INT" 2>/dev/null
+  #
+  # LE RESULTAT DE `kill` EST LU. Ignore, il laissait passer le cas ou le
+  # processus venait de se terminer entre le constat et le signal: on aurait
+  # alors constate un nettoyage NORMAL en croyant observer un nettoyage apres
+  # coupure.
+  if ! kill -TERM "$PID_INT" 2>/dev/null; then
+    echoue "14. le processus avait disparu au moment du signal: rien n'a ete"
+    echoue "  interrompu, et ce qui suit ne prouverait rien."
+  fi
+  # `wait` REND LA MAIN QUAND LE PROCESSUS EST MOISSONNE, donc APRES son piege
+  # de sortie — celui-ci s'execute dans le processus interrompu, avant qu'il ne
+  # se termine. Il n'y a donc RIEN a attendre ensuite, et c'est le point de ce
+  # correctif.
   wait "$PID_INT" 2>/dev/null
-  # Le piege de sortie s'execute dans le processus interrompu; on lui laisse le
-  # temps de rendre la main, en scrutant plutot qu'en dormant au hasard.
+  CODE_INT=$?
+
+  # LE CODE DE SORTIE PROUVE L'INTERRUPTION, ET AUCUNE HORLOGE N'INTERVIENT.
+  #
+  # Un processus tue par SIGTERM sort en 143 (128 + 15). Un processus qui a
+  # fini son travail sort en 0 ou sur un code d'erreur du script. Constater 143
+  # est donc la preuve DETERMINISTE que le nettoyage observe ensuite est bien
+  # celui d'une coupure — la preuve que le `sleep` de la premiere redaction
+  # pretendait donner sans jamais l'etablir.
+  #
+  # `wait` peut aussi rendre 143 quand c'est LUI qui a ete interrompu; ce
+  # scenario ne pose aucun piege sur TERM dans le processus courant, si bien
+  # que le seul chemin qui mene ici est celui qu'on vise.
+  if [[ "$CODE_INT" -ne 143 ]]; then
+    echoue "14. le processus a rendu $CODE_INT, et non 143 (128+SIGTERM):"
+    echoue "  il ne s'est pas termine SUR l'interruption. Ce qui suit"
+    echoue "  constaterait un nettoyage normal."
+  fi
+
   # LES ROLES CANONIQUES COMPTENT AUSSI, ET CE SONT EUX QUI FONT MAL.
   #
   # Ce constat ne regardait que `interr%`, c'est-a-dire le decor jetable. Or
@@ -716,15 +747,16 @@ else
   # imposes, globaux au cluster —, et ce sont ceux-la qui font refuser toute
   # execution ulterieure. Les chercher est le seul moyen de distinguer « le
   # piege a tourne » de « le piege a tourne a moitie ».
-  APRES="?"
-  for _ in $(seq 1 50); do
-    APRES=$(adm -tAc "select coalesce(string_agg(rolname, ', ' order by rolname), '')
-                        from pg_roles
-                       where rolname like 'interr%'
-                          or rolname in ($LISTE_CANONIQUES)")
-    [[ -z "$APRES" ]] && break
-    sleep 0.2
-  done
+  #
+  # UNE SEULE LECTURE, ET APRES `wait`. La redaction precedente scrutait le
+  # catalogue cinquante fois a 200 ms: sur un runner lent, le piege pouvait
+  # n'avoir pas fini au bout de dix secondes, et le scenario annoncait des
+  # residus qui disparaissaient juste apres. Le verdict dependait alors de la
+  # vitesse de la machine — c'est-a-dire de rien de ce qu'il pretend mesurer.
+  APRES=$(adm -tAc "select coalesce(string_agg(rolname, ', ' order by rolname), '')
+                      from pg_roles
+                     where rolname like 'interr%'
+                        or rolname in ($LISTE_CANONIQUES)")
   # ET LA BASE, pour la meme raison: une base residuelle n'est pas moins un
   # residu qu'un role, et elle retient les roles qui la possedent.
   BASES_APRES=$(adm -tAc "select coalesce(string_agg(datname, ', '), '')
@@ -816,6 +848,408 @@ if [[ -n "$FAUTIFS" ]]; then
 else
   echo "      ok: 6. aucune URL de connexion en argument de psql"
 fi
+
+# --------------------------------------------------------------------------
+# 16. LE DIAGNOSTIC NE TRONQUE PAS LA SOURCE DE VERITE
+# --------------------------------------------------------------------------
+# CE QUI EST MESURE ICI, ET POURQUOI CE CONTROLE EXISTE. Deux mutations (B'
+# et B=) ont ete comptees SURVIVED lors de la campagne du 82: elles TUAIENT
+# bien, a l'installation, mais l'identifiant `AUTHORITY_COMPOSITION_*` tombait
+# au-dela du 200e caractere de la ligne ERROR et rien ne le rapportait.
+#
+# On fabrique donc une sortie ou l'identifiant est DELIBEREMENT place tres
+# au-dela de la coupe d'affichage, et on exige qu'il atteigne quand meme le
+# lecteur. Le controle est plus exigeant que le defaut d'origine: 500
+# caracteres de bourrage, la ou la coupe etait a 200.
+BOURRAGE="$(printf 'x%.0s' $(seq 1 500))"
+FAUX_ERREUR="psql:0014_four_eyes_decisions.sql:812: ERROR:  $BOURRAGE AUTHORITY_COMPOSITION_FORCE_RLS_MISSING: la table normative_authority_decisions n'a pas FORCE ROW LEVEL SECURITY
+CONTEXT:  PL/pgSQL function assert_authority_composition() line 214 at RAISE"
+POSITION=$(awk -v s="$FAUX_ERREUR" 'BEGIN{ print index(s, "AUTHORITY_COMPOSITION_FORCE_RLS_MISSING") }')
+# REDIRECTION, ET NON `$( ... )`. Mesure faite en ecrivant ce controle: la
+# substitution de commande execute la fonction dans un SOUS-SHELL, et
+# `ESC_DIAG_CAPTURE` — qui y est cree — ne revenait pas au parent. Le controle
+# se declarait alors rouge sur « aucune capture », en accusant le helper d'un
+# defaut qui etait dans sa propre mesure.
+DIAG_SORTIE="$(mktemp "${TMPDIR:-/tmp}/esc_ct16_XXXXXX")"
+esc_diag_rapporter "auto-test 16" "$FAUX_ERREUR" 2>"$DIAG_SORTIE"
+DIAG_VU="$(cat "$DIAG_SORTIE")"
+rm -f "$DIAG_SORTIE"
+if (( POSITION <= 500 )); then
+  echoue "16. l'auto-test est trop faible: l'identifiant est au caractere"
+  echoue "    $POSITION, en deca des 500 exiges — il ne prouverait rien."
+elif ! grep -q "invariant: AUTHORITY_COMPOSITION_FORCE_RLS_MISSING" <<<"$DIAG_VU"; then
+  echoue "16. l'identifiant place au caractere $POSITION n'atteint PAS le"
+  echoue "    lecteur. Un refus d'installation redeviendrait indiscernable"
+  echoue "    d'une panne, et la mutation correspondante compterait SURVIVED."
+  sed 's/^/              /' <<<"$DIAG_VU" >&2
+elif [[ ! -f "${ESC_DIAG_CAPTURE:-/inexistant}" ]]; then
+  echoue "16. aucune capture integrale n'existe: la source de verite n'est"
+  echoue "    conservee nulle part."
+elif ! grep -q "$BOURRAGE" "$ESC_DIAG_CAPTURE"; then
+  echoue "16. la capture ne contient pas la sortie INTEGRALE."
+else
+  echo "      ok: 16. identifiant au caractere $POSITION — rapporte, et la"
+  echo "             capture integrale conserve $(wc -c <"$ESC_DIAG_CAPTURE") octets"
+fi
+
+# --------------------------------------------------------------------------
+# 18. LE DIAGNOSTIC N'EMET JAMAIS D'OCTET ORPHELIN
+# --------------------------------------------------------------------------
+# CE QUI A ETE MESURE, ET CE QUE CE CONTROLE EMPECHE DE REVENIR. Sous
+# `LC_CTYPE=POSIX`, `cut -c` compte des OCTETS et non des caracteres. Une coupe
+# tombant au milieu d'un tiret cadratin (« — », E2 80 94) laissait un `E2`
+# orphelin dans la sortie du harnais; le lanceur de campagne, qui decode en
+# UTF-8, mourait alors en `UnicodeDecodeError: invalid continuation byte`.
+# Quatre-vingt-dix garanties perdues d'un coup — sans le moindre verdict — sur
+# un octet d'AFFICHAGE.
+#
+# On place donc un caractere multi-octets exactement sur la coupe, et on exige
+# que la sortie reste decodable. Le controle vaut aussi pour l'invariant: le
+# nom doit toujours atteindre le lecteur.
+# ON BALAIE LE VOISINAGE DE LA COUPE, on ne parie pas sur un decalage.
+# Mesure faite en ecrivant ce controle: avec 195 caracteres de bourrage le
+# tiret tombait APRES la coupe, la sortie restait valide, et le controle
+# passait au vert meme en retirant la protection — il ne prouvait rien. Les
+# valeurs qui font effectivement chevaucher la coupe sont 189 et 190; les
+# balayer toutes rend le controle independant de mon arithmetique.
+COUPE_KO=0; COUPE_TESTEES=0; COUPE_CHEVAUCHANTES=0
+for n in 186 187 188 189 190 191 192 193; do
+  COUPE_SORTIE="$(mktemp "${TMPDIR:-/tmp}/esc_ct18_XXXXXX")"
+  BOURRAGE_N="$(printf 'x%.0s' $(seq 1 "$n")).0"
+  BOURRAGE_N="${BOURRAGE_N%.0}"
+  esc_diag_rapporter "auto-test 18 (bourrage $n)" \
+    "ERROR:  $BOURRAGE_N — AUTHORITY_COUPE_MULTIOCTET: le tiret est sur la coupe" \
+    2>"$COUPE_SORTIE"
+  COUPE_TESTEES=$((COUPE_TESTEES + 1))
+  # Le tiret chevauche-t-il la coupe ? On le constate sur la sortie NON
+  # protegee, en comptant les octets: la reponse ne vient pas d'un calcul.
+  if ! python3 -c 'import sys; open(sys.argv[1],"rb").read().decode("utf-8")' \
+         "$COUPE_SORTIE" 2>/dev/null; then
+    echoue "18. bourrage $n: la sortie du diagnostic n'est pas de l'UTF-8"
+    echoue "    valide — un octet orphelin subsiste, et le lanceur de campagne"
+    echoue "    mourrait dessus sans rendre le moindre verdict."
+    COUPE_KO=1
+  fi
+  if ! grep -q "invariant: AUTHORITY_COUPE_MULTIOCTET" "$COUPE_SORTIE"; then
+    echoue "18. bourrage $n: l'identifiant n'atteint pas le lecteur."
+    COUPE_KO=1
+  fi
+  # Une coupe qui tombe pile sur le tiret perd le caractere entier: c'est la
+  # signature du chevauchement, et elle doit exister pour au moins un `n` —
+  # sinon le balayage passerait a cote du cas qu'il pretend couvrir.
+  grep -q -- "—" "$COUPE_SORTIE" || COUPE_CHEVAUCHANTES=$((COUPE_CHEVAUCHANTES + 1))
+  rm -f "$COUPE_SORTIE"
+done
+if (( COUPE_CHEVAUCHANTES == 0 )); then
+  echoue "18. aucun des $COUPE_TESTEES bourrages ne fait chevaucher la coupe:"
+  echoue "    le balayage n'exerce pas le cas qu'il annonce."
+  COUPE_KO=1
+fi
+(( COUPE_KO )) || {
+  echo "      ok: 18. $COUPE_TESTEES coupes autour de la frontiere, dont"
+  echo "             $COUPE_CHEVAUCHANTES sur un caractere multi-octets — sortie"
+  echo "             toujours decodable, identifiant toujours rapporte"
+}
+
+# --------------------------------------------------------------------------
+# 17. LE TEARDOWN D'UN DECOR S'EXECUTE SUR LES CINQ CHEMINS DE SORTIE
+# --------------------------------------------------------------------------
+# CE QUI A ETE MESURE. `decor_poser` rendait 1 sur six chemins de refus sans
+# jamais appeler `decor_deposer`. Le premier refus laissait les roles
+# canoniques dans le cluster; tous les decors suivants echouaient en « phase 0
+# refusee », et le harnais rendait « rien d'evalue » — ce qu'une campagne de
+# mutation lit comme un SURVIVANT. La contamination du scenario suivant est
+# une erreur d'infrastructure, jamais une mise a mort.
+#
+# LES CHEMINS SONT EXERCES DANS DES SOUS-PROCESSUS, chacun avec SON PROPRE
+# piege: un seul processus ne peut pas mourir six fois. Le teardown ecrit un
+# temoin sur disque — c'est le seul fait qui survive a un `exit`, a un signal,
+# ou a un shell qui s'effondre.
+#
+# CE QUE LE TRAP DEDIE APPORTE, MESURE ET NON SUPPOSE. En ecrivant ce
+# controle, la premiere version du chemin « interruption » restait verte quand
+# on retirait le trap de `esc_decor_ouvrir`: bash execute le piege EXIT meme
+# lorsqu'un signal fatal l'emporte, et c'est LUI qui rendait le decor. La
+# table mesuree:
+#
+#                        trap dedie    pas de trap dedie
+#     sans piege EXIT     temoin 1        temoin 0
+#     avec piege EXIT     temoin 1        temoin 1
+#
+# Le trap dedie porte donc exactement un cas: celui ou aucun piege EXIT ne
+# couvre le decor. Ce cas n'est pas theorique — bash n'a qu'UN seul piege
+# EXIT, et tout scenario qui pose le sien efface silencieusement celui du
+# harnais. Le chemin 6 l'exerce, et c'est lui qui rend le trap dedie
+# falsifiable au lieu de decoratif.
+#
+# AUCUN OBJET POSTGRESQL ICI. Le contrat exerce est celui du cycle de vie, et
+# il doit tenir meme quand la base n'est pas la cause.
+TEMOINS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/esc_cycle_XXXXXX")"
+chemin_de_sortie() {                 # chemin_de_sortie <nom> <corps-bash> [sans-exit]
+  local nom="$1" corps="$2" sans_exit="${3:-}" pose_piege="trap sortie_globale EXIT" code=0
+  [[ -n "$sans_exit" ]] && pose_piege=":"
+  bash -c '
+    set -uo pipefail
+    source "'"$HERE"'/lib_harnais.sh"
+    TEMOIN="'"$TEMOINS_DIR"'/'"$nom"'"
+    teardown() { echo "rendu" >>"$TEMOIN"; return "${TEARDOWN_CODE:-0}"; }
+    sortie_globale() { esc_decor_fermer; }
+    '"$pose_piege"'
+    esc_decor_ouvrir "'"$nom"'" teardown || exit 9
+    '"$corps"'
+  ' >/dev/null 2>"$TEMOINS_DIR/$nom.err" || code=$?
+  echo "$code"
+}
+
+# 1. SUCCES — fermeture explicite, un seul teardown.
+C1=$(chemin_de_sortie succes 'esc_decor_fermer; exit 0')
+# 2. ERREUR SQL — la forme du refus d'installation: abandon puis code 1.
+C2=$(chemin_de_sortie erreur_sql 'esc_decor_abandonner || exit 1')
+# 3. ERREUR SHELL — commande inexistante, puis sortie par le trap EXIT.
+C3=$(chemin_de_sortie erreur_shell 'commande_qui_nexiste_pas_du_tout; exit 127')
+# 4. INTERRUPTION — le processus se tue lui-meme; seul le trap dedie peut
+#    encore rendre le decor.
+C4=$(chemin_de_sortie interruption 'kill -TERM $$; sleep 5; exit 0')
+# 5. ECHEC DANS LE TEARDOWN LUI-MEME — il rend 1; le harnais doit le
+#    SIGNALER et non l'avaler.
+C5=$(chemin_de_sortie teardown_ko \
+     'TEARDOWN_CODE=1; esc_decor_fermer
+      (( ESC_DECOR_TEARDOWN_KO == 1 )) || exit 8
+      exit 0')
+# 6. INTERRUPTION SANS AUCUN PIEGE EXIT — le seul cas ou le trap dedie est
+#    LOAD-BEARING. Sans lui, mesure faite: temoin 0.
+C6=$(chemin_de_sortie interruption_seule 'kill -TERM $$; sleep 5; exit 0' sans-exit)
+# 7. REFUS D'INSTALLATION SANS PIEGE EXIT — la forme EXACTE de `decor_poser`:
+#    le chemin de refus doit se rendre LUI-MEME, sans compter sur la fin du
+#    harnais. Mesure: avec un piege EXIT, un `esc_decor_abandonner` qui ne
+#    ferme rien reste invisible — c'est ce masquage qui a laisse six chemins
+#    de refus fuir pendant toute la campagne du 82.
+C7=$(chemin_de_sortie erreur_sql_seule 'esc_decor_abandonner || exit 1' sans-exit)
+
+CYCLE_KO=0
+for cas in succes erreur_sql erreur_shell interruption teardown_ko \
+           interruption_seule erreur_sql_seule; do
+  n=$(wc -l <"$TEMOINS_DIR/$cas" 2>/dev/null || echo 0)
+  if [[ "$n" == "0" ]]; then
+    echoue "17. chemin « $cas »: le teardown ne s'est PAS execute."
+    CYCLE_KO=1
+  elif [[ "$n" != "1" ]]; then
+    # L'idempotence compte autant que l'execution: un teardown joue deux fois
+    # rapporterait des echecs de nettoyage imaginaires au second passage.
+    echoue "17. chemin « $cas »: teardown execute $n fois, attendu 1."
+    CYCLE_KO=1
+  fi
+  # « SIGNALE, JAMAIS AVALE » A UN REVERS: pas de plainte imaginaire non plus.
+  # Mesure: en cassant l'idempotence, le second passage appelait une fonction
+  # de teardown vidée et rapportait un echec de nettoyage qui n'existait pas.
+  # Le temoin restait a 1 et le controle ne voyait rien.
+  # `grep -c` IMPRIME DEJA « 0 » ET REND 1 quand il ne trouve rien: le
+  # `|| echo 0` reflexe produisait « 0\n0 » et le controle se declarait rouge
+  # sur sa propre mesure. Mesure faite en ecrivant ces lignes.
+  plaintes=$(grep -c "ECHEC NETTOYAGE" "$TEMOINS_DIR/$cas.err" 2>/dev/null || true)
+  [[ -n "$plaintes" ]] || plaintes=0
+  attendu=0; [[ "$cas" == "teardown_ko" ]] && attendu=1
+  if [[ "$plaintes" != "$attendu" ]]; then
+    echoue "17. chemin « $cas »: $plaintes plainte(s) « ECHEC NETTOYAGE »,"
+    echoue "    attendu $attendu."
+    CYCLE_KO=1
+  fi
+done
+# Les codes de sortie sont eux aussi le contrat: un refus qui rendrait 0
+# laisserait le harnais croire que le decor est pose.
+[[ "$C1" == "0"   ]] || { echoue "17. succes rend $C1, attendu 0"; CYCLE_KO=1; }
+[[ "$C2" == "1"   ]] || { echoue "17. erreur SQL rend $C2, attendu 1"; CYCLE_KO=1; }
+[[ "$C3" == "127" ]] || { echoue "17. erreur shell rend $C3, attendu 127"; CYCLE_KO=1; }
+[[ "$C4" == "143" ]] || { echoue "17. interruption rend $C4, attendu 143 (TERM)"; CYCLE_KO=1; }
+[[ "$C5" == "0"   ]] || { echoue "17. teardown en echec rend $C5, attendu 0 (signale, pas avale)"; CYCLE_KO=1; }
+[[ "$C6" == "143" ]] || { echoue "17. interruption sans piege EXIT rend $C6, attendu 143"; CYCLE_KO=1; }
+[[ "$C7" == "1"   ]] || { echoue "17. refus sans piege EXIT rend $C7, attendu 1"; CYCLE_KO=1; }
+(( CYCLE_KO )) || echo "      ok: 17. sept chemins de sortie, sept teardowns, un chacun"
+rm -rf "$TEMOINS_DIR"
+
+# --------------------------------------------------------------------------
+# 19. L'INSTRUMENT LUI-MEME — dix facons de mentir, dix refus
+# --------------------------------------------------------------------------
+# CE QUE CE CONTROLE EXISTE POUR EMPECHER. Quatre fautes d'instrument ont
+# produit dans ce jalon des conclusions FAUSSES sur le produit — pas des tests
+# rouges a tort, des tests VERTS a tort, ce qui est pire. Elles sont toutes
+# reproduites ici, en petit, et l'instrument doit les refuser.
+INST_BASE="esc_instr_$(harnais_jeton)"
+INST_KO=0
+inst_verdict() {   # inst_verdict <numero> <libelle> <ok|diagnostic>
+  if [[ "$3" == "ok" ]]; then
+    echo "      ok: 19.$1 $2"
+  else
+    echoue "19.$1 $2 — obtenu: $3"; INST_KO=1
+  fi
+}
+if ! psql -X -q -d postgres -v ON_ERROR_STOP=1 \
+       -c "create database \"$INST_BASE\"" >/dev/null 2>&1; then
+  echoue "19. la base de l'auto-test d'instrument n'a pas pu etre creee."
+  INST_KO=1
+else
+  registre_base "$INST_BASE"
+  inst() { psql -X -q -d "$INST_BASE" "$@"; }
+  inst -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<'SQL19'
+create table t19 (id int);
+create function f19() returns trigger language plpgsql as $$ begin return new; end $$;
+SQL19
+
+  # 19.1 DDL SYNTAXIQUEMENT INVALIDE -> rouge. Forme EXACTE de la faute
+  #      mesuree: « create trigger <nom> ON <table> BEFORE ... », refusee par
+  #      PostgreSQL et jusqu'ici envoyee vers /dev/null.
+  if esc_sql inst "19.1 DDL invalide" >/dev/null 2>&1 <<'SQL19'
+create trigger tr19 on t19 before insert for each row execute function f19();
+SQL19
+  then inst_verdict 1 "une DDL invalide fait rougir" "esc_sql a rendu 0"
+  else inst_verdict 1 "une DDL invalide fait rougir" ok; fi
+
+  # 19.2 DECLENCHEUR ABSENT -> constate AVANT le scenario, par le CATALOGUE.
+  if esc_catalogue_exige inst "19.2 declencheur" \
+       "select count(*) from pg_trigger where tgname='tr19' and not tgisinternal" 1 \
+       >/dev/null 2>&1
+  then inst_verdict 2 "un declencheur absent est constate" "la postcondition a passe"
+  else inst_verdict 2 "un declencheur absent est constate" ok; fi
+
+  # 19.3 ERREUR SQL SUIVIE D'UN SELECT REUSSI -> le lot reste rouge. Sans
+  #      ON_ERROR_STOP, psql poursuit et la derniere ligne dit « tout va bien ».
+  if esc_sql inst "19.3 erreur puis succes" >/dev/null 2>&1 <<'SQL19'
+select 1 / 0;
+select 'tout va bien';
+SQL19
+  then inst_verdict 3 "une erreur suivie d'un succes reste rouge" "esc_sql a rendu 0"
+  else inst_verdict 3 "une erreur suivie d'un succes reste rouge" ok; fi
+
+  # 19.4 PIPELINE MASQUANT UN CODE NON NUL.
+  INST_P=0; ( set -o pipefail; false | tail -1 ) >/dev/null 2>&1 || INST_P=$?
+  if (( INST_P != 0 )); then inst_verdict 4 "un pipeline ne masque pas le code amont" ok
+  else inst_verdict 4 "un pipeline ne masque pas le code amont" "pipefail inoperant"; fi
+
+  # 19.5 HEREDOC A SUBSTITUTION -> aucune execution shell dans un flux SQL.
+  #      Mesure: « -- voir `whoami` » fait parvenir « -- voir root » a psql.
+  #      LE VERDICT VIENT DU CODE DE RETOUR, PAS DE LA PROSE. Ce site lisait
+  #      « sortie vide = conforme ». Le scanner imprime desormais une ligne de
+  #      succes — et cette ligne aurait rendu 19.5 ROUGE alors que le scanner
+  #      etait VERT. C'est la faute que le canal machine a corrigee ailleurs:
+  #      la prose est pour l'humain, le code de retour porte le verdict.
+  INST_HD_RC=0
+  INST_HD="$(python3 "$HERE/verifier_heredocs.py" "$HERE" 2>&1)" || INST_HD_RC=$?
+  #      19.5 INSPECTE LE CORPUS; 19.9 FALSIFIE L'INSTRUMENT. Les deux emettent
+  #      sur le canal parce que leur DIVERGENCE est la preuve recherchee: un
+  #      scanner aveugle laisse 19.5 vert — le corpus est propre, il n'y a rien
+  #      a y voir — pendant que 19.9 rougit. Sans les deux traces, on ne
+  #      pourrait pas montrer que le controle du corpus ne remplace pas le
+  #      controle de l'instrument.
+  if (( INST_HD_RC == 0 )); then
+    inst_verdict 5 "aucune composition SQL dangereuse dans les harnais" ok
+    esc_evt "19.5" SUR runtime nature=corpus_propre \
+      detail="le balayage du corpus reel ne trouve rien"
+  else
+    inst_verdict 5 "aucune composition SQL dangereuse dans les harnais" \
+      "rc=$INST_HD_RC $(tr '\n' ' ' <<<"$INST_HD")"
+    esc_evt "19.5" ROUGE runtime nature=corpus_fautif \
+      detail="rc=$INST_HD_RC"
+  fi
+
+  # 19.6 SORTIE MULTIOCTET -> capturee sans dommage, identifiant preserve.
+  if esc_sql inst "19.6 multioctet" >/dev/null 2>&1 <<'SQL19'
+do $$ begin raise exception 'AUTHORITY_ESSAI_UNICODE: — tirets et accents crees'; end $$;
+SQL19
+  then inst_verdict 6 "une sortie multioctet ne passe pas pour un succes" "code 0"
+  elif printf '%s' "$ESC_SQL_SORTIE" \
+       | python3 -c 'import sys; sys.stdin.buffer.read().decode("utf-8")' 2>/dev/null; then
+    inst_verdict 6 "une sortie multioctet est capturee sans dommage" ok
+  else
+    inst_verdict 6 "une sortie multioctet est capturee sans dommage" "octets invalides"
+  fi
+
+  # 19.7 OBJET CREE SOUS UN MAUVAIS SCHEMA -> refus par le catalogue.
+  inst -q -c "create schema s19" >/dev/null 2>&1
+  inst -q -c "create table s19.t19bis (id int)" >/dev/null 2>&1
+  if esc_catalogue_exige inst "19.7 schema" \
+       "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
+         where c.relname='t19bis' and n.nspname='public'" 1 >/dev/null 2>&1
+  then inst_verdict 7 "un objet cree sous un mauvais schema est refuse" "la postcondition a passe"
+  else inst_verdict 7 "un objet cree sous un mauvais schema est refuse" ok; fi
+
+  # 19.8 NON-VACUITE: un effet observable IMPOSSIBLE doit etre detecte.
+  #      « return old » depuis un BEFORE UPDATE annule l'ecriture: « la ligne
+  #      n'a pas change » devient vrai quoi que la garde decide.
+  inst -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<'SQL19'
+create table t19b (id int primary key, val int);
+insert into t19b values (1, 1);
+create function f19b() returns trigger language plpgsql as $$ begin return old; end $$;
+create trigger tr19b before update on t19b for each row execute function f19b();
+SQL19
+  inst -q -c "update t19b set val = 42" >/dev/null 2>&1
+  INST_VAL="$(inst -tAc "select val from t19b" 2>/dev/null)"
+  if [[ "$INST_VAL" == "1" ]]; then
+    inst_verdict 8 "un effet observable impossible est detecte (return old)" ok
+  else
+    inst_verdict 8 "un effet observable impossible est detecte (return old)" \
+      "la valeur a change ($INST_VAL): le piege ne se reproduit pas"
+  fi
+
+  # 19.9 LE SCANNER DE COMPOSITION SQL VOIT-IL ENCORE ?
+  #
+  # 19.5 fait tourner le scanner sur le CORPUS REEL — et le corpus est propre.
+  # Un scanner affaibli y rendrait donc ZERO, et 19.5 resterait VERT. C'est
+  # exactement la faute qui a produit les onze survivants de `3d0acc2`:
+  # prouver une garantie avec l'exemple qu'elle couvre deja. Seuls des cas
+  # FABRIQUES distinguent un scanner qui voit d'un scanner devenu aveugle,
+  # et c'est ce que `scanner_selftest.py` fabrique.
+  #      UN `rc == 0` NE SUFFIT PAS, ET C'EST LE POINT.
+  #      Un selftest ampute — decor fabrique non cree, boucle videe — rendrait
+  #      ZERO et passerait pour vert. On exige donc le COMPTE de cas
+  #      reellement parcourus, publie par le selftest lui-meme. Un decor qui
+  #      n'a pas ete parcouru ne peut pas conclure.
+  INST_SC_CAS_ATTENDUS=12
+  INST_SC_RC=0
+  INST_SC="$(python3 "$HERE/scanner_selftest.py" 2>&1)" || INST_SC_RC=$?
+  INST_SC_N="$(sed -n 's/^SCANNER_SELFTEST_CAS=\([0-9]\{1,\}\)$/\1/p' <<<"$INST_SC" | tail -1)"
+  INST_SC_N="${INST_SC_N:-0}"
+  if (( INST_SC_RC == 0 )) && (( INST_SC_N >= INST_SC_CAS_ATTENDUS )); then
+    inst_verdict 9 "le scanner de composition SQL voit ses cas fabriques" ok
+    esc_evt "19.9" SUR runtime nature=scanner_selftest \
+      detail="$INST_SC_N cas fabriques parcourus"
+  else
+    if (( INST_SC_RC == 0 )); then
+      INST_SC_MOTIF="decor fabrique non parcouru: $INST_SC_N cas sur $INST_SC_CAS_ATTENDUS"
+    else
+      INST_SC_MOTIF="rc=$INST_SC_RC $(tr '\n' ' ' <<<"$INST_SC")"
+    fi
+    inst_verdict 9 "le scanner de composition SQL voit ses cas fabriques" \
+      "$INST_SC_MOTIF"
+    esc_evt "19.9" ROUGE runtime nature=scanner_aveugle \
+      detail="$INST_SC_MOTIF"
+  fi
+
+  # 19.10 L'AUTO-TEST DU CANAL NE LAISSE RIEN DERRIERE LUI.
+  #
+  # Mesure du 29/08, `TMPDIR` neuf: 108 fichiers `.jsonl` par execution — 27
+  # par le chemin normal, 81 par les trois sous-processus des preuves
+  # negatives. Un harnais qui salit son `TMPDIR` finit par masquer les
+  # residus qui comptent: bases, roles, verrous.
+  #
+  # Le controle eprouve le chemin normal ET l'erreur controlee — c'est ce
+  # second cas qui compte, un nettoyage place a la fin du chemin heureux ne
+  # s'executant pas quand un cas leve.
+  INST_PR_RC=0
+  INST_PR="$(python3 "$HERE/canal_proprete.py" 2>&1)" || INST_PR_RC=$?
+  if (( INST_PR_RC == 0 )); then
+    inst_verdict 10 "l'auto-test du canal ne laisse aucun fichier temporaire" ok
+    esc_evt "19.10" SUR runtime nature=canal_propre \
+      detail="chemin normal et erreur controlee: TMPDIR vide"
+  else
+    inst_verdict 10 "l'auto-test du canal ne laisse aucun fichier temporaire" \
+      "rc=$INST_PR_RC $(tr '\n' ' ' <<<"$INST_PR")"
+    esc_evt "19.10" ROUGE runtime nature=canal_salissant \
+      detail="rc=$INST_PR_RC"
+  fi
+
+  psql -X -q -d postgres -c "drop database if exists \"$INST_BASE\"" >/dev/null 2>&1
+fi
+(( INST_KO )) || echo "      ok: 19. l'instrument refuse les dix facons de mentir"
 
 echo ""
 if [[ $KO -eq 0 ]]; then

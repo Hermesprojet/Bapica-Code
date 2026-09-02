@@ -11,18 +11,25 @@ never downgraded into a partial result.
 
 from __future__ import annotations
 
+import math
 from datetime import date
 from typing import Any
 
 from .basis import DesignSituation
-from .drawing.beam_section import BarRow, BeamSectionSpec, build_beam_section
-from .ec2.beam_flexure import RectangularSection, design_flexure
+from .drawing.beam_section import BarRow, BeamSectionSpec, rendre_dxf
+from .drawing.modele import ModeleSection, construire_modele
+from .ec2.beam_flexure import (
+    RectangularSection,
+    design_flexure,
+    required_parameters,
+)
 from .exceptions import (
     DeprecatedNationalParameter,
     EurostructEngineError,
     InconsistentInput,
     NationalAnnexIncomplete,
     OutOfValidationDomain,
+    ReinforcementNotVerified,
     UnitError,
     UnverifiedNationalParameter,
 )
@@ -36,16 +43,26 @@ from .schemas.common import (
     QuantityDTO,
 )
 from .schemas.ec2_beam import (
+    BarRowDTO,
+    BeamSectionDrawingRequest,
     Ec2BeamFlexureRequest,
     Ec2BeamFlexureResponse,
     Ec2BeamFlexureResult,
+    Ec2BeamSectionRequest,
     RebarScheduleRowDTO,
 )
-from .schemas.ec2_beam import BeamSectionDrawingRequest
 from .traceability import Provenance, ProvenanceKind
 from .units import Q_, Quantity
 
-__all__ = ["run_ec2_beam_flexure", "render_beam_section", "error_of", "to_quantity", "of_quantity"]
+__all__ = [
+    "error_of",
+    "of_quantity",
+    "provided_area",
+    "render_beam_section",
+    "run_ec2_beam_flexure",
+    "to_quantity",
+    "verify_and_render_beam_section",
+]
 
 
 def to_quantity(dto: QuantityDTO) -> Quantity:
@@ -71,8 +88,27 @@ def _provenance(dto: ProvenanceDTO) -> Provenance:
     )
 
 
-def run_ec2_beam_flexure(req: Ec2BeamFlexureRequest) -> Ec2BeamFlexureResponse:
+def run_ec2_beam_flexure(
+    req: Ec2BeamFlexureRequest,
+    *,
+    provider: Any = None,
+) -> Ec2BeamFlexureResponse:
     """Execute the ULS bending verification described by *req*.
+
+    LE PORTILLON DU MODE STRICT PASSE PAR LE CHEMIN D'AUTORITE
+    -----------------------------------------------------------
+    ``provider`` est la source des confirmations. Quand il est fourni, chaque
+    paramètre national requis est confronté aux attestations qui le visent —
+    :func:`~eurostruct_engine.ndp.passerelle.confirmer_depuis_le_provider`
+    appelle ``assess_confirmations``, et **seuls** les paramètres dont deux
+    ingénieurs indépendants ont confirmé le sujet exact deviennent utilisables.
+
+    Sans provider, aucune confirmation n'est connue : le mode strict refuse,
+    ce qui est l'état de ce référentiel aujourd'hui. C'est un défaut
+    **fail-closed** — l'absence de source ne débloque rien.
+
+    Le moteur n'importe toujours aucun pilote de base : ``provider`` est un
+    protocole, et le seul appel qu'on lui fait est de lire.
 
     :raises EurostructEngineError: on any refusal; the caller converts it with
         :func:`error_of`.
@@ -83,6 +119,17 @@ def run_ec2_beam_flexure(req: Ec2BeamFlexureRequest) -> Ec2BeamFlexureResponse:
         strict=req.strict_ndp,
         as_of=date.fromisoformat(req.as_of) if req.as_of else None,
     )
+
+    if provider is not None and req.strict_ndp:
+        from .ndp.passerelle import confirmer_depuis_le_provider
+
+        # LES CLES DEMANDEES, ET AUCUNE AUTRE. Confirmer large « pendant qu'on
+        # y est » ouvrirait des parametres que ce calcul n'utilise pas, sur la
+        # foi d'un dossier que personne n'a demande a voir.
+        params, _ = confirmer_depuis_le_provider(
+            params, tuple(required_parameters(DesignSituation(req.situation.value))),
+            provider=provider,
+        )
 
     design = design_flexure(
         section=RectangularSection(
@@ -126,10 +173,15 @@ def run_ec2_beam_flexure(req: Ec2BeamFlexureRequest) -> Ec2BeamFlexureResponse:
     )
 
 
-def render_beam_section(
+def model_beam_section(
     req: BeamSectionDrawingRequest,
-) -> tuple[Any, list[RebarScheduleRowDTO]]:
-    """Build the DXF document and the rebar schedule for a cross-section."""
+) -> tuple[ModeleSection, list[RebarScheduleRowDTO]]:
+    """Build the frozen geometric model and the rebar schedule.
+
+    LE POINT D'ENTREE UNIQUE DE LA GEOMETRIE. Le DXF et l'apercu SVG partent
+    tous deux d'ici: ils recoivent le meme objet, ce qui rend impossible qu'ils
+    decrivent deux poutres differentes.
+    """
     spec = BeamSectionSpec(
         b=req.b,
         h=req.h,
@@ -153,9 +205,109 @@ def render_beam_section(
         exposure_class=req.exposure_class,
         index=req.index,
         date=req.date,
+        mention=req.mention,
     )
-    doc, schedule = build_beam_section(spec)
-    return doc, [RebarScheduleRowDTO.model_validate(r.to_dict()) for r in schedule]
+    modele = construire_modele(spec)
+    return modele, [RebarScheduleRowDTO.model_validate(r.to_dict())
+                    for r in modele.nomenclature]
+
+
+def render_beam_section(
+    req: BeamSectionDrawingRequest,
+) -> tuple[Any, list[RebarScheduleRowDTO]]:
+    """Build the DXF document and the rebar schedule for a cross-section."""
+    modele, schedule = model_beam_section(req)
+    return rendre_dxf(modele), schedule
+
+
+def provided_area(rows: list[BarRowDTO]) -> Quantity:
+    """The steel area of *rows*. Computed **here**, never received.
+
+    Geometry, not engineering — but it must not be left to a client. An area
+    supplied alongside the bars can disagree with them, and the verification
+    would then pass on a number that no bar in the drawing has. Deriving it
+    from the bars makes that disagreement unrepresentable.
+    """
+    total = sum(r.count * math.pi * (r.diameter / 2.0) ** 2 for r in rows)
+    return Q_(total, "mm**2")
+
+
+def verify_and_model_beam_section(
+    req: Ec2BeamSectionRequest,
+    provider: Any = None,
+) -> tuple[ModeleSection, list[RebarScheduleRowDTO], Ec2BeamFlexureResponse]:
+    """Verify the chosen bars, then build the geometric model. Never one
+    without the other.
+
+    The drawing is built from ``req.calculation.section`` — the very geometry
+    the verification just ran on — so the plan cannot describe a beam that was
+    never checked. That is the whole point of taking one request rather than
+    two: a caller cannot hold two geometries and send the wrong one.
+
+    :raises ReinforcementNotVerified: when the section as detailed fails a
+        check. No document is produced.
+    """
+    aire = provided_area(req.reinforcement.bottom)
+    calcul = req.calculation.model_copy(
+        update={"A_s_provided": of_quantity(aire, "mm**2")}
+    )
+    # LE PROVIDER VOYAGE JUSQU'ICI, ET IL LE FAUT. La verification du
+    # ferraillage rejoue le calcul: sans source de confirmation, le mode
+    # strict refuse — ce qui est le bon comportement, mais rendrait tout
+    # dessin impossible sur un calcul strict pourtant abouti.
+    reponse = run_ec2_beam_flexure(calcul, provider=provider)
+
+    rapport = reponse.verification
+    if not rapport.passed:
+        rates = tuple(c.name for c in rapport.checks if c.status.value != "pass")
+        raise ReinforcementNotVerified(
+            "le ferraillage choisi ne verifie pas la section: "
+            f"{', '.join(rates) or 'un controle'} — utilisation "
+            f"{rapport.max_utilisation:.3f}. Aucun plan n'est produit: un "
+            "dessin qui echoue a sa propre verification a l'air d'un dessin "
+            "valide entre les mains de celui qui l'ouvre. Acier mis en oeuvre "
+            f"{aire.magnitude:.0f} mm², requis "
+            f"{reponse.result.As_required.value:.0f} mm².",
+            utilisation=rapport.max_utilisation,
+            failing=rates,
+        )
+
+    dessin = BeamSectionDrawingRequest(
+        project=req.calculation.project_id,
+        element=req.calculation.element,
+        b=req.calculation.section.b.value,
+        h=req.calculation.section.h.value,
+        cover=req.reinforcement.cover,
+        link_diameter=req.reinforcement.link_diameter,
+        bottom=list(req.reinforcement.bottom),
+        top=list(req.reinforcement.top),
+        link_spacing=req.reinforcement.link_spacing,
+        link_mark=req.reinforcement.link_mark,
+        plot_scale=req.plot_scale,
+        concrete_grade=req.calculation.materials.concrete_grade,
+        steel_grade=req.calculation.materials.steel_grade,
+        exposure_class=req.exposure_class,
+        index=req.index,
+        date=req.date,
+        mention=req.mention,
+    )
+    modele, schedule = model_beam_section(dessin)
+    return modele, schedule, reponse
+
+
+def verify_and_render_beam_section(
+    req: Ec2BeamSectionRequest,
+    provider: Any = None,
+) -> tuple[Any, list[RebarScheduleRowDTO], Ec2BeamFlexureResponse]:
+    """Le meme geste que ci-dessus, rendu en DXF.
+
+    L'APERCU ET LE FICHIER PARTENT DU MEME MODELE. Cette fonction et celle qui
+    produit le SVG appellent toutes deux :func:`verify_and_model_beam_section`;
+    aucune des deux ne recalcule une coordonnee. C'est la seule facon d'etre
+    sur que l'ingenieur telecharge la poutre qu'il a regardee.
+    """
+    modele, schedule, reponse = verify_and_model_beam_section(req, provider=provider)
+    return rendre_dxf(modele), schedule, reponse
 
 
 def error_of(exc: EurostructEngineError) -> EngineErrorDTO:
@@ -186,6 +338,14 @@ def error_of(exc: EurostructEngineError) -> EngineErrorDTO:
     if isinstance(exc, DeprecatedNationalParameter):
         return EngineErrorDTO(
             error="deprecated_national_parameter", what=exc.key, detail=str(exc)
+        )
+    if isinstance(exc, ReinforcementNotVerified):
+        # Un verdict d'ingenierie, pas une entree malformee: le dessin est
+        # refuse parce que la section ne verifie pas, et le refus le dit.
+        return EngineErrorDTO(
+            error="reinforcement_not_verified",
+            what=f"utilisation {exc.utilisation:.3f}",
+            detail=exc.detail,
         )
     if isinstance(exc, UnitError):
         return EngineErrorDTO(error="unit_error", what="unit", detail=str(exc))

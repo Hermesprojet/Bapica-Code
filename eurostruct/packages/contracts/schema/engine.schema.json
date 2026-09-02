@@ -1,5 +1,470 @@
 {
   "$defs": {
+    "AdhesionModifiee": {
+      "additionalProperties": false,
+      "description": "La confirmation d'une modification, relue depuis la base.",
+      "properties": {
+        "is_active": {
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "role",
+        "is_active"
+      ],
+      "title": "AdhesionModifiee",
+      "type": "object"
+    },
+    "AttestationDemande": {
+      "additionalProperties": false,
+      "description": "Ce que le validateur écrit, et **rien d'autre**.\n\nNI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION. Les trois sortent de\n``organization_members`` sous l'identité du jeton. Les accepter ici\ndonnerait l'illusion qu'ils comptent, alors que PostgreSQL les écrase de\ntoute façon — et l'illusion est pire que l'absence, parce qu'un écran\nfinirait par les afficher.\n\nNI IDENTIFIANT DE CALCUL, NI EMPREINTE. L'attestation porte sur le calcul\ndu livrable et sur les octets réellement enregistrés ; les faire venir du\ncorps laisserait attester un calcul et en signer un autre.",
+      "properties": {
+        "reservations": {
+          "anyOf": [
+            {
+              "maxLength": 8000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Réserves émises par le validateur. Elles font partie de l'attestation et sont conservées avec elle.",
+          "title": "Reservations"
+        },
+        "statement": {
+          "description": "Ce que le validateur atteste, dans ses termes. Repris tel quel dans la ligne de validation, horodaté et figé.",
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "statement"
+      ],
+      "title": "AttestationDemande",
+      "type": "object"
+    },
+    "AuthorityDecisionConsumed": {
+      "additionalProperties": false,
+      "description": "The decision was spent. Exactly once: a replay is refused.",
+      "properties": {
+        "consumed": {
+          "title": "Consumed",
+          "type": "boolean"
+        },
+        "decision_id": {
+          "title": "Decision Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_id",
+        "consumed"
+      ],
+      "title": "AuthorityDecisionConsumed",
+      "type": "object"
+    },
+    "AuthorityDecisionCreated": {
+      "additionalProperties": false,
+      "description": "A decision now exists, and it is PENDING. Nothing is confirmed yet.",
+      "properties": {
+        "decision_id": {
+          "title": "Decision Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_id"
+      ],
+      "title": "AuthorityDecisionCreated",
+      "type": "object"
+    },
+    "AuthorityDecisionRequest": {
+      "additionalProperties": false,
+      "description": "What the decision is about. Never who proposes it.",
+      "properties": {
+        "country_code": {
+          "description": "ISO 3166-1 alpha-2 code of the national annex concerned.",
+          "examples": [
+            "BE"
+          ],
+          "maxLength": 2,
+          "minLength": 2,
+          "title": "Country Code",
+          "type": "string"
+        },
+        "edition": {
+          "description": "Edition of the standard the decision is scoped to.",
+          "examples": [
+            "2004"
+          ],
+          "title": "Edition",
+          "type": "string"
+        },
+        "org_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tenant scope, or null for a referential-wide decision.",
+          "title": "Org Id"
+        },
+        "part": {
+          "examples": [
+            "1-1"
+          ],
+          "title": "Part",
+          "type": "string"
+        },
+        "permission": {
+          "examples": [
+            "can_validate_normative_reference"
+          ],
+          "title": "Permission",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Human-readable motive. A datum, never a proof.",
+          "title": "Reason",
+          "type": "string"
+        },
+        "review_package": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthorityReviewPackage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The dossier presented to both engineers. Required when subject_kind is 'ndp_parameter': without it the decision could be approved and consumed without producing any normative effect."
+        },
+        "standard_family": {
+          "examples": [
+            "EN 1992"
+          ],
+          "title": "Standard Family",
+          "type": "string"
+        },
+        "subject_id": {
+          "description": "Identifier of the subject the decision bears on.",
+          "examples": [
+            "EN 1992-1-1:alpha_cc"
+          ],
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "subject_kind": {
+          "description": "Nature of the subject, e.g. 'ndp_parameter'.",
+          "examples": [
+            "ndp_parameter"
+          ],
+          "title": "Subject Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject_kind",
+        "subject_id",
+        "country_code",
+        "standard_family",
+        "part",
+        "edition",
+        "permission",
+        "reason"
+      ],
+      "title": "AuthorityDecisionRequest",
+      "type": "object"
+    },
+    "AuthorityDecisionReview": {
+      "additionalProperties": false,
+      "description": "A frozen decision, read back so the SECOND engineer can judge it.\n\nNO ACTOR IS RETURNED. B does not need to know who proposed in order to\njudge what was proposed, and PostgreSQL refuses a self-approval by table\nconstraint rather than by the caller's prudence. Returning proposer and\napprover would turn a dossier read into a directory of licensed engineers.",
+      "properties": {
+        "country_code": {
+          "title": "Country Code",
+          "type": "string"
+        },
+        "decision_id": {
+          "title": "Decision Id",
+          "type": "string"
+        },
+        "digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Recomputed by the server from the frozen payloads.",
+          "title": "Digests",
+          "type": "object"
+        },
+        "edition": {
+          "title": "Edition",
+          "type": "string"
+        },
+        "org_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Org Id"
+        },
+        "package": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthorityReviewPackage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The frozen dossier. Null only for a non-NDP subject."
+        },
+        "part": {
+          "title": "Part",
+          "type": "string"
+        },
+        "permission": {
+          "title": "Permission",
+          "type": "string"
+        },
+        "proposed_at": {
+          "title": "Proposed At",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "standard_family": {
+          "title": "Standard Family",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "subject_id": {
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "subject_kind": {
+          "title": "Subject Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_id",
+        "state",
+        "subject_kind",
+        "subject_id",
+        "org_id",
+        "country_code",
+        "standard_family",
+        "part",
+        "edition",
+        "permission",
+        "reason",
+        "proposed_at"
+      ],
+      "title": "AuthorityDecisionReview",
+      "type": "object"
+    },
+    "AuthorityReviewCitation": {
+      "additionalProperties": false,
+      "description": "What a named engineer transcribed from the published document.\n\nTHE SERVER CANNOT PRODUCE THIS. Everything else in a dossier is derived\nfrom the registry — value, unit, provenance, annex reference, edition,\nclause, document digest. The quote is the one thing that only exists\nbecause somebody opened the annex at that page and read it. Inventing it\nwould empty the four-eyes rule of its object.",
+      "properties": {
+        "document_digest": {
+          "description": "Which required document this quote covers.",
+          "title": "Document Digest",
+          "type": "string"
+        },
+        "page_pdf": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "PDF page number, when it differs.",
+          "title": "Page Pdf"
+        },
+        "page_printed": {
+          "description": "Printed folio, as it appears on the page itself.",
+          "minimum": 1,
+          "title": "Page Printed",
+          "type": "integer"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_digest",
+        "quote",
+        "page_printed"
+      ],
+      "title": "AuthorityReviewCitation",
+      "type": "object"
+    },
+    "AuthorityReviewDossier": {
+      "additionalProperties": false,
+      "description": "The composed dossier: what to propose, what to show, nothing invented.\n\n``package`` is what goes back on the wire at proposal time. ``digests``\nand ``summary`` are for the screen — the browser displays them, it does\nnot compute them and has no way to.",
+      "properties": {
+        "digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Digests",
+          "type": "object"
+        },
+        "package": {
+          "$ref": "#/$defs/AuthorityReviewPackage"
+        },
+        "summary": {
+          "additionalProperties": true,
+          "title": "Summary",
+          "type": "object"
+        }
+      },
+      "required": [
+        "package",
+        "digests",
+        "summary"
+      ],
+      "title": "AuthorityReviewDossier",
+      "type": "object"
+    },
+    "AuthorityReviewDraftRequest": {
+      "additionalProperties": false,
+      "description": "Ask the server to compose the dossier of one registry parameter.\n\nTHE CLIENT SUPPLIES PROOF, NEVER SPECIFICATION. It names the parameter and\nhands over the human material — what a person read, where, and what they\ncertify. Everything normative is derived server-side:\n\n* the value, unit, provenance, annex, edition, clause and document digest\n  come from the registry;\n* what the clause *does* is a function of those registry fields;\n* the implementation fingerprint is a function of the declared code path\n  that reads and applies the rule, plus the engine version.\n\n``implementation_note`` AND ``effect`` USED TO BE FIELDS HERE, and both\nfed a canonical payload. Two people describing the same clause differently\ntherefore signed two different subjects, and the code could change under a\nconfirmation without invalidating it. ``Strict`` forbids extra fields, so\na client still sending them now gets a 422 rather than a silent effect.",
+      "properties": {
+        "citations": {
+          "description": "One per document the specification declares.",
+          "items": {
+            "$ref": "#/$defs/AuthorityReviewCitation"
+          },
+          "minItems": 1,
+          "title": "Citations",
+          "type": "array"
+        },
+        "country_code": {
+          "examples": [
+            "BE"
+          ],
+          "maxLength": 2,
+          "minLength": 2,
+          "title": "Country Code",
+          "type": "string"
+        },
+        "rule_id": {
+          "examples": [
+            "EN 1992-1-1:alpha_cc"
+          ],
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "statement": {
+          "description": "What the two reviewers declare they read and checked.",
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "country_code",
+        "rule_id",
+        "statement",
+        "citations"
+      ],
+      "title": "AuthorityReviewDraftRequest",
+      "type": "object"
+    },
+    "AuthorityReviewPackage": {
+      "additionalProperties": false,
+      "description": "The dossier the two engineers are shown, frozen at proposal time.\n\nWHY IT TRAVELS WITH THE PROPOSAL AND NOT WITH THE APPROVAL. \"B approved\"\nmeans nothing unless the record says *what* B approved. The dossier is\nwritten once, at proposal, and PostgreSQL freezes it: A and B therefore\napprove byte-identical content, and the effect produced at consumption is\nthat content and no other.\n\nNO DIGEST IS CARRIED HERE. The server recomputes every one of them from\nthe payloads below. Accepting a digest would let a caller announce a\nfingerprint that does not summarise what is stored.",
+      "properties": {
+        "canonicalization_version": {
+          "examples": [
+            "esc-canon/1"
+          ],
+          "title": "Canonicalization Version",
+          "type": "string"
+        },
+        "digest_algorithm": {
+          "examples": [
+            "sha256"
+          ],
+          "title": "Digest Algorithm",
+          "type": "string"
+        },
+        "evidence_payload": {
+          "title": "Evidence Payload",
+          "type": "string"
+        },
+        "implementation_payload": {
+          "title": "Implementation Payload",
+          "type": "string"
+        },
+        "normative_spec_payload": {
+          "title": "Normative Spec Payload",
+          "type": "string"
+        },
+        "rule_id": {
+          "description": "Exact parameter identifier, e.g. 'EN 1992-1-1:alpha_cc'.",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "stack_payload": {
+          "title": "Stack Payload",
+          "type": "string"
+        },
+        "statement": {
+          "description": "What the reviewers declare they read and checked.",
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "statement",
+        "digest_algorithm",
+        "canonicalization_version",
+        "normative_spec_payload",
+        "implementation_payload",
+        "evidence_payload",
+        "stack_payload"
+      ],
+      "title": "AuthorityReviewPackage",
+      "type": "object"
+    },
     "BarRowDTO": {
       "additionalProperties": false,
       "properties": {
@@ -40,9 +505,36 @@
       "title": "BarRowDTO",
       "type": "object"
     },
+    "BeamGeometryDTO": {
+      "additionalProperties": false,
+      "description": "La section et la portée, une seule fois pour les cinq modules.",
+      "properties": {
+        "b": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "d": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "h": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "l_eff": {
+          "$ref": "#/$defs/QuantityDTO",
+          "description": "Portée utile, §5.3.2.2. Elle sert à la dispense du calcul de flèche."
+        }
+      },
+      "required": [
+        "b",
+        "h",
+        "d",
+        "l_eff"
+      ],
+      "title": "BeamGeometryDTO",
+      "type": "object"
+    },
     "BeamSectionDrawingRequest": {
       "additionalProperties": false,
-      "description": "Input of the DXF cross-section generator.",
+      "description": "Input of the DXF cross-section generator.\n\nKept as the **drawing** contract: it knows a geometry and bars, and nothing\nabout whether they were verified. :class:`Ec2BeamSectionRequest` is what a\nclient should send; this one is what the renderer consumes once the check\nhas passed.",
       "properties": {
         "b": {
           "description": "Width, mm",
@@ -116,6 +608,12 @@
           ],
           "default": null,
           "title": "Link Spacing"
+        },
+        "mention": {
+          "default": "",
+          "description": "Mention supplementaire portee au cartouche, par exemple « PROJET — NON SIGNABLE » quand des parametres nationaux non confirmes ont pu servir. Distincte du filigrane « NON VALIDE », qui parle de la validation par un ingenieur et non du referentiel employe.",
+          "title": "Mention",
+          "type": "string"
         },
         "plot_scale": {
           "default": 20.0,
@@ -302,6 +800,290 @@
         "formatted"
       ],
       "title": "CalcStepDTO",
+      "type": "object"
+    },
+    "CalculDeProjetRequest": {
+      "additionalProperties": false,
+      "description": "Un calcul de flexion **sur un projet**. Il ne nomme aucun référentiel.\n\nCE QU'IL NE PORTE PAS, ET POURQUOI CHAQUE ABSENCE COMPTE\n---------------------------------------------------------\n``project_id``\n    Il est dans le chemin. Le laisser aussi dans le corps donnerait deux\n    sources pour une même question, et la note pourrait nommer un dossier\n    autre que celui où elle est rangée.\n\n``country``, ``region``, ``as_of``\n    Ils décident **quelle édition d'Annexe Nationale s'applique**, donc\n    quelles valeurs entrent dans les formules. Ils sont figés sur le\n    projet à sa création. Les accepter ici laissait — mesuré — un calcul\n    français aboutir sur un projet belge, avec une ligne enregistrée qui\n    se contredisait : ``request.country = FR`` et\n    ``calculations.ndp_as_of`` repris du projet.\n\n``Strict`` INTERDIT LES CHAMPS SUPPLÉMENTAIRES, si bien qu'un client qui\nenvoie encore l'un des quatre reçoit un **422** — une réponse — plutôt\nqu'un champ silencieusement ignoré. Écraser aurait marché tant qu'une\nseule route existe ; refuser dit au client que son champ n'a pas d'effet.\n\nCE QU'IL PORTE, ET QUI EST BIEN À LUI\n--------------------------------------\nLa géométrie, les matériaux, la situation de projet, le moment, le\nferraillage éventuellement retenu, la provenance des entrées, et\n``strict_ndp``. Tout cela change d'un calcul à l'autre par nature.",
+      "properties": {
+        "A_s_provided": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QuantityDTO"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aire des barres réellement disposées. Omise, la vérification porte sur l'aire strictement requise."
+        },
+        "M_Ed": {
+          "$ref": "#/$defs/QuantityDTO",
+          "description": "Moment de calcul issu de la combinaison EN 1990 déterminante. Le moteur ne construit pas les combinaisons."
+        },
+        "element": {
+          "default": "poutre",
+          "description": "Repère de l'élément, tel qu'il apparaîtra sur la note.",
+          "maxLength": 100,
+          "title": "Element",
+          "type": "string"
+        },
+        "materials": {
+          "$ref": "#/$defs/MaterialsDTO"
+        },
+        "section": {
+          "$ref": "#/$defs/RectangularSectionDTO"
+        },
+        "situation": {
+          "$ref": "#/$defs/DesignSituationDTO",
+          "default": "persistent"
+        },
+        "strict_ndp": {
+          "default": true,
+          "description": "Quand vrai, un paramètre national non confirmé provoque un refus. Exigé pour tout livrable destiné à être signé.",
+          "title": "Strict Ndp",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "section",
+        "materials",
+        "M_Ed"
+      ],
+      "title": "CalculDeProjetRequest",
+      "type": "object"
+    },
+    "CalculEnregistre": {
+      "additionalProperties": false,
+      "description": "Un calcul rouvert : les MÊMES entrées, les MÊMES résultats.\n\n``request`` est la requête exacte reçue par le moteur, pas une\nreconstruction. ``inputs_hash`` en est l'empreinte, et permet à l'écran de\ndire « ce sont bien ces entrées-là » sans faire confiance au transport.\n\n``ndp_snapshot`` est l'état du portillon normatif **au moment du calcul**. Il\nchange quand une confirmation arrive ou est révoquée ; le relire\naujourd'hui donnerait l'état d'aujourd'hui pour un calcul d'hier.",
+      "properties": {
+        "calculation_id": {
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "engine_build_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le build EXACT qui a produit ce calcul. La version seule ne désigne aucun code: plusieurs commits successifs la partagent.",
+          "title": "Engine Build Sha"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "execution_identity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Empreinte canonique de (requête, instantané NDP, moteur, build). Deux exécutions de même identité doivent rendre le même résultat. Distincte d'`inputs_hash`, qui n'empreinte que la requête.",
+          "title": "Execution Identity"
+        },
+        "inputs_hash": {
+          "description": "Empreinte de la REQUÊTE, et rien d'autre. Elle répond à « est-ce la même demande ? », pas à « obtiendra-t-on le même résultat ? » — cela dépend aussi du code et du référentiel, que porte `execution_identity`.",
+          "title": "Inputs Hash",
+          "type": "string"
+        },
+        "journal": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journal"
+        },
+        "mention": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "« PROJET — NON SIGNABLE ». Présente uniquement quand des paramètres nationaux non confirmés ont pu servir. Bien plus forte que `notice`: celle-ci dit « pas encore signé », celle-là « pas signable du tout ».",
+          "title": "Mention"
+        },
+        "ndp_as_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "La date de référence effectivement appliquée, reprise du projet.",
+          "title": "Ndp As Of"
+        },
+        "ndp_snapshot": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ndp Snapshot"
+        },
+        "notice": {
+          "description": "La mention obligatoire: ce document doit être vérifié et signé par un ingénieur habilité. Elle accompagne un calcul relu comme elle accompagne un calcul neuf.",
+          "title": "Notice",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "refusal": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refusal"
+        },
+        "request": {
+          "additionalProperties": true,
+          "title": "Request",
+          "type": "object"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "strict_ndp": {
+          "title": "Strict Ndp",
+          "type": "boolean"
+        },
+        "verifications": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Verifications",
+          "type": "array"
+        }
+      },
+      "required": [
+        "calculation_id",
+        "project_id",
+        "status",
+        "strict_ndp",
+        "engine_version",
+        "inputs_hash",
+        "request",
+        "created_at",
+        "notice"
+      ],
+      "title": "CalculEnregistre",
+      "type": "object"
+    },
+    "CalculResume": {
+      "additionalProperties": false,
+      "description": "Une ligne d'historique. Assez pour choisir, pas assez pour conclure.\n\n``max_utilisation`` est ``None`` quand le calcul n'a produit aucune\nvérification — un refus, notamment. Le rendre à ``0.0`` ferait lire\n« largement vérifié » là où rien n'a été vérifié.",
+      "properties": {
+        "calculation_id": {
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "element": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Element"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "inputs_hash": {
+          "title": "Inputs Hash",
+          "type": "string"
+        },
+        "max_utilisation": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Utilisation"
+        },
+        "status": {
+          "description": "'succeeded' ou 'refused'. Un refus reste un refus dans l'historique: il n'est ni omis, ni dégradé en échec technique.",
+          "title": "Status",
+          "type": "string"
+        },
+        "strict_ndp": {
+          "title": "Strict Ndp",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "calculation_id",
+        "status",
+        "strict_ndp",
+        "engine_version",
+        "inputs_hash",
+        "created_at"
+      ],
+      "title": "CalculResume",
       "type": "object"
     },
     "CheckDTO": {
@@ -644,6 +1426,310 @@
       "title": "Ec2BeamFlexureResult",
       "type": "object"
     },
+    "Ec2BeamSectionRequest": {
+      "additionalProperties": false,
+      "description": "Verify the chosen bars, **then** draw them — never the reverse.\n\nWHY THE CALCULATION TRAVELS WITH THE DRAWING REQUEST\n-----------------------------------------------------\nMeasured on 30/08: the interface sent a hard-coded 300 x 500 to the drawing\nendpoint whatever section had just been calculated. The engineer received a\nplan of a beam that was never verified, carrying the mandatory notice and\ntheir own element mark.\n\nNothing could catch it, because the drawing endpoint had no way to know\nwhat had been calculated: it was handed a geometry and drew it, correctly.\nSending the **verified request itself** removes the gap by construction —\nthe drawn section and the checked section are the same object, and no\ncaller can hold two of them.\n\n``A_s_provided`` is deliberately absent: it is **computed here** from the\nbars, so that no client has to, and so that none can claim an area its\nbars do not have.",
+      "properties": {
+        "calculation": {
+          "$ref": "#/$defs/Ec2BeamFlexureRequest"
+        },
+        "date": {
+          "default": "",
+          "title": "Date",
+          "type": "string"
+        },
+        "exposure_class": {
+          "default": "",
+          "title": "Exposure Class",
+          "type": "string"
+        },
+        "index": {
+          "default": "A",
+          "title": "Index",
+          "type": "string"
+        },
+        "mention": {
+          "default": "",
+          "description": "Mention supplementaire portee au cartouche du dessin.",
+          "title": "Mention",
+          "type": "string"
+        },
+        "plot_scale": {
+          "default": 20.0,
+          "exclusiveMinimum": 0,
+          "title": "Plot Scale",
+          "type": "number"
+        },
+        "reinforcement": {
+          "$ref": "#/$defs/ReinforcementChoiceDTO"
+        }
+      },
+      "required": [
+        "calculation",
+        "reinforcement"
+      ],
+      "title": "Ec2BeamSectionRequest",
+      "type": "object"
+    },
+    "Ec2BeamVerificationRequest": {
+      "additionalProperties": false,
+      "description": "Une vérification complète **sur un projet**.\n\nElle ne nomme aucun référentiel : voir le docstring du module.",
+      "properties": {
+        "M_Ed": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "M_char": {
+          "$ref": "#/$defs/QuantityDTO",
+          "description": "Moment sous combinaison caractéristique. Il majore M_qp par nature."
+        },
+        "M_qp": {
+          "$ref": "#/$defs/QuantityDTO",
+          "description": "Moment sous combinaison quasi-permanente."
+        },
+        "V_Ed": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "anchorage_available": {
+          "$ref": "#/$defs/QuantityDTO",
+          "description": "Longueur d'ancrage réellement disponible. L'ingénieur seul connaît l'about dont il dispose ; sans elle, l'ancrage serait le seul chapitre sans verdict."
+        },
+        "b_eff_over_b_w": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "B Eff Over B W"
+        },
+        "bars": {
+          "$ref": "#/$defs/LongitudinalBarsDTO"
+        },
+        "bond_condition": {
+          "default": "good",
+          "title": "Bond Condition",
+          "type": "string"
+        },
+        "cot_theta": {
+          "description": "Inclinaison des bielles retenue par l'ingénieur. Une borne nationale peut la refuser, et c'est un refus juste.",
+          "title": "Cot Theta",
+          "type": "number"
+        },
+        "cover": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "element": {
+          "default": "poutre",
+          "maxLength": 100,
+          "title": "Element",
+          "type": "string"
+        },
+        "exposure_class": {
+          "examples": [
+            "XC3"
+          ],
+          "title": "Exposure Class",
+          "type": "string"
+        },
+        "geometry": {
+          "$ref": "#/$defs/BeamGeometryDTO"
+        },
+        "links": {
+          "$ref": "#/$defs/TransverseLinksDTO"
+        },
+        "materials": {
+          "$ref": "#/$defs/VerificationMaterialsDTO"
+        },
+        "phi_creep": {
+          "description": "Coefficient de fluage φ(∞,t0), §3.1.4. Fourni par l'ingénieur, jamais deviné : il dépend du rayon moyen, de l'humidité et de l'âge au chargement.",
+          "title": "Phi Creep",
+          "type": "number"
+        },
+        "strict_ndp": {
+          "default": true,
+          "description": "Quand vrai, un paramètre national non confirmé bloque AVANT le calcul, et rien n'est enregistré.",
+          "title": "Strict Ndp",
+          "type": "boolean"
+        },
+        "structural_system": {
+          "description": "Ligne du Tableau 7.4N. Aucun défaut.",
+          "examples": [
+            "simply_supported"
+          ],
+          "title": "Structural System",
+          "type": "string"
+        },
+        "supports_brittle_partitions": {
+          "default": false,
+          "description": "Aucune géométrie ne le révèle : c'est une donnée.",
+          "title": "Supports Brittle Partitions",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "geometry",
+        "materials",
+        "M_Ed",
+        "V_Ed",
+        "M_char",
+        "M_qp",
+        "phi_creep",
+        "exposure_class",
+        "structural_system",
+        "bars",
+        "links",
+        "cot_theta",
+        "cover",
+        "anchorage_available"
+      ],
+      "title": "Ec2BeamVerificationRequest",
+      "type": "object"
+    },
+    "Ec2BeamVerificationResponse": {
+      "additionalProperties": false,
+      "description": "L'étude enregistrée, telle que le serveur la rend et la relit.",
+      "properties": {
+        "bar_spacing": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "calculation_fingerprint": {
+          "title": "Calculation Fingerprint",
+          "type": "string"
+        },
+        "calculation_id": {
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "country": {
+          "title": "Country",
+          "type": "string"
+        },
+        "element": {
+          "title": "Element",
+          "type": "string"
+        },
+        "engine_build_sha": {
+          "title": "Engine Build Sha",
+          "type": "string"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "engineering_inputs_hash": {
+          "title": "Engineering Inputs Hash",
+          "type": "string"
+        },
+        "execution_identity": {
+          "title": "Execution Identity",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "title": "Inputs",
+          "type": "object"
+        },
+        "is_exploratory": {
+          "title": "Is Exploratory",
+          "type": "boolean"
+        },
+        "max_utilisation": {
+          "title": "Max Utilisation",
+          "type": "number"
+        },
+        "may_be_finalised": {
+          "title": "May Be Finalised",
+          "type": "boolean"
+        },
+        "mention": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mention"
+        },
+        "ndp_as_of": {
+          "title": "Ndp As Of",
+          "type": "string"
+        },
+        "ndp_snapshot_id": {
+          "title": "Ndp Snapshot Id",
+          "type": "string"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        },
+        "preflight_ready": {
+          "title": "Preflight Ready",
+          "type": "boolean"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Region"
+        },
+        "requires_additional_analysis": {
+          "title": "Requires Additional Analysis",
+          "type": "boolean"
+        },
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/SectionOutcomeDTO"
+          },
+          "title": "Sections",
+          "type": "array"
+        },
+        "status": {
+          "description": "passed | failed | incomplete",
+          "title": "Status",
+          "type": "string"
+        },
+        "strict_ndp": {
+          "title": "Strict Ndp",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "calculation_id",
+        "element",
+        "status",
+        "sections",
+        "strict_ndp",
+        "country",
+        "region",
+        "ndp_as_of",
+        "preflight_ready",
+        "is_exploratory",
+        "may_be_finalised",
+        "requires_additional_analysis",
+        "engineering_inputs_hash",
+        "ndp_snapshot_id",
+        "calculation_fingerprint",
+        "engine_version",
+        "engine_build_sha",
+        "execution_identity",
+        "max_utilisation",
+        "bar_spacing",
+        "notice"
+      ],
+      "title": "Ec2BeamVerificationResponse",
+      "type": "object"
+    },
     "EngineErrorDTO": {
       "additionalProperties": false,
       "description": "A refusal. The API returns this with HTTP 422, never a partial result.",
@@ -672,7 +1758,8 @@
             "unverified_national_parameter",
             "deprecated_national_parameter",
             "inconsistent_input",
-            "unit_error"
+            "unit_error",
+            "reinforcement_not_verified"
           ],
           "title": "Error",
           "type": "string"
@@ -699,6 +1786,268 @@
         "detail"
       ],
       "title": "EngineErrorDTO",
+      "type": "object"
+    },
+    "HistoriqueCalculs": {
+      "additionalProperties": false,
+      "description": "L'historique d'un projet, du plus récent au plus ancien.",
+      "properties": {
+        "calculations": {
+          "items": {
+            "$ref": "#/$defs/CalculResume"
+          },
+          "title": "Calculations",
+          "type": "array"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "calculations"
+      ],
+      "title": "HistoriqueCalculs",
+      "type": "object"
+    },
+    "Invitation": {
+      "additionalProperties": false,
+      "description": "Une invitation, telle que le panneau d'administration la montre.\n\nNI LE SECRET NI SON EMPREINTE. Le premier n'existe plus ; la seconde\nsuffirait à reconnaître un lien intercepté ailleurs, et n'aide en rien\nl'écran.",
+      "properties": {
+        "accepted_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Accepted At"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "expires_at": {
+          "title": "Expires At",
+          "type": "string"
+        },
+        "invitation_id": {
+          "title": "Invitation Id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Professional Id"
+        },
+        "revoked_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revoked At"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "state": {
+          "description": "pending | accepted | revoked | expired. Calculé par la base, pas par l'écran : deux horloges donneraient deux réponses.",
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "invitation_id",
+        "role",
+        "label",
+        "display_name",
+        "professional_id",
+        "created_at",
+        "expires_at",
+        "accepted_at",
+        "revoked_at",
+        "state"
+      ],
+      "title": "Invitation",
+      "type": "object"
+    },
+    "InvitationAcceptee": {
+      "additionalProperties": false,
+      "description": "Ce que l'invité obtient : une organisation, et son rôle dedans.",
+      "properties": {
+        "member_role": {
+          "title": "Member Role",
+          "type": "string"
+        },
+        "organization_id": {
+          "title": "Organization Id",
+          "type": "string"
+        },
+        "organization_name": {
+          "title": "Organization Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "organization_id",
+        "organization_name",
+        "member_role"
+      ],
+      "title": "InvitationAcceptee",
+      "type": "object"
+    },
+    "InvitationCreation": {
+      "additionalProperties": false,
+      "description": "Ce qu'un owner ou un admin saisit pour accueillir quelqu'un.\n\nAUCUNE ADRESSE ÉLECTRONIQUE. Une invitation liée à une adresse ouvre\nl'énumération des comptes : « invitez untel@exemple.fr » répondrait\ndifféremment selon que le compte existe ou non, et l'on apprendrait qui\ntravaille où. ``label`` est un aide-mémoire libre pour l'émetteur ; il\nn'entre dans aucune décision.",
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le nom professionnel sous lequel l'invité signera. POSÉ PAR L'ORGANISATION, jamais par l'invité : quelqu'un qui choisirait lui-même ce nom pourrait attester sous celui d'un autre.",
+          "title": "Display Name"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aide-mémoire libre, pour que l'émetteur s'y retrouve. N'entre dans aucune décision.",
+          "title": "Label"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Professional Id"
+        },
+        "role": {
+          "description": "Le rôle que l'invité aura. Un « admin » ne peut pas inviter un « owner » : il donnerait plus que son propre pouvoir.",
+          "title": "Role",
+          "type": "string"
+        },
+        "validity_days": {
+          "default": 14,
+          "description": "Durée de validité du lien. Un lien qui n'expire jamais est un mot de passe permanent.",
+          "maximum": 90,
+          "minimum": 1,
+          "title": "Validity Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "InvitationCreation",
+      "type": "object"
+    },
+    "InvitationEmise": {
+      "additionalProperties": false,
+      "description": "La réponse à une émission — et le SEUL endroit où le secret apparaît.\n\n``token`` N'EST PAS EN BASE. PostgreSQL n'en détient que le sha256 : une\nfuite de sauvegarde, un journal trop bavard ou une lecture accidentelle ne\nrendent aucun lien utilisable. En contrepartie, ce secret ne peut pas être\nréaffiché : il faut le copier maintenant, ou révoquer et réémettre.",
+      "properties": {
+        "expires_at": {
+          "title": "Expires At",
+          "type": "string"
+        },
+        "invitation_id": {
+          "title": "Invitation Id",
+          "type": "string"
+        },
+        "organization_id": {
+          "title": "Organization Id",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "token": {
+          "description": "Le secret du lien, en clair, UNE SEULE FOIS. Il n'existe nulle part ailleurs — ni en base, ni dans les journaux.",
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "invitation_id",
+        "organization_id",
+        "role",
+        "expires_at",
+        "token"
+      ],
+      "title": "InvitationEmise",
+      "type": "object"
+    },
+    "JetonInvitation": {
+      "additionalProperties": false,
+      "description": "Ce qu'un invité présente pour rejoindre un bureau.\n\nLE REFUS EST LE MÊME dans les quatre cas — inconnue, expirée, révoquée,\ndéjà consommée. Distinguer « ce lien n'existe pas » de « ce lien a\nexpiré » apprendrait à qui essaie des liens au hasard quand il a visé\njuste.",
+      "properties": {
+        "token": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "title": "JetonInvitation",
       "type": "object"
     },
     "JournalDTO": {
@@ -731,6 +2080,602 @@
       "title": "JournalDTO",
       "type": "object"
     },
+    "ListeInvitations": {
+      "additionalProperties": false,
+      "properties": {
+        "invitations": {
+          "items": {
+            "$ref": "#/$defs/Invitation"
+          },
+          "title": "Invitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "invitations"
+      ],
+      "title": "ListeInvitations",
+      "type": "object"
+    },
+    "ListeLivrables": {
+      "additionalProperties": false,
+      "properties": {
+        "deliverables": {
+          "items": {
+            "$ref": "#/$defs/Livrable"
+          },
+          "title": "Deliverables",
+          "type": "array"
+        }
+      },
+      "title": "ListeLivrables",
+      "type": "object"
+    },
+    "ListeMembres": {
+      "additionalProperties": false,
+      "properties": {
+        "members": {
+          "items": {
+            "$ref": "#/$defs/Membre"
+          },
+          "title": "Members",
+          "type": "array"
+        }
+      },
+      "required": [
+        "members"
+      ],
+      "title": "ListeMembres",
+      "type": "object"
+    },
+    "ListeProjets": {
+      "additionalProperties": false,
+      "description": "Les projets des organisations de l'appelant, et rien d'autre.",
+      "properties": {
+        "projects": {
+          "items": {
+            "$ref": "#/$defs/Projet"
+          },
+          "title": "Projects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "projects"
+      ],
+      "title": "ListeProjets",
+      "type": "object"
+    },
+    "Livrable": {
+      "additionalProperties": false,
+      "description": "Un livrable, tel que la liste du projet le montre.\n\n``state`` EST LA SEULE VÉRITÉ SUR L'ÉTAT. ``is_final`` en est dérivé en\nbase et ne traverse pas jusqu'ici : deux champs pour un même fait finissent\npar se contredire, et c'est l'écran qui affiche le mauvais.",
+      "properties": {
+        "calculation_id": {
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "deliverable_id": {
+          "title": "Deliverable Id",
+          "type": "string"
+        },
+        "derived_from_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le livrable dont celui-ci DÉRIVE, sans le remplacer. Distinct de `supersedes_id` : un indice remplace, un document émis atteste. Renseigné sur le document émis, qui référence la note dont l'empreinte est attestée.",
+          "title": "Derived From Id"
+        },
+        "engine_build_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Build Sha"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "execution_identity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Identity"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "generated_at": {
+          "title": "Generated At",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Reason"
+        },
+        "media_type": {
+          "title": "Media Type",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "sha256": {
+          "description": "Empreinte des octets réellement enregistrés. La route de téléchargement la revérifie sur ce qu'elle sert.",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "state": {
+          "description": "brouillon (draft), en relecture (review), validé (validated), émis (final).",
+          "title": "State",
+          "type": "string"
+        },
+        "supersedes_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supersedes Id"
+        },
+        "validated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validated At"
+        },
+        "validation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validation Id"
+        },
+        "validator_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validator Name"
+        },
+        "watermark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le filigrane RÉELLEMENT apposé sur les octets. Il dit ce qui est vrai du document pour toujours — « PROJET — NON SIGNABLE » — et jamais son état de workflow, qui change.",
+          "title": "Watermark"
+        }
+      },
+      "required": [
+        "deliverable_id",
+        "calculation_id",
+        "kind",
+        "filename",
+        "media_type",
+        "sha256",
+        "size_bytes",
+        "state",
+        "revision",
+        "engine_version",
+        "generated_at"
+      ],
+      "title": "Livrable",
+      "type": "object"
+    },
+    "LivrableCreation": {
+      "additionalProperties": false,
+      "description": "Créer un brouillon **depuis un calcul déjà enregistré**.\n\nLE CONTENU EST PRODUIT SUR LE SERVEUR à partir des données gelées du\ncalcul ; sa nature, son nom, ses octets, leur empreinte, leur taille, le\ncontexte normatif, la version du moteur, le build et l'identité\nd'exécution sont tous dérivés. Le client n'en nomme aucun.\n\n``kind`` N'EST PAS UN CHAMP. Le produit sait produire une note de calcul,\net rien d'autre aujourd'hui. Offrir le choix entre huit natures de document\ndont six n'existent pas ferait promettre à l'écran des livrables qu'aucune\nroute ne produit.\n\n``format`` EST LA SEULE EXCEPTION, ET CE N'EST PAS UNE VALEUR DERIVEE. Le\nmême calcul, les mêmes chiffres, la même mention obligatoire — seule la\nforme du fichier change. C'est un choix qui appartient au client : on lit\nune note à l'écran en HTML, on la joint à un dossier en PDF. Rien de ce que\nle document AFFIRME n'en dépend, et c'est ce qui distingue ce champ de ceux\nque la route refuse.",
+      "properties": {
+        "calculation_id": {
+          "description": "Le calcul enregistré dont ce livrable est tiré. Il doit appartenir au projet du chemin, avoir abouti, et porter une identité d'exécution vérifiable.",
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "format": {
+          "default": "html",
+          "description": "La forme du fichier produit. « html » est un document autonome qui s'ouvre hors ligne ; « pdf » est composé sans aucune date interne, afin que deux compositions du même calcul portent la même empreinte ; « dxf » est le plan de ferraillage, en R2018, ouvrable par tout logiciel de CAO — aucune licence AutoCAD n'est requise.",
+          "enum": [
+            "html",
+            "pdf",
+            "dxf"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "reinforcement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReinforcementChoiceDTO"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Obligatoire pour « dxf », refusé partout ailleurs. C'est le CHOIX DE L'INGÉNIEUR — nombre de barres, diamètre, enrobage, cadres — et c'est la seule chose que le client apporte au dessin : la section, les matériaux, l'effort et le référentiel sont relus dans le calcul gelé. `A_s_provided` n'y figure pas : le moteur le dérive des barres, si bien qu'aucun appelant ne peut annoncer une aire que son ferraillage n'a pas."
+        }
+      },
+      "required": [
+        "calculation_id"
+      ],
+      "title": "LivrableCreation",
+      "type": "object"
+    },
+    "LivrableDetail": {
+      "additionalProperties": false,
+      "description": "Un livrable, son contexte figé, son attestation et son histoire.\n\nL'HISTORIQUE VIENT DU MÊME APPEL QUE L'ÉTAT. Deux appels séparés\npourraient tomber de part et d'autre d'une transition et montrer un état\nqui ne correspond pas à son journal.",
+      "properties": {
+        "calculation_id": {
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "deliverable_id": {
+          "title": "Deliverable Id",
+          "type": "string"
+        },
+        "derived_from_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le livrable dont celui-ci DÉRIVE, sans le remplacer. Distinct de `supersedes_id` : un indice remplace, un document émis atteste. Renseigné sur le document émis, qui référence la note dont l'empreinte est attestée.",
+          "title": "Derived From Id"
+        },
+        "engine_build_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Build Sha"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "execution_identity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Identity"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "generated_at": {
+          "title": "Generated At",
+          "type": "string"
+        },
+        "inputs_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Inputs Hash"
+        },
+        "issued_deliverable_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le document émis produit par l'émission de CE livrable — un second PDF, immuable, qui porte l'attestation et référence l'original par son empreinte. Renseigné sur la note d'origine, jamais sur le document émis lui-même.",
+          "title": "Issued Deliverable Id"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Reason"
+        },
+        "media_type": {
+          "title": "Media Type",
+          "type": "string"
+        },
+        "mention": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "« PROJET — NON SIGNABLE », quand des paramètres nationaux non confirmés ont pu servir.",
+          "title": "Mention"
+        },
+        "ndp_as_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ndp As Of"
+        },
+        "notice": {
+          "description": "La mention obligatoire: ce document doit être vérifié et signé par un ingénieur habilité.",
+          "title": "Notice",
+          "type": "string"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Numéro d'inscription à l'ordre professionnel, figé au moment de l'attestation depuis l'adhésion.",
+          "title": "Professional Id"
+        },
+        "reservations": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reservations"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "sha256": {
+          "description": "Empreinte des octets réellement enregistrés. La route de téléchargement la revérifie sur ce qu'elle sert.",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "state": {
+          "description": "brouillon (draft), en relecture (review), validé (validated), émis (final).",
+          "title": "State",
+          "type": "string"
+        },
+        "statement": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statement"
+        },
+        "supersedes_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supersedes Id"
+        },
+        "transitions": {
+          "items": {
+            "$ref": "#/$defs/Transition"
+          },
+          "title": "Transitions",
+          "type": "array"
+        },
+        "validated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validated At"
+        },
+        "validation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validation Id"
+        },
+        "validator_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validator Name"
+        },
+        "validator_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validator Role"
+        },
+        "watermark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le filigrane RÉELLEMENT apposé sur les octets. Il dit ce qui est vrai du document pour toujours — « PROJET — NON SIGNABLE » — et jamais son état de workflow, qui change.",
+          "title": "Watermark"
+        }
+      },
+      "required": [
+        "deliverable_id",
+        "calculation_id",
+        "kind",
+        "filename",
+        "media_type",
+        "sha256",
+        "size_bytes",
+        "state",
+        "revision",
+        "engine_version",
+        "generated_at",
+        "notice"
+      ],
+      "title": "LivrableDetail",
+      "type": "object"
+    },
+    "LongitudinalBarsDTO": {
+      "additionalProperties": false,
+      "description": "Le lit tendu. ``A_s`` s'en DÉRIVE et ne se saisit jamais à côté.",
+      "properties": {
+        "count": {
+          "maximum": 40,
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "diameter": {
+          "$ref": "#/$defs/QuantityDTO"
+        }
+      },
+      "required": [
+        "count",
+        "diameter"
+      ],
+      "title": "LongitudinalBarsDTO",
+      "type": "object"
+    },
     "MaterialsDTO": {
       "additionalProperties": false,
       "properties": {
@@ -756,6 +2701,142 @@
         "steel_grade"
       ],
       "title": "MaterialsDTO",
+      "type": "object"
+    },
+    "Membre": {
+      "additionalProperties": false,
+      "description": "Une adhésion, telle que le panneau d'administration la montre.\n\n``is_active = false`` NE FAIT PAS DISPARAÎTRE LA LIGNE, et c'est voulu\ndepuis 0009 : une note de dix ans doit rester lisible et nommer son\nsignataire. Ce qui disparaît, c'est l'accès.",
+      "properties": {
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "deactivated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Deactivated At"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "is_active": {
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "is_me": {
+          "description": "Vrai pour la ligne de l'appelant. L'écran s'en sert pour ne pas proposer des gestes que la base refuse de toute façon : on ne modifie pas sa propre adhésion.",
+          "title": "Is Me",
+          "type": "boolean"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Professional Id"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "role",
+        "display_name",
+        "professional_id",
+        "is_active",
+        "created_at",
+        "deactivated_at",
+        "is_me"
+      ],
+      "title": "Membre",
+      "type": "object"
+    },
+    "MembreModification": {
+      "additionalProperties": false,
+      "description": "Ce qu'un owner ou un admin change sur l'adhésion d'un collègue.\n\nLES CHAMPS ABSENTS NE SONT PAS TOUCHÉS. Envoyer ``role`` seul ne remet pas\nles noms à zéro : ``update_names`` doit être demandé explicitement, faute\nde quoi un formulaire partiel effacerait le nom sous lequel quelqu'un a\nsigné.",
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Name"
+        },
+        "is_active": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Active"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Professional Id"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "update_names": {
+          "default": false,
+          "description": "Sans lui, ``display_name`` et ``professional_id`` sont ignorés. Un formulaire partiel n'efface pas le nom sous lequel quelqu'un a signé.",
+          "title": "Update Names",
+          "type": "boolean"
+        }
+      },
+      "title": "MembreModification",
       "type": "object"
     },
     "NationalAnnexDTO": {
@@ -1094,6 +3175,99 @@
       "title": "NdpSummaryDTO",
       "type": "object"
     },
+    "Organisation": {
+      "additionalProperties": false,
+      "description": "Un bureau, tel que l'écran d'entrée le montre.",
+      "properties": {
+        "country": {
+          "enum": [
+            "BE",
+            "FR",
+            "ES",
+            "DE"
+          ],
+          "title": "Country",
+          "type": "string"
+        },
+        "member_role": {
+          "description": "Le rôle de l'appelant DANS ce bureau. Dérivé de l'adhésion, jamais déclaré.",
+          "title": "Member Role",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "organization_id": {
+          "title": "Organization Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "organization_id",
+        "name",
+        "country",
+        "member_role"
+      ],
+      "title": "Organisation",
+      "type": "object"
+    },
+    "OrganisationCreation": {
+      "additionalProperties": false,
+      "description": "Ce qu'une personne saisit pour fonder son bureau.\n\nAUCUN CHAMP NE DÉSIGNE LE FONDATEUR. C'est l'appelant, dérivé du jeton :\nfonder au nom de quelqu'un d'autre n'a pas de sens, et l'accepter dans le\ncorps ferait de l'appartenance une simple affirmation.",
+      "properties": {
+        "country": {
+          "enum": [
+            "BE",
+            "FR",
+            "ES",
+            "DE"
+          ],
+          "title": "Country",
+          "type": "string"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le nom professionnel du fondateur dans ce bureau. Il figurera sur les attestations qu'il signera ; sans lui, la primitive d'attestation refuse.",
+          "title": "Display Name"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "professional_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Numéro d'inscription à l'ordre ou à la chambre professionnelle. Il n'est vérifié par personne ici, et aucune valeur n'est inventée : il est reproduit tel quel.",
+          "title": "Professional Id"
+        }
+      },
+      "required": [
+        "name",
+        "country"
+      ],
+      "title": "OrganisationCreation",
+      "type": "object"
+    },
     "ParameterVariantDTO": {
       "additionalProperties": false,
       "description": "One branch of a parameter the National Annex makes conditional.\n\nBelgium's alpha_cc is 0,85 for axial force and bending, 1,0 otherwise. The\nfrontend must never collapse this to one number for display without saying\nwhich case it shows.",
@@ -1119,6 +3293,46 @@
         "description"
       ],
       "title": "ParameterVariantDTO",
+      "type": "object"
+    },
+    "PreflightBlockerDTO": {
+      "additionalProperties": false,
+      "description": "Un paramètre qui empêche le calcul, et le module qui le réclame.",
+      "properties": {
+        "annex": {
+          "title": "Annex",
+          "type": "string"
+        },
+        "clause": {
+          "title": "Clause",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "module": {
+          "title": "Module",
+          "type": "string"
+        },
+        "parameter": {
+          "title": "Parameter",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "module",
+        "parameter",
+        "clause",
+        "annex",
+        "reason",
+        "detail"
+      ],
+      "title": "PreflightBlockerDTO",
       "type": "object"
     },
     "PreflightReportDTO": {
@@ -1165,6 +3379,189 @@
         "blocking"
       ],
       "title": "PreflightReportDTO",
+      "type": "object"
+    },
+    "Projet": {
+      "additionalProperties": false,
+      "description": "Un projet, tel que l'atelier le montre.\n\n``organization_name`` accompagne ``organization_id`` : un identifiant seul\nobligerait l'écran à un second appel pour afficher « Bureau A », et c'est\nce genre de second appel qui finit par ne jamais être fait.",
+      "properties": {
+        "calculation_count": {
+          "description": "Combien de calculs sont enregistrés sur ce projet.",
+          "minimum": 0,
+          "title": "Calculation Count",
+          "type": "integer"
+        },
+        "country": {
+          "enum": [
+            "BE",
+            "FR",
+            "ES",
+            "DE"
+          ],
+          "title": "Country",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "member_active": {
+          "default": true,
+          "description": "Faux quand l'accès à cette organisation a été révoqué. Le projet reste lisible — la trace des signatures passées doit le rester — et toute action est fermée.",
+          "title": "Member Active",
+          "type": "boolean"
+        },
+        "member_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le nom de l'appelant tel que l'organisation l'enregistre. C'est celui qui figurera sur une attestation: son absence se constate ici plutôt qu'au moment de signer.",
+          "title": "Member Name"
+        },
+        "member_role": {
+          "description": "Le rôle de l'appelant dans l'organisation de CE projet. Dérivé de l'adhésion côté serveur. L'écran s'en sert pour montrer ou expliquer une action; il ne décide de rien — la frontière est dans PostgreSQL.",
+          "title": "Member Role",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "ndp_as_of": {
+          "description": "Date de référence du projet (ISO 8601). Elle résout l'édition d'Annexe Nationale en vigueur, norme par norme. Ce n'est pas la date du calcul.",
+          "title": "Ndp As Of",
+          "type": "string"
+        },
+        "organization_id": {
+          "title": "Organization Id",
+          "type": "string"
+        },
+        "organization_name": {
+          "title": "Organization Name",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Région sous-nationale quand elle change les paramètres (Wallonie / Vlaanderen / Bruxelles, Land, Comunidad autónoma). Figée à la création, comme le pays et la date.",
+          "title": "Region"
+        }
+      },
+      "required": [
+        "project_id",
+        "organization_id",
+        "organization_name",
+        "name",
+        "country",
+        "ndp_as_of",
+        "created_at",
+        "calculation_count",
+        "member_role"
+      ],
+      "title": "Projet",
+      "type": "object"
+    },
+    "ProjetCreation": {
+      "additionalProperties": false,
+      "description": "Ce qu'un ingénieur saisit pour ouvrir un projet.\n\n``ndp_as_of`` N'EST PAS DÉCORATIVE. Elle résout l'édition d'Annexe\nNationale en vigueur, norme par norme, et se fige à la création : sans\nelle, le référentiel dépendrait de la date à laquelle le calcul est\nlancé — c'est-à-dire du hasard.",
+      "properties": {
+        "country": {
+          "enum": [
+            "BE",
+            "FR",
+            "ES",
+            "DE"
+          ],
+          "title": "Country",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "ndp_as_of": {
+          "description": "Date de référence, ISO 8601 (AAAA-MM-JJ). Elle résout l'édition d'Annexe Nationale en vigueur et se fige à la création du projet.",
+          "title": "Ndp As Of",
+          "type": "string"
+        },
+        "organization_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Facultatif, et jamais cru sur parole: la base le confronte aux appartenances. Nécessaire uniquement quand l'appelant appartient à plusieurs organisations.",
+          "title": "Organization Id"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Région sous-nationale, quand elle change les paramètres nationaux. Elle se fige à la création avec le pays et la date: un calcul ne pourra plus en désigner une autre.",
+          "title": "Region"
+        }
+      },
+      "required": [
+        "name",
+        "country",
+        "ndp_as_of"
+      ],
+      "title": "ProjetCreation",
       "type": "object"
     },
     "ProvenanceDTO": {
@@ -1440,6 +3837,150 @@
       "title": "RegulatoryFrameworkDTO",
       "type": "object"
     },
+    "ReinforcementChoiceDTO": {
+      "additionalProperties": false,
+      "description": "The bars the engineer chose. Never deduced from the calculation.\n\n``As_required`` says how much steel is needed; it says nothing about how\nmany bars, of which diameter, arranged how. That choice is the engineer's,\nand this is where it enters — separately from the geometry, which comes\nfrom the calculation that was verified.",
+      "properties": {
+        "bottom": {
+          "items": {
+            "$ref": "#/$defs/BarRowDTO"
+          },
+          "minItems": 1,
+          "title": "Bottom",
+          "type": "array"
+        },
+        "cover": {
+          "description": "Nominal cover c_nom, mm",
+          "minimum": 0,
+          "title": "Cover",
+          "type": "number"
+        },
+        "link_diameter": {
+          "description": "Link diameter, mm",
+          "minimum": 0,
+          "title": "Link Diameter",
+          "type": "number"
+        },
+        "link_mark": {
+          "default": "C1",
+          "title": "Link Mark",
+          "type": "string"
+        },
+        "link_spacing": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Link Spacing"
+        },
+        "top": {
+          "items": {
+            "$ref": "#/$defs/BarRowDTO"
+          },
+          "title": "Top",
+          "type": "array"
+        }
+      },
+      "required": [
+        "cover",
+        "link_diameter",
+        "bottom"
+      ],
+      "title": "ReinforcementChoiceDTO",
+      "type": "object"
+    },
+    "RetourAuBrouillon": {
+      "additionalProperties": false,
+      "description": "Renvoyer une pièce en relecture vers le brouillon, **avec un motif**.\n\nLE MOTIF EST OBLIGATOIRE, ET LA BASE LE REFUSE VIDE ELLE AUSSI. Celui qui\nreprend le document doit savoir ce qui lui est reproché ; un retour muet\nest une décision qu'on ne peut pas relire six mois plus tard.",
+      "properties": {
+        "reason": {
+          "description": "Ce qui est reproché à la pièce. Repris dans l'historique des transitions et affiché à celui qui la reprend.",
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "RetourAuBrouillon",
+      "type": "object"
+    },
+    "SectionOutcomeDTO": {
+      "additionalProperties": false,
+      "description": "Le verdict d'un des cinq chapitres.",
+      "properties": {
+        "basis": {
+          "title": "Basis",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Code machine quand la cause est une dépendance, p. ex. « prerequisite_failed:flexure ».",
+          "title": "Reason"
+        },
+        "remedy": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remedy"
+        },
+        "status": {
+          "description": "passed | failed | additional_analysis_required | not_evaluated. Une section non évaluée n'est JAMAIS conforme.",
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "utilisation": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Absent quand la section n'a pas tourné : un taux suppose un calcul.",
+          "title": "Utilisation"
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "basis",
+        "status"
+      ],
+      "title": "SectionOutcomeDTO",
+      "type": "object"
+    },
     "SourceTypeDTO": {
       "enum": [
         "national_annex",
@@ -1448,6 +3989,89 @@
       ],
       "title": "SourceTypeDTO",
       "type": "string"
+    },
+    "Transition": {
+      "additionalProperties": false,
+      "description": "Un pas dans le parcours de relecture, horodaté et attribué.",
+      "properties": {
+        "actor_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Qui a provoqué la transition. Dérivé de la session, jamais du corps de la requête.",
+          "title": "Actor Id"
+        },
+        "from_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "L'état quitté. Absent pour la création du brouillon.",
+          "title": "From State"
+        },
+        "occurred_at": {
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "to_state": {
+          "title": "To State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "to_state",
+        "occurred_at"
+      ],
+      "title": "Transition",
+      "type": "object"
+    },
+    "TransverseLinksDTO": {
+      "additionalProperties": false,
+      "description": "Les cadres. ``A_sw`` se dérive des branches et du diamètre.",
+      "properties": {
+        "diameter": {
+          "$ref": "#/$defs/QuantityDTO"
+        },
+        "legs": {
+          "maximum": 12,
+          "minimum": 1,
+          "title": "Legs",
+          "type": "integer"
+        },
+        "spacing": {
+          "$ref": "#/$defs/QuantityDTO"
+        }
+      },
+      "required": [
+        "legs",
+        "diameter",
+        "spacing"
+      ],
+      "title": "TransverseLinksDTO",
+      "type": "object"
     },
     "ValidationStatusDTO": {
       "description": "How far a national value has been verified — see TICKET 1.1.",
@@ -1459,6 +4083,31 @@
       ],
       "title": "ValidationStatusDTO",
       "type": "string"
+    },
+    "VerificationMaterialsDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "concrete_grade": {
+          "examples": [
+            "C30/37"
+          ],
+          "title": "Concrete Grade",
+          "type": "string"
+        },
+        "steel_grade": {
+          "examples": [
+            "B500B"
+          ],
+          "title": "Steel Grade",
+          "type": "string"
+        }
+      },
+      "required": [
+        "concrete_grade",
+        "steel_grade"
+      ],
+      "title": "VerificationMaterialsDTO",
+      "type": "object"
     },
     "VerificationReportDTO": {
       "additionalProperties": false,

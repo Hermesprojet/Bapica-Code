@@ -84,7 +84,9 @@ exiger_cluster_jetable "db/test/run.sh" || exit 2
 # qu'aucune postcondition ne l'ait signale.
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator
-            normative_backend normative_governance eurostruct_deployment)
+            normative_backend normative_governance eurostruct_deployment
+            eurostruct_authority_backend
+            eurostruct_reconciliation)
 
 # BLOQUANT, et place ICI: avant l'oracle, avant les migrations, avant tout
 # test. Le rouge d'une sous-surface ne suffirait pas — `etape()` continue
@@ -184,6 +186,20 @@ trap rendre_le_decor EXIT
 # et le decor global reste derriere (voir harnais_piege_signaux).
 harnais_piege_signaux
 
+# LE CONTROLE LE MOINS CHER DE LA SUITE, ET DONC LE PREMIER.
+#
+# Il ne touche ni base ni cluster: il lit des fichiers. Sa place en tete n'est
+# pas une commodite, c'est le sujet. Une liste de demontage desynchronisee du
+# plan de controle ne se manifeste qu'APRES coup — le harnais fautif passe au
+# vert, laisse un role derriere lui, et ce sont les etapes SUIVANTES qui
+# refusent de demarrer. Le symptome est alors a des dizaines de minutes de sa
+# cause, sur des surfaces qui sont VERTES en isole. C'est arrive deux fois
+# (26/08, 01/09), et le diagnostic a coute une campagne complete a chaque fois.
+# Ici, la cause se nomme elle-meme, en une seconde, avant la premiere base.
+echo "==> demontage canonique"
+etape "demontage canonique des roles" \
+  "$HERE/demontage_canonique.sh"
+
 echo "==> oracle comportemental des primitives de portee"
 etape "oracle de portee des roles" \
   "$HERE/role_reach_oracle.sh" "${DB_NAME}_oracle"
@@ -193,12 +209,44 @@ etape "deploiement en deux phases" \
   "$HERE/two_phase_deployment.sh" "${DB_NAME}_2p"
 
 # --------------------------------------------------------------------------
+# LE ROUNDTRIP DES MIGRATIONS — l'ALLER etait couvert, le RETOUR non
+# --------------------------------------------------------------------------
+# Chaque harnais part d'une base NEUVE: repasser sur les memes fichiers n'etait
+# donc eprouve nulle part. Mesure du 26/08: quatre migrations sur quatorze
+# etaient REJOUEES au second passage, faute de s'inscrire au registre — et
+# elles transferent des proprietes, posent des policies et retirent des droits.
+# Rien, dans cette suite, ne pouvait le voir.
+echo "==> roundtrip des migrations (aller-retour, registre, empreinte)"
+etape "roundtrip des migrations" \
+  "$HERE/migration_roundtrip.sh" "${DB_NAME:0:20}rt"
+
+# --------------------------------------------------------------------------
 # LE CONTRAT DE FINALISATION — huit tentatives de contournement
 # --------------------------------------------------------------------------
 # `two_phase_deployment.sh` verifie que la finalisation MARCHE. Celui-ci
 # verifie qu'elle ne peut pas etre CONTOURNEE, et il le fait en essayant. Il
 # exige lui aussi un jeu canonique vierge — chacun de ses six decors le pose et
 # le rend — et passe donc ici, avant la base principale.
+# --------------------------------------------------------------------------
+# LES POSTCONDITIONS DE MIGRATION SONT-ELLES ATTEINTES ?
+# --------------------------------------------------------------------------
+# `migration_roundtrip.sh` etablit que les migrations s'appliquent et ne se
+# rejouent pas. Celui-ci pose la question d'a cote: quand le catalogue N'EST
+# PAS celui qu'elles ont demande, s'en apercoivent-elles ?
+#
+# LA REPONSE ETAIT NON JUSQU'A CE LOT. `assert_authority_surface_hardened()`
+# existait depuis 0011, refusait correctement, et AUCUN chemin produit ne
+# l'appelait — seul un harnais le faisait. Une assertion que le produit
+# n'execute jamais ne protege rien: elle tient tant que quelqu'un pense a
+# lancer la suite.
+#
+# Trois observations par migration, et la troisieme est celle qui compte:
+# l'appel retire, le meme catalogue fautif doit PASSER. Sans elle, le refus
+# mesure ne dit pas d'ou il vient.
+echo "==> postconditions de migration"
+etape "postconditions de migration" \
+  "$HERE/migration_postconditions.sh" "${DB_NAME:0:20}mp"
+
 echo "==> contrat de finalisation"
 etape "contrat de finalisation" \
   "$HERE/finalisation_contract.sh" "${DB_NAME:0:20}fc"
@@ -213,6 +261,205 @@ etape "contrat de finalisation" \
 echo "==> fermeture de l'autorite"
 etape "fermeture de l'autorite" \
   "$HERE/authority_closure.sh" "${DB_NAME:0:20}ac"
+
+# --------------------------------------------------------------------------
+# LA FRONTIERE DES ROLES POSTGRESQL, MESUREE DANS LE CATALOGUE
+# --------------------------------------------------------------------------
+# `authority_closure.sh` demande si le migrateur peut ECRIRE. Celui-ci demande
+# s'il peut S'OCTROYER LE DROIT d'ecrire — question distincte, et la seule des
+# deux qu'un audit precedent avait manquee: il mesurait `pg_db_role_setting`,
+# c'est-a-dire une CONFIGURATION, la ou le chemin reel passait par
+# l'APPARTENANCE. `CREATE ROLE` par un role CREATEROLE laisse au createur
+# `admin_option=t` — il n'herite ni n'endosse, mais il ENROLE QUI IL VEUT.
+#
+# ADMINISTRER N'EST PAS UTILISER, MAIS ADMINISTRER SUFFIT A S'OCTROYER
+# L'USAGE: mesurer USAGE et SET et s'arreter la laisserait passer exactement
+# ce chemin. Quatorze controles, chacun avec son verdict nomme.
+echo "==> frontiere des roles postgresql"
+etape "frontiere des roles postgresql" \
+  "$HERE/authority_role_frontier.sh" "${DB_NAME:0:20}rf"
+
+# --------------------------------------------------------------------------
+# LES QUATRE SURFACES D'AUTORITE DE 6.3c
+# --------------------------------------------------------------------------
+# AUCUNE N'EST « ROUGE ATTENDU », ET C'EST DELIBERE. Le premier cablage de
+# 6.3c annoncait l'etape comme telle, parce qu'elle portait un lot de
+# contre-exemples ecrit avant tout correctif. Ce dispositif etait TRANSITOIRE
+# par construction: un mecanisme qui accepte durablement un rouge finit par
+# accepter aussi la regression qui s'y glisse.
+#
+# Les correctifs sont poses (0011 durcissement, 0012 filiation, 0013 frontiere
+# authentifiee). Les quatre surfaces sont donc des etapes ORDINAIRES: elles
+# doivent etre vertes, et toute regression fait echouer la suite.
+#
+# `authority_closure.sh` demande « le MIGRATEUR est-il contenu ? ». Celles-ci
+# posent les questions d'apres:
+#
+#   racine de confiance   l'identite metier qui octroie et confirme est-elle
+#                         hors de portee d'un role applicatif ?
+#   surface SQL           PUBLIC, proprietaires, search_path, appartenances,
+#                         SET ROLE, BYPASSRLS, FORCE RLS
+#   filiation             une revocation eteint-elle ce qu'elle a delegue ?
+#   amorcage              la premiere autorite est-elle mandatee, ou choisie ?
+#   quatre-yeux           une decision porte-t-elle DEUX principals distincts,
+#                         et les DEUX sources d'autorite invoquees ?
+#
+# Toutes exigent un jeu canonique vierge, d'ou leur place ici, avant que la
+# base principale ne cree les six roles.
+echo "==> racine de confiance des autorites (6.3c)"
+etape "racine de confiance des autorites" \
+  "$HERE/authority_root_of_trust.sh" "${DB_NAME:0:20}rt"
+
+echo "==> surface SQL de l'autorite (6.3c)"
+etape "surface SQL de l'autorite" \
+  "$HERE/authority_sql_hardening.sh" "${DB_NAME:0:20}hd"
+
+echo "==> filiation des delegations (6.3c)"
+etape "filiation des delegations" \
+  "$HERE/authority_delegation_lineage.sh" "${DB_NAME:0:20}ln"
+
+echo "==> contrat d'amorcage de la racine (6.3c)"
+etape "contrat d'amorcage de la racine" \
+  "$HERE/authority_bootstrap_contract.sh" "${DB_NAME:0:20}bs"
+
+# --------------------------------------------------------------------------
+# LE CONTRAT DU PROVIDER — la frontiere d'identite, cote applicatif
+# --------------------------------------------------------------------------
+# `authority_four_eyes.sh` etablit que la BASE refuse deux fois le meme
+# principal. Celui-ci pose la question d'a cote, et elle n'a pas de reponse
+# dans PostgreSQL: QUI pose l'identite, et disparait-elle ensuite ?
+#
+# Un `SET` de session survit a la connexion rendue au pool: le locataire
+# suivant heriterait de l'identite du precedent. `SET LOCAL` meurt avec la
+# transaction. C'est toute la difference entre « l'acteur est pose pour cette
+# unite de travail » et « l'acteur traine », et elle ne se verifie que contre
+# un vrai serveur.
+#
+# SANS PILOTE POSTGRESQL, LE HARNAIS REND 4 — NON EXECUTE, compte comme une
+# surface manquante. Une garantie qu'on n'a pas pu verifier ne doit pas passer
+# pour verte.
+echo "==> contrat du provider (frontiere d'identite)"
+etape "contrat du provider" \
+  "$HERE/provider_contract.sh" "${DB_NAME:0:20}pv"
+
+# LA TRANCHE APPLICATIVE, SUR LA MEME BASE DEPLOYEE.
+#
+# `provider_contract.sh` ci-dessus eprouve le CONTRAT du provider avec un
+# authentificateur FICTIF. Celui-ci eprouve le chemin PRODUIT: deux identites
+# portees par des JETONS RSA SIGNES, verifies par l'authentificateur de
+# production, du `Bearer` brut jusqu'au commit.
+#
+# SANS FASTAPI NI PYJWT, IL REND 4 — NON EXECUTE. Une surface qu'on n'a pas pu
+# exercer n'est pas une surface qui a tenu.
+echo "==> parcours d'autorite depuis l'API (tranche applicative)"
+etape "parcours d'autorite depuis l'API" \
+  "$HERE/api_e2e.sh" "${DB_NAME:0:20}ae"
+
+# LE PARCOURS COMPLET: DECISION -> CONFIRMATION -> MODE STRICT.
+#
+# `api_e2e.sh` etablit que les trois primitives tiennent sous identite
+# authentifiee. Il ne dit RIEN de leur EFFET: jusqu'a 0016, une decision
+# consommee ne posait aucune confirmation, et `confirmer_depuis_le_provider()`
+# ne lit que cette table-la. Les deux chemins existaient cote a cote sans que
+# rien ne les relie, et les tests positifs de la passerelle injectaient un
+# fournisseur fictif — ils prouvaient l'algorithme, pas le cablage.
+#
+# Celui-ci part des huit blocages du calcul strict belge, joue les huit cycles
+# A/B par les ROUTES PUBLIQUES, et exige que le calcul finisse en 200 avec
+# `strict_ndp_satisfied`. AUCUN FOURNISSEUR FICTIF N'Y EST INJECTE: le provider
+# est celui de production, sur PostgreSQL.
+echo "==> decision consommee -> confirmation -> calcul strict"
+etape "decision vers strict" \
+  "$HERE/decision_vers_strict.sh" "${DB_NAME:0:20}ds"
+
+# LE PARCOURS DE TRAVAIL: PROJET -> CALCUL -> HISTORIQUE -> REOUVERTURE.
+#
+# Les deux precedents eprouvent le chemin NORMATIF — qui a le droit de
+# confirmer une valeur nationale, et ce que cette confirmation ouvre. Celui-ci
+# eprouve le chemin de TRAVAIL, celui qu'un ingenieur emprunte tous les jours,
+# et qui n'avait jamais ete branche: `project_id: "DEMO-001"` etait ecrit en
+# dur dans l'interface, et un calcul mourait avec sa reponse HTTP.
+#
+# Sept etapes, plus l'isolation. Le decor pose DEUX organisations disjointes:
+# un seul acteur ne peut pas prouver qu'il est empeche d'aller ailleurs, faute
+# d'un ailleurs.
+echo "==> atelier: projet, calcul, historique, reouverture"
+etape "atelier de projet" \
+  "$HERE/atelier_projet.sh" "${DB_NAME:0:20}at"
+
+# LE LIVRABLE: DU BROUILLON A L'EMISSION.
+#
+# La machine a etats `draft -> review -> validated -> final` existait depuis
+# 0005 et n'avait AUCUNE porte: le backend authentifie n'atteint que les
+# fonctions qu'on lui declare, et aucune ne touchait `deliverables` ni
+# `validations`. Ce harnais eprouve le parcours entier — octets deposes et
+# RELUS avant d'etre promis, attestation metier authentifiee dont le nom, le
+# role et le numero d'inscription sont derives de l'adhesion, emission qui
+# l'exige, indice suivant pour corriger — plus les refus qui le bordent.
+#
+# IL EST PLUS LOURD QUE LES AUTRES, ET POUR UNE RAISON: une attestation ne peut
+# porter que sur un calcul STRICT abouti, et le mode strict ne s'ouvre que par
+# le quatre-yeux. Le decor confirme donc les parametres par les routes du
+# produit avant de calculer, exactement comme un bureau d'etudes le ferait.
+echo "==> livrable: brouillon, relecture, attestation, emission"
+etape "livrable et validation" \
+  "$HERE/livrable_validation.sh" "${DB_NAME:0:20}lv"
+
+# LE ROLE DE RAPPROCHEMENT — CE QU'IL LIT, ET CE QU'IL NE PEUT PAS.
+#
+# `reconciliation.py` pose `set transaction read only`, ce qui est reel mais
+# DEMANDE par le programme. Ce harnais mesure l'absence du droit lui-meme:
+# INSERT, UPDATE, DELETE, TRUNCATE et l'appel des primitives metier, tous
+# refuses par PostgreSQL a un compte qui ne se rattache qu'a ce role.
+echo "==> role de rapprochement: lecture seule, prouvee par le droit"
+etape "role de rapprochement" \
+  "$HERE/reconciliation_role.sh" "${DB_NAME:0:20}rr"
+
+# L'ENTREE DANS L'APPLICATION — et le seul decor du depot qui parte de ZERO
+# organisation.
+#
+# Tous les autres harnais posent d'avance les adhesions dont ils ont besoin;
+# aucun ne pouvait donc constater qu'on ne savait pas les creer. Celui-ci part
+# d'une base deployee sans un seul bureau, et exige qu'un compte authentifie
+# puisse en fonder un, y inviter quelqu'un par un lien a usage unique, et
+# administrer les roles — sans jamais s'elever lui-meme.
+#
+# IL EXIGE LES MEMES DEPENDANCES QUE `livrable_validation.sh`: PostgreSQL,
+# FastAPI, PyJWT, httpx. Ni node, ni Chromium, ni Docker — il entre donc dans
+# cette suite, contrairement aux parcours navigateur et au magasin objet.
+echo "==> entree: fonder son bureau, inviter, administrer les membres"
+etape "entree dans l'application" \
+  "$HERE/entree_application.sh" "${DB_NAME:0:20}en"
+
+# LE MAGASIN OBJET N'EST PAS DANS CETTE SUITE, ET C'EST LA MEME RAISON.
+#
+# `db/test/stockage_s3.sh` demarre un MinIO REEL dans un conteneur, sur un
+# volume neuf. Sans demon Docker il rend 4 (NON EXECUTE), et `run.sh` compte
+# une surface non executee comme ROUGE — a juste titre. L'inscrire ici rendrait
+# la suite rouge pour l'outillage sur tout poste sans Docker. Il a son propre
+# job en integration continue:
+#
+#   db/test/stockage_s3.sh <prefixe>   # volume neuf, depot, redemarrage, SHA
+
+# LES DEUX PARCOURS NAVIGATEUR NE SONT PAS DANS CETTE SUITE, ET C'EST VOULU.
+#
+# `parcours_atelier.sh` et `parcours_livrable.sh` dressent la pile entiere —
+# Chromium, un build de production Next.js, uvicorn, PostgreSQL — et exigent
+# donc `node`, `npm`, `web/node_modules` et un binaire Chromium. Cette suite ne
+# provisionne rien de tout cela: les deux harnais rendraient 4 (NON EXECUTE),
+# et `run.sh` compte une surface non executee comme ROUGE — a juste titre, une
+# garantie qu'on n'a pas pu verifier n'est pas verte.
+#
+# Les inscrire ici rendrait donc le job SQL rouge pour l'outillage et non pour
+# le produit, exactement le defaut que `api_e2e.sh` a deja cause au commit
+# 2e342ec. Ils se lancent separement:
+#
+#   db/test/parcours_atelier.sh  <prefixe>   # projet, calcul, historique
+#   db/test/parcours_livrable.sh <prefixe>   # brouillon, attestation, emission
+
+echo "==> quatre-yeux explicite (6.3c)"
+etape "quatre-yeux explicite" \
+  "$HERE/authority_four_eyes.sh" "${DB_NAME:0:20}fy"
 
 # --------------------------------------------------------------------------
 # LE CONTRAT DU SCEAU — la racine est-elle DEPLOYABLE ? (6.3b6d)
@@ -269,6 +516,15 @@ etape "restauration inter-cluster" \
 # CET AUTO-TEST N'A BESOIN D'AUCUNE BASE: il tue la matrice avant qu'elle n'en
 # demande une. Il est ici parce que c'est ici que passe la CI, et non parce
 # qu'il aurait quoi que ce soit a faire d'un cluster.
+# L'INSTRUMENT DE PREUVE EST LUI AUSSI EPROUVE, et avant de s'en servir.
+# `mutation_matrix.py` decide si une garantie porte quelque chose: un
+# instrument fausse ne rend pas un verdict faux de temps en temps, il le rend
+# SILENCIEUSEMENT. L'auto-test ne touche aucune base et dure quelques
+# millisecondes — il n'a aucune raison d'etre saute.
+echo "==> auto-test du moteur de mutations"
+etape "auto-test du moteur de mutations" \
+  python3 "$HERE/mutation_engine_selftest.py"
+
 echo "==> isolation de la matrice de mutation"
 etape "isolation de la matrice de mutation" \
   "$HERE/mutation_isolation_selftest.sh"
@@ -351,6 +607,30 @@ adm -c "drop database if exists $NS_DB;" >/dev/null 2>&1
 # scenario A exige desormais que le decor ait EXISTE avant le signal, puis
 # qu'il ait disparu apres.
 echo "==> terminaison de la matrice de mutation sur signal"
+# LA CONTINUATION DE LIGNE ETAIT CASSEE, ET C'ETAIT UNE REGRESSION MUETTE.
+# En inserant le selftest du canal j'avais ecrit:
+#
+#     etape "terminaison de la matrice sur signal" \
+#       python3 "$HERE/canal_selftest.py"
+#       "$HERE/mutation_signal_selftest.sh"
+#
+# La barre oblique rattachait le selftest DU CANAL a une etape qui en nomme un
+# autre, et `mutation_signal_selftest.sh` devenait une commande NUE. Sous
+# `set -e`, sa moindre defaillance ne devenait plus une surface rouge: elle
+# tuait `run.sh` entier, sans nom et sans comptage. Chaque surface a son etape.
+etape "canal machine d'attribution" \
+  python3 "$HERE/canal_selftest.py"
+etape "composition du SQL par le shell" \
+  python3 "$HERE/scanner_selftest.py"
+# LES CINQ COUCHES DE SEPARATION, ET LEUR CONTRE-EXEMPLE COMPLET.
+#
+# Cette surface est la seule qui prouve que la relaxation de `0015` — rabattre
+# `@MIGRATEUR` et `@PLAN` sur `@DEPLOIEMENT` quand les deux symboles se
+# confondent — est acceptable: elle ne l'est que si l'etat confondu ne peut
+# jamais atteindre `ACTIVE`. Elle le montre en NEUTRALISANT les cinq couches
+# une a une, et en obtenant `ACTIVE` seulement quand les CINQ tombent.
+etape "les cinq couches de separation" \
+  "$HERE/separation_layers.sh"
 etape "terminaison de la matrice sur signal" \
   "$HERE/mutation_signal_selftest.sh"
 
@@ -388,13 +668,24 @@ etape "terminaison de la matrice sur signal" \
 # verifient la RLS et les declencheurs, pas le deploiement.
 PLAN_R="${DB_NAME}_plan"; PLAN_MDP="FICTIF-run-plan"
 MIG_R="${DB_NAME}_mig";   MIG_MDP="FICTIF-run-mig"
+# LE BACKEND AUTHENTIFIE, DISTINCT DU MIGRATEUR. Depuis 6.3c, la declaration
+# « eurostruct.authority_backend_logins » nomme les logins autorises a agir au
+# titre d'une autorite normative. Y nommer le MIGRATEUR reviendrait a defaire
+# la frontiere que le jalon pose: l'identite TECHNIQUE qui applique un schema
+# n'est pas une identite PROFESSIONNELLE. On cree donc un login de service
+# dedie, et c'est LUI qui est declare — meme si les tests de garanties
+# tournent, eux, sous `postgres`.
+SVC_R="${DB_NAME}_svc";   SVC_MDP="FICTIF-run-svc"
 # shellcheck disable=SC2034
 harnais_valider_identifiant "PLAN_R" "$PLAN_R" || exit 2
 harnais_valider_identifiant "MIG_R"  "$MIG_R"  || exit 2
+harnais_valider_identifiant "SVC_R"  "$SVC_R"  || exit 2
 creer_role "$PLAN_R" "login password '$PLAN_MDP' createrole" \
   || { echo "ECHEC: creation du plan de controle impossible" >&2; exit 1; }
 creer_role "$MIG_R" "login password '$MIG_MDP' createrole createdb" \
   || { echo "ECHEC: creation du migrateur impossible" >&2; exit 1; }
+creer_role "$SVC_R" "login password '$SVC_MDP'" \
+  || { echo "ECHEC: creation du backend authentifie impossible" >&2; exit 1; }
 adm -c "grant \"$PLAN_R\" to ${PGUSER:-postgres};" >/dev/null 2>&1
 
 plan_pg() { PGUSER="$PLAN_R" PGPASSWORD="$PLAN_MDP" psql -X -q -d postgres "$@"; }
@@ -434,6 +725,41 @@ grant usage on schema auth to "$PLAN_R";
 SQL
   adm -c "alter database \"$b\"
             set eurostruct.approved_deployment_roles = '$MIG_R,$PLAN_R';" >/dev/null 2>&1
+  # LES DEUX DECLARATIONS DE 6.3c, POSEES AVANT LA PHASE 1.
+  #
+  # C'est 0013 qui les CONSTATE et les fige pendant la migration; declarees
+  # apres, elles ne seraient lues par personne et TOUT le sous-systeme
+  # d'autorite resterait ferme. Mesure du 26/08: sans elles, la suite de
+  # garanties echouait sur BOOTSTRAP_AUTHORITY_NOT_CONFIGURED — la porte que
+  # 6.3c a fermee n'avait ete rouverte que pour les harnais d'autorite, jamais
+  # pour la base principale.
+  #
+  # LE PRINCIPAL DU MANDAT EST CELUI QUE `05_normative_confirmation.sql`
+  # amorce. Un mandat qui nommerait quelqu'un d'autre ne serait pas « un
+  # mandat quelconque »: il refuserait l'amorcage, ce qui est exactement ce
+  # que le mandat doit faire.
+  # ET `approved_service_logins`, SANS QUOI LA TOPOLOGIE REFUSE — a juste
+  # titre. Mesure: la base de mise a niveau a refuse 0010 sur « le role
+  # connectable eurostruct_test_svc atteint le service
+  # eurostruct_authority_backend sans approbation ». L'appartenance a un role
+  # est CLUSTER-WIDE: des que la base principale accorde le role d'execution au
+  # login de service, TOUTES les bases du cluster le voient. Declarer le login
+  # dans une seule base ne suffit donc pas.
+  adm -c "alter database \"$b\"
+            set eurostruct.approved_service_logins = '$SVC_R';" >/dev/null 2>&1
+  adm -c "alter database \"$b\"
+            set eurostruct.authority_backend_logins = '$SVC_R';" >/dev/null 2>&1
+  # LE PRINCIPAL DU MANDAT DEPEND DE LA BASE, et il le faut. Chaque base de
+  # cette suite amorce SA racine: la base principale amorce 4444..., celle de
+  # concurrence c000...1, celle du contrat croise a100...1. Un mandat unique
+  # code en dur refuserait les deux dernieres — et le refus serait juste, ce
+  # qui rendrait le diagnostic trompeur. L'appelant pose donc
+  # `MANDAT_PRINCIPAL` avant d'appeler `deployer`; a defaut, c'est celui de la
+  # base principale.
+  adm -c "alter database \"$b\"
+            set eurostruct.bootstrap_mandate =
+              '${MANDAT_PRINCIPAL:-44444444-4444-4444-4444-444444444444}:FICTIF-EMPREINTE-SUITE-CANONIQUE';" \
+    >/dev/null 2>&1
   # PHASE 0 — LE SCEAU, par le plan de controle.
   echo "    control_plane/0001_normative_seal.sql (phase 0)"
   if ! out=$(plan_db "$b" -v ON_ERROR_STOP=1 \
@@ -458,13 +784,18 @@ SQL
     echo "ECHEC: $b ne se termine pas en PENDING (obtenu: $etat)" >&2; return 1
   fi
   manif=$(plan_db "$b" -tAc 'select normative_settings_manifest()' 2>&1)
-  out=$(plan_db "$b" -tAc "select normative_finalize_deployment('$manif')" 2>&1)
+  out=$(plan_db "$b" -tAc "select normative_finalize_deployment($(esc_litteral "$manif"))" 2>&1)
   etat=$(plan_db "$b" -tAc 'select normative_activation_state()' 2>&1)
   if [[ "$etat" != "ACTIVE" ]]; then
     echo "ECHEC: phase 2 refusee sur $b (etat $etat):" >&2
     grep -m2 -E "ERROR|FATAL" <<<"$out" | sed 's/^/       /' >&2
     return 1
   fi
+  # LE ROLE D'EXECUTION VA AU LOGIN DECLARE, ET PAR LE PLAN DE CONTROLE.
+  # C'est lui qui a cree le role en phase 0, donc lui seul en detient l'ADMIN
+  # — le migrateur, non, et c'est la contenance que 6.3c a posee.
+  PGUSER="$PLAN_R" PGPASSWORD="$PLAN_MDP" psql -X -q -d postgres \
+    -c "grant eurostruct_authority_backend to \"$SVC_R\";" >/dev/null 2>&1
   echo "    phase 2: $b PENDING -> ACTIVE par « $PLAN_R »"
   return 0
 }
@@ -531,6 +862,8 @@ CONC_DB="${DB_NAME}_conc"
 echo "==> concurrence multi-connexion"
 adm -c "drop database if exists $CONC_DB;" >/dev/null
 registre_base "$CONC_DB"
+# La base de concurrence amorce « c0000000-...-0001 » (voir concurrency.sh).
+MANDAT_PRINCIPAL='c0000000-0000-0000-0000-000000000001' \
 deployer "$CONC_DB" "$DB_DIR"/migrations/*.sql \
   || { echo "ECHEC: la base de concurrence n'a pas pu etre deployee" >&2; exit 1; }
 
@@ -571,6 +904,8 @@ XC_DB="${DB_NAME}_contract"
 echo "==> base vierge: racine de confiance et contrat croise"
 adm -c "drop database if exists $XC_DB;" >/dev/null
 registre_base "$XC_DB"
+# La base vierge amorce « a1000000-...-0001 » (voir cross_contract_insert.sql).
+MANDAT_PRINCIPAL='a1000000-0000-0000-0000-000000000001' \
 deployer "$XC_DB" "$DB_DIR"/migrations/*.sql \
   || { echo "ECHEC: la base vierge n'a pas pu etre deployee" >&2; exit 1; }
 

@@ -114,6 +114,12 @@ run_pytest "moteur" "$HERE/engine"
 echo "--> importeur"
 run_pytest "importeur" "$HERE/tools/ndp_import"
 
+# LA COUCHE HTTP. Ses cas ne touchent ni base ni reseau: refus 422, refus de
+# jeton, rotation JWKS. Le parcours d'autorite complet, lui, exige un vrai
+# PostgreSQL et vit dans `db/test/api_e2e.sh` — il est lance par la suite SQL.
+echo "--> API"
+run_pytest "API" "$HERE/api"
+
 # --------------------------------------------------------------------------
 # Garanties SQL. Sans serveur joignable, la surface est declaree NON EXECUTEE
 # — jamais passee sous silence. C'est la moitie du travail de ce script.

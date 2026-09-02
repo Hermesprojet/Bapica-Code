@@ -327,16 +327,32 @@ begin
       'et la vue minimale ne serait lisible par personne';
   end if;
 
-  -- Le role de service, lui, ecrit: sans cela plus rien ne serait insérable
-  -- et les refus ci-dessus seraient satisfaits par une base morte.
+  -- LA NON-VACUITE: un chemin d'ecriture LEGITIME doit exister, sans quoi les
+  -- refus ci-dessus seraient satisfaits par une base morte.
+  --
+  -- CE CHEMIN A CHANGE DE NOM EN 6.3c. C'etait `normative_backend`; depuis
+  -- 0013 c'est `eurostruct_authority_backend`, et `normative_backend` n'a
+  -- justement plus INSERT — c'est la frontiere que le jalon pose. Continuer a
+  -- exiger l'ancien reviendrait a exiger que la frontiere ne soit pas posee.
+  --
+  -- ON EXIGE DONC LES DEUX MOITIES, et c'est plus fort qu'avant:
+  --   * le backend d'autorite ecrit — le chemin nominal existe;
+  --   * `normative_backend` n'ecrit PLUS — la frontiere tient.
   foreach t in array array['normative_authorisation_grants',
                            'normative_authorisation_revocations',
                            'normative_rule_confirmations',
                            'normative_rule_confirmation_revocations'] loop
-    if not has_table_privilege('normative_backend', t, 'INSERT') then
+    if not has_table_privilege('eurostruct_authority_backend', t, 'INSERT') then
       raise exception
-        'normative_backend n''a pas INSERT sur %: aucune ecriture ne serait '
-        'possible par aucun chemin', t;
+        'eurostruct_authority_backend n''a pas INSERT sur %: aucune ecriture '
+        'ne serait possible par aucun chemin, et les refus ci-dessus seraient '
+        'satisfaits par une base morte', t;
+    end if;
+    if has_table_privilege('normative_backend', t, 'INSERT') then
+      raise exception
+        'normative_backend detient encore INSERT sur %: la frontiere posee '
+        'par 0013 n''a pas pris, et un role applicatif ordinaire ecrirait '
+        'toujours dans les tables d''autorite', t;
     end if;
   end loop;
 end

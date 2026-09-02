@@ -233,6 +233,48 @@ begin
                   where rolname = 'eurostruct_deployment') then
     create role eurostruct_deployment nologin;
   end if;
+  -- SEPTIEME ROLE, 6.3c: LE BACKEND D'AUTORITE.
+  --
+  -- IL EST CREE ICI ET NON PAR LA MIGRATION, ET C'EST UN CORRECTIF, PAS UN
+  -- RANGEMENT. La migration 0013 le creait; or `CREATE ROLE` par un role
+  -- CREATEROLE donne au createur l'ADMIN OPTION sur le role cree. Le
+  -- MIGRATEUR se retrouvait donc capable d'enroler qui il voulait dans le
+  -- role qui detient INSERT sur les tables d'autorite — y compris lui-meme.
+  --
+  -- Mesure sur une base deployee: les membres reels de
+  -- `eurostruct_authority_backend` etaient « le migrateur », alors que la
+  -- declaration nommait le login de service. Un GRANT emis par le migrateur
+  -- vers un login ordinaire aboutissait, et conferait `INSERT` sur
+  -- `normative_authorisation_grants`.
+  --
+  -- C'est exactement la contenance que 6.3b6c avait fermee, rouverte par la
+  -- porte d'a cote. Le plan de controle le cree, donc lui seul en detient
+  -- l'ADMIN.
+  if not exists (select 1 from pg_roles
+                  where rolname = 'eurostruct_authority_backend') then
+    create role eurostruct_authority_backend nologin;
+  end if;
+
+  -- LE RAPPROCHEMENT LIT, ET NE PEUT RIEN D'AUTRE.
+  --
+  -- `reconciliation.py` confronte les lignes de `deliverables` aux objets du
+  -- magasin. Il traverse TOUTES les organisations — c'est un geste
+  -- d'exploitation, comme une sauvegarde — et il ne doit rien pouvoir ecrire.
+  --
+  -- CE QUE `set transaction read only` NE SUFFIT PAS A GARANTIR. Ce reglage
+  -- est DEMANDE par le programme: il protege contre un defaut de ce
+  -- fichier-la, pas contre un programme different qui se connecterait avec le
+  -- meme compte. Le droit, lui, ne se demande pas — il est absent ou present.
+  --
+  -- IL EST NOLOGIN, ET C'EST LE POINT. On ne s'y connecte pas: un compte
+  -- LOGIN distinct, fourni par l'infrastructure et hors de ce depot, s'y
+  -- rattache. Un role porteur de droits qui serait aussi un compte de
+  -- connexion melerait l'identite et la capacite, et sa rotation deviendrait
+  -- une modification de droits.
+  if not exists (select 1 from pg_roles
+                  where rolname = 'eurostruct_reconciliation') then
+    create role eurostruct_reconciliation nologin;
+  end if;
 end
 $$;
 
@@ -1070,7 +1112,8 @@ declare
   autorites text[] := array['eurostruct_normative_writer',
                             'eurostruct_normative_bootstrap',
                             'eurostruct_normative_activator'];
-  services  text[] := array['normative_backend', 'normative_governance'];
+  services  text[] := array['normative_backend', 'normative_governance',
+                            'eurostruct_authority_backend'];
   note text;
 begin
   -- ------------------------------------------------------------------
@@ -2622,6 +2665,39 @@ begin
       using errcode = 'insufficient_privilege';
   end if;
 
+  -- ------------------------------------------------------------------
+  -- LE MANIFESTE EST REEVALUE ICI, ET C'EST LE SEUL ENDROIT QUI COMPTE
+  -- ------------------------------------------------------------------
+  -- POURQUOI UNE VERIFICATION EN PHASE 1 NE SUFFIT PAS. `0015` confronte le
+  -- manifeste a la realite AU MOMENT OU ELLE S'APPLIQUE — c'est-a-dire avant
+  -- la finalisation, quand `normative_control_plane` est encore VIDE. En phase
+  -- 1, le symbole `@PLAN` est donc resolu par le proprietaire d'un objet du
+  -- sceau, et si le migrateur et le plan se confondent, la distinction
+  -- @MIGRATEUR/@PLAN est RELACHEE.
+  --
+  -- Ce relachement n'est acceptable que si l'etat confondu ne peut jamais
+  -- atteindre ACTIVE. C'est vrai — la garde de separation ci-dessus le refuse
+  -- — mais cela fait reposer une propriete du manifeste sur une garde
+  -- ETRANGERE. Si cette garde disparaissait, rien ne reevaluerait le
+  -- manifeste avec les symboles definitifs.
+  --
+  -- Cet appel ferme la boucle: a cet instant, la separation est etablie, le
+  -- plan de controle definitif existe, et le manifeste est confronte une
+  -- SECONDE fois — avec des symboles qui ne sont plus relaches. Une surface
+  -- qui ne correspond pas a son manifeste n'atteint pas ACTIVE.
+  --
+  -- L'APPEL EST TOLERANT A L'ABSENCE, ET SEULEMENT A ELLE. Le sceau (phase 0)
+  -- precede `0015` (phase 1): sur une base ou 0015 n'est pas encore appliquee,
+  -- la fonction n'existe pas et la finalisation ne peut pas l'exiger. Toute
+  -- AUTRE erreur remonte et annule la transaction.
+  begin
+    perform assert_authority_manifest();
+  exception
+    when undefined_function then
+      raise notice 'manifeste non reevalue: assert_authority_manifest() absente '
+                   '(base anterieure a 0015)';
+  end;
+
   return normative_record_activation();
 end;
 $$;
@@ -2745,5 +2821,54 @@ begin
   raise notice 'sceau « % » pose par « % » — assurance: %', v, qui, a;
 end
 $$;
+
+
+-- ---------------------------------------------------------------------
+-- LE CONTEXTE D'EXECUTION DES CINQ GARDES POSEES ICI
+-- ---------------------------------------------------------------------
+-- CE QUI A ETE MESURE, ET QUI JUSTIFIE CES CINQ LIGNES.
+--
+-- Une fonction declencheur SANS `search_path` epingle s'execute avec le chemin
+-- de CELUI QUI DECLENCHE l'ecriture. Experience faite le 28/08 sur base
+-- jetable, sur la forme exacte d'une de ces gardes:
+--
+--   * sans manipulation, la garde REFUSE — « le calcul est fige »;
+--   * apres `create temporary table validations (...)` dans la meme session,
+--     la meme commande passe: `UPDATE 1`.
+--
+-- `pg_temp` est consulte EN PREMIER pour les relations quand il n'est pas
+-- nomme explicitement, et `TEMP` est accorde a PUBLIC par defaut — mesure sur
+-- la base deployee: `datacl = {=Tc/<migrateur>, ...}`. N'importe quel role
+-- capable de se connecter peut donc creer la relation qui masque celle que la
+-- garde interroge.
+--
+-- LES CINQ GARDES CI-DESSOUS N'INTERROGENT AUCUNE RELATION: leur corps ne
+-- contient qu'un `raise exception`, et pour l'une d'elles un `txid_current()`.
+-- Le vecteur `pg_temp` n'a donc rien a masquer chez elles. Mais un SECOND
+-- vecteur existe: un schema nomme EXPLICITEMENT avant `pg_catalog` peut
+-- masquer une fonction integree — mesure: `txid_current()` a rendu 1 au lieu
+-- de l'identifiant reel. Ce vecteur exige `CREATE` sur la base, qu'AUCUN role
+-- d'autorite ne detient (mesure: `has_database_privilege(..., 'CREATE') = f`
+-- pour les sept roles canoniques).
+--
+-- On epingle quand meme. Un contexte d'execution qui depend de deux mesures
+-- favorables n'est pas une garantie: c'est une coincidence qu'on documente.
+--
+-- `pg_temp` EST NOMME EXPLICITEMENT, ET EN DERNIER. C'est contre-intuitif et
+-- c'est mesure: OMETTRE `pg_temp` NE LE FERME PAS, il est alors consulte EN
+-- PREMIER pour les relations. Table mesuree le 28/08 sur la garde reelle:
+--
+--   search_path = pg_catalog, public            -> UPDATE 1   (contourne)
+--   search_path = pg_catalog, public, pg_temp   -> REFUSE     (la garde tient)
+--   search_path = pg_temp, pg_catalog, public   -> UPDATE 1   (contourne)
+--
+-- Seule la troisieme position ferme le vecteur. Une premiere version de ce
+-- correctif ecrivait « pg_catalog, public » en croyant fermer par omission:
+-- elle ne fermait rien.
+alter function forbid_seal_metadata_mutation()      set search_path = pg_catalog, public, pg_temp;
+alter function forbid_activation_mutation()         set search_path = pg_catalog, public, pg_temp;
+alter function forbid_approved_settings_mutation()  set search_path = pg_catalog, public, pg_temp;
+alter function forbid_control_plane_mutation()      set search_path = pg_catalog, public, pg_temp;
+alter function forbid_finalization_intent_mutation() set search_path = pg_catalog, public, pg_temp;
 
 commit;
