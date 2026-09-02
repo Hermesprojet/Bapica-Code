@@ -28,6 +28,7 @@ import ezdxf
 from ezdxf.document import Drawing
 from ezdxf.enums import TextEntityAlignment
 
+from . import ezdxf_determinisme
 from .layers import LAYERS
 from .modele import (
     LEGAL_NOTICE,
@@ -107,10 +108,26 @@ __all__ = [
 #: dessin portent alors deux empreintes, donc deux chemins de stockage, et le
 #: magasin ne supprime jamais.
 #:
-#: Le correctif touche une bibliotheque tierce et merite sa propre preuve
-#: rouge — un rendu repete en SOUS-PROCESSUS, sans quoi le test ne mesure rien.
-#: Voir ``docs/TICKET_DXF_DETERMINISME.md``.
+#: CORRIGE LE 02/09 par ``ezdxf_determinisme.appliquer()``, appele ci-dessous:
+#: l'ordre de la section ``CLASSES`` est desormais canonique. Le module dit
+#: pourquoi cette forme de correctif et pas une autre; le test decisif est
+#: ``engine/tests/test_dxf_determinisme.py``, qui rend en SOUS-PROCESSUS sous
+#: plusieurs germes — sans quoi il ne mesurerait rien, ``PYTHONHASHSEED`` etant
+#: fixe pour la duree d'un processus.
 ezdxf.options.write_fixed_meta_data_for_testing = True
+
+#: L'ORDRE DE LA SECTION ``CLASSES``, POSE AVANT TOUT RENDU.
+#:
+#: Installe ici, au chargement du module qui produit les DXF, et pas dans
+#: l'API: un plan se rend aussi depuis les tests, depuis un script, depuis un
+#: futur travail par lots. Le determinisme d'un fichier adresse par contenu ne
+#: peut pas dependre du chemin par lequel on est arrive.
+#:
+#: SI ``ezdxf`` A CHANGE DE FORME, CET APPEL LEVE — et le module ne se charge
+#: pas. C'est voulu: le defaut qu'il corrige est silencieux, et un produit qui
+#: demarrerait sans la correction en produisant des empreintes instables serait
+#: pire qu'un produit qui refuse de demarrer en le disant.
+ezdxf_determinisme.appliquer()
 
 DIMSTYLE: Final = "EUROSTRUCT"
 

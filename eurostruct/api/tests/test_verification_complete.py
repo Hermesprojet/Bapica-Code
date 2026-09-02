@@ -940,3 +940,46 @@ def test_le_plan_survit_au_redemarrage_et_ne_relance_pas_le_moteur(
         headers=_entete(jeton(ACTEUR_A))).content
     assert (hashlib.sha256(octets_a).hexdigest()
             == hashlib.sha256(octets_b).hexdigest())
+
+
+def test_deux_demandes_du_meme_plan_ne_font_qu_un_objet(
+        client, jeton, projet_neuf) -> None:
+    """L'ADRESSAGE PAR CONTENU N'EST PAS UNE FIGURE DE STYLE.
+
+    Redemander le meme plan doit REUTILISER l'objet deja depose, pas en ecrire
+    un second a cote. Les deux demandes produisent bien deux LIGNES — ce sont
+    deux gestes distincts, horodates et attribues — mais un seul FICHIER: le
+    chemin derive du SHA-256, et deux contenus identiques ont le meme chemin.
+
+    CE CONTROLE N'AVAIT AUCUN SENS AVANT LE 02/09. Le DXF n'etait pas
+    deterministe entre processus, et deux rendus du meme dessin pouvaient
+    donner deux empreintes — donc deux chemins, donc deux objets, dans un
+    magasin qui ne supprime jamais. Voir
+    `engine/tests/test_dxf_determinisme.py` et `docs/TICKET_DXF_DETERMINISME.md`.
+    """
+    from .test_livrables import _objets_du_magasin
+
+    prefixe = f"{projet_neuf['organization_id']}/" \
+              f"{projet_neuf['project_id']}/"
+    assert not _objets_du_magasin(prefixe)
+
+    cree = _verifier(client, jeton, projet_neuf).json()
+    assert cree["status"] == "passed", cree
+
+    premier = _dxf_de(client, jeton, projet_neuf, cree["calculation_id"])
+    second = _dxf_de(client, jeton, projet_neuf, cree["calculation_id"])
+    assert premier.status_code == 201, premier.text
+    assert second.status_code == 201, second.text
+
+    #: DEUX LIGNES, DEUX IDENTIFIANTS: chaque demande est un geste enregistre.
+    assert (premier.json()["deliverable_id"]
+            != second.json()["deliverable_id"])
+    #: UNE SEULE EMPREINTE, donc un seul chemin.
+    assert premier.json()["sha256"] == second.json()["sha256"]
+
+    objets = _objets_du_magasin(prefixe)
+    assert len(objets) == 1, (
+        "deux demandes du meme plan ont ecrit "
+        f"{len(objets)} objets: {sorted(objets)}. Le magasin ne supprime "
+        "jamais: chaque doublon est definitif.")
+    assert next(iter(objets)).endswith(f"{premier.json()['sha256']}.dxf")

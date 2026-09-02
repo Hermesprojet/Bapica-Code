@@ -1,68 +1,54 @@
-# Le DXF n'est pas stable d'un processus à l'autre
+# Le DXF n'est pas stable d'un processus à l'autre — **FERMÉ le 02/09/2026**
 
-**Mesuré le 01/09/2026. Non corrigé — la cause est dans `ezdxf` 1.4.4, et le
-correctif touche une bibliothèque tierce : il mérite son propre lot et sa
-propre preuve rouge.**
+**Ouvert le 01/09, corrigé le 02/09.** La correction est
+`engine/src/eurostruct_engine/drawing/ezdxf_determinisme.py` ; la preuve est
+`engine/tests/test_dxf_determinisme.py`.
 
 ---
 
-## Le fait
+## Le fait, tel qu'il a été mesuré
 
 Deux rendus du **même** `BeamSectionSpec`, dans deux processus Python
-distincts, produisent deux fichiers DXF de **taille identique** et de contenu
+distincts, produisaient deux fichiers DXF de **taille identique** et de contenu
 différent.
 
 ```
-$ for i in 1..8; do python3 rendre.py; done | sort | uniq -c
-   4 c1ffa143113ec2d429a74a2b7a59b89686038149787e0f3576a67029561192aa  63993
-   4 7d2d548843c05e9dab37968294ef9875fc710829963480dd3964582256c9d355  63993
+AVANT   4 c1ffa143113ec2d429a74a2b7a59b89686038149787e0f3576a67029561192aa  63993
+        4 7d2d548843c05e9dab37968294ef9875fc710829963480dd3964582256c9d355  63993
+
+APRÈS  10 03c0d9e243a7374f027a0b7e3301df692fd40c3c52973205b0b3b146083602ea  63993
 ```
 
-Deux valeurs, tirées au hasard à chaque lancement. À l'intérieur d'un même
-processus, en revanche, deux rendus successifs sont **byte-identiques** — c'est
-ce que `parcours_verification.mjs` constate en reproduisant le plan après un
-rechargement complet du navigateur, l'API étant restée le même processus.
+Taille inchangée : le fichier porte le même contenu, dans un ordre désormais
+canonique.
 
-## Ce que cela coûte
+À l'intérieur d'un même processus, deux rendus successifs étaient déjà
+byte-identiques — c'est pourquoi le défaut a survécu à tous les tests
+existants, qui tournent tous dans le processus de pytest, où
+`PYTHONHASHSEED` est fixé une fois pour toutes.
+
+## Ce que cela coûtait
 
 **LE CHEMIN DE STOCKAGE D'UN LIVRABLE DÉRIVE DE SON SHA-256.** Un fichier dont
 les octets bougent d'une exécution à l'autre :
 
-1. **se dépose deux fois, sous deux chemins.** La politique du magasin
+1. **se déposait deux fois, sous deux chemins.** La politique du magasin
    (`docs/STOCKAGE.md` §5) interdit toute suppression par le produit : chaque
-   variante est **définitive** ;
-2. **casse la comparaison d'empreintes.** Un auditeur qui compare le SHA-256 de
-   deux plans identiques conclut qu'ils diffèrent. C'est le contraire de ce que
-   l'adressage par contenu existe pour donner ;
-3. **contredit un commentaire du dépôt.** `drawing/beam_section.py` explique,
-   au-dessus de `ezdxf.options.write_fixed_meta_data_for_testing = True`, que
-   ce réglage sert précisément à obtenir des octets stables. Le réglage est
-   nécessaire — sans lui, quatre valeurs volatiles s'ajoutent — mais il
-   **n'est pas suffisant**, et le commentaire laissait croire qu'il l'était.
+   variante était **définitive** ;
+2. **cassait la comparaison d'empreintes.** Un auditeur comparant le SHA-256 de
+   deux plans identiques concluait qu'ils diffèrent.
 
 ## La cause, exactement
 
-Le diff entre les deux variantes fait **huit lignes**, toutes dans la section
-`CLASSES` : les enregistrements `LAYOUT` et `ACDBPLACEHOLDER` échangent leur
-place.
-
-```
-1330c1330            1346c1346
-< LAYOUT              < ACDBPLACEHOLDER
-> ACDBPLACEHOLDER     > LAYOUT
-1332c1332            1348c1348
-< AcDbLayout          < AcDbPlaceHolder
-> AcDbPlaceHolder     > AcDbLayout
-```
+Huit lignes de diff, toutes dans la section `CLASSES` : les enregistrements
+`LAYOUT` et `ACDBPLACEHOLDER` échangeaient leur place.
 
 Le document est en **R2018**. Dans `ezdxf/sections/classes.py`,
-`REQUIRED_CLASSES` ne contient que deux entrées — `DXF2000 -> REQ_R2000` et
-`DXF2004 -> REQ_R2004` — si bien que toute version postérieure retombe sur
+`REQUIRED_CLASSES` ne contient que `DXF2000 -> REQ_R2000` et
+`DXF2004 -> REQ_R2004`, si bien que toute version postérieure retombe sur
 `REQ_R2004`, **qui ne cite ni `LAYOUT` ni `ACDBPLACEHOLDER`** (alors que
-`REQ_R2000` cite les deux, dans cet ordre).
-
-Ces deux classes ne sont donc enregistrées que par la boucle finale de
-`add_required_classes` :
+`REQ_R2000` cite les deux). Ces deux classes n'étaient donc enregistrées que
+par la boucle finale de `add_required_classes` :
 
 ```python
 dxf_types_in_use = self.doc.entitydb.dxf_types_in_use()   # entitydb.py:297
@@ -71,72 +57,69 @@ for dxftype in dxf_types_in_use:
     self.add_class(dxftype)
 ```
 
-et `dxf_types_in_use` rend un **`set[str]`** :
+et `dxf_types_in_use` rend un **`set[str]`**. L'ordre d'itération d'un ensemble
+de chaînes dépend de `PYTHONHASHSEED`, que CPython tire au hasard à chaque
+démarrage.
 
-```python
-def dxf_types_in_use(self) -> set[str]:
-    return set(entity.dxftype() for entity in self.values())
-```
+## La correction retenue
 
-L'ordre d'itération d'un ensemble de chaînes dépend de `PYTHONHASHSEED`, que
-CPython tire au hasard à chaque démarrage. D'où deux ordres possibles, et deux
-fichiers.
+`ezdxf_determinisme.appliquer()`, appelé au chargement de
+`drawing/beam_section.py`, **enveloppe** `ClassesSection.add_required_classes` :
+l'originale est appelée telle quelle, puis `self.classes` est remis dans un
+ordre canonique (tri sur la clé `(name, cpp_class_name)`).
 
-`add_required_classes` est appelée **pendant** `Drawing.write()`
-(`document.py:601`, puis de nouveau depuis `update_all()` en `document.py:655`)
-: trier la section `CLASSES` avant d'appeler `write()` serait défait par
-`write()` elle-même.
+Le correctif ne dépend donc **pas** de la façon dont `ezdxf` décide d'ajouter
+ses classes — seulement du fait que l'export suit l'ordre de ce dictionnaire.
 
-## Trois correctifs possibles, et ce que chacun coûte
+### Ce qui a été écarté, et pourquoi
 
-**A. Normaliser `EntityDB.dxf_types_in_use` au chargement du module**, à côté
-de `write_fixed_meta_data_for_testing`, en rendant un conteneur ordonné
-(`dict.fromkeys(sorted(...))`) plutôt qu'un ensemble.
-*Pour :* une seule ligne, au seul endroit qui produit le désordre ; le seul
-appelant de cette méthode dans `ezdxf` 1.4.4 ne fait que des tests
-d'appartenance et une itération, tous deux préservés.
-*Contre :* c'est un remplacement de méthode d'une bibliothèque tierce, global
-au processus, et l'annotation de retour devient fausse. Une version ultérieure
-d'`ezdxf` qui ferait `.union(...)` du résultat casserait.
+| Écarté | Raison |
+|---|---|
+| `PYTHONHASHSEED` fixé au déploiement | Déplace la garantie hors du code, dans une variable qu'un opérateur, un conteneur ou un ordonnanceur peut ne pas poser. Le jour où elle manque, le produit redevient non déterministe **sans que rien ne le dise**. |
+| Un nouvel exporteur DXF | Échangerait un défaut connu contre une surface entière à maintenir, pour un problème d'ordre. |
+| Réimplémenter `add_required_classes` | Nous ferions décider au produit **quelles** classes le format exige — un choix qui change avec le format et dont ce n'est pas le rôle. |
+| Patcher `EntityDB.dxf_types_in_use` | Plus proche de la cause, mais rend un `set[str]` par contrat : une version ultérieure qui ferait `.union(...)` du résultat casserait en silence. |
 
-**B. Écrire nous-mêmes la séquence d'export** au lieu d'appeler
-`Drawing.write()`, en intercalant un tri de `doc.classes.classes` entre
-`add_required_classes` et l'export.
-*Pour :* rien de tiers n'est modifié.
-*Contre :* recopie des rouages internes d'`ezdxf` ; se casse en silence à
-chaque montée de version, c'est-à-dire exactement au moment où personne ne
-regarde.
+### Le garde-fou
 
-**C. Corriger `ezdxf` en amont** — `REQ_R2018` explicite, ou `sorted()` sur la
-boucle — et remonter le correctif.
-*Pour :* la seule correction qui tienne pour tout le monde.
-*Contre :* elle ne nous protège qu'après publication et montée de version.
+`verifier_signature()` refuse — `EzdxfIncompatible`, levée **au chargement du
+module**, donc avant tout rendu — si l'un de ces quatre faits n'est plus vrai :
 
-**Recommandation :** A, avec la mesure ci-dessus recopiée en commentaire, ET C
-remonté en amont. B ne vaut pas sa dette.
+1. `add_required_classes` existe et est une fonction ;
+2. sa signature est `(self, dxfversion)` ;
+3. `ClassesSection.classes` est un dictionnaire ;
+4. **l'export suit l'ordre de ce dictionnaire** — vérifié en exportant
+   réellement une section inversée, pas en lisant la source.
 
-## La preuve rouge à écrire d'abord
+Le quatrième est le fait porteur : réordonner ne servirait à rien si l'export
+triait de son côté.
 
-Un test qui rend **N fois la même coupe dans N sous-processus** et exige **une
-seule empreinte**. Il doit tourner en sous-processus : dans un seul processus,
-`PYTHONHASHSEED` est fixé une fois pour toutes et le test passerait toujours —
-il ne mesurerait rien.
+Versions éprouvées : **ezdxf 1.4.4**. Le numéro sert au **message** d'un refus,
+pas à le déclencher : refuser sur le seul numéro ferait échouer le produit à la
+première montée corrective alors que la structure n'a pas bougé.
 
-```
-N rendus, N processus  ->  len({sha256}) == 1
-```
+## Les preuves
 
-Aujourd'hui : **rouge** (2 empreintes sur 8 rendus).
+`engine/tests/test_dxf_determinisme.py`, neuf contrôles :
 
-## Ce qui reste vrai en attendant
+| Contrôle | Ce qu'il ferme |
+|---|---|
+| 10 rendus, 5 germes (`0`, `1`, `12345`, `98765`, `random`), sous-processus neufs | **une seule empreinte** |
+| le rendu du processus de test = celui d'un processus neuf | un correctif qui ne s'appliquerait qu'aux sous-processus |
+| 8 rendus concurrents (`ThreadPoolExecutor`) | un correctif passant par un état global mutable |
+| relecture `ezdxf` + `Auditor` | un fichier déterministe qui ne s'ouvrirait plus |
+| géométrie relue depuis les octets : 4 cercles Ø20, contour 300×600 | un correctif qui déplacerait quelque chose |
+| méthode absente / signature changée / export indifférent à l'ordre | le garde-fou se falsifie sur ses trois branches |
+| double `appliquer()` | l'enveloppe ne s'empile pas |
 
-* le plan **décrit toujours la bonne section** : le désordre porte sur l'ordre
-  de deux déclarations de classe, pas sur la géométrie, ni sur les barres, ni
-  sur le cartouche ;
-* tout logiciel de CAO lit les deux variantes de la même façon — la section
-  `CLASSES` n'impose aucun ordre ;
-* à l'intérieur d'une exécution, l'aperçu SVG et le fichier DXF sortent du même
-  modèle gelé, et le plan reproduit après un rechargement est byte-identique.
+Et à la frontière HTTP,
+`api/tests/test_verification_complete.py::test_deux_demandes_du_meme_plan_ne_font_qu_un_objet` :
+deux demandes du même plan → **deux lignes de livrable** (deux gestes
+horodatés et attribués) mais **un seul objet** dans le magasin.
 
-Ce qui n'est pas vrai : que deux plans du même dessin portent la même
-empreinte.
+## Remonté en amont ?
+
+Non — pas encore. La correction juste pour tout le monde est dans `ezdxf` :
+soit un `REQ_R2018` explicite, soit un `sorted()` sur la boucle finale de
+`add_required_classes`. Notre enveloppe reste utile même après : elle ne
+dépend pas de la version, et son garde-fou dira si elle devient inutile.
