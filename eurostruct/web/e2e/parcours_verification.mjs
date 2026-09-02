@@ -31,6 +31,18 @@
  *  10. une étude en échec ferme les documents en écrivant pourquoi, et la
  *      route refuse aussi.
  *
+ * ET UN ONZIÈME, QUI COURT SUR TOUS LES AUTRES
+ * ----------------------------------------------
+ * **La page ne crie nulle part.** Toute exception non rattrapée et toute
+ * erreur de console font échouer ce parcours — au chargement initial, après
+ * un F5, après une navigation, et sur l'ensemble du trajet.
+ *
+ * Ce contrôle-là est né d'un échec du contrôle précédent : les cris étaient
+ * collectés puis imprimés **seulement quand une assertion tombait**. L'erreur
+ * d'hydratation React #418 est donc restée présente à chaque chargement
+ * pendant des semaines, sous les yeux d'un parcours vert qui la voyait et n'en
+ * concluait rien.
+ *
  * POURQUOI L'ÉTUDE COMPLÈTE EST EXPLORATOIRE, ET CE QUE CELA MESURE
  * ------------------------------------------------------------------
  * Ce n'est pas un contournement : c'est le seul chemin honnête aujourd'hui en
@@ -87,10 +99,64 @@ const nav = await chromium.launch({ executablePath: chrome, args: ["--no-sandbox
 const ctx = await nav.newContext({ acceptDownloads: true });
 const page = await ctx.newPage();
 
+/**
+ * CE QUE LA PAGE A CRIÉ, ET CE QUE LE PARCOURS EN FAIT.
+ *
+ * UNE ERREUR DE CONSOLE EST UN ÉCHEC, PAS UNE NOTE DE BAS DE PAGE.
+ * -----------------------------------------------------------------
+ * Elles étaient collectées puis imprimées seulement quand une assertion
+ * tombait. L'erreur d'hydratation React #418 est donc restée présente à chaque
+ * chargement pendant des semaines, sous les yeux d'un parcours vert : il la
+ * voyait, et n'en concluait rien.
+ *
+ * Toute exception non rattrapée (`pageerror`) et toute erreur de console font
+ * désormais échouer le parcours.
+ *
+ * LA SEULE EXCEPTION, ET ELLE EST NOMMÉE
+ * ----------------------------------------
+ * Le navigateur inscrit dans la console **toute** réponse non-2xx, y compris
+ * celles que ce parcours provoque EXPRÈS : un refus de préflight strict, un
+ * document demandé sur une étude en échec. Refuser ces lignes-là reviendrait à
+ * interdire au parcours d'éprouver les refus — c'est-à-dire l'essentiel de ce
+ * qu'il éprouve.
+ *
+ * On tolère donc les 422, et RIEN D'AUTRE. Pas les 404 : c'est ainsi qu'une
+ * icône manquante ou une ressource déplacée se voit. Pas les 500. Pas les
+ * avertissements React.
+ */
 const criees = [];
-page.on("pageerror", (e) => criees.push(`erreur de page: ${e.message}`));
+const REFUS_ATTENDU = /Failed to load resource.*status of 422/;
+
+function crier(quoi) {
+  criees.push(quoi);
+}
+
+/**
+ * Consomme les cris d'un geste qui en provoque UN, nommement.
+ *
+ * POURQUOI PAS UNE TOLERANCE GLOBALE. Le parcours visite volontairement une
+ * route inconnue, et le navigateur inscrit ce 404 dans la console. Tolerer les
+ * 404 partout ferait disparaitre du meme coup l'icone manquante, la ressource
+ * deplacee, le chunk introuvable — toutes des 404 qu'on veut voir.
+ *
+ * On borne donc la tolerance a un GESTE: on note ce qui a ete crie avant, on
+ * exige que les nouveaux cris soient EXACTEMENT ceux attendus, et on les
+ * retire. Tout ce qui deborde reste un echec.
+ */
+function consommerLesCris(depuis, attendu, quoi) {
+  const nouveaux = criees.slice(depuis);
+  const inattendus = nouveaux.filter((c) => !attendu.test(c));
+  exige(inattendus.length === 0,
+        `${quoi}: cris inattendus — ${inattendus.slice(0, 3).join(" | ")}`);
+  criees.length = depuis;
+}
+
+page.on("pageerror", (e) => crier(`erreur de page: ${e.message}`));
 page.on("console", (m) => {
-  if (m.type() === "error") criees.push(`console: ${m.text()}`);
+  if (m.type() !== "error") return;
+  const texte = m.text();
+  if (REFUS_ATTENDU.test(texte)) return;
+  crier(`console: ${texte}`);
 });
 
 /**
@@ -404,6 +470,17 @@ try {
   // =======================================================================
   ici("ouverture de la page");
   await page.goto(WEB, { waitUntil: "domcontentloaded" });
+  //: LE CHARGEMENT INITIAL EST UN CONTROLE, PAS UN PREALABLE.
+  //:
+  //: L'erreur d'hydratation React #418 se produisait ICI, avant toute
+  //: interaction, a chaque chargement. On attend que le script d'hydratation
+  //: ait tourne — l'apparition du formulaire de connexion le prouve — puis on
+  //: laisse a React le temps de crier avant de regarder.
+  await page.waitForSelector("#connecter", { timeout: 20000 });
+  await page.waitForTimeout(1200);
+  exige(criees.length === 0,
+        "la page a crie au chargement initial (une erreur d'hydratation se "
+        + "produit exactement la): " + criees.slice(0, 3).join(" | "));
 
   ici("connexion de A");
   const liste = await corpsDe("/v1/projects", "GET", () => connecter(A));
@@ -713,6 +790,45 @@ try {
   // =======================================================================
   ici("rechargement complet");
   await page.goto(WEB, { waitUntil: "domcontentloaded" });
+  //: L'HYDRATATION EST OBSERVEE ICI, PAS SUPPOSEE. React signale un ecart
+  //: entre le rendu du serveur et celui du client par une exception non
+  //: rattrapee, quelques dizaines de millisecondes apres le chargement du
+  //: script. Rendre la main tout de suite laisserait le parcours continuer
+  //: avant qu'elle n'arrive, et un cri n'est pas un echec s'il tombe apres le
+  //: dernier controle.
+  await page.waitForSelector("#connecter", { timeout: 15000 });
+  await page.waitForTimeout(1200);
+  exige(criees.length === 0,
+        "la page a crie pendant le rechargement: "
+        + criees.slice(0, 3).join(" | "));
+
+  await connecter(A);
+  await page.selectOption("#projet", projetId);
+
+  // =======================================================================
+  // 9 bis — LA NAVIGATION, ALLER ET RETOUR
+  // =======================================================================
+  //: UNE PAGE INTROUVABLE FAIT PARTIE DU PRODUIT. Un lien peri­me, une URL
+  //: recopiee de travers: l'ecran doit rendre quelque chose de lisible, et
+  //: surtout ne rien casser au retour. C'est aussi le seul moyen d'eprouver
+  //: que le routeur de Next remonte l'application proprement.
+  ici("navigation vers une page absente puis retour");
+  const avantNavigation = criees.length;
+  const absente = await page.goto(`${WEB}/page-qui-n-existe-pas`,
+                                  { waitUntil: "domcontentloaded" });
+  exige(absente !== null && absente.status() === 404,
+        `une route inconnue a rendu ${absente?.status()} et non 404`);
+
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#connecter", { timeout: 15000 });
+  await page.waitForTimeout(800);
+  //: LE SEUL CRI TOLERE ICI EST CELUI QU'ON A PROVOQUE — le 404 de la route
+  //: inconnue. Tout le reste est un echec, y compris une seconde 404.
+  consommerLesCris(avantNavigation,
+                   /Failed to load resource.*status of 404/,
+                   "navigation vers une route inconnue");
+  //: LA SESSION NE SURVIT PAS A UN RECHARGEMENT, ET C'EST LE CONTRAT: aucun
+  //: jeton n'est persiste. On se reconnecte donc, comme l'ingenieur le ferait.
   await connecter(A);
   await page.selectOption("#projet", projetId);
 
@@ -796,6 +912,19 @@ try {
         "quelque chose qui ressemble a un JWT est persiste dans le navigateur");
 
   // =======================================================================
+  // LE BILAN DES CRIS, SUR TOUT LE PARCOURS
+  // =======================================================================
+  //: LES CONTROLES INTERMEDIAIRES REGARDENT DES MOMENTS PRECIS — chargement,
+  //: rechargement, navigation. Celui-ci regarde TOUT LE RESTE: la saisie, les
+  //: sept etapes, la composition du PDF, la transcription du DXF, l'apercu.
+  //: Sans lui, une erreur levee pendant un telechargement passerait entre deux
+  //: points de controle.
+  await page.waitForTimeout(600);
+  exige(criees.length === 0,
+        `la page a crie ${criees.length} fois pendant le parcours: `
+        + criees.slice(0, 5).join(" | "));
+
+  // =======================================================================
   // CE QUE CE PARCOURS A REELLEMENT PRODUIT
   // =======================================================================
   //: LES CHIFFRES SORTENT DU PARCOURS, PAS D'UN RAPPORT ECRIT A COTE.
@@ -861,7 +990,9 @@ console.log(
   + "contractuel; apres un rechargement complet l'etude se relit a l'identique "
   + "et le meme plan ressort avec les memes octets; une etude en echec ferme "
   + "les documents en disant pourquoi, et la route refuse aussi; aucun jeton "
-  + "persiste.",
+  + "persiste; et la page n'a crie NULLE PART — ni erreur d'hydratation, ni "
+  + "exception non rattrapee, ni erreur de console, hors les refus 422 que ce "
+  + "parcours provoque expres et le 404 de la route inconnue qu'il visite.",
 );
 if (bilan.length) {
   console.log("");

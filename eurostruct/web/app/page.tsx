@@ -53,7 +53,8 @@ import {
   type Organisation,
 } from "@/lib/organisation";
 import { FournisseurAuth, useAuth } from "@/lib/authentification";
-import { apiUrlConfiguree, DIAGNOSTIC_API_ABSENTE } from "@/lib/configuration";
+import { DIAGNOSTIC_API_ABSENTE } from "@/lib/configuration";
+import { useConfiguration } from "@/lib/fournisseur_configuration";
 import {
   approuverDecision, composerDossier, consommerDecision, proposerDecision,
   relireDecision,
@@ -1934,15 +1935,18 @@ function Livrables({ projet, revision, surChangement }: {
  * Le repli est parti. À sa place, cette bannière — et chaque appel refuse en
  * nommant la variable manquante.
  *
- * `useEffect` PLUTOT QU'UNE LECTURE AU RENDU: la configuration est déposée
- * dans la page par un script du layout, et le rendu serveur ne la voit pas.
- * La lire pendant le rendu ferait diverger serveur et client — l'erreur
- * d'hydratation #418, qui remplacerait ce diagnostic par un autre.
+ * LU PENDANT LE RENDU, DEPUIS LE 02/09.
+ *
+ * Il passait par un `useEffect`, parce que la configuration était déposée dans
+ * la page par un `<script>` du layout que le rendu serveur ne voyait pas: la
+ * lire au rendu aurait fait diverger serveur et client. Elle descend
+ * maintenant en props React, si bien que les DEUX rendus voient la même
+ * valeur — et la bannière apparaît du premier coup, au lieu de s'afficher
+ * après un aller-retour.
  */
 function ConfigurationManquante() {
-  const [manque, setManque] = useState(false);
-  useEffect(() => { setManque(!apiUrlConfiguree()); }, []);
-  if (!manque) return null;
+  const { apiUrl } = useConfiguration();
+  if (apiUrl.trim().length > 0) return null;
   return (
     <div className="bandeau refus" role="alert" id="configuration-absente">
       <strong>Configuration absente</strong> — {DIAGNOSTIC_API_ABSENTE}

@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { CLE_GLOBALE, type ConfigurationPublique } from "@/lib/configuration";
+import { configurationDuServeur } from "@/lib/configuration";
+import { FournisseurConfiguration } from "@/lib/fournisseur_configuration";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "EUROSTRUCT — vérification EC2",
   description:
-    "Vérification ELU en flexion simple, section rectangulaire, Eurocode 2 " +
-    "avec Annexe Nationale.",
+    "Vérification d'une poutre en béton armé, Eurocode 2 avec Annexe " +
+    "Nationale.",
 };
 
 /**
@@ -20,48 +21,45 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 /**
- * La configuration publique, lue dans l'environnement du PROCESSUS.
+ * LA CONFIGURATION DESCEND EN PROPS REACT, PAS EN BALISE `<script>`.
  *
- * Ce sont des variables sans préfixe `NEXT_PUBLIC_`, et c'est délibéré : ce
- * préfixe est précisément ce qui déclenche l'inlining dans le bundle. Lues
- * ici, dans un composant serveur, elles restent des variables de runtime — la
- * même image sert donc n'importe quel environnement.
+ * CE QUE LA RÉDACTION PRÉCÉDENTE COÛTAIT
+ * ----------------------------------------
+ * Elle écrivait `window.__EUROSTRUCT__ = {…}` dans un `<script>` posé dans
+ * `<head>`, avec un échappement manuel de `<` contre un `</script>` qui
+ * terminerait la balise.
+ *
+ * React 19 **hisse** les balises `<script>` hors de l'endroit où on les
+ * déclare. Le HTML rendu par le serveur et l'arbre reconstruit par le client
+ * ne correspondaient donc plus, et **chaque chargement de page** levait
+ * l'erreur #418 : « hydration failed… this tree will be regenerated on the
+ * client ». Mesuré sur une construction de production réelle (`next build`
+ * puis `next start`), puis confirmé par neutralisation — le `<head>` retiré,
+ * l'erreur disparaît.
+ *
+ * Une hydratation qui échoue n'est pas un avertissement cosmétique : React
+ * jette l'arbre rendu par le serveur et le reconstruit entièrement côté
+ * client.
+ *
+ * CE QUE CELA NE CHANGE PAS
+ * --------------------------
+ * `process.env` est toujours lu ICI, dans un composant serveur, à chaque
+ * requête. La même image sert toujours n'importe quel environnement, et rien
+ * n'est figé au build : c'est la propriété qui comptait, et elle tient.
+ *
+ * L'ÉCHAPPEMENT NE DISPARAÎT PAS, IL CHANGE DE MAIN. React sérialise ses props
+ * lui-même ; il n'y a plus de JavaScript composé à la main dans lequel une
+ * valeur d'environnement pourrait s'échapper. La garde manuelle part avec le
+ * risque qu'elle couvrait, pas avant lui.
  */
-function configurationServie(): ConfigurationPublique {
-  return {
-    apiUrl: process.env.EUROSTRUCT_API_URL ?? "",
-    supabaseUrl: process.env.EUROSTRUCT_SUPABASE_URL ?? "",
-    supabaseAnonKey: process.env.EUROSTRUCT_SUPABASE_ANON_KEY ?? "",
-  };
-}
-
 export default function RacineLayout({ children }: { children: ReactNode }) {
-  const config = configurationServie();
   return (
     <html lang="fr">
-      <head>
-        {/*
-          `JSON.stringify` PUIS ECHAPPEMENT DE `<`. Une valeur d'environnement
-          contenant « </script> » terminerait la balise et le reste serait
-          interprete comme du HTML. On n'attend pas ce contenu, et c'est
-          justement pour cela qu'il faut s'en proteger: la garde ne coute rien,
-          l'absence de garde coute une injection.
-
-          RIEN DE SECRET N'EST DEPOSE ICI. L'adresse de l'API, celle de
-          l'emetteur, et la cle anonyme de GoTrue — qui designe un projet et
-          n'autorise rien. Tout ce qui atterrit dans `window` est lisible par
-          quiconque ouvre la page.
-        */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html:
-              `window.${CLE_GLOBALE}=` +
-              JSON.stringify(config).replace(/</g, "\\u003c") +
-              ";",
-          }}
-        />
-      </head>
-      <body>{children}</body>
+      <body>
+        <FournisseurConfiguration valeur={configurationDuServeur()}>
+          {children}
+        </FournisseurConfiguration>
+      </body>
     </html>
   );
 }
