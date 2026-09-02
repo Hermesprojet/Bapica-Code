@@ -1,5 +1,9 @@
 # Rapport de lot — autorisation, magasin objet, entrée dans l'application
 
+> **Compte rendu historique.** Ce document décrit l'état du dépôt **au SHA
+> de son époque** et n'est pas mis à jour. Pour l'état courant du produit,
+> voir le `README.md` à la racine de `eurostruct/`.
+
 *Branche `claude/wip-6.3c-racine-de-confiance`, depuis `950259c`.*
 
 **Ce lot ne revendique ni `PRODUCTION_READY`, ni compatibilité Supabase, ni

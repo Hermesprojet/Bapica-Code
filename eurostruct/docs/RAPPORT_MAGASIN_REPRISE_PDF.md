@@ -1,5 +1,9 @@
 # Rapport de lot — constater, revenir de la perte, et le PDF
 
+> **Compte rendu historique.** Ce document décrit l'état du dépôt **au SHA
+> de son époque** et n'est pas mis à jour. Pour l'état courant du produit,
+> voir le `README.md` à la racine de `eurostruct/`.
+
 > Ce lot reprend les **trois replis** prévus après la fermeture des blocs
 > autorisation / magasin objet / entrée dans l'application. Il n'ouvre aucune
 > campagne théorique, ne touche à aucune Annexe Nationale, et ne revendique ni

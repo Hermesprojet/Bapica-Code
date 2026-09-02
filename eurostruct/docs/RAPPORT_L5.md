@@ -1,5 +1,9 @@
 # Lot L5 — rapport de fin
 
+> **Compte rendu historique.** Ce document décrit l'état du dépôt **au SHA
+> de son époque** et n'est pas mis à jour. Pour l'état courant du produit,
+> voir le `README.md` à la racine de `eurostruct/`.
+
 ## Temps
 
 | repère | valeur |

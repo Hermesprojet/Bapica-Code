@@ -1,5 +1,9 @@
 # Le plan de ferraillage devient une pièce ; l'aperçu montre ce qu'on télécharge
 
+> **Compte rendu historique.** Ce document décrit l'état du dépôt **au SHA
+> de son époque** et n'est pas mis à jour. Pour l'état courant du produit,
+> voir le `README.md` à la racine de `eurostruct/`.
+
 Rapport de lot — 1er septembre 2026, branche
 `claude/wip-6.3c-racine-de-confiance`, dépôt `Hermesprojet/Bapica-Code`.
 Point de départ validé par l'utilisateur : `b206753`, puis `3c23d47`.

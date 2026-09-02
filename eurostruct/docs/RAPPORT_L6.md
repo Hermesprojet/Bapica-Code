@@ -1,5 +1,9 @@
 # EUROSTRUCT — jalon 6.3c — rapport du lot L6
 
+> **Compte rendu historique.** Ce document décrit l'état du dépôt **au SHA
+> de son époque** et n'est pas mis à jour. Pour l'état courant du produit,
+> voir le `README.md` à la racine de `eurostruct/`.
+
 **Statut du jalon : inchangé.** `6.3c` n'est ni `CLOSED`, ni `DEPLOYABLE`, ni
 `PRODUCTION_READY`. `PROVIDER_IMPLEMENTED_NOT_INTEGRATED`,
 `BLOCKED_BY_REAL_AUTH`, `SUPABASE_UNVERIFIED` et `TARGET_BRANCH_UNRESOLVED`

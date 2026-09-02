@@ -1,5 +1,9 @@
 # RAPPORT — première tranche applicative exécutable
 
+> **Compte rendu historique.** Ce document décrit l'état du dépôt **au SHA
+> de son époque** et n'est pas mis à jour. Pour l'état courant du produit,
+> voir le `README.md` à la racine de `eurostruct/`.
+
 **Branche** `claude/wip-6.3c-racine-de-confiance` · **base** `4a489f4`
 
 **Les chiffres des sections 1 à 7 ont été mesurés sur `da04d7e`.** La

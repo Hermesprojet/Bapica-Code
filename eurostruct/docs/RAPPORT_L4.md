@@ -1,5 +1,9 @@
 # Lot L4 — rapport de fin
 
+> **Compte rendu historique.** Ce document décrit l'état du dépôt **au SHA
+> de son époque** et n'est pas mis à jour. Pour l'état courant du produit,
+> voir le `README.md` à la racine de `eurostruct/`.
+
 **Référence monotone** : `/proc/uptime` 27421,1 s au départ (2026-08-28T21:28:23Z).
 Le conteneur a redémarré en cours de lot. L'horloge lue n'a pas été remise à
 zéro — elle suit l'hôte — donc **aucun redémarrage n'a été détecté

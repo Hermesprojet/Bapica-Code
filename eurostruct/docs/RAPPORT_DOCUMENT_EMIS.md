@@ -1,5 +1,9 @@
 # Rapport de lot — le document émis
 
+> **Compte rendu historique.** Ce document décrit l'état du dépôt **au SHA
+> de son époque** et n'est pas mis à jour. Pour l'état courant du produit,
+> voir le `README.md` à la racine de `eurostruct/`.
+
 Lot faisant suite au lot DXF / SVG / dossier de revue accepté au HEAD
 `c9688b8`. Il ouvre la **28ᵉ primitive** `project_deliverable_issue_attestation`,
 autorisée explicitement et pour elle seule : ce n'est **pas** une primitive
