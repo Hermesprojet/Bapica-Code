@@ -29,7 +29,10 @@
  *  12. relecture du calcul : identifiant, empreintes, instantané normatif ;
  *  13. re-téléchargement du PDF et du DXF : mêmes octets ;
  *  14. troisième demande du plan : même empreinte, donc même objet ;
- *  15. l'étude exploratoire reste non finalisable.
+ *  15. seconde composition de la note par un processus neuf : identifiant de
+ *      livrable différent, MÊMES octets — c'est la composition qui est
+ *      éprouvée, pas la persistance ;
+ *  16. l'étude exploratoire reste non finalisable.
  *
  * AUCUNE ÉTUDE PRODUITE ICI N'EST UNE VÉRIFICATION RÉELLE. Les comptes sont
  * fictifs, la composition est jetable, et le registre national reste à 0/29.
@@ -438,6 +441,24 @@ try {
     }
     exige(notePdf.texte.includes("NON SIGNABLE"),
           "le PDF ne porte pas la mention obligatoire");
+
+    //: AUCUN MARQUEUR VOLATIL DANS LES OCTETS DU PDF.
+    //:
+    //: C'est ce qui rend la SECONDE composition reproductible (controle 14).
+    //: Une date de creation, une date de modification, un producteur
+    //: versionne ou un `/ID` derive de l'horloge changeraient l'empreinte du
+    //: livrable sans qu'un seul chiffre du document ait bouge — et le magasin,
+    //: qui ne supprime jamais, garderait les deux versions pour toujours.
+    //:
+    //: CE CONTROLE TOMBE SUR UNE ALTERATION VOLONTAIRE DES METADONNEES, meme
+    //: si la valeur ajoutee est figee: le controle 14 ne verrait rien dans ce
+    //: cas-la, puisque les deux compositions resteraient identiques.
+    for (const volatil of ["/CreationDate", "/ModDate", "/Producer", "/ID "]) {
+      exige(!notePdf.texte.includes(volatil),
+            `le PDF porte « ${volatil.trim()} »: sa composition cesse d'etre `
+            + "reproductible d'un processus a l'autre");
+    }
+
     etat.notePdf = { id: noteCree.corps?.deliverable_id,
                      sha256: notePdf.sha256, taille: notePdf.taille };
 
@@ -610,10 +631,64 @@ try {
           + "pas les memes octets, et le magasin gardera les deux.");
     etat.planTerId = planTer.corps?.deliverable_id;
 
+    // ===================================================================
+    // 15 — SECONDE COMPOSITION DE LA NOTE, PAR UN PROCESSUS NEUF
+    // ===================================================================
+    //: CE QUE LE CONTROLE 13 NE PROUVE PAS.
+    //:
+    //: Retelecharger le PDF apres redemarrage prouve que le MAGASIN a garde
+    //: les octets. Il ne dit rien de la COMPOSITION: un interprete neuf, avec
+    //: un autre `PYTHONHASHSEED`, une autre horloge et un autre identifiant de
+    //: processus, recompose-t-il le meme document?
+    //:
+    //: C'est la meme question que celle du plan DXF, et elle a deja eu une
+    //: mauvaise reponse une fois — deux empreintes pour un seul dessin. Elle
+    //: se pose donc AUSSI pour la note, et personne ne l'avait posee.
+    //:
+    //: ON DEMANDE UNE NOUVELLE NOTE, PAS LE MEME OBJET. Le serveur ecrit une
+    //: ligne de plus — un identifiant de livrable different — et doit deposer
+    //: EXACTEMENT les memes octets, donc retomber sur le meme objet physique.
+    ici("seconde composition de la note");
+    const noteBis = await depuisLaPage(
+      `/v1/projects/${etat.projetId}/deliverables`, "POST",
+      { calculation_id: etat.calculId, format: "pdf" });
+    exige(noteBis.statut === 201,
+          `la note recomposee apres redemarrage a rendu ${noteBis.statut}`);
+    exige(noteBis.corps?.deliverable_id !== etat.notePdf.id,
+          "la seconde demande a rendu LE MEME identifiant de livrable: "
+          + "le serveur n'a pas recompose, il a relu — le controle ne mesure "
+          + "alors plus rien");
+    exige(noteBis.corps?.sha256 === etat.notePdf.sha256,
+          "LA NOTE A CHANGE APRES REDEMARRAGE DE L'API. "
+          + `${noteBis.corps?.sha256?.slice(0, 16)} au lieu de `
+          + `${etat.notePdf.sha256.slice(0, 16)}: un processus neuf ne compose `
+          + "pas les memes octets — horodatage, ordre de dictionnaire, "
+          + "compression ou identite de processus.");
+    exige(noteBis.corps?.size_bytes === etat.notePdf.taille,
+          `la taille de la note recomposee est ${noteBis.corps?.size_bytes} `
+          + `au lieu de ${etat.notePdf.taille}`);
+
+    //: ET LES OCTETS EUX-MEMES, tels que le navigateur les recoit de la
+    //: SECONDE ligne. Comparer les champs annonces par le serveur ne dirait
+    //: rien de ce qui a ete reellement depose.
+    const recuBis = await shaTelecharge(etat.projetId,
+                                        noteBis.corps?.deliverable_id);
+    exige(recuBis.statut === 200,
+          `le telechargement de la note recomposee a rendu ${recuBis.statut}`);
+    exige(recuBis.sha256 === etat.notePdf.sha256,
+          "les octets telecharges de la note recomposee different "
+          + `(${recuBis.sha256?.slice(0, 12)} vs `
+          + `${etat.notePdf.sha256.slice(0, 12)})`);
+    exige(recuBis.taille === etat.notePdf.taille,
+          `la taille telechargee de la note recomposee est ${recuBis.taille} `
+          + `au lieu de ${etat.notePdf.taille}`);
+    etat.noteBisId = noteBis.corps?.deliverable_id;
+
     bilan.push(`etude relue ${relue.corps?.calculation_id}`);
     bilan.push(`  empreinte du calcul  ${relue.corps?.calculation_fingerprint}`);
     bilan.push(`  instantane normatif  ${relue.corps?.ndp_snapshot_id}`);
-    bilan.push(`note PDF    ${etat.notePdf.sha256} (inchangee)`);
+    bilan.push(`note PDF    ${etat.notePdf.sha256} `
+               + `(recomposee a l'identique, 2 demandes)`);
     bilan.push(`plan DXF    ${etat.planDxf.sha256} (inchangee, 3 demandes)`);
     await writeFile(ETAT, JSON.stringify(etat, null, 2), "utf8");
   }

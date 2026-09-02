@@ -41,7 +41,17 @@
 # genere dans un repertoire temporaire, avec des valeurs FICTIVES, et detruit
 # a la sortie.
 #
+# ELLE EXIGE UN CONTEXTE DE BUILD GIT-ONLY, ET LE REFUSE AUTREMENT
+# ------------------------------------------------------------------
+# Les images se construisent avec `context: .` — le repertoire sur le disque.
+# La recette refuse donc de demarrer si quoi que ce soit y traine qui ne soit
+# pas dans le commit: fichier suivi modifie, changement indexe, ou fichier non
+# versionne. Voir la section « LE CONTEXTE DE BUILD EST L'ARBRE COMMITE ».
+#
+#   git worktree add --detach <chemin> <sha>   # la forme attendue
+#
 # SANS DOCKER, SANS NAVIGATEUR OU SANS NODE, ELLE REND 4 — NON EXECUTEE.
+# AVEC UN CONTEXTE SALE, ELLE REND 2 — REFUSEE.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -118,29 +128,92 @@ curl -fsS --max-time 2 "http://$HOTE:$PORT_AUTH/jwks" >/dev/null 2>&1 || {
   sed -n '1,15p' "$TMP/auth.log" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# L'IDENTITE DE BUILD, DERIVEE DE L'ARBRE QU'ON RECETTE
+# LE CONTEXTE DE BUILD EST L'ARBRE COMMITE, ET RIEN D'AUTRE
 #
-# LA PERSISTANCE LA REFUSE QUAND ELLE MANQUE, et c'est le comportement voulu:
-# un calcul conserve doit designer le CODE EXACT qui l'a produit, et la version
-# seule ne le fait pas — six commits successifs portent la meme. Mesure du
-# 02/09, premiere execution de cette recette: sans elle, chaque
-# `POST /beam-verifications` rendait 503 et la recette n'avait rien a mesurer.
+# CE QUI ETAIT AFFIRME SANS ETRE GARANTI
+# ---------------------------------------
+# Les trois images se construisent avec `context: .` — le repertoire present
+# SUR LE DISQUE, pas un instantane Git. Cette recette calculait un suffixe
+# « -modifie » et continuait: elle DISAIT qu'un fichier avait bougé, puis le
+# construisait quand meme. Le rapport, lui, affirmait « images construites
+# depuis les seuls fichiers versionnes » — ce qui n'etait vrai que par hasard,
+# quand l'arbre se trouvait propre.
 #
-# UN ARBRE MODIFIE N'EST PAS SON DERNIER COMMIT: le suffixe le dit, plutot que
-# de laisser croire qu'un calcul enregistre correspond au code pousse. C'est la
-# meme regle que `dev.sh`, et elle vaut ici pour la meme raison.
+# Un fichier source modifie, indexe ou non versionne entrait donc dans l'image
+# sans qu'aucune ligne ne le dise, et la recette prouvait alors quelque chose
+# a propos d'un code qui n'existe nulle part.
+#
+# CE QUI EST GARANTI MAINTENANT: QUATRE FAITS, OU RIEN
+# -----------------------------------------------------
+#   HEAD identique      — le SHA construit est celui du commit courant;
+#   index propre        — rien de mis en scene et non commite;
+#   arbre propre        — aucun fichier suivi modifie;
+#   aucun fichier source non versionne dans le contexte.
+#
+# LE QUATRIEME EST LE PLUS FORT, ET IL EST DELIBEREMENT PLUS LARGE QUE
+# `.dockerignore`. On refuse TOUT fichier que Git ne suit pas — y compris ceux
+# qu'il ignore. Autrement il faudrait reimplementer les motifs de
+# `.dockerignore` en bash pour savoir lesquels entreraient, et une divergence
+# entre les deux fichiers d'exclusion redeviendrait invisible. Exiger un
+# repertoire ou Git connait TOUT ferme la question sans l'interpreter: le
+# contexte est alors, litteralement, l'arbre commite.
+#
+# CE QUE CELA IMPOSE A L'OPERATEUR: un worktree detache et propre du SHA a
+# recetter. C'est aussi ce qu'exige la campagne finale.
+#
+#   git worktree add --detach <chemin> <sha>
+#
+# L'IDENTITE DE BUILD EST ALORS LE SHA NU. `EUROSTRUCT_BUILD_SHA` designe le
+# code exact qui a produit un calcul conserve: la persistance refuse un calcul
+# qui n'en porte pas — mesure du 02/09, chaque `POST /beam-verifications`
+# rendait 503 sans elle — et un suffixe « -modifie » n'a plus lieu d'exister
+# puisqu'un arbre modifie n'arrive plus jusqu'ici.
 # ---------------------------------------------------------------------------
 BUILD_SHA="$(git -C "$RACINE" rev-parse HEAD 2>/dev/null || true)"
-if [[ -n "$BUILD_SHA" ]] && ! git -C "$RACINE" diff --quiet 2>/dev/null; then
-  BUILD_SHA="${BUILD_SHA}-modifie"
-fi
 if [[ -z "$BUILD_SHA" ]]; then
   echo "NON EXECUTE: aucun depot lisible, donc aucune identite de build." >&2
   echo "       La recette ne peut rien enregistrer, et n'inventera pas une" >&2
   echo "       identite qui ressemblerait a une reponse." >&2
   exit 4
 fi
+
+# `--ignored=matching` fait ressortir AUSSI les fichiers ignores: c'est
+# exactement ce qu'on veut refuser. `-uall` descend dans les repertoires
+# plutot que de resumer « dossier/ », pour pouvoir NOMMER le fichier fautif.
+#
+# `-- .` BORNE LE CONSTAT AU CONTEXTE DE BUILD, et c'est necessaire dans les
+# deux sens: le depot porte aussi `bapica/`, qui n'entre dans aucune image —
+# le salir ne doit pas bloquer la recette — et un cache a la RACINE du depot
+# (`.ruff_cache/`) n'est pas davantage dans le contexte. Sans cette borne, la
+# garde refuserait pour des fichiers qui ne peuvent pas atteindre une couche.
+contexte_git_only() {
+  git -C "$RACINE" status --porcelain --untracked-files=all \
+      --ignored=matching -- .
+}
+
+RESIDU="$(contexte_git_only)"
+if [[ -n "$RESIDU" ]]; then
+  echo "      ECHEC: le contexte de build n'est pas l'arbre commite." >&2
+  echo "" >&2
+  echo "      Les images se construisent depuis le repertoire present sur le" >&2
+  echo "      disque. Ce qui suit y entrerait sans etre dans le commit" >&2
+  echo "      $BUILD_SHA — la recette prouverait alors quelque chose a" >&2
+  echo "      propos d'un code qui n'existe nulle part:" >&2
+  echo "" >&2
+  sed -n '1,20p' <<<"$RESIDU" | sed 's/^/        /' >&2
+  [[ "$(wc -l <<<"$RESIDU")" -gt 20 ]] && echo "        ..." >&2
+  echo "" >&2
+  echo "      Recettez depuis un worktree detache et propre:" >&2
+  echo "        git worktree add --detach <chemin> $BUILD_SHA" >&2
+  exit 2
+fi
+
 echo "    build: $BUILD_SHA"
+echo "    contexte Git-only, avant construction:"
+echo "      HEAD identique                                    oui ($BUILD_SHA)"
+echo "      index propre                                      oui"
+echo "      arbre propre                                      oui"
+echo "      aucun fichier source non versionne dans le contexte  oui"
 
 # ---------------------------------------------------------------------------
 # L'ENVIRONNEMENT — FICTIF, TEMPORAIRE, JAMAIS VERSIONNE
@@ -403,14 +476,55 @@ NB_LIGNES="$(psql_super "select count(*) from deliverables" | tr -d ' \r')"
 echo ""
 echo "    magasin: $OBJETS_AVANT objet(s) avant, $OBJETS_APRES apres"
 echo "    base:    $NB_LIGNES ligne(s) de livrable"
-# QUATRE LIGNES, DEUX OBJETS: c'est le fait qu'on veut voir cote a cote.
+# CINQ LIGNES, DEUX OBJETS: c'est le fait qu'on veut voir cote a cote.
 #
-# Quatre gestes enregistres — la note, puis TROIS demandes du meme plan, dont
-# une apres redemarrage — et deux fichiers seulement, parce que les trois plans
-# portent le meme contenu et que le chemin derive du contenu. Un cinquieme
-# geste, le plan force sur une etude en echec, n'a laisse ni ligne ni octet.
-[[ "$NB_LIGNES" == "4" ]] \
-  || echoue "$NB_LIGNES ligne(s) de livrable au lieu de 4."
+# Cinq gestes enregistres — DEUX demandes de la note, dont une par un processus
+# neuf apres redemarrage, et TROIS demandes du meme plan, dont une apres
+# redemarrage — et deux fichiers seulement, parce que les deux notes portent le
+# meme contenu, les trois plans aussi, et que le chemin derive du contenu.
+#
+# C'EST LE COUPLE QUI PROUVE, PAS L'UN DES DEUX. Cinq lignes avec trois objets
+# dirait qu'une composition a divergé; deux objets avec quatre lignes dirait
+# qu'un geste n'a pas eu lieu.
+#
+# Un sixieme geste, le plan force sur une etude en echec, n'a laisse ni ligne
+# ni octet: le refus precede la composition.
+[[ "$NB_LIGNES" == "5" ]] \
+  || echoue "$NB_LIGNES ligne(s) de livrable au lieu de 5."
+
+# ---------------------------------------------------------------------------
+# 8. LE CONTEXTE, RECONSTATE APRES COUP
+#
+# LE CONSTAT D'AVANT NE VAUT QUE POUR L'INSTANT OU IL A ETE FAIT. Entre-temps
+# la recette a construit trois images, monte cinq services et pilote un
+# navigateur: un `npm install`, un cache ecrit dans l'arbre ou un
+# `git checkout` concurrent auraient sali le contexte SANS que rien ne le dise,
+# et le verdict porterait alors sur un arbre qui n'est plus celui qu'on a
+# construit.
+#
+# ON REVERIFIE DONC LES QUATRE MEMES FAITS, dont le premier: le SHA n'a pas
+# bouge sous nos pieds.
+# ---------------------------------------------------------------------------
+SHA_APRES="$(git -C "$RACINE" rev-parse HEAD 2>/dev/null || true)"
+RESIDU_APRES="$(contexte_git_only)"
+
+echo ""
+echo "    contexte Git-only, apres la recette:"
+if [[ "$SHA_APRES" == "$BUILD_SHA" ]]; then
+  echo "      HEAD identique                                    oui ($SHA_APRES)"
+else
+  echo "      HEAD identique                                    NON" >&2
+  echoue "HEAD a change pendant la recette: $BUILD_SHA -> ${SHA_APRES:-?}."
+fi
+if [[ -z "$RESIDU_APRES" ]]; then
+  echo "      index propre                                      oui"
+  echo "      arbre propre                                      oui"
+  echo "      aucun fichier source non versionne dans le contexte  oui"
+else
+  echo "      index/arbre/non versionne                         NON" >&2
+  echoue "le contexte a ete sali pendant la recette:"
+  sed -n '1,10p' <<<"$RESIDU_APRES" | sed 's/^/        /' >&2
+fi
 
 if [[ $KO -ne 0 ]]; then
   echo ""
@@ -428,9 +542,14 @@ echo " composition — images construites depuis les seuls"
 echo " fichiers versionnes, next build puis next start —"
 echo " puis l'API et l'interface arretees et redemarrees."
 echo ""
+echo " Le contexte de build etait l'arbre commite, et il"
+echo " l'est reste: rien de modifie, d'indexe ni de non"
+echo " versionne n'a pu entrer dans une image."
+echo ""
 echo " Le calcul, ses quatre empreintes et son instantane"
-echo " normatif sont inchanges; le PDF et le DXF portent"
-echo " les memes octets; une troisieme demande du plan"
-echo " retombe sur le meme objet; et le magasin n'a pas"
-echo " grossi d'un seul fichier."
+echo " normatif sont inchanges. La note ET le plan sont"
+echo " RECOMPOSES par un processus neuf, aux memes octets:"
+echo " cinq lignes de livrable pour deux objets physiques."
+echo " Ce n'est donc pas la persistance qui est eprouvee"
+echo " ici, c'est la composition."
 echo "==================================================="
