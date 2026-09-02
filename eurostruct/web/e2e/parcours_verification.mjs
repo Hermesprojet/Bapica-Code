@@ -112,52 +112,90 @@ const page = await ctx.newPage();
  * Toute exception non rattrapée (`pageerror`) et toute erreur de console font
  * désormais échouer le parcours.
  *
- * LA SEULE EXCEPTION, ET ELLE EST NOMMÉE
- * ----------------------------------------
+ * RIEN N'EST FILTRÉ À LA COLLECTE, ET C'EST LE POINT
+ * ----------------------------------------------------
  * Le navigateur inscrit dans la console **toute** réponse non-2xx, y compris
  * celles que ce parcours provoque EXPRÈS : un refus de préflight strict, un
- * document demandé sur une étude en échec. Refuser ces lignes-là reviendrait à
- * interdire au parcours d'éprouver les refus — c'est-à-dire l'essentiel de ce
- * qu'il éprouve.
+ * document demandé sur une étude en échec, une route inconnue visitée pour
+ * éprouver le retour.
  *
- * On tolère donc les 422, et RIEN D'AUTRE. Pas les 404 : c'est ainsi qu'une
- * icône manquante ou une ressource déplacée se voit. Pas les 500. Pas les
- * avertissements React.
+ * UNE PREMIÈRE RÉDACTION ÉCARTAIT CES LIGNES DANS LE COLLECTEUR :
+ *
+ *     if (REFUS_ATTENDU.test(texte)) return;   // 422, n'importe où
+ *
+ * Cela annonçait une tolérance « bornée aux gestes volontaires » et en
+ * appliquait une **globale et aveugle au chemin** : n'importe quelle requête
+ * secondaire, n'importe quelle régression rendant 422 sur n'importe quelle
+ * route, à n'importe quel moment, disparaissait sans laisser de trace.
+ *
+ * Tout est donc collecté. La tolérance vit dans `consommerRefus`, qui borne
+ * chaque exception à UN geste, UN statut, UN chemin et UN NOMBRE. Ce qu'aucun
+ * geste ne réclame reste dans la liste et fait échouer le parcours.
  */
 const criees = [];
-const REFUS_ATTENDU = /Failed to load resource.*status of 422/;
 
-function crier(quoi) {
-  criees.push(quoi);
+/** Un cri, avec l'endroit d'où il vient : le chemin sert à la tolérance. */
+function crier(texte, url = "") {
+  criees.push({ texte, url });
 }
 
-/**
- * Consomme les cris d'un geste qui en provoque UN, nommement.
- *
- * POURQUOI PAS UNE TOLERANCE GLOBALE. Le parcours visite volontairement une
- * route inconnue, et le navigateur inscrit ce 404 dans la console. Tolerer les
- * 404 partout ferait disparaitre du meme coup l'icone manquante, la ressource
- * deplacee, le chunk introuvable — toutes des 404 qu'on veut voir.
- *
- * On borne donc la tolerance a un GESTE: on note ce qui a ete crie avant, on
- * exige que les nouveaux cris soient EXACTEMENT ceux attendus, et on les
- * retire. Tout ce qui deborde reste un echec.
- */
-function consommerLesCris(depuis, attendu, quoi) {
-  const nouveaux = criees.slice(depuis);
-  const inattendus = nouveaux.filter((c) => !attendu.test(c));
-  exige(inattendus.length === 0,
-        `${quoi}: cris inattendus — ${inattendus.slice(0, 3).join(" | ")}`);
-  criees.length = depuis;
-}
+const enClair = (c) => (c.url ? `${c.texte} [${c.url}]` : c.texte);
 
 page.on("pageerror", (e) => crier(`erreur de page: ${e.message}`));
 page.on("console", (m) => {
   if (m.type() !== "error") return;
-  const texte = m.text();
-  if (REFUS_ATTENDU.test(texte)) return;
-  crier(`console: ${texte}`);
+  crier(`console: ${m.text()}`, m.location()?.url ?? "");
 });
+
+/**
+ * Consomme les cris d'UN geste qui en provoque un nombre CONNU, sur un chemin
+ * CONNU, avec un statut CONNU.
+ *
+ * QUATRE CHOSES SONT AFFIRMÉES, ET AUCUNE N'EST FACULTATIVE :
+ *
+ *   * le **statut** — un 500 là où on attend un 422 est un défaut, pas une
+ *     variante ;
+ *   * le **chemin** — un 422 sur `/deliverables` ne paie pas pour un 422
+ *     attendu sur `/beam-verifications` ;
+ *   * le **nombre** — deux refus là où le geste n'en provoque qu'un signale un
+ *     appel en double, c'est-à-dire une requête que personne n'a demandée ;
+ *   * **rien d'autre** — tout cri qui n'est pas celui-là fait échouer.
+ *
+ * ELLE ATTEND LE MESSAGE PLUTÔT QUE DE L'ESPÉRER. Chromium inscrit la ligne
+ * après que la promesse du `fetch` a été tenue : regarder tout de suite
+ * laisserait passer un geste dont le cri arriverait une milliseconde plus
+ * tard — et ce cri-là tomberait ensuite dans le bilan d'un autre geste.
+ */
+async function consommerRefus(depuis, { statut, chemin, nombre = 1 }, quoi) {
+  const motif = new RegExp(`status of ${statut}\\b`);
+  const correspond = (c) => motif.test(c.texte) && c.url.includes(chemin);
+
+  const limite = Date.now() + 8000;
+  while (Date.now() < limite
+         && criees.slice(depuis).filter(correspond).length < nombre) {
+    await page.waitForTimeout(100);
+  }
+  //: UN BATTEMENT DE PLUS, POUR VOIR UN CRI DE TROP. Sans lui, un second refus
+  //: inattendu arriverait juste apres la coupe et serait attribue au geste
+  //: suivant.
+  await page.waitForTimeout(250);
+
+  const nouveaux = criees.slice(depuis);
+  const attendus = nouveaux.filter(correspond);
+  const autres = nouveaux.filter((c) => !correspond(c));
+
+  exige(autres.length === 0,
+        `${quoi}: cri(s) inattendu(s) — ${autres.slice(0, 3).map(enClair).join(" | ")}`);
+  exige(attendus.length === nombre,
+        `${quoi}: ${attendus.length} refus ${statut} sur « ${chemin} », `
+        + `${nombre} attendu(s)`);
+
+  //: ON NE RETIRE QUE CE QU'ON A RECONNU. Une troncature seche
+  //: (`criees.length = depuis`) effacerait aussi les cris inattendus qu'on
+  //: vient de signaler, et le bilan final ne les reverrait jamais.
+  criees.length = depuis;
+  for (const c of autres) criees.push(c);
+}
 
 /**
  * TOUT CE QUI PART VERS L'API, AVEC SON CORPS.
@@ -306,11 +344,22 @@ function etudeDeReference(remplace = {}) {
   };
 }
 
-/** Ce que la route de vérification bloque, aujourd'hui, en mode strict. */
+/**
+ * Ce que la route de vérification bloque, aujourd'hui, en mode strict.
+ *
+ * LE GESTE CONSOMME SON PROPRE CRI. Ce sondage provoque un 422 délibéré ; il
+ * est donc responsable de le reconnaître, plutôt que de le laisser à un bilan
+ * global qui ne saurait plus d'où il vient. Quand le préflight passe (201),
+ * il n'y a rien à consommer — et rien n'est consommé.
+ */
 async function bloquantsStricts(projetId) {
+  const depuis = criees.length;
   const essai = await depuisLaPage(
     `/v1/projects/${projetId}/beam-verifications`, "POST", etudeDeReference());
   if (essai.statut === 201) return { ouvert: true, cles: [] };
+  await consommerRefus(
+    depuis, { statut: essai.statut, chemin: "/beam-verifications" },
+    "sondage du preflight strict");
   return {
     ouvert: false,
     statut: essai.statut,
@@ -480,7 +529,7 @@ try {
   await page.waitForTimeout(1200);
   exige(criees.length === 0,
         "la page a crie au chargement initial (une erreur d'hydratation se "
-        + "produit exactement la): " + criees.slice(0, 3).join(" | "));
+        + "produit exactement la): " + criees.slice(0, 3).map(enClair).join(" | "));
 
   ici("connexion de A");
   const liste = await corpsDe("/v1/projects", "GET", () => connecter(A));
@@ -532,11 +581,15 @@ try {
         + `${await page.locator("#pourquoi-bloque").count()
              ? await page.locator("#pourquoi-bloque").innerText() : "sans motif"}`);
 
+  const avantRefusStrict = criees.length;
   const refuse = await corpsDe(
     "/beam-verifications", "POST",
     () => page.click("#lancer-verification"));
   exige(refuse.statut === 422,
         `la verification stricte sans confirmation a rendu ${refuse.statut}`);
+  await consommerRefus(
+    avantRefusStrict, { statut: 422, chemin: "/beam-verifications" },
+    "refus strict avant confirmation");
   await page.waitForSelector("#refus-verification", { timeout: 15000 });
   const texteRefus = await page.locator("#refus-verification").innerText();
   exige(texteRefus.includes("rien n'a été enregistré")
@@ -639,10 +692,13 @@ try {
   ici("le mur belge est un refus nomme, pas une panne");
   await remplirLesEtapes();
   await page.click("#etape-mode");
+  const avantMur = criees.length;
   const mur = await corpsDe("/beam-verifications", "POST",
                             () => page.click("#lancer-verification"));
   exige(mur.statut === 422,
         `le refus restant a rendu ${mur.statut} et non 422`);
+  await consommerRefus(avantMur, { statut: 422, chemin: "/beam-verifications" },
+                       "le mur belge (w_max)");
   await page.waitForSelector("#refus-verification", { timeout: 15000 });
   const texteMur = await page.locator("#refus-verification").innerText();
   exige(texteMur.includes("w_max"),
@@ -800,7 +856,7 @@ try {
   await page.waitForTimeout(1200);
   exige(criees.length === 0,
         "la page a crie pendant le rechargement: "
-        + criees.slice(0, 3).join(" | "));
+        + criees.slice(0, 3).map(enClair).join(" | "));
 
   await connecter(A);
   await page.selectOption("#projet", projetId);
@@ -821,12 +877,13 @@ try {
 
   await page.goBack({ waitUntil: "domcontentloaded" });
   await page.waitForSelector("#connecter", { timeout: 15000 });
-  await page.waitForTimeout(800);
   //: LE SEUL CRI TOLERE ICI EST CELUI QU'ON A PROVOQUE — le 404 de la route
-  //: inconnue. Tout le reste est un echec, y compris une seconde 404.
-  consommerLesCris(avantNavigation,
-                   /Failed to load resource.*status of 404/,
-                   "navigation vers une route inconnue");
+  //: inconnue, sur CETTE url. Tout le reste est un echec, y compris une
+  //: seconde 404 ailleurs.
+  await consommerRefus(
+    avantNavigation,
+    { statut: 404, chemin: "/page-qui-n-existe-pas" },
+    "navigation vers une route inconnue");
   //: LA SESSION NE SURVIT PAS A UN RECHARGEMENT, ET C'EST LE CONTRAT: aucun
   //: jeton n'est persiste. On se reconnecte donc, comme l'ingenieur le ferait.
   await connecter(A);
@@ -887,11 +944,61 @@ try {
         + `« ${ferme.slice(0, 200)} »`);
 
   //: ET LA ROUTE REFUSE AUSSI. L'ecran explique; il n'interdit pas.
+  const avantForcee = criees.length;
   const forcee = await depuisLaPage(
     `/v1/projects/${projetId}/deliverables`, "POST",
     { calculation_id: echouee.corps?.calculation_id, format: "dxf" });
   exige(forcee.statut === 422,
         `la route a rendu ${forcee.statut} pour un calcul en echec`);
+  await consommerRefus(avantForcee, { statut: 422, chemin: "/deliverables" },
+                       "plan force sur une etude en echec");
+
+  // =======================================================================
+  // CONTRÔLE MUTANT — UN 422 HORS GESTE AUTORISÉ DOIT RESTER DANS LA LISTE
+  // =======================================================================
+  //: CE CONTROLE EPROUVE LE CONTROLE.
+  //:
+  //: Une premiere redaction ecartait les 422 DANS LE COLLECTEUR, globalement
+  //: et sans regarder le chemin. Le parcours annoncait alors une tolerance
+  //: « bornee aux gestes volontaires » et en appliquait une aveugle: n'importe
+  //: quelle requete secondaire, n'importe quelle regression en 422, a
+  //: n'importe quel moment, disparaissait sans laisser de trace.
+  //:
+  //: On injecte donc un 422 QU'AUCUN GESTE NE RECLAME — et sur la meme route
+  //: que des refus tolerés ailleurs, pour que la seule chose qui le distingue
+  //: soit l'absence de consommation. S'il n'atterrit pas dans la liste, la
+  //: tolerance est redevenue globale et tout ce qui precede ne prouve rien.
+  ici("controle mutant: un 422 non reclame fait tomber le parcours");
+  const avantMutant = criees.length;
+  const injecte = await depuisLaPage(
+    `/v1/projects/${projetId}/beam-verifications`, "POST",
+    { element: "MUTANT — corps volontairement incomplet" });
+  exige(injecte.statut === 422,
+        `l'injection a rendu ${injecte.statut} et non 422: le controle mutant `
+        + "ne mesure rien");
+
+  //: ON ATTEND LE CRI, puis on constate qu'il EST la.
+  const limiteMutant = Date.now() + 8000;
+  while (Date.now() < limiteMutant && criees.length === avantMutant) {
+    await page.waitForTimeout(100);
+  }
+  const mutants = criees.slice(avantMutant);
+  exige(mutants.length >= 1,
+        "UN 422 NON RECLAME N'A PAS ETE COLLECTE. La tolerance est redevenue "
+        + "globale: tout ce que ce parcours affirme sur les cris ne vaut plus.");
+  exige(mutants.some((c) => /status of 422\b/.test(c.texte)),
+        `le cri collecte n'est pas le refus injecte: `
+        + `${mutants.slice(0, 2).map(enClair).join(" | ")}`);
+  //: ET LE BILAN FINAL AURAIT ECHOUE — c'est ce que `criees.length !== 0` dit.
+  exige(criees.length !== 0,
+        "la liste est vide apres l'injection: le bilan final ne verrait rien");
+
+  //: On le consomme maintenant, nommement, pour que le parcours puisse
+  //: conclure. C'est le seul endroit ou un cri est consomme APRES avoir servi
+  //: de preuve.
+  await consommerRefus(avantMutant,
+                       { statut: 422, chemin: "/beam-verifications" },
+                       "controle mutant (injection assumee)");
 
   // =======================================================================
   // AUCUN JETON N'EST PERSISTÉ
@@ -922,7 +1029,7 @@ try {
   await page.waitForTimeout(600);
   exige(criees.length === 0,
         `la page a crie ${criees.length} fois pendant le parcours: `
-        + criees.slice(0, 5).join(" | "));
+        + criees.slice(0, 5).map(enClair).join(" | "));
 
   // =======================================================================
   // CE QUE CE PARCOURS A REELLEMENT PRODUIT
@@ -967,7 +1074,7 @@ if (echecs.length) {
   echecs.forEach((e) => console.log("   - " + e));
   if (criees.length) {
     console.log("   ce que la page a signale:");
-    criees.slice(0, 12).forEach((c) => console.log("     · " + c));
+    criees.slice(0, 12).forEach((c) => console.log("     · " + enClair(c)));
   }
   process.exit(1);
 }
