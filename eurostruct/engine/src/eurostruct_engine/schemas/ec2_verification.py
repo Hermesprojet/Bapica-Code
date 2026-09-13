@@ -114,6 +114,14 @@ class Ec2BeamVerificationRequest(Strict):
                     "l'ingénieur, jamais deviné : il dépend du rayon moyen, "
                     "de l'humidité et de l'âge au chargement.")
     exposure_class: str = Field(examples=["XC3"])
+    w_max_associated_class: str | None = Field(
+        default=None,
+        examples=["XC4"],
+        description="Classe XC/XD/XS que porte AUSSI l'élément, à déclarer "
+                    "seulement quand exposure_class est XF ou XA. Le "
+                    "Tableau 7.1N-ANB ne donne de ligne ni au gel/dégel ni à "
+                    "l'attaque chimique : sans elle, l'ouverture de fissure "
+                    "admissible est refusée, jamais rabattue sur 0,3 mm.")
     structural_system: str = Field(
         examples=["simply_supported"],
         description="Ligne du Tableau 7.4N. Aucun défaut.")

@@ -129,17 +129,76 @@ class ExposureClass(str, Enum):
     XA3 = "XA3"
 
     @property
-    def w_max_condition(self) -> str:
-        """Which row of Table 7.1N this class falls in.
+    def has_w_max_row(self) -> bool:
+        """Whether Table 7.1N-ANB gives this class a row of its own.
+
+        The Belgian table has four lines — X0/XC1, XC2-XC4, XD1-XD3,
+        XS1-XS3 — and no line for freeze/thaw (XF) or chemical attack (XA).
+        """
+        return not self.value.startswith(("XF", "XA"))
+
+    def w_max_condition(self, associated: "ExposureClass | None" = None) -> str:
+        """Which row of Table 7.1N-ANB this class falls in.
 
         The vocabulary is the one declared in the parameter's variants. An
         annex that grouped the classes differently would make
         :meth:`ParameterSet.get` refuse an unknown case rather than let this
         module land on a neighbouring row.
+
+        **XF and XA have no row, and this refuses rather than picks one.**
+        Until 2026-09-13 every class other than X0/XC1 returned
+        ``XC2_XC4_XD_XS``, so a member declared XF3 or XA2 was checked against
+        0,3 mm. Nothing in the table says that. Freeze/thaw and chemical
+        attack are declared alongside a carbonation, chloride or seawater
+        class in practice, and *that* class is the one the table addresses —
+        but which one it is, is an engineering statement about the member's
+        environment. It is asked for, never deduced: the geometry does not
+        know it, and interdiction 2 forbids inventing it.
+
+        :param associated: the XC/XD/XS class carried by the same member,
+            supplied by the engineer. Required when ``self`` is XF or XA,
+            refused otherwise — a class that has its own row must not be
+            silently redirected to another one.
+        :raises OutOfValidationDomain: when XF or XA arrives without an
+            associated class, or with one that has no row either.
         """
-        if self in (ExposureClass.X0, ExposureClass.XC1):
-            return "X0_XC1"
-        return "XC2_XC4_XD_XS"
+        if self.has_w_max_row:
+            if associated is not None:
+                raise OutOfValidationDomain(
+                    "w_max_classe_associee_en_trop",
+                    f"la classe {self.value} a sa propre ligne au Tableau "
+                    f"7.1N-ANB; lui associer {associated.value} n'ajoute "
+                    "rien et deplacerait la lecture vers une autre ligne que "
+                    "celle qui la concerne. La classe associee ne se declare "
+                    "que pour XF et XA.",
+                    clause="EN 1992-1-1 §7.3.1(5), Tab. 7.1N-ANB",
+                )
+            if self in (ExposureClass.X0, ExposureClass.XC1):
+                return "X0_XC1"
+            return "XC2_XC4_XD_XS"
+
+        if associated is None:
+            raise OutOfValidationDomain(
+                "w_max_sans_ligne",
+                f"la classe d'exposition {self.value} n'a pas de ligne au "
+                "Tableau 7.1N-ANB de la NBN EN 1992-1-1 ANB: le tableau "
+                "traite X0/XC1, XC2-XC4, XD1-XD3 et XS1-XS3, et rien d'autre. "
+                "EUROSTRUCT ne choisit pas 0,3 mm par defaut et ne deduit "
+                "aucune correspondance depuis la geometrie. Declarer la "
+                "classe XC, XD ou XS que porte aussi cet element, ou faire "
+                "trancher l'ouverture de fissure admissible hors de ce "
+                "module.",
+                clause="EN 1992-1-1 §7.3.1(5), Tab. 7.1N-ANB",
+            )
+        if not associated.has_w_max_row:
+            raise OutOfValidationDomain(
+                "w_max_sans_ligne",
+                f"la classe associee {associated.value} n'a pas davantage de "
+                f"ligne au Tableau 7.1N-ANB que {self.value}. Il faut une "
+                "classe XC, XD ou XS.",
+                clause="EN 1992-1-1 §7.3.1(5), Tab. 7.1N-ANB",
+            )
+        return associated.w_max_condition()
 
     @property
     def stress_limit_condition(self) -> str:
@@ -365,6 +424,7 @@ def design_serviceability(
     params: ParameterSet,
     element: str = "poutre",
     provenance: Mapping[str, Provenance] | None = None,
+    w_max_associated_class: ExposureClass | None = None,
 ) -> ServiceabilityDesign:
     """Verify §7.2 stress limitation and §7.3.4 crack width.
 
@@ -379,7 +439,11 @@ def design_serviceability(
         and the age at loading, none of which this module is told.
     :param detail: the bar arrangement §7.3.4 needs.
     :param exposure_class: selects the ``w_max`` row and the §7.2(2) branch.
-    :raises OutOfValidationDomain: outside the scope in the module docstring.
+    :param w_max_associated_class: the XC/XD/XS class the member also carries,
+        needed only when ``exposure_class`` is XF or XA — those have no row in
+        Table 7.1N-ANB and are refused rather than rounded to a neighbour.
+    :raises OutOfValidationDomain: outside the scope in the module docstring,
+        or when XF/XA arrives without an associated class.
     """
     require_dimension(A_s, "[length] ** 2", "A_s")
     for name, M in (("M_qp", M_qp), ("M_char", M_char)):
@@ -416,6 +480,12 @@ def design_serviceability(
             "domaine dans lequel ce module n'a pas ete valide.",
             clause="EN 1992-1-1 §3.1.2",
         )
+
+    # §7.3.1(5): quelle ligne du Tableau 7.1N-ANB, resolu AVANT tout calcul et
+    # avant meme le preflight. Une classe XF ou XA sans classe associee n'a pas
+    # de ligne, et le refus doit arriver la — pas apres qu'un nombre a ete
+    # produit sur une ligne voisine.
+    w_max_case = exposure_class.w_max_condition(w_max_associated_class)
 
     params.require(required_parameters())
 
@@ -466,9 +536,7 @@ def design_serviceability(
         condition=exposure_class.stress_limit_condition,
     ).magnitude)
     k3_steel = float(params.get(f"{EC2_11}:k3_steel_stress", j).magnitude)
-    w_max = params.get(
-        f"{EC2_11}:w_max", j, condition=exposure_class.w_max_condition
-    ).to("mm")
+    w_max = params.get(f"{EC2_11}:w_max", j, condition=w_max_case).to("mm")
     k3_crack = float(params.get(f"{EC2_11}:k3_crack_spacing", j).magnitude)
     k4_crack = float(params.get(f"{EC2_11}:k4_crack_spacing", j).magnitude)
 

@@ -378,6 +378,8 @@ export interface Ec2BeamVerificationRequest {
   structural_system: string;
   /** Aucune géométrie ne le révèle : c'est une donnée. */
   supports_brittle_partitions?: boolean;
+  /** Classe XC/XD/XS que porte AUSSI l'élément, à déclarer seulement quand exposure_class est XF ou XA. Le Tableau 7.1N-ANB ne donne de ligne ni au gel/dégel ni à l'attaque chimique : sans elle, l'ouverture de fissure admissible est refusée, jamais rabattue sur 0,3 mm. */
+  w_max_associated_class?: string | null;
 }
 
 /** L'étude enregistrée, telle que le serveur la rend et la relit. */

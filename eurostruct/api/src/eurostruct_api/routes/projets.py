@@ -660,6 +660,10 @@ def _entree_moteur(corps: Any) -> Any:
         M_char=_quantite(corps.M_char), M_qp=_quantite(corps.M_qp),
         phi_creep=corps.phi_creep,
         exposure_class=ExposureClass(corps.exposure_class),
+        w_max_associated_class=(
+            None if corps.w_max_associated_class is None
+            else ExposureClass(corps.w_max_associated_class)
+        ),
         system=StructuralSystem(corps.structural_system),
         supports_brittle_partitions=corps.supports_brittle_partitions,
         bars=LongitudinalBars(count=corps.bars.count,

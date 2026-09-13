@@ -220,6 +220,11 @@ class BeamVerificationInput:
     cot_theta: float
     cover: Quantity
     anchorage_available: Quantity
+    #: La classe XC/XD/XS que porte AUSSI l'element, quand `exposure_class`
+    #: est XF ou XA. Le Tableau 7.1N-ANB ne donne de ligne ni au gel/degel ni
+    #: a l'attaque chimique: sans cette declaration, le chapitre ELS refuse
+    #: plutot que de rabattre l'ouverture admissible sur 0,3 mm.
+    w_max_associated_class: ExposureClass | None = None
     supports_brittle_partitions: bool = False
     bond_condition: str = BondCondition.GOOD
     anchorage_coefficients: AnchorageCoefficients | None = None
@@ -239,6 +244,10 @@ class BeamVerificationInput:
             "M_char": fmt(self.M_char), "M_qp": fmt(self.M_qp),
             "phi_creep": self.phi_creep,
             "exposure_class": self.exposure_class.value,
+            "w_max_associated_class": (
+                None if self.w_max_associated_class is None
+                else self.w_max_associated_class.value
+            ),
             "system": self.system.value,
             "bars": {"count": self.bars.count,
                      "diameter": fmt(self.bars.diameter)},
@@ -802,7 +811,8 @@ def verify_beam(inputs: BeamVerificationInput, *, params: ParameterSet,
                 phi=inputs.bars.diameter, cover=inputs.cover,
                 bar_spacing=entraxe),
             exposure_class=inputs.exposure_class, params=params,
-            element=inputs.element))
+            element=inputs.element,
+            w_max_associated_class=inputs.w_max_associated_class))
 
     # --- 5. dispense du calcul de fleche ----------------------------------
     #: A_s,req VIENT DE LA FLEXION, il ne se saisit pas: c'est le rapport des

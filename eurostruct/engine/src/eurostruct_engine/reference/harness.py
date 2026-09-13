@@ -223,6 +223,13 @@ def _ec2_serviceability(inputs: Mapping[str, Any]) -> dict[str, float]:
         exposure_class=ExposureClass(inputs["exposure_class"]),
         params=_params(inputs),
         element=inputs.get("element", "reference"),
+        # Declaree seulement pour XF et XA, qui n'ont pas de ligne au
+        # Tableau 7.1N-ANB. Un cas de reference ne choisit pas de ligne a
+        # leur place: sans elle, le module refuse.
+        w_max_associated_class=(
+            ExposureClass(inputs["w_max_associated_class"])
+            if inputs.get("w_max_associated_class") else None
+        ),
     )
     return {
         "alpha_e_short": design.alpha_e_short,

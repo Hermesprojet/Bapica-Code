@@ -1567,6 +1567,22 @@
           "description": "Aucune géométrie ne le révèle : c'est une donnée.",
           "title": "Supports Brittle Partitions",
           "type": "boolean"
+        },
+        "w_max_associated_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classe XC/XD/XS que porte AUSSI l'élément, à déclarer seulement quand exposure_class est XF ou XA. Le Tableau 7.1N-ANB ne donne de ligne ni au gel/dégel ni à l'attaque chimique : sans elle, l'ouverture de fissure admissible est refusée, jamais rabattue sur 0,3 mm.",
+          "examples": [
+            "XC4"
+          ],
+          "title": "W Max Associated Class"
         }
       },
       "required": [
