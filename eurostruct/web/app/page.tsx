@@ -2477,6 +2477,30 @@ function DecisionsAutorite(
 }
 
 /**
+ * Une valeur du résumé, rendue LISIBLE — jamais « [object Object] ».
+ *
+ * `String(v)` suffisait tant que le résumé ne portait que des scalaires. Un
+ * paramètre à variantes en porte un tableau : `w_max` n'a pas de valeur
+ * unique, et ses deux branches — 0,4 mm en X0/XC1, 0,3 mm en
+ * XC2-XC4/XD/XS — sont les SEULS nombres du sujet qu'un ingénieur approuve.
+ * Les rendre par `[object Object]` reviendrait à lui faire signer un blanc
+ * en lui montrant quelque chose.
+ */
+function enTexte(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (Array.isArray(v)) return v.map(enTexte).join(" ; ");
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if ("condition" in o && "value" in o) {
+      return `${String(o.condition)} = ${String(o.value)}`;
+    }
+    return Object.entries(o)
+      .map(([k, x]) => `${k} = ${enTexte(x)}`).join(", ");
+  }
+  return String(v);
+}
+
+/**
  * Le dossier, affiché tel que le serveur l'a rendu.
  *
  * IL N'EN CALCULE RIEN. Ni empreinte, ni résumé : les deux arrivent du serveur,
@@ -2493,7 +2517,7 @@ function Dossier({ resume, empreintes, titre }: {
       <strong>{titre}</strong>
       <ul className="bloquants">
         {Object.entries(resume).map(([k, v]) => (
-          <li key={k}><code>{k}</code> : {String(v)}</li>
+          <li key={k} data-champ={k}><code>{k}</code> : {enTexte(v)}</li>
         ))}
       </ul>
       <div className="clause">

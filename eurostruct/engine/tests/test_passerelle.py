@@ -36,7 +36,7 @@ from eurostruct_engine.ndp.confirmation import (
     NormativeStack,
     NormativeStackComponent,
 )
-from eurostruct_engine.ndp.dossier import effet_normatif
+from eurostruct_engine.ndp.dossier import effet_normatif, variantes_de_spec
 from eurostruct_engine.ndp.implementation import empreinte_implementation
 from eurostruct_engine.ndp.model import (
     NationalAnnex,
@@ -742,11 +742,19 @@ def test_le_calcul_strict_ABOUTIT_quand_tous_les_parametres_sont_confirmes() -> 
             # n'est pas un defaut du test: c'est ce que la passerelle refuse.
             sautes.append(cle)
             continue
+        # UN PARAMETRE A VARIANTES SIGNE SES BRANCHES. `alpha_cc` en a deux —
+        # 0,85 en flexion, 1,0 ailleurs — et un dossier qui ne les porterait
+        # pas serait refuse: c'est la garantie ajoutee le 13/09.
+        branches = (
+            {"variants": variantes_de_spec(p), "rule_type": "conditional_scalar"}
+            if p.variants else {}
+        )
         charge = payload_de_spec(
             rule_id=cle,
             scalar_value=p.parameter_value,
             output_unit=p.unit,
             value_provenance=p.value_provenance.value,
+            **branches,
             normative_authority={
                 "country_code": p.country_code,
                 "reference": p.national_annex_reference,

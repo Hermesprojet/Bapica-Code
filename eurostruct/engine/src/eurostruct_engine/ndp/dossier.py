@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
+from typing import Any
 
 from .canonical import (
     CANONICALIZATION_VERSION,
@@ -56,6 +57,7 @@ __all__ = [
     "DossierCompose",
     "composer_dossier",
     "empreintes_des_payloads",
+    "variantes_de_spec",
 ]
 
 
@@ -172,6 +174,19 @@ def effet_normatif(parametre) -> str:
     )
 
 
+def variantes_de_spec(parametre) -> list[dict[str, Any]]:
+    """Les branches du registre, dans la forme que la spécification porte.
+
+    Une seule fonction, appelée par le composeur **et** par la passerelle :
+    deux transcriptions du même jeu de branches finiraient par diverger, et
+    c'est le contrôle de valeur qui s'ouvrirait sans que personne le voie.
+    """
+    return [
+        {"condition": v.condition, "value": v.value}
+        for v in sorted(parametre.variants, key=lambda v: v.condition)
+    ]
+
+
 def composer_dossier(
     parametre,
     *,
@@ -220,11 +235,25 @@ def composer_dossier(
     implementation = empreinte_implementation(parametre.key)
     effet = effet_normatif(parametre)
 
-    spec = digest_of({
+    # UN PARAMETRE A VARIANTES NE PORTE PAS DE SCALAIRE, ET SIGNER SON DOSSIER
+    # SANS SES VARIANTES REVIENDRAIT A SIGNER UN BLANC.
+    #
+    # `scalar_value` vaut alors `None`, et c'est exact: le registre n'a pas de
+    # valeur unique. Mais le controle de valeur de la passerelle compare ce
+    # champ au registre, et `None == None` passe. Deux ingenieurs auraient donc
+    # atteste d'un sujet ou aucun nombre n'apparait, alors que ce sont
+    # precisement les nombres des variantes que le calcul utilise — 0,4 mm et
+    # 0,3 mm pour `w_max`. Les branches entrent donc dans la specification, et
+    # la passerelle les confronte au registre comme elle confronte le scalaire.
+    #
+    # Elles sont TRIEES par condition: deux ordres pour un meme jeu de branches
+    # donneraient deux empreintes pour un meme sujet.
+    conditionnel = bool(parametre.variants)
+    charge: dict[str, Any] = {
         "kind": "normative_spec",
         "canonicalization_version": CANONICALIZATION_VERSION,
         "rule_id": parametre.key,
-        "rule_type": "scalar",
+        "rule_type": "conditional_scalar" if conditionnel else "scalar",
         "output_unit": parametre.unit,
         "value_provenance": parametre.value_provenance.value,
         "scalar_value": parametre.parameter_value,
@@ -239,7 +268,10 @@ def composer_dossier(
             "effect": effet,
             "document_digest": parametre.source_doc_id,
         },
-    })
+    }
+    if conditionnel:
+        charge["variants"] = variantes_de_spec(parametre)
+    spec = digest_of(charge)
     # LA COUVERTURE EST VERIFIEE AVANT DE HACHER QUOI QUE CE SOIT. Composer un
     # dossier auquel il manque une citation produirait une empreinte de preuve
     # parfaitement valide — et parfaitement fausse.
@@ -295,6 +327,12 @@ def composer_dossier(
         ),),
     )
 
+    # LE RESUME NE PORTE `variants` QUE S'IL Y EN A. Un `null` sur chacune des
+    # vingt-huit fiches scalaires ferait une ligne « variants : — » a l'ecran,
+    # que l'ingenieur apprendrait a sauter — et il la sauterait aussi le jour
+    # ou elle porte les deux branches de `w_max`.
+    branches = ({"variants": variantes_de_spec(parametre)} if conditionnel
+                else {})
     return DossierCompose(
         rule_id=parametre.key,
         statement=statement,
@@ -312,6 +350,10 @@ def composer_dossier(
             "standard_family": parametre.standard_family,
             "part": parametre.part,
             "value": parametre.parameter_value,
+            # LES BRANCHES SONT A L'ECRAN, SINON L'INGENIEUR APPROUVE UN VIDE.
+            # Pour `w_max`, `value` vaut `None` et les seuls nombres du sujet
+            # sont ici: 0,4 mm en X0/XC1, 0,3 mm en XC2-XC4/XD/XS.
+            **branches,
             "unit": parametre.unit,
             "value_provenance": parametre.value_provenance.value,
             "validation_status": parametre.validation_status.value,

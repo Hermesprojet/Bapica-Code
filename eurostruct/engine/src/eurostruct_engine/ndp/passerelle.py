@@ -73,6 +73,7 @@ from .confirmation import (
     NormativeReviewPackage,
     assess_confirmations,
 )
+from .dossier import variantes_de_spec
 from .implementation import empreinte_implementation
 from .model import ValidationStatus
 
@@ -200,6 +201,26 @@ def _ecart_de_sujet(parametre: NationalParameter,
         return (f"valeur: le registre porte {parametre.parameter_value!r} et "
                 f"le dossier signe {valeur!r}. Deux ingenieurs ont pu signer "
                 "de bonne foi: ils n'ont pas relu ce nombre-la.")
+
+    # LES BRANCHES, QUAND LE PARAMETRE EN A. C'est le meme contrôle que
+    # celui du dessus, pour les paramètres dont la valeur n'est pas un
+    # scalaire unique.
+    #
+    # Sans lui, `w_max` passait: le registre porte `parameter_value = None`,
+    # le dossier aussi, `None == None`, et le contrôle de valeur ne voyait
+    # rien. Les nombres que le calcul utilise — 0,4 mm en X0/XC1, 0,3 mm en
+    # XC2-XC4/XD/XS — n'entraient dans aucune signature. Deux ingénieurs
+    # auraient confirmé un sujet dont les valeurs pouvaient changer sous eux.
+    attendues = variantes_de_spec(parametre) if parametre.variants else None
+    signees = charge.get("variants")
+    if attendues is not None and _canonique(signees) != _canonique(attendues):
+        return (f"variantes: le registre porte {attendues!r} et le dossier "
+                f"{signees!r}. Un paramètre conditionnel n'a pas de valeur "
+                "unique: ce sont ses branches qui sont utilisées, et ce sont "
+                "elles qui doivent avoir été relues.")
+    if attendues is None and signees is not None:
+        return ("variantes: le dossier porte des branches que le registre "
+                "n'a pas. Il ne parle pas de ce parametre-la.")
 
     unite = charge.get("output_unit")
     if unite != parametre.unit:
