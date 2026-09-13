@@ -348,7 +348,7 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameters (annex_id, country_code, standard_family, part, national_annex_reference, edition, effective_from, effective_to, parameter_name, parameter_value, unit, source_official, source_url_or_doc_id, source_type, validation_status, verified_at, verified_by, notes, clause, description, en_recommended, has_variants)
-select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'w_max', null, 'mm', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.1(5): « Le tableau 7.1N devient (ajout de la mention des classes d''environnement associees aux classes d''exposition) » Tableau 7.1N-ANB. ATTENTION — LES VALEURS PORTEES ICI SONT CELLES DU TABLEAU 7.1N DE L''EN, PAS CELLES DU TABLEAU 7.1N-ANB. Les cellules numeriques du tableau belge ne sont pas lisibles sur l''exemplaire depouille (seule la valeur 0,3 de la ligne XD est partiellement lisible). CE QUI MANQUE: une lecture des cellules du Tableau 7.1N-ANB, p. 17, et la correspondance classe d''exposition / classe d''environnement NBN B 15-001 que l''ANB y ajoute.', '§7.3.1(5), Tab. 7.1N', 'Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges', 0.3, true
+select a.id, 'BE'::country_code, 'EN 1992', '1-1', 'NBN EN 1992-1-1 ANB', '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)', '2010-08-01'::date, null, 'w_max', null, 'mm', 'NBN — Bureau de Normalisation / Bureau voor Normalisatie', 'https://www.nbn.be', 'national_annex'::ndp_source_type, 'pending_verification'::ndp_validation_status, null, null, 'TRANSCRIT du Tableau 7.1N-ANB de NBN EN 1992-1-1 ANB:2010 (F), 1re edition, aout 2010, §7.3.1(5), folio 18 = page PDF 20 (pour l''ANB, folio = pdf - 2). Lecture visuelle des cellules du tableau belge, exemplaire d''empreinte SHA-256 3a19536221aef69b16435b88bc05d7aee05cebe823e98cb292e49e48fe68dcdd — l''exemplaire depouille auparavant par le pipeline d''import ne rendait pas ces cellules. LES QUATRE LIGNES RELEVEES, colonne « beton arme, combinaison quasi-permanente »: X0/XC1 = 0,4 mm; XC2/XC3/XC4 = 0,3 mm; XD1/XD2/XD3 = 0,3 mm; XS1/XS2/XS3 = 0,3 mm. LES EXPOSANTS DU TABLEAU SONT DES APPELS DE NOTES, PAS DES CHIFFRES: la cellule imprimee « 0,4^1 » vaut 0,4 et non 0,41, la cellule imprimee « 0,2^2 » vaut 0,2 et non 0,22. La cellule « 0,2^2 » n''appartient pas a la colonne transcrite ici et n''est donc pas portee: ce module ne couvre pas la precontrainte. CE QUI RESTE HORS DE CETTE FICHE: le tableau ne donne aucune ligne pour XF ni pour XA, et la correspondance classe d''exposition / classe d''environnement NBN B 15-001 que l''ANB ajoute au tableau n''est pas modelisee — `ExposureClass` refuse XF et XA sans classe associee plutot que de les rabattre sur 0,3. NON CONFIRME par un ingenieur: le mode strict continue de bloquer, et seul le chemin d''autorite a quatre yeux peut lever ce statut.', '§7.3.1(5), Tab. 7.1N-ANB', 'Ouverture de fissure maximale admissible, elements en beton arme, sous combinaison quasi-permanente des charges', 0.3, true
 from national_annexes a
 where a.country_code = 'BE'::country_code
   and a.standard_family = 'EN 1992'
@@ -356,7 +356,7 @@ where a.country_code = 'BE'::country_code
   and a.edition = '1e ed., aout 2010 (LUE sur la page de garde, A DECLARER)'
 on conflict (country_code, standard_family, part, parameter_name, effective_from) do nothing;
 insert into national_annex_parameter_variants (parameter_id, condition, value, description)
-select p.id, 'X0_XC1', 0.4, 'Tab. 7.1N de l''EN, ligne X0/XC1 — 0,4 mm. NON RELEVE dans le Tableau 7.1N-ANB.'
+select p.id, 'X0_XC1', 0.4, 'Tableau 7.1N-ANB, ligne X0/XC1, colonne beton arme sous combinaison quasi-permanente — cellule imprimee « 0,4^1 », soit 0,4 mm; l''exposant est un appel de note.'
 from national_annex_parameters p
 where p.country_code = 'BE'::country_code
   and p.standard_family = 'EN 1992'
@@ -364,7 +364,7 @@ where p.country_code = 'BE'::country_code
   and p.parameter_name = 'w_max'
 on conflict (parameter_id, condition) do nothing;
 insert into national_annex_parameter_variants (parameter_id, condition, value, description)
-select p.id, 'XC2_XC4_XD_XS', 0.3, 'Tab. 7.1N de l''EN, lignes XC2-XC4 et XD1-XD3/XS1-XS3 — 0,3 mm. La valeur 0,3 est partiellement lisible sur la ligne XD du Tableau 7.1N-ANB.'
+select p.id, 'XC2_XC4_XD_XS', 0.3, 'Tableau 7.1N-ANB, lignes XC2/XC3/XC4, XD1/XD2/XD3 et XS1/XS2/XS3, colonne beton arme sous combinaison quasi-permanente — 0,3 mm sur les trois lignes, sans appel de note.'
 from national_annex_parameters p
 where p.country_code = 'BE'::country_code
   and p.standard_family = 'EN 1992'

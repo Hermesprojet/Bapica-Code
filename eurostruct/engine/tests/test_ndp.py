@@ -408,6 +408,31 @@ def test_shipped_dataset_is_flagged_unverified(country: str) -> None:
     assert set(ps.unverified_keys()) == set(ps.keys())
 
 
+def test_aucune_donnee_du_registre_n_est_declaree_confirmee_par_le_depot() -> None:
+    """Le compte, en toutes lettres: 0 confirmee sur 116.
+
+    TRANSCRIRE N'EST PAS CONFIRMER, et c'est la phrase que ce cas defend. Le
+    13/09, la lecture du Tableau 7.1N-ANB a fait passer `BE/w_max` de
+    `national_annex_pending` a `national_annex`: le nombre vient desormais de
+    l'annexe belge. Rien d'autre n'a bouge. Un fichier du depot ne peut pas
+    porter la decision d'un ingenieur, et le registre reel reste a zero tant
+    que le chemin d'autorite n'a pas ete parcouru par deux personnes nommees.
+    """
+    total = 0
+    confirmes = []
+    for country in ALL_COUNTRIES:
+        for annex in load_country_registry(country).annexes:
+            for p in annex.parameters:
+                total += 1
+                if p.validation_status is ValidationStatus.CONFIRMED:
+                    confirmes.append(p.key)
+    assert total == 116, f"4 pays x 29 parametres attendus, {total} trouves"
+    assert confirmes == [], (
+        f"le depot declare confirmees: {confirmes}. Aucun fichier versionne "
+        "ne peut porter cette transition."
+    )
+
+
 def test_calculation_freezes_the_parameter_set_it_used() -> None:
     r = design_flexure(
         section=RectangularSection(b=Q_(300, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm")),
@@ -496,12 +521,26 @@ def test_provenance_is_derived_conservatively_when_absent() -> None:
     assert by_name["nu1_coeff"].value_provenance is ValueProvenance.EUROCODE_DEFAULT
     assert not by_name["nu1_coeff"].value_provenance.is_national
 
-    # w_max: etiquette national_annex, valeurs du tableau EN. C'est le cas qui
-    # a motive le champ, et le seul ou provenance et source_type divergent.
-    w = by_name["w_max"]
-    assert w.source_type.value == "national_annex"
-    assert w.value_provenance is ValueProvenance.NATIONAL_ANNEX_PENDING
-    assert not w.value_provenance.is_national
+    # La France est aujourd'hui le cas ou provenance et source_type divergent:
+    # la fiche renvoie bien a la NF EN 1992-1-1/NA, et le nombre qu'elle porte
+    # vient du Tableau 7.1N de l'EN parce que le Tableau 7.1NF n'a pas ete lu.
+    fr = load_country_registry("FR")
+    w_fr = {p.parameter_name: p for p in fr.annexes[0].parameters}["w_max"]
+    assert w_fr.source_type.value == "national_annex"
+    assert w_fr.value_provenance is ValueProvenance.NATIONAL_ANNEX_PENDING
+    assert not w_fr.value_provenance.is_national
+
+    # LA BELGIQUE N'EST PLUS CE CAS, ET C'EST LA MESURE DU 13/09. Le
+    # Tableau 7.1N-ANB a ete lu; la provenance est donc nationale. Ce qui n'a
+    # PAS bouge: le statut reste `pending_verification`, donc le parametre
+    # reste inutilisable en mode strict. Le depot transcrit, il ne confirme
+    # pas — seul le chemin d'autorite a quatre yeux confirme.
+    w_be = by_name["w_max"]
+    assert w_be.source_type.value == "national_annex"
+    assert w_be.value_provenance is ValueProvenance.NATIONAL_ANNEX
+    assert w_be.value_provenance.is_national
+    assert w_be.validation_status.value == "pending_verification"
+    assert not w_be.usable_in_strict_mode
 
 
 # ---------------------------------------------------------------------------

@@ -32,9 +32,27 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "engine/src/eurostruct_engine/ndp/data/be.json"
 
-#: sha256 of NBN EN 1992-1-1 ANB, 1e ed. aout 2010, French text version.
-DOC_ID = "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05" \
-         "" # truncated marker replaced below at runtime
+#: Identifier of the deposited copy this script transcribed from: NBN
+#: EN 1992-1-1 ANB, 1e ed. aout 2010, French text version.
+#:
+#: IT IS 48 HEX CHARACTERS, SO IT IS NOT A FULL SHA-256, and the comment that
+#: used to sit here said it was. Nothing recomputes it — the concatenation
+#: below carried a trailing comment claiming a runtime replacement that never
+#: happened.
+#:
+#: It is a TRUNCATION, not a different hash: `docs/relecture/
+#: dossier_be_EN199211.md` records the same deposited file at
+#: `7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1`, of
+#: which this is the first 48 characters. Restoring the missing 16 would
+#: repoint the document binding of the twenty-eight parameters this script
+#: writes, so it is a deliberate decision and not a side effect of a reading:
+#: it is left as it is and named here. Pass the PDF on the command line to
+#: have the real digest computed instead.
+#:
+#: `w_max` is NOT one of them. Its Table 7.1N-ANB was unreadable on this copy,
+#: was read later on another one, and carries that copy's full 64-character
+#: digest — see `record_be_ec2_wmax_reading.py`.
+DOC_ID = "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05"
 DOC_REF = "NBN EN 1992-1-1 ANB"
 EDITION = "1e ed., aout 2010"
 

@@ -13,13 +13,19 @@ them are genuine national deviations, not repetitions of the EN recommendation:
   it is stored as a conditional parameter.
 * §7.3.1(5) ``w_max`` — the annex REPLACES Table 7.1N with Table 7.1N-ANB.
 
-That second one is where this script has to be careful. The annex says the
-table changes; the OCR of the table's numeric cells is not legible. So the
-values recorded for ``w_max`` are the ones from Table 7.1N of EN 1992-1-1, and
-the note says so in as many words. They are NOT what was read in the Belgian
-table — nothing was read there. This is the case the instruction covers: if the
-official document is missing, leave the value at ``pending_verification`` and
-state precisely what is missing.
+That second one is where this script had to be careful, and it no longer owns
+the answer. The annex says the table changes; the OCR of the table's numeric
+cells was not legible on the copy this script was written against, so the
+values it writes for ``w_max`` are the ones from Table 7.1N of EN 1992-1-1,
+and its note says so in as many words.
+
+**Since 2026-09-13, ``record_be_ec2_wmax_reading.py`` owns the Belgian
+``w_max`` fiche** and overwrites what this script leaves there: Table
+7.1N-ANB was read by eye on another copy (folio 18, PDF page 20), and the
+fiche now carries a transcription of the Belgian table with provenance
+``national_annex``. Run that script after this one for Belgium. Both leave
+``validation_status = pending_verification`` — transcribing is not
+confirming.
 
 For **France, Spain and Germany** no annex has been opened for §7.2 or §7.3.
 The values are the EN recommendations, declared as placeholders so the module
@@ -388,8 +394,13 @@ def main(argv: list[str]) -> int:
         print("  " + line)
     print()
     print("BE: transcrits de NBN EN 1992-1-1 ANB p. 17-18, sauf w_max dont les")
-    print("    cellules du Tableau 7.1N-ANB ne sont pas lisibles — les valeurs")
-    print("    portees sont celles du Tableau 7.1N de l'EN, et la note le dit.")
+    print("    cellules du Tableau 7.1N-ANB n'etaient pas lisibles sur")
+    print("    l'exemplaire depouille ici — les valeurs portees sont celles du")
+    print("    Tableau 7.1N de l'EN, et la note le dit.")
+    print("    -> LANCER ENSUITE scripts/record_be_ec2_wmax_reading.py, qui")
+    print("       remplace cette fiche par la lecture visuelle du tableau")
+    print("       belge (folio 18, page PDF 20). Sans lui, w_max reste une")
+    print("       valeur d'attente et le quatre-yeux refusera de la confirmer.")
     print("FR/ES/DE: valeurs recommandees EN, aucune Annexe Nationale ouverte.")
     print()
     print("AUCUN parametre n'est passe en 'confirmed'. Le mode strict refuse")

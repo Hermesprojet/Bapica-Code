@@ -96,15 +96,26 @@ class ValueProvenance(str, Enum):
     ``SourceType`` names the document. This names the *value*, and the two come
     apart in the one case that matters most.
 
-    ``w_max`` is the case. It is labelled ``source_type = national_annex``,
-    because the Belgian annex is indeed where it belongs and where its clause
-    and page point. But the numbers stored in its variants are the EN's Table
-    7.1N values, carried as a placeholder because the Belgian Table 7.1N-ANB
-    was unreadable on the copy first deposited. The note said so in capitals;
-    the model said nothing. A module reading ``variants`` without reading
-    ``notes`` applied European values believing it applied Belgian ones.
+    ``w_max`` is the case, and it is worth following through both states.
 
-    This enum is what the note was doing in prose.
+    **Belgium, until 2026-09-13.** The record was labelled
+    ``source_type = national_annex``, because the Belgian annex is indeed
+    where it belongs and where its clause and page point. But the numbers
+    stored in its variants were the EN's Table 7.1N values, carried as a
+    placeholder because the Belgian Table 7.1N-ANB was unreadable on the copy
+    first deposited. The note said so in capitals; the model said nothing. A
+    module reading ``variants`` without reading ``notes`` applied European
+    values believing it applied Belgian ones.
+
+    This enum is what that note was doing in prose. The Belgian table has
+    since been read on a legible copy and the record now says
+    ``NATIONAL_ANNEX`` — which changes nothing about its
+    ``validation_status``: transcribing is not confirming.
+
+    **France, today.** ``NF EN 1992-1-1/NA`` replaces Table 7.1N with Table
+    7.1NF, whose cells do not extract from the rendering in hand. The French
+    record is the live instance of the divergence: annex as document, EN
+    numbers as values, ``NATIONAL_ANNEX_PENDING`` as the label.
     """
 
     #: The Eurocode's own recommended value, carried as a starting point. It is

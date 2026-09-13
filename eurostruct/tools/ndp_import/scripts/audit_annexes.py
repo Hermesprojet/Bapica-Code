@@ -86,15 +86,21 @@ def load_engine_parameters(cc: str) -> dict[str, dict]:
 
 #: Un parametre etiquete ``source_type = national_annex`` qui porte quand meme
 #: des valeurs de l'EN. C'est l'etat le plus trompeur du jeu de donnees, et
-#: ``w_max`` y est, en BE comme en FR: le tableau 7.1N-ANB n'etant pas lisible
-#: sur l'exemplaire depouille, les variantes portent les valeurs du tableau
-#: 7.1N de l'EN. La note le dit en capitales; le MODELE, lui, ne le dit pas.
+#: ``w_max`` y etait, en BE comme en FR: le tableau 7.1N-ANB n'etant pas
+#: lisible sur l'exemplaire depouille, les variantes portaient les valeurs du
+#: tableau 7.1N de l'EN. La note le disait en capitales; le MODELE, lui, ne le
+#: disait pas.
 #:
-#: Detecter cela sur de la prose est un pis-aller assume. Le constat d'audit
-#: qui en decoule est qu'il manque un champ: ``value_provenance`` distinguant
-#: « valeur nationale lue » de « valeur d'attente ». Tant qu'il n'existe pas,
-#: un module qui lit ``variants`` sans lire ``notes`` utilise des valeurs
-#: europeennes en croyant appliquer l'annexe belge.
+#: Detecter cela sur de la prose etait un pis-aller assume, et le constat
+#: d'audit qui en decoulait — il manque un champ — a ete suivi:
+#: ``value_provenance`` existe, il distingue « valeur nationale lue » de
+#: « valeur d'attente », et le mode strict s'y adosse. Cette detection sur
+#: prose reste le filet: elle attrape une fiche dont la note avoue l'attente
+#: alors que le champ dit le contraire.
+#:
+#: BE/``w_max`` n'est plus dans ce cas depuis le 13/09 — le tableau belge a
+#: ete lu, folio 18, page PDF 20. FR/``w_max`` y est toujours: le
+#: Tableau 7.1NF ne s'extrait pas du rendu en main.
 _VALEUR_D_ATTENTE = re.compile(
     r"CE QUI MANQUE|PAS CELLES DU|ne sont pas lisibles|non lisibles",
     re.IGNORECASE,
