@@ -331,21 +331,32 @@ try {
     exige(noms.length > 0 && noms.every((n) => n.trim().length > 0),
           `des parametres bloquants s'affichent sans nom: ${JSON.stringify(noms)}`);
 
-    //: LE MESSAGE EXACT SUR `w_max`, SANS VALEUR INVENTEE.
+    //: LE MESSAGE EXACT SUR `w_max`, ET IL A CHANGE LE 13/09.
     //:
-    //: La fiche belge de `w_max` dit « NON RELEVE dans le Tableau 7.1N-ANB ».
-    //: L'ecran doit le nommer et dire qu'aucune valeur n'y a ete relevee — pas
-    //: en proposer une, pas en deduire une de l'EN.
+    //: La fiche belge disait « NON RELEVE dans le Tableau 7.1N-ANB ». Le
+    //: tableau a ete lu (folio 18, page PDF 20): la valeur EST relevee, et ce
+    //: qui lui manque est une CONFIRMATION a quatre yeux. L'ecran doit dire
+    //: cela — envoyer l'ingenieur rouvrir un document deja lu serait faux.
+    //:
+    //: Et il doit MONTRER LES DEUX BRANCHES: `w_max` n'a pas de valeur
+    //: unique, et « valeur None mm » ne dit rien de ce qu'il y a a confirmer.
     exige(noms.includes("EN 1992-1-1:w_max"),
           `le refus ne nomme pas w_max: ${JSON.stringify(noms)}`);
     const ligneWmax = await page
       .locator("#refus-verification ul.bloquants li")
       .filter({ hasText: "w_max" }).first().innerText();
-    exige(/non relevee/i.test(ligneWmax),
-          `la ligne w_max ne dit pas que la valeur n'a pas ete relevee: `
+    exige(/NON CONFIRMEE/i.test(ligneWmax),
+          `la ligne w_max ne dit pas que la valeur n'est pas confirmee: `
+          + `« ${ligneWmax.slice(0, 220)} »`);
+    exige(/X0_XC1 = 0,?4/.test(ligneWmax.replace(/\s+/g, " "))
+          && /XC2_XC4_XD_XS = 0,?3/.test(ligneWmax.replace(/\s+/g, " ")),
+          `la ligne w_max ne montre pas ses deux branches: `
           + `« ${ligneWmax.slice(0, 220)} »`);
     exige(/pending_verification/.test(ligneWmax),
           `la ligne w_max ne donne pas son statut: « ${ligneWmax.slice(0, 220)} »`);
+    exige(!/None/.test(ligneWmax),
+          `la ligne w_max affiche « None » a l'ingenieur: `
+          + `« ${ligneWmax.slice(0, 220)} »`);
     etat.messageWmax = ligneWmax.replace(/\s+/g, " ").trim();
 
     //: UN REFUS DE PREFLIGHT N'ECRIT RIEN.

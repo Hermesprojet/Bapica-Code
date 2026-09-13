@@ -266,11 +266,28 @@ class ParameterSet:
                 continue
 
             if self.strict and not p.usable_in_strict_mode:
+                # UN PARAMETRE CONDITIONNEL N'A PAS DE SCALAIRE, et l'ecran
+                # affichait « valeur None mm non relevee » a l'ingenieur.
+                # `w_max` est ce cas: ses nombres vivent dans ses branches, et
+                # ce sont eux qu'il faut lui montrer pour qu'il sache ce qui
+                # reste a faire confirmer.
+                valeur = (
+                    " ; ".join(f"{v.condition} = {v.value:g}"
+                               for v in p.variants)
+                    if p.variants else f"{p.parameter_value}"
+                )
+                # ET « NON RELEVEE » N'EST PAS TOUJOURS VRAI. Une fiche dont la
+                # provenance est nationale A ete relevee dans l'annexe: ce qui
+                # lui manque est une confirmation, pas une lecture. Les
+                # confondre envoie l'ingenieur rouvrir un document deja lu.
+                manque = ("relevee mais NON CONFIRMEE"
+                          if p.value_provenance.is_national
+                          else "non relevee")
                 blocking.append(
                     BlockingParameter(
                         key=key, reason="pending_verification",
                         detail=(
-                            f"valeur {p.parameter_value} {p.unit} non relevee dans "
+                            f"valeur {valeur} {p.unit} {manque} dans "
                             f"{p.national_annex_reference}. Statut: "
                             f"{p.validation_status.value}."
                         ),
