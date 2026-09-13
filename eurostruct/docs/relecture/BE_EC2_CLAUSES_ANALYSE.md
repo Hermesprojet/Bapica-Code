@@ -267,12 +267,29 @@ valeurs sont donc celles de l'EN, adoptées ; l'apport belge est la
 **correspondance classe d'exposition ↔ classe d'environnement** (NBN B 15-001),
 que le moteur ne porte pas du tout.
 
-**Réserve à lever par un œil humain.** L'extraction colle les appels de note
-aux valeurs : `0,4` + note 1 ressort en `0,41`, `0,2` + note 2 en `0,22`. La
-séparation retenue ci-dessus est cohérente avec les notes 1 et 2 imprimées
-sous le tableau, mais elle résulte d'une lecture d'artefact, pas d'une
-certitude typographique. Statut : `NATIONAL_ANNEX_PENDING` jusqu'à
-confirmation visuelle.
+**Réserve levée le 13/09, par lecture visuelle.** L'extraction collait les
+appels de note aux valeurs : `0,4` + note 1 ressortait en `0,41`, `0,2` +
+note 2 en `0,22`. La séparation retenue ci-dessus a été **contrôlée à l'œil
+sur le PDF**, folio 18 · page PDF 20 : les exposants sont bien des appels de
+notes, jamais des chiffres.
+
+Ce que le registre porte depuis : `EN 1992-1-1:w_max`, provenance
+`NATIONAL_ANNEX`, `clause` = « §7.3.1(5), Tab. 7.1N-ANB », `source_page` = 18,
+`source_doc_id` = l'empreinte de **cet** exemplaire (`3a195362…`, 64
+caractères), variantes `X0_XC1 = 0,4` et `XC2_XC4_XD_XS = 0,3`. C'est la
+colonne « BA + précontraint non adhérent », la seule que ce moteur couvre ;
+la colonne « précontraint adhérent » n'est **pas** transcrite, le module ELS
+refusant la précontrainte.
+
+Ce que le registre ne porte **toujours pas** : la correspondance classe
+d'exposition ↔ classe d'environnement NBN B 15-001, et aucune ligne pour XF
+ni pour XA — le tableau n'en donne pas. `ExposureClass.w_max_condition`
+refuse donc explicitement ces deux familles tant qu'une classe XC/XD/XS
+associée n'est pas déclarée par l'ingénieur. Il rabattait auparavant **toute**
+classe autre que X0/XC1 sur 0,3 mm, ce que le tableau ne dit nulle part.
+
+`validation_status` reste `pending_verification` : transcrire n'est pas
+confirmer, et seule une décision à quatre yeux peut le changer.
 
 ### 8.2 Une règle conditionnelle belge enregistrée sur un seul paramètre sur trois
 
@@ -316,7 +333,7 @@ une exigence de calcul, pas un paramètre.
 | `s_l_max_coeff` | `formula` | `NATIONAL_ANNEX_PENDING` | texte 9.6N |
 | `s_t_max_coeff` | `formula` | `NATIONAL_ANNEX_PENDING` | texte 9.8N (plafond mm) |
 | `cot_theta_max` | `function` | `NATIONAL_ANNEX` | rien — vérificateur nommé seulement |
-| `w_max` | `conditional_rule` | `NATIONAL_ANNEX_PENDING` | séparation des appels de note, à l'œil |
+| `w_max` | `conditional_rule` | `NATIONAL_ANNEX` <sup>(13/09)</sup> | rien — vérificateur nommé seulement. Les appels de note ont été séparés à l'œil, folio 18 · PDF 20 |
 
 **Aucune des six clauses « à lire » n'était une simple constante.** Le modèle
 scalaire ne pouvait en représenter aucune correctement — ce qui explique

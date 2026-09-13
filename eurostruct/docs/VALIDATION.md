@@ -47,22 +47,34 @@ Nationales. Les 4 pays × **29 paramètres** portent tous le statut
 
 Le chemin de confirmation à quatre yeux, lui, fonctionne : un ingénieur propose
 depuis l'annexe publiée, un second approuve, la décision consommée devient un
-effet normatif. **Il bute en Belgique sur `EN 1992-1-1:w_max`**, que la
-NBN EN 1992-1-1 ANB ne relève pas au Tableau 7.1N. Douze des treize paramètres
-réclamés par les cinq chapitres se confirment ; celui-là est refusé nommément,
-et EUROSTRUCT ne l'invente pas. Une vérification **complète** en mode strict
-reste donc fermée en Belgique tant que cette valeur n'est pas transcrite depuis
-un document officiel.
+effet normatif.
+
+**Il butait en Belgique sur `EN 1992-1-1:w_max`, et ce blocage est levé.** Le
+Tableau 7.1N-ANB était illisible sur l'exemplaire déposé ; il a été lu à l'œil
+le 13/09 sur un autre (folio 18 · page PDF 20, SHA-256 `3a195362…`). La fiche
+porte désormais une transcription de l'annexe belge — 0,4 mm en X0/XC1, 0,3 mm
+en XC2-XC4/XD1-XD3/XS1-XS3 — et non plus les valeurs du Tableau 7.1N de l'EN.
+Elle reste `pending_verification` : **transcrire n'est pas confirmer**.
+
+Une vérification complète de poutre réclame **19 paramètres** en Belgique.
+Les 19 se confirment maintenant par le chemin d'autorité, ce que
+`engine/tests/test_chemin_strict_belge.py` exerce de bout en bout avec deux
+signataires **fictifs** : dossiers composés par le code de production,
+préflight sans bloquant, cinq chapitres évalués. Cela mesure le produit, pas
+le référentiel — aucune de ces confirmations n'existe hors du processus de
+test.
 
 Conséquence voulue : **le moteur refuse de calculer en mode strict**, le mode
 par défaut. Le préflight rend la liste complète des bloquants en un passage :
 
 ```
-Calcul impossible pour BE au 2026-07-26: 8 parametre(s) bloquant(s) sur 8 requis.
+Calcul impossible pour BE au 2026-09-13: 19 parametre(s) national(aux) bloquant(s) sur 19 requis.
+
   [pending_verification] Valeur non relevee dans l'annexe publiee
-    - EN 1992-1-1:alpha_cc (§3.1.6(1)P) — NBN EN 1992-1-1 ANB
-    - EN 1992-1-1:gamma_C_persistent (§2.4.2.4(1), Tab. 2.1N) — NBN EN 1992-1-1 ANB
+    - EN 1992-1-1:As_max_ratio (§9.2.1.1(3)) — NBN EN 1992-1-1 ANB
+    - EN 1992-1-1:As_min_coeff (§9.2.1.1(1), eq. (9.1N)) — NBN EN 1992-1-1 ANB
     ...
+    - EN 1992-1-1:w_max (§7.3.1(5), Tab. 7.1N-ANB) — NBN EN 1992-1-1 ANB
 ```
 
 Pour lever le blocage, paramètre par paramètre :
@@ -71,9 +83,22 @@ Pour lever le blocage, paramètre par paramètre :
    UNE-EN 1992-1-1 AN, DIN EN 1992-1-1/NA).
 2. Relever l'**édition** et la date d'entrée en vigueur, puis la valeur à la
    clause indiquée.
-3. Mettre à jour le JSON : `parameter_value`, `source_type: "national_annex"`,
-   `validation_status: "confirmed"`, `verified_by`, `verified_at`.
+3. Transcrire dans le JSON : `parameter_value` (ou les `variants`),
+   `source_type: "national_annex"`, `source_doc_id`, `source_page`,
+   `value_provenance: "national_annex"` — et **laisser
+   `validation_status: "pending_verification"`**.
 4. Régénérer le seed : `python db/seed/generate_ndp_seed.py > db/seed/0001_ndp.sql`.
+5. Faire passer le paramètre par le **chemin d'autorité** : proposition par un
+   ingénieur nommé, approbation par un second, consommation de la décision.
+   C'est cette étape-là, et elle seule, qui rend le paramètre utilisable en
+   mode strict.
+
+> **Le dépôt n'écrit jamais `confirmed`.** `generate_ndp_seed.py` refuse de
+> générer un seed qui en porterait un, et `NationalParameter.__post_init__`
+> refuse de charger un `confirmed` dont la provenance n'est pas nationale. Une
+> version antérieure de cette procédure demandait d'éditer `validation_status`
+> à la main : c'était le contournement que ces deux gardes existent pour
+> fermer.
 
 Trois garde-fous, tous vérifiés contre PostgreSQL :
 

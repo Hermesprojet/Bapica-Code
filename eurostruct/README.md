@@ -78,12 +78,21 @@ Les paramètres se confirment **à quatre yeux** : un ingénieur propose depuis
 l'Annexe Nationale publiée, un second approuve, et la décision consommée
 devient un effet normatif. Ce chemin fonctionne.
 
-**Il bute sur un mur, en Belgique, et ce mur n'est pas logiciel.** Douze des
-treize paramètres réclamés par les cinq chapitres se confirment depuis la
-NBN EN 1992-1-1 ANB. Le treizième — `EN 1992-1-1:w_max` — **n'est pas relevé
-dans le Tableau 7.1N de l'annexe belge**. EUROSTRUCT refuse de l'inventer.
-Une vérification **complète** en mode strict reste donc fermée en Belgique
-tant que cette valeur n'est pas transcrite depuis un document officiel.
+Une vérification complète de poutre réclame **19 paramètres** en Belgique
+(`required_parameters_for_beam("BE")`, mesuré, pas recopié). Les 19 sont
+transcrits depuis la NBN EN 1992-1-1 ANB et **aucun n'est confirmé** : le
+mur qui reste est le workflow humain, pas un document manquant.
+
+`EN 1992-1-1:w_max` était l'exception, et il ne l'est plus. Son
+Tableau 7.1N-ANB était illisible sur l'exemplaire déposé ; il a été lu à
+l'œil sur un autre (folio 18 · page PDF 20) le 13/09, et la fiche porte
+désormais 0,4 mm en X0/XC1 et 0,3 mm en XC2-XC4/XD/XS. Le dépôt **transcrit**
+cette lecture ; il ne la confirme pas.
+
+Le tableau belge ne donne **aucune ligne pour XF ni pour XA**. Une poutre
+déclarée dans l'une de ces classes ne reçoit pas 0,3 mm par défaut : le
+moteur refuse et demande la classe XC/XD/XS que porte aussi l'élément. Rien
+dans la géométrie ne la révèle.
 
 Décocher le mode strict donne un résultat **exploratoire** : enregistré,
 lisible, rejouable, et portant la mention **« PROJET — NON SIGNABLE »**.
@@ -283,11 +292,14 @@ sont des dépendances externes : aucun commit ne les lève.
    ingénieur ne les a pas confirmées, une par une, contre l'annexe publiée.
    C'est délibéré : supposer une AN est l'interdiction n°3.
 
-2. **`EN 1992-1-1:w_max` n'est pas relevé dans la NBN EN 1992-1-1 ANB**
-   (Tableau 7.1N). Les douze autres paramètres réclamés par les cinq chapitres
-   se confirment ; celui-là est refusé nommément. **Une vérification complète
-   en mode strict est donc impossible en Belgique** jusqu'à sa transcription
-   depuis un document officiel.
+2. **Le Tableau 7.1N-ANB a été lu à l'œil, pas extrait.** `EN 1992-1-1:w_max`
+   porte désormais une transcription de la NBN EN 1992-1-1 ANB (folio 18 ·
+   page PDF 20, empreinte `3a195362…`) et non plus les valeurs de l'EN. Le
+   PDF n'est pas et ne sera pas versionné : c'est un document NBN payant, non
+   redistribuable. **Cette lecture n'est donc contrôlable que sur pièce**, par
+   qui détient l'exemplaire de cette empreinte. Le tableau ne donne par
+   ailleurs aucune ligne pour XF ni pour XA, et le moteur refuse ces classes
+   sans classe XC/XD/XS associée déclarée plutôt que d'en choisir une.
 
 3. **La validation par un ingénieur reste due.** Aucun résultat produit ici
    n'a été relu par un ingénieur structure agréé. La mention obligatoire le

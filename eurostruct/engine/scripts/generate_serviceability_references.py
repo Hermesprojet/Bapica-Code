@@ -32,10 +32,16 @@ These cases were originally built on France and went red the day the French
 annex was actually read. That is the reference suite doing its job: it caught a
 change in the NORMATIVE data, not in the arithmetic.
 
-``w_max`` is pinned here only as the value the data set carries. Both annexes
-replace Table 7.1N — Belgium with 7.1N-ANB, France with 7.1NF — and neither
-table's cells extract from the copies in hand. The number these cases lock is
-therefore the EN table's, and it is not evidence about either country.
+``w_max`` is pinned here at 0,3 mm, which is what the Belgian data set carries
+for XC3 — the class all three cases declare. Since 2026-09-13 that number is a
+transcription of **Table 7.1N-ANB**, read by eye at folio 18 (PDF page 20):
+0,4 mm on the X0/XC1 row, 0,3 mm on the XC2-XC4, XD1-XD3 and XS1-XS3 rows. So
+the number locked here IS evidence about Belgium now, where before it was the
+EN table's carried as a placeholder.
+
+France is unchanged, and is not covered here either way: NF EN 1992-1-1/NA
+replaces Table 7.1N with 7.1NF, whose cells still do not extract from the copy
+in hand.
 
 Run from engine/:
     python scripts/generate_serviceability_references.py [--dry-run]

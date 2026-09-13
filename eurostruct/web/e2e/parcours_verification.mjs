@@ -14,12 +14,15 @@
  *   1. A se connecte et crée un projet BE / Wallonie ;
  *   2. le lancement reste fermé tant que φ(∞,t₀) et le système structural ne
  *      sont pas choisis, et l'écran ÉCRIT lesquels manquent ;
- *   3. en mode strict, AVANT toute confirmation, l'écran refuse et NOMME les
- *      onze paramètres nationaux manquants, avec le chapitre qui les réclame ;
- *   4. le quatre-yeux avec V confirme tout ce qui porte une valeur relevée
- *      dans l'annexe, et **s'arrête sur `w_max`** ;
- *   5. l'étude complète aboutit en exploratoire assumé : cinq chapitres, la
- *      mention obligatoire, et le motif de non-finalisation écrit ;
+ *   3. en mode strict, AVANT toute confirmation, l'écran refuse et NOMME
+ *      chacun des paramètres nationaux non confirmés, avec le chapitre qui
+ *      le réclame — le nombre est mesuré, jamais recopié ici ;
+ *   4. le quatre-yeux avec V confirme les **dix-neuf** paramètres que
+ *      réclament les cinq chapitres, `w_max` compris, et la vérification
+ *      **STRICTE** aboutit ;
+ *   5. l'étude complète aboutit aussi en exploratoire assumé : cinq
+ *      chapitres, la mention obligatoire, et le motif de non-finalisation
+ *      écrit ;
  *   6. la note PDF se produit et se télécharge ; ses octets portent
  *      l'empreinte que la base a enregistrée ;
  *   7. le PLAN DXF se produit **sans qu'aucun ferraillage ne parte du
@@ -43,22 +46,23 @@
  * pendant des semaines, sous les yeux d'un parcours vert qui la voyait et n'en
  * concluait rien.
  *
- * POURQUOI L'ÉTUDE COMPLÈTE EST EXPLORATOIRE, ET CE QUE CELA MESURE
- * ------------------------------------------------------------------
- * Ce n'est pas un contournement : c'est le seul chemin honnête aujourd'hui en
- * Belgique. Douze des treize paramètres que réclament les cinq chapitres
- * portent une valeur relevée dans la NBN EN 1992-1-1 ANB, et le quatre-yeux
- * les confirme. `w_max` n'en porte aucune — sa fiche dit « NON RELEVE dans le
- * Tableau 7.1N-ANB » — si bien que le confirmer signerait un blanc. La
- * passerelle le refuse en le nommant, le mode strict reste fermé pour une
- * vérification COMPLÈTE, et le parcours mesure exactement où ce mur se trouve.
+ * CE QUI A CHANGÉ LE 13/09, ET CE QUE CELA MESURE
+ * -------------------------------------------------
+ * Ce parcours s'arrêtait sur un mur : `w_max` portait les nombres du
+ * Tableau 7.1N de l'EUROCODE, étiquetés `national_annex_pending`, parce que le
+ * Tableau 7.1N-ANB était illisible sur l'exemplaire dépouillé. La passerelle
+ * refusait de le confirmer — signer une valeur d'attente, c'est signer un
+ * blanc — et une vérification COMPLÈTE en mode strict était donc impossible
+ * en Belgique.
  *
- * Un parcours qui aurait forcé ce vert-là aurait prouvé le contraire de ce
- * qu'on cherche.
+ * Le tableau belge a été lu à l'œil sur un autre exemplaire (folio 18, page
+ * PDF 20). La fiche porte désormais une transcription de l'annexe et le
+ * quatre-yeux peut la confirmer. Le parcours mesure maintenant le chemin
+ * strict belge COMPLET, et garde l'exploratoire assumé comme second chemin.
  *
  * AUCUNE ÉTUDE PRODUITE ICI N'EST UNE VÉRIFICATION RÉELLE. Les comptes sont
- * fictifs, le registre national reste à 0/29, et la base est détruite à la fin
- * du harnais.
+ * fictifs, les confirmations sont fictives, le registre national réel reste à
+ * 0/29, et la base est détruite à la fin du harnais.
  *
  * ON OBSERVE CE QUI PART ET CE QUI REVIENT, pas l'état de React.
  */
@@ -648,20 +652,26 @@ try {
         "un refus de preflight a laisse une ligne dans l'historique");
 
   // =======================================================================
-  // 4 — LE QUATRE-YEUX OUVRE CE QU'IL PEUT, ET S'ARRÊTE OÙ LA DONNÉE MANQUE
+  // 4 — LE QUATRE-YEUX OUVRE LE CHEMIN STRICT BELGE, EN ENTIER
   // =======================================================================
-  //: CE PALIER EST UN FAIT MESURE SUR LA BELGIQUE, PAS UN CONTOURNEMENT.
+  //: CE PALIER A CHANGE LE 13/09, ET IL FAUT DIRE PAR QUOI.
   //:
-  //: Douze des treize parametres que reclament les cinq chapitres portent une
-  //: valeur relevee dans la NBN EN 1992-1-1 ANB: le quatre-yeux les confirme.
-  //: `w_max` n'en porte AUCUNE — sa fiche dit « NON RELEVE dans le Tableau
-  //: 7.1N-ANB » et sa provenance est `national_annex_pending`. Le confirmer
-  //: reviendrait a signer un blanc, et la passerelle le refuse.
+  //: Jusque-la, le quatre-yeux ouvrait tout SAUF `w_max`: sa fiche portait les
+  //: nombres du Tableau 7.1N de l'EUROCODE, etiquetes
+  //: `national_annex_pending`, parce que le Tableau 7.1N-ANB etait illisible
+  //: sur l'exemplaire depouille. La passerelle refusait de le confirmer — a
+  //: juste titre: signer une valeur d'attente, c'est signer un blanc.
   //:
-  //: Une verification COMPLETE stricte est donc impossible en Belgique
-  //: aujourd'hui, et c'est le comportement voulu: la valeur manque dans le
-  //: REGISTRE, aucun chemin d'autorite ne l'y met, et le produit ne l'invente
-  //: pas. Ce parcours mesure exactement ou le mur se trouve.
+  //: Le tableau belge a ete lu a l'oeil sur un autre exemplaire (folio 18,
+  //: page PDF 20). La fiche porte desormais une transcription de l'annexe:
+  //: 0,4 mm en X0/XC1, 0,3 mm en XC2-XC4/XD/XS. Elle reste
+  //: `pending_verification` dans le depot — TRANSCRIRE N'EST PAS CONFIRMER —
+  //: mais elle est devenue confirmable, et le quatre-yeux la confirme ici.
+  //:
+  //: CE QUE CE PARCOURS MESURE DONC MAINTENANT: le chemin strict belge
+  //: complet, de la proposition a la verification, dans une base JETABLE et
+  //: avec des comptes FICTIFS. Le registre reel, lui, reste a 0/29: rien de
+  //: ce qui se passe ici n'y entre.
   ici("decor: confirmations normatives (A propose)");
   const fiches = await fichesDuRegistre();
   exige(fiches !== null && fiches.size > 0,
@@ -695,30 +705,41 @@ try {
   exige(depart > reste.length,
         `le quatre-yeux n'a debloque aucun parametre (${depart} au depart, `
         + `${reste.length} apres)`);
-  exige(reste.join(",") === "EN 1992-1-1:w_max",
-        "le mur belge n'est pas celui qu'on croit. Attendu le seul "
-        + `« EN 1992-1-1:w_max », obtenu: ${reste.join(", ") || "(aucun)"}`);
+  //: PLUS AUCUN BLOQUANT, `w_max` COMPRIS. C'est le fait du 13/09, et il se
+  //: mesure ici sur la liste que l'API rend, pas sur une intention.
+  exige(reste.length === 0,
+        "le chemin strict belge n'est pas complet. Bloquants restants: "
+        + `${reste.join(", ")}`);
 
-  //: ET LE REFUS RESTANT EST UN REFUS, PAS UNE PANNE.
-  //:
-  //: Mesure du 01/09: `_jeu_superpose` forcait `CONFIRMED` sur cette fiche
-  //: d'attente, `NationalParameter.__post_init__` levait, et l'ingenieur
-  //: recevait un 500 sans en-tete CORS — donc, dans son navigateur, un
-  //: « Failed to fetch » qui ne nommait rien.
-  ici("le mur belge est un refus nomme, pas une panne");
+  //: ET LE CALCUL STRICT ABOUTIT — c'est ce que les confirmations servent a
+  //: obtenir. Une porte qu'on ouvre sans jamais la franchir ne prouve pas
+  //: qu'elle donne quelque part.
+  ici("verification STRICTE complete, apres confirmation des 19 parametres");
   await remplirLesEtapes();
   await page.click("#etape-mode");
-  const avantMur = criees.length;
-  const mur = await corpsDe("/beam-verifications", "POST",
-                            () => page.click("#lancer-verification"));
-  exige(mur.statut === 422,
-        `le refus restant a rendu ${mur.statut} et non 422`);
-  await consommerRefus(avantMur, { statut: 422, chemin: "/beam-verifications" },
-                       "le mur belge (w_max)");
-  await page.waitForSelector("#refus-verification", { timeout: 15000 });
-  const texteMur = await page.locator("#refus-verification").innerText();
-  exige(texteMur.includes("w_max"),
-        `le refus restant ne nomme pas w_max: « ${texteMur.slice(0, 300) }»`);
+  exige(await page.isChecked("#vc-strict"),
+        "le mode strict n'est pas le defaut a l'ecran");
+  const stricte = await corpsDe("/beam-verifications", "POST",
+                                () => page.click("#lancer-verification"));
+  exige(stricte.statut === 201,
+        `la verification stricte a rendu ${stricte.statut} `
+        + `${(stricte.texte ?? "").slice(0, 300)}`);
+  exige(stricte.corps?.status === "passed",
+        `la verification stricte n'a pas abouti: ${stricte.corps?.status}`);
+  exige(stricte.corps?.is_exploratory === false,
+        "une verification lancee en mode strict se declare exploratoire");
+  exige((stricte.corps?.sections ?? []).length === 5,
+        `l'etude stricte porte ${(stricte.corps?.sections ?? []).length} `
+        + "chapitre(s)");
+  //: LE CHAPITRE ELS A LU LA LIGNE XC2-XC4 DU TABLEAU BELGE. La poutre du
+  //: parcours est en XC3: 0,30 mm, et non les 0,40 mm de la ligne X0/XC1.
+  const els = (stricte.corps?.sections ?? [])
+    .find((s) => s.key === "serviceability");
+  exige(els !== undefined && els.status === "passed",
+        `le chapitre ELS est a l'etat « ${els?.status} »`);
+  bilan.push(`etude stricte belge: ${stricte.corps?.calculation_id ?? "?"} `
+             + `— ${(stricte.corps?.sections ?? []).length} chapitres, `
+             + `w_max lu au Tableau 7.1N-ANB`);
 
   // =======================================================================
   // 5 — L'ÉTUDE COMPLÈTE, EN MODE EXPLORATOIRE ASSUMÉ
@@ -1309,13 +1330,13 @@ console.log(
   "ok: A cree un projet BE/Wallonie; l'ecran garde le lancement ferme tant que "
   + "le fluage et le systeme structural ne sont pas choisis, et ecrit "
   + "lesquels manquent; en mode strict avant confirmation, la verification est "
-  + "refusee, les onze parametres nationaux manquants sont NOMMES a l'ecran "
-  + "avec le chapitre qui les reclame, et AUCUNE ligne n'est ecrite; le "
-  + "quatre-yeux avec V confirme tout ce qui porte une valeur relevee dans la "
-  + "NBN EN 1992-1-1 ANB et s'arrete sur « EN 1992-1-1:w_max », que la fiche "
-  + "declare NON RELEVE — un refus nomme, pas une panne, et le mode strict "
-  + "reste donc ferme pour une verification COMPLETE en Belgique; l'etude "
-  + "complete aboutit en exploratoire assume — cinq chapitres verifies, quatre "
+  + "refusee, chaque parametre national non confirme est NOMME a l'ecran "
+  + "avec le chapitre qui le reclame, et AUCUNE ligne n'est ecrite; le "
+  + "quatre-yeux avec V confirme les DIX-NEUF parametres que reclament les "
+  + "cinq chapitres, « EN 1992-1-1:w_max » compris depuis que le "
+  + "Tableau 7.1N-ANB a ete lu (folio 18, page PDF 20), et la verification "
+  + "STRICTE aboutit: cinq chapitres, aucun bloquant restant; l'etude "
+  + "complete aboutit aussi en exploratoire assume — cinq chapitres verifies, quatre "
   + "empreintes distinctes, mention « PROJET — NON SIGNABLE » et motif de "
   + "non-finalisation ecrit; la note PDF se telecharge et ses octets portent "
   + "l'empreinte enregistree; le plan DXF se produit avec un corps qui ne "
