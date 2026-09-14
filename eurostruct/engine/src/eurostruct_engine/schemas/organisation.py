@@ -20,7 +20,14 @@ CE QU'AUCUNE DE CES RÉPONSES NE DIT
 « Habilité ». Un ``validating_engineer`` créé ici porte un rôle
 d'**organisation** : il décide qui, dans ce bureau, atteste un livrable. Il ne
 porte aucune habilitation **normative** — celle-là se prend par le quatre-yeux,
-et le registre national reste à 0/29.
+paramètre par paramètre, et aucun rôle d'organisation ne l'abrège.
+
+Combien de paramètres sont effectivement confirmés **ne se lit pas ici**, et
+ne se lit dans aucun fichier : le dépôt n'écrit jamais ``confirmed``, si bien
+qu'un compte pris dans les fichiers dira toujours zéro, sur n'importe quelle
+instance. La question se pose à ``GET /v1/ndp/{pays}/couverture``, qui
+interroge la base réelle. Ce texte portait « le registre national reste à
+0/29 » : un compte du dépôt, qui se lisait comme l'état du produit.
 """
 
 from __future__ import annotations

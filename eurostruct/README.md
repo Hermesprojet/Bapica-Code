@@ -49,6 +49,11 @@ LLM n'est atteignable depuis le moteur.
 
 ## Démarrer l'application
 
+**Il n'y a pas de lien à ouvrir** : rien n'est déployé, et l'application se
+lance sur votre poste. [`docs/ESSAYER.md`](docs/ESSAYER.md) en donne la
+procédure linéaire — ce qui marche sans base ni compte, ce que le produit
+refusera et pourquoi, et ce qui exige une seconde personne.
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e engine -e "api[dev]"
