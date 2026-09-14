@@ -237,7 +237,7 @@ function Ecran() {
       <Bureau surChangement={() => setRevisionAtelier((n) => n + 1)} />
       <Atelier projet={projet} surSelection={setProjet}
                revision={revisionAtelier} />
-      <DecisionsAutorite pays={paysEffectif}
+      <DecisionsAutorite pays={paysEffectif} revision={revision}
                          surConsommation={() => setRevision((n) => n + 1)} />
       <Referentiel pays={paysEffectif} revision={revision} />
 
@@ -2298,7 +2298,8 @@ type Etape = { nom: string; statut: string; detail: string };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function DecisionsAutorite(
-  { pays, surConsommation }: { pays: Pays; surConsommation?: () => void },
+  { pays, revision = 0, surConsommation }:
+  { pays: Pays; revision?: number; surConsommation?: () => void },
 ) {
   const auth = useAuth();
   //: L'ETAT DU DOSSIER VIT ICI, hors du bloc de connexion: se déconnecter ne
@@ -2308,6 +2309,10 @@ function DecisionsAutorite(
   const [enCours, setEnCours] = useState(false);
 
   const [candidats, setCandidats] = useState<ParametreNdp[] | null>(null);
+  //: CE QUE CETTE INSTANCE A DEJA DECIDE. Sans elle, l'ecran proposait de
+  //: refaire signer des parametres deja signes ici — voir `proposables`.
+  const [couverture, setCouverture] =
+    useState<CouvertureReferentiel | null>(null);
   const [cle, setCle] = useState<string>("");
   const [citation, setCitation] = useState<string>("");
   const [folio, setFolio] = useState<string>("");
@@ -2329,6 +2334,18 @@ function DecisionsAutorite(
     });
     return () => { vivant = false; };
   }, [pays]);
+
+  //: LA COUVERTURE, RELUE APRES CHAQUE CONSOMMATION. C'est le seul moyen pour
+  //: l'ecran de savoir ou en EST CETTE INSTANCE: le plan de charge, lui, decrit
+  //: le depot et ne bougera jamais.
+  useEffect(() => {
+    let vivant = true;
+    setCouverture(null);
+    couvertureDuReferentiel(pays).then((c) => {
+      if (vivant) setCouverture(c);
+    });
+    return () => { vivant = false; };
+  }, [pays, revision]);
 
   if (!auth.disponible) return null;
 
@@ -2356,11 +2373,33 @@ function DecisionsAutorite(
   }
 
   const choisi = (candidats ?? []).find((p) => p.key === cle) ?? null;
+  //: CE QUI RESTE A FAIRE **ICI**, ET NON CE QUE LE DEPOT N'A PAS ECRIT.
+  //:
+  //: Le filtre lisait `usable_in_strict_mode`, qui vient des fichiers
+  //: versionnes et vaut donc faux partout, toujours — le depot n'ecrit jamais
+  //: `confirmed`, et n'a pas a l'ecrire. L'ecran reproposait donc a la
+  //: signature des parametres que deux ingenieurs venaient de signer sur cette
+  //: base, sans rien afficher qui permette de s'en apercevoir.
+  //:
+  //: Tant que la couverture n'est pas arrivee, on ne filtre pas: proposer un
+  //: parametre deja decide coute un refus explicite du serveur, cacher un
+  //: parametre qui reste a faire coute un blocage que personne ne comprend.
+  const etatIci = new Map(
+    (couverture?.parametres ?? []).map((p) => [p.key, p]),
+  );
   //: UN PARAMETRE SANS EMPREINTE DE DOCUMENT NE PEUT PORTER AUCUNE
   //: CONFIRMATION: on ne le propose pas, plutot que de laisser composer un
   //: dossier que le serveur refusera.
+  //: LE PARAMETRE EN COURS RESTE DANS LA LISTE, MEME UNE FOIS DEVENU
+  //: UTILISABLE. Il le devient a la consommation, c'est-a-dire pendant qu'on
+  //: le regarde: le retirer a cet instant viderait le selecteur sous le
+  //: curseur tout en laissant son formulaire ouvert dessous.
   const proposables = (candidats ?? []).filter(
-    (p) => !p.usable_in_strict_mode && p.source_doc_id);
+    (p) => p.source_doc_id
+      && (p.key === cle || !etatIci.get(p.key)?.utilisable));
+  const requis = couverture?.parametres.length ?? 0;
+  const restants = couverture
+    ? couverture.parametres.filter((p) => !p.utilisable).length : null;
   const dossierPret = Boolean(
     choisi?.source_doc_id && citation.trim() && declaration.trim());
   const idValide = UUID.test(decision.trim());
@@ -2397,6 +2436,39 @@ function DecisionsAutorite(
           propre session, <strong>relit le dossier gelé</strong>, puis approuve.
         </p>
 
+        {/* OU EN EST-ON DES DIX-NEUF, SUR CETTE INSTANCE.
+            Sans cette ligne, l'ecran presentait dix-neuf fois le meme
+            formulaire sans jamais dire combien il en restait: on decouvrait
+            avoir fini en ne trouvant plus rien dans la liste. */}
+        {couverture && (
+          <p className="clause" id="reste-a-confirmer">
+            {!couverture.base_interrogee ? (
+              <>
+                <strong>Aucune base d&apos;autorité n&apos;est branchée ici.</strong>
+                {" "}Rien de ce qui suit ne sera enregistré : ce n&apos;est pas
+                « aucune décision », c&apos;est « personne n&apos;a été
+                interrogé ». Voir <code>/ready</code>.
+              </>
+            ) : restants === 0 ? (
+              <>
+                Les <strong>{requis}</strong> paramètres que réclame{" "}
+                {couverture.calcul} sont utilisables sur cette instance. Il ne
+                reste rien à faire confirmer ici.
+              </>
+            ) : (
+              <>
+                <strong>{restants} / {requis}</strong> paramètre(s) restent à
+                faire passer à quatre yeux pour {couverture.calcul}.{" "}
+                {couverture.decides_en_base > 0 && (
+                  <>{couverture.decides_en_base} décision(s) déjà enregistrée(s)
+                  sur cette base. </>
+                )}
+                Un paramètre déjà utilisable ici ne figure plus dans la liste.
+              </>
+            )}
+          </p>
+        )}
+
         <div>
           <label htmlFor="param-autorite">Paramètre à faire confirmer</label>
           <select id="param-autorite" value={cle} disabled={enCours}
@@ -2405,14 +2477,27 @@ function DecisionsAutorite(
               {candidats === null
                 ? "chargement du plan de charge…"
                 : proposables.length === 0
-                  ? "aucun paramètre à confirmer pour ce pays"
+                  ? (couverture?.base_interrogee && restants === 0
+                      ? "tout est confirmé sur cette instance"
+                      : "aucun paramètre à confirmer pour ce pays")
                   : "— choisir —"}
             </option>
-            {proposables.map((p) => (
-              <option key={p.key} value={p.key}>
-                {p.parameter_name} — {p.standard} {p.clause}
-              </option>
-            ))}
+            {proposables.map((p) => {
+              //: UNE DECISION EXISTE DEJA, MAIS ELLE N'OUVRE PAS CE PARAMETRE:
+              //: le dossier signe ne porte plus sur ce que le registre detient
+              //: (valeur, edition, exemplaire). Le dire ici evite de refaire le
+              //: geste en croyant partir de zero.
+              const ici = etatIci.get(p.key);
+              const arefaire = ici?.decide_en_base && !ici.utilisable;
+              return (
+                <option key={p.key} value={p.key}>
+                  {p.parameter_name} — {p.standard} {p.clause}
+                  {ici?.utilisable
+                    ? " · déjà utilisable ici"
+                    : arefaire ? " · décision existante à refaire" : ""}
+                </option>
+              );
+            })}
           </select>
         </div>
 
