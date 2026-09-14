@@ -409,14 +409,28 @@ def test_shipped_dataset_is_flagged_unverified(country: str) -> None:
 
 
 def test_aucune_donnee_du_registre_n_est_declaree_confirmee_par_le_depot() -> None:
-    """Le compte, en toutes lettres: 0 confirmee sur 116.
+    """AUCUN FICHIER VERSIONNE NE PORTE `confirmed`. Sur les 116, zero.
 
     TRANSCRIRE N'EST PAS CONFIRMER, et c'est la phrase que ce cas defend. Le
     13/09, la lecture du Tableau 7.1N-ANB a fait passer `BE/w_max` de
     `national_annex_pending` a `national_annex`: le nombre vient desormais de
     l'annexe belge. Rien d'autre n'a bouge. Un fichier du depot ne peut pas
-    porter la decision d'un ingenieur, et le registre reel reste a zero tant
-    que le chemin d'autorite n'a pas ete parcouru par deux personnes nommees.
+    porter la decision d'un ingenieur.
+
+    CE QUE CE ZERO N'EST PAS: L'ETAT D'UNE INSTANCE
+    -------------------------------------------------
+    Il mesure les FICHIERS, et il vaudra zero pour toujours — c'est une
+    garantie du depot, pas un retard a rattraper. Une instance ou deux
+    ingenieurs ont signe les dix-neuf parametres d'une verification belge
+    rend le meme zero ici, et ce cas y reste vert.
+
+    « 0 sur 116 » ne dit donc rien de ce qu'une base detient, et ne doit pas
+    etre cite comme si c'etait le cas. La question se pose a
+    `GET /v1/ndp/{pays}/couverture`, qui interroge le provider reel et separe
+    trois etats: transcrit, decide en base, utilisable pour le calcul
+    demande. Confondre le premier avec le troisieme envoie au mauvais geste —
+    brancher une base et faire relire un parametre sont deux choses
+    differentes.
     """
     total = 0
     confirmes = []

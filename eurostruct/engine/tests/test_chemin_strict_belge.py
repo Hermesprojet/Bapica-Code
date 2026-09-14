@@ -15,9 +15,13 @@ Tableau 7.1N-ANB (folio 18, page PDF 20) a leve ce blocage documentaire.
 
 Il n'etablit **rien** sur la validite normative du referentiel. Les deux
 signataires sont fictifs, le provider se declare fictif, et aucune de ces
-confirmations n'existe hors du processus de test. Le registre reel reste a
-0 confirmee sur 116 — c'est `test_ndp.py` qui le mesure, et c'est vrai apres
-ce fichier comme avant.
+confirmations n'existe hors du processus de test. Les FICHIERS du depot ne
+declarent aucune valeur confirmee — `test_ndp.py` le mesure, et c'est vrai
+apres ce fichier comme avant.
+
+Ce zero-la porte sur le depot, jamais sur une instance. Ce que telle base
+detient se demande a `GET /v1/ndp/{pays}/couverture`, et aucun fichier
+versionne ne peut y repondre a sa place.
 
 Aucune identite reelle, aucun secret, aucune base de donnees.
 """
