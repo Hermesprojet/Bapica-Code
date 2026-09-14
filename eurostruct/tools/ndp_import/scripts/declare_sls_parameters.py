@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +116,18 @@ def _en(
     if variants is not None:
         entry["variants"] = variants
         entry["parameter_value"] = None
+    # ECRITE, PAS DEDUITE, ET EN DERNIER — comme dans les fichiers.
+    #
+    # `NationalParameter.__post_init__` sait la deriver de `source_type`, mais
+    # son propre commentaire dit que la derivation est une cale de migration
+    # et non un service: une fiche qui signifie « valeur d'attente » doit le
+    # declarer elle-meme. Le champ manquait ici, si bien que rejouer ce script
+    # RETIRAIT du jeu une provenance que le fichier portait deja.
+    #
+    # La POSITION compte aussi: `json.dumps` ecrit les cles dans l'ordre du
+    # dictionnaire. La placer ailleurs qu'a la fin reordonnerait chaque fiche
+    # touchee, pour un contenu identique — encore un diff illisible.
+    entry["value_provenance"] = "eurocode_default"
     return entry
 
 
@@ -358,13 +371,59 @@ def _annex(data: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+#: Provenances qui signifient QU'UN HUMAIN A OUVERT L'ANNEXE. Une fiche qui en
+#: porte une n'est plus une place a tenir, et ce script n'a rien a y ecrire.
+_DEJA_LU = {"national_annex", "national_annex_pending", "composed_normative_rule"}
+
+
+def _pourquoi_ne_pas_ecraser(existant: Mapping[str, Any]) -> str | None:
+    """Ce script POSE DES VALEURS D'ATTENTE. Il n'ecrase pas une lecture.
+
+    CE QU'IL A DETRUIT, ET COMMENT. Rejoue apres
+    ``record_fr_ec2_reading.py``, il remettait les sept fiches ELS francaises
+    a la recommandation EN: `w_max` reperdait sa citation du Tableau 7.1NF,
+    son folio 16 et son empreinte de document, et `k3_crack_spacing`
+    reperdait son statut ``not_representable`` — c'est-a-dire le fait que
+    l'annexe francaise y met une FORMULE en fonction de l'enrobage, que le
+    modele scalaire ne sait pas porter. Le mode strict se serait rouvert sur
+    une valeur que la France ne retient pas.
+
+    Aucune erreur ne s'affichait: le script disait « FR: 7 parametres » et
+    repartait. L'ordre des scripts etait la seule chose qui protegeait les
+    lectures, et un ordre n'est pas une garantie.
+
+    Trois etats sont donc preserves, et chacun dit pourquoi:
+    """
+    if existant.get("validation_status") == "confirmed":
+        return "deja CONFIRME"
+    if existant.get("validation_status") == "not_representable":
+        # L'annexe y met une expression que le modele scalaire ne porte pas.
+        # Reposer une valeur d'attente rouvrirait un calcul que ce statut
+        # ferme volontairement.
+        return "NON REPRESENTABLE — l'annexe y met une expression"
+    provenance = existant.get("value_provenance")
+    if provenance in _DEJA_LU:
+        return f"deja relevee dans l'annexe (provenance « {provenance} »)"
+    return None
+
+
+
+
 def main(argv: list[str]) -> int:
     dry = "--dry-run" in argv
     written: list[str] = []
 
     for code in ("be", "fr", "es", "de"):
         path = DATA / f"{code}.json"
-        data = json.loads(path.read_text(encoding="utf-8"))
+        # L'INDENTATION EN PLACE, PAS UNE INDENTATION IMPOSEE. `be.json` et
+        # `fr.json` sont a une espace, `de.json` et `es.json` a deux. Ecrire
+        # `indent=2` partout reindentait 515 lignes pour la Belgique et 852
+        # pour l'Espagne, et sept fiches transcrites disparaissaient dedans.
+        from ndp_import.review import dataset_indent
+
+        brut = path.read_text(encoding="utf-8")
+        creux = dataset_indent(brut)
+        data = json.loads(brut)
         annex = _annex(data)
 
         if code == "be":
@@ -375,19 +434,26 @@ def main(argv: list[str]) -> int:
         else:
             new = en_parameters()
 
+        poses = 0
         for name, entry in new.items():
-            existing = annex["parameters"].get(name)
-            if existing and existing.get("validation_status") == "confirmed":
-                print(f"  {code}: {name} deja CONFIRME — non ecrase")
+            existing = annex["parameters"].get(name) or {}
+            raison = _pourquoi_ne_pas_ecraser(existing)
+            if raison:
+                print(f"  {code}: {name} — non ecrase ({raison})")
                 continue
             annex["parameters"][name] = entry
+            poses += 1
 
         if not dry:
             path.write_text(
-                json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+                json.dumps(data, indent=creux, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
-        written.append(f"{code.upper()}: {len(new)} parametres")
+        # LE COMPTE EST CELUI DES FICHES REELLEMENT ECRITES. Annoncer
+        # « 7 parametres » alors que sept ont ete preserves laisserait croire
+        # qu'un jeu a ete repose, et c'est exactement l'inverse.
+        written.append(
+            f"{code.upper()}: {poses} pose(s), {len(new) - poses} preserve(s)")
 
     print("Parametres ELS §7.2 / §7.3 declares")
     for line in written:
