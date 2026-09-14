@@ -32,27 +32,39 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "engine/src/eurostruct_engine/ndp/data/be.json"
 
-#: Identifier of the deposited copy this script transcribed from: NBN
+#: SHA-256 of the deposited copy this script transcribed from: NBN
 #: EN 1992-1-1 ANB, 1e ed. aout 2010, French text version.
 #:
-#: IT IS 48 HEX CHARACTERS, SO IT IS NOT A FULL SHA-256, and the comment that
-#: used to sit here said it was. Nothing recomputes it — the concatenation
-#: below carried a trailing comment claiming a runtime replacement that never
-#: happened.
+#: IT WAS 48 HEX CHARACTERS UNTIL 2026-09-14, SO IT WAS NOT A FULL SHA-256.
+#: The comment that used to sit here said it was, and the constant carried a
+#: trailing comment claiming a runtime replacement that never happened.
+#: Twenty-two Belgian parameters were therefore bound to their source document
+#: by a 192-bit prefix — enough to identify a file in practice, not enough to
+#: be the digest the record claims, and impossible to check against a deposit.
 #:
-#: It is a TRUNCATION, not a different hash: `docs/relecture/
-#: dossier_be_EN199211.md` records the same deposited file at
-#: `7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1`, of
-#: which this is the first 48 characters. Restoring the missing 16 would
-#: repoint the document binding of the twenty-eight parameters this script
-#: writes, so it is a deliberate decision and not a side effect of a reading:
-#: it is left as it is and named here. Pass the PDF on the command line to
-#: have the real digest computed instead.
+#: RESTORED FROM THE RECORDED REFERENCES, NOT RECOMPUTED. The deposited PDF is
+#: not in this repository and will not be: NBN EN 1992-1-1 ANB is a paid,
+#: non-redistributable document. Two independent records in the repository
+#: carry the full digest of the same file, and they agree:
 #:
-#: `w_max` is NOT one of them. Its Table 7.1N-ANB was unreadable on this copy,
-#: was read later on another one, and carries that copy's full 64-character
+#:   * `tools/ndp_import/src/ndp_import/data/catalogue.json`, entry
+#:     `BE-EN199211-NA`, field `doc_id_sha256`;
+#:   * `docs/relecture/dossier_be_EN199211.md`, header line « Empreinte
+#:     SHA-256 », for `aea3d1fd-506913780NBNEN199211ANB2010F.pdf`.
+#:
+#: The value below is that digest, and the 48 characters it replaces are its
+#: exact prefix — which is what makes the restoration checkable without the
+#: file. Pass the PDF on the command line and it is recomputed and compared;
+#: the script refuses on any mismatch.
+#:
+#: `w_max` is NOT written by this script. Its Table 7.1N-ANB was unreadable on
+#: this copy, was read later on another one, and carries that copy's own
 #: digest — see `record_be_ec2_wmax_reading.py`.
-DOC_ID = "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05"
+DOC_ID = "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1"
+
+#: Ce que le registre portait avant le 14/09. Conserve pour que la restauration
+#: soit VERIFIABLE sans le fichier: `DOC_ID.startswith(DOC_ID_TRONQUE)`.
+DOC_ID_TRONQUE = "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05"
 DOC_REF = "NBN EN 1992-1-1 ANB"
 EDITION = "1e ed., aout 2010"
 
@@ -143,10 +155,39 @@ STRUCTURAL_MISMATCH: dict[str, str] = {
 def main(argv: list[str]) -> int:
     from ndp_import.model import SourceDocument
 
-    pdf = Path(argv[1]) if len(argv) > 1 and not argv[1].startswith("--") else None
-    doc_id = SourceDocument.digest(pdf) if pdf else DOC_ID
+    # LA RESTAURATION SE VERIFIE SANS LE FICHIER, ET C'EST LE POINT.
+    # Le PDF n'est pas dans le depot — document NBN payant. Ce qui reste
+    # verifiable, c'est que l'empreinte restauree PROLONGE celle que le
+    # registre portait, au lieu d'en etre une autre.
+    if not DOC_ID.startswith(DOC_ID_TRONQUE) or len(DOC_ID) != 64:
+        print("REFUS: DOC_ID n'est pas le prolongement en 64 caracteres de "
+              "l'identifiant que le registre portait. Une empreinte qui ne "
+              "prolonge pas la precedente designe un AUTRE fichier, et la "
+              "remplacer sans le dire romprait la liaison documentaire de "
+              "vingt-deux parametres.", file=sys.stderr)
+        return 2
 
-    data = json.loads(DATASET.read_text(encoding="utf-8"))
+    pdf = Path(argv[1]) if len(argv) > 1 and not argv[1].startswith("--") else None
+    if pdf is not None:
+        # UNE EMPREINTE QU'ON TAPE EST UNE EMPREINTE QU'ON PEUT INVENTER.
+        # Quand le fichier est la, on la recalcule et on refuse tout ecart:
+        # c'est le seul moment ou cette valeur cesse d'etre une declaration.
+        reelle = SourceDocument.digest(pdf)
+        if reelle != DOC_ID:
+            print(f"REFUS: {pdf.name} porte l'empreinte {reelle[:16]}…, le "
+                  f"registre cite {DOC_ID[:16]}…. Ce n'est pas le meme "
+                  "fichier.", file=sys.stderr)
+            return 2
+        print(f"empreinte VERIFIEE sur {pdf.name}: {DOC_ID[:16]}…")
+        doc_id = reelle
+    else:
+        print("PDF absent — normal: l'exemplaire NBN n'est pas versionne.")
+        print(f"empreinte RESTAUREE depuis catalogue.json et "
+              f"dossier_be_EN199211.md, non recalculee: {DOC_ID[:16]}…")
+        doc_id = DOC_ID
+
+    brut = DATASET.read_text(encoding="utf-8")
+    data = json.loads(brut)
     annex = next(
         a for a in data["annexes"]
         if a["standard_family"] == "EN 1992" and a["part"] == "1-1"
@@ -192,8 +233,14 @@ def main(argv: list[str]) -> int:
         })
 
     if "--dry-run" not in argv:
+        # L'INDENTATION EN PLACE. `indent=2` reecrivait les 515 lignes du jeu
+        # belge, qui est a une espace, pour une poignee de champs modifies:
+        # la revue voyait un fichier entier et ne voyait plus le changement.
+        from ndp_import.review import dataset_indent
+
         DATASET.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            json.dumps(data, indent=dataset_indent(brut), ensure_ascii=False) + "\n",
+            encoding="utf-8",
         )
 
     print(f"{len(applied)} valeurs transcrites depuis {DOC_REF}")

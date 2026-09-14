@@ -38,7 +38,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 10. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Valeur CONDITIONNELLE, portee par des variantes: 0,85 pour effort normal et flexion, 1,0 pour les autres cas. Aucune valeur unique n'est stockee — un scalaire serait lu par tout module qui oublie de preciser la verification.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 10,
      "variants": [
       {
@@ -65,7 +65,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 10. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §3.1.6(2)P: « La valeur de alpha_ct recommandee (1,0) est normative. »",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 10,
      "value_provenance": "national_annex"
     },
@@ -80,7 +80,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 8. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1), Tableau 2.1N repris: durable ou transitoire, beton 1,5. Declare « normatives ».",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 8,
      "value_provenance": "national_annex"
     },
@@ -95,7 +95,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 8. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1), Tableau 2.1N repris: durable ou transitoire, acier de beton arme 1,15.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 8,
      "value_provenance": "national_annex"
     },
@@ -110,7 +110,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 8. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1), Tableau 2.1N repris: accidentelle, beton 1,2.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 8,
      "value_provenance": "national_annex"
     },
@@ -125,7 +125,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 8. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §2.4.2.4(1), Tableau 2.1N repris: accidentelle, acier de beton arme 1,0.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 8,
      "value_provenance": "national_annex"
     },
@@ -140,7 +140,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 15. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §5.5(4): « Les valeurs recommandees (k1 = 0,44 ; k2 = 1,25(0,6+0,0014/eps_cu2) ; k3 = 0,54 ; k4 = idem ; k5 = 0,7 et k6 = 0,8) sont normatives. »",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 15,
      "value_provenance": "national_annex"
     },
@@ -155,7 +155,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 15. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §5.5(4): k2 = 1,25(0,6+0,0014/eps_cu2), soit 1,25 pour eps_cu2 = 3,5 pour mille (fck <= 50 MPa).",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 15,
      "value_provenance": "national_annex"
     },
@@ -170,7 +170,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 22. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §9.2.1.1(1): « La valeur de As,min recommandee (Formule 9.1N) est normative. » Formule 9.1N: 0,26 fctm/fyk bt d.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 22,
      "value_provenance": "national_annex"
     },
@@ -185,7 +185,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 22. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §9.2.1.1(1), Formule 9.1N: plancher 0,0013 bt d.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 22,
      "value_provenance": "national_annex"
     },
@@ -200,7 +200,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 22. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §9.2.1.1(3): « La valeur de As,max recommandee (0,04 Ac) est normative. »",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 22,
      "value_provenance": "national_annex"
     },
@@ -215,7 +215,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): « Les valeurs recommandees de C_Rd,c (0,18/gamma_C), v_min (0,035 k^3/2 fck^1/2) et k1 (0,15) sont normatives. » ATTENTION: « Pour les dalles appuyees sur les bords, il faut multiplier ces valeurs par 1,25 » — condition non modelisee.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 17,
      "value_provenance": "national_annex"
     },
@@ -230,7 +230,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): v_min = 0,035 k^3/2 fck^1/2.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 17,
      "value_provenance": "national_annex"
     },
@@ -245,7 +245,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.2(1): k1 = 0,15.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 17,
      "value_provenance": "national_annex"
     },
@@ -299,7 +299,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "LU par le pipeline d'import dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §6.2.3(2): « 1,0 <= cot(theta) <= cot(theta)_max ».",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 17,
      "value_provenance": "national_annex"
     },
@@ -314,7 +314,7 @@
      "verified_at": null,
      "verified_by": null,
      "notes": "SANS VALEUR SCALAIRE, et desormais PORTE PAR LA REGLE TYPEE « be.ec2.cot_theta_max ». Le statut reste not_representable — et non deprecated — parce que c'est exact et parce que l'invariant du modele l'exige: une valeur absente doit dire pourquoi elle l'est. Les deux statuts refusent de toute facon dans TOUS les modes, donc aucun second chemin normatif ne subsiste.\n\n§6.2.3(2) p.15 de l'ANB: la Belgique NE retient PAS la borne 2,5 de l'EN. Elle fixe cot(theta)_max = (2 + k1 sigma_cp bw d s / (Asw z fywd)) <= 3, avec sigma_cp <= 0,2 fcd. Pour une poutre NON precontrainte cette borne vaut 2, donc PLUS SEVERE que la recommandation europeenne.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "source_page": 17,
      "value_provenance": "national_annex"
     },
@@ -369,7 +369,7 @@
      "verified_by": null,
      "source_page": 17,
      "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.2(2): « k1 = 0,6 pour toutes les classes d'exposition sauf XD, XF et XS pour lesquelles k1 = 0,5. » ECART: l'EN ne prescrit la limitation que pour XD, XF et XS, avec k1 = 0,6. L'ANB l'etend a toutes les classes ET la resserre a 0,5 pour XD, XF, XS.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "variants": [
       {
        "condition": "XD_XF_XS",
@@ -396,7 +396,7 @@
      "verified_by": null,
      "source_page": 17,
      "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.2(5): « Les valeurs recommandees de k3 (0,8), k4 (1,0) et k5 (0,75) sont normatives. »",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "value_provenance": "national_annex"
     },
     "k4_steel_stress_imposed": {
@@ -411,7 +411,7 @@
      "verified_by": null,
      "source_page": 17,
      "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.2(5): « Les valeurs recommandees de k3 (0,8), k4 (1,0) et k5 (0,75) sont normatives. »",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "value_provenance": "national_annex"
     },
     "w_max": {
@@ -453,7 +453,7 @@
      "verified_by": null,
      "source_page": 17,
      "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.4(3): « Les valeurs recommandees de k3 (3,4) et k4 (0,425) sont normatives. »",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "value_provenance": "national_annex"
     },
     "k4_crack_spacing": {
@@ -468,7 +468,7 @@
      "verified_by": null,
      "source_page": 17,
      "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 17. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.3.4(3): « Les valeurs recommandees de k3 (3,4) et k4 (0,425) sont normatives. »",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "value_provenance": "national_annex"
     },
     "K_span_depth": {
@@ -483,7 +483,7 @@
      "verified_by": null,
      "source_page": 18,
      "notes": "LU dans NBN EN 1992-1-1 ANB (1e ed., aout 2010), p. 18. NON CONFIRME par un ingenieur: le mode strict continue de bloquer. Texte releve — §7.4.2(2): « Les valeurs de K recommandees (Tableau 7.4N) sont normatives. » A RAPPROCHER de §7.4.1(3), ou l'ANB ajoute: « La norme NBN B 03-003 donne des indications quant aux limites de fleches en fonction de la destination de l'element. » CE DOCUMENT N'EST PAS EN MAIN: les limites de fleche belges (§7.4.1) restent inconnues. Seule la dispense du §7.4.2 est modelisee.",
-     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05",
+     "source_doc_id": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
      "variants": [
       {
        "condition": "simply_supported",

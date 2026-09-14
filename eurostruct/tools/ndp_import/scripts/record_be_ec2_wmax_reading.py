@@ -147,7 +147,8 @@ def main(argv: list[str]) -> int:
         print("PDF absent — normal: l'exemplaire NBN n'est pas versionne.")
         print(f"empreinte DECLAREE, non verifiee ici: {DOC_ID[:16]}…")
 
-    data = json.loads(DATASET.read_text(encoding="utf-8"))
+    brut = DATASET.read_text(encoding="utf-8")
+    data = json.loads(brut)
     annexe = next(
         a for a in data["annexes"]
         if a["standard_family"] == "EN 1992" and a["part"] == "1-1"
@@ -181,11 +182,13 @@ def main(argv: list[str]) -> int:
     })
 
     if not args.dry_run:
-        # INDENT 1, comme le fichier versionne. Reindenter reecrirait les 515
-        # lignes du jeu belge pour une fiche modifiee: la revue ne verrait
-        # plus ce qui a change, et c'est la revue qui compte ici.
+        # L'INDENTATION EN PLACE. Reindenter reecrirait les 515 lignes du jeu
+        # belge pour une fiche modifiee: la revue ne verrait plus ce qui a
+        # change, et c'est la revue qui compte ici.
+        from ndp_import.review import dataset_indent
+
         DATASET.write_text(
-            json.dumps(data, indent=1, ensure_ascii=False) + "\n",
+            json.dumps(data, indent=dataset_indent(brut), ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
 
