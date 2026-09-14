@@ -1,0 +1,23 @@
+{
+  "name": "eurostruct-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interface minimale d'EUROSTRUCT. Consomme le contrat TypeScript genere, jamais une forme redefinie a la main.",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "16.3.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "typescript": "5.9.3"
+  }
+}

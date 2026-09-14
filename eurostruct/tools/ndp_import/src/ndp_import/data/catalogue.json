@@ -172,7 +172,7 @@
           "fr",
           "nl"
         ],
-        "notes": "ACQUIS en version texte (31 pages, 50237 caracteres). Une version scannee de 34 pages avait ete deposee auparavant; la version texte la remplace. Metadonnees ci-dessus LUES sur la page de garde, a DECLARER par le deposant: le champ edition n'est jamais deduit. La page de garde precise: « La norme NBN EN 1992-1-1 ne peut etre utilisee en Belgique qu'en combinaison avec son annexe nationale. »"
+        "notes": "ACQUIS en version texte (31 pages, 50237 caracteres). Une version scannee de 34 pages avait ete deposee auparavant; la version texte la remplace. Metadonnees ci-dessus LUES sur la page de garde, a DECLARER par le deposant: le champ edition n'est jamais deduit. La page de garde precise: « La norme NBN EN 1992-1-1 ne peut etre utilisee en Belgique qu'en combinaison avec son annexe nationale. » SECOND EXEMPLAIRE, MEME EDITION: l'empreinte 3a19536221aef69b16435b88bc05d7aee05cebe823e98cb292e49e48fe68dcdd designe un autre rendu du meme document, sur lequel le Tableau 7.1N-ANB (folio 18, page PDF 20) est LISIBLE — il ne l'est pas sur celui ci-dessus. C'est de ce rendu que viennent la fiche `w_max` et les six regles typees de `ndp/rules_be_ec2.py`. DECLARE depuis les references du depot (`ndp/rules_be_ec2.py`, `docs/relecture/BE_EC2_CLAUSES_ANALYSE.md`), NON RECALCULE: le fichier n'est pas versionne."
       },
       "document_role": "national_annex",
       "phase": "P0",
@@ -206,7 +206,10 @@
       "edition_read_from_cover": "1e ed., aout 2010",
       "publication_authorised": "2010-02-19",
       "annexes_base_standard": "NBN EN 1992-1-1, 1e ed. fevrier 2005",
-      "doc_id_sha256": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1"
+      "doc_id_sha256": "7951964092a4ad595f4d7ea95bea7e2099ca75d83c669a05561ecafb386b37a1",
+      "alternate_copy_hashes": [
+        "3a19536221aef69b16435b88bc05d7aee05cebe823e98cb292e49e48fe68dcdd"
+      ]
     },
     {
       "doc_key": "BE-EN19971-NA",

@@ -312,6 +312,11 @@ class EngineErrorDTO(Strict):
             "deprecated_national_parameter",
             "inconsistent_input",
             "unit_error",
+            #: The chosen bars do not verify the section, so no drawing is
+            #: produced. An engineering verdict, not a malformed request — and
+            #: the only refusal here that a client answers by adding steel
+            #: rather than by fixing its payload.
+            "reinforcement_not_verified",
         ],
         Field(description="Machine-readable class of refusal."),
     ]

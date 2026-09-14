@@ -1,0 +1,47 @@
+# EUROSTRUCT — CE QUI N'ENTRE PAS DANS UN CONTEXTE DE BUILD
+#
+# POURQUOI CE FICHIER EXISTE
+# ---------------------------
+# Les trois images sont construites depuis `eurostruct/`. Sans ce filtre, le
+# demon Docker recoit l'arbre ENTIER a chaque `docker build` — `web/node_modules`
+# (des centaines de milliers de fichiers), `web/.next`, les caches Python, et
+# surtout `deploy/local.env`, qui porte des mots de passe et que `.gitignore`
+# protege deja de Git mais pas du contexte de build.
+#
+# UN FICHIER D'ENVIRONNEMENT DANS UN CONTEXTE DE BUILD FINIT DANS UNE COUCHE.
+# `COPY web/ /src/web/` copierait un `.env.local` sans que rien ne le dise, et
+# une couche ne s'oublie pas: elle reste lisible apres qu'on croit l'avoir
+# ecrasee. C'est la raison principale de ce fichier; la vitesse n'est que la
+# consequence agreable.
+#
+# CE QUI RESTE, RESTE VOLONTAIREMENT. `web/package-lock.json` entre — c'est lui
+# qui rend `npm ci` reproductible. `packages/` entre — le contrat genere voyage
+# avec l'interface.
+
+# --- dependances et artefacts reconstruits dans l'image ---------------------
+**/node_modules
+web/.next
+web/out
+web/tsconfig.tsbuildinfo
+
+# --- environnements locaux: JAMAIS dans une couche --------------------------
+deploy/local.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# --- caches et artefacts Python ---------------------------------------------
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/*.egg-info
+**/.venv
+**/venv
+
+# --- ce qui n'a rien a faire dans une image ---------------------------------
+.git
+.gitignore
+**/.DS_Store
+**/*.log

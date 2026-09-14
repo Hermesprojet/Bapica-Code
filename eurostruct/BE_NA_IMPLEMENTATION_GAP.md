@@ -176,7 +176,7 @@ Répartition réelle des 29 :
 |---|---|---|
 | lus dans l'annexe, non validés | 21 | un vérificateur nommé et une date |
 | clause jamais ouverte, valeur = recommandation EN | 6 | une lecture — **faite le 15/08, voir §6** |
-| valeur d'attente (`w_max`) | 1 | séparation des appels de note, à l'œil |
+| valeur d'attente (`w_max`) | 1 | séparation des appels de note, à l'œil — **faite le 13/09** : `w_max` rejoint les 21 lus dans l'annexe, et n'attend plus qu'un vérificateur nommé |
 | formule, non représentable (`cot_theta_max`) | 1 | un modèle admettant une expression |
 
 ---
@@ -233,6 +233,12 @@ français avant l'ouverture de l'annexe — et le moteur y calculait faux.
 rien ne distingue, dans la structure, une valeur nationale lue d'une valeur
 européenne d'attente. `w_max` est étiqueté `national_annex` et porte les
 valeurs du tableau EN — l'avertissement n'existe que dans la prose de `notes`.
+
+> **Réglé depuis.** `value_provenance` existe (`ndp/model.py`) et
+> `usable_in_strict_mode` en dépend. `BE/w_max` y est passé de
+> `NATIONAL_ANNEX_PENDING` à `NATIONAL_ANNEX` le 13/09, une fois le
+> Tableau 7.1N-ANB lu. Le cas vivant de la divergence document/valeur est
+> désormais `FR/w_max`, dont le Tableau 7.1NF n'est toujours pas lu.
 
 Le modèle ne porte qu'un **scalaire** ou des **variantes conditionnelles**.
 Il ne porte ni formule, ni fonction des variables de calcul. C'est pourquoi
@@ -328,10 +334,18 @@ Aucun des sept paramètres analysés le 15/08 n'est un scalaire :
    formule modifiée par l'annexe. La chaîne apparaît **une seule fois dans les
    31 pages** et aucune formule de ce nom n'y est imprimée. Coquille ou renvoi
    à un texte absent : le document en main ne tranche pas. Question au NBN.
-2. **Appels de note du tableau 7.1N-ANB.** L'extraction colle les renvois aux
-   valeurs (`0,4`+note 1 → `0,41`). La séparation retenue est cohérente avec
-   les notes imprimées, mais résulte d'une lecture d'artefact. Confirmation
-   visuelle requise.
+2. ~~**Appels de note du tableau 7.1N-ANB.**~~ **RÉSOLU le 13/09.**
+   L'extraction collait les renvois aux valeurs (`0,4`+note 1 → `0,41`,
+   `0,2`+note 2 → `0,22`). La confirmation visuelle a été faite sur le PDF,
+   folio 18 · page PDF 20 : ce sont bien des appels de notes. `BE/w_max` porte
+   désormais `0,4` en X0/XC1 et `0,3` en XC2-XC4/XD/XS, provenance
+   `NATIONAL_ANNEX`, folio 18, empreinte `3a195362…`.
+
+   **Ce que la lecture n'a PAS résolu** : le tableau ne donne aucune ligne
+   pour XF ni pour XA. Le moteur les refusait implicitement en les rabattant
+   sur 0,3 mm ; il les refuse désormais explicitement, et demande la classe
+   XC/XD/XS associée. La correspondance classe d'exposition ↔ classe
+   d'environnement NBN B 15-001 reste hors modèle.
 
 ### Blocage 5 — les rôles de validation ne sont pas séparés
 

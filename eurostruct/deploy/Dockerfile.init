@@ -1,0 +1,62 @@
+# EUROSTRUCT — image d'INITIALISATION de la base
+#
+#     docker build -f deploy/Dockerfile.init -t eurostruct-init:local .
+#
+# ELLE NE SERT RIEN, ET ELLE NE TOURNE PAS EN CONTINU. Elle pose les rôles,
+# applique les migrations par la commande officielle, finalise, crée le login
+# applicatif, puis SORT. La composition n'ouvre l'API qu'après sa sortie en 0.
+#
+# POURQUOI UNE IMAGE PLUTOT QU'UN MONTAGE
+# ----------------------------------------
+# Monter `db/` et `tools/` depuis l'hôte marcherait sur un poste et nulle part
+# ailleurs : le chemin hôte n'existe pas sur un runner qui a construit les
+# images ailleurs, et le contenu monté n'est plus celui que l'image a figé. Le
+# SQL déployé doit être celui du même arbre que le code qui le lira.
+#
+# POURQUOI `postgres:16-bookworm` COMME BASE
+# -------------------------------------------
+# Pour `psql`, et pour la MEME version majeure que le serveur visé : un client
+# plus ancien ne sait pas lire toutes les formes que le serveur rend.
+#
+# POURQUOI PYTHON EST COPIE ET NON INSTALLE PAR `apt`
+# -----------------------------------------------------
+# `tools/deploy_eurostruct.sh` découpe ses deux URL avec `python3` — jamais
+# avec une expression rationnelle, qui casse sur un mot de passe contenant
+# `@` ou `/`. Il en faut donc un.
+#
+# `apt-get install` l'apporterait, au prix d'une construction qui dépend d'un
+# miroir Debian joignable en HTTP au moment du build. Une image
+# d'initialisation qui ne se construit que sur un réseau permissif n'est pas
+# une image reproductible : mesuré ici même, `deb.debian.org` rend 403 derrière
+# le proxy de cet environnement, et la composition entière devient
+# inconstructible pour une raison qui n'a rien à voir avec le produit.
+#
+# Les deux images sont bookworm et glibc : la copie de l'interpréteur et de sa
+# bibliothèque standard suffit. Ce qu'on utilise — `urllib.parse`, `shlex` —
+# est du Python pur, sans module d'extension à lier.
+FROM python:3.11-slim-bookworm AS python
+
+FROM postgres:16-bookworm
+
+COPY --from=python /usr/local/bin/python3.11 /usr/local/bin/python3.11
+COPY --from=python /usr/local/lib/libpython3.11.so.1.0 /usr/local/lib/
+COPY --from=python /usr/local/lib/python3.11 /usr/local/lib/python3.11
+RUN ldconfig && ln -sf /usr/local/bin/python3.11 /usr/local/bin/python3 \
+ && python3 -c "import urllib.parse, shlex; print('python3 utilisable')"
+
+WORKDIR /opt/eurostruct
+
+# LE SQL ET LA COMMANDE OFFICIELLE, DEPUIS LE MEME ARBRE QUE L'API.
+COPY db/ /opt/eurostruct/db/
+COPY tools/ /opt/eurostruct/tools/
+COPY deploy/initialiser.sh /opt/eurostruct/deploy/initialiser.sh
+
+RUN chmod +x /opt/eurostruct/deploy/initialiser.sh \
+             /opt/eurostruct/tools/deploy_eurostruct.sh
+
+# PAS DE `USER` NON-ROOT ICI, ET C'EST LA SEULE DES TROIS IMAGES DANS CE CAS.
+# Ce conteneur ne sert aucune requête et n'expose aucun port : il ouvre une
+# connexion sortante, exécute, et sort. Le privilège qui compte est celui du
+# rôle PostgreSQL qu'il présente, pas l'uid Unix du processus.
+
+ENTRYPOINT ["/opt/eurostruct/deploy/initialiser.sh"]

@@ -5,6 +5,15 @@ node_modules/
 *.log
 .vercel
 .env*
+# ...MAIS LES GABARITS SONT DU CODE, PAS DES SECRETS.
+# `.env*` avalait `eurostruct/api/.env.example`: le fichier etait documente
+# dans le README, dans `dev.sh` et dans le rapport, present sur les postes qui
+# l'avaient cree, et ABSENT du depot. Un clone neuf n'avait donc pas le fichier
+# que la commande de demarrage lui disait de copier.
+# L'exception est ciblee sur le suffixe `.example`: aucun `.env` reel ne
+# remonte, seuls les gabarits sans valeur.
+!.env.example
+!**/.env.example
 
 # EUROSTRUCT
 .venv-eurostruct/
@@ -12,3 +21,18 @@ node_modules/
 __pycache__/
 *.egg-info/
 .pytest_cache/
+
+# La copie REMPLIE du gabarit d'execution locale. Elle porte un mot de passe de
+# base et, le jour ou un staging existera, l'adresse d'un emetteur. Seul le
+# gabarit `deploy/local.env.example` est versionne — voir la regle `!**/.env.example`
+# plus haut, qui ne couvre pas ce nom-la.
+eurostruct/deploy/local.env
+**/deploy/local.env
+
+# LES OCTETS DES LIVRABLES produits par `eurostruct/dev.sh`.
+#
+# Ce sont de VRAIS documents, adresses par leur contenu, dont l'empreinte est
+# enregistree en base. Ils appartiennent a la machine qui les a produits, pas
+# au depot: les versionner ferait entrer dans l'historique des notes de calcul
+# de developpement, avec des noms de projet et des resultats sans statut.
+eurostruct/.livrables/

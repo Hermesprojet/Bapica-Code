@@ -1,0 +1,209 @@
+:root {
+  color-scheme: light dark;
+  --fond: #fbfbfa;
+  --papier: #ffffff;
+  --encre: #16181d;
+  --encre-douce: #5b6270;
+  --trait: #dfe1e6;
+  --refus: #8a1c1c;
+  --refus-fond: #fdf2f2;
+  --refus-trait: #f0c9c9;
+  --alerte: #7a4a00;
+  --alerte-fond: #fff8ea;
+  --alerte-trait: #f0dcb4;
+  --ok: #14532d;
+  --ok-fond: #f2f9f4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #14161a;
+    --papier: #1b1e24;
+    --encre: #e9eaee;
+    --encre-douce: #a2a9b8;
+    --trait: #2e333c;
+    --refus: #ff9d9d;
+    --refus-fond: #2a1618;
+    --refus-trait: #55282b;
+    --alerte: #f0c67a;
+    --alerte-fond: #2a2214;
+    --alerte-trait: #55452a;
+    --ok: #9fe0b6;
+    --ok-fond: #14251a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--encre);
+  font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main { max-width: 60rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+
+h1 { font-size: 1.4rem; margin: 0 0 .25rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.05rem; margin: 1.75rem 0 .6rem; }
+.sous-titre { color: var(--encre-douce); margin: 0 0 1.75rem; }
+
+fieldset {
+  border: 1px solid var(--trait); border-radius: 10px;
+  padding: 1rem 1.1rem 1.2rem; margin: 0 0 1rem; background: var(--papier);
+}
+legend { padding: 0 .4rem; font-weight: 600; font-size: .85rem;
+         text-transform: uppercase; letter-spacing: .04em;
+         color: var(--encre-douce); }
+
+.grille { display: grid; gap: .85rem 1rem;
+          grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+
+label { display: block; font-size: .82rem; color: var(--encre-douce);
+        margin-bottom: .25rem; }
+input, select {
+  width: 100%; padding: .5rem .6rem; font: inherit; color: var(--encre);
+  background: var(--fond); border: 1px solid var(--trait); border-radius: 7px;
+}
+input:focus, select:focus { outline: 2px solid #6b8afd; outline-offset: 1px; }
+
+.ligne-case { display: flex; align-items: flex-start; gap: .55rem;
+              margin-top: .3rem; }
+.ligne-case input { width: auto; margin-top: .25rem; }
+.ligne-case label { margin: 0; color: var(--encre); font-size: .9rem; }
+.ligne-case .aide { display: block; color: var(--encre-douce);
+                    font-size: .8rem; margin-top: .15rem; }
+
+button {
+  font: inherit; font-weight: 600; padding: .6rem 1.1rem; border-radius: 8px;
+  border: 1px solid transparent; background: #2c3442; color: #fff;
+  cursor: pointer;
+}
+button:disabled { opacity: .55; cursor: progress; }
+button.secondaire { background: transparent; color: var(--encre);
+                    border-color: var(--trait); }
+
+.bandeau {
+  border-radius: 10px; padding: .85rem 1rem; margin: 1.25rem 0;
+  border: 1px solid;
+}
+.bandeau.refus { background: var(--refus-fond); border-color: var(--refus-trait);
+                 color: var(--refus); }
+.bandeau.alerte { background: var(--alerte-fond);
+                  border-color: var(--alerte-trait); color: var(--alerte); }
+.bandeau.ok { background: var(--ok-fond); border-color: var(--trait);
+              color: var(--ok); }
+.bandeau strong { display: block; margin-bottom: .2rem; }
+
+.mention-non-signable {
+  display: inline-block; font-weight: 700; letter-spacing: .06em;
+  font-size: .82rem; padding: .3rem .6rem; border-radius: 6px;
+  background: var(--alerte-fond); color: var(--alerte);
+  border: 1px solid var(--alerte-trait);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { text-align: left; padding: .45rem .5rem;
+         border-bottom: 1px solid var(--trait); }
+th { color: var(--encre-douce); font-weight: 600; font-size: .78rem;
+     text-transform: uppercase; letter-spacing: .03em; }
+td.nombre { font-variant-numeric: tabular-nums; text-align: right; }
+
+.cartes { display: grid; gap: .75rem;
+          grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+          margin: .5rem 0 1rem; }
+.carte { background: var(--papier); border: 1px solid var(--trait);
+         border-radius: 10px; padding: .7rem .8rem; }
+.carte .cle { font-size: .78rem; color: var(--encre-douce); }
+.carte .valeur { font-size: 1.25rem; font-variant-numeric: tabular-nums;
+                 margin-top: .15rem; }
+.carte .unite { font-size: .8rem; color: var(--encre-douce); }
+
+ul.bloquants { margin: .6rem 0 0; padding-left: 1.1rem; }
+ul.bloquants li { margin-bottom: .5rem; }
+ul.bloquants code { font-size: .85rem; }
+.clause { color: var(--encre-douce); font-size: .85rem; }
+
+.pied { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--trait);
+        color: var(--encre-douce); font-size: .82rem; }
+
+/* ---------------------------------------------------------------------------
+   LA VERIFICATION COMPLETE — sept etapes, cinq chapitres.
+
+   LES QUATRE ETATS D'UN CHAPITRE ONT QUATRE APPARENCES, et c'est le seul
+   endroit ou cela se decide. Les ramener a deux couleurs — vert / rouge —
+   ferait peindre en vert une section NON EVALUEE, c'est-a-dire une section qui
+   n'a jamais tourne. C'est le cas francais: son Annexe Nationale rend k3
+   fonction de l'enrobage, et le modele scalaire ne sait pas la porter.
+   --------------------------------------------------------------------------- */
+ol.etapes { display: flex; flex-wrap: wrap; gap: .35rem; list-style: none;
+            margin: .5rem 0 1rem; padding: 0; }
+button.etape { display: flex; align-items: center; gap: .4rem;
+               background: var(--papier); color: var(--encre);
+               border: 1px solid var(--trait); border-radius: 999px;
+               padding: .3rem .7rem; font-size: .8rem; cursor: pointer;
+               margin: 0; }
+button.etape .rang { font-variant-numeric: tabular-nums; font-weight: 600;
+                     color: var(--encre-douce); }
+button.etape.active { border-color: #6b8afd; box-shadow: 0 0 0 1px #6b8afd; }
+button.etape.incomplete .rang { color: var(--alerte); }
+button.etape.remplie .rang { color: var(--ok); }
+
+.navigation-etapes { display: flex; flex-wrap: wrap; gap: .5rem;
+                     align-items: center; }
+
+.manque { color: var(--alerte); }
+
+/* Les quatre etats, et aucune fusion. */
+.etat { display: inline-block; border-radius: 999px; padding: .1rem .55rem;
+        font-size: .78rem; border: 1px solid var(--trait); }
+.etat.ok { background: var(--ok-fond); color: var(--ok);
+           border-color: var(--ok); }
+.etat.ko { background: var(--refus-fond); color: var(--refus);
+           border-color: var(--refus-trait); }
+.etat.attente { background: var(--alerte-fond); color: var(--alerte);
+                border-color: var(--alerte-trait); }
+/* NON EVALUE: ni vert, ni rouge, ni orange. Le silence a son apparence. */
+.etat.silence { background: transparent; color: var(--encre-douce); }
+
+.actions-etude { margin: 1rem 0; }
+.actions-etude h3 { font-size: .95rem; margin: 1rem 0 .5rem; }
+.rangee-boutons { display: flex; flex-wrap: wrap; gap: .5rem; }
+.apercu-plan { margin-top: 1rem; background: var(--papier);
+               border: 1px solid var(--trait); border-radius: 10px;
+               padding: .5rem; overflow-x: auto; }
+.apercu-plan svg { max-width: 100%; height: auto; }
+
+details > summary { cursor: pointer; color: var(--encre-douce);
+                    font-size: .85rem; margin: 1rem 0 .5rem; }
+details code { font-size: .78rem; word-break: break-all; }
+
+/* ---------------------------------------------------------------------------
+   ECRAN ETROIT — telephone tenu debout, fenetre reduite a cote d'un plan.
+
+   CE QUI DEBORDAIT, ET CE QUE CELA COUTAIT. Le tableau des membres a cinq
+   colonnes, celui des livrables six, et une empreinte SHA-256 fait
+   soixante-quatre caracteres sans une espace. Sous 40 rem, ces trois-la
+   poussaient la LARGEUR DE LA PAGE: le document entier partait vers la droite,
+   et avec lui les boutons de gauche — « Precedent », « Verifier les cinq
+   chapitres » — qu'il fallait aller rechercher en faisant defiler
+   horizontalement un ecran qui n'a pas de barre pour cela.
+
+   LE DEFILEMENT EST DONC BORNE A CE QUI DEBORDE. Le tableau glisse dans sa
+   propre boite; la page, elle, ne bouge pas. La regle est sous media query:
+   `display: block` sur un tableau lui fait perdre sa largeur pleine, ce qui
+   serait une regression sur un ecran large ou rien ne deborde.
+   --------------------------------------------------------------------------- */
+@media (max-width: 40rem) {
+  main { padding: 1.25rem .85rem 3rem; }
+
+  table { display: block; overflow-x: auto; }
+
+  /* UNE EMPREINTE N'A PAS D'ESPACE OU SE COUPER: sans cela, un `code` de 64
+     caracteres impose sa largeur a tout ce qui le contient. */
+  code { overflow-wrap: anywhere; }
+
+  /* Un bouton par ligne plutot qu'un mot par ligne: « Plan de ferraillage
+     (DXF) » se replie sur trois lignes dans une colonne de 150 px. */
+  .rangee-boutons button, .navigation-etapes button { flex: 1 1 100%; }
+}

@@ -36,13 +36,8 @@ from ezdxf.document import Drawing
 
 from ..exceptions import InconsistentInput
 from ..legal import DRAFT_WATERMARK, Language
-from .beam_section import (
-    BarRow,
-    RebarScheduleRow,
-    _mass_kg,
-    _setup_document,
-    _text,
-)
+from .beam_section import _setup_document, _text
+from .modele import BarRow, RebarScheduleRow, masse_kg
 from .layers import (
     L_AXES,
     L_COFFRAGE,
@@ -326,7 +321,7 @@ def build_beam_elevation(
                 count=bar.row.count,
                 unit_length_mm=length,
                 total_length_mm=length * bar.row.count,
-                mass_kg=_mass_kg(bar.row.diameter, length * bar.row.count),
+                mass_kg=masse_kg(bar.row.diameter, length * bar.row.count),
                 shape_code="droite avec crochets" if bar.hook_each_end else "droite",
                 comment="; ".join(comment),
             )
@@ -357,7 +352,7 @@ def build_beam_elevation(
             count=n_links,
             unit_length_mm=link_len,
             total_length_mm=link_len * n_links,
-            mass_kg=_mass_kg(spec.link_diameter, link_len * n_links),
+            mass_kg=masse_kg(spec.link_diameter, link_len * n_links),
             shape_code="cadre ferme",
             comment=(
                 "longueur developpee sur l'axe, rayons de cintrage Tab. 8.1N, "

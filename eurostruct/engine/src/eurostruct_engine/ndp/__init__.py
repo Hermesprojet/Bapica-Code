@@ -25,6 +25,12 @@ from .canonical import (
     implementation_digest,
     normative_spec_digest,
 )
+from .couverture import (
+    Couverture,
+    EtatDuParametre,
+    couverture_du_calcul,
+    transcription_du_referentiel,
+)
 from .model import (
     CountryRegistry,
     NationalAnnex,
@@ -47,7 +53,9 @@ __all__ = [
     "CANONICALIZATION_VERSION",
     "BlockingParameter",
     "CountryRegistry",
+    "Couverture",
     "Digest",
+    "EtatDuParametre",
     "EvidenceItem",
     "NationalAnnex",
     "NationalParameter",
@@ -59,9 +67,11 @@ __all__ = [
     "ValidationStatus",
     "ValueProvenance",
     "available_countries",
+    "couverture_du_calcul",
     "evidence_digest",
     "implementation_digest",
     "load_country_registry",
     "load_parameter_set",
     "normative_spec_digest",
+    "transcription_du_referentiel",
 ]

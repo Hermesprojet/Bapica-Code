@@ -138,7 +138,16 @@ PLAN="${PREFIXE}_ctl_${JETON}";      PLAN_MDP="FICTIF-2p-ctl-$JETON"
 
 AUTORITES=(eurostruct_normative_writer eurostruct_normative_bootstrap
            eurostruct_normative_activator)
-SERVICES=(normative_backend normative_governance)
+# LE SEPTIEME ROLE CANONIQUE. `eurostruct_authority_backend` est cree par la
+# PHASE 0 depuis 6.3c: il doit donc etre exige absent AVANT, enregistre pour
+# le demontage, et detruit APRES, exactement comme les six autres. Mesure du
+# 26/08: il ne l'etait pas ici, et il survivait a ce harnais — les sept suites
+# suivantes de `run.sh` refusaient alors de demarrer sur « ces roles existent
+# deja ». Un role oublie dans une liste de demontage n'est pas un detail: il
+# arrete tout ce qui vient apres.
+SERVICES=(normative_backend normative_governance
+          eurostruct_authority_backend
+            eurostruct_reconciliation)
 DEPLOIEMENT=eurostruct_deployment
 CANONIQUES=("${AUTORITES[@]}" "${SERVICES[@]}" "$DEPLOIEMENT")
 
@@ -351,7 +360,7 @@ grant usage on schema auth to "$MIGRATEUR" with grant option;
 grant select, insert, references on auth.users to "$MIGRATEUR" with grant option;
 grant execute on function auth.uid() to "$MIGRATEUR" with grant option;
 grant create on database $base to "$MIGRATEUR";
--- L'acteur de la phase 0 cree des objets dans `public` et les transfere a
+-- L'acteur de la phase 0 cree des objets dans « public » et les transfere a
 -- l'activateur: CREATE avec GRANT OPTION. Les deux acteurs possibles le
 -- recoivent, l'administrateur l'a deja.
 grant create on schema public to "$MIGRATEUR", "$PLAN" with grant option;
@@ -409,7 +418,7 @@ else
   mig postgres -q -c "grant $DEPLOIEMENT to \"$MIGRATEUR\" with inherit true;" \
     >/dev/null 2>&1
   MANIF=$(mig "$BASE_A" -q -tAc 'select normative_settings_manifest()' 2>&1)
-  FIN=$(mig "$BASE_A" -q -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
+  FIN=$(mig "$BASE_A" -q -tAc "select normative_finalize_deployment($(esc_litteral "$MANIF"))" 2>&1)
   APRES=$(admin_db "$BASE_A" -tAc 'select normative_activation_state()' 2>&1)
   if [[ "$ETAT" != "PENDING" ]]; then
     echoue "A: la phase 1 ne se termine pas en PENDING (obtenu: $ETAT)."
@@ -422,7 +431,7 @@ else
     echo "             migrateur serait son propre plan de controle"
   else
     echoue "A: la finalisation refuse, mais pas au motif de la separation:"
-    echoue "  $(grep -m1 -iE 'ERROR|ERREUR' <<<"$FIN" | cut -c1-200)"
+    esc_diag_rapporter "A / finalisation" "$FIN"
   fi
 fi
 raz; creer_acteurs || { echoue "recreation des acteurs impossible"; exit 1; }
@@ -447,7 +456,7 @@ if appliquer "$BASE_B" admin_db "$MIGRATEUR,$PROPRIETAIRE"; then
     # PHASE 2, exercee par le DONNEUR — ici le superutilisateur qui a
     # provisionne. Il presente le MANIFESTE des declarations qu'il a revues.
     MANIF=$(admin_db "$BASE_B" -tAc 'select normative_settings_manifest()' 2>&1)
-    FIN=$(admin_db "$BASE_B" -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
+    FIN=$(admin_db "$BASE_B" -tAc "select normative_finalize_deployment($(esc_litteral "$MANIF"))" 2>&1)
     ETAT=$(admin_db "$BASE_B" -tAc 'select normative_activation_state()' 2>&1)
     CAP=$(adm -tAc "
       select count(*) from pg_roles a
@@ -457,7 +466,7 @@ if appliquer "$BASE_B" admin_db "$MIGRATEUR,$PROPRIETAIRE"; then
               or pg_has_role('$MIGRATEUR', a.rolname, 'MEMBER WITH ADMIN OPTION'))")
     if [[ "$ETAT" != "ACTIVE" ]]; then
       echoue "B: la finalisation n'a pas abouti (etat $ETAT):"
-      echoue "  $(grep -m1 -iE 'ERROR|ERREUR' <<<"$FIN" | cut -c1-200)"
+      esc_diag_rapporter "B / finalisation" "$FIN"
     elif [[ "$CAP" != "0" ]]; then
       echoue "B activee mais le migrateur conserve $CAP capacite(s) sur les"
       echoue "  roles d'autorite: il peut encore forger une origine normative."
@@ -468,7 +477,7 @@ if appliquer "$BASE_B" admin_db "$MIGRATEUR,$PROPRIETAIRE"; then
       echoue "B activee mais topologie refusee: $(head -1 <<<"$TOPO")"
     else
       # IDEMPOTENCE: une seconde finalisation constate, elle ne reecrit pas.
-      FIN2=$(admin_db "$BASE_B" -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
+      FIN2=$(admin_db "$BASE_B" -tAc "select normative_finalize_deployment($(esc_litteral "$MANIF"))" 2>&1)
       if grep -q 'deja finalise' <<<"$FIN2"; then
         echo "      ok: B PENDING -> ACTIVE par le donneur, migrateur sans capacite,"
         echo "             seconde finalisation idempotente"
@@ -522,7 +531,7 @@ if appliquer "$BASE_C" plan "$MIGRATEUR,$PLAN"; then
     # PHASE 2 PAR LE PLAN DE CONTROLE, qui est le donneur (F3) — et le seul a
     # pouvoir revoquer. Il presente le manifeste des declarations revues.
     MANIF=$(plan "$BASE_C" -q -tAc 'select normative_settings_manifest()' 2>&1)
-    FIN=$(plan "$BASE_C" -q -tAc "select normative_finalize_deployment('$MANIF')" 2>&1)
+    FIN=$(plan "$BASE_C" -q -tAc "select normative_finalize_deployment($(esc_litteral "$MANIF"))" 2>&1)
     ETAT=$(plan "$BASE_C" -q -tAc 'select normative_activation_state()' 2>&1)
     FIGE=$(plan "$BASE_C" -q -tAc 'select normative_control_plane()' 2>&1)
     FIGE_OID=$(plan "$BASE_C" -q -tAc 'select normative_control_plane_oid()' 2>&1)
@@ -535,7 +544,7 @@ if appliquer "$BASE_C" plan "$MIGRATEUR,$PLAN"; then
               or pg_has_role('$MIGRATEUR', a.rolname, 'MEMBER WITH ADMIN OPTION'))")
     if [[ "$ETAT" != "ACTIVE" ]]; then
       echoue "C: la finalisation par « $PLAN » n'a pas abouti (etat $ETAT):"
-      echoue "  $(grep -m1 -iE 'ERROR|ERREUR' <<<"$FIN" | cut -c1-200)"
+      esc_diag_rapporter "C / finalisation" "$FIN"
     elif [[ "$CAP" != "0" ]]; then
       echoue "C activee mais le migrateur conserve $CAP capacite(s)."
     elif [[ "$FIGE" != "$PLAN" || "$FIGE_OID" != "$OID_PLAN" ]]; then

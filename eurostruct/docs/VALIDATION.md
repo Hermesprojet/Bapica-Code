@@ -29,27 +29,72 @@
 | Aucun document ne présente le logiciel comme signataire | ✅ | `test_legal.py::test_no_document_presents_the_software_as_signatory` |
 | Mentions légales en FR/NL/EN/ES/DE | ✅ | `test_legal.py`, paramétré sur les 5 langues |
 | Immuabilité des documents signés | ✅ | `db/test/01_guarantees.sql`, test 5 |
+| Étude à **cinq chapitres** enchaînés en un passage, quatre états par chapitre | ✅ | `test_beam_verification.py` — `passed` / `failed` / `additional_analysis_required` / `not_evaluated`, jamais fusionnés |
+| Le **plan DXF** rend les mêmes octets d'un processus à l'autre | ✅ | `test_dxf_determinisme.py` — 5 germes × 2 exécutions en sous-processus, rendus concurrents, garde-fou falsifié |
+| La **note PDF** rend les mêmes octets d'un processus à l'autre | ✅ | `web/e2e/recette_production.mjs` — recomposée après redémarrage de l'API : identifiant de livrable différent, mêmes octets ; aucun `/CreationDate`, `/ModDate`, `/Producer` ni `/ID` dans le fichier |
+| Le plan décrit la poutre **vérifiée**, pas une autre | ✅ | La coupe est gelée avec l'étude ; le navigateur n'envoie que l'identifiant du calcul et le format |
 
 ## 2. Ce qui n'est PAS garanti — points bloquants avant commercialisation
 
-### 2.1 Les paramètres nationaux ne sont pas vérifiés ⛔
+### 2.1 Aucune décision nominative n'est livrée avec le dépôt ⛔
 
-**C'est le point bloquant principal.**
+**C'est le point bloquant principal, et il faut le dire au bon niveau.**
 
-Les jeux de NDP livrés (`engine/src/eurostruct_engine/ndp/data/*.json`)
-contiennent les **valeurs recommandées par l'Eurocode**, pas celles des Annexes
-Nationales. Les 4 pays × 22 paramètres portent tous le statut
-`pending_verification`, et l'édition de chaque annexe est `NON RELEVE`.
+Trois états se distinguent, et les confondre a produit deux malentendus
+symétriques — croire qu'un référentiel transcrit est utilisable, et croire
+qu'une instance où deux ingénieurs ont signé est restée à zéro.
+
+| état | où il vit | Belgique aujourd'hui |
+|---|---|---|
+| **transcrit** | fichiers versionnés | 23 fiches sur 29 relevées dans la NBN EN 1992-1-1 ANB, dont les **19** que réclame une vérification de poutre |
+| **décidé** | base d'autorité de l'instance | dépend de l'instance — le dépôt n'en livre aucune et ne peut pas en livrer |
+| **utilisable** | l'intersection, pour le calcul demandé | dépend de l'instance |
+
+Le dépôt n'écrit **jamais** `confirmed` : `generate_ndp_seed.py` refuse de
+générer un seed qui en porterait un, et `NationalParameter.__post_init__`
+refuse de charger un `confirmed` dont la provenance n'est pas nationale. Un
+compte pris dans les fichiers dira donc toujours « 0 confirmé », sur n'importe
+quelle instance — **ce n'est pas une mesure de l'état d'une instance**.
+
+Pour l'état réel : `GET /v1/ndp/{pays}/couverture` interroge le provider de
+l'instance et rend les trois séparément, paramètre par paramètre, avec le nom
+des vérificateurs et le motif de chaque refus. Sans base branchée, il répond
+« non interrogé » — jamais « zéro », parce que les deux appellent des gestes
+opposés.
+
+France, Espagne, Allemagne : les jeux portent encore les **valeurs
+recommandées par l'Eurocode**, et l'édition de chaque annexe est `NON RELEVE`.
+
+Le chemin de confirmation à quatre yeux, lui, fonctionne : un ingénieur propose
+depuis l'annexe publiée, un second approuve, la décision consommée devient un
+effet normatif.
+
+**Il butait en Belgique sur `EN 1992-1-1:w_max`, et ce blocage est levé.** Le
+Tableau 7.1N-ANB était illisible sur l'exemplaire déposé ; il a été lu à l'œil
+le 13/09 sur un autre (folio 18 · page PDF 20, SHA-256 `3a195362…`). La fiche
+porte désormais une transcription de l'annexe belge — 0,4 mm en X0/XC1, 0,3 mm
+en XC2-XC4/XD1-XD3/XS1-XS3 — et non plus les valeurs du Tableau 7.1N de l'EN.
+Elle reste `pending_verification` : **transcrire n'est pas confirmer**.
+
+Une vérification complète de poutre réclame **19 paramètres** en Belgique.
+Les 19 se confirment maintenant par le chemin d'autorité, ce que
+`engine/tests/test_chemin_strict_belge.py` exerce de bout en bout avec deux
+signataires **fictifs** : dossiers composés par le code de production,
+préflight sans bloquant, cinq chapitres évalués. Cela mesure le produit, pas
+le référentiel — aucune de ces confirmations n'existe hors du processus de
+test.
 
 Conséquence voulue : **le moteur refuse de calculer en mode strict**, le mode
 par défaut. Le préflight rend la liste complète des bloquants en un passage :
 
 ```
-Calcul impossible pour BE au 2026-07-26: 8 parametre(s) bloquant(s) sur 8 requis.
+Calcul impossible pour BE au 2026-09-13: 19 parametre(s) national(aux) bloquant(s) sur 19 requis.
+
   [pending_verification] Valeur non relevee dans l'annexe publiee
-    - EN 1992-1-1:alpha_cc (§3.1.6(1)P) — NBN EN 1992-1-1 ANB
-    - EN 1992-1-1:gamma_C_persistent (§2.4.2.4(1), Tab. 2.1N) — NBN EN 1992-1-1 ANB
+    - EN 1992-1-1:As_max_ratio (§9.2.1.1(3)) — NBN EN 1992-1-1 ANB
+    - EN 1992-1-1:As_min_coeff (§9.2.1.1(1), eq. (9.1N)) — NBN EN 1992-1-1 ANB
     ...
+    - EN 1992-1-1:w_max (§7.3.1(5), Tab. 7.1N-ANB) — NBN EN 1992-1-1 ANB
 ```
 
 Pour lever le blocage, paramètre par paramètre :
@@ -58,9 +103,22 @@ Pour lever le blocage, paramètre par paramètre :
    UNE-EN 1992-1-1 AN, DIN EN 1992-1-1/NA).
 2. Relever l'**édition** et la date d'entrée en vigueur, puis la valeur à la
    clause indiquée.
-3. Mettre à jour le JSON : `parameter_value`, `source_type: "national_annex"`,
-   `validation_status: "confirmed"`, `verified_by`, `verified_at`.
+3. Transcrire dans le JSON : `parameter_value` (ou les `variants`),
+   `source_type: "national_annex"`, `source_doc_id`, `source_page`,
+   `value_provenance: "national_annex"` — et **laisser
+   `validation_status: "pending_verification"`**.
 4. Régénérer le seed : `python db/seed/generate_ndp_seed.py > db/seed/0001_ndp.sql`.
+5. Faire passer le paramètre par le **chemin d'autorité** : proposition par un
+   ingénieur nommé, approbation par un second, consommation de la décision.
+   C'est cette étape-là, et elle seule, qui rend le paramètre utilisable en
+   mode strict.
+
+> **Le dépôt n'écrit jamais `confirmed`.** `generate_ndp_seed.py` refuse de
+> générer un seed qui en porterait un, et `NationalParameter.__post_init__`
+> refuse de charger un `confirmed` dont la provenance n'est pas nationale. Une
+> version antérieure de cette procédure demandait d'éditer `validation_status`
+> à la main : c'était le contournement que ces deux gardes existent pour
+> fermer.
 
 Trois garde-fous, tous vérifiés contre PostgreSQL :
 
@@ -135,6 +193,16 @@ audit `ezdxf` sans erreur, aller-retour sauvegarde/relecture, calques
 normalisés, style de cotation lié à une police présente dans le fichier,
 géométrie à l'échelle vraie. **L'ouverture effective dans AutoCAD, BricsCAD et
 LibreCAD reste une recette manuelle.**
+
+Ce n'est **pas** un blocage de licence : aucune licence AutoCAD n'est
+nécessaire, ni pour développer, ni pour exploiter le produit, et la recette
+elle-même n'en demande aucune — elle se fait dans l'AutoCAD d'un futur
+utilisateur et dans LibreCAD. La grille de contrôle, avec les valeurs attendues
+tirées du code, est dans `docs/DESSIN_DXF.md` §4.
+
+**Aucun test AutoCAD réel n'a été exécuté à ce jour, et le produit ne prétend
+pas le contraire.** Ce qui est prouvé est la relecture indépendante par
+`ezdxf`, énumérée ci-dessus.
 
 ## 3. Contrat de versionnement
 

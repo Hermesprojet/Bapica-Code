@@ -164,8 +164,65 @@ class BarRowDTO(Strict):
     length: float | None = Field(default=None, description="Developed length, mm")
 
 
+class ReinforcementChoiceDTO(Strict):
+    """The bars the engineer chose. Never deduced from the calculation.
+
+    ``As_required`` says how much steel is needed; it says nothing about how
+    many bars, of which diameter, arranged how. That choice is the engineer's,
+    and this is where it enters — separately from the geometry, which comes
+    from the calculation that was verified.
+    """
+
+    cover: float = Field(ge=0, description="Nominal cover c_nom, mm")
+    link_diameter: float = Field(ge=0, description="Link diameter, mm")
+    link_spacing: float | None = None
+    link_mark: str = "C1"
+    #: Tension face. At least one row: a section with no tension steel is not
+    #: a reinforced section, and drawing it would be drawing nothing.
+    bottom: list[BarRowDTO] = Field(min_length=1)
+    top: list[BarRowDTO] = Field(default_factory=list)
+
+
+class Ec2BeamSectionRequest(Strict):
+    """Verify the chosen bars, **then** draw them — never the reverse.
+
+    WHY THE CALCULATION TRAVELS WITH THE DRAWING REQUEST
+    -----------------------------------------------------
+    Measured on 30/08: the interface sent a hard-coded 300 x 500 to the drawing
+    endpoint whatever section had just been calculated. The engineer received a
+    plan of a beam that was never verified, carrying the mandatory notice and
+    their own element mark.
+
+    Nothing could catch it, because the drawing endpoint had no way to know
+    what had been calculated: it was handed a geometry and drew it, correctly.
+    Sending the **verified request itself** removes the gap by construction —
+    the drawn section and the checked section are the same object, and no
+    caller can hold two of them.
+
+    ``A_s_provided`` is deliberately absent: it is **computed here** from the
+    bars, so that no client has to, and so that none can claim an area its
+    bars do not have.
+    """
+
+    calculation: Ec2BeamFlexureRequest
+    reinforcement: ReinforcementChoiceDTO
+    plot_scale: float = Field(default=20.0, gt=0)
+    exposure_class: str = ""
+    index: str = "A"
+    date: str = ""
+    mention: str = Field(
+        default="",
+        description="Mention supplementaire portee au cartouche du dessin.")
+
+
 class BeamSectionDrawingRequest(Strict):
-    """Input of the DXF cross-section generator."""
+    """Input of the DXF cross-section generator.
+
+    Kept as the **drawing** contract: it knows a geometry and bars, and nothing
+    about whether they were verified. :class:`Ec2BeamSectionRequest` is what a
+    client should send; this one is what the renderer consumes once the check
+    has passed.
+    """
 
     project: str = ""
     element: str = ""
@@ -183,6 +240,13 @@ class BeamSectionDrawingRequest(Strict):
     exposure_class: str = ""
     index: str = "A"
     date: str = ""
+    mention: str = Field(
+        default="",
+        description="Mention supplementaire portee au cartouche, par exemple "
+                    "« PROJET — NON SIGNABLE » quand des parametres nationaux "
+                    "non confirmes ont pu servir. Distincte du filigrane "
+                    "« NON VALIDE », qui parle de la validation par un "
+                    "ingenieur et non du referentiel employe.")
 
 
 class RebarScheduleRowDTO(Strict):

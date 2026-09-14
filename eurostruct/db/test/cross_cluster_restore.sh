@@ -60,7 +60,9 @@ JETON="$(harnais_jeton)"
 
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator normative_backend
-            normative_governance eurostruct_deployment)
+            normative_governance eurostruct_deployment
+            eurostruct_authority_backend
+            eurostruct_reconciliation)
 
 exiger_roles_absents "cross_cluster_restore.sh" "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}" || exit 2
 
@@ -201,7 +203,7 @@ adm -c "alter database \"$BASE\"
 adm -c "alter database \"$BASE\" set eurostruct.token_roles = 'authenticated';" >/dev/null 2>&1
 
 if ! SORTIE=$(ctl -v ON_ERROR_STOP=1 -f "$SCEAU" 2>&1); then
-  echoue "phase 0 refusee: $(grep -m1 ERROR <<<"$SORTIE" | cut -c1-180)"; exit 1
+  echoue "phase 0 refusee:"; esc_diag_rapporter "phase 0 (sceau)" "$SORTIE"; exit 1
 fi
 adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
 ctlp -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
@@ -212,12 +214,13 @@ for f in "$DB_DIR"/migrations/*.sql; do
   [[ "$f" == "$SCEAU" ]] && continue
   if ! esc_appliquer_migration "$f" mig; then
     SORTIE="$ESC_MIGRATION_SORTIE"
-    echoue "phase 1 refusee sur $(basename "$f"): $(grep -m1 ERROR <<<"$SORTIE" | cut -c1-180)"
+    echoue "phase 1 refusee sur $(basename "$f"):"
+    esc_diag_rapporter "phase 1 / $(basename "$f")" "$SORTIE"
     exit 1
   fi
 done
 MANIF=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-ctl -tAc "select normative_finalize_deployment('$MANIF')" >/dev/null 2>&1
+ctl -tAc "select normative_finalize_deployment($(esc_litteral "$MANIF"))" >/dev/null 2>&1
 ETAT_A=$(ctl -tAc "select normative_activation_state()" 2>&1)
 if [[ "$ETAT_A" != "ACTIVE" ]]; then
   echoue "le cluster A ne se termine pas en ACTIVE (obtenu: $ETAT_A)"; exit 1
@@ -324,7 +327,7 @@ fi
 # l'exploitant executer une procedure inexistante ne protege pas mieux qu'un
 # refus muet: il fait perdre du temps et suggere qu'une issue existe.
 MANIF_B=$(b -d "$BASE" -tAc "select normative_settings_manifest()" 2>&1)
-REFI=$(b -d "$BASE" -tAc "select normative_finalize_deployment('$MANIF_B')" 2>&1)
+REFI=$(b -d "$BASE" -tAc "select normative_finalize_deployment($(esc_litteral "$MANIF_B"))" 2>&1)
 PROMET=$(grep -oiE "refinalis[a-z]*( sur place)?" <<<"$TOPO_B" | head -1)
 REUSSI=0
 [[ "$(b -d "$BASE" -tAc "select assert_normative_topology()" 2>&1)" != *ERROR* ]] && REUSSI=1

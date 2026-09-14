@@ -8,18 +8,30 @@ from .anchorage import (
     BondCondition,
     design_anchorage,
 )
-from .beam_shear import (
-    ShearDesign,
-    ShearLinks,
-    ShearSection,
-    design_shear,
-)
 from .beam_flexure import (
     FlexureDesign,
     FlexureResistance,
     RectangularSection,
     design_flexure,
     moment_resistance,
+)
+from .beam_shear import (
+    ShearDesign,
+    ShearLinks,
+    ShearSection,
+    design_shear,
+)
+from .beam_verification import (
+    BeamGeometry,
+    BeamPreflight,
+    BeamVerification,
+    BeamVerificationInput,
+    ModuleBlocker,
+    LongitudinalBars,
+    SectionOutcome,
+    TransverseLinks,
+    preflight_beam,
+    verify_beam,
 )
 from .deflection import (
     SpanDepthCheck,
@@ -56,4 +68,15 @@ __all__ = [
     "StructuralSystem",
     "SpanDepthCheck",
     "check_span_depth",
+    # La verification complete: les cinq sections, derivees d'une seule entree.
+    "BeamGeometry",
+    "BeamPreflight",
+    "BeamVerification",
+    "BeamVerificationInput",
+    "ModuleBlocker",
+    "LongitudinalBars",
+    "SectionOutcome",
+    "TransverseLinks",
+    "preflight_beam",
+    "verify_beam",
 ]

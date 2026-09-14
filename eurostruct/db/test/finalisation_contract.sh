@@ -47,6 +47,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="$(dirname "$HERE")"
 # shellcheck source=lib_harnais.sh
 source "$HERE/lib_harnais.sh"
+# LES POINTS QUE CE HARNAIS SAIT EMETTRE. Le pre-vol s'en sert pour refuser,
+# AVANT toute execution, un controle dont le point n'est emis par personne.
+# Emettre un point absent d'ici imprime une faute: voir `_esc_point_connu`.
+esc_points_declares 1 2 2b 2c 3 4 5 6 7 8a 8b
+
 # LE SEUL CHEMIN QUI SAIT APPLIQUER UNE MIGRATION (6.3b6e): les harnais
 # l'empruntent AUSSI, sans quoi ils testeraient un chemin que la
 # production n'emprunte pas.
@@ -71,7 +76,9 @@ JETON="$(harnais_jeton)"
 # execution anterieure, et aucune postcondition ne l'avait vu.
 CANONIQUES=(eurostruct_normative_writer eurostruct_normative_bootstrap
             eurostruct_normative_activator normative_backend
-            normative_governance eurostruct_deployment)
+            normative_governance eurostruct_deployment
+            eurostruct_authority_backend
+            eurostruct_reconciliation)
 
 # `anon` et `authenticated` sont crees par `00_supabase_stub.sql`, qui est
 # applique dans chaque decor. Ils sont GLOBAUX comme les autres et doivent donc
@@ -84,6 +91,38 @@ exiger_roles_absents "finalisation_contract.sh" "${CANONIQUES[@]}" || exit 2
 KO=0; ROUGES=0
 echoue() { echo "      ECHEC: $*" >&2; KO=1; }
 rouge()  { echo "      ROUGE ATTENDU (a fermer): $*"; ROUGES=$((ROUGES + 1)); }
+
+# rouge_point <point> <texte...>
+#
+# LA SORTIE HUMAINE NE CHANGE PAS — la ligne imprimee est exactement celle
+# d'avant. Ce qui change, c'est que le POINT est declare, et qu'un evenement
+# de canal le porte. La prose devient un commentaire: elle n'a plus autorite
+# sur le verdict.
+#
+# C'est ce que le survivant `2b` a coute. Le harnais avait rougi; le registre
+# cherchait le point « 2 » quand cette assertion s'appelle « 2b »; personne ne
+# les a rapproches. Un point declare ne peut plus etre cherche ailleurs.
+# echoue_point <point> <texte...>
+#
+# UN ECHEC DE DECOR QUI PORTE UN LABEL EST UN SIGNAL DE POINT, et il l'a
+# toujours ete: le traducteur lisait « ECHEC: 4. ... » et tuait le controle 4.
+# Cinq sites de ce harnais sont dans ce cas — points 1, 2c, 3 et 4.
+#
+# Les migrer en les traitant comme de simples ecarts de decor aurait fait
+# SURVIVRE le controle 4, qui etait tue depuis des semaines. La sortie humaine
+# reste « ECHEC: », le compteur KO reste incremente; ce qui s'ajoute, c'est un
+# evenement qui NOMME le point et sa nature.
+echoue_point() {
+  local pt="${1:?echoue_point <point> <texte...>}"; shift
+  echoue "$pt. $*"
+  esc_point_rouge "$pt" nature=decor_non_etabli detail="$*"
+}
+
+rouge_point() {
+  local pt="${1:?rouge_point <point> <texte...>}"; shift
+  rouge "$pt. $*"
+  esc_point_rouge "$pt" nature=contournement_ouvert detail="$*"
+}
 
 adm() { psql -X -q -d postgres "$@"; }
 
@@ -107,15 +146,21 @@ admb()   { psql -X -q -d "$BASE" "$@"; }
 
 decor_poser() {
   local suffixe="$1" mode="$2" f sortie provisionneur
+  # LE TEARDOWN EST ARME AVANT LA PREMIERE CREATION. Mesure faite sur
+  # `authority_closure.sh`: les chemins de refus ci-dessous rendaient 1 sans
+  # rien defaire, un seul refus laissait les roles canoniques dans le cluster,
+  # et TOUS les decors suivants echouaient en « phase 0 refusee ».
+  esc_decor_ouvrir "$suffixe" decor_deposer || { echoue "decor: armement refuse"; return 1; }
+
   MIG="${PREFIXE}_m${suffixe}_${JETON}"; MIG_MDP="FICTIF-fc-mig-$suffixe-$JETON"
   CTL="${PREFIXE}_c${suffixe}_${JETON}"; CTL_MDP="FICTIF-fc-ctl-$suffixe-$JETON"
   BASE="${PREFIXE}_d${suffixe}_${JETON}"
 
   creer_role "$MIG" "login password '$MIG_MDP' createrole createdb" \
-    || { echoue "decor $suffixe: creation du migrateur impossible"; return 1; }
+    || { echoue "decor $suffixe: creation du migrateur impossible"; esc_decor_abandonner; return 1; }
   if [[ "$mode" == "separe" ]]; then
     creer_role "$CTL" "login password '$CTL_MDP' createrole" \
-      || { echoue "decor $suffixe: creation du plan de controle impossible"; return 1; }
+      || { echoue "decor $suffixe: creation du plan de controle impossible"; esc_decor_abandonner; return 1; }
     provisionneur=ctl_pg
     # L'administrateur doit pouvoir rendre la main sur les roles que le plan de
     # controle aura crees, pour le nettoyage.
@@ -128,7 +173,7 @@ decor_poser() {
   fi
 
   creer_base "$BASE" "owner \"$MIG\"" \
-    || { echoue "decor $suffixe: creation de la base impossible"; return 1; }
+    || { echoue "decor $suffixe: creation de la base impossible"; esc_decor_abandonner; return 1; }
   registre_base "$BASE"
 
   admb -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
@@ -138,7 +183,7 @@ grant select, insert, references on auth.users to "$MIG" with grant option;
 grant execute on function auth.uid() to "$MIG" with grant option;
 grant create on database "$BASE" to "$MIG";
 -- LE PROVISIONNEUR APPLIQUE LA PHASE 0: il cree des tables et des fonctions
--- dans `public`, et les transfere a l'activateur. D'ou CREATE avec GRANT
+-- dans « public », et les transfere a l'activateur. D'ou CREATE avec GRANT
 -- OPTION. Prerequis de deploiement — voir docs/DEPLOIEMENT_PREREQUIS.md.
 grant create on schema public to "$CTL" with grant option;
 grant usage on schema auth to "$CTL";
@@ -155,8 +200,8 @@ SQL
   esac
   if ! sortie=$($phase0 -v ON_ERROR_STOP=1 -f "$HARNAIS_SCEAU" 2>&1); then
     echoue "decor $suffixe: phase 0 refusee:"
-    grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
-    return 1
+    esc_diag_rapporter "decor $suffixe / phase 0 (sceau)" "$sortie"
+    esc_decor_abandonner; return 1
   fi
   adm -c "grant eurostruct_deployment to \"$CTL\" with inherit true;" >/dev/null 2>&1
   # L'EMPRUNT: DEUX ROLES. L'activateur n'est plus jamais prete.
@@ -178,8 +223,8 @@ SQL
     if ! esc_appliquer_migration "$f" mig; then
       sortie="$ESC_MIGRATION_SORTIE"
       echoue "decor $suffixe: phase 1 refusee sur $(basename "$f"):"
-      grep -m1 ERROR <<<"$sortie" | cut -c1-200 | sed 's/^/              /' >&2
-      return 1
+      esc_diag_rapporter "decor $suffixe / phase 1 / $(basename "$f")" "$sortie"
+      esc_decor_abandonner; return 1
     fi
   done
 
@@ -187,7 +232,7 @@ SQL
   etat=$(ctl -tAc "select normative_activation_state()" 2>&1)
   if [[ "$etat" != "PENDING" ]]; then
     echoue "decor $suffixe: phase 1 ne se termine pas en PENDING (obtenu: $etat)"
-    return 1
+    esc_decor_abandonner; return 1
   fi
   return 0
 }
@@ -196,19 +241,23 @@ mig_pg() { PGUSER="$MIG" PGPASSWORD="$MIG_MDP" psql -X -q -d postgres "$@"; }
 # `decor_deposer` rend le jeu canonique au cluster. Les roles d'autorite sont
 # globaux: sans cela, le scenario suivant se refuserait sur `exiger_roles_absents`.
 decor_deposer() {
-  local r
+  local r ko=0
   adm -c "select pg_terminate_backend(pid) from pg_stat_activity
            where datname = '$BASE' and pid <> pg_backend_pid();" >/dev/null 2>&1
-  detruire_bases_creees || NETTOYAGE_KO=1
+  detruire_bases_creees || { NETTOYAGE_KO=1; ko=1; }
   for r in "${CANONIQUES[@]}" "${STUB_ROLES[@]}"; do
     adm -c "drop owned by \"$r\";"      >/dev/null 2>&1
-    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1 || ko=1
   done
   for r in "$MIG" "$CTL"; do
     [[ -n "$r" ]] || continue
     adm -c "drop owned by \"$r\";"      >/dev/null 2>&1
-    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1
+    adm -c "drop role if exists \"$r\";" >/dev/null 2>&1 || ko=1
   done
+  # REND SON CODE. `esc_decor_fermer` le lit: un teardown qui echoue en
+  # silence est la meme faute qu'un teardown absent. Seul le `drop role` fait
+  # foi — `drop owned by` echoue normalement sur un role canonique jamais cree.
+  return $ko
 }
 
 NETTOYAGE_KO=0
@@ -216,6 +265,11 @@ TOUS_ROLES=()
 sortie_propre() {
   local r
   decor_deposer
+  # CHEMINS DE SORTIE 3 ET 5 (erreur shell, echec dans le teardown): un decor
+  # peut etre encore arme ici. `esc_decor_fermer` est idempotent — s'il a deja
+  # ete appele il ne refait rien; sinon c'est LUI qui rend le decor.
+  esc_decor_fermer
+  (( ESC_DECOR_TEARDOWN_KO == 0 )) || NETTOYAGE_KO=1
   for r in "${CANONIQUES[@]}" "${STUB_ROLES[@]}"; do registre_role "$r"; done
   for r in "${TOUS_ROLES[@]}"; do registre_role "$r"; done
   detruire_roles_crees || NETTOYAGE_KO=1
@@ -291,7 +345,7 @@ for t in normative_authorisation_grants normative_authorisation_revocations \
 done
 
 if [[ "$PENDING_OUVERT" != "0" ]]; then
-  rouge "5. $PENDING_OUVERT ecriture(s) normative(s) sur 5 ne sont pas refusees"
+  rouge_point 5 "$PENDING_OUVERT ecriture(s) normative(s) sur 5 ne sont pas refusees"
   rouge "   AU MOTIF DE L'ETAT PENDING. Or 0010 affirme que « les declencheurs"
   rouge "   la refusent » — et s'appuie sur cette phrase pour n'exiger le bloc A"
   rouge "   de la topologie qu'en ACTIVE. Amorcage: $DETAIL_A"
@@ -333,7 +387,7 @@ APPEND_OUVERT=0
 grep -q '\*' <<<"$POL_ACT" && APPEND_OUVERT=$((APPEND_OUVERT + 1))
 
 if [[ "$APPEND_OUVERT" != "0" ]]; then
-  rouge "6. « normative_activation » n'est PAS append-only:"
+  rouge_point 6 "« normative_activation » n'est PAS append-only:"
   rouge "   declencheurs non internes: $TRIG_ACT (le plan de controle en a $TRIG_PLAN)"
   rouge "   commandes couvertes par les policies: $POL_ACT (« * » = FOR ALL)"
   rouge "   Detruire la ligne ramene en PENDING sans trace, et la reactivation"
@@ -342,7 +396,7 @@ else
   echo "      ok: 6. l'activation est append-only (declencheur + policies)"
 fi
 
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -380,7 +434,7 @@ DEUX=0
 SURCHARGE=$(admb -tAc "select count(*) from pg_proc
                         where proname = 'normative_record_activation'
                           and pronargs > 0" 2>&1)
-[[ "$SURCHARGE" == "0" ]] || { rouge "2a. l'ecriture de confiance accepte encore"
+[[ "$SURCHARGE" == "0" ]] || { rouge_point 2a "l'ecriture de confiance accepte encore"
                                rouge "    $SURCHARGE signature(s) a arguments: l'identite"
                                rouge "    de l'installateur reste fournie par l'appelant."
                                DEUX=1; }
@@ -395,7 +449,7 @@ SURCHARGE=$(admb -tAc "select count(*) from pg_proc
 # fort — il ferme la composition, pas seulement l'ordre des etapes.
 SANS_PREP=$(ctl -tAc "select normative_record_activation()" 2>&1)
 grep -qiE "intention|preparation|prepar|verrou de finalisation" <<<"$SANS_PREP" \
-  || { rouge "2b. l'appel direct sans preparation n'est pas refuse pour ce motif:"
+  || { rouge_point 2b "l'appel direct sans preparation n'est pas refuse pour ce motif:"
        rouge "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SANS_PREP" | cut -c1-140)"; DEUX=1; }
 
 # 2c. AVEC PREPARATION MAIS SANS RESTITUTION, RIEN NON PLUS. C'est la propriete
@@ -403,7 +457,7 @@ grep -qiE "intention|preparation|prepar|verrou de finalisation" <<<"$SANS_PREP" 
 #     d'appel, c'est l'ETAT qu'elle exige » — et qui etait fausse. On la
 #     verifie: on prepare pour de bon, puis on saute la revocation.
 MANIFESTE=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-PREP=$(ctl -tAc "select normative_prepare_activation('$MANIFESTE')" 2>&1)
+PREP=$(ctl -tAc "select normative_prepare_activation($(esc_litteral "$MANIFESTE"))" 2>&1)
 if grep -qiE "verrou de finalisation|n'est pas une operation autonome" <<<"$PREP"; then
   # LA PREPARATION ISOLEE N'EXISTE PLUS (6.3b6c). Elle exige le verrou de
   # finalisation, que seul le finaliseur prend: il n'y a plus d'etat
@@ -412,12 +466,12 @@ if grep -qiE "verrou de finalisation|n'est pas une operation autonome" <<<"$PREP
   echo "      ok: 2c. la preparation isolee est refusee — pas de verrou, donc"
   echo "             pas d'etat intermediaire a exploiter"
 elif ! grep -qE '^[0-9a-f]{64}$' <<<"$PREP"; then
-  echoue "2c. la preparation isolee est refusee, mais pas au motif du verrou:"
+  echoue_point 2c "la preparation isolee est refusee, mais pas au motif du verrou:"
   echoue "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$PREP" | cut -c1-140)"
 else
   SAUT=$(ctl -tAc "select normative_record_activation()" 2>&1)
   grep -qiE "detient encore|n'ont pas ete restitues|verrou de finalisation" <<<"$SAUT" \
-    || { rouge "2c. l'ecriture de confiance accepte alors que le migrateur detient"
+    || { rouge_point 2c "l'ecriture de confiance accepte alors que le migrateur detient"
          rouge "    encore ses emprunts: $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SAUT" | cut -c1-120)"
          DEUX=1; }
 fi
@@ -426,13 +480,13 @@ ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
 if [[ "$ETAT" == "ACTIVE" ]]; then
   AUDIT=$(admb -tAc "select activated_by || ' | ' || left(topology_digest, 12)
                        from normative_activation" 2>&1)
-  rouge "2. L'APPEL DIRECT A ACTIVE LE SOUS-SYSTEME en sautant la finalisation."
+  rouge_point 2 "L'APPEL DIRECT A ACTIVE LE SOUS-SYSTEME en sautant la finalisation."
   rouge "   audit inscrit: $AUDIT"
 elif [[ $DEUX -eq 0 ]]; then
   echo "      ok: 2. l'ecriture de confiance ne recoit aucune identite, refuse"
   echo "             sans preparation, et refuse sans restitution"
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -489,13 +543,13 @@ CHANGEMENT=$(mig_pg -c "alter database \"$BASE\"
 APRES=$(lire_declaration)
 
 if [[ "$AVANT_REVUE" == "$APRES" ]]; then
-  echoue "1. la declaration n'a pas pu etre modifiee par le migrateur:"
+  echoue_point 1 "la declaration n'a pas pu etre modifiee par le migrateur:"
   echoue "   $(head -1 <<<"$CHANGEMENT" | cut -c1-140)"
   echoue "   Le scenario ne reproduit pas le contre-exemple vise."
 else
   # LA FINALISATION EST DEMANDEE AVEC LE MANIFESTE REVU, et non avec l'etat
   # courant: c'est exactement ce qu'un plan de controle honnete presente.
-  SORTIE=$(ctl -tAc "select normative_finalize_deployment('$MANIFESTE_REVU')" 2>&1)
+  SORTIE=$(ctl -tAc "select normative_finalize_deployment($(esc_litteral "$MANIFESTE_REVU"))" 2>&1)
   ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
   # La valeur FIGEE est lue dans la table, sous un role qui contourne la RLS.
   FIGE=$(admb -tAc "select valeur from normative_approved_settings
@@ -511,22 +565,22 @@ else
       echo "      ok: 1. finalisation refusee — declaration modifiee apres revue,"
       echo "             et rien n'a ete fige"
     else
-      rouge "1. la finalisation refuse, mais a deja fige $ECRIT ligne(s) de"
+      rouge_point 1 "la finalisation refuse, mais a deja fige $ECRIT ligne(s) de"
       rouge "   confiance: le singleton est consomme et une finalisation"
       rouge "   correcte deviendrait impossible."
     fi
   elif [[ "$ETAT" == "ACTIVE" ]]; then
-    rouge "1. LA FINALISATION A FIGE UNE DECLARATION MODIFIEE APRES REVUE."
+    rouge_point 1 "LA FINALISATION A FIGE UNE DECLARATION MODIFIEE APRES REVUE."
     rouge "   revu par le plan de controle : « $AVANT_REVUE »"
     rouge "   fige comme approuve          : « $FIGE »"
     rouge "   Le plan de controle n'a rien presente, donc rien n'a ete compare:"
     rouge "   « approuve » ne signifie que « courant au moment de l'appel »."
   else
-    rouge "1. finalisation refusee, mais pas au motif de l'approbation:"
+    rouge_point 1 "finalisation refusee, mais pas au motif de l'approbation:"
     rouge "   $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-140)"
   fi
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -550,12 +604,14 @@ suivre_decor
 # Deux vraies connexions, et un recouvrement force: A tient sa transaction
 # ouverte pendant que B entre. Pas de sequence deguisee en concurrence.
 MANIFESTE=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
+# Compose AVANT le heredoc: un `$( )` dedans serait le defaut 1.
+MANIFESTE_Q=$(esc_litteral "$MANIFESTE")
 SORTIE_A="$(mktemp -p "${TMPDIR:-/tmp}" fc4a.XXXXXX)"
 SORTIE_B="$(mktemp -p "${TMPDIR:-/tmp}" fc4b.XXXXXX)"
 (
   PGUSER="$CTL" PGPASSWORD="$CTL_MDP" psql -X -q -d "$BASE" -tA >"$SORTIE_A" 2>&1 <<SQL
 begin;
-select 'A:' || normative_finalize_deployment('$MANIFESTE');
+select 'A:' || normative_finalize_deployment($MANIFESTE_Q);
 select pg_sleep(3);
 commit;
 SQL
@@ -582,7 +638,7 @@ done
 (
   PGUSER="$CTL" PGPASSWORD="$CTL_MDP" psql -X -q -d "$BASE" -tA >"$SORTIE_B" 2>&1 <<SQL
 begin;
-select 'B:' || normative_finalize_deployment('$MANIFESTE');
+select 'B:' || normative_finalize_deployment($MANIFESTE_Q);
 commit;
 SQL
 ) &
@@ -618,18 +674,18 @@ rm -f "$SORTIE_A" "$SORTIE_B"
 ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
 
 if [[ "$DANS_LA_FENETRE" != "1" || "$RECOUVREMENT" != "1" ]]; then
-  echoue "4. le recouvrement n'est pas etabli (A dans la fenetre: $DANS_LA_FENETRE,"
+  echoue_point 4 "le recouvrement n'est pas etabli (A dans la fenetre: $DANS_LA_FENETRE,"
   echoue "   deux transactions ouvertes ensemble: $RECOUVREMENT). Une execution"
   echoue "   sequentielle passerait pour une concurrence: le scenario ne"
   echoue "   prouverait rien. A: $RES_A | B: $RES_B"
 elif [[ "$ETAT" != "ACTIVE" ]]; then
-  rouge "4. apres deux finalisations concurrentes, l'etat n'est pas ACTIVE:"
+  rouge_point 4 "apres deux finalisations concurrentes, l'etat n'est pas ACTIVE:"
   rouge "   etat = $ETAT | A: $RES_A | B: $RES_B"
 elif grep -qE "B:ACTIVE" <<<"$B_BRUT"; then
   echo "      ok: 4. recouvrement constate; une seule transition, l'autre obtient"
   echo "             un resultat idempotent — A: $RES_A / B: $RES_B"
 else
-  rouge "4. LE PERDANT N'OBTIENT PAS UN RESULTAT IDEMPOTENT."
+  rouge_point 4 "LE PERDANT N'OBTIENT PAS UN RESULTAT IDEMPOTENT."
   rouge "   gagnant : $RES_A"
   rouge "   perdant : $RES_B"
   rouge "   Le contrat exige que le second attende puis constate ACTIVE."
@@ -648,7 +704,7 @@ fi
 # `normative_control_plane()` designe un role qui n'a jamais rien approuve, et
 # la topologie l'accepte parce qu'il porte le bon libelle.
 if [[ "$(ctl -tAc "select normative_activation_state()" 2>&1)" != "ACTIVE" ]]; then
-  echoue "3. le sous-systeme n'est pas ACTIVE: le point 3 porte sur ce qui a"
+  echoue_point 3 "le sous-systeme n'est pas ACTIVE: le point 3 porte sur ce qui a"
   echoue "   ete fige, il n'est pas evaluable ici."
 else
   COL=$(admb -tAc "select count(*) from information_schema.columns
@@ -702,16 +758,16 @@ else
          psql -X -q -d "$BASE" -tAc "select assert_normative_topology()" 2>&1)
 
   if [[ "$ANCIEN_TIENT" != "0" ]]; then
-    echoue "3. le plan approuve conserve $ANCIEN_TIENT capacite(s) apres retrait:"
+    echoue_point 3 "le plan approuve conserve $ANCIEN_TIENT capacite(s) apres retrait:"
     echoue "   un refus de topologie viendrait de LUI et non de la substitution."
   elif [[ "$COL" != "0" ]] && grep -qiE "oid|substitu|identite" <<<"$TOPO"; then
     echo "      ok: 3. le plan de controle est identifie par oid ET par nom"
   elif grep -qiE "ERROR|ERREUR" <<<"$TOPO"; then
-    rouge "3. la topologie refuse, mais pas au motif de l'identite substituee:"
+    rouge_point 3 "la topologie refuse, mais pas au motif de l'identite substituee:"
     rouge "   $(grep -m1 -iE 'ERROR|ERREUR' <<<"$TOPO" | cut -c1-140)"
     rouge "   colonne role_oid dans normative_control_plane : $COL"
   else
-    rouge "3. LE PLAN DE CONTROLE N'EST IDENTIFIE QUE PAR SON NOM."
+    rouge_point 3 "LE PLAN DE CONTROLE N'EST IDENTIFIE QUE PAR SON NOM."
     rouge "   colonne role_oid dans normative_control_plane : $COL"
     rouge "   oid approuve a la finalisation                : $OID_AVANT"
     rouge "   oid portant ce nom maintenant                 : $OID_APRES"
@@ -722,7 +778,7 @@ else
     rouge "   permet de constater la substitution apres coup."
   fi
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -736,7 +792,7 @@ if ! decor_poser 5 separe; then
 else
 suivre_decor
 MANIFESTE=$(ctl -tAc "select normative_settings_manifest()" 2>&1)
-SORTIE=$(ctl -tAc "select normative_finalize_deployment('$MANIFESTE')" 2>&1)
+SORTIE=$(ctl -tAc "select normative_finalize_deployment($(esc_litteral "$MANIFESTE"))" 2>&1)
 ETAT=$(ctl -tAc "select normative_activation_state()" 2>&1)
 RESTE=$(adm -tAc "select count(*) from unnest(array['eurostruct_normative_writer',
                     'eurostruct_normative_bootstrap','eurostruct_normative_activator']) a(r)
@@ -746,11 +802,11 @@ RESTE=$(adm -tAc "select count(*) from unnest(array['eurostruct_normative_writer
 if [[ "$ETAT" == "ACTIVE" && "$RESTE" == "0" ]]; then
   echo "      ok: 8a. decor vierge, deux roles distincts — finalisation acceptee"
 else
-  rouge "8a. sur decor VIERGE, la finalisation par deux roles distincts n'aboutit"
+  rouge_point 8a "sur decor VIERGE, la finalisation par deux roles distincts n'aboutit"
   rouge "    pas: etat = $ETAT, capacites residuelles du migrateur = $RESTE"
   rouge "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-140)"
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -765,19 +821,19 @@ if ! decor_poser 6 greenfield; then
 else
 suivre_decor
 MANIFESTE=$(mig -tAc "select normative_settings_manifest()" 2>&1)
-SORTIE=$(mig -tAc "select normative_finalize_deployment('$MANIFESTE')" 2>&1)
+SORTIE=$(mig -tAc "select normative_finalize_deployment($(esc_litteral "$MANIFESTE"))" 2>&1)
 ETAT=$(mig -tAc "select normative_activation_state()" 2>&1)
 if [[ "$ETAT" == "ACTIVE" ]]; then
-  rouge "8b. UN SEUL ROLE A PU FINALISER: le migrateur est son propre plan de"
+  rouge_point 8b "UN SEUL ROLE A PU FINALISER: le migrateur est son propre plan de"
   rouge "    controle, garde l'ADMIN residuel par exemption, et peut se"
   rouge "    reaccorder SET quand il veut. La separation est nominale."
 elif grep -qiE "deux roles DISTINCTS|le meme role|plan de controle derive" <<<"$SORTIE"; then
   echo "      ok: 8b. decor vierge, role unique — refus au motif de la separation"
 else
-  rouge "8b. le refus n'est pas motive par la separation plan/migrateur:"
+  rouge_point 8b "le refus n'est pas motive par la separation plan/migrateur:"
   rouge "    $(grep -m1 -iE 'ERROR|ERREUR' <<<"$SORTIE" | cut -c1-160)"
 fi
-decor_deposer
+esc_decor_fermer
 fi
 
 # ==========================================================================
@@ -807,7 +863,7 @@ grep -qE '\[\[ "\$n" == "5" \]\]' "$HERE/harness_safety_selftest.sh" && TEMOINS_
 if [[ ${#MANQUANTS[@]} -eq 0 && $TEMOINS_CINQ -eq 0 ]]; then
   echo "      ok: 7. les six roles canoniques sont declares dans les harnais"
 else
-  rouge "7. LE JEU CANONIQUE DES HARNAIS EST INCOMPLET."
+  rouge_point 7 "LE JEU CANONIQUE DES HARNAIS EST INCOMPLET."
   [[ ${#MANQUANTS[@]} -gt 0 ]] && \
     rouge "   « eurostruct_normative_activator » absent de: ${MANQUANTS[*]}"
   [[ $TEMOINS_CINQ -eq 1 ]] && \
@@ -818,6 +874,11 @@ fi
 
 echo ""
 echo "================================================="
+# LE CANAL EST CONCLU AVANT DE SORTIR, DANS LES DEUX BRANCHES. Un point qui
+# passe doit produire un SUR, sans quoi le lanceur lirait NOT_RUN — « pas
+# mesure » — la ou il faut lire SURVIVED — « la garantie a ete retiree et rien
+# n'a rougi ».
+esc_conclure
 if [[ $KO -eq 0 && $ROUGES -eq 0 ]]; then
   echo " Contrat de finalisation: aucun contournement."
   echo "================================================="

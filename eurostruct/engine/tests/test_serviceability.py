@@ -205,20 +205,127 @@ def test_france_refuses_crack_width_for_want_of_a_formula(params_fr) -> None:
     assert "NF EN 1992-1-1/NA" in message
 
 
-@pytest.mark.parametrize(
-    "cls, expected_mm",
-    [
-        (ExposureClass.X0, 0.4),
-        (ExposureClass.XC1, 0.4),
-        (ExposureClass.XC2, 0.3),
-        (ExposureClass.XC4, 0.3),
-        (ExposureClass.XD1, 0.3),
-        (ExposureClass.XS3, 0.3),
-    ],
-)
-def test_w_max_follows_the_row_of_table_7_1N(params_be, cls, expected_mm) -> None:
+#: Tableau 7.1N-ANB de NBN EN 1992-1-1 ANB:2010 (F), §7.3.1(5), folio 18
+#: (page PDF 20), colonne « beton arme, combinaison quasi-permanente ». Les
+#: quatre lignes du tableau, ligne par ligne, sans regroupement de notre fait.
+TABLEAU_7_1N_ANB = [
+    (ExposureClass.X0, 0.4),
+    (ExposureClass.XC1, 0.4),
+    (ExposureClass.XC2, 0.3),
+    (ExposureClass.XC3, 0.3),
+    (ExposureClass.XC4, 0.3),
+    (ExposureClass.XD1, 0.3),
+    (ExposureClass.XD2, 0.3),
+    (ExposureClass.XD3, 0.3),
+    (ExposureClass.XS1, 0.3),
+    (ExposureClass.XS2, 0.3),
+    (ExposureClass.XS3, 0.3),
+]
+
+
+@pytest.mark.parametrize("cls, expected_mm", TABLEAU_7_1N_ANB)
+def test_w_max_follows_the_row_of_table_7_1N_ANB(params_be, cls, expected_mm) -> None:
+    """Les onze classes que le tableau belge adresse, une par une.
+
+    Le regroupement en deux variantes est celui du registre; ce cas verifie
+    que chaque classe atterrit sur la valeur de SA ligne, et pas sur celle de
+    la ligne voisine.
+    """
     d = _design(params_be, exposure_class=cls)
     assert d.w_max.to("mm").magnitude == pytest.approx(expected_mm)
+
+
+def test_le_parcours_de_reference_en_XC3_lit_0_30_mm(params_be) -> None:
+    """La poutre du parcours de reference est en XC3: 0,30 mm, pas 0,40."""
+    d = _design(params_be, exposure_class=ExposureClass.XC3)
+    assert d.w_max.to("mm").magnitude == pytest.approx(0.30)
+
+
+def test_les_appels_de_notes_ne_deviennent_jamais_des_chiffres() -> None:
+    """« 0,4^1 » vaut 0,4 et « 0,2^2 » vaut 0,2 — jamais 0,41 ni 0,22.
+
+    Le Tableau 7.1N-ANB imprime des exposants qui renvoient a ses notes. Une
+    transcription qui les collerait au nombre produirait 0,41 mm, soit une
+    ouverture admissible 2,5 % plus large que celle de l'annexe — dans le sens
+    non conservatif, et parfaitement invisible sur une note de calcul.
+
+    Le cas interroge le REGISTRE, pas le module: c'est la fiche qui porte la
+    transcription, et c'est elle qui pourrait la porter fausse.
+    """
+    from eurostruct_engine.ndp import load_country_registry
+
+    be = load_country_registry("BE")
+    w = {p.parameter_name: p
+         for a in be.annexes for p in a.parameters}["w_max"]
+
+    valeurs = {v.condition: v.value for v in w.variants}
+    assert valeurs == {"X0_XC1": 0.4, "XC2_XC4_XD_XS": 0.3}
+    for interdit in (0.41, 0.22, 0.42, 0.21):
+        assert interdit not in valeurs.values()
+
+    # Et la fiche DIT que ce sont des appels de notes, pour que le prochain
+    # lecteur du PDF ne refasse pas l'erreur en sens inverse.
+    assert "appel" in (w.notes or "").lower()
+
+
+def test_XF_sans_classe_associee_est_refuse_et_non_rabattu_sur_0_3(params_be) -> None:
+    """Le Tableau 7.1N-ANB n'a pas de ligne pour le gel/degel.
+
+    Jusqu'au 13/09, `w_max_condition` renvoyait toute classe autre que X0/XC1
+    sur la variante 0,3 mm. Une poutre declaree XF3 etait donc verifiee contre
+    une valeur que l'annexe ne lui donne pas. Le tableau ne dit rien de XF: le
+    produit ne dit rien non plus, et refuse.
+    """
+    with pytest.raises(OutOfValidationDomain) as exc:
+        _design(params_be, exposure_class=ExposureClass.XF3)
+    message = str(exc.value)
+    assert "XF3" in message
+    assert "7.1N-ANB" in message
+    # Le refus PROPOSE la sortie, il ne se contente pas de fermer.
+    assert "XC" in message and "XD" in message and "XS" in message
+
+
+def test_XA_sans_classe_associee_est_refuse(params_be) -> None:
+    """Meme chose pour l'attaque chimique, qui n'a pas davantage de ligne."""
+    with pytest.raises(OutOfValidationDomain, match="XA2"):
+        _design(params_be, exposure_class=ExposureClass.XA2)
+
+
+@pytest.mark.parametrize(
+    "cls, associee, attendu_mm",
+    [
+        (ExposureClass.XF1, ExposureClass.XC1, 0.4),
+        (ExposureClass.XF3, ExposureClass.XC4, 0.3),
+        (ExposureClass.XA2, ExposureClass.XD2, 0.3),
+        (ExposureClass.XA3, ExposureClass.XS1, 0.3),
+    ],
+)
+def test_XF_et_XA_lisent_la_ligne_de_la_classe_associee(
+    params_be, cls, associee, attendu_mm,
+) -> None:
+    """Declaree, la classe associee ouvre la ligne — et c'est la sienne.
+
+    Elle est DECLAREE par l'ingenieur, jamais deduite: rien dans la geometrie
+    ne dit si un element gele est aussi carbonate, chlorure ou marin.
+    """
+    d = _design(params_be, exposure_class=cls, w_max_associated_class=associee)
+    assert d.w_max.to("mm").magnitude == pytest.approx(attendu_mm)
+
+
+def test_une_classe_associee_a_une_classe_qui_a_sa_ligne_est_refusee(
+    params_be,
+) -> None:
+    """XC3 a sa propre ligne: lui adjoindre XC1 deplacerait la lecture."""
+    with pytest.raises(OutOfValidationDomain, match="XC3"):
+        _design(params_be, exposure_class=ExposureClass.XC3,
+                w_max_associated_class=ExposureClass.XC1)
+
+
+def test_XF_associe_a_XA_reste_sans_ligne(params_be) -> None:
+    """Deux classes sans ligne n'en font pas une."""
+    with pytest.raises(OutOfValidationDomain, match="XA1"):
+        _design(params_be, exposure_class=ExposureClass.XF2,
+                w_max_associated_class=ExposureClass.XA1)
 
 
 def test_the_exposure_class_reaches_the_journal_as_a_declared_case(params_be) -> None:
@@ -231,6 +338,29 @@ def test_the_exposure_class_reaches_the_journal_as_a_declared_case(params_be) ->
     text = d.journal.to_json()
     assert "XD_XF_XS" in text
     assert "XC2_XC4_XD_XS" in text
+
+
+def test_le_journal_nomme_la_variante_effectivement_lue(params_be) -> None:
+    """Deux classes, deux variantes, et le journal les distingue.
+
+    Une note de calcul qui dirait « w_max = 0,4 mm » sans dire de quelle
+    ligne du tableau elle vient laisserait un relecteur incapable de verifier
+    la lecture. Le cas exige donc que la ligne UTILISEE soit nommee, et que
+    l'autre ne le soit pas.
+    """
+    x0 = _design(params_be, exposure_class=ExposureClass.X0).journal.to_json()
+    assert "X0_XC1" in x0
+    assert "XC2_XC4_XD_XS" not in x0
+
+    xd = _design(params_be, exposure_class=ExposureClass.XD3).journal.to_json()
+    assert "XC2_XC4_XD_XS" in xd
+    assert "X0_XC1" not in xd
+
+    # Et pour une classe sans ligne, c'est la ligne de la classe ASSOCIEE qui
+    # est nommee — celle qui a reellement servi.
+    xf = _design(params_be, exposure_class=ExposureClass.XF3,
+                 w_max_associated_class=ExposureClass.XC4).journal.to_json()
+    assert "XC2_XC4_XD_XS" in xf
 
 
 def test_an_undeclared_case_is_refused_rather_than_approximated(params_be) -> None:

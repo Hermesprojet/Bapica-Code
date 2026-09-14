@@ -66,7 +66,16 @@ compter fausserait le taux dans un sens comme dans l'autre.
 | `s_l_max_coeff` | §9.2.2(6), eq. (9.6N) | 20.0 | 22 | 0.65 | 0.75 | — | NON JUGEABLE |
 | `s_t_max_coeff` | §9.2.2(8), eq. (9.8N) | 2.0 | 23 | 0.65 | 0.75 | — | NON JUGEABLE |
 | `v_min_coeff` | §6.2.2(1), eq. (6.3N) | 1.0 | 17 | 0.55 | 0.035 | 17 | DIVERGE |
-| `w_max` | §7.3.1(5), Tab. 7.1N | — | — | — | X0_XC1 = 0.4 ; XC2_XC4_XD_XS = 0.3 | 17 | CONDITIONNEL |
+| `w_max` | §7.3.1(5), Tab. 7.1N-ANB | — | — | — | X0_XC1 = 0.4 ; XC2_XC4_XD_XS = 0.3 | 18 | CONDITIONNEL |
+
+> **Ligne `w_max` reprise à la main le 13/09.** Les colonnes « Lecture main »
+> de ce dossier sortent de `ndp/data/be.json`, et cette fiche a changé : le
+> Tableau 7.1N-ANB a été lu à l'œil sur un autre exemplaire
+> (SHA-256 `3a195362…`, folio 18 · page PDF 20), sa clause est désormais
+> « Tab. 7.1N-ANB » et son folio 18 et non 17. Les deux valeurs, elles, sont
+> inchangées. Le reste du tableau n'est pas retouché : il rend l'extraction
+> du 27/07, qui ne se rejoue pas — l'exemplaire déposé n'est pas versionné,
+> c'est un document NBN payant.
 
 ## Marche à suivre
 

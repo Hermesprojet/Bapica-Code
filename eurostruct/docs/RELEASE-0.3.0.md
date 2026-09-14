@@ -1,5 +1,9 @@
 # eurostruct-engine 0.3.0 — note de release
 
+> **Compte rendu historique.** Ce document décrit l'état du dépôt **au SHA
+> de son époque** et n'est pas mis à jour. Pour l'état courant du produit,
+> voir le `README.md` à la racine de `eurostruct/`.
+
 > **Changement de valeur.** Le contrat de versionnement (`docs/VALIDATION.md`
 > §3) exige qu'un résultat déjà produit ne change jamais silencieusement.
 > Cette release en change plusieurs. Voici lesquels et pourquoi.

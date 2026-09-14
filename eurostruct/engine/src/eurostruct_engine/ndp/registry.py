@@ -266,11 +266,28 @@ class ParameterSet:
                 continue
 
             if self.strict and not p.usable_in_strict_mode:
+                # UN PARAMETRE CONDITIONNEL N'A PAS DE SCALAIRE, et l'ecran
+                # affichait « valeur None mm non relevee » a l'ingenieur.
+                # `w_max` est ce cas: ses nombres vivent dans ses branches, et
+                # ce sont eux qu'il faut lui montrer pour qu'il sache ce qui
+                # reste a faire confirmer.
+                valeur = (
+                    " ; ".join(f"{v.condition} = {v.value:g}"
+                               for v in p.variants)
+                    if p.variants else f"{p.parameter_value}"
+                )
+                # ET « NON RELEVEE » N'EST PAS TOUJOURS VRAI. Une fiche dont la
+                # provenance est nationale A ete relevee dans l'annexe: ce qui
+                # lui manque est une confirmation, pas une lecture. Les
+                # confondre envoie l'ingenieur rouvrir un document deja lu.
+                manque = ("relevee mais NON CONFIRMEE"
+                          if p.value_provenance.is_national
+                          else "non relevee")
                 blocking.append(
                     BlockingParameter(
                         key=key, reason="pending_verification",
                         detail=(
-                            f"valeur {p.parameter_value} {p.unit} non relevee dans "
+                            f"valeur {valeur} {p.unit} {manque} dans "
                             f"{p.national_annex_reference}. Statut: "
                             f"{p.validation_status.value}."
                         ),
@@ -456,6 +473,65 @@ def _as_date(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
+#: Statuts qu'un fichier du depot a le droit d'exprimer. `confirmed` en est
+#: ABSENT, et c'est tout l'objet de la liste.
+STATUTS_TRANSCRIPTIBLES: frozenset[str] = frozenset({
+    ValidationStatus.PENDING_VERIFICATION.value,
+    ValidationStatus.DEPRECATED.value,
+    ValidationStatus.NOT_REPRESENTABLE.value,
+})
+
+
+def _statut_transcrit(brut: str, pays: str, cle: str) -> ValidationStatus:
+    """Le statut lu dans un fichier du depot. `confirmed` est REFUSE.
+
+    POURQUOI CE REFUS EXISTE
+    -------------------------
+    Mesure faite le 30/08 sur ce depot: en basculant deux champs de
+    ``be.json`` — ``validation_status`` a ``confirmed`` et ``value_provenance``
+    a ``national_annex`` — un calcul belge en mode **strict** aboutit et se
+    declare signable, avec pour verificateur la chaine de caracteres qu'on a
+    bien voulu ecrire. Aucun quatre-yeux, aucune ligne en base, aucun
+    ``ConfirmationProvider`` consulte.
+
+    C'est exactement ce que ``confirmation.py`` annonce empecher:
+
+        « aucun fichier editable du depot ne peut rendre une regle REELLE
+        strict-ready »
+
+    L'annonce etait fausse. ``assert_provider_is_usable_in_production`` garde
+    un chemin que le calcul ne prend pas: le portillon du mode strict est
+    ``NationalParameter.usable_in_strict_mode``, qui lit ce fichier.
+
+    CE QUE LE REFUS NE DIT PAS
+    ---------------------------
+    Il ne dit pas qu'on ne peut pas confirmer. Il dit **ou** cela se confirme:
+    une confirmation est l'acte date d'un ingenieur nomme, contre-signe par un
+    second, enregistre dans la base d'autorite — pas un champ d'un fichier que
+    l'on edite et que personne ne contre-lit. Transcrire reste possible et
+    reste utile: c'est ``pending_verification``, avec la source et la page.
+
+    Une valeur transcrite n'est pas une valeur validee.
+    """
+    if brut in STATUTS_TRANSCRIPTIBLES:
+        return ValidationStatus(brut)
+    if brut == ValidationStatus.CONFIRMED.value:
+        raise ValueError(
+            f"{pays}/{cle}: un fichier du depot ne peut pas porter le statut "
+            "'confirmed'. Ce statut est le seul qui ouvre le mode strict; "
+            "l'accepter ici rendrait une regle REELLE signable par l'edition "
+            "d'un fichier, sans relecteur nomme, sans second regard et sans "
+            "trace en base. Transcrivez la valeur en 'pending_verification' "
+            "avec sa source et sa page; la confirmation se fait par le chemin "
+            "d'autorite (proposition, approbation par un second ingenieur, "
+            "consommation), qui l'enregistre la ou elle est verifiable."
+        )
+    raise ValueError(
+        f"{pays}/{cle}: statut de validation inconnu {brut!r}. Connus dans un "
+        f"fichier: {', '.join(sorted(STATUTS_TRANSCRIPTIBLES))}."
+    )
+
+
 @lru_cache(maxsize=None)
 def load_country_registry(country: str) -> CountryRegistry:
     """Load every National Annex known for *country*."""
@@ -501,7 +577,13 @@ def load_country_registry(country: str) -> CountryRegistry:
                     ValueProvenance(item["value_provenance"])
                     if item.get("value_provenance") else None
                 ),
-                validation_status=ValidationStatus(item["validation_status"]),
+                # LE FICHIER NE CONFIRME PAS. Voir `_statut_transcrit`: c'est
+                # le seul endroit ou le depot touche au portillon du strict.
+                validation_status=_statut_transcrit(
+                    item["validation_status"],
+                    raw["country_code"],
+                    f"{a['standard_family']}-{a['part']}:{name}",
+                ),
                 verified_at=item.get("verified_at"),
                 verified_by=item.get("verified_by"),
                 notes=item.get("notes"),

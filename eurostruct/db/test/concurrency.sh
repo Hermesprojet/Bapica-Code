@@ -159,7 +159,7 @@ create or replace function t_attendre_bloquee(
 declare fin timestamptz := clock_timestamp() + (p_secondes || ' s')::interval;
 begin
   loop
-    -- INDISPENSABLE. `pg_stat_activity` est mis en cache POUR LA DUREE DE LA
+    -- INDISPENSABLE. « pg_stat_activity » est mis en cache POUR LA DUREE DE LA
     -- TRANSACTION: sans cette purge, la session appelante relit indefiniment
     -- l'instantane pris a sa premiere lecture — donc un etat anterieur au
     -- blocage qu'elle attend. Verifie: la barriere expirait au bout de 60 s
@@ -238,10 +238,20 @@ select bootstrap_normative_administrator(
 select t_attendre_bloquee('$APP_B');
 commit;
 SQL
+# LES DEUX CANDIDATS NOMMENT LE MEME PRINCIPAL, ET C'EST LA CORRECTION.
+#
+# Depuis 6.3c, l'amorcage exige un MANDAT preautorise: un second candidat
+# portant un autre principal serait refuse par le mandat, AVANT tout verrou.
+# La course serait alors gagnee par la declaration, pas par la serialisation —
+# et ce fichier ne mesurerait plus rien de la concurrence. Les deux
+# transactions nomment donc le principal mandate; ce qui les departage est la
+# singularite de l'amorcage et le verrou d'administration, ce qu'on veut
+# eprouver ici. Qu'un principal ETRANGER au mandat soit refuse est etabli
+# ailleurs, sequentiellement.
 cat > "$TMP/conc_boot_2.sql" <<SQL
 begin;
 select bootstrap_normative_administrator(
-  '$R2', 'FICTIF Racine 2', 'FICTIF — amorcage concurrent 2');
+  '$R1', 'FICTIF Racine 2', 'FICTIF — amorcage concurrent 2');
 commit;
 SQL
 PGAPPNAME="$APP_A" "${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f $TMP/conc_boot_1.sql \
@@ -292,12 +302,14 @@ cat > "$TMP/conc_A.sql" <<SQL
 \set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$ADMIN', true);
+select set_config('eurostruct.actor_id', '$ADMIN', true);
 set local lock_timeout = '30s';
 insert into normative_authorisation_grants
   (grantee_id, grantee_name, permission, country_code, standard_family, part,
-   reason)
+   reason, parent_grant_id)
 values ('$VERIF', 'FICTIF Relecteur', 'can_validate_normative_reference',
-        'BE', 'EN 1992', '1-1', 'FICTIF — course A');
+        'BE', 'EN 1992', '1-1', 'FICTIF — course A',
+        (select id from normative_authorisation_grants where origin = 'bootstrap'));
 -- A a ecrit et retient le verrou de portee jusqu'au commit: le shell le voit
 -- dans pg_locks et lance B. A ne valide qu'une fois B REELLEMENT bloquee.
 select t_attendre_bloquee('$APP_B');
@@ -307,6 +319,7 @@ cat > "$TMP/conc_B.sql" <<SQL
 \set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$ADMIN', true);
+select set_config('eurostruct.actor_id', '$ADMIN', true);
 -- B ATTEND, elle n'expire plus. Le blocage est desormais prouve par la
 -- barriere de A — qui ne valide qu'apres avoir OBSERVE B bloquee — et non
 -- par un abandon au bout d'un delai. B peut donc aller au bout et montrer
@@ -314,9 +327,10 @@ select set_config('request.jwt.claim.sub', '$ADMIN', true);
 set local lock_timeout = '30s';
 insert into normative_authorisation_grants
   (grantee_id, grantee_name, permission, country_code, standard_family, part,
-   reason)
+   reason, parent_grant_id)
 values ('$VERIF', 'FICTIF Relecteur', 'can_validate_normative_reference',
-        'BE', 'EN 1992', '1-1', 'FICTIF — course B');
+        'BE', 'EN 1992', '1-1', 'FICTIF — course B',
+        (select id from normative_authorisation_grants where origin = 'bootstrap'));
 commit;
 SQL
 PGAPPNAME="$APP_A" "${PSQL[@]}" -q -v ON_ERROR_STOP=1 -f "$TMP/conc_A.sql" \
@@ -367,6 +381,7 @@ cat > "$TMP/conc_conf.sql" <<SQL
 \set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$VERIF', true);
+select set_config('eurostruct.actor_id', '$VERIF', true);
 select t_conc_confirmer('test.concurrence', 'FICTIF-conc-1');
 -- BARRIERE: retenir jusqu'a ce que la revocation soit REELLEMENT bloquee sur
 -- le verrou partage. Une temporisation de trois secondes pariait: trop peu et la
@@ -380,6 +395,7 @@ cat > "$TMP/conc_revoc.sql" <<SQL
 \set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$ADMIN', true);
+select set_config('eurostruct.actor_id', '$ADMIN', true);
 -- Elle ATTEND: son blocage est prouve par la barriere de la confirmation,
 -- qui ne valide qu'apres l'avoir OBSERVEE bloquee. Un lock_timeout court
 -- reintroduirait une course entre la duree du blocage et le seuil choisi.
@@ -428,16 +444,19 @@ echo "    scenario 3b: confirmation apres une revocation deja engagee"
 # octroi echouerait faute d'habilitation, pas faute de concurrence.
 GRANT_ID=$("${PSQL[@]}" -X -q -tAc "
   select set_config('request.jwt.claim.sub', '$ADMIN', true);
+  select set_config('eurostruct.actor_id', '$ADMIN', true);
   insert into normative_authorisation_grants
     (grantee_id, grantee_name, permission, country_code, standard_family,
-     part, reason)
+     part, reason, parent_grant_id)
   values ('$VERIF', 'FICTIF Relecteur', 'can_validate_normative_reference',
-          'BE', 'EN 1992', '1-1', 'FICTIF — octroi neuf pour le scenario 3b')
+          'BE', 'EN 1992', '1-1', 'FICTIF — octroi neuf pour le scenario 3b',
+          (select id from normative_authorisation_grants where origin = 'bootstrap'))
   returning id" | tail -1)
 cat > "$TMP/conc_revoc2.sql" <<SQL
 \set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$ADMIN', true);
+select set_config('eurostruct.actor_id', '$ADMIN', true);
 insert into normative_authorisation_revocations (grant_id, reason)
 values ('$GRANT_ID', 'FICTIF — retrait engage avant la confirmation.');
 -- BARRIERE plutot que deux secondes d'espoir: retenir exactement jusqu'a ce
@@ -449,6 +468,7 @@ cat > "$TMP/conc_conf2.sql" <<SQL
 \set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$VERIF', true);
+select set_config('eurostruct.actor_id', '$VERIF', true);
 select t_conc_confirmer('test.concurrence', 'FICTIF-conc-2');
 commit;
 SQL
@@ -501,10 +521,12 @@ insert into auth.users (id, email)
 values ('$ADMIN_B', 'FICTIF-conc-admin-b@eurostruct.test') on conflict do nothing;
 begin;
 select set_config('request.jwt.claim.sub', '$ADMIN', true);
+select set_config('eurostruct.actor_id', '$ADMIN', true);
 insert into normative_authorisation_grants
-  (id, grantee_id, grantee_name, permission, reason)
+  (id, grantee_id, grantee_name, permission, reason, parent_grant_id)
 values ('c0000000-0000-0000-0000-0000000000bb', '$ADMIN_B', 'FICTIF Admin B',
-        'can_manage_normative_authorisations', 'FICTIF — second administrateur');
+        'can_manage_normative_authorisations', 'FICTIF — second administrateur',
+        (select id from normative_authorisation_grants where origin = 'bootstrap'));
 commit;
 SQL
 GRANT_A=$("${PSQL[@]}" -X -q -tAc "
@@ -520,6 +542,7 @@ cat > "$TMP/dern_A.sql" <<SQL
 \set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$ADMIN', true);
+select set_config('eurostruct.actor_id', '$ADMIN', true);
 insert into normative_authorisation_revocations (grant_id, reason)
 values ('$GRANT_B', 'FICTIF — course croisee A');
 select t_attendre_bloquee('$APP_B');
@@ -529,6 +552,7 @@ cat > "$TMP/dern_B.sql" <<SQL
 \set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claim.sub', '$ADMIN_B', true);
+select set_config('eurostruct.actor_id', '$ADMIN_B', true);
 insert into normative_authorisation_revocations (grant_id, reason)
 values ('$GRANT_A', 'FICTIF — course croisee B');
 commit;

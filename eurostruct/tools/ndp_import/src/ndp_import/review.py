@@ -37,6 +37,7 @@ from .model import (
 
 __all__ = [
     "ReviewQueue",
+    "dataset_indent",
     "load_decisions",
     "apply_decisions",
     "to_engine_records",
@@ -47,6 +48,25 @@ __all__ = [
 
 class MissingEvidence(Exception):
     """A value was offered as confirmed without the evidence to support it."""
+
+
+def dataset_indent(text: str, default: int = 1) -> int:
+    """The indentation a dataset file already uses, so a write preserves it.
+
+    THE COUNTRY DATASETS ARE NOT INDENTED ALIKE. ``be.json`` and ``fr.json``
+    use one space, ``de.json`` and ``es.json`` use two. Every writer in this
+    tool hard-coded ``indent=2``, so importing a handful of reviewed values
+    into Belgium reindented 515 lines and into Spain 852 — a diff nobody can
+    read is a diff nobody rereads, and the reviewed values disappear in it.
+
+    Unifying the four files is defensible. It is a decision about form, and it
+    does not get taken as a side effect of transcribing a value.
+    """
+    for line in text.splitlines()[1:]:
+        depth = len(line) - len(line.lstrip(" "))
+        if depth:
+            return depth
+    return default
 
 
 # ---------------------------------------------------------------------------
@@ -277,7 +297,9 @@ def merge_into_dataset(
         importer does not create annexes: an annex is declared once, with its
         edition and dates, by someone who has the document.
     """
-    data = json.loads(dataset_path.read_text(encoding="utf-8"))
+    brut = dataset_path.read_text(encoding="utf-8")
+    indent = dataset_indent(brut)
+    data = json.loads(brut)
 
     annex = next(
         (
@@ -315,7 +337,8 @@ def merge_into_dataset(
 
     if not dry_run:
         dataset_path.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            json.dumps(data, indent=indent, ensure_ascii=False) + "\n",
+            encoding="utf-8",
         )
 
     return {

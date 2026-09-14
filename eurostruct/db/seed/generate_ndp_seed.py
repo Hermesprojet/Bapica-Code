@@ -37,6 +37,17 @@ def num(x: Any) -> str:
     return "null" if x is None else repr(float(x))
 
 
+def entier(x: Any) -> str:
+    """Un littéral ENTIER, pour une colonne entière.
+
+    `num()` rend `18.0` pour un folio. PostgreSQL l'accepte dans une colonne
+    `integer` en arrondissant, donc la ligne passait — mais le seed affirmait
+    alors une page fractionnaire, et un folio arrondi depuis un flottant est
+    exactement le genre de silence que ce dépôt refuse ailleurs.
+    """
+    return "null" if x is None else str(int(x))
+
+
 def main() -> int:
     out: list[str] = [
         "-- GENERATED FILE — DO NOT EDIT.",
@@ -81,13 +92,47 @@ def main() -> int:
             out.append("")
 
             for name, item in sorted(annex["parameters"].items()):
+                # LA SECONDE PORTE DE LA MEME PIECE.
+                #
+                # Le moteur refuse depuis 07df06c qu'un fichier du depot porte
+                # `confirmed` — mesure du 30/08: deux champs bascules dans
+                # `be.json` suffisaient a faire aboutir un calcul belge STRICT
+                # et a le declarer signable, sans relecteur nomme ni ligne en
+                # base.
+                #
+                # Ce generateur lit les MEMES fichiers et ecrit dans la base de
+                # reference. Sans ce controle, une graine confirmee y entrerait
+                # pendant que le moteur, lui, refuserait de la lire: la base
+                # dirait une chose et le calcul une autre — pire que les deux
+                # erreurs separement.
+                if item.get("validation_status") == "confirmed":
+                    raise SystemExit(
+                        f"REFUS: {country}/{std}:{name} porte 'confirmed' dans "
+                        f"{path.name}. Un fichier transcrit; il ne confirme "
+                        "pas. La confirmation est l'acte date d'un ingenieur "
+                        "nomme, contre-signe par un second, enregistre par le "
+                        "chemin d'autorite — pas un champ que l'on edite. Voir "
+                        "engine/src/eurostruct_engine/ndp/registry.py, "
+                        "_statut_transcrit."
+                    )
+                # LE RATTACHEMENT DOCUMENTAIRE ENTRE EN BASE, LUI AUSSI.
+                #
+                # `national_annex_parameters` porte `source_doc_id` et
+                # `source_page` depuis la migration 0006 — c'est ce que la
+                # contrainte `confirmed_ndp_is_signed` exige d'une valeur
+                # opposable. Ce generateur ne les ecrivait pas: la base
+                # montrait des fiches sans document ni page pendant que les
+                # fichiers du depot les portaient. L'ecran qui lit la base
+                # disait donc moins que la verite, et la contrainte n'aurait
+                # rien eu a verifier.
                 out.append(
                     "insert into national_annex_parameters (annex_id, country_code, "
                     "standard_family, part, national_annex_reference, edition, "
                     "effective_from, effective_to, parameter_name, parameter_value, "
                     "unit, source_official, source_url_or_doc_id, source_type, "
                     "validation_status, verified_at, verified_by, notes, clause, "
-                    "description, en_recommended, has_variants)\n"
+                    "description, en_recommended, has_variants, "
+                    "source_doc_id, source_page)\n"
                     f"select a.id, {q(country)}::country_code, "
                     f"{q(annex['standard_family'])}, {q(annex['part'])}, "
                     f"{q(annex['reference'])}, {q(annex['edition'])}, "
@@ -105,7 +150,9 @@ def main() -> int:
                     + ", null, "
                     f"{q(item.get('notes'))}, {q(item['clause'])}, "
                     f"{q(item['description'])}, {num(item.get('en_recommended'))}, "
-                    f"{'true' if item.get('variants') else 'false'}\n"
+                    f"{'true' if item.get('variants') else 'false'}, "
+                    f"{q(item.get('source_doc_id'))}, "
+                    f"{entier(item.get('source_page'))}\n"
                     "from national_annexes a\n"
                     f"where a.country_code = {q(country)}::country_code\n"
                     f"  and a.standard_family = {q(annex['standard_family'])}\n"

@@ -30,6 +30,43 @@ REPO = Path(__file__).resolve().parents[2]
 ENGINE = REPO / "engine"
 sys.path.insert(0, str(ENGINE / "src"))
 
+from eurostruct_engine.schemas.autorite import (  # noqa: E402
+    AuthorityDecisionConsumed,
+    AuthorityDecisionCreated,
+    AuthorityDecisionRequest,
+    AuthorityDecisionReview,
+    AuthorityReviewDossier,
+    AuthorityReviewDraftRequest,
+)
+from eurostruct_engine.schemas.atelier import (  # noqa: E402
+    AttestationDemande,
+    CalculDeProjetRequest,
+    CalculEnregistre,
+    HistoriqueCalculs,
+    ListeLivrables,
+    ListeProjets,
+    Livrable,
+    LivrableCreation,
+    LivrableDetail,
+    Projet,
+    ProjetCreation,
+    RetourAuBrouillon,
+    Transition,
+)
+from eurostruct_engine.schemas.organisation import (  # noqa: E402
+    AdhesionModifiee,
+    Invitation,
+    InvitationAcceptee,
+    InvitationCreation,
+    InvitationEmise,
+    JetonInvitation,
+    ListeInvitations,
+    ListeMembres,
+    Membre,
+    MembreModification,
+    Organisation,
+    OrganisationCreation,
+)
 from eurostruct_engine.schemas.common import (  # noqa: E402
     EngineErrorDTO,
     NdpSummaryDTO,
@@ -39,18 +76,114 @@ from eurostruct_engine.schemas.ec2_beam import (  # noqa: E402
     BeamSectionDrawingRequest,
     Ec2BeamFlexureRequest,
     Ec2BeamFlexureResponse,
+    Ec2BeamSectionRequest,
     RebarScheduleRowDTO,
+)
+from eurostruct_engine.schemas.ec2_verification import (  # noqa: E402
+    Ec2BeamVerificationRequest,
+    Ec2BeamVerificationResponse,
+    PreflightBlockerDTO,
 )
 
 #: Root models. Their transitive dependencies are emitted automatically.
 ROOTS = [
     Ec2BeamFlexureRequest,
     Ec2BeamFlexureResponse,
+    # LA VERIFICATION COMPLETE — CINQ CHAPITRES, UNE SEULE SAISIE.
+    #
+    # C'est la forme la plus dangereuse a recopier a la main, pour deux
+    # raisons opposees. Ce qu'elle PORTE d'abord: dix-sept entrees dont
+    # `phi_creep`, `structural_system` ou `anchorage_available`, qu'aucune
+    # geometrie ne revele et qu'un ecran ne peut pas deviner.
+    #
+    # Ce qu'elle N'A PAS ensuite, et c'est le plus important: ni `status`, ni
+    # `may_be_finalised`, ni empreinte, ni `A_s`, ni pays. Un ecran qui
+    # recopierait la forme finirait par ajouter l'un de ces champs « pour
+    # afficher », et le jour ou il le POSTE, un client deciderait de sa propre
+    # conformite. Le type genere le lui interdit a la compilation.
+    Ec2BeamVerificationRequest,
+    Ec2BeamVerificationResponse,
+    # CE QUI BLOQUE, ET QUI LE RECLAME.
+    #
+    # Un refus de preflight n'est pas une panne: c'est une liste de travail, et
+    # l'ecran doit pouvoir la lire. Cette forme ne se confond pas avec
+    # `BlockingParameterDTO`, qui nomme une cle du registre sans dire quel
+    # module la reclame — or un meme `gamma_C` sert quatre modules sur cinq.
+    #
+    # MESURE DU 01/09, AU NAVIGATEUR. L'ecran lisait `key` et `standard` sur
+    # des objets qui portent `parameter` et `module`: les onze parametres
+    # bloquants s'affichaient sans nom, et l'ingenieur restait sans liste de
+    # travail devant un refus qui en portait une. Le type genere ferme cette
+    # porte a la compilation.
+    PreflightBlockerDTO,
+    # La requete que l'interface envoie: elle porte le calcul ET le
+    # ferraillage choisi, si bien que le dessin ne peut pas decrire une autre
+    # section que celle qui vient d'etre verifiee.
+    Ec2BeamSectionRequest,
     BeamSectionDrawingRequest,
     RebarScheduleRowDTO,
     NdpSummaryDTO,
     PreflightReportDTO,
     EngineErrorDTO,
+    # Le chemin d'autorite. Sans ces trois-la, tout client devait RECOPIER la
+    # forme en TypeScript — et une forme recopiee derive le jour ou un champ
+    # est renomme. Ici le champ en question decide qui peut confirmer une
+    # valeur nationale.
+    AuthorityDecisionRequest,
+    AuthorityDecisionCreated,
+    AuthorityDecisionConsumed,
+    # LA COMPOSITION DU DOSSIER ET SA RELECTURE. Le navigateur ne construit
+    # aucune empreinte normative: il demande au serveur de composer, affiche
+    # ce qu'il rend, et relit depuis la base ce que le second regard doit
+    # juger. Sans ces formes generees, cet ecran-la aurait ete le seul a
+    # recopier ses types a la main.
+    AuthorityReviewDraftRequest,
+    AuthorityReviewDossier,
+    AuthorityDecisionReview,
+    # L'ATELIER. Le navigateur cree un projet, le selectionne, lance un calcul
+    # et rouvre l'historique: cinq formes, dont deux qu'il POSTE. Recopiees a
+    # la main, elles auraient derive au premier champ renomme — et le champ en
+    # question decide dans quelle organisation un projet est cree.
+    ListeProjets,
+    Projet,
+    ProjetCreation,
+    # LE CALCUL DE PROJET NE NOMME AUCUN REFERENTIEL. Le type genere est ce
+    # qui l'impose au navigateur: pays, region et date n'y figurent pas, donc
+    # l'ecran ne peut pas les envoyer meme par erreur.
+    CalculDeProjetRequest,
+    HistoriqueCalculs,
+    CalculEnregistre,
+    # LES LIVRABLES ET LEUR PARCOURS DE RELECTURE. L'ecran affiche un etat,
+    # propose des actions, et POSTE trois corps: creer un brouillon, renvoyer
+    # au brouillon avec un motif, attester. Les trois sont volontairement
+    # minces — un identifiant de calcul, un motif, un texte — et c'est
+    # exactement ce que le type genere impose au navigateur: aucun champ pour
+    # nommer une organisation, un validateur, une empreinte ou un etat.
+    LivrableCreation,
+    RetourAuBrouillon,
+    AttestationDemande,
+    Transition,
+    Livrable,
+    LivrableDetail,
+    ListeLivrables,
+    # L'ENTREE DANS L'APPLICATION. L'ecran d'un compte tout neuf n'a rien a
+    # afficher et tout a proposer: fonder son bureau, ou rejoindre celui de
+    # quelqu'un avec un lien. Les douze formes descendent du meme contrat que
+    # le reste — et l'une d'elles porte, une seule fois, le secret d'une
+    # invitation, ce qui est exactement la raison de ne pas la recopier a la
+    # main quelque part.
+    OrganisationCreation,
+    Organisation,
+    InvitationCreation,
+    InvitationEmise,
+    JetonInvitation,
+    InvitationAcceptee,
+    Invitation,
+    ListeInvitations,
+    Membre,
+    ListeMembres,
+    MembreModification,
+    AdhesionModifiee,
 ]
 
 TS_OUT = REPO / "packages" / "contracts" / "src" / "generated" / "engine.ts"

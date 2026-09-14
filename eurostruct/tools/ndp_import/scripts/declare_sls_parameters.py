@@ -13,13 +13,19 @@ them are genuine national deviations, not repetitions of the EN recommendation:
   it is stored as a conditional parameter.
 * §7.3.1(5) ``w_max`` — the annex REPLACES Table 7.1N with Table 7.1N-ANB.
 
-That second one is where this script has to be careful. The annex says the
-table changes; the OCR of the table's numeric cells is not legible. So the
-values recorded for ``w_max`` are the ones from Table 7.1N of EN 1992-1-1, and
-the note says so in as many words. They are NOT what was read in the Belgian
-table — nothing was read there. This is the case the instruction covers: if the
-official document is missing, leave the value at ``pending_verification`` and
-state precisely what is missing.
+That second one is where this script had to be careful, and it no longer owns
+the answer. The annex says the table changes; the OCR of the table's numeric
+cells was not legible on the copy this script was written against, so the
+values it writes for ``w_max`` are the ones from Table 7.1N of EN 1992-1-1,
+and its note says so in as many words.
+
+**Since 2026-09-13, ``record_be_ec2_wmax_reading.py`` owns the Belgian
+``w_max`` fiche** and overwrites what this script leaves there: Table
+7.1N-ANB was read by eye on another copy (folio 18, PDF page 20), and the
+fiche now carries a transcription of the Belgian table with provenance
+``national_annex``. Run that script after this one for Belgium. Both leave
+``validation_status = pending_verification`` — transcribing is not
+confirming.
 
 For **France, Spain and Germany** no annex has been opened for §7.2 or §7.3.
 The values are the EN recommendations, declared as placeholders so the module
@@ -37,6 +43,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -109,6 +116,18 @@ def _en(
     if variants is not None:
         entry["variants"] = variants
         entry["parameter_value"] = None
+    # ECRITE, PAS DEDUITE, ET EN DERNIER — comme dans les fichiers.
+    #
+    # `NationalParameter.__post_init__` sait la deriver de `source_type`, mais
+    # son propre commentaire dit que la derivation est une cale de migration
+    # et non un service: une fiche qui signifie « valeur d'attente » doit le
+    # declarer elle-meme. Le champ manquait ici, si bien que rejouer ce script
+    # RETIRAIT du jeu une provenance que le fichier portait deja.
+    #
+    # La POSITION compte aussi: `json.dumps` ecrit les cles dans l'ordre du
+    # dictionnaire. La placer ailleurs qu'a la fin reordonnerait chaque fiche
+    # touchee, pour un contenu identique — encore un diff illisible.
+    entry["value_provenance"] = "eurocode_default"
     return entry
 
 
@@ -352,13 +371,59 @@ def _annex(data: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+#: Provenances qui signifient QU'UN HUMAIN A OUVERT L'ANNEXE. Une fiche qui en
+#: porte une n'est plus une place a tenir, et ce script n'a rien a y ecrire.
+_DEJA_LU = {"national_annex", "national_annex_pending", "composed_normative_rule"}
+
+
+def _pourquoi_ne_pas_ecraser(existant: Mapping[str, Any]) -> str | None:
+    """Ce script POSE DES VALEURS D'ATTENTE. Il n'ecrase pas une lecture.
+
+    CE QU'IL A DETRUIT, ET COMMENT. Rejoue apres
+    ``record_fr_ec2_reading.py``, il remettait les sept fiches ELS francaises
+    a la recommandation EN: `w_max` reperdait sa citation du Tableau 7.1NF,
+    son folio 16 et son empreinte de document, et `k3_crack_spacing`
+    reperdait son statut ``not_representable`` — c'est-a-dire le fait que
+    l'annexe francaise y met une FORMULE en fonction de l'enrobage, que le
+    modele scalaire ne sait pas porter. Le mode strict se serait rouvert sur
+    une valeur que la France ne retient pas.
+
+    Aucune erreur ne s'affichait: le script disait « FR: 7 parametres » et
+    repartait. L'ordre des scripts etait la seule chose qui protegeait les
+    lectures, et un ordre n'est pas une garantie.
+
+    Trois etats sont donc preserves, et chacun dit pourquoi:
+    """
+    if existant.get("validation_status") == "confirmed":
+        return "deja CONFIRME"
+    if existant.get("validation_status") == "not_representable":
+        # L'annexe y met une expression que le modele scalaire ne porte pas.
+        # Reposer une valeur d'attente rouvrirait un calcul que ce statut
+        # ferme volontairement.
+        return "NON REPRESENTABLE — l'annexe y met une expression"
+    provenance = existant.get("value_provenance")
+    if provenance in _DEJA_LU:
+        return f"deja relevee dans l'annexe (provenance « {provenance} »)"
+    return None
+
+
+
+
 def main(argv: list[str]) -> int:
     dry = "--dry-run" in argv
     written: list[str] = []
 
     for code in ("be", "fr", "es", "de"):
         path = DATA / f"{code}.json"
-        data = json.loads(path.read_text(encoding="utf-8"))
+        # L'INDENTATION EN PLACE, PAS UNE INDENTATION IMPOSEE. `be.json` et
+        # `fr.json` sont a une espace, `de.json` et `es.json` a deux. Ecrire
+        # `indent=2` partout reindentait 515 lignes pour la Belgique et 852
+        # pour l'Espagne, et sept fiches transcrites disparaissaient dedans.
+        from ndp_import.review import dataset_indent
+
+        brut = path.read_text(encoding="utf-8")
+        creux = dataset_indent(brut)
+        data = json.loads(brut)
         annex = _annex(data)
 
         if code == "be":
@@ -369,27 +434,39 @@ def main(argv: list[str]) -> int:
         else:
             new = en_parameters()
 
+        poses = 0
         for name, entry in new.items():
-            existing = annex["parameters"].get(name)
-            if existing and existing.get("validation_status") == "confirmed":
-                print(f"  {code}: {name} deja CONFIRME — non ecrase")
+            existing = annex["parameters"].get(name) or {}
+            raison = _pourquoi_ne_pas_ecraser(existing)
+            if raison:
+                print(f"  {code}: {name} — non ecrase ({raison})")
                 continue
             annex["parameters"][name] = entry
+            poses += 1
 
         if not dry:
             path.write_text(
-                json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+                json.dumps(data, indent=creux, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
-        written.append(f"{code.upper()}: {len(new)} parametres")
+        # LE COMPTE EST CELUI DES FICHES REELLEMENT ECRITES. Annoncer
+        # « 7 parametres » alors que sept ont ete preserves laisserait croire
+        # qu'un jeu a ete repose, et c'est exactement l'inverse.
+        written.append(
+            f"{code.upper()}: {poses} pose(s), {len(new) - poses} preserve(s)")
 
     print("Parametres ELS §7.2 / §7.3 declares")
     for line in written:
         print("  " + line)
     print()
     print("BE: transcrits de NBN EN 1992-1-1 ANB p. 17-18, sauf w_max dont les")
-    print("    cellules du Tableau 7.1N-ANB ne sont pas lisibles — les valeurs")
-    print("    portees sont celles du Tableau 7.1N de l'EN, et la note le dit.")
+    print("    cellules du Tableau 7.1N-ANB n'etaient pas lisibles sur")
+    print("    l'exemplaire depouille ici — les valeurs portees sont celles du")
+    print("    Tableau 7.1N de l'EN, et la note le dit.")
+    print("    -> LANCER ENSUITE scripts/record_be_ec2_wmax_reading.py, qui")
+    print("       remplace cette fiche par la lecture visuelle du tableau")
+    print("       belge (folio 18, page PDF 20). Sans lui, w_max reste une")
+    print("       valeur d'attente et le quatre-yeux refusera de la confirmer.")
     print("FR/ES/DE: valeurs recommandees EN, aucune Annexe Nationale ouverte.")
     print()
     print("AUCUN parametre n'est passe en 'confirmed'. Le mode strict refuse")

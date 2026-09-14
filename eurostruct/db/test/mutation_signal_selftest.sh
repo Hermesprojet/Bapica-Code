@@ -1334,7 +1334,15 @@ MPID=""
   || { echoue "code de sortie $CODE, attendu 143"
        detail "une exception echappee ramene le code a 1 et masque le signal"; }
 
-if grep -qE '^MUTATIONS: definis [0-9]+ \| termines [0-9]+ \| interrompu 1 \| non commences [0-9]+ \| perimes [0-9]+ \| creux [0-9]+ \| code 143$' "$SORTIE"; then
+# LES NOMS DE COLONNES SUIVENT LE VERDICT, ET C'EST TOUT LE SUJET.
+# « perimes » et « creux » sont devenus « stale » et « survived » quand le
+# decompte est passe aux sept statuts terminaux. Ce harnais est reste sur
+# l'ancien vocabulaire: il exigeait donc des colonnes qui n'existent plus,
+# et la garantie « un signal rend quand meme un verdict complet » a cesse
+# d'etre verifiee — sans que rien ne le dise, jusqu'a ce premier run.sh
+# complet. Le motif reste EXIGEANT: chaque colonne est nommee, une colonne
+# perdue en route fait echouer le controle.
+if grep -qE '^MUTATIONS: definis [0-9]+ \| termines [0-9]+ \| interrompu 1 \| non commences [0-9]+ \| stale [0-9]+ \| survived [0-9]+ \| code 143$' "$SORTIE"; then
   ok "verdict partiel imprime, avec ses colonnes"
   detail "$(grep -m1 '^MUTATIONS:' "$SORTIE")"
 else
@@ -1459,19 +1467,19 @@ MPID=""
 #   * AUCUN CONTROLE INTERROMPU: le signal est tombe entre deux controles, donc
 #     rien n'etait en vol, et il ne doit rien avoir invente;
 #   * LE DECOMPTE EQUILIBRE: definis == termines + interrompu + non commences
-#     + perimes + creux. Un verdict qui ne boucle pas est un verdict qui a
+#     + stale + survived. Un verdict qui ne boucle pas est un verdict qui a
 #     perdu des controles en route, quel que soit le total.
 B_LIGNE="$(grep -m1 '^MUTATIONS: definis ' "$SORTIE" || true)"
 if [[ -z "$B_LIGNE" ]]; then
   echoue "aucune ligne de decompte: le verdict n'a pas ete imprime"
 else
-  read -r B_DEF B_TER B_INT B_NON B_PER B_CRE < <(
-    sed -nE 's/^MUTATIONS: definis ([0-9]+) \| termines ([0-9]+) \| interrompu ([0-9]+) \| non commences ([0-9]+) \| perimes ([0-9]+) \| creux ([0-9]+) \| code .*$/\1 \2 \3 \4 \5 \6/p' <<<"$B_LIGNE")
+  read -r B_DEF B_TER B_INT B_NON B_STA B_SUR < <(
+    sed -nE 's/^MUTATIONS: definis ([0-9]+) \| termines ([0-9]+) \| interrompu ([0-9]+) \| non commences ([0-9]+) \| stale ([0-9]+) \| survived ([0-9]+) \| code .*$/\1 \2 \3 \4 \5 \6/p' <<<"$B_LIGNE")
   if [[ -z "${B_DEF:-}" ]]; then
     echoue "ligne de decompte illisible"
     detail "$B_LIGNE"
   else
-    B_SOMME=$(( B_TER + B_INT + B_NON + B_PER + B_CRE ))
+    B_SOMME=$(( B_TER + B_INT + B_NON + B_STA + B_SUR ))
     (( B_INT == 0 )) \
       && ok "aucun controle interrompu: le signal n'en a pas invente" \
       || echoue "interrompu=$B_INT alors que rien n'etait en vol"
@@ -1479,7 +1487,7 @@ else
       && ok "exactement 1 controle rendu avant le signal" \
       || echoue "termines=$B_TER, attendu 1"
     (( B_SOMME == B_DEF )) \
-      && ok "le decompte equilibre: $B_TER+$B_INT+$B_NON+$B_PER+$B_CRE = $B_DEF definis" \
+      && ok "le decompte equilibre: $B_TER+$B_INT+$B_NON+$B_STA+$B_SUR = $B_DEF definis" \
       || echoue "decompte desequilibre: somme $B_SOMME pour $B_DEF definis"
     detail "$B_LIGNE"
   fi

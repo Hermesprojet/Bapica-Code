@@ -408,6 +408,45 @@ def test_shipped_dataset_is_flagged_unverified(country: str) -> None:
     assert set(ps.unverified_keys()) == set(ps.keys())
 
 
+def test_aucune_donnee_du_registre_n_est_declaree_confirmee_par_le_depot() -> None:
+    """AUCUN FICHIER VERSIONNE NE PORTE `confirmed`. Sur les 116, zero.
+
+    TRANSCRIRE N'EST PAS CONFIRMER, et c'est la phrase que ce cas defend. Le
+    13/09, la lecture du Tableau 7.1N-ANB a fait passer `BE/w_max` de
+    `national_annex_pending` a `national_annex`: le nombre vient desormais de
+    l'annexe belge. Rien d'autre n'a bouge. Un fichier du depot ne peut pas
+    porter la decision d'un ingenieur.
+
+    CE QUE CE ZERO N'EST PAS: L'ETAT D'UNE INSTANCE
+    -------------------------------------------------
+    Il mesure les FICHIERS, et il vaudra zero pour toujours — c'est une
+    garantie du depot, pas un retard a rattraper. Une instance ou deux
+    ingenieurs ont signe les dix-neuf parametres d'une verification belge
+    rend le meme zero ici, et ce cas y reste vert.
+
+    « 0 sur 116 » ne dit donc rien de ce qu'une base detient, et ne doit pas
+    etre cite comme si c'etait le cas. La question se pose a
+    `GET /v1/ndp/{pays}/couverture`, qui interroge le provider reel et separe
+    trois etats: transcrit, decide en base, utilisable pour le calcul
+    demande. Confondre le premier avec le troisieme envoie au mauvais geste —
+    brancher une base et faire relire un parametre sont deux choses
+    differentes.
+    """
+    total = 0
+    confirmes = []
+    for country in ALL_COUNTRIES:
+        for annex in load_country_registry(country).annexes:
+            for p in annex.parameters:
+                total += 1
+                if p.validation_status is ValidationStatus.CONFIRMED:
+                    confirmes.append(p.key)
+    assert total == 116, f"4 pays x 29 parametres attendus, {total} trouves"
+    assert confirmes == [], (
+        f"le depot declare confirmees: {confirmes}. Aucun fichier versionne "
+        "ne peut porter cette transition."
+    )
+
+
 def test_calculation_freezes_the_parameter_set_it_used() -> None:
     r = design_flexure(
         section=RectangularSection(b=Q_(300, "mm"), h=Q_(600, "mm"), d=Q_(550, "mm")),
@@ -496,9 +535,102 @@ def test_provenance_is_derived_conservatively_when_absent() -> None:
     assert by_name["nu1_coeff"].value_provenance is ValueProvenance.EUROCODE_DEFAULT
     assert not by_name["nu1_coeff"].value_provenance.is_national
 
-    # w_max: etiquette national_annex, valeurs du tableau EN. C'est le cas qui
-    # a motive le champ, et le seul ou provenance et source_type divergent.
-    w = by_name["w_max"]
-    assert w.source_type.value == "national_annex"
-    assert w.value_provenance is ValueProvenance.NATIONAL_ANNEX_PENDING
-    assert not w.value_provenance.is_national
+    # La France est aujourd'hui le cas ou provenance et source_type divergent:
+    # la fiche renvoie bien a la NF EN 1992-1-1/NA, et le nombre qu'elle porte
+    # vient du Tableau 7.1N de l'EN parce que le Tableau 7.1NF n'a pas ete lu.
+    fr = load_country_registry("FR")
+    w_fr = {p.parameter_name: p for p in fr.annexes[0].parameters}["w_max"]
+    assert w_fr.source_type.value == "national_annex"
+    assert w_fr.value_provenance is ValueProvenance.NATIONAL_ANNEX_PENDING
+    assert not w_fr.value_provenance.is_national
+
+    # LA BELGIQUE N'EST PLUS CE CAS, ET C'EST LA MESURE DU 13/09. Le
+    # Tableau 7.1N-ANB a ete lu; la provenance est donc nationale. Ce qui n'a
+    # PAS bouge: le statut reste `pending_verification`, donc le parametre
+    # reste inutilisable en mode strict. Le depot transcrit, il ne confirme
+    # pas — seul le chemin d'autorite a quatre yeux confirme.
+    w_be = by_name["w_max"]
+    assert w_be.source_type.value == "national_annex"
+    assert w_be.value_provenance is ValueProvenance.NATIONAL_ANNEX
+    assert w_be.value_provenance.is_national
+    assert w_be.validation_status.value == "pending_verification"
+    assert not w_be.usable_in_strict_mode
+
+
+# ---------------------------------------------------------------------------
+# Le portillon du mode strict — mesure du 30/08/2026
+# ---------------------------------------------------------------------------
+def test_un_fichier_du_depot_ne_peut_pas_ouvrir_le_mode_strict(
+    tmp_path, monkeypatch,
+) -> None:
+    """Ce que ce cas a trouve, et qui etait vrai avant lui.
+
+    En basculant deux champs de ``be.json`` — ``validation_status`` a
+    ``confirmed`` et ``value_provenance`` a ``national_annex`` — un calcul
+    belge en mode **strict** aboutissait, et se declarait signable. Le
+    verificateur etait la chaine de caracteres qu'on avait bien voulu ecrire.
+
+    Le depot annoncait pourtant le contraire, en toutes lettres, dans
+    ``confirmation.py``:
+
+        « aucun fichier editable du depot ne peut rendre une regle REELLE
+        strict-ready »
+
+    Une garantie que rien n'exerce ne se distingue pas d'une garantie perdue:
+    ``assert_provider_is_usable_in_production`` gardait un chemin que le calcul
+    ne prend pas.
+
+    LE CAS FAIT L'EDITION, il ne la simule pas. Verifier que la fonction de
+    lecture refuse une chaine ne prouverait rien sur le chemin reel: c'est
+    ``load_country_registry`` qui lit le fichier, et c'est lui qui doit
+    refuser.
+    """
+    import json
+    import shutil
+
+    from eurostruct_engine.ndp import registry as _registry
+
+    donnees = tmp_path / "data"
+    shutil.copytree(_registry._DATA_DIR, donnees)
+
+    be = donnees / "be.json"
+    brut = json.loads(be.read_text(encoding="utf-8"))
+    bascules = 0
+    for annexe in brut["annexes"]:
+        for item in annexe["parameters"].values():
+            if item.get("validation_status") == "pending_verification":
+                item["validation_status"] = "confirmed"
+                item["value_provenance"] = "national_annex"
+                item["source_type"] = "national_annex"
+                item["verified_at"] = "2026-08-30"
+                item["verified_by"] = "personne-qui-n-existe-pas"
+                bascules += 1
+    assert bascules > 0, "le jeu belge n'a plus de parametre a basculer"
+    be.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(_registry, "_DATA_DIR", donnees)
+    _registry.load_country_registry.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="ne peut pas porter le statut"):
+            _registry.load_country_registry("BE")
+    finally:
+        # Le cache est global: le laisser charge depuis `tmp_path` ferait
+        # dependre les cas suivants de l'ordre d'execution.
+        _registry.load_country_registry.cache_clear()
+
+
+def test_les_statuts_transcriptibles_excluent_confirmed() -> None:
+    """La liste est la regle; ce cas empeche qu'on l'elargisse par megarde."""
+    from eurostruct_engine.ndp.registry import STATUTS_TRANSCRIPTIBLES
+
+    assert ValidationStatus.CONFIRMED.value not in STATUTS_TRANSCRIPTIBLES
+    attendus = {"pending_verification", "deprecated", "not_representable"}
+    assert set(STATUTS_TRANSCRIPTIBLES) == attendus
+
+
+def test_un_statut_inconnu_dans_un_fichier_est_refuse_nommement() -> None:
+    """Un statut inconnu ne doit pas se lire comme un statut permissif."""
+    from eurostruct_engine.ndp.registry import _statut_transcrit
+
+    with pytest.raises(ValueError, match="statut de validation inconnu"):
+        _statut_transcrit("valide", "BE", "EN 1992-1-1:essai")
