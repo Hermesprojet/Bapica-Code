@@ -68,11 +68,24 @@ sont les **décisions** qui exigent une identité vérifiée.
 
 ### Mode strict et mode exploratoire — l'état exact
 
-**Le mode strict est le défaut, et il refuse aujourd'hui pour les quatre
-pays** : aucun paramètre national n'est au statut `confirmed` (**0 sur 29**).
-Ce n'est pas une panne. L'écran rend le refus comme une **liste de travail** —
-chaque paramètre à faire relever, avec sa clause, son annexe et son folio — et
-le bandeau de référentiel le dit avant même qu'une poutre soit saisie.
+**Le mode strict est le défaut.** Ce n'est pas une panne quand il refuse :
+l'écran rend le refus comme une **liste de travail** — chaque paramètre à
+faire relever ou à faire confirmer, avec sa clause, son annexe et son folio.
+
+**Trois états, et ils ne se déduisent pas l'un de l'autre.** Le bandeau de
+référentiel les sépare, parce qu'ils appellent trois gestes différents :
+
+| état | où il vit | ce qu'il mesure |
+|---|---|---|
+| **transcrit** | fichiers versionnés | le travail documentaire : valeur, clause, folio, empreinte du document |
+| **décidé ici** | base d'autorité de l'instance | les décisions nominatives à quatre yeux |
+| **utilisable** | l'intersection, restreinte au calcul demandé | le seul qui décide si le bouton part |
+
+Le dépôt n'écrit **jamais** `confirmed` — c'est une garantie, pas un manque —
+si bien qu'un compte pris dans les fichiers dira toujours zéro, sur n'importe
+quelle instance. `GET /v1/ndp/{pays}/couverture` interroge la base réelle et
+rend les trois séparément, paramètre par paramètre, avec le nom des
+vérificateurs. Ne lisez pas l'état d'une instance dans le premier compte.
 
 Les paramètres se confirment **à quatre yeux** : un ingénieur propose depuis
 l'Annexe Nationale publiée, un second approuve, et la décision consommée
@@ -286,11 +299,13 @@ eurostruct/
 **Ce qui bloque aujourd'hui n'est pas logiciel.** Les cinq points ci-dessous
 sont des dépendances externes : aucun commit ne les lève.
 
-1. **Les Annexes Nationales ne sont pas relevées.** Les JSON contiennent les
-   valeurs *recommandées par l'Eurocode*, marquées `na_pending_verification` —
-   **0 sur 29 confirmées**. Le moteur refuse en mode strict tant qu'un
-   ingénieur ne les a pas confirmées, une par une, contre l'annexe publiée.
-   C'est délibéré : supposer une AN est l'interdiction n°3.
+1. **Aucune décision nominative n'est livrée avec le dépôt, et il ne peut pas
+   en livrer.** Les fichiers versionnés portent des valeurs *transcrites* — en
+   Belgique, les 19 que réclame une vérification de poutre le sont depuis la
+   NBN EN 1992-1-1 ANB. Aucune n'est *confirmée* : cette transition est l'acte
+   daté de deux ingénieurs nommés, enregistré par le chemin d'autorité dans la
+   base de **votre** instance. Le moteur refuse en mode strict tant qu'elle
+   n'a pas eu lieu. C'est délibéré : supposer une AN est l'interdiction n°3.
 
 2. **Le Tableau 7.1N-ANB a été lu à l'œil, pas extrait.** `EN 1992-1-1:w_max`
    porte désormais une transcription de la NBN EN 1992-1-1 ANB (folio 18 ·

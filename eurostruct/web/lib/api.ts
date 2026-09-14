@@ -267,6 +267,62 @@ export function planDeCharge(pays: string): Promise<PlanDeCharge | null> {
   );
 }
 
+/** Où en est UN paramètre, sur les trois plans à la fois. */
+export type EtatDeCouverture = {
+  key: string;
+  /** Ce que les fichiers du dépôt portent. */
+  transcrit: string;
+  value_provenance: string;
+  /** Ce que la base porte. `null` = personne n'a été interrogé — ce qui
+   *  n'est PAS « aucune décision ». */
+  decide_en_base: boolean | null;
+  verificateurs: string[];
+  /** Ce que le calcul peut réellement utiliser. */
+  utilisable: boolean;
+  pourquoi: string;
+};
+
+/**
+ * Les trois états du référentiel, séparés.
+ *
+ * `EtatReferentiel.referentiel` compte ce que le **dépôt** porte, et dira
+ * toujours « 0 confirmé » — le dépôt n'écrit jamais ce statut, par
+ * construction. Ce compte-ci décrit **l'instance** : ce qui y est décidé, par
+ * qui, et ce qui ouvre réellement le calcul demandé.
+ */
+export type CouvertureReferentiel = {
+  country_code: string;
+  as_of: string;
+  calcul: string;
+  requis: string[];
+  /** `false` = aucune base branchée. Ce n'est pas « aucune décision ». */
+  base_interrogee: boolean;
+  provider_identity: string | null;
+  provider_is_fictional: boolean | null;
+  transcrits_nationalement: number;
+  decides_en_base: number;
+  utilisables: number;
+  total_requis: number;
+  pret: boolean;
+  parametres: EtatDeCouverture[];
+  transcription: Record<string, number>;
+  action: string;
+};
+
+/**
+ * La couverture du calcul demandé, sur CETTE instance.
+ *
+ * Rend `null` si l'API ne répond pas : comme le bandeau, l'écran doit rester
+ * utilisable sans elle.
+ */
+export function couvertureDuReferentiel(
+  pays: string,
+): Promise<CouvertureReferentiel | null> {
+  return appelPublic<CouvertureReferentiel>(
+    `/v1/ndp/${encodeURIComponent(pays)}/couverture`,
+  );
+}
+
 export type {
   BarRowDTO,
   Ec2BeamFlexureRequest,

@@ -34,7 +34,9 @@ from eurostruct_engine.ndp import (
     load_country_registry,
     load_parameter_set,
 )
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from ..dependances import provider_de_lecture
 
 routeur = APIRouter(prefix="/v1/ndp", tags=["referentiel"])
 
@@ -104,7 +106,15 @@ def etat_du_referentiel(
     rapport = jeu.preflight(required_parameters(DesignSituation.PERSISTENT))
     corps: dict[str, Any] = rapport.to_dict()
 
+    # CE COMPTE DECRIT LE DEPOT, PAS CETTE INSTANCE, et il porte desormais ce
+    # nom-la. Il vient des fichiers versionnes: il dit « 0 confirme » parce que
+    # le depot n'ecrit jamais ce statut, et il dirait la meme chose sur une
+    # instance ou deux ingenieurs ont signe vingt fois. Pour l'etat REEL d'une
+    # instance, voir `GET /v1/ndp/{country}/couverture`.
     comptes = _comptes(pays, jeu.as_of)
+    corps["transcription"] = comptes
+    #: Ancien nom, conserve pour les appelants existants. Il designe la meme
+    #: chose — le depot — et c'est precisement ce que son nom ne disait pas.
     corps["referentiel"] = comptes
 
     # LE FAIT CENTRAL, ET IL SE DIT EXACTEMENT.
@@ -126,6 +136,96 @@ def etat_du_referentiel(
         "ingenieur, consommation). Un fichier du depot ne peut pas confirmer."
     )
     return corps
+
+
+@routeur.get("/{country}/couverture")
+def couverture_du_referentiel(
+    country: str,
+    as_of: date | None = None,
+    lecture: Any = Depends(provider_de_lecture),
+) -> dict[str, Any]:
+    """Trois états, séparés : transcrit, décidé en base, utilisable ici.
+
+    POURQUOI CETTE ROUTE EXISTE À CÔTÉ DES DEUX AUTRES
+    ----------------------------------------------------
+    ``GET /v1/ndp/{country}`` compte ce que les **fichiers du dépôt** portent.
+    Ce compte dit « 0 confirmé » et le dira toujours : le dépôt n'écrit jamais
+    ce statut, et il n'a pas à l'écrire. Il ne décrit donc aucune instance —
+    ni celle où personne n'a signé, ni celle où deux ingénieurs ont signé les
+    dix-neuf paramètres d'une vérification belge.
+
+    Cette route-ci répond à la question qu'on se pose devant l'écran : **ce
+    calcul-là peut-il partir, sur cette base-ci ?** Elle interroge le provider
+    réel, paramètre par paramètre, et rend les trois faits séparément parce
+    qu'ils appellent trois gestes différents :
+
+    * transcrit mais pas décidé → il faut faire passer le paramètre par le
+      chemin d'autorité, à quatre yeux ;
+    * décidé mais pas utilisable → le dossier signé ne porte pas sur ce que le
+      registre détient aujourd'hui (valeur, édition, document, code) ;
+    * pas transcrit → il faut ouvrir l'Annexe Nationale publiée.
+
+    SANS BASE, LA RÉPONSE EST « NON INTERROGÉE », PAS « ZÉRO ». Les deux
+    appellent des gestes opposés — brancher une base, ou faire relire un
+    paramètre — et les confondre envoie l'ingénieur au mauvais endroit.
+
+    La liste des paramètres requis vient des **modules**
+    (``required_parameters_for_beam``), jamais d'une énumération recopiée : un
+    chapitre qui en réclame un de plus le fait apparaître ici sans que
+    personne y pense.
+    """
+    from eurostruct_engine.ec2.beam_verification import (
+        required_parameters_for_beam,
+    )
+    from eurostruct_engine.ndp import couverture_du_calcul
+
+    pays = country.upper()
+    if pays not in available_countries():
+        raise HTTPException(status_code=404, detail=_pays_inconnu(pays))
+
+    jeu = load_parameter_set(pays, strict=True, as_of=as_of)
+    provider = getattr(lecture, "provider", None) if lecture else None
+    try:
+        couverture = couverture_du_calcul(
+            jeu, required_parameters_for_beam(pays), provider=provider)
+    finally:
+        if lecture is not None:
+            lecture.fermer()
+
+    corps = couverture.to_dict()
+    corps["calcul"] = "verification de poutre EC2 — cinq chapitres"
+    corps["transcription"] = _comptes(pays, jeu.as_of)
+    corps["action"] = _action_de_couverture(couverture)
+    return corps
+
+
+def _action_de_couverture(couverture: Any) -> str:
+    """Le geste suivant, nommé. Un état sans geste ne sert a personne."""
+    if not couverture.base_interrogee:
+        return (
+            "aucune source de confirmation n'est branchee sur cette instance: "
+            "le mode strict refusera quoi qu'il arrive. Configurer la base "
+            "d'autorite (voir /ready), puis relancer ce diagnostic."
+        )
+    if couverture.prêt:
+        return "les parametres requis sont confirmes: le mode strict peut partir."
+    manquants = [p.key for p in couverture.parametres if not p.utilisable]
+    jamais_decides = [p.key for p in couverture.parametres
+                      if not p.utilisable and not p.decide_en_base]
+    if jamais_decides:
+        return (
+            f"{len(manquants)} parametre(s) ne sont pas utilisables, dont "
+            f"{len(jamais_decides)} sur lesquels aucune decision n'est "
+            "enregistree. Les faire passer par le chemin d'autorite: un "
+            "ingenieur propose depuis l'annexe publiee, un SECOND approuve, "
+            "la decision est consommee."
+        )
+    return (
+        f"{len(manquants)} parametre(s) portent une decision qui ne les ouvre "
+        "pas: le dossier signe ne correspond plus a ce que le registre "
+        "detient. Voir le motif de chacun, puis refaire passer le parametre "
+        "par le chemin d'autorite."
+    )
 
 
 @routeur.get("/{country}/parameters")

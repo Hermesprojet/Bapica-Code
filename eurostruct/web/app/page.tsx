@@ -19,10 +19,11 @@
 import { useEffect, useState } from "react";
 import type { BlockingParameterDTO } from "@contracts/generated/engine";
 import {
-  etatDuReferentiel, planDeCharge, telechargerDxf, verifierFlexion,
-  type Ec2BeamFlexureRequest, type Ec2BeamSectionRequest,
-  type EtatReferentiel, type Issue, type ParametreNdp, type Pays,
-  type PlanDeCharge, type ReponseCalcul,
+  couvertureDuReferentiel, etatDuReferentiel, planDeCharge, telechargerDxf,
+  verifierFlexion,
+  type CouvertureReferentiel, type Ec2BeamFlexureRequest,
+  type Ec2BeamSectionRequest, type EtatReferentiel, type Issue,
+  type ParametreNdp, type Pays, type PlanDeCharge, type ReponseCalcul,
 } from "@/lib/api";
 import {
   attesterLivrable, calculerEtEnregistrer, creerLivrable, creerProjet,
@@ -1961,16 +1962,44 @@ function ConfigurationManquante() {
   );
 }
 
+/**
+ * L'état du référentiel, en TROIS faits distincts.
+ *
+ * CE QUE CE BANDEAU DISAIT, ET POURQUOI C'ÉTAIT TROMPEUR
+ * -------------------------------------------------------
+ * « 0 / 29 valeur(s) nationale(s) confirmée(s) ». Ce compte vient des
+ * **fichiers du dépôt**, où `confirmed` n'est jamais écrit — par construction,
+ * et c'est une garantie, pas un manque. Il affichait donc le même zéro sur une
+ * base vierge et sur une base où deux ingénieurs auraient signé les dix-neuf
+ * paramètres d'une vérification belge. Un nombre qui ne bouge jamais ne
+ * mesure pas un état : il mesure une convention.
+ *
+ * Trois faits y répondent, et ils appellent trois gestes différents :
+ *
+ *   1. **transcrit** — le travail documentaire, dans le dépôt. Fait ou pas ;
+ *   2. **décidé ici** — les décisions nominatives de CETTE base ;
+ *   3. **utilisable** — ce qui ouvre réellement le calcul demandé.
+ *
+ * Le troisième est le seul qui décide si le bouton part, et il ne se déduit
+ * d'aucun des deux autres : dix-huit paramètres confirmés sur dix-neuf, et le
+ * calcul refuse encore.
+ */
 function Referentiel({ pays, revision = 0 }:
                      { pays: string; revision?: number }) {
   const [etat, setEtat] = useState<EtatReferentiel | null>(null);
+  const [couverture, setCouverture] =
+    useState<CouvertureReferentiel | null>(null);
 
   useEffect(() => {
     let vivant = true;
     setEtat(null);
+    setCouverture(null);
     etatDuReferentiel(pays).then((e) => {
       // La reponse d'un pays qu'on a quitte entre-temps ne doit pas s'afficher.
       if (vivant) setEtat(e);
+    });
+    couvertureDuReferentiel(pays).then((c) => {
+      if (vivant) setCouverture(c);
     });
     return () => {
       vivant = false;
@@ -1981,27 +2010,67 @@ function Referentiel({ pays, revision = 0 }:
 
   if (!etat) return null;
 
-  const confirmes = etat.referentiel.confirmed ?? 0;
   const total = etat.referentiel.total ?? 0;
-  // LE BANDEAU SUIT LE PREFLIGHT, PAS LE COMPTE. Un seul paramètre confirmé
-  // sur les huit que le calcul demande laisse le calcul impossible: c'est
-  // `strict_ndp_satisfied` qui le dit, jamais `confirmed > 0`.
-  const pret = etat.strict_ndp_satisfied;
+  // LE BANDEAU SUIT LA COUVERTURE, PAS LE COMPTE DU DEPOT. Tant qu'elle n'est
+  // pas arrivee, on retombe sur le prevol de flexion — moins complet, mais
+  // jamais plus optimiste.
+  const pret = couverture ? couverture.pret : etat.strict_ndp_satisfied;
 
   return (
-    <div className={pret ? "bandeau ok" : "bandeau alerte"} role="status">
-      <strong>Référentiel {etat.country_code}</strong> — {confirmes} / {total}{" "}
-      valeur(s) nationale(s) confirmée(s) au {etat.as_of}.
-      {!pret && (
-        <>
-          {" "}Le calcul en mode strict reste impossible pour ce pays :
-          {" "}{etat.blocking.length} des {etat.required.length} paramètres
-          qu&apos;il demande ne sont pas utilisables. Une valeur transcrite
-          n&apos;est pas une valeur validée.
-          <div className="clause" style={{ marginTop: ".4rem" }}>{etat.action}</div>
-        </>
+    <div className={pret ? "bandeau ok" : "bandeau alerte"} role="status"
+         id="bandeau-referentiel">
+      <strong>Référentiel {etat.country_code}</strong> — au {etat.as_of}.
+      {couverture && (
+        <ul className="bloquants" id="couverture-referentiel"
+            style={{ marginTop: ".4rem" }}>
+          <li data-etat="transcrit">
+            <strong>{couverture.transcrits_nationalement} / {
+              couverture.total_requis}</strong> relevé(s) dans
+            l&apos;Annexe Nationale publiée
+            <div className="clause">
+              Travail documentaire, dans les fichiers versionnés. Transcrire
+              n&apos;est pas confirmer.
+            </div>
+          </li>
+          <li data-etat="decide">
+            <strong>
+              {couverture.base_interrogee
+                ? `${couverture.decides_en_base} / ${couverture.total_requis}`
+                : "non interrogé"}
+            </strong>{" "}
+            décidé(s) à quatre yeux sur cette instance
+            <div className="clause">
+              {couverture.base_interrogee
+                ? "Décisions nominatives enregistrées en base : un ingénieur "
+                  + "propose, un second approuve, la décision est consommée."
+                : "Aucune base d'autorité n'est branchée ici. Ce n'est pas "
+                  + "« aucune décision » : c'est « personne n'a été "
+                  + "interrogé »."}
+            </div>
+          </li>
+          <li data-etat="utilisable">
+            <strong>{couverture.utilisables} / {couverture.total_requis}</strong>{" "}
+            utilisable(s) pour {couverture.calcul}
+            <div className="clause">
+              Le seul des trois qui décide si le calcul strict part.
+            </div>
+          </li>
+        </ul>
       )}
-      <PlanDeChargeRepli pays={etat.country_code} total={total} />
+      {!pret && (
+        <div className="clause" style={{ marginTop: ".4rem" }}
+             id="referentiel-action">
+          {couverture ? couverture.action : etat.action}
+        </div>
+      )}
+      {couverture?.provider_is_fictional && (
+        <div className="clause" id="provider-fictif">
+          <strong>Source de confirmation FICTIVE</strong> — aucune décision
+          lue ici n&apos;est une validation réelle.
+        </div>
+      )}
+      <PlanDeChargeRepli pays={etat.country_code} total={total}
+                         couverture={couverture} />
     </div>
   );
 }
@@ -2018,7 +2087,11 @@ function Referentiel({ pays, revision = 0 }:
  * La requête part **à l'ouverture**, pas au rendu : payer vingt-neuf fiches
  * pour un repli que l'on n'ouvre pas, c'est payer pour rien.
  */
-function PlanDeChargeRepli({ pays, total }: { pays: string; total: number }) {
+function PlanDeChargeRepli({ pays, total, couverture }: {
+  pays: string;
+  total: number;
+  couverture: CouvertureReferentiel | null;
+}) {
   const [plan, setPlan] = useState<PlanDeCharge | null>(null);
   const [charge, setCharge] = useState(false);
 
@@ -2028,6 +2101,14 @@ function PlanDeChargeRepli({ pays, total }: { pays: string; total: number }) {
     setPlan(await planDeCharge(pays));
   }
 
+  //: L'ETAT D'INSTANCE, PARAMETRE PAR PARAMETRE. `usable_in_strict_mode` du
+  //: plan de charge vient du DEPOT et vaut donc faux partout, toujours. Sans
+  //: cette table, chaque ligne aurait affiche « à faire confirmer » y compris
+  //: pour un parametre que deux ingenieurs ont deja signe sur cette base.
+  const parInstance = new Map(
+    (couverture?.parametres ?? []).map((p) => [p.key, p]),
+  );
+
   return (
     <details style={{ marginTop: ".5rem" }} onToggle={ouvrir}>
       <summary>Voir les {total} paramètres et ce qui reste à faire</summary>
@@ -2036,20 +2117,28 @@ function PlanDeChargeRepli({ pays, total }: { pays: string; total: number }) {
       )}
       {plan && (
         <ul className="bloquants">
-          {plan.parameters.map((p) => (
-            <li key={p.key}>
-              <div><strong>{p.parameter_name}</strong> — {p.description}</div>
-              <div className="clause">
-                {p.standard} {p.clause} · {p.national_annex_reference}
-                {p.source_page ? ` · p. ${p.source_page}` : ""}
-              </div>
-              <div className="clause">
-                {p.usable_in_strict_mode
-                  ? "confirmé — utilisable en mode strict"
-                  : p.reste_a_faire}
-              </div>
-            </li>
-          ))}
+          {plan.parameters.map((p) => {
+            const ici = parInstance.get(p.key);
+            return (
+              <li key={p.key} data-parametre={p.parameter_name}>
+                <div><strong>{p.parameter_name}</strong> — {p.description}</div>
+                <div className="clause">
+                  {p.standard} {p.clause} · {p.national_annex_reference}
+                  {p.source_page ? ` · p. ${p.source_page}` : ""}
+                </div>
+                <div className="clause">
+                  {ici
+                    ? ici.utilisable
+                      ? `utilisable ici — décidé par ${
+                          ici.verificateurs.join(", ")}`
+                      : ici.pourquoi
+                    : p.usable_in_strict_mode
+                      ? "confirmé — utilisable en mode strict"
+                      : p.reste_a_faire}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </details>

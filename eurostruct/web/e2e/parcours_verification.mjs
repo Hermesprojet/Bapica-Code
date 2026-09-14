@@ -711,6 +711,54 @@ try {
         "le chemin strict belge n'est pas complet. Bloquants restants: "
         + `${reste.join(", ")}`);
 
+  //: ET L'ECRAN LE DIT, EN TROIS ETATS SEPARES.
+  //:
+  //: Le bandeau annoncait « 0 / 29 valeur(s) nationale(s) confirmee(s) », un
+  //: compte pris dans les FICHIERS DU DEPOT. Le depot n'ecrit jamais
+  //: `confirmed`: ce zero s'affichait donc a l'identique sur cette base-ci,
+  //: ou les dix-neuf parametres viennent d'etre decides par A et V. Un
+  //: nombre qui ne bouge jamais ne mesure pas un etat.
+  //: PAS DE RECHARGEMENT ICI. La session de A vit dans la page; la relancer
+  //: pour verifier un bandeau couterait la session, et le bandeau lui-meme ne
+  //: se rafraichit qu'a la revision suivante. On separe donc les deux
+  //: questions: l'API dit l'etat, l'ecran dit qu'il le PRESENTE en trois.
+  ici("le bandeau distingue transcrit, decide ici, et utilisable");
+  await page.waitForSelector("#couverture-referentiel", { timeout: 20000 });
+  const couverture = await depuisLaPage("/v1/ndp/BE/couverture");
+  exige(couverture.statut === 200,
+        `la couverture a rendu ${couverture.statut}`);
+  const cv = couverture.corps ?? {};
+  exige(cv.base_interrogee === true,
+        "la couverture ne dit pas que la base a ete interrogee");
+  exige(cv.total_requis === 19,
+        `la couverture annonce ${cv.total_requis} requis et non 19`);
+  exige(cv.utilisables === 19,
+        `${cv.utilisables} parametre(s) utilisable(s) sur ${cv.total_requis}`);
+  exige(cv.decides_en_base === 19,
+        `${cv.decides_en_base} parametre(s) decide(s) en base`);
+  exige(cv.pret === true, "la couverture ne se declare pas prete");
+  //: LES TROIS SONT DISTINCTS A L'ECRAN, et le troisieme NOMME les personnes.
+  const texteCouverture = await page.locator("#couverture-referentiel")
+                                    .innerText();
+  for (const attendu of ["relevé", "décidé", "utilisable"]) {
+    exige(texteCouverture.toLowerCase().includes(attendu.toLowerCase()),
+          `le bandeau ne distingue pas « ${attendu} »: `
+          + `« ${texteCouverture.slice(0, 200)} »`);
+  }
+  const wmax = cv.parametres?.find((p) => p.key === "EN 1992-1-1:w_max");
+  exige(wmax !== undefined, "w_max est absent de la couverture");
+  exige(wmax?.transcrit === "pending_verification",
+        `le depot devrait toujours dire « pending_verification » pour w_max, `
+        + `il dit « ${wmax?.transcrit} »`);
+  exige(wmax?.utilisable === true,
+        "w_max n'est pas utilisable alors qu'il vient d'etre decide");
+  exige((wmax?.verificateurs ?? []).length === 2,
+        `w_max porte ${(wmax?.verificateurs ?? []).length} verificateur(s), `
+        + "deux attendus");
+  bilan.push(`couverture BE: transcrits ${cv.transcrits_nationalement}/19, `
+             + `decides ${cv.decides_en_base}/19, `
+             + `utilisables ${cv.utilisables}/19`);
+
   //: ET LE CALCUL STRICT ABOUTIT — c'est ce que les confirmations servent a
   //: obtenir. Une porte qu'on ouvre sans jamais la franchir ne prouve pas
   //: qu'elle donne quelque part.

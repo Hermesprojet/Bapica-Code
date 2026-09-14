@@ -36,14 +36,34 @@
 
 ## 2. Ce qui n'est PAS garanti — points bloquants avant commercialisation
 
-### 2.1 Les paramètres nationaux ne sont pas vérifiés ⛔
+### 2.1 Aucune décision nominative n'est livrée avec le dépôt ⛔
 
-**C'est le point bloquant principal.**
+**C'est le point bloquant principal, et il faut le dire au bon niveau.**
 
-Les jeux de NDP livrés (`engine/src/eurostruct_engine/ndp/data/*.json`)
-contiennent les **valeurs recommandées par l'Eurocode**, pas celles des Annexes
-Nationales. Les 4 pays × **29 paramètres** portent tous le statut
-`pending_verification`, et l'édition de chaque annexe est `NON RELEVE`.
+Trois états se distinguent, et les confondre a produit deux malentendus
+symétriques — croire qu'un référentiel transcrit est utilisable, et croire
+qu'une instance où deux ingénieurs ont signé est restée à zéro.
+
+| état | où il vit | Belgique aujourd'hui |
+|---|---|---|
+| **transcrit** | fichiers versionnés | 23 fiches sur 29 relevées dans la NBN EN 1992-1-1 ANB, dont les **19** que réclame une vérification de poutre |
+| **décidé** | base d'autorité de l'instance | dépend de l'instance — le dépôt n'en livre aucune et ne peut pas en livrer |
+| **utilisable** | l'intersection, pour le calcul demandé | dépend de l'instance |
+
+Le dépôt n'écrit **jamais** `confirmed` : `generate_ndp_seed.py` refuse de
+générer un seed qui en porterait un, et `NationalParameter.__post_init__`
+refuse de charger un `confirmed` dont la provenance n'est pas nationale. Un
+compte pris dans les fichiers dira donc toujours « 0 confirmé », sur n'importe
+quelle instance — **ce n'est pas une mesure de l'état d'une instance**.
+
+Pour l'état réel : `GET /v1/ndp/{pays}/couverture` interroge le provider de
+l'instance et rend les trois séparément, paramètre par paramètre, avec le nom
+des vérificateurs et le motif de chaque refus. Sans base branchée, il répond
+« non interrogé » — jamais « zéro », parce que les deux appellent des gestes
+opposés.
+
+France, Espagne, Allemagne : les jeux portent encore les **valeurs
+recommandées par l'Eurocode**, et l'édition de chaque annexe est `NON RELEVE`.
 
 Le chemin de confirmation à quatre yeux, lui, fonctionne : un ingénieur propose
 depuis l'annexe publiée, un second approuve, la décision consommée devient un
