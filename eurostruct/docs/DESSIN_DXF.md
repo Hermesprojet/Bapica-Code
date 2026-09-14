@@ -176,14 +176,66 @@ un cas avec des cotes serrées.
 
 ### 4.7 Ce qu'il ne faut pas conclure de cette vérification
 
-Qu'elle passe ne rendra pas le produit signable. Le registre des Annexes
-Nationales officielles est à **0 sur 29**, aucune validation par un ingénieur
-réel n'a eu lieu, et tout document tiré d'un calcul non strict reste marqué
-« PROJET — NON SIGNABLE ». Cette vérification porte sur **le format des
-fichiers et leur lisibilité**, rien d'autre.
+Qu'elle passe ne rendra pas le produit signable. Aucune validation par deux
+ingénieurs nommés n'a encore été enregistrée, et tout document tiré d'un calcul
+non strict reste marqué « PROJET — NON SIGNABLE ». Cette vérification porte sur
+**le format des fichiers et leur lisibilité**, rien d'autre.
 
-**Aucun test AutoCAD réel n'a été exécuté à ce jour.** Ce que le dépôt prouve,
-c'est une relecture indépendante par `ezdxf` — fichier R2018 valide, audit sans
-erreur, aller-retour sauvegarde/relecture, calques normalisés, cotation liée à
-une police présente dans le fichier, géométrie à l'échelle vraie. Le produit ne
-prétend rien de plus.
+Le nombre de paramètres réellement confirmés ne se lit pas ici : il dépend de
+l'instance, et se demande à `GET /v1/ndp/{pays}/couverture`. Un compte écrit
+dans un document décrirait le dépôt, où il vaut zéro par construction — le
+dépôt n'écrit jamais `confirmed`.
+
+## 5. Ce qui a été essayé, et avec quoi
+
+**Aucun logiciel de CAO n'a tourné ici. Aucun test AutoCAD, BricsCAD ou
+LibreCAD réel n'a été exécuté à ce jour.** La grille du §4 reste entièrement à
+faire, sur un poste, à l'œil.
+
+### 5.1 Relecture par `ezdxf` — `test_dxf.py`, `test_dxf_determinisme.py`
+
+Fichier R2018 valide, audit sans erreur, aller-retour sauvegarde/relecture,
+calques normalisés, cotation liée à une police présente dans le fichier,
+géométrie à l'échelle vraie, octets identiques d'une exécution à l'autre.
+
+**Sa limite, qui est réelle.** C'est ezdxf qui écrit et ezdxf qui relit : une
+convention que la bibliothèque applique en écriture, elle la comprend en
+lecture. Les défauts qui font *refuser* un fichier par un logiciel tiers sont
+justement ceux qu'un aller-retour dans une seule implémentation ne voit pas.
+
+### 5.2 Relecture indépendante d'`ezdxf` — `test_dxf_lecture_independante.py`
+
+Un analyseur de paires code/valeur écrit dans le dépôt, qui **n'importe pas
+ezdxf** et ne partage aucune ligne avec lui. Huit constats, sur les octets :
+
+| | constat | le défaut qu'il ferme |
+|---|---|---|
+| 1 | le flux se termine par `0/EOF` | fichier tronqué, lu en partie et sans message |
+| 2 | les six sections s'ouvrent et se ferment, sans imbrication | idem, en silence |
+| 3 | `$ACADVER = AC1032`, `$INSUNITS = 4`, lus dans l'en-tête | 300 unités lues en pouces |
+| 4 | aucun handle en double | refus net côté AutoCAD |
+| 5 | `$HANDSEED` dépasse tout handle utilisé | le premier objet créé écrase un objet existant |
+| 6 | tout calque cité par une entité existe dans la table `LAYER` | tout retombe sur le calque `0`, sans couleur ni épaisseur |
+| 7 | `DIMSTYLE EUROSTRUCT` → (code 340) → un `STYLE` présent | cote sans texte, ou à la police du poste |
+| 8 | toute `DIMENSION` cite un `DIMSTYLE` déclaré | présentation différente d'un lecteur à l'autre |
+
+**Chacun des huit a été mis en échec** en injectant son défaut dans les octets
+d'un fichier sain : troncature, `ENDSEC` retiré, version R2013, `$INSUNITS = 1`,
+calque renommé côté entité, handle `340` pointant dans le vide, style de cote
+fantôme, handle d'entité recopié sur un autre. Aucun contrôle n'a survécu à son
+propre défaut.
+
+### 5.3 Identification par `libmagic`
+
+`file` — implémentation tierce, sans rapport avec ce dépôt — reconnaît le
+fichier produit comme `AutoCAD Drawing Exchange Format, version 2018`. C'est
+une confirmation faible (elle lit l'en-tête, pas la géométrie), et elle est
+citée pour ce qu'elle vaut.
+
+### 5.4 Ce que tout cela ne dit toujours pas
+
+Qu'un plan s'affiche **correctement**. L'échelle de tracé, la lisibilité des
+cotes serrées, le rendu du trait d'axe sur `AXES`, et la hiérarchie des
+épaisseurs à l'impression se jugent à l'œil, sur un poste, avec un vrai
+logiciel. Tant que cela n'a pas eu lieu, la compatibilité AutoCAD, BricsCAD et
+LibreCAD **n'est pas établie** et ne doit être annoncée nulle part.
