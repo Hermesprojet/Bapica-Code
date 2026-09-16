@@ -68,6 +68,19 @@ import { AppelRefuse, SessionExpiree } from "@/lib/transport";
 //: JavaScript suivi du libellé interne du navigateur.
 import { enClair } from "@/lib/messages";
 import { VerificationComplete } from "@/components/verification/VerificationComplete";
+import {
+  porteCinqChapitres, relireVerification,
+  type Ec2BeamVerificationResponse,
+} from "@/lib/verification";
+
+/**
+ * Une étude complète rouverte depuis l'historique, et le rang de sa réouverture.
+ *
+ * LE RANG EST LÀ POUR QU'ON PUISSE ROUVRIR DEUX FOIS LA MÊME ÉTUDE. Sans lui,
+ * un second clic sur « Rouvrir » — après avoir lancé une autre étude entre
+ * temps — rendrait un objet égal au précédent, et rien ne se réafficherait.
+ */
+type Reouverture = { etude: Ec2BeamVerificationResponse; rang: number };
 
 type Champs = {
   b: string; h: string; d: string; M_Ed: string;
@@ -119,6 +132,10 @@ function Ecran() {
   //: qui n'apparaîtrait pas dans la liste juste au-dessus donnerait à croire
   //: qu'il n'a pas été sauvegardé.
   const [revisionAtelier, setRevisionAtelier] = useState(0);
+  //: L'ÉTUDE COMPLÈTE ROUVERTE DEPUIS L'HISTORIQUE. Elle se lit dans la
+  //: synthèse à cinq chapitres, celle qui l'a affichée le jour de son
+  //: lancement — pas dans l'écran de flexion seule, qui n'en montrerait qu'un.
+  const [reouverture, setReouverture] = useState<Reouverture | null>(null);
   const [champs, setChamps] = useState<Champs>(DEFAUTS);
   const [issue, setIssue] = useState<Issue | null>(null);
   const [enCours, setEnCours] = useState(false);
@@ -256,6 +273,7 @@ function Ecran() {
           qu'il est. */}
       <VerificationComplete
         projet={projet} porteur={auth.porteur}
+        reouverture={reouverture}
         surEnregistrement={() => setRevisionAtelier((n) => n + 1)} />
 
       <h2>Flexion seule — vérification rapide</h2>
@@ -383,6 +401,10 @@ function Ecran() {
       {projet && (
         <Historique projet={projet} revision={revisionAtelier}
                     surReouverture={setIssue}
+                    surReouvertureEtude={(etude) => {
+                      setIssue(null);
+                      setReouverture((r) => ({ etude, rang: (r?.rang ?? 0) + 1 }));
+                    }}
                     surLivrable={() => setRevisionAtelier((n) => n + 1)} />
       )}
 
@@ -1206,10 +1228,18 @@ function enChoix(c: ChoixBarres) {
   };
 }
 
-function Historique({ projet, revision, surReouverture, surLivrable }: {
+function Historique({ projet, revision, surReouverture, surReouvertureEtude,
+                      surLivrable }: {
   projet: Projet;
   revision: number;
   surReouverture: (issue: Issue) => void;
+  //: LA RÉOUVERTURE SUIT LA NATURE DU CALCUL. Une étude à cinq chapitres
+  //: remonte ici, vers la synthèse qui sait l'afficher; une flexion seule
+  //: passe par `surReouverture`, vers l'écran de résultat qu'elle a toujours
+  //: eu. Mesuré avant ce raccord: « Rouvrir » sur une étude complète rendait
+  //: une réponse de flexion seule, fabriquée depuis un payload qui n'en
+  //: avait pas la forme — quatre chapitres sur cinq disparaissaient.
+  surReouvertureEtude: (etude: Ec2BeamVerificationResponse) => void;
   surLivrable: () => void;
 }) {
   const auth = useAuth();
@@ -1234,10 +1264,26 @@ function Historique({ projet, revision, surReouverture, surLivrable }: {
     return () => { vivant = false; };
   }, [auth.porteur, projet.project_id, revision]);
 
+  /**
+   * Rouvre un calcul selon sa nature. DEUX LECTURES, AUCUN CALCUL.
+   *
+   * La ligne d'historique ne dit pas ce qu'elle est. On relit donc le calcul
+   * enregistré — la forme générique, qui existe pour tout calcul — et c'est
+   * sa charge qui décide : des `sections`, et l'étude est relue par la route
+   * qui la reconstruit telle qu'elle a été écrite (`beam-verifications/…`) ;
+   * sinon, c'est une flexion seule, et l'écran de résultat la montre comme
+   * avant. Les deux sont des GET : rien ne relance le moteur, et l'historique
+   * n'y gagne aucune ligne.
+   */
   async function rouvrir(calculationId: string) {
     try {
-      surReouverture(issueDepuisEnregistre(
-        await rouvrirCalcul(auth.porteur, projet.project_id, calculationId)));
+      const relu = await rouvrirCalcul(auth.porteur, projet.project_id, calculationId);
+      if (porteCinqChapitres(relu)) {
+        surReouvertureEtude(
+          await relireVerification(auth.porteur, projet.project_id, calculationId));
+      } else {
+        surReouverture(issueDepuisEnregistre(relu));
+      }
     } catch (cause) {
       surReouverture(issueDepuisErreur(cause));
     }

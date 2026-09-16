@@ -116,6 +116,25 @@ export async function relireVerification(
 }
 
 /**
+ * Ce calcul enregistré est-il une étude complète à cinq chapitres ?
+ *
+ * L'HISTORIQUE NE LE DIT PAS : une ligne de `CalculResume` porte un repère, un
+ * état, un mode et un taux, pas la nature du calcul. C'est la charge relue —
+ * `results.payload.result`, telle que l'orchestrateur l'a écrite — qui porte
+ * les `sections`, et elle seule. Un calcul de flexion seule n'en a pas.
+ *
+ * ON NE DEVINE PAS SUR LE REPÈRE NI SUR LE TAUX : deux calculs de natures
+ * différentes peuvent partager les deux.
+ */
+export function porteCinqChapitres(
+  calcul: { result?: Record<string, unknown> | null },
+): boolean {
+  const interne = (calcul.result as { result?: { sections?: unknown } } | null
+                   | undefined)?.result;
+  return Array.isArray(interne?.sections) && interne.sections.length > 0;
+}
+
+/**
  * Pourquoi une étude ne peut pas être finalisée, en une phrase — ou `null`.
  *
  * L'ÉCRAN N'EN DÉCIDE PAS, IL LE LIT. `may_be_finalised` est calculé par le

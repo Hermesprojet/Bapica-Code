@@ -10,15 +10,21 @@
  * dresse pour l'occasion — et fait exactement ce que decrit `docs/ESSAYER.md`:
  * se connecter, choisir le projet belge, remplir les sept etapes, lancer en
  * exploratoire assume, telecharger la note PDF et le plan DXF. Puis, apres
- * `demo.sh down` et `demo.sh up`, se reconnecter et retrouver l'etude — dans
- * l'historique a l'ecran, ET relue par l'API sous le jeton de la session.
+ * `demo.sh down` et `demo.sh up`, se reconnecter, cliquer « Rouvrir » dans
+ * l'historique, et retrouver l'etude A L'ECRAN — ses cinq chapitres, leurs
+ * etats et leurs taux tels qu'ils ont ete enregistres, ses entrees, sans
+ * qu'aucun calcul soit relance — puis RETELECHARGER la note et le plan
+ * depuis la liste des livrables, et comparer leurs octets aux empreintes du
+ * premier jour. Une capture de l'etude rouverte est ecrite.
  *
  * Il ne prouve rien sur la validite normative de l'etude: elle est
  * EXPLORATOIRE, elle porte « PROJET — NON SIGNABLE », et c'est verifie ici.
  *
  * LES OCTETS TELECHARGES SONT COMPARES A L'EMPREINTE ENREGISTREE. Un fichier
  * qui arrive dans le navigateur sans porter l'empreinte que la base a inscrite
- * n'est pas le livrable: c'est autre chose qui porte son nom.
+ * n'est pas le livrable: c'est autre chose qui porte son nom. Apres le
+ * redemarrage, ce sont les MEMES octets qui doivent revenir, pas un document
+ * recompose qui leur ressemblerait.
  *
  * AUCUN SECRET N'EST ECRIT. Le mot de passe du compte d'essai est lu dans
  * `deploy/demo.env` et ne sort ni sur la console, ni dans `etat.json`.
@@ -89,9 +95,15 @@ page.on("console", (m) => {
 //: LE JETON DE LA SESSION, CAPTURE AU PASSAGE. Il ne sert qu'a relire l'etude
 //: par l'API sous la meme identite que l'ecran, et n'est jamais ecrit.
 let autorisation = "";
+//: CE QUE LA PAGE ECRIT. Rouvrir une etude ne doit lancer AUCUN calcul: on
+//: compte les POST vers les routes de calcul pour le prouver, pas le deviner.
+let calculsLances = 0;
 page.on("request", (r) => {
   const a = r.headers().authorization;
   if (a && r.url().startsWith(API)) autorisation = a;
+  if (r.method() === "POST" && /\/(beam-verifications|calculations\/ec2)/.test(r.url())) {
+    calculsLances += 1;
+  }
 });
 
 function exige(cond, message) {
@@ -206,11 +218,18 @@ try {
     exige(dxf.kind === "rebar_drawing_dxf", `nature inattendue: ${dxf.kind}`);
 
     exige(criees.length === 0, `la page a crie: ${criees.slice(0, 3).join(" | ")}`);
+    //: LES CINQ VERDICTS DU PREMIER JOUR SONT GARDES, tels que le serveur les
+    //: a rendus: apres le redemarrage, l'ecran devra montrer EXACTEMENT ceux-la.
     writeFileSync(ETAT, JSON.stringify({
       cree_le: new Date().toISOString(),
       project_id: projetId,
       calculation_id: calculId,
       is_exploratory: true,
+      calculation_fingerprint: etude.corps.calculation_fingerprint,
+      sections: etude.corps.sections.map((s) => ({
+        key: s.key, status: s.status, utilisation: s.utilisation ?? null,
+      })),
+      inputs: etude.corps.inputs ?? {},
       pdf: { fichier: pdf.fichier, taille: pdf.taille, sha256: pdf.sha256,
              deliverable_id: pdf.deliverable_id },
       dxf: { fichier: dxf.fichier, taille: dxf.taille, sha256: dxf.sha256,
@@ -232,33 +251,100 @@ try {
           `le projet retrouve (${projetId}) n'est pas celui de l'etude (${etat.project_id})`);
 
     etape("l'etude est dans l'historique a l'ecran");
-    await page.waitForSelector(`tr[data-calcul="${etat.calculation_id}"]`, { timeout: 30000 });
+    const ligne = `tr[data-calcul="${etat.calculation_id}"]`;
+    await page.waitForSelector(ligne, { timeout: 30000 });
+    const lignesAvant = await page.locator("tr[data-calcul]").count();
 
-    etape("l'etude est relue par l'API sous la meme session");
-    exige(autorisation.startsWith("Bearer "), "aucun jeton capture sur les appels de la page");
-    const relue = await page.request.get(
-      `${API}/v1/projects/${etat.project_id}/beam-verifications/${etat.calculation_id}`,
-      { headers: { Authorization: autorisation } });
-    exige(relue.status() === 200, `la relecture a rendu ${relue.status()}`);
-    const corps = await relue.json();
+    etape("« Rouvrir »: les cinq chapitres, tels qu'enregistres, sans recalcul");
+    const relecture = page.waitForResponse(
+      (r) => r.url().includes(`/beam-verifications/${etat.calculation_id}`)
+             && r.request().method() === "GET", { timeout: 60000 });
+    await page.click(`${ligne} button:has-text("Rouvrir")`);
+    const reponseRelue = await relecture;
+    exige(reponseRelue.status() === 200, `la relecture a rendu ${reponseRelue.status()}`);
+    const corps = await reponseRelue.json();
     exige(corps.calculation_id === etat.calculation_id, "l'identifiant relu differe");
     exige((corps.sections ?? []).length === 5, "l'etude relue n'a pas ses cinq chapitres");
     exige(corps.is_exploratory === true, "l'etude relue n'est plus exploratoire");
+    exige(corps.calculation_fingerprint === etat.calculation_fingerprint,
+          "l'empreinte de calcul relue n'est pas celle du premier jour");
+    await page.waitForSelector(
+      `#synthese-etude[data-calcul="${etat.calculation_id}"][data-relue="oui"]`,
+      { timeout: 30000 });
+    exige(await page.locator("#etude-relue").count() === 1,
+          "la synthese ne dit pas que l'etude est rouverte sans recalcul");
+    for (const attendu of etat.sections) {
+      const rangee = page.locator(`#chapitre-${attendu.key}`);
+      exige(await rangee.count() === 1, `le chapitre « ${attendu.key} » n'est pas affiche`);
+      const etatAffiche = await rangee.getAttribute("data-etat");
+      exige(etatAffiche === attendu.status,
+            `chapitre « ${attendu.key} »: etat affiche « ${etatAffiche} », `
+            + `enregistre « ${attendu.status} »`);
+      const taux = (await rangee.locator("td.nombre").innerText()).trim();
+      const tauxAttendu = typeof attendu.utilisation === "number"
+        ? `${(attendu.utilisation * 100).toFixed(1)} %` : "—";
+      exige(taux === tauxAttendu,
+            `chapitre « ${attendu.key} »: taux affiche « ${taux} », attendu « ${tauxAttendu} »`);
+    }
+    const synthese = await page.locator("#synthese-etude").innerText();
+    exige(synthese.includes("NON SIGNABLE"),
+          "l'etude rouverte ne porte plus « PROJET — NON SIGNABLE »");
+    //: LES ENTREES VIENNENT DU CALCUL ENREGISTRE, et on le verifie sur la
+    //: geometrie: ce que le serveur a gele le premier jour est ce que l'ecran
+    //: montre aujourd'hui, valeur et unite.
+    await page.evaluate(() => document.querySelectorAll("#synthese-etude details")
+      .forEach((d) => { d.open = true; }));
+    for (const cle of ["geometry.b", "geometry.h", "M_Ed", "V_Ed"]) {
+      const affichee = (await page.locator(`tr[data-entree="${cle}"] td`).innerText()).trim();
+      const enregistree = cle.split(".").reduce((o, k) => o?.[k], etat.inputs);
+      exige(String(enregistree) === affichee,
+            `entree « ${cle} »: affichee « ${affichee} », enregistree « ${enregistree} »`);
+    }
+    exige(calculsLances === 0, `${calculsLances} calcul(s) lance(s) par la reouverture`);
+    exige(await page.locator("tr[data-calcul]").count() === lignesAvant,
+          "l'historique a gagne une ligne: quelque chose a ete recalcule");
 
-    etape("les livrables sont toujours la, avec leurs empreintes");
-    const liste = await page.request.get(
-      `${API}/v1/projects/${etat.project_id}/deliverables`,
-      { headers: { Authorization: autorisation } });
-    exige(liste.status() === 200, `la liste des livrables a rendu ${liste.status()}`);
-    const livrables = (await liste.json()).deliverables ?? [];
-    for (const [nom, attendu] of [["PDF", etat.pdf], ["DXF", etat.dxf]]) {
-      exige(livrables.some((d) => d.sha256 === attendu.sha256),
-            `le ${nom} (${attendu.sha256.slice(0, 12)}) n'est plus dans les livrables`);
+    etape("capture de l'etude rouverte");
+    const capture = join(SORTIE, "etude-rouverte.png");
+    await page.locator("#synthese-etude").screenshot({ path: capture });
+
+    etape("les deux livrables, retelecharges depuis l'interface: memes octets");
+    await page.waitForSelector("#table-livrables", { timeout: 30000 });
+    const retrouves = {};
+    for (const [nom, attendu, fichier] of [
+      ["PDF", etat.pdf, "note-de-calcul.retrouvee.pdf"],
+      ["DXF", etat.dxf, "plan-de-ferraillage.retrouve.dxf"],
+    ]) {
+      const bouton = page.locator(
+        `tr[data-livrable="${attendu.deliverable_id}"] button:text-is("Télécharger")`);
+      exige(await bouton.count() === 1,
+            `le ${nom} (${attendu.deliverable_id}) n'a pas de bouton de telechargement`);
+      const attente = page.waitForEvent("download", { timeout: 90000 });
+      await bouton.click();
+      const dl = await attente;
+      const chemin = join(SORTIE, fichier);
+      await dl.saveAs(chemin);
+      const octets = readFileSync(chemin);
+      const sha256 = createHash("sha256").update(octets).digest("hex");
+      exige(sha256 === attendu.sha256,
+            `le ${nom} retelecharge (${sha256.slice(0, 12)}) n'a pas les octets `
+            + `du premier jour (${attendu.sha256.slice(0, 12)})`);
+      exige(octets.length === attendu.taille,
+            `le ${nom} retelecharge fait ${octets.length} o au lieu de ${attendu.taille}`);
+      retrouves[nom] = { fichier: chemin, sha256 };
     }
     exige(criees.length === 0, `la page a crie: ${criees.slice(0, 3).join(" | ")}`);
+    writeFileSync(ETAT, JSON.stringify({
+      ...etat,
+      retrouvee_le: new Date().toISOString(),
+      capture,
+      retelecharges: retrouves,
+    }, null, 2) + "\n");
     console.log("");
-    console.log(`etude ${etat.calculation_id} retrouvee apres redemarrage: historique, `
-                + "relecture API, PDF et DXF presents avec leurs empreintes.");
+    console.log(`etude ${etat.calculation_id} rouverte apres redemarrage: cinq chapitres `
+                + "et entrees tels qu'enregistres, aucun calcul relance; PDF et DXF "
+                + "retelecharges depuis l'interface, octets identiques au premier jour.");
+    console.log(`  capture: ${capture}`);
   }
 } catch (cause) {
   console.error(`ECHEC: ${cause.message}`);

@@ -23,7 +23,7 @@
  * plus fréquente — l'étude exploratoire — ne se corrige pas en modifiant la
  * section. Chaque action porte donc son empêchement, écrit.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 //: LA FORME EXACTE QUE LA ROUTE REND, PAS SA VOISINE.
 //:
 //: `BlockingParameterDTO` nomme une cle du registre; `PreflightBlockerDTO`
@@ -66,16 +66,27 @@ const MODULE_LISIBLE: Record<string, string> = {
   deflection: "flèche",
 };
 
-/** Ce que la dernière tentative a produit. Jamais un mélange des deux. */
+/**
+ * Ce que la dernière tentative a produit. Jamais un mélange des deux.
+ *
+ * `relue` DISTINGUE UNE ÉTUDE QU'ON VIENT DE LANCER D'UNE ÉTUDE ROUVERTE. Les
+ * deux s'affichent dans la même synthèse — même table, mêmes verdicts, mêmes
+ * empreintes — mais la seconde n'a rien recalculé, et l'écran le dit.
+ */
 type Etat =
   | { type: "vide" }
-  | { type: "etude"; etude: Ec2BeamVerificationResponse }
+  | { type: "etude"; etude: Ec2BeamVerificationResponse; relue: boolean }
   | { type: "refus"; message: string; bloquants: PreflightBlockerDTO[] }
   | { type: "panne"; message: string };
 
-export function VerificationComplete({ projet, porteur, surEnregistrement }: {
+export function VerificationComplete({ projet, porteur, reouverture,
+                                       surEnregistrement }: {
   projet: Projet | null;
   porteur: PorteurDeJeton;
+  //: UNE ÉTUDE ROUVERTE DEPUIS L'HISTORIQUE, avec le rang de sa réouverture.
+  //: Elle vient du serveur, relue telle qu'écrite: ce composant l'affiche
+  //: comme il affiche celle qu'il vient de lancer, sans rien en dériver.
+  reouverture?: { etude: Ec2BeamVerificationResponse; rang: number } | null;
   //: L'historique et la liste des livrables partagent un compteur avec le
   //: reste de l'écran: une étude enregistrée qui n'apparaîtrait pas dans la
   //: liste juste au-dessus donnerait à croire qu'elle n'a rien écrit.
@@ -84,13 +95,26 @@ export function VerificationComplete({ projet, porteur, surEnregistrement }: {
   const [etat, setEtat] = useState<Etat>({ type: "vide" });
   const [enCours, setEnCours] = useState(false);
 
+  //: LA RÉOUVERTURE REMPLACE CE QUI ÉTAIT AFFICHÉ, et amène la synthèse à
+  //: l'écran: l'historique est en bas de page, la synthèse en haut, et un
+  //: clic qui change quelque chose hors du champ de vision ressemble à un
+  //: clic qui ne fait rien.
+  useEffect(() => {
+    if (!reouverture) return;
+    setEtat({ type: "etude", etude: reouverture.etude, relue: true });
+    requestAnimationFrame(() => {
+      document.getElementById("synthese-etude")
+        ?.scrollIntoView({ block: "start" });
+    });
+  }, [reouverture]);
+
   async function lancer(requete: Ec2BeamVerificationRequest) {
     if (!projet) return;
     setEnCours(true);
     setEtat({ type: "vide" });
     try {
       const etude = await verifierPoutre(porteur, projet.project_id, requete);
-      setEtat({ type: "etude", etude });
+      setEtat({ type: "etude", etude, relue: false });
     } catch (cause) {
       setEtat(enEtatDeRefus(cause));
     } finally {
@@ -157,7 +181,7 @@ export function VerificationComplete({ projet, porteur, surEnregistrement }: {
 
       {etat.type === "etude" && projet && (
         <SyntheseEtude
-          etude={etat.etude}
+          etude={etat.etude} relue={etat.relue}
           actions={<ActionsEtude projet={projet} porteur={porteur}
                                  etude={etat.etude}
                                  surLivrable={surEnregistrement} />} />

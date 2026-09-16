@@ -80,9 +80,13 @@ tout**), `comptes`, `reset` (détruit, avec consentement explicite).
    deploy/demo.sh up
    ```
 
-8. Se reconnecter, choisir le projet : l'étude est dans l'**historique**, avec
-   ses livrables. La session, elle, n'a pas survécu — c'est le contrat : aucun
-   jeton n'est persisté.
+8. Se reconnecter, choisir le projet : l'étude est dans l'**historique**.
+   **Rouvrir** la ramène dans la synthèse à cinq chapitres — les mêmes
+   verdicts, les mêmes taux, les mêmes entrées et les mêmes empreintes que le
+   jour du calcul, et la synthèse dit que rien n'a été recalculé. Dans
+   **Livrables**, **Télécharger** rend la note et le plan : les mêmes octets,
+   pas un document recomposé. La session, elle, n'a pas survécu — c'est le
+   contrat : aucun jeton n'est persisté.
 
 ## 4. La même chose, au clavier, mesurée
 
@@ -92,10 +96,15 @@ deploy/demo_persistance.sh
 
 Il enchaîne `up`, un parcours Chromium qui fait les gestes du §3 et compare les
 octets reçus aux empreintes enregistrées, `down`, `up`, puis un second parcours
-qui retrouve l'étude — à l'écran, relue par l'API sous la même session, avec
-ses deux livrables. Il laisse l'environnement debout. Fichiers produits :
-`deploy/demo/note-de-calcul.pdf`, `deploy/demo/plan-de-ferraillage.dxf`,
-`deploy/demo/etat.json`.
+qui clique **Rouvrir** et vérifie, chapitre par chapitre, que l'état et le taux
+affichés sont ceux enregistrés le premier jour, que les entrées affichées sont
+celles du calcul gelé, qu'aucun calcul n'a été lancé (les POST sont comptés),
+puis retélécharge la note et le plan depuis la liste des livrables et compare
+leurs octets aux empreintes initiales. Il laisse l'environnement debout.
+Fichiers produits : `deploy/demo/note-de-calcul.pdf`,
+`deploy/demo/plan-de-ferraillage.dxf`, `deploy/demo/etude-rouverte.png` (la
+capture de l'étude rouverte), `deploy/demo/note-de-calcul.retrouvee.pdf`,
+`deploy/demo/plan-de-ferraillage.retrouve.dxf`, `deploy/demo/etat.json`.
 
 ## 5. Ce qui est de démonstration, et ce qui ne l'est pas
 

@@ -35,11 +35,15 @@ const VERDICT: Record<string, string> = {
   incomplete: "L'étude ne conclut pas",
 };
 
-export function SyntheseEtude({ etude, actions }: {
+export function SyntheseEtude({ etude, actions, relue = false }: {
   etude: Ec2BeamVerificationResponse;
   //: Les actions sont fournies par le parent — il détient la session et les
   //: droits. Ce composant ne sait ni télécharger ni écrire.
   actions?: React.ReactNode;
+  //: ROUVERTE DEPUIS L'HISTORIQUE, PAS LANCÉE À L'INSTANT. La synthèse est la
+  //: même; la phrase qui le dit n'est pas décorative: elle promet que rien
+  //: n'a été recalculé, et cette promesse est celle de la route qui relit.
+  relue?: boolean;
 }) {
   const raison = raisonDeNonFinalisation(etude);
   const classe = etude.status === "passed" ? "ok"
@@ -47,8 +51,18 @@ export function SyntheseEtude({ etude, actions }: {
 
   return (
     <section aria-labelledby="titre-synthese" id="synthese-etude"
-             data-calcul={etude.calculation_id} data-statut={etude.status}>
+             data-calcul={etude.calculation_id} data-statut={etude.status}
+             data-relue={relue ? "oui" : "non"}>
       <h2 id="titre-synthese">Étude {etude.element}</h2>
+
+      {relue && (
+        <p className="bandeau" id="etude-relue" role="status">
+          <strong>Étude rouverte depuis l&apos;historique</strong>
+          Rien n&apos;a été recalculé : les entrées, les cinq verdicts, les
+          empreintes et le référentiel ci-dessous sont ceux qui ont été
+          enregistrés le jour du calcul.
+        </p>
+      )}
 
       <div className={`bandeau ${classe}`} id="verdict-etude" role="status">
         <strong>{VERDICT[etude.status] ?? etude.status}</strong>
@@ -102,9 +116,61 @@ export function SyntheseEtude({ etude, actions }: {
 
       {actions}
 
+      <Entrees etude={etude} />
       <Tracabilite etude={etude} />
     </section>
   );
+}
+
+/**
+ * Les entrées gelées de l'étude, telles que le serveur les a enregistrées.
+ *
+ * ELLES VIENNENT DE LA RÉPONSE, JAMAIS DES CHAMPS DU FORMULAIRE. Sur une étude
+ * rouverte, le formulaire porte ce que l'ingénieur a tapé aujourd'hui — ou
+ * rien ; la réponse porte ce qui a réellement servi au calcul, y compris ce
+ * que le moteur a dérivé des barres. Les afficher depuis le formulaire ferait
+ * lire une étude sous des entrées qui ne sont pas les siennes.
+ *
+ * AUCUNE MISE EN FORME NUMÉRIQUE : les grandeurs arrivent déjà en texte, avec
+ * leur unité, dans la forme gelée. Les reformater serait une seconde source.
+ */
+function Entrees({ etude }: { etude: Ec2BeamVerificationResponse }) {
+  const lignes = aplatir(etude.inputs ?? {});
+  if (lignes.length === 0) return null;
+  return (
+    <details id="entrees-etude">
+      <summary>Entrées de l&apos;étude ({lignes.length})</summary>
+      <table>
+        <tbody>
+          {lignes.map(([nom, valeur]) => (
+            <tr key={nom} data-entree={nom}>
+              <th scope="row"><code>{nom}</code></th>
+              <td>{valeur}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  );
+}
+
+/** Un dictionnaire gelé, mis à plat: `geometry.b` → « 300 mm ». */
+function aplatir(objet: Record<string, unknown>, prefixe = ""):
+    Array<[string, string]> {
+  const lignes: Array<[string, string]> = [];
+  for (const [cle, valeur] of Object.entries(objet)) {
+    const nom = prefixe ? `${prefixe}.${cle}` : cle;
+    if (valeur !== null && typeof valeur === "object" && !Array.isArray(valeur)) {
+      lignes.push(...aplatir(valeur as Record<string, unknown>, nom));
+    } else if (valeur === null || valeur === undefined) {
+      lignes.push([nom, "—"]);
+    } else if (typeof valeur === "boolean") {
+      lignes.push([nom, valeur ? "oui" : "non"]);
+    } else {
+      lignes.push([nom, String(valeur)]);
+    }
+  }
+  return lignes;
 }
 
 function LigneChapitre({ section }: { section: SectionOutcomeDTO }) {
