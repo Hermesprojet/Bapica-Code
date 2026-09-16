@@ -12,13 +12,36 @@ exige une base et une identité. La procédure ci-dessous fournit les deux.
 
 ---
 
+## 0. Première utilisation, en cinq commandes
+
+```bash
+git clone -b claude/wip-6.3c-racine-de-confiance https://github.com/Hermesprojet/Bapica-Code.git
+cd Bapica-Code/eurostruct
+deploy/demo.sh prerequis     # dit ce qui manque, ne lance rien
+deploy/demo.sh up            # construit (quelques minutes la première fois), démarre, amorce
+deploy/demo.sh comptes       # le compte A et son mot de passe
+```
+
+Puis <http://127.0.0.1:3000> : se connecter avec le compte **A**, choisir le
+projet « Démonstration — poutre belge », et suivre le §3 (créer, rouvrir,
+créer une variante). Pour le faire faire au clavier et mesurer :
+`deploy/demo_persistance.sh` (§4). Pour arrêter en gardant tout :
+`deploy/demo.sh down`.
+
 ## 1. Ce qu'il faut avoir
 
-| | pour quoi |
-|---|---|
-| Docker et Docker Compose (v2.24 ou plus) | la pile entière tourne en conteneurs |
-| `git`, `curl`, `python3` | le lanceur amorce l'espace de travail par l'API |
-| Node.js 22 *(facultatif)* | uniquement pour rejouer le parcours au clavier (§4) |
+| outil | minimum | pour quoi | testé ici avec |
+|---|---|---|---|
+| Docker Engine | celui qui porte Compose v2 (20.10 ou plus) | la pile entière tourne en conteneurs | 29.3.1 |
+| Docker Compose | **2.24** — la surcouche emploie `!override` | assembler la composition | 5.1.1 |
+| `git` | 2.x | cloner ; l'identité de build est le SHA du commit | 2.43.0 |
+| `curl` | — | le lanceur amorce l'espace de travail par l'API | 8.5.0 |
+| `python3` | 3.8 | vérifier les ports, lire les réponses JSON | 3.11.15 |
+| Node.js *(facultatif)* | 22 | uniquement pour rejouer le parcours au clavier (§4) | 22.22.2 |
+
+Ces minimums sont ceux que `deploy/demo.sh prerequis` vérifie ou que les
+scripts emploient ; la colonne de droite est le poste sur lequel cette
+procédure a été suivie (§7) : **Ubuntu 24.04.4 LTS, x86_64**.
 
 Pas d'AutoCAD, pas de licence CAO, pas de compte Supabase. Le DXF est produit
 par `ezdxf` (MIT) et s'ouvre avec le logiciel de votre choix.
@@ -65,7 +88,42 @@ Et, amorcés par les routes du produit sous le compte A : un bureau, le projet
 belge, et les habilitations normatives des deux comptes d'essai.
 
 Les autres commandes : `deploy/demo.sh status`, `down` (arrête, **garde
-tout**), `comptes`, `reset` (détruit, avec consentement explicite).
+tout**), `comptes`, `journaux [service] [n]`, `reset` (détruit, avec
+consentement explicite).
+
+### 2.1 Où vivent les données, et ce qui les garde
+
+Tout est sur **ce poste**, dans Docker ; rien ne part ailleurs.
+
+| quoi | où | survit à `down` / `up` | survit à `reset` |
+|---|---|---|---|
+| projets, études, verdicts, journaux, lignes de livrables | volume `eurostruct-demo_db` (PostgreSQL) | **oui** | non |
+| octets des notes PDF et des plans DXF | volume `eurostruct-demo_livrables` | **oui** | non |
+| clé de signature de l'émetteur de démonstration | volume `eurostruct-demo_demo-cles` | **oui** | non |
+| comptes d'essai, mots de passe, ports | `deploy/demo.env` (0600, ignoré par Git) | oui | **oui** — le supprimer regénère des comptes |
+| la session du navigateur | nulle part | **non** : aucun jeton n'est persisté, on se reconnecte | — |
+
+`deploy/demo.sh down` arrête les conteneurs et garde les trois volumes ;
+`up` les remonte tels quels — c'est ce que `deploy/demo_persistance.sh`
+mesure. `reset` détruit les volumes et exige
+`EUROSTRUCT_DEMO_RESET=oui-detruire-les-donnees-de-demonstration`. Une
+étude enregistrée est **immuable** : une variante est un nouveau calcul, et
+un document produit n'est jamais supprimé par le produit.
+
+### 2.2 Quand ça ne démarre pas
+
+Chaque refus est écrit avec l'action qui permet de reprendre. Les cas
+ordinaires :
+
+| ce que vous lisez | cause | pour reprendre |
+|---|---|---|
+| `REFUS: demon docker: ne repond pas` | Docker est arrêté | démarrer Docker (Desktop, ou `sudo systemctl start docker`), puis `deploy/demo.sh up` |
+| `MANQUE port 8000 (API) — deja pris sur ce poste` (ou 3000, 54321) | un autre service écoute | libérer le port, ou choisir `EUROSTRUCT_DEMO_PORT_API=8010` (`_WEB`, `_AUTH`) **avant le premier `up`** ; après, changer `API_PORT` et les URL dans `deploy/demo.env`, puis `down` et `up` |
+| `MANQUE docker compose 2.20 (>= 2.24)`, `MANQUE curl`, `MANQUE python3` | dépendance absente ou trop ancienne | l'installer ou la mettre à jour, puis `deploy/demo.sh up` |
+| `ECHEC: la construction des images s'est interrompue` | réseau coupé, proxy, Ctrl-C, disque plein | relancer `deploy/demo.sh up` : la construction repart du dernier étage réussi ; `docker system df` si le disque est en cause |
+| `ECHEC: la composition n'est pas montee` puis les journaux `init` et `api` | l'initialisation de la base a refusé, ou un conteneur ne passe pas sa sonde | lire la cause dans le journal affiché (`deploy/demo.sh journaux init`), corriger, relancer `up` — l'initialisation constate ce qui est déjà fait |
+| `ECHEC: /ready ne passe pas au vert` | l'API tourne mais une dépendance est rouge | `deploy/demo.sh status` nomme la vérification rouge ; `deploy/demo.sh journaux api` porte la cause |
+| « Session expirée » après un redémarrage | aucun jeton n'est persisté | se reconnecter (§2.1) |
 
 ## 3. Créer une étude, la retrouver — le parcours court
 
@@ -170,7 +228,8 @@ démarrage, les calculs exploratoires ni les exports en attendant.
 
 Cette procédure a été suivie du début à la fin depuis un environnement vierge
 — Docker démarré à neuf, images construites depuis le dépôt, `demo.sh up`,
-parcours au clavier, `down`, `up`, `retrouver`. Deux contraintes de cet
+parcours au clavier, `down`, `up`, `retrouver`, `variante` — sur Ubuntu
+24.04.4 LTS avec les versions du §1. Deux contraintes de cet
 environnement-là, qui ne sont pas les vôtres :
 
 * les conteneurs de construction ne connaissaient pas l'autorité de
@@ -185,7 +244,8 @@ environnement-là, qui ne sont pas les vôtres :
 | | état |
 |---|---|
 | Supabase réel | **jamais traversé.** `SUPABASE_UNVERIFIED`. La recette et ce qui lui manque : [`DEPLOIEMENT_BASE_HEBERGEE.md`](DEPLOIEMENT_BASE_HEBERGEE.md) §5–§6 |
-| LibreCAD | **ouvert et imprimé sans écran** (2.2.0.2, `dxf2pdf`) : trois défauts trouvés et corrigés — cotes sans valeur, tiret cadratin en « ◊ », mention « NON SIGNABLE » absente du cartouche. Ce qui est établi et ce qui ne l'est pas : [`DESSIN_DXF.md`](DESSIN_DXF.md) §5.5 |
+| LibreCAD | **ouvert et imprimé sans écran** (2.2.0.2, `dxf2pdf`, A3, monochrome) sur le DXF livré par le parcours : géométrie, deux cotes avec valeur et flèches, barres, textes, unités, cartouche et « PROJET - NON SIGNABLE » lisibles. Quatre défauts trouvés et corrigés le 16/09 — cotes sans valeur, tiret cadratin en « ◊ », mention absente du cartouche, dossier imprimé « — ». Ce qui est établi et ce qui ne l'est pas : [`DESSIN_DXF.md`](DESSIN_DXF.md) §5.5 |
+| note PDF | **rasterisée et relue** (poppler 24.02, 150 dpi, 12 pages) : cinq chapitres dans l'ordre, données d'entrée avec unités, verdicts, références de clause, mention en tête et en pied. Un défaut trouvé et corrigé : un symbole long recouvrait la colonne voisine. Le tiret cadratin y est rendu « -- » (police standard, substitution déclarée) |
 | AutoCAD, BricsCAD | **aucun n'a été ouvert.** |
 | validation d'un projet calculé | distincte de la validation des paramètres, et non acquise |
 

@@ -7,6 +7,7 @@
 #   deploy/demo.sh down      arrete les conteneurs et GARDE les donnees
 #   deploy/demo.sh status    ce qui tourne, et ce que /ready en dit
 #   deploy/demo.sh comptes   les deux comptes d'essai, mot de passe compris
+#   deploy/demo.sh journaux [service] [n]   les n dernieres lignes d'un service (api, web, db, init, demo-auth)
 #   deploy/demo.sh reset     detruit les donnees — consentement explicite exige
 #
 # CE QUE CETTE COMMANDE ETABLIT, ET QU'AUCUNE AUTRE N'ETABLISSAIT
@@ -103,8 +104,9 @@ verifier_prerequis() {
   local v
   if command -v docker >/dev/null 2>&1; then ligne ok "docker"
   else ligne non "docker" "absent. Installer Docker (Desktop, ou le moteur seul) puis relancer."; fi
+  local demon=1
   if docker info >/dev/null 2>&1; then ligne ok "demon docker"
-  else ligne non "demon docker" "ne repond pas. Demarrer Docker, puis relancer."; fi
+  else demon=0; ligne non "demon docker" "ne repond pas. Demarrer Docker, puis relancer."; fi
   v="$(version_compose)"
   if [[ -n "$v" ]] && compose_suffisant "$v"; then ligne ok "docker compose $v (>= $COMPOSE_MIN)"
   else ligne non "docker compose ${v:-absent}" "la surcouche de demonstration emploie « !override », qui exige Compose $COMPOSE_MIN ou plus. Mettre Docker Compose a jour."; fi
@@ -120,7 +122,13 @@ verifier_prerequis() {
         auth="${DEMO_AUTH_PORT:-${EUROSTRUCT_DEMO_PORT_AUTH:-54321}}"
   local debout=""
   [[ -f "$ENVF" ]] && debout="$(dc ps -q --status running 2>/dev/null | head -1)"
-  if [[ -n "$debout" ]]; then
+  if (( ! demon )); then
+    # SANS DEMON, ON NE SAIT PAS QUI TIENT LES PORTS — peut-etre nos propres
+    # conteneurs, encore vivants. Les declarer « pris » enverrait liberer un
+    # port qu'on tient soi-meme. Mesure du 16/09 en simulant un demon arrete.
+    [[ "$mode" == "tableau" ]] \
+      && printf '  --      ports %s, %s, %s — non verifies tant que le demon docker ne repond pas\n' "$api" "$web" "$auth"
+  elif [[ -n "$debout" ]]; then
     ligne ok "ports $api, $web, $auth (tenus par la composition, deja debout)"
   else
     for duo in "$api:API:EUROSTRUCT_DEMO_PORT_API" "$web:interface:EUROSTRUCT_DEMO_PORT_WEB" \
@@ -390,17 +398,44 @@ cmd_up() {
   export EUROSTRUCT_BUILD_SHA
   dire "build: $EUROSTRUCT_BUILD_SHA"
 
-  dire "composition: construction et demarrage (le premier appel construit deux images)"
-  if ! dc up -d --build --wait --wait-timeout 900; then
+  # LA CONSTRUCTION ET LE DEMARRAGE SONT DEUX PAS, ET CHACUN DIT COMMENT
+  # REPRENDRE. Une construction coupee (reseau, proxy, Ctrl-C, disque plein)
+  # n'est pas une composition qui ne monte pas: la premiere reprend au
+  # dernier etage reussi, la seconde se lit dans le journal de
+  # l'initialisation. Un seul « up --build » melangeait les deux dans un
+  # meme echec, sans dire lequel.
+  dire "composition: construction des images (le premier appel prend quelques minutes)"
+  if ! dc build; then
     echo "" >&2
-    echo "ECHEC: la composition n'est pas montee. Derniers journaux de l'initialisation:" >&2
-    dc logs --no-color --tail 40 init 2>&1 | sed 's/^/      /' >&2
+    echo "ECHEC: la construction des images s'est interrompue (reseau coupe, proxy," >&2
+    echo "       Ctrl-C, disque plein: la cause est dans le journal ci-dessus)." >&2
+    echo "       Reprendre: relancez « deploy/demo.sh up » — la construction repart" >&2
+    echo "       du dernier etage reussi (cache Docker), rien n'est refait deux fois." >&2
+    echo "       Si cela persiste: « docker system df » (espace), « docker info » (demon)." >&2
+    exit 1
+  fi
+
+  dire "composition: demarrage et initialisation de la base (idempotente)"
+  if ! dc up -d --wait --wait-timeout 900; then
+    echo "" >&2
+    echo "ECHEC: la composition n'est pas montee. Etat des conteneurs, puis derniers" >&2
+    echo "       journaux de l'initialisation et de l'API:" >&2
+    dc ps 2>&1 | sed 's/^/      /' >&2
+    dc logs --no-color --tail 40 init 2>&1 | sed 's/^/      init | /' >&2
+    dc logs --no-color --tail 20 api 2>&1 | sed 's/^/      api  | /' >&2
+    echo "       Reprendre: corrigez la cause nommee ci-dessus, puis relancez" >&2
+    echo "       « deploy/demo.sh up » — l'initialisation constate ce qui est deja fait." >&2
+    echo "       Journaux complets: « deploy/demo.sh journaux init », « … journaux api »." >&2
     exit 1
   fi
 
   attendre "http://127.0.0.1:${API_PORT}/ready" 60 \
-    || { echo "ECHEC: /ready ne passe pas au vert." >&2
-         curl -sS "http://127.0.0.1:${API_PORT}/ready" 2>/dev/null | cut -c1-600 >&2; exit 1; }
+    || { echo "ECHEC: /ready ne passe pas au vert. Ce que l'API en dit:" >&2
+         curl -sS "http://127.0.0.1:${API_PORT}/ready" 2>/dev/null | cut -c1-600 >&2
+         echo "" >&2
+         echo "       Reprendre: « deploy/demo.sh status » nomme la verification rouge;" >&2
+         echo "       « deploy/demo.sh journaux api » porte la cause. Puis « deploy/demo.sh up »." >&2
+         exit 1; }
 
   preparer_tmp; trap nettoyer_tmp EXIT
   amorcer
@@ -466,6 +501,15 @@ cmd_reset() {
   dire "deploy/demo.env est conserve; supprimez-le pour regenerer des comptes."
 }
 
+cmd_journaux() {   # journaux [service] [n]
+  exiger_outils; charger_env
+  local service="${1:-api}" n="${2:-100}"
+  case "$service" in api|web|db|init|demo-auth|objets|objets-init) ;;
+    *) refus "service inconnu « $service » (api, web, db, init, demo-auth)." ;; esac
+  [[ "$n" =~ ^[0-9]+$ ]] || refus "nombre de lignes invalide « $n »."
+  dc logs --no-color --tail "$n" "$service"
+}
+
 cmd_prerequis() {
   [[ -f "$ENVF" ]] && charger_env
   echo "Prerequis de l'environnement de demonstration sur ce poste:"
@@ -484,7 +528,8 @@ case "${1:-}" in
   comptes)   cmd_comptes ;;
   reset)     cmd_reset ;;
   prerequis) cmd_prerequis ;;
+  journaux)  cmd_journaux "${2:-}" "${3:-}" ;;
   *)
-    sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2 ;;
 esac

@@ -60,7 +60,14 @@ exige une seconde personne.
 ```bash
 deploy/demo.sh prerequis    # ce qu'il faut sur le poste, et ce qui manque
 deploy/demo.sh up           # base, émetteur de démonstration, API, interface
+deploy/demo.sh status       # ce qui tourne, et ce que /ready en dit
+deploy/demo.sh journaux api # les journaux d'un service (api, web, db, init, demo-auth)
+deploy/demo.sh down         # arrête, et garde études, documents et comptes
 ```
+
+Pour l'hébergement cible — base Supabase, authentification réelle, URL
+publiques — la composition de staging et sa procédure sont dans
+[`docs/STAGING.md`](docs/STAGING.md) (`deploy/staging.sh`).
 
 Pour le **moteur seul** — le calcul exploratoire de flexion, sans base ni
 compte, donc sans étude conservée ni PDF ni DXF :

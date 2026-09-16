@@ -293,8 +293,30 @@ test décisif — et non son écran : ce qui suit vaut pour l'impression.
    `_modele_du_dessin` ; `test_dessin_mention_gelee.py` l'exige, jusqu'aux
    octets du DXF.
 
+**Seconde passe (16/09, après les trois corrections), sur le DXF livré par le
+parcours de démonstration** (`plan-de-ferraillage.dxf`, 64 141 o, SHA-256
+`2e3930cb…`), imprimé en A3 et en **monochrome** (`dxf2pdf -m -a -p 420x297`,
+puis `pdftoppm -r 110`), cartouche relu à 220 dpi :
+
+| point | constat |
+|---|---|
+| géométrie | section 300 × 600, cadre à 40 mm, quatre barres en lit inférieur, à leur place |
+| cotes | deux cotes, valeurs « 600 » et « 300 » lisibles, flèches présentes |
+| barres et textes | « COUPE POUTRE P1 », « 300 x 600 mm - enrobage 40 mm », « C1: cadre HA10 e = 150 mm », « A1: 4 HA20 (inf.) » |
+| unités | « Cotes en mm » dans le cartouche, cotes en mm |
+| cartouche | élément, indice, béton, acier, exposition, échelle 1:20, moteur ; **« PROJET - NON SIGNABLE » lisible** ; notice de validation sur deux lignes |
+| caractères | aucun losange ; les lettres accentuées, « · », « Ø » et « × » s'affichent (mesuré en les injectant dans le cartouche) — seul le tiret cadratin manquait à la police, et il est transcrit |
+| couleurs | en impression couleur, les textes du calque `TEXTES` sortent **jaunes** sur blanc (couleur de calque prévue pour un fond sombre) : imprimer en monochrome (`-m`) ou en niveaux de gris (`-k`), ce que l'écran d'impression de LibreCAD propose aussi |
+
+Un **quatrième défaut** y a été vu et corrigé : la première ligne du
+cartouche — le dossier — s'imprimait « — ». La coupe gelée avec l'étude ne
+porte pas le nom du projet ; il vient désormais de la ligne du projet relue
+(« Démonstration — poutre belge (DEMO-BE-001) »), replié à 50 caractères et
+borné à deux lignes, parce qu'un libellé de 80 caractères sortait du cadre
+par la droite. `test_dessin_mention_gelee.py` l'exige, jusqu'aux octets.
+
 **Ce que cela n'établit pas.** L'écran de LibreCAD (seule l'impression a
 tourné) ; la hiérarchie des épaisseurs et le trait d'axe (§4.2) ; les cotes
 serrées d'une poutre très armée (§4.6, un seul fichier a été ouvert) ; et rien
 sur AutoCAD ni BricsCAD. Les images produites ne sont pas versionnées : les
-deux commandes ci-dessus les refont en une minute sur le DXF du parcours.
+commandes ci-dessus les refont en une minute sur le DXF du parcours.
