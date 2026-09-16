@@ -456,6 +456,15 @@ etape "entree dans l'application" \
 #
 #   db/test/parcours_atelier.sh  <prefixe>   # projet, calcul, historique
 #   db/test/parcours_livrable.sh <prefixe>   # brouillon, attestation, emission
+#
+# MEME RAISON POUR L'AUTO-TEST DE LA RECETTE SUR BASE HEBERGEE: il demarre
+# l'emetteur de jetons d'essai avec `node` et l'API avec uvicorn, sauvegarde et
+# restaure avec pg_dump/pg_restore. Il mesure que le diagnostic ne mute rien
+# (instantane du catalogue identique) et que chaque etape rend son propre
+# resultat (PARTIELLE sans jetons, COMPLETE avec deux comptes d'essai):
+#
+#   EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole \
+#   db/test/recette_supabase_staging_selftest.sh
 
 echo "==> quatre-yeux explicite (6.3c)"
 etape "quatre-yeux explicite" \
