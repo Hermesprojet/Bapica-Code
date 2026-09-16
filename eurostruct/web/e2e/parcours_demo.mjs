@@ -250,6 +250,10 @@ try {
     const synthese = await page.locator("#synthese-etude").innerText();
     exige(synthese.includes("NON SIGNABLE"),
           "la mention « PROJET — NON SIGNABLE » n'est pas affichee");
+    //: LA CAPTURE DE L'ETUDE QUI VIENT D'ETRE CREEE — la synthese telle que
+    //: l'ingenieur la voit au premier jour, avant tout redemarrage.
+    const captureCreee = join(SORTIE, "etude-creee.png");
+    await page.locator("#synthese-etude").screenshot({ path: captureCreee });
 
     etape("note de calcul PDF");
     const pdf = await telecharger("#etude-note-pdf", "note-de-calcul.pdf");
@@ -276,6 +280,7 @@ try {
         key: s.key, status: s.status, utilisation: s.utilisation ?? null,
       })),
       inputs: etude.corps.inputs ?? {},
+      capture_creee: captureCreee,
       pdf: { fichier: pdf.fichier, taille: pdf.taille, sha256: pdf.sha256,
              deliverable_id: pdf.deliverable_id },
       dxf: { fichier: dxf.fichier, taille: dxf.taille, sha256: dxf.sha256,

@@ -184,7 +184,8 @@ et vérifie ses cinq verdicts du premier jour, puis change de projet et se
 déconnecte en vérifiant que l'écran ne montre plus rien du contexte
 précédent. Il laisse l'environnement debout.
 Fichiers produits : `deploy/demo/note-de-calcul.pdf`,
-`deploy/demo/plan-de-ferraillage.dxf`, `deploy/demo/etude-rouverte.png` (la
+`deploy/demo/plan-de-ferraillage.dxf`, `deploy/demo/etude-creee.png` (la
+capture de l'étude au premier jour), `deploy/demo/etude-rouverte.png` (la
 capture de l'étude rouverte), `deploy/demo/note-de-calcul.retrouvee.pdf`,
 `deploy/demo/plan-de-ferraillage.retrouve.dxf`, `deploy/demo/etude-variante.png`
 (la capture de la variante), `deploy/demo/note-de-calcul.variante.pdf`,
