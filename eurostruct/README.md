@@ -58,6 +58,7 @@ telle qu'elle a été suivie, ce que le produit refusera et pourquoi, et ce qui
 exige une seconde personne.
 
 ```bash
+deploy/demo.sh prerequis    # ce qu'il faut sur le poste, et ce qui manque
 deploy/demo.sh up           # base, émetteur de démonstration, API, interface
 ```
 

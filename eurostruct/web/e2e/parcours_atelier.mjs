@@ -210,7 +210,22 @@ try {
   ici("selection du projet");
   //: L'ECRAN SELECTIONNE LE PROJET QU'IL VIENT DE CREER, et le NOMME. Sans
   //: cela l'ingenieur devrait deviner sur quoi il travaille.
-  await page.waitForSelector("text=FICTIF Bureau A", { timeout: 15000 });
+  //:
+  //: ON LIT LE SELECTEUR, PAS « text= ». Mesure le 16/09: `waitForSelector(
+  //: "text=FICTIF Bureau A")` ne designait pas le projet — ce texte est celui
+  //: des <option> du BUREAU, il y en avait trois — et attendait qu'une
+  //: <option> soit VISIBLE, ce qu'une option d'un <select> ferme n'est jamais
+  //: pour Playwright. Le parcours tombait a cette etape, sur tout arbre,
+  //: avant d'avoir rien eprouve de l'atelier. Ce qu'on veut savoir: le
+  //: selecteur porte l'identifiant du projet qui vient d'etre cree, et
+  //: l'option choisie le NOMME.
+  await page.waitForFunction(
+    (id) => document.querySelector("#projet")?.value === id,
+    projetId, { timeout: 15000 });
+  const libelleProjet = await page.$eval(
+    "#projet", (s) => s.options[s.selectedIndex]?.textContent ?? "");
+  exige(libelleProjet.includes("FICTIF — Halle navigateur"),
+        `le projet selectionne est nomme « ${libelleProjet} »`);
 
   ici("le referentiel est verrouille a l'ecran");
   //: LE SELECTEUR DE PAYS EST DESACTIVE ET PORTE CELUI DU PROJET. Un champ
