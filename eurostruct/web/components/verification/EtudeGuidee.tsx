@@ -29,9 +29,9 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CHAMPS_INITIAUX, ETAPES, EXPOSITIONS, SYSTEMES,
+  ALPHAS, CHAMPS_INITIAUX, CLASSES_W_MAX, ETAPES, EXPOSITIONS, SYSTEMES,
   champsManquants, enRequete, etudeComplete,
-  type ChampsEtude, type CleEtape,
+  type ChampsEtude, type CleEtape, type NonRepris,
 } from "./champs";
 import type { Projet } from "@/lib/atelier";
 
@@ -53,7 +53,7 @@ export type OrigineDeVariante = { calculation_id: string; element: string };
  * champs — rendrait un objet égal au précédent, et rien ne se réinitialiserait.
  */
 export type DemandeDeVariante = {
-  champs: ChampsEtude; origine: OrigineDeVariante; nonRepris: string[];
+  champs: ChampsEtude; origine: OrigineDeVariante; nonRepris: NonRepris[];
   rang: number;
 };
 
@@ -82,7 +82,12 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
   //: qu'elle existe dans le projet. Elle se détache d'un clic, et alors la
   //: saisie redevient une étude initiale, sans filiation.
   const [origine, setOrigine] = useState<OrigineDeVariante | null>(null);
-  const [nonRepris, setNonRepris] = useState<string[]>([]);
+  //: CE QUE LA VARIANTE N'A PAS PU REPRENDRE DE SON ORIGINE. Tant que la
+  //: liste n'est pas vide, le lancement est BLOQUÉ: une variante qui
+  //: partirait avec un champ vide là où l'origine portait une valeur ne serait
+  //: pas une variante, et l'écran n'a pas le droit de le laisser croire. La
+  //: saisie du champ nommé lève son entrée; le détachement lève tout.
+  const [nonRepris, setNonRepris] = useState<NonRepris[]>([]);
 
   //: LA VARIANTE REMPLACE LA SAISIE EN COURS, et amène le formulaire à
   //: l'écran, sur la section — la première étape qu'on modifie. L'exploratoire
@@ -102,8 +107,14 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
 
   const manquants = useMemo(() => champsManquants(champs), [champs]);
   const complet = etudeComplete(champs);
-  const majuscule = (k: keyof ChampsEtude) => (e: { target: { value: string } }) =>
+  //: SAISIR UN CHAMP NON REPRIS LE RÉSOUT. Le blocage nomme le champ; le
+  //: geste qui le remplit est la résolution, sans autre clic.
+  const resoudre = (k: keyof ChampsEtude) =>
+    setNonRepris((liste) => liste.filter((n) => n.champ !== k));
+  const majuscule = (k: keyof ChampsEtude) => (e: { target: { value: string } }) => {
     setChamps((c) => ({ ...c, [k]: e.target.value }));
+    resoudre(k);
+  };
 
   /**
    * Pourquoi le lancement est impossible — ou `null`.
@@ -117,6 +128,11 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
       return "Aucun projet sélectionné. Une vérification complète s'enregistre "
         + "sur un dossier : c'est lui qui fixe le pays, la région et la date "
         + "d'application de l'Annexe Nationale.";
+    }
+    if (nonRepris.length > 0) {
+      return `Variante non fidèle à l'étude d'origine — ${nonRepris.length} `
+        + `entrée(s) n'ont pas pu être reprises : ${nonRepris.map((n) => n.motif)
+          .join(" ; ")}. Saisissez ces champs, ou détachez la variante.`;
     }
     const incompletes = ETAPES
       .filter((e) => manquants[e.cle].length > 0)
@@ -200,8 +216,11 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
           son propre identifiant, et l&apos;étude d&apos;origine — avec ses
           documents — restera consultable dans l&apos;historique.
           {nonRepris.length > 0 && (
-            <p className="aide manque" id="variante-non-repris">
-              Non repris par ce formulaire : {nonRepris.join(" ; ")}.
+            <p className="aide manque" id="variante-non-repris" role="alert"
+               data-nombre={nonRepris.length}>
+              <strong>Non repris — lancement bloqué :</strong>{" "}
+              {nonRepris.map((n) => n.motif).join(" ; ")}. Saisissez ces
+              champs à la main, ou détachez la variante.
             </p>
           )}
           <div className="rangee-boutons">
@@ -259,13 +278,16 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
         )}
         {courante.cle === "service" && (
           <EtapeService champs={champs} majuscule={majuscule}
-                        surCase={(v) => setChamps((c) =>
-                          ({ ...c, cloisons_fragiles: v }))} />
+                        surCase={(v) => {
+                          setChamps((c) => ({ ...c, cloisons_fragiles: v }));
+                          resoudre("cloisons_fragiles");
+                        }} />
         )}
         {courante.cle === "mode" && (
           <EtapeMode champs={champs} assume={exploratoireAssume}
                      surStrict={(v) => {
                        setChamps((c) => ({ ...c, strict: v }));
+                       resoudre("strict");
                        if (v) setExploratoireAssume(false);
                      }}
                      surAssume={setExploratoireAssume} />
@@ -402,6 +424,15 @@ function EtapeSection({ champs, majuscule }: {
           §5.3.2.2. Elle décide de la dispense du calcul de flèche.
         </span>
       </div>
+      <div>
+        <label htmlFor="vc-beff">Rapport b<sub>eff</sub> / b<sub>w</sub> (facultatif)</label>
+        <input id="vc-beff" inputMode="decimal" value={champs.b_eff_sur_b_w}
+               onChange={majuscule("b_eff_sur_b_w")} placeholder="vide : rectangulaire" />
+        <span className="aide">
+          Section en T, §5.3.2.1 : au-delà de 3, la limite l/d se réduit.
+          Vide, la section est déclarée rectangulaire.
+        </span>
+      </div>
     </div>
   );
 }
@@ -430,6 +461,20 @@ function EtapeMateriaux({ champs, majuscule }: {
           Tableau 4.1. Elle choisit la ligne de w<sub>max</sub> et la branche
           de §7.2(2) : c&apos;est un jugement sur l&apos;environnement, que la
           géométrie ne révèle pas.
+        </span>
+      </div>
+      <div>
+        <label htmlFor="vc-wmax">Classe associée pour w<sub>max</sub> (facultatif)</label>
+        <select id="vc-wmax" value={champs.w_max_associee}
+                onChange={majuscule("w_max_associee")}>
+          <option value="">— aucune —</option>
+          {CLASSES_W_MAX.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <span className="aide">
+          À déclarer seulement quand l&apos;exposition est XF ou XA : le
+          Tableau 7.1N-ANB ne donne de ligne ni au gel/dégel ni à l&apos;attaque
+          chimique, et sans classe XC/XD/XS associée l&apos;ouverture
+          admissible est refusée, jamais rabattue sur 0,3 mm.
         </span>
       </div>
     </div>
@@ -547,6 +592,29 @@ function EtapeFerraillage({ champs, majuscule }: {
         barres. Deux sources pour une même aire divergeraient un jour, et ce
         jour-là le plan montrerait autre chose que le calcul.
       </p>
+      {/* LES SIX COEFFICIENTS D'ANCRAGE SONT DES CHAMPS, repliés parce que
+          rares, jamais cachés: une étude qui les porte se relit et se
+          reprend avec eux. Tous ou aucun — le moteur ne complète pas une
+          déclaration à moitié faite. */}
+      <details id="ancrage-coefficients"
+               open={ALPHAS.some((a) => champs[a].trim() !== "")}>
+        <summary>Coefficients d&apos;ancrage α1 à α6 (Tableau 8.2, facultatifs)</summary>
+        <div className="grille">
+          {ALPHAS.map((a, i) => (
+            <div key={a}>
+              <label htmlFor={`vc-${a.replace("_", "")}`}>α{i + 1}</label>
+              <input id={`vc-${a.replace("_", "")}`} inputMode="decimal"
+                     value={champs[a]} onChange={majuscule(a)} />
+            </div>
+          ))}
+        </div>
+        <p className="aide">
+          Tous les six, ou aucun. Vides, le moteur retient 1,0 pour chacun,
+          la lecture conservative de chaque ligne, et le dit dans son journal.
+          Une valeur inférieure à 1,0 est une affirmation sur le façonnage
+          dont vous répondez ; hors du domaine du tableau, le moteur refuse.
+        </p>
+      </details>
     </>
   );
 }

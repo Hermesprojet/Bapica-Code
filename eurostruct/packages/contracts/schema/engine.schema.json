@@ -25,6 +25,52 @@
       "title": "AdhesionModifiee",
       "type": "object"
     },
+    "AnchorageCoefficientsDTO": {
+      "additionalProperties": false,
+      "description": "Les six coefficients du Tableau 8.2 — et 8.3 pour alpha_6 — déclarés.\n\nILS SONT TOUS LES SIX, OU AUCUN. Une valeur inférieure à 1,0 est une\naffirmation sur le façonnage (crochet, enrobage, confinement) dont\nl'ingénieur répond ; le moteur refuse une valeur hors du domaine du\ntableau. Absents, le moteur retient 1,0 pour chacun — la lecture\nconservative de chaque ligne — et le dit dans son journal.",
+      "properties": {
+        "alpha_1": {
+          "description": "Forme de la barre, §8.4.4, Fig. 8.1.",
+          "title": "Alpha 1",
+          "type": "number"
+        },
+        "alpha_2": {
+          "description": "Enrobage.",
+          "title": "Alpha 2",
+          "type": "number"
+        },
+        "alpha_3": {
+          "description": "Confinement par armatures transversales non soudées.",
+          "title": "Alpha 3",
+          "type": "number"
+        },
+        "alpha_4": {
+          "description": "Confinement par armatures transversales soudées.",
+          "title": "Alpha 4",
+          "type": "number"
+        },
+        "alpha_5": {
+          "description": "Confinement par pression transversale.",
+          "title": "Alpha 5",
+          "type": "number"
+        },
+        "alpha_6": {
+          "description": "Proportion de barres recouvertes dans la même section, Tableau 8.3.",
+          "title": "Alpha 6",
+          "type": "number"
+        }
+      },
+      "required": [
+        "alpha_1",
+        "alpha_2",
+        "alpha_3",
+        "alpha_4",
+        "alpha_5",
+        "alpha_6"
+      ],
+      "title": "AnchorageCoefficientsDTO",
+      "type": "object"
+    },
     "AttestationDemande": {
       "additionalProperties": false,
       "description": "Ce que le validateur écrit, et **rien d'autre**.\n\nNI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION. Les trois sortent de\n``organization_members`` sous l'identité du jeton. Les accepter ici\ndonnerait l'illusion qu'ils comptent, alors que PostgreSQL les écrase de\ntoute façon — et l'illusion est pire que l'absence, parce qu'un écran\nfinirait par les afficher.\n\nNI IDENTIFIANT DE CALCUL, NI EMPREINTE. L'attestation porte sur le calcul\ndu livrable et sur les octets réellement enregistrés ; les faire venir du\ncorps laisserait attester un calcul et en signer un autre.",
@@ -1493,6 +1539,18 @@
           "$ref": "#/$defs/QuantityDTO",
           "description": "Longueur d'ancrage réellement disponible. L'ingénieur seul connaît l'about dont il dispose ; sans elle, l'ancrage serait le seul chapitre sans verdict."
         },
+        "anchorage_coefficients": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnchorageCoefficientsDTO"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Les six coefficients alpha du Tableau 8.2, déclarés. Absents, le moteur retient 1,0 pour chacun."
+        },
         "b_eff_over_b_w": {
           "anyOf": [
             {
@@ -1503,6 +1561,7 @@
             }
           ],
           "default": null,
+          "description": "Rapport largeur efficace / largeur d'âme d'une section en T (§5.3.2.1), pour la dispense de flèche. Absent : section rectangulaire déclarée.",
           "title": "B Eff Over B W"
         },
         "bars": {
@@ -1724,6 +1783,18 @@
             }
           ],
           "title": "Region"
+        },
+        "request": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ec2BeamVerificationRequest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "La requête gelée avec l'étude, telle que reçue : c'est d'elle qu'une variante fidèle repart, avec la précision et les unités saisies."
         },
         "requires_additional_analysis": {
           "title": "Requires Additional Analysis",

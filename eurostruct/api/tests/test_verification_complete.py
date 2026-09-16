@@ -1138,3 +1138,183 @@ def test_un_calcul_de_flexion_seule_n_est_pas_l_origine_d_une_variante(
     assert r.status_code == 422, r.text
     assert r.json()["detail"]["error"] == "origine_pas_une_etude_complete"
     assert _compte_calculs(projet) == avant
+
+
+# ---------------------------------------------------------------------------
+# 14. UNE VARIANTE FIDELE REPART DE LA REQUETE GELEE, PAS D'UN FORMULAIRE
+# ---------------------------------------------------------------------------
+#
+# Mesure du lot precedent: trois entrees de l'etude d'origine —
+# `w_max_associated_class`, `b_eff_over_b_w`, `anchorage_coefficients` —
+# n'avaient pas de champ a l'ecran et disparaissaient de la variante, qui se
+# declarait pourtant complete. Ce que cette section exige de la frontiere:
+#
+#   * la reponse rend LA REQUETE GELEE telle que recue (valeurs et unites de
+#     l'ingenieur), a la creation et a la relecture: c'est d'elle qu'un client
+#     repart, et il n'a rien a reconstruire;
+#   * une variante SANS modification conserve les memes entrees metier —
+#     et le prouve par les empreintes: `engineering_inputs_hash` et
+#     `calculation_fingerprint` identiques, identifiants differents;
+#   * une modification volontaire ne change QUE les donnees concernees;
+#   * les parametres avances traversent la frontiere, reviennent dans
+#     `inputs` et dans `request`, et survivent a une variante identique;
+#   * un coefficient hors du Tableau 8.2 refuse AVANT le moteur, sans ecrire.
+def _ecarts(a, b, chemin=""):
+    """Les chemins ou deux structures JSON different, feuille par feuille."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        return {
+            e for cle in set(a) | set(b)
+            for e in _ecarts(a.get(cle), b.get(cle), f"{chemin}.{cle}" if chemin else cle)
+        }
+    if isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        return {e for i, (x, y) in enumerate(zip(a, b, strict=True))
+                for e in _ecarts(x, y, f"{chemin}[{i}]")}
+    return set() if a == b else {chemin}
+
+
+def _sans_filiation(requete: dict) -> dict:
+    return {k: v for k, v in requete.items() if k != "derived_from_calculation_id"}
+
+
+def _corps_avance(**remplace):
+    """L'etude belge avec les trois entrees sans champ visible au lot precedent.
+
+    XF1 n'a pas de ligne au Tableau 7.1N-ANB: la classe XC3 portee AUSSI par
+    l'element donne l'ouverture admissible. Le rapport b_eff/b_w = 1 declare
+    une section rectangulaire par le chemin de la section en T; les alpha
+    sont ceux du Tableau 8.2, alpha_2 = 0,9 affirmant un enrobage suffisant.
+    """
+    avance = {
+        "exposure_class": "XF1", "w_max_associated_class": "XC3",
+        "b_eff_over_b_w": 1.0,
+        "anchorage_coefficients": {
+            "alpha_1": 1.0, "alpha_2": 0.9, "alpha_3": 1.0,
+            "alpha_4": 1.0, "alpha_5": 1.0, "alpha_6": 1.0},
+    }
+    return _corps(**{**avance, **remplace})
+
+
+def test_la_reponse_rend_la_requete_gelee_telle_que_recue(
+        client, client_neuf, jeton, projet) -> None:
+    corps = _corps()
+    cree = client.post(_url(projet), json=corps,
+                       headers=_entete(jeton(ACTEUR_A))).json()
+    requete = cree["request"]
+    assert requete is not None, "la requete gelee manque a la creation"
+    #: LES VALEURS ET LES UNITES DE L'INGENIEUR, pas la mise en forme du
+    #: moteur: `inputs` dit « 300.000 mm », la requete dit 300 et « mm ».
+    assert requete["geometry"]["b"] == {"value": 300, "unit": "mm"}
+    assert requete["M_Ed"] == {"value": 250, "unit": "kN*m"}
+    assert requete["cot_theta"] == 1.5
+    assert requete["derived_from_calculation_id"] is None
+    #: LE CONTEXTE DU PROJET N'EN FAIT PAS PARTIE: il est fige sur le projet.
+    assert not {"country", "region", "ndp_as_of", "project_id"} & set(requete)
+    #: CE QUI A ETE ENVOYE S'Y RELIT, champ pour champ. Le corps de reference
+    #: ne nomme pas `bond_condition`: le contrat le pose a « good », et la
+    #: requete rendue le dit — c'est le seul champ que le client n'a pas ecrit.
+    assert _ecarts(corps, _sans_filiation(requete)) == {"bond_condition"}
+    assert requete["bond_condition"] == "good"
+
+    #: ET LA RELECTURE — par un autre processus — rend la MEME requete.
+    relu = client_neuf.get(f"{_url(projet)}/{cree['calculation_id']}",
+                           headers=_entete(jeton(ACTEUR_A)))
+    assert relu.status_code == 200, relu.text
+    assert relu.json()["request"] == requete
+
+
+def test_une_variante_sans_modification_conserve_les_memes_entrees_metier(
+        client, jeton, projet) -> None:
+    origine = _verifier(client, jeton, projet).json()
+    #: LE CLIENT REPART DE LA REQUETE RENDUE, il ne reconstruit rien.
+    reprise = dict(origine["request"],
+                   derived_from_calculation_id=origine["calculation_id"])
+    r = client.post(_url(projet), json=reprise,
+                    headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    variante = r.json()
+
+    #: L'IDENTIFIANT ET LE LIEN D'ORIGINE DIFFERENT — naturellement.
+    assert variante["calculation_id"] != origine["calculation_id"]
+    assert variante["derived_from_calculation_id"] == origine["calculation_id"]
+    assert origine["derived_from_calculation_id"] is None
+    #: TOUT LE RESTE EST IDENTIQUE, et les empreintes en repondent.
+    assert variante["engineering_inputs_hash"] == origine["engineering_inputs_hash"]
+    assert variante["calculation_fingerprint"] == origine["calculation_fingerprint"]
+    assert _ecarts(origine["inputs"], variante["inputs"]) == set()
+    assert _ecarts(_sans_filiation(origine["request"]),
+                   _sans_filiation(variante["request"])) == set()
+    assert [(s["key"], s["status"], s["utilisation"])
+            for s in variante["sections"]] == [
+        (s["key"], s["status"], s["utilisation"]) for s in origine["sections"]]
+
+
+def test_une_modification_volontaire_ne_change_que_les_donnees_concernees(
+        client, jeton, projet) -> None:
+    origine = _verifier(client, jeton, projet).json()
+    reprise = dict(origine["request"],
+                   bars={"count": 5, "diameter": {"value": 20, "unit": "mm"}},
+                   derived_from_calculation_id=origine["calculation_id"])
+    variante = client.post(_url(projet), json=reprise,
+                           headers=_entete(jeton(ACTEUR_A))).json()
+
+    assert _ecarts(origine["inputs"], variante["inputs"]) == {"bars.count"}
+    assert _ecarts(origine["request"], variante["request"]) == {
+        "bars.count", "derived_from_calculation_id"}
+    assert variante["engineering_inputs_hash"] != origine["engineering_inputs_hash"]
+
+
+def test_les_parametres_avances_traversent_la_frontiere_et_la_variante(
+        client, client_neuf, jeton, projet) -> None:
+    corps = _corps_avance()
+    r = client.post(_url(projet), json=corps, headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 201, r.text
+    origine = r.json()
+
+    #: LES TROIS ENTREES SONT DANS LES ENTREES GELEES DU MOTEUR...
+    assert origine["inputs"]["exposure_class"] == "XF1"
+    assert origine["inputs"]["w_max_associated_class"] == "XC3"
+    assert origine["inputs"]["b_eff_over_b_w"] == 1.0
+    assert origine["inputs"]["anchorage_coefficients"]["alpha_2"] == 0.9
+    #: ...ET DANS LA REQUETE RENDUE, telles que saisies.
+    assert origine["request"]["w_max_associated_class"] == "XC3"
+    assert origine["request"]["b_eff_over_b_w"] == 1.0
+    assert origine["request"]["anchorage_coefficients"] == corps["anchorage_coefficients"]
+    #: L'ANCRAGE A TOURNE AVEC alpha_2 = 0,9: la section n'est pas muette.
+    ancrage = next(s for s in origine["sections"] if s["key"] == "anchorage")
+    assert ancrage["status"] in {"passed", "failed"}, ancrage
+
+    #: UNE VARIANTE IDENTIQUE, RELUE PAR UN AUTRE PROCESSUS, LES CONSERVE.
+    relu = client_neuf.get(f"{_url(projet)}/{origine['calculation_id']}",
+                           headers=_entete(jeton(ACTEUR_A))).json()
+    reprise = dict(relu["request"],
+                   derived_from_calculation_id=origine["calculation_id"])
+    variante = client.post(_url(projet), json=reprise,
+                           headers=_entete(jeton(ACTEUR_A)))
+    assert variante.status_code == 201, variante.text
+    assert variante.json()["engineering_inputs_hash"] == origine["engineering_inputs_hash"]
+    assert variante.json()["calculation_fingerprint"] == origine["calculation_fingerprint"]
+    assert _ecarts(origine["inputs"], variante.json()["inputs"]) == set()
+
+
+def test_un_coefficient_hors_tableau_refuse_avant_le_moteur_sans_ecrire(
+        client, jeton, projet) -> None:
+    avant = _compte_calculs(projet)
+    r = client.post(
+        _url(projet),
+        json=_corps_avance(anchorage_coefficients={
+            "alpha_1": 0.5, "alpha_2": 1.0, "alpha_3": 1.0,
+            "alpha_4": 1.0, "alpha_5": 1.0, "alpha_6": 1.0}),
+        headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["error"] == "entree_incoherente"
+    assert r.json()["detail"]["what"] == "InconsistentInput"
+    assert _compte_calculs(projet) == avant
+
+
+def test_les_six_coefficients_vont_ensemble(client, jeton, projet) -> None:
+    """CINQ SUR SIX N'EST PAS UNE DECLARATION: le contrat les exige tous."""
+    r = client.post(
+        _url(projet),
+        json=_corps(anchorage_coefficients={"alpha_1": 1.0, "alpha_2": 0.9}),
+        headers=_entete(jeton(ACTEUR_A)))
+    assert r.status_code == 422, r.text

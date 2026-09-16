@@ -641,6 +641,7 @@ def _entree_moteur(corps: Any) -> Any:
     source.
     """
     from eurostruct_engine.ec2 import ExposureClass, StructuralSystem
+    from eurostruct_engine.ec2.anchorage import AnchorageCoefficients
     from eurostruct_engine.ec2.beam_verification import (
         BeamGeometry,
         BeamVerificationInput,
@@ -649,6 +650,12 @@ def _entree_moteur(corps: Any) -> Any:
     )
 
     g = corps.geometry
+    # LES COEFFICIENTS D'ANCRAGE VOYAGENT TELS QUE DECLARES. Le moteur refuse
+    # une valeur hors du Tableau 8.2/8.3 (InconsistentInput), et la route le
+    # rend en 422 sans rien ecrire, comme toute saisie incoherente.
+    coefficients = (
+        None if corps.anchorage_coefficients is None
+        else AnchorageCoefficients(**corps.anchorage_coefficients.model_dump()))
     return BeamVerificationInput(
         element=corps.element,
         geometry=BeamGeometry(
@@ -676,6 +683,7 @@ def _entree_moteur(corps: Any) -> Any:
         anchorage_available=_quantite(corps.anchorage_available),
         bond_condition=corps.bond_condition,
         b_eff_over_b_w=corps.b_eff_over_b_w,
+        anchorage_coefficients=coefficients,
     )
 
 
@@ -787,9 +795,35 @@ def _exiger_origine_de_variante(ouvert: Any, jeton: str, project_id: str,
         )
 
 
+def _requete_gelee(relu: dict[str, Any]) -> Any:
+    """La requête gelée d'une étude, relue dans la forme du contrat.
+
+    LA CHARGE PORTE AUSSI LE CONTEXTE DU PROJET — `project_id`, `country`,
+    `region`, `as_of` — que le contrat de requête REFUSE par construction :
+    ils sont ôtés avant la relecture, et rien d'autre. Une charge qui ne se
+    relit pas dans le contrat rend ``None`` : l'écran ne peut alors pas
+    promettre une variante fidèle, et il le dit plutôt que de deviner.
+    """
+    from eurostruct_engine.schemas.ec2_verification import (
+        Ec2BeamVerificationRequest,
+    )
+    from pydantic import ValidationError
+
+    brute = relu.get("request")
+    if not isinstance(brute, dict):
+        return None
+    admis = {k: v for k, v in brute.items()
+             if k in Ec2BeamVerificationRequest.model_fields}
+    try:
+        return Ec2BeamVerificationRequest.model_validate(admis)
+    except ValidationError:
+        return None
+
+
 def _reponse_de_verification(etude: Any, *, calculation_id: str,
                              build: str, identite: str,
-                             origine: str | None = None) -> Any:
+                             origine: str | None = None,
+                             requete: Any = None) -> Any:
     from eurostruct_engine.schemas.common import QuantityDTO
     from eurostruct_engine.schemas.ec2_verification import (
         Ec2BeamVerificationResponse,
@@ -831,6 +865,7 @@ def _reponse_de_verification(etude: Any, *, calculation_id: str,
         mention=None if etude.may_be_finalised else MENTION_NON_SIGNABLE,
         inputs=etude.inputs.to_dict(),
         derived_from_calculation_id=origine,
+        request=requete,
     )
 
 
@@ -945,7 +980,19 @@ def verifier_poutre_completement(
                 },
             )
 
-        entree = _entree_moteur(corps)
+        try:
+            entree = _entree_moteur(corps)
+        except (EurostructEngineError, ValueError) as cause:
+            # UNE CLASSE D'EXPOSITION INCONNUE, UN SYSTEME STRUCTURAL
+            # INCONNU, UN COEFFICIENT D'ANCRAGE HORS TABLEAU: la saisie est
+            # incoherente AVANT le moteur, et rien n'est enregistre. Sans ce
+            # filet, un `ValueError` d'enumeration devenait un 500.
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "entree_incoherente",
+                        "what": type(cause).__name__,
+                        "detail": str(cause)},
+            ) from cause
 
         # --- 4. LE MOTEUR -------------------------------------------------
         #
@@ -1038,7 +1085,7 @@ def verifier_poutre_completement(
 
     return _reponse_de_verification(
         etude, calculation_id=calcul_id, build=build, identite=identite,
-        origine=corps.derived_from_calculation_id)
+        origine=corps.derived_from_calculation_id, requete=corps)
 
 
 @routeur.get("/{project_id}/beam-verifications/{calculation_id}",
@@ -1120,6 +1167,7 @@ def _reponse_relue(relu: dict[str, Any], charge: dict[str, Any]) -> Any:
         # relit: la charge de resultat ne le porte pas, et le recomposer
         # depuis autre chose serait une seconde source.
         derived_from_calculation_id=_origine_de(relu),
+        request=_requete_gelee(relu),
     )
 
 

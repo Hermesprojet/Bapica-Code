@@ -21,6 +21,22 @@ export interface AdhesionModifiee {
   user_id: string;
 }
 
+/** Les six coefficients du Tableau 8.2 — et 8.3 pour alpha_6 — déclarés. ILS SONT TOUS LES SIX, OU AUCUN. Une valeur inférieure à 1,0 est une affirmation sur le façonnage (crochet, enrobage, confinement) dont l'ingénieur répond ; le moteur refuse une valeur hors du domaine du tableau. Absents, le moteur retient 1,0 pour chacun — la lecture conservative de chaque ligne — et le dit dans son journal. */
+export interface AnchorageCoefficientsDTO {
+  /** Forme de la barre, §8.4.4, Fig. 8.1. */
+  alpha_1: number;
+  /** Enrobage. */
+  alpha_2: number;
+  /** Confinement par armatures transversales non soudées. */
+  alpha_3: number;
+  /** Confinement par armatures transversales soudées. */
+  alpha_4: number;
+  /** Confinement par pression transversale. */
+  alpha_5: number;
+  /** Proportion de barres recouvertes dans la même section, Tableau 8.3. */
+  alpha_6: number;
+}
+
 /** Ce que le validateur écrit, et **rien d'autre**. NI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION. Les trois sortent de ``organization_members`` sous l'identité du jeton. Les accepter ici donnerait l'illusion qu'ils comptent, alors que PostgreSQL les écrase de toute façon — et l'illusion est pire que l'absence, parce qu'un écran finirait par les afficher. NI IDENTIFIANT DE CALCUL, NI EMPREINTE. L'attestation porte sur le calcul du livrable et sur les octets réellement enregistrés ; les faire venir du corps laisserait attester un calcul et en signer un autre. */
 export interface AttestationDemande {
   /** Réserves émises par le validateur. Elles font partie de l'attestation et sont conservées avec elle. */
@@ -359,6 +375,9 @@ export interface Ec2BeamVerificationRequest {
   V_Ed: QuantityDTO;
   /** Longueur d'ancrage réellement disponible. L'ingénieur seul connaît l'about dont il dispose ; sans elle, l'ancrage serait le seul chapitre sans verdict. */
   anchorage_available: QuantityDTO;
+  /** Les six coefficients alpha du Tableau 8.2, déclarés. Absents, le moteur retient 1,0 pour chacun. */
+  anchorage_coefficients?: AnchorageCoefficientsDTO | null;
+  /** Rapport largeur efficace / largeur d'âme d'une section en T (§5.3.2.1), pour la dispense de flèche. Absent : section rectangulaire déclarée. */
   b_eff_over_b_w?: number | null;
   bars: LongitudinalBarsDTO;
   bond_condition?: string;
@@ -407,6 +426,8 @@ export interface Ec2BeamVerificationResponse {
   notice: string;
   preflight_ready: boolean;
   region: string | null;
+  /** La requête gelée avec l'étude, telle que reçue : c'est d'elle qu'une variante fidèle repart, avec la précision et les unités saisies. */
+  request?: Ec2BeamVerificationRequest | null;
   requires_additional_analysis: boolean;
   sections: SectionOutcomeDTO[];
   /** passed | failed | incomplete */

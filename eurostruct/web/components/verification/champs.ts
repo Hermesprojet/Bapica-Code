@@ -17,29 +17,56 @@
 import type { Ec2BeamVerificationRequest } from "@/lib/verification";
 
 /**
- * Les dix-sept entrées, en texte.
+ * Les entrées de l'étude, en texte — les dix-sept courantes et les avancées.
  *
  * Elles NE PORTENT NI pays, NI région, NI date normative : les trois sont
  * figés sur le projet et lus côté serveur. Le type généré de la requête ne les
  * accepte pas non plus — c'est le même refus, dit deux fois.
+ *
+ * LES ENTRÉES AVANCÉES SONT DES CHAMPS, PAS DES CASES CACHÉES. La classe
+ * associée pour w_max, le rapport b_eff/b_w et les six coefficients d'ancrage
+ * sont des entrées du contrat ; une étude qui les porte doit pouvoir être
+ * relue, et sa variante les reprendre. Mesuré avant ce lot : une variante
+ * d'une étude qui les portait les perdait en silence.
  */
 export type ChampsEtude = {
   element: string;
   //: Section et portée
   b: string; h: string; d: string; l_eff: string;
+  //: Rapport largeur efficace / largeur d'âme (section en T). Vide = rectangulaire.
+  b_eff_sur_b_w: string;
   //: Matériaux et environnement
   beton: string; acier: string; exposition: string;
+  //: Classe XC/XD/XS associée pour w_max, quand l'exposition est XF ou XA.
+  w_max_associee: string;
   //: Sollicitations
   M_Ed: string; V_Ed: string; M_char: string; M_qp: string;
   //: Ferraillage
   barres_nb: string; barres_diametre: string;
   cadres_branches: string; cadres_diametre: string; cadres_espacement: string;
   enrobage: string; cot_theta: string; ancrage: string; adherence: string;
+  //: Coefficients d'ancrage du Tableau 8.2 (et 8.3 pour α6): tous ou aucun.
+  alpha_1: string; alpha_2: string; alpha_3: string;
+  alpha_4: string; alpha_5: string; alpha_6: string;
   //: Service
   phi_creep: string; systeme: string; cloisons_fragiles: boolean;
   //: Mode
   strict: boolean;
 };
+
+/** Les six coefficients, dans l'ordre du Tableau 8.2. */
+export const ALPHAS = [
+  "alpha_1", "alpha_2", "alpha_3", "alpha_4", "alpha_5", "alpha_6",
+] as const;
+
+/**
+ * Les classes que le Tableau 7.1N-ANB sait associer pour w_max : XC, XD, XS.
+ * Ni XF ni XA — c'est précisément quand l'exposition est XF ou XA qu'on en
+ * déclare une.
+ */
+export const CLASSES_W_MAX = [
+  "XC1", "XC2", "XC3", "XC4", "XD1", "XD2", "XD3", "XS1", "XS2", "XS3",
+] as const;
 
 /**
  * Un point de départ COURANT, à corriger — jamais une réponse.
@@ -51,16 +78,18 @@ export type ChampsEtude = {
  * DEUX CHAMPS N'ONT VOLONTAIREMENT PAS DE DÉFAUT UTILE. `phi_creep` dépend du
  * rayon moyen, de l'humidité et de l'âge au chargement ; `systeme` vaut de 0,4
  * à 1,5 selon la ligne du Tableau 7.4N. Un défaut y serait le plus cher des
- * mensonges — il passerait inaperçu.
+ * mensonges — il passerait inaperçu. Les entrées avancées sont vides : vides,
+ * elles ne partent pas dans la requête, et le moteur dit ce qu'il retient.
  */
 export const CHAMPS_INITIAUX: ChampsEtude = {
   element: "P1",
-  b: "300", h: "600", d: "550", l_eff: "6000",
-  beton: "C30/37", acier: "B500B", exposition: "XC3",
+  b: "300", h: "600", d: "550", l_eff: "6000", b_eff_sur_b_w: "",
+  beton: "C30/37", acier: "B500B", exposition: "XC3", w_max_associee: "",
   M_Ed: "250", V_Ed: "300", M_char: "180", M_qp: "120",
   barres_nb: "4", barres_diametre: "20",
   cadres_branches: "2", cadres_diametre: "10", cadres_espacement: "150",
   enrobage: "40", cot_theta: "1.5", ancrage: "800", adherence: "good",
+  alpha_1: "", alpha_2: "", alpha_3: "", alpha_4: "", alpha_5: "", alpha_6: "",
   phi_creep: "", systeme: "", cloisons_fragiles: false,
   strict: true,
 };
@@ -112,20 +141,31 @@ function nombre(texte: string): number | null {
  *
  * Ce qu'il vérifie, c'est qu'une valeur A ÉTÉ SAISIE et qu'elle est un nombre.
  * Envoyer `""` obtiendrait un 422 de forme, illisible pour l'ingénieur.
+ *
+ * LES ENTRÉES AVANCÉES SONT FACULTATIVES, MAIS PAS À MOITIÉ. Un rapport
+ * b_eff/b_w saisi doit être un nombre ; les six coefficients d'ancrage se
+ * donnent tous, ou aucun — trois sur six enverraient au moteur une déclaration
+ * qu'il n'a pas le droit de compléter.
  */
 export function champsManquants(c: ChampsEtude): Record<CleEtape, string[]> {
   const requis = (etiquette: string, valeur: string): string | null =>
     nombre(valeur) === null ? etiquette : null;
   const texte = (etiquette: string, valeur: string): string | null =>
     valeur.trim() === "" ? etiquette : null;
+  const facultatif = (etiquette: string, valeur: string): string | null =>
+    valeur.trim() !== "" && nombre(valeur) === null ? etiquette : null;
 
   const garder = (...v: (string | null)[]) => v.filter((x): x is string => !!x);
+
+  const alphasRemplis = ALPHAS.filter((a) => c[a].trim() !== "");
+  const alphasFaux = ALPHAS.filter((a) => c[a].trim() !== "" && nombre(c[a]) === null);
 
   return {
     dossier: garder(texte("le repère de l'élément", c.element)),
     section: garder(
       requis("la largeur b", c.b), requis("la hauteur h", c.h),
-      requis("la hauteur utile d", c.d), requis("la portée utile", c.l_eff)),
+      requis("la hauteur utile d", c.d), requis("la portée utile", c.l_eff),
+      facultatif("le rapport b_eff/b_w (un nombre, ou vide)", c.b_eff_sur_b_w)),
     materiaux: garder(
       texte("la classe de béton", c.beton), texte("la nuance d'acier", c.acier),
       texte("la classe d'exposition", c.exposition)),
@@ -141,7 +181,10 @@ export function champsManquants(c: ChampsEtude): Record<CleEtape, string[]> {
       requis("l'espacement des cadres", c.cadres_espacement),
       requis("l'enrobage", c.enrobage),
       requis("cot θ", c.cot_theta),
-      requis("la longueur d'ancrage disponible", c.ancrage)),
+      requis("la longueur d'ancrage disponible", c.ancrage),
+      alphasRemplis.length > 0 && alphasRemplis.length < ALPHAS.length
+        ? "les six coefficients d'ancrage α1 à α6 (tous, ou aucun)" : null,
+      ...alphasFaux.map((a) => `le coefficient ${a.replace("alpha_", "α")} (un nombre)`)),
     service: garder(
       requis("le coefficient de fluage φ(∞,t₀)", c.phi_creep),
       texte("le système structural (Tableau 7.4N)", c.systeme)),
@@ -162,6 +205,10 @@ export function etudeComplete(c: ChampsEtude): boolean {
  * branches, l'entraxe du modèle géométrique : les envoyer donnerait deux
  * sources pour un même fait. Le type généré ne les accepte pas.
  *
+ * LES ENTRÉES AVANCÉES NE PARTENT QUE SI ELLES SONT SAISIES. Vides, la clé
+ * est absente du corps : le corps d'une étude courante reste celui d'hier,
+ * octet pour octet, et le moteur retient ce qu'il déclare retenir.
+ *
  * Appeler cette fonction sur des champs incomplets produirait `NaN` : c'est à
  * l'appelant de vérifier `etudeComplete` d'abord, et l'écran le fait en
  * désactivant le bouton avec le motif écrit à côté.
@@ -171,6 +218,7 @@ export function enRequete(
 ): Ec2BeamVerificationRequest {
   const mm = (v: string) => ({ value: Number(v.trim().replace(",", ".")), unit: "mm" });
   const val = (v: string) => Number(v.trim().replace(",", "."));
+  const alphas = ALPHAS.every((a) => c[a].trim() !== "");
   return {
     //: LA FILIATION D'UNE VARIANTE, quand il y en a une. La clé n'est posée
     //: que dans ce cas: le corps d'une étude initiale reste celui d'hier,
@@ -186,6 +234,8 @@ export function enRequete(
     M_qp: { value: val(c.M_qp), unit: "kN*m" },
     phi_creep: val(c.phi_creep),
     exposure_class: c.exposition.trim(),
+    ...(c.w_max_associee.trim()
+      ? { w_max_associated_class: c.w_max_associee.trim() } : {}),
     structural_system: c.systeme.trim(),
     supports_brittle_partitions: c.cloisons_fragiles,
     bars: {
@@ -200,108 +250,143 @@ export function enRequete(
     cot_theta: val(c.cot_theta),
     cover: mm(c.enrobage),
     anchorage_available: mm(c.ancrage),
+    ...(c.b_eff_sur_b_w.trim() ? { b_eff_over_b_w: val(c.b_eff_sur_b_w) } : {}),
     bond_condition: c.adherence,
+    ...(alphas ? {
+      anchorage_coefficients: {
+        alpha_1: val(c.alpha_1), alpha_2: val(c.alpha_2), alpha_3: val(c.alpha_3),
+        alpha_4: val(c.alpha_4), alpha_5: val(c.alpha_5), alpha_6: val(c.alpha_6),
+      },
+    } : {}),
   };
 }
 
 /**
- * Les champs d'une VARIANTE : les entrées gelées d'une étude, remises en saisie.
+ * Une entrée de l'étude d'origine que le formulaire n'a PAS pu reprendre.
  *
- * ELLES VIENNENT DE LA RÉPONSE DU SERVEUR — `inputs`, la forme gelée que le
- * moteur a réellement reçue — jamais des champs qu'on a tapés le jour du
- * calcul. Sur une étude rouverte six mois plus tard, le formulaire est vide ;
- * la réponse, elle, porte ce qui a servi.
- *
- * AUCUNE CONVERSION D'UNITÉ. Une grandeur gelée « 300 mm » redevient « 300 »
- * dans le champ en millimètres ; une grandeur dont l'unité n'est pas celle
- * du champ n'est PAS convertie — elle est laissée vide et NOMMÉE dans
- * `nonRepris`, parce qu'un facteur appliqué ici serait une règle de calcul
- * dans le navigateur. Le moteur formate toujours en mm, kN·m et kN ; ce cas
- * ne se présente donc pas aujourd'hui, et le jour où il se présentera, il
- * sera visible plutôt que faux.
- *
- * CE QUE LE FORMULAIRE NE PORTE PAS N'EST PAS REPRIS, ET C'EST DIT. La classe
- * associée pour w_max (`w_max_associated_class`), le rapport `b_eff/b_w` et
- * les coefficients d'ancrage n'ont pas de champ à l'écran ; une étude qui en
- * portait les perdra dans sa variante, et le bandeau le nomme.
+ * `champ` désigne le champ resté vide, pour que le blocage se lève dès qu'on
+ * le saisit ; `"*"` désigne une impossibilité globale, que seul le détachement
+ * de la variante peut lever.
  */
-export type ChampsDeVariante = { champs: ChampsEtude; nonRepris: string[] };
+export type NonRepris = { champ: keyof ChampsEtude | "*"; motif: string };
 
-export function champsDepuisEntrees(
-  inputs: Record<string, unknown>, strict: boolean,
+export type ChampsDeVariante = { champs: ChampsEtude; nonRepris: NonRepris[] };
+
+/** Les unités que chaque champ attend. Aucune conversion n'est faite ici. */
+const MM = ["mm"];
+const KNM = ["kN*m", "kN·m"];
+const KN = ["kN"];
+
+/**
+ * Les champs d'une VARIANTE : la requête gelée d'une étude, remise en saisie.
+ *
+ * ELLE REPART DE LA REQUÊTE, PAS DES GRANDEURS FORMATÉES. `inputs` porte ce
+ * que le moteur a reçu, mis en forme à trois décimales avec ses unités ;
+ * la requête gelée porte ce que l'ingénieur a SAISI, valeur et unité exactes.
+ * Une variante sans modification doit rendre la même empreinte d'entrées
+ * d'ingénierie que son origine, et seule la requête le garantit.
+ *
+ * AUCUNE CONVERSION D'UNITÉ. Une grandeur gelée en millimètres redevient le
+ * nombre saisi dans le champ en millimètres ; une grandeur dans une autre
+ * unité n'est PAS convertie : le champ reste vide, l'entrée est nommée dans
+ * `nonRepris`, et le lancement est bloqué tant que le champ n'est pas saisi
+ * à la main. Un facteur appliqué ici serait une règle de calcul dans le
+ * navigateur.
+ *
+ * TOUT CE QUE LA REQUÊTE PORTE A UN CHAMP. Les entrées avancées comprises :
+ * rien n'est perdu en silence, et ce que l'écran ne saurait pas reprendre
+ * bloque au lieu d'avertir.
+ */
+export function champsDepuisRequete(
+  requete: Ec2BeamVerificationRequest | null | undefined, strict: boolean,
 ): ChampsDeVariante {
-  const nonRepris: string[] = [];
-  const objet = (v: unknown): Record<string, unknown> =>
-    v !== null && typeof v === "object" && !Array.isArray(v)
-      ? (v as Record<string, unknown>) : {};
-  const geometrie = objet(inputs.geometry);
-  const barres = objet(inputs.bars);
-  const cadres = objet(inputs.links);
-
-  /** « 300 mm » → « 300 » si l'unité est admise ; sinon vide, et nommé. */
-  function grandeur(nom: string, valeur: unknown, unites: string[]): string {
-    if (typeof valeur === "number" && Number.isFinite(valeur)) return String(valeur);
-    if (typeof valeur !== "string") { nonRepris.push(`${nom} (absent)`); return ""; }
-    const m = valeur.trim().match(/^(-?\d+(?:[.,]\d+)?(?:e[-+]?\d+)?)\s*(.*)$/i);
-    if (!m) { nonRepris.push(`${nom} (« ${valeur} » illisible)`); return ""; }
-    const unite = m[2].trim();
-    if (!unites.includes(unite)) {
-      nonRepris.push(`${nom} (« ${valeur} » n'est pas en ${unites[0]})`);
+  const nonRepris: NonRepris[] = [];
+  if (!requete) {
+    return {
+      champs: { ...CHAMPS_INITIAUX, strict },
+      nonRepris: [{
+        champ: "*",
+        motif: "la requête gelée de l'étude d'origine n'est pas relisible dans "
+          + "la forme du contrat : aucune entrée n'a pu être reprise",
+      }],
+    };
+  }
+  const grandeur = (
+    champ: keyof ChampsEtude, q: { value: number; unit: string } | null | undefined,
+    unites: string[],
+  ): string => {
+    if (!q || typeof q.value !== "number" || !Number.isFinite(q.value)) {
+      nonRepris.push({ champ, motif: `${champ} : absent de la requête gelée` });
       return "";
     }
-    return m[1].replace(",", ".");
-  }
-  const nombre = (nom: string, valeur: unknown): string => {
-    if (typeof valeur === "number" && Number.isFinite(valeur)) return String(valeur);
-    nonRepris.push(`${nom} (absent)`);
-    return "";
+    if (!unites.includes(q.unit)) {
+      nonRepris.push({
+        champ,
+        motif: `${champ} : « ${q.value} ${q.unit} » n'est pas en ${unites[0]} — `
+          + "saisissez la valeur convertie",
+      });
+      return "";
+    }
+    return String(q.value);
   };
-  const texte = (nom: string, valeur: unknown): string => {
-    if (typeof valeur === "string" && valeur.trim() !== "") return valeur;
-    nonRepris.push(`${nom} (absent)`);
-    return "";
+  const nombreDe = (champ: keyof ChampsEtude, v: number | null | undefined): string => {
+    if (typeof v !== "number" || !Number.isFinite(v)) {
+      nonRepris.push({ champ, motif: `${champ} : absent de la requête gelée` });
+      return "";
+    }
+    return String(v);
   };
-  const MM = ["mm"];
-  const KNM = ["kN·m", "kN*m", "kN m"];
-  const KN = ["kN"];
+  const texteDe = (champ: keyof ChampsEtude, v: string | null | undefined): string => {
+    if (typeof v !== "string" || v.trim() === "") {
+      nonRepris.push({ champ, motif: `${champ} : absent de la requête gelée` });
+      return "";
+    }
+    return v;
+  };
+  const facultatifNombre = (v: number | null | undefined): string =>
+    typeof v === "number" && Number.isFinite(v) ? String(v) : "";
 
+  const alphas = requete.anchorage_coefficients;
   const champs: ChampsEtude = {
-    element: texte("le repère", inputs.element),
-    b: grandeur("b", geometrie.b, MM),
-    h: grandeur("h", geometrie.h, MM),
-    d: grandeur("d", geometrie.d, MM),
-    l_eff: grandeur("l_eff", geometrie.l_eff, MM),
-    beton: texte("la classe de béton", inputs.concrete_grade),
-    acier: texte("la nuance d'acier", inputs.steel_grade),
-    exposition: texte("la classe d'exposition", inputs.exposure_class),
-    M_Ed: grandeur("M_Ed", inputs.M_Ed, KNM),
-    V_Ed: grandeur("V_Ed", inputs.V_Ed, KN),
-    M_char: grandeur("M_char", inputs.M_char, KNM),
-    M_qp: grandeur("M_qp", inputs.M_qp, KNM),
-    barres_nb: nombre("le nombre de barres", barres.count),
-    barres_diametre: grandeur("le diamètre des barres", barres.diameter, MM),
-    cadres_branches: nombre("le nombre de branches", cadres.legs),
-    cadres_diametre: grandeur("le diamètre des cadres", cadres.diameter, MM),
-    cadres_espacement: grandeur("l'espacement des cadres", cadres.spacing, MM),
-    enrobage: grandeur("l'enrobage", inputs.cover, MM),
-    cot_theta: nombre("cot θ", inputs.cot_theta),
-    ancrage: grandeur("l'ancrage disponible", inputs.anchorage_available, MM),
-    adherence: typeof inputs.bond_condition === "string"
-      && ["good", "poor"].includes(inputs.bond_condition)
-      ? inputs.bond_condition : "good",
-    phi_creep: nombre("φ(∞,t₀)", inputs.phi_creep),
-    systeme: texte("le système structural", inputs.system),
-    cloisons_fragiles: inputs.supports_brittle_partitions === true,
+    element: texteDe("element", requete.element ?? "poutre"),
+    b: grandeur("b", requete.geometry?.b, MM),
+    h: grandeur("h", requete.geometry?.h, MM),
+    d: grandeur("d", requete.geometry?.d, MM),
+    l_eff: grandeur("l_eff", requete.geometry?.l_eff, MM),
+    b_eff_sur_b_w: facultatifNombre(requete.b_eff_over_b_w),
+    beton: texteDe("beton", requete.materials?.concrete_grade),
+    acier: texteDe("acier", requete.materials?.steel_grade),
+    exposition: texteDe("exposition", requete.exposure_class),
+    w_max_associee: requete.w_max_associated_class ?? "",
+    M_Ed: grandeur("M_Ed", requete.M_Ed, KNM),
+    V_Ed: grandeur("V_Ed", requete.V_Ed, KN),
+    M_char: grandeur("M_char", requete.M_char, KNM),
+    M_qp: grandeur("M_qp", requete.M_qp, KNM),
+    barres_nb: nombreDe("barres_nb", requete.bars?.count),
+    barres_diametre: grandeur("barres_diametre", requete.bars?.diameter, MM),
+    cadres_branches: nombreDe("cadres_branches", requete.links?.legs),
+    cadres_diametre: grandeur("cadres_diametre", requete.links?.diameter, MM),
+    cadres_espacement: grandeur("cadres_espacement", requete.links?.spacing, MM),
+    enrobage: grandeur("enrobage", requete.cover, MM),
+    cot_theta: nombreDe("cot_theta", requete.cot_theta),
+    ancrage: grandeur("ancrage", requete.anchorage_available, MM),
+    adherence: "good",
+    alpha_1: alphas ? nombreDe("alpha_1", alphas.alpha_1) : "",
+    alpha_2: alphas ? nombreDe("alpha_2", alphas.alpha_2) : "",
+    alpha_3: alphas ? nombreDe("alpha_3", alphas.alpha_3) : "",
+    alpha_4: alphas ? nombreDe("alpha_4", alphas.alpha_4) : "",
+    alpha_5: alphas ? nombreDe("alpha_5", alphas.alpha_5) : "",
+    alpha_6: alphas ? nombreDe("alpha_6", alphas.alpha_6) : "",
+    phi_creep: nombreDe("phi_creep", requete.phi_creep),
+    systeme: texteDe("systeme", requete.structural_system),
+    cloisons_fragiles: requete.supports_brittle_partitions === true,
     strict,
   };
-
-  for (const cle of ["w_max_associated_class", "b_eff_over_b_w",
-                     "anchorage_coefficients"] as const) {
-    const v = inputs[cle];
-    if (v !== null && v !== undefined) {
-      nonRepris.push(`${cle} = ${typeof v === "object" ? JSON.stringify(v) : String(v)}`
-                     + " (sans champ dans ce formulaire)");
-    }
-  }
+  //: LES CONDITIONS D'ADHÉRENCE: deux valeurs possibles, et rien d'autre. Une
+  //: troisième ne se reprend pas — elle se ressaisit.
+  const adherence = requete.bond_condition ?? "good";
+  if (adherence === "good" || adherence === "poor") champs.adherence = adherence;
+  else nonRepris.push({ champ: "adherence",
+                        motif: `adherence : « ${adherence} » n'est ni « good » ni « poor »` });
   return { champs, nonRepris };
 }

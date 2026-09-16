@@ -33,7 +33,7 @@ import { useEffect, useState } from "react";
 //: s'affichaient sans nom. Un refus qui porte une liste de travail devenait
 //: illisible.
 import type { PreflightBlockerDTO } from "@contracts/generated/engine";
-import { champsDepuisEntrees } from "./champs";
+import { champsDepuisRequete } from "./champs";
 import { EtudeGuidee, type DemandeDeVariante } from "./EtudeGuidee";
 import { SyntheseEtude } from "./SyntheseEtude";
 import {
@@ -113,16 +113,18 @@ export function VerificationComplete({ projet, porteur, reouverture,
   }, [reouverture]);
 
   /**
-   * « Créer une variante » : les entrées gelées de l'étude, remises en saisie.
+   * « Créer une variante » : la requête gelée de l'étude, remise en saisie.
    *
-   * ON PART DE `etude.inputs`, LA FORME QUE LE MOTEUR A REÇUE — pas des champs
-   * tapés le jour du calcul, qui n'existent plus sur une étude rouverte. Le
-   * mode strict est celui de l'étude ; l'exploratoire, s'il y a lieu, reste à
-   * assumer d'un geste. L'origine est nommée, et le serveur la vérifiera.
+   * ON PART DE `etude.request`, CE QUE L'INGÉNIEUR A SAISI — valeur et unité
+   * exactes — pas des grandeurs formatées par le moteur, ni des champs tapés
+   * le jour du calcul, qui n'existent plus sur une étude rouverte. Le mode
+   * strict est celui de l'étude ; l'exploratoire, s'il y a lieu, reste à
+   * assumer d'un geste. L'origine est nommée, et le serveur la vérifiera. Ce
+   * qui ne peut pas être repris BLOQUE le lancement, dans `EtudeGuidee`.
    */
   function creerVariante(etude: Ec2BeamVerificationResponse) {
-    const { champs, nonRepris } = champsDepuisEntrees(
-      etude.inputs ?? {}, etude.strict_ndp);
+    const { champs, nonRepris } = champsDepuisRequete(
+      etude.request ?? null, etude.strict_ndp);
     setVariante((v) => ({
       champs, nonRepris,
       origine: { calculation_id: etude.calculation_id, element: etude.element },

@@ -44,6 +44,7 @@ from pydantic import Field
 from .common import QuantityDTO, Strict
 
 __all__ = [
+    "AnchorageCoefficientsDTO",
     "BeamGeometryDTO",
     "Ec2BeamVerificationRequest",
     "Ec2BeamVerificationResponse",
@@ -84,6 +85,26 @@ class TransverseLinksDTO(Strict):
     legs: int = Field(ge=1, le=12)
     diameter: QuantityDTO
     spacing: QuantityDTO
+
+
+class AnchorageCoefficientsDTO(Strict):
+    """Les six coefficients du Tableau 8.2 — et 8.3 pour alpha_6 — déclarés.
+
+    ILS SONT TOUS LES SIX, OU AUCUN. Une valeur inférieure à 1,0 est une
+    affirmation sur le façonnage (crochet, enrobage, confinement) dont
+    l'ingénieur répond ; le moteur refuse une valeur hors du domaine du
+    tableau. Absents, le moteur retient 1,0 pour chacun — la lecture
+    conservative de chaque ligne — et le dit dans son journal.
+    """
+
+    alpha_1: float = Field(description="Forme de la barre, §8.4.4, Fig. 8.1.")
+    alpha_2: float = Field(description="Enrobage.")
+    alpha_3: float = Field(description="Confinement par armatures transversales non soudées.")
+    alpha_4: float = Field(description="Confinement par armatures transversales soudées.")
+    alpha_5: float = Field(description="Confinement par pression transversale.")
+    alpha_6: float = Field(
+        description="Proportion de barres recouvertes dans la même section, "
+                    "Tableau 8.3.")
 
 
 class Ec2BeamVerificationRequest(Strict):
@@ -141,8 +162,16 @@ class Ec2BeamVerificationRequest(Strict):
                     "seul connaît l'about dont il dispose ; sans elle, "
                     "l'ancrage serait le seul chapitre sans verdict.")
 
-    b_eff_over_b_w: float | None = None
+    b_eff_over_b_w: float | None = Field(
+        default=None,
+        description="Rapport largeur efficace / largeur d'âme d'une section en "
+                    "T (§5.3.2.1), pour la dispense de flèche. Absent : section "
+                    "rectangulaire déclarée.")
     bond_condition: str = Field(default="good")
+    anchorage_coefficients: AnchorageCoefficientsDTO | None = Field(
+        default=None,
+        description="Les six coefficients alpha du Tableau 8.2, déclarés. "
+                    "Absents, le moteur retient 1,0 pour chacun.")
 
     #: LA FILIATION EST DECLAREE PAR L'INGENIEUR, ET VERIFIEE PAR LE SERVEUR.
     #:
@@ -251,3 +280,16 @@ class Ec2BeamVerificationResponse(Strict):
         description="Identifiant de l'étude d'origine quand celle-ci en est "
                     "une variante ; absent sinon. Lu dans la requête gelée, "
                     "jamais recomposé.")
+
+    #: LA REQUETE GELEE, TELLE QUE RECUE ET ENREGISTREE — valeurs et unites
+    #: exactes de l'ingenieur, sans la mise en forme du moteur. C'est d'elle
+    #: qu'une variante repart: `inputs` porte les grandeurs formatees (« 300
+    #: mm », trois decimales), pas la precision saisie. Rendue a la creation
+    #: et a la relecture; absente seulement si la charge gelee n'est plus
+    #: relisible dans la forme du contrat — et alors une variante ne peut pas
+    #: etre fidele, et l'ecran le dit.
+    request: Ec2BeamVerificationRequest | None = Field(
+        default=None,
+        description="La requête gelée avec l'étude, telle que reçue : c'est "
+                    "d'elle qu'une variante fidèle repart, avec la précision "
+                    "et les unités saisies.")
