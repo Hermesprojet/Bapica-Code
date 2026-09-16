@@ -486,6 +486,13 @@ def construire_modele(spec: BeamSectionSpec) -> ModeleSection:
     )
 
 
+#: LA LIGNE DU DOSSIER, EN CARACTERES, A LA TAILLE 1,3 DU CARTOUCHE. Le cadre
+#: fait 180 unites de large; la notice y tient 78 caracteres a la taille 0,85,
+#: soit un peu plus de 50 a la taille 1,3. Mesure LibreCAD 2.2.0.2 du 16/09:
+#: un libelle de 80 caracteres sortait du cadre.
+LARGEUR_PROJET_CARTOUCHE: Final[int] = 50
+
+
 def _cartouche(spec: BeamSectionSpec, txt_h: float,
                notice: str) -> tuple[Polyligne, list[Texte]]:
     """Cartouche — son cadre ET ses lignes, cahier des charges §9.
@@ -506,18 +513,29 @@ def _cartouche(spec: BeamSectionSpec, txt_h: float,
 
     elements: list[Texte] = []
     pad = 2.0 * s
+    y = y0 + h - pad - txt_h
+
+    # LE DOSSIER EN TETE, REPLIE ET BORNE. Un nom de dossier suivi de sa
+    # reference sortait du cadre par la droite — mesure LibreCAD 2.2.0.2 du
+    # 16/09 avec un libelle de 80 caracteres. Deux lignes au plus: le cadre
+    # fait 46 unites de haut et doit encore porter la mention et la notice.
+    # Ce qui deborderait est marque, jamais tu.
+    lignes_projet = wrap(spec.project, LARGEUR_PROJET_CARTOUCHE) or ["—"]
+    if len(lignes_projet) > 2:
+        lignes_projet = [lignes_projet[0], lignes_projet[1][:-3] + "..."]
+    for text in lignes_projet:
+        elements.append(Texte(text, x0 + pad, y, txt_h * 1.3, L_CARTOUCHE))
+        y -= txt_h * 2.0
+
     rows = (
-        spec.project or "—",
         f"Element: {spec.element or '—'}    Indice: {spec.index}    Date: {spec.date or '—'}",
         f"Beton: {spec.concrete_grade or '—'}    Acier: {spec.steel_grade or '—'}"
         f"    Exposition: {spec.exposure_class or '—'}",
         f"Echelle 1:{spec.plot_scale:g}    Cotes en mm    "
         f"Moteur: eurostruct-engine {ENGINE_VERSION}",
     )
-    y = y0 + h - pad - txt_h
-    for i, text in enumerate(rows):
-        elements.append(Texte(text, x0 + pad, y, txt_h * (1.3 if i == 0 else 1.0),
-                              L_CARTOUCHE))
+    for text in rows:
+        elements.append(Texte(text, x0 + pad, y, txt_h, L_CARTOUCHE))
         y -= txt_h * 2.0
 
     # LA MENTION AVANT LA NOTICE, ET PLUS GRASSE. Elle dit que les nombres

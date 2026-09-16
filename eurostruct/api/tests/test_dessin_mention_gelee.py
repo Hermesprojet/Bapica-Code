@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import io
 
-from eurostruct_api.routes.livrables import _modele_du_dessin
 from eurostruct_engine.drawing.beam_section import rendre_dxf
+
+from eurostruct_api.routes.livrables import _modele_du_dessin
 
 MENTION = "PROJET — NON SIGNABLE"
 
@@ -62,6 +63,63 @@ def test_la_geometrie_gelee_n_est_pas_touchee_par_la_mention() -> None:
     """La mention s'ajoute au cartouche ; la coupe reste celle qui a été vérifiée."""
     sans = _modele_du_dessin(_calcul_avec_coupe(), None, None)
     avec = _modele_du_dessin(_calcul_avec_coupe(), None, MENTION)
+    assert avec.polylignes == sans.polylignes
+    assert avec.disques == sans.disques
+    assert avec.cotes == sans.cotes
+
+
+# ---------------------------------------------------------------------------
+# LE NOM DU DOSSIER DANS LE CARTOUCHE
+#
+# MESURE LE 16/09 SUR LE PLAN IMPRIME PAR LibreCAD 2.2.0.2 : la premiere ligne
+# du cartouche etait « — ». La coupe gelee ne porte pas le dossier ; il vient
+# de la ligne du projet, relue — nom et reference — et de rien d'autre.
+# ---------------------------------------------------------------------------
+PROJET = {"name": "Démonstration — poutre belge", "reference": "DEMO-BE-001"}
+
+
+def _cartouche(modele) -> list[str]:
+    return [t.contenu for t in modele.textes if t.calque == "CARTOUCHE"]
+
+
+def test_le_cartouche_nomme_le_dossier_et_sa_reference() -> None:
+    modele = _modele_du_dessin(_calcul_avec_coupe(), None, MENTION, projet=PROJET)
+    cartouche = _cartouche(modele)
+    #: EN PREMIERE LIGNE, la ou le tiret etait.
+    assert cartouche[0] == "Démonstration — poutre belge (DEMO-BE-001)"
+    assert "—" not in cartouche[1:], "le tiret de dossier absent ne doit plus apparaitre"
+
+
+def test_le_dxf_porte_le_nom_du_dossier_en_transcription_cao() -> None:
+    """Jusqu'aux octets, et avec le tiret ASCII que LibreCAD sait afficher."""
+    modele = _modele_du_dessin(_calcul_avec_coupe(), None, MENTION, projet=PROJET)
+    tampon = io.StringIO()
+    rendre_dxf(modele).write(tampon)
+    assert "Démonstration - poutre belge (DEMO-BE-001)" in tampon.getvalue()
+
+
+def test_sans_projet_le_cartouche_garde_son_tiret() -> None:
+    """Le chemin exploratoire n'a pas de dossier, et n'en invente pas."""
+    modele = _modele_du_dessin(_calcul_avec_coupe(), None, MENTION)
+    assert "—" in _cartouche(modele)
+
+
+def test_un_nom_de_dossier_long_est_replie_sur_deux_lignes_au_plus() -> None:
+    """Un libelle de 80 caracteres sortait du cadre par la droite (mesure LibreCAD)."""
+    long = {"name": "Reconstruction du hall de maintenance ferroviaire de la gare "
+                    "de triage, tranche 2", "reference": "HAL-2026-0042"}
+    modele = _modele_du_dessin(_calcul_avec_coupe(), None, MENTION, projet=long)
+    lignes = [t for t in _cartouche(modele) if "hall de maintenance" in t
+              or "HAL-2026-0042" in t or "triage" in t]
+    assert 1 <= len(lignes) <= 2, lignes
+    for ligne in lignes:
+        assert len(ligne) <= 50, ligne
+    assert "HAL-2026-0042" in " ".join(lignes)
+
+
+def test_le_nom_du_dossier_ne_touche_pas_a_la_geometrie() -> None:
+    sans = _modele_du_dessin(_calcul_avec_coupe(), None, MENTION)
+    avec = _modele_du_dessin(_calcul_avec_coupe(), None, MENTION, projet=PROJET)
     assert avec.polylignes == sans.polylignes
     assert avec.disques == sans.disques
     assert avec.cotes == sans.cotes

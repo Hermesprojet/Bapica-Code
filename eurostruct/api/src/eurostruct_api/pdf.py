@@ -291,25 +291,92 @@ def _echapper(fragment: str, symbole: bool) -> bytes:
     return bytes(sortie)
 
 
+#: OU UN MOT TROP LARGE PEUT SE COUPER SANS DEVENIR FAUX: apres un separateur
+#: de nom — « EN 1992-1-1: » puis « gamma_C_persistent » se relisent d'un seul
+#: tenant. Un atome sans separateur (une empreinte, une clause) ne se coupe
+#: jamais au milieu.
+_SEPARATEURS_DE_REPLI: Final[str] = ":_./-"
+
+
+def _eclater(mot: str, police: str, corps: float,
+             largeur: float) -> list[str]:
+    """Un mot plus large que la colonne, coupe APRES ses separateurs.
+
+    MESURE LE 16/09 SUR LA NOTE PDF A CINQ CHAPITRES, rasterisee: dans la
+    colonne « Symbole », « EN 1992-1-1:gamma_C_persistent » debordait sur la
+    colonne « Description » et les deux devenaient illisibles — le symbole
+    recouvrait « beton ». Ne pas couper etait la regle, pour ne pas rendre un
+    identifiant faux a l'oeil; recouvrir la colonne voisine rend les DEUX
+    illisibles, ce qui est pire.
+
+    La coupe ne tombe qu'apres « : », « _ », « . », « / » ou « - », et chaque
+    morceau garde son separateur final: le lecteur recompose le nom sans
+    ambiguite. Un mot sans separateur est rendu tel quel — il deborde, comme
+    avant — parce qu'une empreinte coupee au milieu se relit mal.
+    """
+    if _largeur(mot, police, corps) <= largeur:
+        return [mot]
+
+    def atomes(separateurs: str) -> list[str]:
+        sortie: list[str] = []
+        atome = ""
+        for caractere in mot:
+            atome += caractere
+            if caractere in separateurs:
+                sortie.append(atome)
+                atome = ""
+        if atome:
+            sortie.append(atome)
+        return sortie
+
+    def regrouper(parts: list[str]) -> list[str]:
+        morceaux: list[str] = []
+        courant = ""
+        for a in parts:
+            essai = courant + a
+            if courant and _largeur(essai, police, corps) > largeur:
+                morceaux.append(courant)
+                courant = a
+            else:
+                courant = essai
+        morceaux.append(courant)
+        return morceaux
+
+    # LE DEUX-POINTS D'ABORD: c'est la frontiere de l'espace de noms
+    # (« EN 1992-1-1: » | « gamma_C_persistent »), la coupe la plus lisible.
+    # Les autres separateurs ne servent que si elle ne suffit pas.
+    dernier: list[str] = [mot]
+    for separateurs in (":", _SEPARATEURS_DE_REPLI):
+        parts = atomes(separateurs)
+        if len(parts) < 2:
+            continue
+        dernier = regrouper(parts)
+        if all(_largeur(m, police, corps) <= largeur for m in dernier):
+            return dernier
+    return dernier
+
+
 def _replier(texte: str, police: str, corps: float,
              largeur: float) -> list[str]:
     """Coupe le texte aux espaces pour tenir dans ``largeur``.
 
-    UN MOT PLUS LARGE QUE LA COLONNE N'EST PAS COUPE. Un identifiant, une
-    empreinte ou une clause ne se coupent pas au milieu sans devenir faux à
-    l'oeil; il deborde, et c'est prefere a un document qui mentirait.
+    UN MOT PLUS LARGE QUE LA COLONNE SE COUPE APRES SES SEPARATEURS, et
+    seulement la (`_eclater`). Un identifiant sans separateur — une empreinte —
+    ne se coupe pas au milieu sans devenir faux a l'oeil; il deborde, et c'est
+    prefere a un document qui mentirait.
     """
     if not texte:
         return [""]
     lignes: list[str] = []
     courante = ""
     for mot in texte.split(" "):
-        essai = f"{courante} {mot}" if courante else mot
-        if courante and _largeur(essai, police, corps) > largeur:
-            lignes.append(courante)
-            courante = mot
-        else:
-            courante = essai
+        for morceau in _eclater(mot, police, corps, largeur):
+            essai = f"{courante} {morceau}" if courante else morceau
+            if courante and _largeur(essai, police, corps) > largeur:
+                lignes.append(courante)
+                courante = morceau
+            else:
+                courante = essai
     lignes.append(courante)
     return lignes
 

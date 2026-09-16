@@ -305,7 +305,8 @@ def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
     notice, mention = _mentions(bool(calcul.get("strict_ndp")))
 
     if forme == "dxf":
-        return _octets_du_dessin(calcul, ferraillage, mention, lecture), mention
+        return (_octets_du_dessin(calcul, ferraillage, mention, lecture,
+                                  projet=projet), mention)
 
     # LES DEUX FORMES DISENT LA MEME CHOSE, ET C'EST LA REGLE. Meme calcul
     # relu, meme notice, meme mention: seule la forme du fichier change. Un
@@ -325,8 +326,25 @@ def _octets_du_document(ouvert: Any, jeton: str, projet: dict[str, Any],
     return document.encode("utf-8"), mention
 
 
+def _libelle_projet(projet: dict[str, Any] | None) -> str:
+    """Le dossier, tel que le cartouche le nomme : « nom (reference) ».
+
+    RIEN N'EST INVENTE: les deux viennent de la ligne du projet, relue sous
+    l'identite authentifiee. Sans projet — le chemin de dessin exploratoire —
+    la chaine est vide et le cartouche imprime un tiret, comme avant.
+    """
+    if not projet:
+        return ""
+    nom = str(projet.get("name") or "").strip()
+    reference = str(projet.get("reference") or "").strip()
+    if nom and reference:
+        return f"{nom} ({reference})"
+    return nom or reference
+
+
 def _modele_du_dessin(calcul: dict[str, Any], ferraillage: Any,
-                      mention: str | None, lecture: Any = None) -> Any:
+                      mention: str | None, lecture: Any = None,
+                      projet: dict[str, Any] | None = None) -> Any:
     """Le modele geometrique, **verifie avant d'exister**, depuis la requete
     GELEE du calcul.
 
@@ -384,8 +402,15 @@ def _modele_du_dessin(calcul: dict[str, Any], ferraillage: Any,
         # etude exploratoire dans LibreCAD: le cartouche portait le filigrane
         # de brouillon et la notice, mais pas cette mention — et le fichier
         # se lisait « il ne manque qu'une signature », ce qui est faux.
-        return construire_modele(
-            replace(spec_depuis_dict(coupe), mention=mention or ""))
+        #
+        # LE NOM DU DOSSIER NON PLUS N'EST PAS DANS LA COUPE GELEE, et le
+        # cartouche l'imprimait comme un tiret. Mesure le 16/09 sur le plan
+        # imprime par LibreCAD 2.2.0.2: la premiere ligne du cartouche etait
+        # « — ». Il vient de la ligne du projet, relue — jamais de la requete.
+        spec = spec_depuis_dict(coupe)
+        return construire_modele(replace(
+            spec, mention=mention or "",
+            project=_libelle_projet(projet) or spec.project))
 
     if ferraillage is None:
         raise ConfirmationDomainError(
@@ -419,9 +444,11 @@ def _modele_du_dessin(calcul: dict[str, Any], ferraillage: Any,
 
 
 def _octets_du_dessin(calcul: dict[str, Any], ferraillage: Any,
-                      mention: str | None, lecture: Any = None) -> bytes:
+                      mention: str | None, lecture: Any = None,
+                      projet: dict[str, Any] | None = None) -> bytes:
     """Les octets du DXF, transcrits depuis le modele gele."""
-    modele = _modele_du_dessin(calcul, ferraillage, mention, lecture)
+    modele = _modele_du_dessin(calcul, ferraillage, mention, lecture,
+                               projet=projet)
     tampon = io.StringIO()
     rendre_dxf(modele).write(tampon)
     return tampon.getvalue().encode("utf-8")
@@ -650,7 +677,8 @@ def previsualiser(project_id: str, corps: LivrableCreation,
                 "moteur. Il n'y a rien a dessiner, meme en apercu."
             )
         _notice, mention = _mentions(bool(calcul.get("strict_ndp")))
-        modele = _modele_du_dessin(calcul, corps.reinforcement, mention, lecture)
+        modele = _modele_du_dessin(calcul, corps.reinforcement, mention, lecture,
+                                   projet=projet)
     except (AuthentificationRequise, ConfirmationDomainError) as cause:
         raise _refus(cause) from cause
     finally:
