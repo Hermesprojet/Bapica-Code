@@ -13,6 +13,11 @@ import ezdxf
 import pytest
 
 from eurostruct_engine.drawing import BarRow, BeamSectionSpec, build_beam_section
+
+#: LE DXF PORTE LA TRANSCRIPTION CAO DES CONSTANTES — tirets ASCII, mesure
+#: LibreCAD du 16/09 — et c'est a elle que le fichier est compare, jamais a
+#: un libelle devine.
+from eurostruct_engine.drawing.beam_section import texte_cao
 from eurostruct_engine.legal import (
     DRAFT_WATERMARK,
     FORBIDDEN_SELF_DESCRIPTIONS,
@@ -108,17 +113,17 @@ def test_drawing_carries_the_notice_in_its_language(language: Language, tmp_path
 def test_unvalidated_drawing_is_watermarked() -> None:
     """§9: a sheet nobody signed must not look like one somebody did."""
     doc, _ = build_beam_section(_spec(validated=False))
-    assert DRAFT_WATERMARK[Language.FR] in _texts_of(doc)
+    assert texte_cao(DRAFT_WATERMARK[Language.FR]) in _texts_of(doc)
 
 
 def test_validated_drawing_carries_no_watermark() -> None:
     doc, _ = build_beam_section(_spec(validated=True))
-    assert DRAFT_WATERMARK[Language.FR] not in _texts_of(doc)
+    assert texte_cao(DRAFT_WATERMARK[Language.FR]) not in _texts_of(doc)
 
 
 def test_watermark_follows_the_document_language() -> None:
     doc, _ = build_beam_section(_spec(validated=False, language=Language.DE))
-    assert DRAFT_WATERMARK[Language.DE] in _texts_of(doc)
+    assert texte_cao(DRAFT_WATERMARK[Language.DE]) in _texts_of(doc)
 
 
 def test_drawings_default_to_unvalidated() -> None:

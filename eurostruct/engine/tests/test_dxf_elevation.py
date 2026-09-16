@@ -24,6 +24,7 @@ from eurostruct_engine.drawing import (
     LongitudinalBar,
     build_beam_elevation,
 )
+from eurostruct_engine.drawing.beam_section import texte_cao
 from eurostruct_engine.exceptions import InconsistentInput
 from eurostruct_engine.legal import DRAFT_WATERMARK, Language
 
@@ -235,13 +236,15 @@ def test_an_unvalidated_sheet_carries_the_draft_watermark() -> None:
     """
     doc, _ = build_beam_elevation(_spec(validated=False), width=B)
     texts = " ".join(e.dxf.text for e in doc.modelspace() if e.dxftype() == "TEXT")
-    assert DRAFT_WATERMARK[Language.FR] in texts
+    #: La constante passe par la transcription CAO (tirets ASCII) que le DXF
+    #: porte — mesure LibreCAD du 16/09 — et non par un libelle devine.
+    assert texte_cao(DRAFT_WATERMARK[Language.FR]) in texts
 
 
 def test_a_validated_sheet_does_not() -> None:
     doc, _ = build_beam_elevation(_spec(validated=True), width=B)
     texts = " ".join(e.dxf.text for e in doc.modelspace() if e.dxftype() == "TEXT")
-    assert DRAFT_WATERMARK[Language.FR] not in texts
+    assert texte_cao(DRAFT_WATERMARK[Language.FR]) not in texts
 
 
 def test_the_link_comment_states_how_the_count_was_reached() -> None:

@@ -198,8 +198,13 @@ _TIRETS_CAO: Final = str.maketrans({chr(0x2014): "-", chr(0x2013): "-",
                                     chr(0x2012): "-"})
 
 
-def _texte_cao(s: str) -> str:
-    """Le texte tel qu'il entre dans le DXF: tirets ASCII, rien d'autre change."""
+def texte_cao(s: str) -> str:
+    """Le texte tel qu'il entre dans le DXF: tirets ASCII, rien d'autre change.
+
+    PUBLIC, parce que les tests qui lisent un DXF comparent a une CONSTANTE
+    du produit — la mention, le filigrane — et non a un libelle devine; ils
+    doivent pouvoir passer la constante par la meme transcription.
+    """
     return s.translate(_TIRETS_CAO)
 
 
@@ -223,7 +228,7 @@ def _tracer_texte(msp: Any, t: Texte) -> None:
     attribs: dict[str, Any] = {"layer": t.calque}
     if t.couleur is not None:
         attribs["color"] = t.couleur
-    entite = msp.add_text(_texte_cao(t.contenu), height=t.hauteur,
+    entite = msp.add_text(texte_cao(t.contenu), height=t.hauteur,
                           rotation=t.rotation, dxfattribs=attribs)
     align = (TextEntityAlignment.MIDDLE_CENTER if t.ancrage == "centre"
              else TextEntityAlignment.LEFT)
@@ -239,7 +244,7 @@ def _text(
     :mod:`.beam_elevation` s'en sert encore directement, n'ayant pas encore
     son propre modele geometrique.
     """
-    msp.add_text(_texte_cao(s), height=height,
+    msp.add_text(texte_cao(s), height=height,
                  dxfattribs={"layer": layer}).set_placement(
         (x, y), align=TextEntityAlignment.LEFT
     )
