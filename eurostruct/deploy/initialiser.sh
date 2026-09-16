@@ -14,6 +14,8 @@
 #   2. les privilèges que les migrations exigent ;
 #   3. les réglages de base que les migrations lisent ;
 #   4. la COMMANDE OFFICIELLE de déploiement — sceau, migrations, activation ;
+#   4b. le référentiel des annexes nationales (seed idempotent), sans lequel
+#       aucun projet ne peut être créé ;
 #   5. l'appartenance du login applicatif au backend d'autorité ;
 #   6. l'amorçage de la racine d'autorité, si — et seulement si — un mandat
 #      est déclaré ;
@@ -33,6 +35,10 @@ set -uo pipefail
 
 echec() { echo "INIT: ECHEC — $*" >&2; exit 1; }
 dire()  { echo "INIT: $*"; }
+# Le journal d'erreur du seed, en 0600: un diagnostic SQL peut citer une
+# ligne, jamais un mot de passe — mais on ne le laisse pas trainer.
+TMPDIR_SEED_ERR="$(mktemp)"; chmod 600 "$TMPDIR_SEED_ERR"
+trap 'rm -f "$TMPDIR_SEED_ERR"' EXIT
 
 # ---------------------------------------------------------------------------
 # CE QUE L'ENVIRONNEMENT DOIT PORTER
@@ -222,6 +228,34 @@ if [[ $CODE_DEPLOI -ne 0 ]]; then
   echo "$SORTIE_DEPLOI" | sed -E 's#postgres(ql)?://[^ ]*#postgresql://<masquee>#g' >&2
   echec "la commande officielle de deploiement a rendu $CODE_DEPLOI."
 fi
+
+# ---------------------------------------------------------------------------
+# 4b. LE REFERENTIEL DES ANNEXES NATIONALES — sans lui, aucun projet
+# ---------------------------------------------------------------------------
+# MESURE LE 16/09 EN SUIVANT LA PROCEDURE DE DEMONSTRATION: la base sortait
+# ACTIVE de l'etape 4, l'API repondait, la session s'ouvrait — et la creation
+# d'un projet belge rendait 422, « aucune annexe nationale en vigueur pour BE ».
+# `db/seed/0001_ndp.sql` n'etait applique que par la campagne de tests: la
+# composition de reference montait une base ou aucun projet ne pouvait naitre.
+#
+# Le seed est genere depuis les JSON du moteur (une seule source), il est
+# idempotent (`on conflict do nothing` partout) et n'ecrit JAMAIS `confirmed`:
+# il pose le miroir informatif des annexes et de leurs parametres, tous en
+# `pending_verification`. Il s'applique par le MIGRATEUR, proprietaire des
+# tables — RLS y est activee sans etre forcee, le proprietaire n'y est donc
+# pas soumis — et sa relance sur un volume deja initialise ne change rien.
+dire "referentiel des annexes nationales (db/seed/0001_ndp.sql)…"
+if ! PGUSER="$MIG" PGPASSWORD="$EUROSTRUCT_MIGRATOR_DB_PASSWORD" \
+     psql -X -q -v ON_ERROR_STOP=1 -d "$BASE" \
+          -f /opt/eurostruct/db/seed/0001_ndp.sql >/dev/null 2>"$TMPDIR_SEED_ERR"; then
+  sed -n '1,5p' "$TMPDIR_SEED_ERR" >&2
+  echec "le referentiel des annexes nationales n'a pas pu etre pose. Sans lui,
+       la base est ACTIVE et aucun projet ne peut etre cree."
+fi
+NB_ANNEXES="$(q "select count(*) from national_annexes")"
+[[ "${NB_ANNEXES:-0}" != "0" ]] \
+  || echec "aucune annexe nationale apres le seed: la creation de projet refuserait."
+dire "$NB_ANNEXES annexe(s) nationale(s) au referentiel."
 
 # ---------------------------------------------------------------------------
 # 5. LE LOGIN APPLICATIF ENTRE DANS LE BACKEND D'AUTORITE
