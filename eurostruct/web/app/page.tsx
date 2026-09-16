@@ -229,6 +229,7 @@ function Ecran() {
       </p>
 
       <ConfigurationManquante />
+      <BandeauDemonstration />
       <Connexion />
       {/* LE BUREAU AVANT L'ATELIER, ET C'EST L'ORDRE DU PARCOURS REEL: on
           appartient a une organisation AVANT d'avoir un projet. Un compte tout
@@ -1958,6 +1959,35 @@ function ConfigurationManquante() {
   return (
     <div className="bandeau refus" role="alert" id="configuration-absente">
       <strong>Configuration absente</strong> — {DIAGNOSTIC_API_ABSENTE}
+    </div>
+  );
+}
+
+/**
+ * L'instance dit ce qu'elle est, AVANT qu'une seule décision ne soit prise.
+ *
+ * POURQUOI CE BANDEAU EXISTE
+ * ---------------------------
+ * Un environnement de démonstration vérifie les jetons avec le même code
+ * qu'en production, applique les mêmes politiques et exige les mêmes deux
+ * personnes pour confirmer une valeur nationale. Rien à l'écran ne le
+ * distinguait donc d'une instance réelle — et une confirmation faite sous un
+ * compte d'essai aurait eu exactement l'air d'une approbation d'ingénieur.
+ *
+ * Le mot vient du serveur (`EUROSTRUCT_ENVIRONNEMENT`), lu à chaque requête
+ * comme le reste de la configuration. Il ne change aucune vérification : il
+ * change ce que l'écran affirme.
+ */
+function BandeauDemonstration() {
+  const { environnement } = useConfiguration();
+  if (environnement !== "demonstration") return null;
+  return (
+    <div className="bandeau alerte" role="status" id="environnement-demonstration">
+      <strong>Environnement de démonstration</strong> — les comptes de cette
+      instance sont des comptes d&apos;essai. Une décision d&apos;autorité
+      prise ici éprouve le circuit à deux personnes ; elle ne représente{" "}
+      <strong>aucune approbation réelle</strong> d&apos;un paramètre national.
+      Les calculs, PDF et DXF sont ceux du produit.
     </div>
   );
 }

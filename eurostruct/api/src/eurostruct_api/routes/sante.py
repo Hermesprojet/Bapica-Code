@@ -26,11 +26,19 @@ routeur = APIRouter(tags=["exploitation"])
 
 
 @routeur.get("/health")
-def sante() -> dict[str, Any]:
-    """Le processus répond. Rien de plus n'est affirmé."""
+def sante(requete: Request) -> dict[str, Any]:
+    """Le processus répond. Rien de plus n'est affirmé.
+
+    L'ENVIRONNEMENT DÉCLARÉ Y FIGURE, parce que c'est la sonde qu'un script ou
+    une personne lit en premier : « demonstration » doit se voir avant qu'une
+    seule décision ne soit prise sous un compte d'essai. ``None`` quand rien
+    n'est déclaré — le service n'affirme alors rien sur ce qu'il est.
+    """
     from .. import __version__
 
-    return {"status": "ok", "service": "eurostruct-api", "version": __version__}
+    reglages = requete.app.state.reglages
+    return {"status": "ok", "service": "eurostruct-api", "version": __version__,
+            "environnement": reglages.environnement or None}
 
 
 @routeur.get("/ready")
@@ -86,6 +94,7 @@ def pret(requete: Request, reponse: Response) -> dict[str, Any]:
         reponse.status_code = 503
     return {
         "ready": tout_ok,
+        "environnement": reglages.environnement or None,
         "verifications": verifications,
         # SUPABASE_UNVERIFIED NE DEPEND PAS DU VERDICT DE CETTE SONDE.
         #

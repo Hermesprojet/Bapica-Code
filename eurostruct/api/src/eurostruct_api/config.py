@@ -65,6 +65,17 @@ class ReglagesBase:
 ORIGINES_LOCALES = ("http://localhost:3000", "http://127.0.0.1:3000")
 
 
+#: Les environnements que le service sait NOMMER. Vide = rien n'est affirme.
+#:
+#: `demonstration` NE CHANGE AUCUNE VERIFICATION. Les jetons sont verifies
+#: comme partout, RLS s'applique, le quatre-yeux exige deux personnes. Ce qui
+#: change, c'est ce que le service DIT de lui-meme: `/health` et `/ready`
+#: portent le mot, et l'interface l'affiche en bandeau, pour qu'une decision
+#: prise sous un compte d'essai ne soit jamais prise pour une approbation
+#: reelle d'un parametre national.
+ENVIRONNEMENTS_NOMMABLES = ("", "demonstration")
+
+
 @dataclass(frozen=True, slots=True)
 class Reglages:
     auth: ReglagesAuth
@@ -74,6 +85,12 @@ class Reglages:
     #: `true` en developpement local uniquement. N'assouplit AUCUNE
     #: verification: change seulement le detail rendu dans les refus 500.
     mode_debogage: bool = False
+    #: Ce que ce service declare etre: `""` ou `"demonstration"`.
+    environnement: str = ""
+
+    @property
+    def demonstration(self) -> bool:
+        return self.environnement == "demonstration"
 
     def diagnostic(self) -> dict[str, object]:
         """Ce qu'on peut dire de la configuration sans rien en reveler."""
@@ -87,6 +104,7 @@ class Reglages:
             },
             "base": {"dsn_pose": bool(self.base.dsn),
                      "configure": self.base.configure},
+            "environnement": self.environnement or None,
         }
 
 
@@ -125,7 +143,21 @@ def charger(env: dict[str, str] | None = None) -> Reglages:
         base=ReglagesBase(dsn=e.get("EUROSTRUCT_DATABASE_URL", "").strip()),
         origines=_origines(e.get("EUROSTRUCT_CORS_ORIGINS")),
         mode_debogage=e.get("EUROSTRUCT_DEBUG", "").lower() in ("1", "true", "yes"),
+        environnement=_environnement(e.get("EUROSTRUCT_ENVIRONNEMENT")),
     )
+
+
+def _environnement(brut: str | None) -> str:
+    """Un mot de la liste, ou un refus. Jamais la valeur « la plus proche »."""
+    valeur = (brut or "").strip().lower()
+    if valeur not in ENVIRONNEMENTS_NOMMABLES:
+        raise ConfigurationInvalide(
+            f"EUROSTRUCT_ENVIRONNEMENT={brut!r} n'est pas un environnement que "
+            "ce service sait nommer. Valeurs admises: vide, ou "
+            "« demonstration ». Un mot inconnu n'est pas ramene au plus "
+            "proche: il ne dirait plus ce que le service est."
+        )
+    return valeur
 
 
 def _origines(brut: str | None) -> tuple[str, ...]:

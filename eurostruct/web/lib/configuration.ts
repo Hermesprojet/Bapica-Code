@@ -85,6 +85,15 @@ export type ConfigurationPublique = {
   apiUrl: string;
   supabaseUrl: string;
   supabaseAnonKey: string;
+  /**
+   * Ce que l'instance déclare être : `""` ou `"demonstration"`.
+   *
+   * PUBLIC PAR NATURE, ET C'EST TOUT L'INTÉRÊT. Une instance de démonstration
+   * doit le dire à quiconque ouvre la page : ses comptes sont des comptes
+   * d'essai, et une décision prise sous l'un d'eux n'est pas une approbation
+   * réelle d'un paramètre national.
+   */
+  environnement: string;
 };
 
 /**
@@ -112,6 +121,8 @@ export function configurationDuServeur(): ConfigurationPublique {
       process.env.EUROSTRUCT_SUPABASE_ANON_KEY
       || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
       || "",
+    environnement:
+      (process.env.EUROSTRUCT_ENVIRONNEMENT || "").trim().toLowerCase(),
   };
 }
 
@@ -154,6 +165,8 @@ export function configuration(): ConfigurationPublique {
     apiUrl: process.env.NEXT_PUBLIC_EUROSTRUCT_API_URL || "",
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
     supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+    //: HORS DE L'APPLICATION, RIEN N'EST AFFIRME sur l'environnement.
+    environnement: "",
   };
 }
 
