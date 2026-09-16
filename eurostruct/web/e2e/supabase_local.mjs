@@ -32,7 +32,10 @@
  * `EUROSTRUCT_E2E_COMPTES`, que le harnais remplit avec les UUID qu'il a
  * lui-même inscrits dans `auth.users` de la base jetable.
  */
-import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
+import {
+  createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign,
+} from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.EUROSTRUCT_SUPABASE_LOCAL_PORT || 54321);
@@ -87,9 +90,33 @@ if (COMPTES.size === 0) {
 // SANS OPTION D'ENCODAGE, `generateKeyPairSync` rend deja deux `KeyObject`.
 // Les repasser par `createPublicKey` leve — la cle publique n'est pas un
 // materiau a re-importer, elle est deja la.
-const { publicKey, privateKey } = generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-});
+//
+// LA CLE PEUT SURVIVRE AU PROCESSUS, ET C'EST CE QUI REND UN ENVIRONNEMENT
+// DE DEMONSTRATION REDEMARRABLE. Sans `EUROSTRUCT_SUPABASE_LOCAL_CLE_PEM`,
+// une paire neuve nait a chaque demarrage — le comportement voulu pour un
+// harnais jetable. Avec, la cle privee est lue si le fichier existe, ecrite
+// sinon: l'emetteur redemarre avec la MEME cle sous le MEME `kid`, et l'API,
+// qui a mis ce `kid` en cache, continue de verifier les jetons. Autrement,
+// apres un redemarrage, elle detiendrait sous ce `kid` une cle publique qui
+// ne signe plus rien, et refuserait toute connexion jusqu'au rechargement.
+//
+// Le fichier ne quitte jamais son volume, et ce script ne l'imprime jamais.
+const CHEMIN_CLE = process.env.EUROSTRUCT_SUPABASE_LOCAL_CLE_PEM || "";
+const { publicKey, privateKey } = (() => {
+  if (CHEMIN_CLE && existsSync(CHEMIN_CLE)) {
+    const priv = createPrivateKey(readFileSync(CHEMIN_CLE));
+    return { privateKey: priv, publicKey: createPublicKey(priv) };
+  }
+  const paire = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  if (CHEMIN_CLE) {
+    writeFileSync(
+      CHEMIN_CLE,
+      paire.privateKey.export({ type: "pkcs8", format: "pem" }),
+      { mode: 0o600 },
+    );
+  }
+  return paire;
+})();
 const jwk = { ...publicKey.export({ format: "jwk" }),
               kid: KID, alg: "RS256", use: "sig" };
 

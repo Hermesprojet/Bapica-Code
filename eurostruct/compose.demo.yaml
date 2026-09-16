@@ -1,0 +1,142 @@
+# EUROSTRUCT — la surcouche de DEMONSTRATION de la composition
+#
+#     deploy/demo.sh up          # la seule commande a connaitre
+#
+#     # ce que demo.sh execute, pour qui veut le lire:
+#     docker compose -p eurostruct-demo \
+#       -f compose.yaml -f compose.demo.yaml \
+#       --env-file deploy/demo.env up -d --build --wait
+#
+# CE QUE CE FICHIER AJOUTE A `compose.yaml`, ET RIEN D'AUTRE
+# -----------------------------------------------------------
+# `compose.yaml` est la repetition generale du deploiement: il attend un
+# EMETTEUR DE JETONS exterieur — Supabase, en production. Un poste de travail
+# n'en a pas. Cette surcouche en fournit un, de demonstration, et branche
+# l'API et l'interface dessus. Elle ne touche a rien d'autre: la base, les
+# migrations, les roles, le magasin d'objets et les deux images sont ceux de
+# la composition de reference, sans modification.
+#
+# CE QUE « DEMONSTRATION » VEUT DIRE, ET CE QUE CA NE VEUT PAS DIRE
+# -------------------------------------------------------------------
+# L'emetteur signe des jetons RS256 que l'API verifie avec le MEME code
+# qu'en production — signature, emetteur, audience, expiration, `kid`. Ce qui
+# est de demonstration, ce sont les COMPTES: deux ingenieurs d'essai, dont les
+# identifiants sont generes une fois sur le poste et ne designent personne.
+#
+# Une decision prise sous ces comptes est une decision de demonstration. Elle
+# eprouve le CIRCUIT — proposition, approbation par un second, consommation —
+# et ne represente aucune approbation humaine reelle d'un parametre national.
+# L'API et l'interface le portent en clair (`EUROSTRUCT_ENVIRONNEMENT=
+# demonstration`), et l'ecran l'affiche en bandeau.
+#
+# CE QUI SURVIT A UN REDEMARRAGE, ET POURQUOI
+# --------------------------------------------
+# Les volumes `db`, `objets` et `demo-cles` portent la base, les livrables et
+# la cle de signature. `demo.sh down` arrete les conteneurs et les GARDE;
+# `demo.sh reset` seul detruit les volumes, avec consentement explicite.
+#
+# LA CLE DE L'EMETTEUR EST PERSISTANTE, ET CE N'EST PAS UN DETAIL. Le `kid`
+# est fixe; si la cle changeait a chaque demarrage, l'API garderait en cache
+# une cle publique qui ne signe plus rien et refuserait toute connexion apres
+# chaque redemarrage. La cle privee vit dans `demo-cles`, jamais ailleurs.
+#
+# AUCUN SECRET ICI. Les mots de passe des comptes et de la base viennent de
+# `deploy/demo.env`, genere par `demo.sh` et ignore par Git.
+
+services:
+  # L'EMETTEUR DE JETONS DE DEMONSTRATION. Le meme script que celui des
+  # parcours navigateur — il parle le sous-ensemble de GoTrue que
+  # `lib/session.ts` appelle: `token?grant_type=password`,
+  # `token?grant_type=refresh_token`, `/jwks`. Rien n'est reimplemente.
+  demo-auth:
+    image: node:22-bookworm-slim
+    command: ["node", "/emetteur/supabase_local.mjs"]
+    volumes:
+      # LE SCRIPT EST MONTE DEPUIS LE DEPOT, EN LECTURE SEULE. C'est un
+      # environnement de poste de travail: le depot est la, et c'est
+      # exactement le fichier versionne qui tourne.
+      - ./web/e2e/supabase_local.mjs:/emetteur/supabase_local.mjs:ro
+      - demo-cles:/cles
+    environment:
+      # `0.0.0.0` DANS LE CONTENEUR, ET SEULEMENT LA. Le port n'est publie
+      # que sur la boucle locale de l'hote (voir `ports`): l'emetteur n'est
+      # joignable ni depuis le reseau de la machine, ni au-dela.
+      EUROSTRUCT_SUPABASE_LOCAL_BIND: 0.0.0.0
+      EUROSTRUCT_SUPABASE_LOCAL_PORT: "54321"
+      # L'EMETTEUR DECLARE (`iss`) EST L'ADRESSE QUE LE NAVIGATEUR VOIT. L'API
+      # compare cette chaine a la sienne; elle ne la joint pas. Le JWKS, lui,
+      # est joint par le reseau interne (voir `api`).
+      EUROSTRUCT_SUPABASE_LOCAL_ISSUER: http://127.0.0.1:${DEMO_AUTH_PORT:-54321}/auth/v1
+      EUROSTRUCT_SUPABASE_LOCAL_CLE_PEM: /cles/emetteur-demonstration.pem
+      EUROSTRUCT_E2E_COMPTES: ${EUROSTRUCT_DEMO_COMPTES}
+    ports:
+      - "127.0.0.1:${DEMO_AUTH_PORT:-54321}:54321"
+    healthcheck:
+      # L'image `node` n'a pas `curl`; la sonde INTERROGE le JWKS avec node.
+      test: ["CMD", "node", "-e",
+             "require('http').get('http://127.0.0.1:54321/jwks',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  api:
+    environment:
+      # LE JWKS PAR LE RESEAU INTERNE, L'EMETTEUR PAR SA CHAINE PUBLIQUE. Les
+      # deux valeurs different, et c'est normal: l'une est une adresse qu'on
+      # joint, l'autre une chaine qu'on compare a celle du jeton.
+      EUROSTRUCT_SUPABASE_JWKS_URL: http://demo-auth:54321/jwks
+      EUROSTRUCT_SUPABASE_ISSUER: http://127.0.0.1:${DEMO_AUTH_PORT:-54321}/auth/v1
+      EUROSTRUCT_SUPABASE_AUDIENCE: authenticated
+      EUROSTRUCT_ENVIRONNEMENT: demonstration
+      # LES LIVRABLES SUR LE VOLUME `livrables`, SANS MAGASIN OBJET.
+      #
+      # `compose.yaml` passe par MinIO parce qu'il repete un deploiement a
+      # plusieurs instances d'API. Un poste n'en a qu'une, et le volume nomme
+      # survit aux redemarrages exactement comme le magasin: c'est ce que
+      # `deploy/demo_persistance.sh` mesure. Un stockage local ne reclame
+      # aucun secret S3 — voir docs/DEPLOIEMENT_BASE_HEBERGEE.md, qui separe
+      # ce qu'un scenario exige de ce qu'il n'exige pas.
+      #
+      # Pour eprouver le magasin objet malgre tout: `--profile objets` et
+      # EUROSTRUCT_STORAGE_BACKEND=s3 dans deploy/demo.env.
+      EUROSTRUCT_STORAGE_BACKEND: ${EUROSTRUCT_STORAGE_BACKEND:-local}
+    # `!override` REMPLACE LA LISTE DE `compose.yaml` au lieu de la completer:
+    # sans lui, l'API attendrait encore `objets-init`, que cette surcouche
+    # range sous un profil inactif.
+    depends_on: !override
+      db:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+      demo-auth:
+        condition: service_healthy
+    # SUR LA BOUCLE LOCALE SEULEMENT. `compose.yaml` publie sur toutes les
+    # interfaces, ce qui est le choix d'un deploiement derriere un
+    # repartiteur. Une demonstration sur un poste n'a rien a ecouter au-dela
+    # de la machine — avec des comptes d'essai dont le mot de passe est dans
+    # un fichier local, moins encore.
+    ports: !override
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+
+  # LE MAGASIN OBJET N'EST PAS DEMARRE PAR DEFAUT. Les deux services restent
+  # definis, sous un profil: `docker compose --profile objets ...` les rend.
+  objets:
+    profiles: ["objets"]
+  objets-init:
+    profiles: ["objets"]
+
+  web:
+    environment:
+      EUROSTRUCT_SUPABASE_URL: http://127.0.0.1:${DEMO_AUTH_PORT:-54321}
+      # L'emetteur de demonstration n'a pas de cle anonyme; l'ecran en exige
+      # une non vide pour afficher la connexion. Celle-ci ne designe rien et
+      # n'autorise rien — et elle est publique par nature, comme la vraie.
+      EUROSTRUCT_SUPABASE_ANON_KEY: demonstration-sans-cle-anonyme
+      EUROSTRUCT_ENVIRONNEMENT: demonstration
+    ports: !override
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+
+volumes:
+  demo-cles:

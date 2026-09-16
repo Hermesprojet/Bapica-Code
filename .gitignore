@@ -29,6 +29,16 @@ __pycache__/
 eurostruct/deploy/local.env
 **/deploy/local.env
 
+# L'ENVIRONNEMENT DE DEMONSTRATION, genere par `deploy/demo.sh` au premier
+# demarrage. Il porte des mots de passe tires au hasard sur le poste et les
+# identifiants des deux comptes d'essai. Aucune de ces valeurs n'a sa place
+# dans l'historique — et aucune ne serait la meme sur un autre poste.
+eurostruct/deploy/demo.env
+**/deploy/demo.env
+# Ce que le parcours de demonstration depose sur le poste: PDF, DXF, etat.
+eurostruct/deploy/demo/
+**/deploy/demo/
+
 # LES OCTETS DES LIVRABLES produits par `eurostruct/dev.sh`.
 #
 # Ce sont de VRAIS documents, adresses par leur contenu, dont l'empreinte est
