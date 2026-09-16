@@ -2,6 +2,7 @@
 #
 # EUROSTRUCT — L'ENVIRONNEMENT LOCAL DE DEMONSTRATION, ET IL EST DURABLE
 #
+#   deploy/demo.sh prerequis ce qu'il faut sur le poste, et ce qui manque
 #   deploy/demo.sh up        demarre (construit au premier appel), amorce, sert
 #   deploy/demo.sh down      arrete les conteneurs et GARDE les donnees
 #   deploy/demo.sh status    ce qui tourne, et ce que /ready en dit
@@ -62,15 +63,76 @@ dc() {
 # ---------------------------------------------------------------------------
 # CE QU'IL FAUT SUR LE POSTE, VERIFIE AVANT DE TOUCHER A QUOI QUE CE SOIT
 # ---------------------------------------------------------------------------
-exiger_outils() {
-  command -v docker >/dev/null 2>&1 || refus "docker est absent."
-  docker info >/dev/null 2>&1 \
-    || refus "le demon docker ne repond pas. Demarrez Docker, puis relancez."
-  docker compose version >/dev/null 2>&1 || refus "docker compose est absent."
-  command -v git >/dev/null 2>&1 || refus "git est absent."
-  command -v curl >/dev/null 2>&1 || refus "curl est absent."
-  command -v python3 >/dev/null 2>&1 || refus "python3 est absent."
+# CHAQUE PREREQUIS DIT CE QUI MANQUE ET CE QU'IL FAUT FAIRE. `demo.sh prerequis`
+# les passe tous et rend un tableau; `up` refuse au premier manquant, avec la
+# meme phrase. Un demarrage qui echoue trois etapes plus loin sur une version
+# de Compose trop ancienne (« !override » exige 2.24) ou un port deja pris
+# ferait chercher la panne dans la composition, ou elle n'est pas.
+COMPOSE_MIN="2.24"
+
+version_compose() {   # « 2.29.7 » — sans le « v », sans le reste
+  docker compose version --short 2>/dev/null | sed -E 's/^v//; s/[^0-9.].*$//'
 }
+compose_suffisant() {   # compose_suffisant <version> — >= COMPOSE_MIN ?
+  local v="$1" maj min
+  [[ "$v" =~ ^[0-9]+\.[0-9]+ ]] || return 1
+  maj="${v%%.*}"; min="${v#*.}"; min="${min%%.*}"
+  (( maj > ${COMPOSE_MIN%%.*} )) \
+    || (( maj == ${COMPOSE_MIN%%.*} && min >= ${COMPOSE_MIN#*.} ))
+}
+port_libre() {   # port_libre <port> — rien n'ecoute sur 127.0.0.1:<port>
+  python3 - "$1" <<'PY'
+import socket, sys
+s = socket.socket(); s.settimeout(0.5)
+sys.exit(1 if s.connect_ex(("127.0.0.1", int(sys.argv[1]))) == 0 else 0)
+PY
+}
+
+# verifier_prerequis <exiger|tableau> — rend 0 si tout est la
+verifier_prerequis() {
+  local mode="$1" ko=0
+  ligne() {   # ligne <ok|non> <quoi> <remede>
+    if [[ "$1" == "ok" ]]; then
+      [[ "$mode" == "tableau" ]] && printf '  ok      %s\n' "$2"
+    else
+      ko=1
+      if [[ "$mode" == "tableau" ]]; then printf '  MANQUE  %s — %s\n' "$2" "$3"
+      else refus "$2: $3"; fi
+    fi
+  }
+  local v
+  if command -v docker >/dev/null 2>&1; then ligne ok "docker"
+  else ligne non "docker" "absent. Installer Docker (Desktop, ou le moteur seul) puis relancer."; fi
+  if docker info >/dev/null 2>&1; then ligne ok "demon docker"
+  else ligne non "demon docker" "ne repond pas. Demarrer Docker, puis relancer."; fi
+  v="$(version_compose)"
+  if [[ -n "$v" ]] && compose_suffisant "$v"; then ligne ok "docker compose $v (>= $COMPOSE_MIN)"
+  else ligne non "docker compose ${v:-absent}" "la surcouche de demonstration emploie « !override », qui exige Compose $COMPOSE_MIN ou plus. Mettre Docker Compose a jour."; fi
+  for outil in git curl python3; do
+    if command -v "$outil" >/dev/null 2>&1; then ligne ok "$outil"
+    else ligne non "$outil" "absent. L'installer, puis relancer."; fi
+  done
+  # LES PORTS: seulement si la composition n'est pas deja debout — ses propres
+  # conteneurs les tiennent legitimement, et « up » sur une pile qui tourne
+  # doit rester possible.
+  local api="${API_PORT:-${EUROSTRUCT_DEMO_PORT_API:-8000}}" \
+        web="${WEB_PORT:-${EUROSTRUCT_DEMO_PORT_WEB:-3000}}" \
+        auth="${DEMO_AUTH_PORT:-${EUROSTRUCT_DEMO_PORT_AUTH:-54321}}"
+  local debout=""
+  [[ -f "$ENVF" ]] && debout="$(dc ps -q --status running 2>/dev/null | head -1)"
+  if [[ -n "$debout" ]]; then
+    ligne ok "ports $api, $web, $auth (tenus par la composition, deja debout)"
+  else
+    for duo in "$api:API:EUROSTRUCT_DEMO_PORT_API" "$web:interface:EUROSTRUCT_DEMO_PORT_WEB" \
+               "$auth:emetteur de demonstration:EUROSTRUCT_DEMO_PORT_AUTH"; do
+      IFS=: read -r port quoi var <<<"$duo"
+      if port_libre "$port"; then ligne ok "port $port libre ($quoi)"
+      else ligne non "port $port ($quoi)" "deja pris sur ce poste. Liberer le port, ou choisir un autre avec $var=<port> AVANT le premier « up » (il est fige dans deploy/demo.env)."; fi
+    done
+  fi
+  return $ko
+}
+exiger_outils() { verifier_prerequis exiger; }
 
 # ---------------------------------------------------------------------------
 # LE FICHIER D'ENVIRONNEMENT — GENERE UNE FOIS, JAMAIS RECOPIE D'UN GABARIT
@@ -314,12 +376,16 @@ attendre() {     # attendre <url> <secondes> — rend 0 des que l'URL repond 2xx
 # LES COMMANDES
 # ===========================================================================
 cmd_up() {
+  # LES PORTS FIGES DANS deploy/demo.env SONT CEUX QU'ON VERIFIE: l'environnement
+  # est charge AVANT les prerequis quand il existe, sinon les prerequis
+  # liraient les valeurs par defaut d'un poste qui en a choisi d'autres.
+  [[ -f "$ENVF" ]] && charger_env
   exiger_outils
   if [[ ! -f "$ENVF" ]]; then
     dire "premier demarrage: generation de deploy/demo.env (0600, ignore par Git)"
     generer_env
+    charger_env
   fi
-  charger_env
   EUROSTRUCT_BUILD_SHA="$(identite_de_build)"
   export EUROSTRUCT_BUILD_SHA
   dire "build: $EUROSTRUCT_BUILD_SHA"
@@ -400,12 +466,24 @@ cmd_reset() {
   dire "deploy/demo.env est conserve; supprimez-le pour regenerer des comptes."
 }
 
+cmd_prerequis() {
+  [[ -f "$ENVF" ]] && charger_env
+  echo "Prerequis de l'environnement de demonstration sur ce poste:"
+  if verifier_prerequis tableau; then
+    echo "Tout est la: deploy/demo.sh up peut demarrer."
+  else
+    echo "Au moins un prerequis manque (voir MANQUE ci-dessus). Rien n'a ete lance." >&2
+    exit 2
+  fi
+}
+
 case "${1:-}" in
-  up)      cmd_up ;;
-  down)    cmd_down ;;
-  status)  cmd_status ;;
-  comptes) cmd_comptes ;;
-  reset)   cmd_reset ;;
+  up)        cmd_up ;;
+  down)      cmd_down ;;
+  status)    cmd_status ;;
+  comptes)   cmd_comptes ;;
+  reset)     cmd_reset ;;
+  prerequis) cmd_prerequis ;;
   *)
     sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2 ;;

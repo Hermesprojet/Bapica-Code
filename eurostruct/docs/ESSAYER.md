@@ -26,9 +26,19 @@ par `ezdxf` (MIT) et s'ouvre avec le logiciel de votre choix.
 ## 2. Démarrer — une commande
 
 ```bash
-git clone <url-du-depot> && cd eurostruct
+git clone -b claude/wip-6.3c-racine-de-confiance https://github.com/Hermesprojet/Bapica-Code.git
+cd Bapica-Code/eurostruct
+deploy/demo.sh prerequis     # ce qu'il faut sur le poste, et ce qui manque
 deploy/demo.sh up
 ```
+
+`prerequis` ne lance rien : il dit, ligne par ligne, ce qui est là et ce qui
+manque — Docker et son démon, Compose 2.24 ou plus (la surcouche emploie
+`!override`), `git`, `curl`, `python3`, et les trois ports (8000, 3000,
+54321) libres. Un port pris se change **avant** le premier `up`, par
+`EUROSTRUCT_DEMO_PORT_API`, `_WEB` ou `_AUTH` : il est ensuite figé dans
+`deploy/demo.env`. `up` refait les mêmes contrôles et refuse au premier
+manquant, avec la même phrase.
 
 Le premier appel construit deux images (quelques minutes), génère
 `deploy/demo.env` — mots de passe tirés au hasard, ignoré par Git — puis
@@ -159,7 +169,8 @@ environnement-là, qui ne sont pas les vôtres :
 | | état |
 |---|---|
 | Supabase réel | **jamais traversé.** `SUPABASE_UNVERIFIED`. La recette et ce qui lui manque : [`DEPLOIEMENT_BASE_HEBERGEE.md`](DEPLOIEMENT_BASE_HEBERGEE.md) §5–§6 |
-| AutoCAD, BricsCAD, LibreCAD | **aucun n'a été ouvert.** Ce qui est établi sur le DXF, et ce qui ne l'est pas : [`DESSIN_DXF.md`](DESSIN_DXF.md) §5 |
+| LibreCAD | **ouvert et imprimé sans écran** (2.2.0.2, `dxf2pdf`) : trois défauts trouvés et corrigés — cotes sans valeur, tiret cadratin en « ◊ », mention « NON SIGNABLE » absente du cartouche. Ce qui est établi et ce qui ne l'est pas : [`DESSIN_DXF.md`](DESSIN_DXF.md) §5.5 |
+| AutoCAD, BricsCAD | **aucun n'a été ouvert.** |
 | validation d'un projet calculé | distincte de la validation des paramètres, et non acquise |
 
 ## 9. Sans Docker : le moteur seul
