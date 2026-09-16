@@ -17,10 +17,22 @@
 #      pris avant et apres; il doit etre identique. Idem pour un `executer`
 #      sans consentement.
 #
-#   2. CHAQUE ETAPE REND UN RESULTAT DISTINCT. Sans jetons, les etapes 0 a 2
-#      sont EXECUTEES, 3 a 5 et 7 NON EXECUTEES avec leur raison, et le code
-#      de sortie est 5 (PARTIELLE) — pas 0. Avec les jetons de deux comptes
-#      d'essai, les sept sont EXECUTEES et le code est 0.
+#   2. CHAQUE ETAPE REND UN RESULTAT DISTINCT. Sans jetons, et avec un role
+#      de restauration qui ne contourne pas RLS, les etapes 0 a 2 sont
+#      EXECUTEES, 3 a 7 NON EXECUTEES avec leur raison — celle de l'etape 6
+#      nomme le role et BYPASSRLS — et le code de sortie est 5 (PARTIELLE),
+#      pas 0. Avec les jetons de deux comptes d'essai et le role du
+#      « fournisseur » sur une base vide, les sept sont EXECUTEES et le code
+#      est 0: la copie restauree a le CONTENU de la source, table par table.
+#
+#   3. LA PREUVE DE RESTAURATION DETECTE UNE VALEUR MODIFIEE a nombre de
+#      lignes egal (falsification de `comparer_contenu.sh`), et REFUSE un
+#      lecteur soumis a RLS plutot que de comparer deux vues partielles.
+#
+#   4. AUCUNE SORTIE NE PORTE UN SECRET: ni le mot de passe des roles, ni une
+#      DSN — y compris quand `pg_dump` echoue sur une DSN de sauvegarde
+#      factice, le cas ou une redaction anterieure developpait la DSN entiere
+#      dans le message.
 #
 # LA BASE VISEE EST PROVISIONNEE COMME UN EXPLOITANT LE FERAIT sur une base
 # hebergee — trois roles non superutilisateurs, la base, le schema auth, les
@@ -102,8 +114,14 @@ adm -c "grant pg_read_all_data to \"$SAV\";" >/dev/null 2>&1
 adm -c "grant \"$CTL\" to ${PGUSER:-postgres};" >/dev/null 2>&1
 for r in "${CANONIQUES[@]}" "${HARNAIS_ROLES_STUB[@]}"; do registre_role "$r"; done
 creer_base "$BASE" "owner \"$MIG\""       || exit 1
+# DEUX CIBLES DE RESTAURATION, DEUX LECTEURS. R1 appartient au migrateur, qui
+# ne contourne pas RLS: la recette doit y constater qu'elle ne pourrait pas
+# relire la copie, et rendre l'etape 6 NON EXECUTEE. R2 appartient au role de
+# sauvegarde du « fournisseur » (BYPASSRLS): c'est la ou la verification
+# exacte du contenu peut tourner — le modele d'un `postgres` de Supabase
+# restaurant dans un projet vide.
 creer_base "$BASE_R1" "owner \"$MIG\""    || exit 1
-creer_base "$BASE_R2" "owner \"$MIG\""    || exit 1
+creer_base "$BASE_R2" "owner \"$SAV\""    || exit 1
 admb -v ON_ERROR_STOP=1 -f "$HERE/00_supabase_stub.sql" >/dev/null 2>&1
 admb >/dev/null 2>&1 <<SQL
 grant usage on schema auth to "$MIG" with grant option;
@@ -227,21 +245,50 @@ APRES="$(instantane)"
 [[ $rc -eq 2 ]] || echoue "C: code $rc (2 attendu)"
 [[ "$AVANT" == "$APRES" ]] || echoue "C: un executer SANS consentement a mute"
 
-# --- D. EXECUTER, CONSENTI, SANS JETONS: PARTIELLE (5) -----------------------
-echo "    D. executer sans jetons — 0, 1, 2 et 6 executees, le reste non, code 5"
+# --- D. EXECUTER, CONSENTI, SANS JETONS, RESTAURATEUR SOUMIS A RLS: PARTIELLE (5)
+echo "    D. executer sans jetons, restaurateur sans BYPASSRLS — 0, 1, 2 executees, le reste non, code 5"
 lancer executer "$TMP/D.out" "${ENVC[@]}" "EUROSTRUCT_RECETTE_CIBLE=staging" \
   "EUROSTRUCT_STAGING_RESTORE_URL=$(url "$MIG" "$BASE_R1")"; rc=$?
 [[ $rc -eq 5 ]] || { echoue "D: code $rc (5 attendu)"; sed -n '1,60p' "$TMP/D.out" >&2; }
-for i in 0 1 2 6; do
+for i in 0 1 2; do
   [[ "$(resultat_etape "$TMP/D.out" $i)" == "EXECUTEE" ]] \
     || echoue "D: etape $i « $(resultat_etape "$TMP/D.out" $i) » (EXECUTEE attendue)"
 done
-for i in 3 4 5 7; do
+for i in 3 4 5 6 7; do
   [[ "$(resultat_etape "$TMP/D.out" $i)" == "NONEXECUTEE" ]] \
     || echoue "D: etape $i « $(resultat_etape "$TMP/D.out" $i) » (NON EXECUTEE attendue)"
 done
 grep -q "jeton" "$TMP/D.out" || echoue "D: les etapes non executees ne nomment pas le jeton manquant"
+# LE PARTIEL EST EXPLICITE: l'etape 6 dit que la sauvegarde est faite, que la
+# restauration n'est PAS tentee, et POURQUOI — le role, et BYPASSRLS.
+grep -E "^  6 " "$TMP/D.out" | grep -q "sauvegarde faite" \
+  || echoue "D: l'etape 6 ne dit pas que la sauvegarde a ete faite"
+grep -E "^  6 " "$TMP/D.out" | grep -q "« $MIG » ne contourne pas RLS (BYPASSRLS)" \
+  || echoue "D: l'etape 6 ne nomme pas le role de restauration ni BYPASSRLS"
+[[ "$(PGDATABASE="$BASE_R1" psql -X -q -tAc "select count(*) from pg_tables where schemaname='public'" 2>/dev/null | tr -d ' ')" == "0" ]] \
+  || echoue "D: une restauration a ete tentee dans R1 malgre le role sans BYPASSRLS"
 [[ "$(q "select normative_activation_state()")" == "ACTIVE" ]] || echoue "D: la base n'est pas ACTIVE apres l'etape 1"
+
+# --- F. UNE DSN DE SAUVEGARDE FACTICE, UN ECHEC PROVOQUE: AUCUN SECRET EN SORTIE
+# Le port 1 refuse la connexion: `pg_dump` echoue, l'etape 6 est ECHOUEE, et
+# son message ne doit porter ni l'utilisateur, ni le mot de passe, ni la DSN.
+# Une redaction anterieure developpait `${VAR:-...}` — la DSN entiere — dans
+# ce message-la precisement.
+echo "    F. echec de pg_dump sur une DSN factice — aucun identifiant ni mot de passe en sortie"
+FUITE_USER="fictif_fuite_${JETON}"; FUITE_MDP="FICTIF-MDP-FUITE-${JETON}"
+lancer executer "$TMP/F.out" "${ENVC[@]}" "EUROSTRUCT_RECETTE_CIBLE=staging" \
+  "EUROSTRUCT_STAGING_RESTORE_URL=$(url "$SAV" "$BASE_R2")" \
+  "EUROSTRUCT_STAGING_BACKUP_URL=postgresql://$FUITE_USER:$FUITE_MDP@127.0.0.1:1/fuite?sslmode=disable"; rc=$?
+[[ $rc -eq 1 ]] || echoue "F: code $rc (1 attendu: l'etape 6 doit echouer)"
+[[ "$(resultat_etape "$TMP/F.out" 6)" == "ECHOUEE" ]] \
+  || echoue "F: etape 6 « $(resultat_etape "$TMP/F.out" 6) » (ECHOUEE attendue)"
+grep -E "^  6 " "$TMP/F.out" | grep -q "pg_dump par le role de sauvegarde" \
+  || echoue "F: l'etape 6 ne porte pas le libelle fixe du role de sauvegarde"
+for secret in "$FUITE_MDP" "$FUITE_USER" "postgresql://" "127.0.0.1:1/"; do
+  grep -qF -- "$secret" "$TMP/F.out" && echoue "F: la sortie contient « ${secret:0:24} »"
+done
+[[ "$(PGDATABASE="$BASE_R2" psql -X -q -tAc "select count(*) from pg_tables where schemaname='public'" 2>/dev/null | tr -d ' ')" == "0" ]] \
+  || echoue "F: une restauration a ete faite dans R2 alors que la sauvegarde avait echoue"
 
 # --- L'EXPLOITANT, APRES LE DEPLOIEMENT: racine, comptes d'essai, habilitations,
 #     et le referentiel des annexes que la creation d'un projet exige ----------
@@ -280,21 +327,70 @@ echo "    E. executer avec deux comptes d'essai — les sept etapes"
 lancer executer "$TMP/E.out" "${ENVC[@]}" "EUROSTRUCT_RECETTE_CIBLE=staging" \
   "EUROSTRUCT_STAGING_JETON_A=$JETON_A" "EUROSTRUCT_STAGING_JETON_B=$JETON_B" \
   "EUROSTRUCT_RECETTE_JETONS_D_ESSAI=oui" \
-  "EUROSTRUCT_STAGING_RESTORE_URL=$(url "$MIG" "$BASE_R2")"; rc=$?
+  "EUROSTRUCT_STAGING_RESTORE_URL=$(url "$SAV" "$BASE_R2")"; rc=$?
 [[ $rc -eq 0 ]] || { echoue "E: code $rc (0 attendu)"; sed -n '1,80p' "$TMP/E.out" >&2; }
 for i in 0 1 2 3 4 5 6 7; do
   [[ "$(resultat_etape "$TMP/E.out" $i)" == "EXECUTEE" ]] \
     || echoue "E: etape $i « $(resultat_etape "$TMP/E.out" $i) » (EXECUTEE attendue)"
 done
 grep -q "COMPLETE" "$TMP/E.out" || echoue "E: pas de verdict COMPLETE"
+grep -E "^  6 " "$TMP/E.out" | grep -q "contenu IDENTIQUE" \
+  || echoue "E: l'etape 6 n'affirme pas un contenu identique par empreinte"
 [[ "$(q "select count(*) from normative_authority_decisions where state='CONSUMED'")" == "1" ]] \
   || echoue "E: la decision d'essai n'est pas consommee en base"
 [[ "$(q "select count(*) from calculations")" -ge 1 ]] || echoue "E: aucune etude enregistree"
 [[ "$(q "select count(*) from deliverables")" -ge 2 ]] || echoue "E: moins de deux livrables"
 
+# --- G. LA PREUVE DE RESTAURATION EST FALSIFIABLE ----------------------------
+# Meme lecteur (le role de sauvegarde, BYPASSRLS) des deux cotes: identique.
+# Puis UNE valeur est modifiee sur la copie, a nombre de lignes egal — et la
+# comparaison doit le voir. Enfin un lecteur soumis a RLS est REFUSE.
+echo "    G. falsification de la preuve de restauration — valeur modifiee, lecteur soumis a RLS"
+COMPARER="$HERE/comparer_contenu.sh"
+TABLES=(organizations projects calculations results deliverables national_annexes
+        normative_authorisation_grants normative_authority_decisions normative_rule_confirmations)
+env -i PATH="$PATH" HOME="$HOME" \
+  EUROSTRUCT_COMPARE_SOURCE_URL="$(url "$SAV" "$BASE")" \
+  EUROSTRUCT_COMPARE_COPIE_URL="$(url "$SAV" "$BASE_R2")" \
+  bash "$COMPARER" "${TABLES[@]}" >"$TMP/G1.out" 2>&1; rc=$?
+[[ $rc -eq 0 ]] || { echoue "G: contenu source/copie non identique avant alteration (code $rc)"; cat "$TMP/G1.out" >&2; }
+grep -qE "^TOTAL [1-9]" "$TMP/G1.out" || echoue "G: la comparaison ne porte sur aucune ligne"
+AVANT_N="$(PGDATABASE="$BASE_R2" psql -X -q -tAc "select count(*) from organizations" 2>/dev/null | tr -d ' ')"
+PGDATABASE="$BASE_R2" psql -X -q -v ON_ERROR_STOP=1 \
+  -c "update organizations set name = name || ' (altere par le harnais)' where name like 'Recette technique%'" >/dev/null 2>&1 \
+  || echoue "G: le harnais n'a pas pu alterer une valeur sur la copie"
+APRES_N="$(PGDATABASE="$BASE_R2" psql -X -q -tAc "select count(*) from organizations" 2>/dev/null | tr -d ' ')"
+[[ -n "$AVANT_N" && "$AVANT_N" == "$APRES_N" && "$AVANT_N" != "0" ]] \
+  || echoue "G: le nombre de lignes de organizations a change ($AVANT_N -> $APRES_N): la falsification ne teste pas ce qu'elle doit"
+env -i PATH="$PATH" HOME="$HOME" \
+  EUROSTRUCT_COMPARE_SOURCE_URL="$(url "$SAV" "$BASE")" \
+  EUROSTRUCT_COMPARE_COPIE_URL="$(url "$SAV" "$BASE_R2")" \
+  bash "$COMPARER" "${TABLES[@]}" >"$TMP/G2.out" 2>&1; rc=$?
+[[ $rc -eq 1 ]] || echoue "G: une valeur modifiee a nombre de lignes egal n'a pas ete detectee (code $rc)"
+grep -E "^  organizations " "$TMP/G2.out" | grep -q "DIFFERENT" \
+  || echoue "G: la table alteree n'est pas nommee DIFFERENTE"
+grep -E "^  calculations " "$TMP/G2.out" | grep -q "identique" \
+  || echoue "G: une table intacte est signalee differente"
+env -i PATH="$PATH" HOME="$HOME" \
+  EUROSTRUCT_COMPARE_SOURCE_URL="$(url "$SAV" "$BASE")" \
+  EUROSTRUCT_COMPARE_COPIE_URL="$(url "$MIG" "$BASE_R2")" \
+  bash "$COMPARER" "${TABLES[@]}" >"$TMP/G3.out" 2>&1; rc=$?
+[[ $rc -eq 2 ]] || echoue "G: un lecteur soumis a RLS n'a pas ete refuse (code $rc)"
+grep -q "ne contourne pas RLS" "$TMP/G3.out" || echoue "G: le refus du lecteur soumis a RLS n'est pas motive"
+
+# --- H. AUCUN SECRET DANS AUCUNE SORTIE --------------------------------------
+# Le mot de passe de tous les roles est le meme, et il est connu du harnais:
+# il ne doit apparaitre dans aucune sortie de la recette ni du comparateur —
+# pas plus qu'une DSN, quelle qu'elle soit.
+echo "    H. aucune sortie ne porte un mot de passe ni une DSN"
+for f in "$TMP"/*.out; do
+  grep -qF -- "$MDP" "$f" && echoue "H: $(basename "$f") contient le mot de passe des roles"
+  grep -qE "postgres(ql)?://" "$f" && echoue "H: $(basename "$f") contient une DSN"
+done
+
 if ((KO)); then
   echo "      NON: au moins un scenario est tombe (voir ci-dessus)." >&2
   exit 1
 fi
-echo "    ok: diagnostic sans mutation, refus sans consentement, PARTIELLE sans jetons, COMPLETE avec deux comptes d'essai."
+echo "    ok: diagnostic sans mutation, refus sans consentement, PARTIELLE sans jetons ni BYPASSRLS, COMPLETE avec deux comptes d'essai, contenu restaure identique et falsifiable, aucun secret en sortie."
 exit 0

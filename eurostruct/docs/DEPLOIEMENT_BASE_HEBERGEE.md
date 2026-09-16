@@ -151,6 +151,13 @@ explicitement (`EUROSTRUCT_STAGING_BACKUP_URL`) et, sans lui, rend l'étape 6
 **échouée avec cette raison** au lieu d'un faux vert. La sauvegarde complète
 d'une base hébergée est celle de son fournisseur.
 
+La même chose vaut pour **relire une copie restaurée** : la restauration pose
+les politiques avec les tables, et le rôle qui a restauré — propriétaire de la
+copie, avec `--no-owner` — y reste soumis. Vérifier que la copie porte le
+contenu de la source exige donc un lecteur qui contourne RLS
+(`EUROSTRUCT_STAGING_RESTORE_URL` : le rôle du fournisseur sur une base vide).
+Sans lui, la recette ne restaure pas et le dit.
+
 ---
 
 ## 5. La recette, étape par étape
@@ -168,7 +175,7 @@ consentement), `4` non exécutable.
 | 3 quatre-yeux | un paramètre proposé par A, relu, approuvé et consommé par B ; A ne peut pas s'approuver | `EUROSTRUCT_STAGING_JETON_A`, `_B` **et** `EUROSTRUCT_RECETTE_JETONS_D_ESSAI=oui` |
 | 4 étude belge | stricte : refus ou aboutissement **cohérent** avec la couverture ; exploratoire : 201 | jeton A |
 | 5 livrables | PDF et DXF créés, téléchargés, empreintes concordantes | jeton A ; stockage du scénario |
-| 6 sauvegarde | `pg_dump` par le rôle de sauvegarde, `pg_restore` vers une base **vide** distincte ; puis, pour `national_annexes`, `calculations`, `deliverables` et `normative_authority_decisions` : lignes vues à la source = lignes dans l'archive = lignes vivantes comptées par le serveur sur la copie après `ANALYZE` — jamais un `count(*)` du rôle qui restaure, que la RLS forcée laisserait à zéro ; et au moins une ligne, sinon rien n'est prouvé | `EUROSTRUCT_STAGING_BACKUP_URL`, `EUROSTRUCT_STAGING_RESTORE_URL` |
+| 6 sauvegarde | `pg_dump` par le rôle de sauvegarde ; `pg_restore` vers une base **vide** distincte, par un rôle qui **contourne RLS** (`BYPASSRLS` ou superutilisateur — sur Supabase, celui du fournisseur) ; puis `db/test/comparer_contenu.sh` : pour neuf tables essentielles (`organizations`, `projects`, `calculations`, `results`, `deliverables`, `national_annexes`, `normative_authorisation_grants`, `normative_authority_decisions`, `normative_rule_confirmations`), une **empreinte de toutes les lignes** — rendues en texte sous des réglages de session fixés, triées, hachées — identique entre la source et la copie. Une valeur modifiée à nombre de lignes égal la change ; un compte de lignes, exact ou estimé, ne la verrait pas. Les politiques du produit restent posées sur la copie : c'est le lecteur qui est privilégié, par attribut, et le script refuse un lecteur qui ne l'est pas plutôt que de comparer deux vues partielles. Au moins une ligne, sinon rien n'est prouvé. **Si le rôle de restauration ne contourne pas RLS** : la sauvegarde est faite, la restauration et la vérification ne sont pas tentées, l'étape est NON EXECUTEE avec le nom du rôle, et le verdict est PARTIELLE | `EUROSTRUCT_STAGING_BACKUP_URL`, `EUROSTRUCT_STAGING_RESTORE_URL` |
 | 7 redémarrage | l'API redémarrée relit l'étude, même empreinte | jeton A |
 
 Le mode `diagnostic` (défaut) **ne mute rien** : attributs du rôle, `--dry-run`
@@ -186,13 +193,32 @@ au §2 et **aucun superutilisateur pendant la recette** :
 
 * diagnostic avec tous les accès : instantané du catalogue identique avant et
   après ; `executer` sans consentement : idem, code 2 ;
-* `executer` sans jetons : étapes 0, 1, 2 et 6 exécutées, 3, 4, 5, 7 non
-  exécutées avec leur raison, code 5 ;
-* `executer` avec deux comptes d'essai : sept étapes exécutées, code 0 ; une
-  décision consommée, une étude enregistrée, deux livrables.
+* `executer` sans jetons, avec un rôle de restauration qui ne contourne pas
+  RLS : étapes 0, 1, 2 exécutées, 3 à 7 non exécutées avec leur raison —
+  l'étape 6 nomme le rôle et `BYPASSRLS`, et aucune restauration n'est
+  tentée — code 5 ;
+* `executer` avec deux comptes d'essai et le rôle de sauvegarde du
+  « fournisseur » sur une base vide : sept étapes exécutées, code 0 ; une
+  décision consommée, une étude enregistrée, deux livrables, et le contenu de
+  la copie identique à la source, table par table ;
+* falsification de la preuve de restauration : une valeur modifiée sur la
+  copie, à nombre de lignes égal, est détectée et la table nommée ; un lecteur
+  soumis à RLS est refusé, avec le motif ;
+* une DSN de sauvegarde factice et un échec provoqué de `pg_dump` : l'étape 6
+  est ECHOUEE, et aucune sortie — de ce scénario ni d'aucun autre — ne porte
+  un identifiant, un mot de passe ou une DSN.
 
 L'auto-test a d'abord été rouge, et chaque rouge nommait un défaut réel de la
 recette ou de son harnais — pas de l'instance :
+
+* le message d'échec de `pg_dump` composait « le rôle de sauvegarde » avec
+  `${VAR:-le migrateur}`, qui — la variable étant définie — développait la
+  **DSN entière, mot de passe compris**. Le libellé est fixe, les fragments
+  d'erreur repris de `pg_dump` sont masqués, et l'auto-test balaie toutes les
+  sorties ;
+* la première preuve de restauration comparait des comptes de lignes, dont
+  `n_live_tup` — une **statistique**, pas une lecture. Remplacée par
+  l'empreinte de contenu du §5, ligne 6 ;
 
 * `psql -c` n'interpole pas les variables : l'admission du login applicatif
   dans `eurostruct_authority_backend` (`:"app"`) échouait en silence sur une

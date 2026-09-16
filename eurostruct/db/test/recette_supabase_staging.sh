@@ -477,22 +477,29 @@ else
 fi
 
 # --- 6. SAUVEGARDE ET RESTAURATION — PAR LE ROLE DE SAUVEGARDE, VERS UNE BASE VIDE
-echo "==> 6. sauvegarde (pg_dump) et restauration (base vide distincte)"
-# CE QUE L'ETAPE COMPARE, ET PAR QUI. Les tables de l'atelier sont sous RLS
+echo "==> 6. sauvegarde (pg_dump), restauration (base vide distincte), contenu compare"
+# CE QUE L'ETAPE ETABLIT, ET PAR QUI. Les tables de l'atelier sont sous RLS
 # FORCEE (0002): le role qui restaure — proprietaire de la copie, avec
 # `--no-owner` — n'y voit que ce que les politiques lui montrent, c'est-a-dire
 # rien. Un `count(*)` de sa part rendait « 1 avant, 0 apres » sur une
-# restauration CORRECTE, et « 0 avant, 0 apres » passait pour un succes quand
-# aucune etude n'existait encore — les deux mesures par l'auto-test.
+# restauration CORRECTE (mesure par l'auto-test), et un compte de lignes —
+# fut-il exact — ne dirait rien d'une VALEUR alteree a nombre de lignes egal.
 #
-# On compare donc, table par table, trois nombres: ce que le role de
-# sauvegarde voit a la source, ce que l'ARCHIVE contient (les lignes de son
-# bloc COPY), et ce que LE SERVEUR compte de lignes vivantes sur la copie
-# apres ANALYZE — un compte que le proprietaire obtient sans qu'aucune
-# politique ne s'interpose, et sans toucher aux donnees restaurees. Et
-# l'archive doit contenir au moins une ligne dans ces tables: « 0 = 0 » ne
-# prouverait rien.
-TABLES_RESTAUREES=(national_annexes calculations deliverables normative_authority_decisions)
+# La preuve est donc une comparaison de CONTENU, table par table, entre la
+# source et la copie: `db/test/comparer_contenu.sh` calcule pour chacune une
+# empreinte de toutes ses lignes, ordonnees, sous des reglages de session
+# fixes, et exige d'etre lu par un role qui contourne RLS des deux cotes —
+# sinon il refuse, plutot que de comparer deux vues partielles. Les politiques
+# du produit restent posees sur la copie; c'est le LECTEUR qui est privilegie,
+# par attribut, comme le role de sauvegarde l'est a la source.
+#
+# SANS CE LECTEUR, L'ETAPE EST NON EXECUTEE, ET LE DIT: la sauvegarde est
+# faite, la restauration et la verification ne sont pas tentees — restaurer
+# une copie qu'on ne peut pas relire ne prouverait rien. Le verdict est alors
+# PARTIELLE, jamais COMPLETE.
+TABLES_ESSENTIELLES=(organizations projects calculations results deliverables
+                     national_annexes normative_authorisation_grants
+                     normative_authority_decisions normative_rule_confirmations)
 compter_archive() {   # compter_archive <table> — lignes de la table dans l'archive
   pg_restore -a -t "$1" -f - "$TMP/base.dump" 2>/dev/null \
     | awk '/^COPY /{d=1; next} /^\\\.$/{d=0} d{n++} END{print n+0}'
@@ -512,30 +519,36 @@ else
     # de BYPASSRLS peut sauvegarder — c'est le sien, et il se nomme ici par
     # EUROSTRUCT_STAGING_BACKUP_URL. Sans lui, la sauvegarde COMPLETE est celle
     # du fournisseur, pas la notre.
-    echouee 6 "pg_dump par ${EUROSTRUCT_STAGING_BACKUP_URL:+le role de sauvegarde}${EUROSTRUCT_STAGING_BACKUP_URL:-le migrateur} a echoue: $(grep -m1 -iE 'row-level|permission|error' "$TMP/dump.err" | cut -c1-120). Sur une base hebergee, la sauvegarde complete est celle du fournisseur (role BYPASSRLS)."
-  elif ! avec_url EUROSTRUCT_STAGING_RESTORE_URL sh -c 'pg_restore --no-owner --no-privileges -d "$PGDATABASE" "$1"' _ "$TMP/base.dump" 2>"$TMP/restore.err"; then
-    echouee 6 "pg_restore a echoue: $(grep -m1 -i error "$TMP/restore.err" | cut -c1-120)"
-  elif ! avec_url EUROSTRUCT_STAGING_RESTORE_URL psql -X -q -v ON_ERROR_STOP=1 \
-         -c "analyze $(IFS=,; echo "${TABLES_RESTAUREES[*]}")" >/dev/null 2>"$TMP/analyze.err"; then
-    echouee 6 "ANALYZE sur la copie restauree a echoue: $(grep -m1 -i error "$TMP/analyze.err" | cut -c1-120)"
+    #
+    # LE LIBELLE EST FIXE. Une redaction anterieure composait « le role de
+    # sauvegarde » avec `${VAR:-le migrateur}` — qui, la variable etant
+    # definie, DEVELOPPAIT LA DSN ENTIERE, mot de passe compris, dans cette
+    # ligne. Aucune valeur de variable n'entre dans un message de cette
+    # recette; l'auto-test le balaie.
+    echouee 6 "pg_dump par le role de sauvegarde (EUROSTRUCT_STAGING_BACKUP_URL, ou a defaut le migrateur) a echoue: $(grep -m1 -iE 'row-level|permission|error|refus' "$TMP/dump.err" | sed -E 's#postgres(ql)?://[^ ]*#<dsn>#g; s#user "[^"]*"#user "<masque>"#g' | cut -c1-120). Sur une base hebergee, la sauvegarde complete est celle du fournisseur (role BYPASSRLS)."
   else
-    ok=1; detail=""; total=0
-    for t in "${TABLES_RESTAUREES[@]}"; do
-      source="$(sql SAUVEGARDE_URL "select count(*) from $t")"
-      archive="$(compter_archive "$t")"
-      copie="$(sql EUROSTRUCT_STAGING_RESTORE_URL "select n_live_tup from pg_stat_user_tables where schemaname='public' and relname='$t'")"
-      total=$((total + archive))
-      if [[ -n "$source" && "$source" == "$archive" && "$copie" == "$archive" ]]; then
-        detail+="$t $archive; "
-      else
-        ok=0; detail+="$t: source ${source:-illisible}, archive $archive, copie ${copie:-illisible}; "
-      fi
-    done
-    ((total > 0)) || { ok=0; detail+="l'archive ne contient aucune ligne dans ces tables: rien n'est prouve; "; }
-    if ((ok)); then
-      executee 6 "dump $(wc -c < "$TMP/base.dump") o; source = archive = copie (lignes vivantes comptees par le serveur apres ANALYZE): $detail"
+    TAILLE_DUMP="$(wc -c < "$TMP/base.dump")"
+    RESTAURATEUR="$(sql EUROSTRUCT_STAGING_RESTORE_URL "select current_user")"
+    CONTOURNE="$(sql EUROSTRUCT_STAGING_RESTORE_URL "select (rolbypassrls or rolsuper) from pg_roles where rolname = current_user")"
+    if [[ "$CONTOURNE" != "t" ]]; then
+      non_exec 6 "sauvegarde faite ($TAILLE_DUMP o; archive: calculations $(compter_archive calculations), deliverables $(compter_archive deliverables)); restauration et verification NON tentees: le role de restauration « ${RESTAURATEUR:-illisible} » ne contourne pas RLS (BYPASSRLS) et ne pourrait pas relire exactement ce qu'il restaure sous les politiques du produit. Fournir, en EUROSTRUCT_STAGING_RESTORE_URL, le role du fournisseur sur une base vide."
+    elif ! avec_url EUROSTRUCT_STAGING_RESTORE_URL sh -c 'pg_restore --no-owner --no-privileges -d "$PGDATABASE" "$1"' _ "$TMP/base.dump" 2>"$TMP/restore.err"; then
+      echouee 6 "pg_restore a echoue: $(grep -m1 -i error "$TMP/restore.err" | sed -E 's#postgres(ql)?://[^ ]*#<dsn>#g' | cut -c1-120)"
     else
-      echouee 6 "$detail"
+      EUROSTRUCT_COMPARE_SOURCE_URL="$SAUVEGARDE_URL" \
+      EUROSTRUCT_COMPARE_COPIE_URL="$EUROSTRUCT_STAGING_RESTORE_URL" \
+        bash "$HERE/comparer_contenu.sh" "${TABLES_ESSENTIELLES[@]}" >"$TMP/contenu.out" 2>&1; rc=$?
+      TOTAL="$(grep -m1 -oE '^TOTAL [0-9]+' "$TMP/contenu.out" | cut -d' ' -f2)"
+      case "$rc" in
+        0)
+          if [[ "${TOTAL:-0}" -gt 0 ]]; then
+            executee 6 "dump $TAILLE_DUMP o; restauree; contenu IDENTIQUE, table par table, par empreinte de toutes les lignes ($TOTAL ligne(s) sur ${#TABLES_ESSENTIELLES[@]} tables): $(grep -E '^  ' "$TMP/contenu.out" | awk '{printf "%s %s; ", $1, $2}')"
+          else
+            echouee 6 "contenu identique mais VIDE (aucune ligne dans les ${#TABLES_ESSENTIELLES[@]} tables essentielles): rien n'est prouve."
+          fi ;;
+        1) echouee 6 "le contenu restaure DIFFERE de la source: $(grep -E 'DIFFERENT' "$TMP/contenu.out" | awk '{printf "%s (source %s l., copie %s l.); ", $1, $2, $3}')" ;;
+        *) echouee 6 "comparaison de contenu impossible (code $rc): $(grep -m1 -E 'REFUS|ERREUR|NON EXECUTE' "$TMP/contenu.out" | cut -c1-140)" ;;
+      esac
     fi
   fi
 fi
