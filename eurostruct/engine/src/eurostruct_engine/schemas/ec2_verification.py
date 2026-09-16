@@ -144,6 +144,27 @@ class Ec2BeamVerificationRequest(Strict):
     b_eff_over_b_w: float | None = None
     bond_condition: str = Field(default="good")
 
+    #: LA FILIATION EST DECLAREE PAR L'INGENIEUR, ET VERIFIEE PAR LE SERVEUR.
+    #:
+    #: « Creer une variante » part d'une etude enregistree: les memes entrees
+    #: preremplies, une section, une charge ou un ferraillage modifies, et un
+    #: NOUVEAU calcul sous son propre identifiant. L'etude d'origine n'est ni
+    #: modifiee ni remplacee — ses documents restent consultables — et le
+    #: lien est ecrit ici, dans la requete gelee, pour que dix ans plus tard un
+    #: lecteur sache de quelle etude celle-ci est partie.
+    #:
+    #: Ce n'est PAS une conclusion ni une preuve: c'est une donnee que seul
+    #: l'appelant connait (de quoi il est parti). Le serveur verifie que
+    #: l'origine existe dans le MEME projet et qu'elle est une etude complete;
+    #: sinon il refuse sans rien ecrire.
+    derived_from_calculation_id: str | None = Field(
+        default=None,
+        description="Identifiant de l'étude enregistrée dont celle-ci est une "
+                    "variante. Elle doit appartenir au même projet et être "
+                    "une étude complète à cinq chapitres ; sinon la requête "
+                    "est refusée sans écriture. Absent pour une étude "
+                    "initiale.")
+
 
 class SectionOutcomeDTO(Strict):
     """Le verdict d'un des cinq chapitres."""
@@ -221,3 +242,12 @@ class Ec2BeamVerificationResponse(Strict):
     mention: str | None = None
     notice: str
     inputs: dict[str, Any] = Field(default_factory=dict)
+
+    #: L'ETUDE DONT CELLE-CI EST UNE VARIANTE, telle que la requete gelee la
+    #: nomme. Rendue a la creation ET a la relecture: le lien fait partie de
+    #: l'etude, pas de l'ecran qui l'a lancee.
+    derived_from_calculation_id: str | None = Field(
+        default=None,
+        description="Identifiant de l'étude d'origine quand celle-ci en est "
+                    "une variante ; absent sinon. Lu dans la requête gelée, "
+                    "jamais recomposé.")

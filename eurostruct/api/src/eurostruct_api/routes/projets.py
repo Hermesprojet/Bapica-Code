@@ -736,8 +736,60 @@ def _ligne_de_section(section: Any) -> dict[str, Any]:
     }
 
 
+def _exiger_origine_de_variante(ouvert: Any, jeton: str, project_id: str,
+                                origine: str) -> None:
+    """L'étude d'origine d'une variante existe dans CE projet, et en est une.
+
+    ELLE EST RELUE SOUS L'IDENTITÉ AUTHENTIFIÉE, par la même primitive que
+    « Rouvrir » : un identifiant d'un autre projet, d'une autre organisation,
+    ou qui n'existe pas, obtient le même refus — « introuvable » — sans que la
+    réponse dise lequel des trois. Et un calcul de flexion seule n'est pas
+    l'origine d'une étude à cinq chapitres : la variante d'une étude est une
+    étude.
+
+    LE REFUS VIENT AVANT LE MOTEUR ET N'ÉCRIT RIEN. Une variante qui
+    revendiquerait une origine fausse serait une étude qui ment sur sa
+    provenance ; on ne l'enregistre pas.
+    """
+    from uuid import UUID
+
+    try:
+        UUID(origine)
+    except ValueError as cause:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "origine_invalide", "what": "variante",
+                    "detail": ("derived_from_calculation_id n'est pas un "
+                               "identifiant de calcul. Aucun calcul n'a été "
+                               "lancé et rien n'a été enregistré.")},
+        ) from cause
+    try:
+        relu = ouvert.atelier.rouvrir_calcul(
+            jeton, project_id=project_id, calculation_id=origine)
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "origine_introuvable", "what": "variante",
+                    "detail": (f"l'étude d'origine {origine} est introuvable "
+                               "dans ce projet. Aucun calcul n'a été lancé et "
+                               "rien n'a été enregistré.")},
+        ) from cause
+    charge = (relu.get("result") or {}).get("result") or {}
+    if not charge.get("sections"):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "origine_pas_une_etude_complete",
+                    "what": "variante",
+                    "detail": (f"le calcul {origine} n'est pas une étude "
+                               "complète à cinq chapitres : il ne peut pas "
+                               "être l'origine d'une variante. Aucun calcul "
+                               "n'a été lancé et rien n'a été enregistré.")},
+        )
+
+
 def _reponse_de_verification(etude: Any, *, calculation_id: str,
-                             build: str, identite: str) -> Any:
+                             build: str, identite: str,
+                             origine: str | None = None) -> Any:
     from eurostruct_engine.schemas.common import QuantityDTO
     from eurostruct_engine.schemas.ec2_verification import (
         Ec2BeamVerificationResponse,
@@ -778,6 +830,7 @@ def _reponse_de_verification(etude: Any, *, calculation_id: str,
         # note doit la reproduire.
         mention=None if etude.may_be_finalised else MENTION_NON_SIGNABLE,
         inputs=etude.inputs.to_dict(),
+        derived_from_calculation_id=origine,
     )
 
 
@@ -844,6 +897,18 @@ def verifier_poutre_completement(
     strict = bool(corps.strict_ndp)
 
     try:
+        # --- 2b. L'ORIGINE D'UNE VARIANTE, AVANT TOUT LE RESTE -------------
+        #
+        # Une variante nomme l'etude dont elle part. Ce lien est une DONNEE
+        # de l'appelant, et il est verifie ici, avant le preflight et avant le
+        # moteur: une origine hors du projet, inexistante, ou qui n'est pas
+        # une etude complete, refuse sans rien ecrire. Le lien accepte part
+        # ensuite dans la charge gelee (`corps.model_dump()` ci-dessous), donc
+        # dans la ligne enregistree, l'identite d'execution et la relecture.
+        if corps.derived_from_calculation_id is not None:
+            _exiger_origine_de_variante(
+                ouvert, jeton, project_id, corps.derived_from_calculation_id)
+
         # --- 3. LE REFERENTIEL EST RESOLU UNE FOIS, ET UNE SEULE ----------
         #
         # `resolve_beam_context` applique les confirmations du provider et rend
@@ -971,8 +1036,9 @@ def verifier_poutre_completement(
             lecture.fermer()
         ouvert.fermer()
 
-    return _reponse_de_verification(etude, calculation_id=calcul_id,
-                                    build=build, identite=identite)
+    return _reponse_de_verification(
+        etude, calculation_id=calcul_id, build=build, identite=identite,
+        origine=corps.derived_from_calculation_id)
 
 
 @routeur.get("/{project_id}/beam-verifications/{calculation_id}",
@@ -1050,4 +1116,17 @@ def _reponse_relue(relu: dict[str, Any], charge: dict[str, Any]) -> Any:
         mention=(None if charge.get("may_be_finalised")
                  else MENTION_NON_SIGNABLE),
         inputs=charge.get("inputs") or {},
+        # LE LIEN DE VARIANTE EST DANS LA REQUETE GELEE, et c'est la qu'on le
+        # relit: la charge de resultat ne le porte pas, et le recomposer
+        # depuis autre chose serait une seconde source.
+        derived_from_calculation_id=_origine_de(relu),
     )
+
+
+def _origine_de(relu: dict[str, Any]) -> str | None:
+    """L'étude d'origine nommée par la requête gelée, ou ``None``."""
+    requete = relu.get("request")
+    if not isinstance(requete, dict):
+        return None
+    origine = requete.get("derived_from_calculation_id")
+    return str(origine) if origine else None

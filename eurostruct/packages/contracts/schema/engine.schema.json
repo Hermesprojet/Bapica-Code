@@ -1521,6 +1521,19 @@
         "cover": {
           "$ref": "#/$defs/QuantityDTO"
         },
+        "derived_from_calculation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identifiant de l'étude enregistrée dont celle-ci est une variante. Elle doit appartenir au même projet et être une étude complète à cinq chapitres ; sinon la requête est refusée sans écriture. Absent pour une étude initiale.",
+          "title": "Derived From Calculation Id"
+        },
         "element": {
           "default": "poutre",
           "maxLength": 100,
@@ -1622,6 +1635,19 @@
         "country": {
           "title": "Country",
           "type": "string"
+        },
+        "derived_from_calculation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identifiant de l'étude d'origine quand celle-ci en est une variante ; absent sinon. Lu dans la requête gelée, jamais recomposé.",
+          "title": "Derived From Calculation Id"
         },
         "element": {
           "title": "Element",

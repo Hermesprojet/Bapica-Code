@@ -983,3 +983,158 @@ def test_deux_demandes_du_meme_plan_ne_font_qu_un_objet(
         f"{len(objets)} objets: {sorted(objets)}. Le magasin ne supprime "
         "jamais: chaque doublon est definitif.")
     assert next(iter(objets)).endswith(f"{premier.json()['sha256']}.dxf")
+
+
+# ---------------------------------------------------------------------------
+# 13. CREER UNE VARIANTE: UN NOUVEAU CALCUL, LIE A SON ORIGINE
+# ---------------------------------------------------------------------------
+#
+# L'ingenieur travaille par iterations: il part d'une etude enregistree,
+# modifie sa section, ses charges ou son ferraillage, et relance. Ce que cette
+# section exige de la frontiere HTTP:
+#
+#   * la variante recoit SON PROPRE identifiant — ce n'est pas une mise a jour;
+#   * le lien avec l'origine est ecrit dans la requete gelee, rendu a la
+#     creation et a la relecture, jamais recompose;
+#   * l'origine n'est ni modifiee ni remplacee: elle se relit a l'identique et
+#     ses documents restent consultables;
+#   * une origine fausse — hors projet, inexistante, ou qui n'est pas une etude
+#     complete — refuse AVANT le moteur, sans rien ecrire.
+def _compte_calculs(projet) -> int:
+    return _observer(
+        "select count(*) from calculations where project_id = %s",
+        (projet["project_id"],))[0][0]
+
+
+def test_une_variante_recoit_son_propre_identifiant_et_nomme_son_origine(
+        client, jeton, projet) -> None:
+    origine = _verifier(client, jeton, projet).json()
+    assert origine["derived_from_calculation_id"] is None, (
+        "une etude initiale ne derive de rien")
+
+    r = _verifier(client, jeton, projet,
+                  bars={"count": 5, "diameter": {"value": 20, "unit": "mm"}},
+                  derived_from_calculation_id=origine["calculation_id"])
+    assert r.status_code == 201, r.text
+    variante = r.json()
+
+    #: UN NOUVEAU CALCUL, PAS UNE RETOUCHE DE L'ANCIEN.
+    assert variante["calculation_id"] != origine["calculation_id"]
+    assert variante["derived_from_calculation_id"] == origine["calculation_id"]
+    #: LE FERRAILLAGE A CHANGE, ET LES EMPREINTES LE DISENT.
+    assert variante["engineering_inputs_hash"] != origine["engineering_inputs_hash"]
+    assert variante["calculation_fingerprint"] != origine["calculation_fingerprint"]
+    assert variante["inputs"]["bars"]["count"] == 5
+
+    #: LE LIEN EST DANS LA REQUETE GELEE, EN BASE — la ou un auditeur le lira.
+    ligne = _observer(
+        "select request->>'derived_from_calculation_id' from calculations "
+        " where id = %s", (variante["calculation_id"],))[0][0]
+    assert ligne == origine["calculation_id"]
+
+
+def test_l_origine_d_une_variante_se_relit_a_l_identique(
+        client, jeton, projet) -> None:
+    """L'ETUDE INITIALE RESTE CONSULTABLE, TELLE QU'ELLE A ETE ENREGISTREE."""
+    origine = _verifier(client, jeton, projet).json()
+    _verifier(client, jeton, projet,
+              M_Ed={"value": 200, "unit": "kN*m"},
+              derived_from_calculation_id=origine["calculation_id"])
+
+    relu = client.get(f"{_url(projet)}/{origine['calculation_id']}",
+                      headers=_entete(jeton(ACTEUR_A)))
+    assert relu.status_code == 200, relu.text
+    revu = relu.json()
+    assert revu["calculation_fingerprint"] == origine["calculation_fingerprint"]
+    assert revu["derived_from_calculation_id"] is None
+    assert [(s["key"], s["status"], s["utilisation"])
+            for s in revu["sections"]] == [
+        (s["key"], s["status"], s["utilisation"]) for s in origine["sections"]]
+
+
+def test_la_variante_rouverte_porte_encore_son_origine(
+        client, client_neuf, jeton, projet) -> None:
+    """LE LIEN FAIT PARTIE DE L'ETUDE, pas de l'ecran qui l'a lancee."""
+    origine = _verifier(client, jeton, projet).json()
+    variante = _verifier(
+        client, jeton, projet,
+        derived_from_calculation_id=origine["calculation_id"]).json()
+
+    relu = client_neuf.get(f"{_url(projet)}/{variante['calculation_id']}",
+                           headers=_entete(jeton(ACTEUR_A)))
+    assert relu.status_code == 200, relu.text
+    assert relu.json()["derived_from_calculation_id"] == origine["calculation_id"]
+
+
+def test_les_documents_de_l_origine_restent_consultables_apres_la_variante(
+        client, jeton, projet) -> None:
+    import hashlib
+
+    origine = _verifier(client, jeton, projet).json()
+    note = _brouillon_pdf_de(client, jeton, projet, origine["calculation_id"])
+    assert note.status_code == 201, note.text
+    livrable = note.json()
+
+    _verifier(client, jeton, projet,
+              bars={"count": 5, "diameter": {"value": 20, "unit": "mm"}},
+              derived_from_calculation_id=origine["calculation_id"])
+
+    octets = client.get(
+        f"/v1/projects/{projet['project_id']}/deliverables/"
+        f"{livrable['deliverable_id']}/download",
+        headers=_entete(jeton(ACTEUR_A)))
+    assert octets.status_code == 200
+    assert hashlib.sha256(octets.content).hexdigest() == livrable["sha256"]
+
+
+@pytest.mark.parametrize("origine,erreur", [
+    ("00000000-0000-0000-0000-000000000000", "origine_introuvable"),
+    ("pas-un-identifiant", "origine_invalide"),
+])
+def test_une_origine_inexistante_ou_invalide_refuse_sans_ecrire(
+        client, jeton, projet, origine, erreur) -> None:
+    avant = _compte_calculs(projet)
+    r = _verifier(client, jeton, projet, derived_from_calculation_id=origine)
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["error"] == erreur
+    assert _compte_calculs(projet) == avant, (
+        "une variante a l'origine fausse a laisse une ligne derriere elle")
+
+
+def test_une_origine_d_un_autre_projet_est_refusee(
+        client, jeton, projet, projet_fr) -> None:
+    """MEME APPELANT, AUTRE DOSSIER: le lien ne traverse pas les projets.
+
+    Une variante belge qui nommerait une etude francaise comme origine
+    lierait deux referentiels; la primitive de relecture ne voit pas le calcul
+    depuis ce projet, et la route refuse sans ecrire.
+    """
+    ailleurs = client.post(_url(projet_fr), json=_corps(),
+                           headers=_entete(jeton(ACTEUR_A))).json()
+    avant = _compte_calculs(projet)
+    r = _verifier(client, jeton, projet,
+                  derived_from_calculation_id=ailleurs["calculation_id"])
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["error"] == "origine_introuvable"
+    assert _compte_calculs(projet) == avant
+
+
+def test_un_calcul_de_flexion_seule_n_est_pas_l_origine_d_une_variante(
+        client, jeton, projet) -> None:
+    """LA VARIANTE D'UNE ETUDE EST UNE ETUDE. Une flexion seule n'en est pas une."""
+    flexion = client.post(
+        f"/v1/projects/{projet['project_id']}/calculations/ec2/beam-flexure",
+        json={"element": "P1", "strict_ndp": False,
+              "section": {"b": {"value": 300, "unit": "mm"},
+                          "h": {"value": 600, "unit": "mm"},
+                          "d": {"value": 550, "unit": "mm"}},
+              "materials": {"concrete_grade": "C30/37", "steel_grade": "B500B"},
+              "M_Ed": {"value": 250, "unit": "kN*m"}},
+        headers=_entete(jeton(ACTEUR_A)))
+    assert flexion.status_code == 201, flexion.text
+    avant = _compte_calculs(projet)
+    r = _verifier(client, jeton, projet,
+                  derived_from_calculation_id=flexion.json()["calculation_id"])
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["error"] == "origine_pas_une_etude_complete"
+    assert _compte_calculs(projet) == avant

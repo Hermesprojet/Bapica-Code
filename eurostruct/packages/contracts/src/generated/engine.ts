@@ -365,6 +365,8 @@ export interface Ec2BeamVerificationRequest {
   /** Inclinaison des bielles retenue par l'ingénieur. Une borne nationale peut la refuser, et c'est un refus juste. */
   cot_theta: number;
   cover: QuantityDTO;
+  /** Identifiant de l'étude enregistrée dont celle-ci est une variante. Elle doit appartenir au même projet et être une étude complète à cinq chapitres ; sinon la requête est refusée sans écriture. Absent pour une étude initiale. */
+  derived_from_calculation_id?: string | null;
   element?: string;
   exposure_class: string;
   geometry: BeamGeometryDTO;
@@ -388,6 +390,8 @@ export interface Ec2BeamVerificationResponse {
   calculation_fingerprint: string;
   calculation_id: string;
   country: string;
+  /** Identifiant de l'étude d'origine quand celle-ci en est une variante ; absent sinon. Lu dans la requête gelée, jamais recomposé. */
+  derived_from_calculation_id?: string | null;
   element: string;
   engine_build_sha: string;
   engine_version: string;
