@@ -1,129 +1,166 @@
 # Essayer EUROSTRUCT
 
-**Il n'y a pas de lien.** L'application n'est déployée nulle part : aucun
-hébergement n'a été mis en service, et rien n'a été publié sur un domaine. Ce
-qui suit est la procédure exacte pour la faire tourner sur votre poste, en
-partant d'un dépôt fraîchement cloné.
+**Il n'y a pas de lien.** L'application n'est déployée nulle part. Ce qui suit
+est la procédure exacte pour la faire tourner sur votre poste, en partant d'un
+dépôt fraîchement cloné — et elle a été **suivie telle quelle** avant d'être
+écrite (§7).
 
-Deux chemins. Le premier ne demande **ni base de données, ni compte, ni
-configuration** et montre le produit en une dizaine de minutes. Le second
-ajoute le parcours d'autorité, et demande PostgreSQL — plus une seconde
-personne, pour la raison expliquée au §4.
+Une version antérieure de ce document promettait « une vérification à cinq
+chapitres et ses documents, sans base ni compte ». C'était faux : l'étude
+complète, sa note PDF et son plan DXF vivent dans un **projet**, et un projet
+exige une base et une identité. La procédure ci-dessous fournit les deux.
 
 ---
 
 ## 1. Ce qu'il faut avoir
 
-| | version | pour quoi |
-|---|---|---|
-| Python | 3.11 ou plus | moteur et API |
-| Node.js | 22 ou plus | interface |
-| PostgreSQL | 16 | **chemin 2 seulement** — le parcours d'autorité |
+| | pour quoi |
+|---|---|
+| Docker et Docker Compose (v2.24 ou plus) | la pile entière tourne en conteneurs |
+| `git`, `curl`, `python3` | le lanceur amorce l'espace de travail par l'API |
+| Node.js 22 *(facultatif)* | uniquement pour rejouer le parcours au clavier (§4) |
 
 Pas d'AutoCAD, pas de licence CAO, pas de compte Supabase. Le DXF est produit
 par `ezdxf` (MIT) et s'ouvre avec le logiciel de votre choix.
 
-## 2. Chemin 1 — le produit en dix minutes, sans rien configurer
+## 2. Démarrer — une commande
 
 ```bash
 git clone <url-du-depot> && cd eurostruct
-python -m venv .venv && source .venv/bin/activate
-pip install -e engine -e "api[dev]"
-(cd web && npm install)
-
-./dev.sh
+deploy/demo.sh up
 ```
 
-`dev.sh` attend que les deux services **répondent** avant de rendre la main —
-un processus lancé n'est pas un service disponible. Puis :
+Le premier appel construit deux images (quelques minutes), génère
+`deploy/demo.env` — mots de passe tirés au hasard, ignoré par Git — puis
+démarre, amorce et rend la main avec ceci :
 
-* l'interface : <http://127.0.0.1:3000>
-* l'API : <http://127.0.0.1:8000>, sa santé sur `/health`, son diagnostic
-  détaillé sur `/ready`.
+```
+   interface : http://127.0.0.1:3000
+   API       : http://127.0.0.1:8000/ready
+   comptes   : ingenieur-a@demonstration.invalid  et  ingenieur-b@demonstration.invalid
+               (mots de passe: deploy/demo.sh comptes)
+   projet    : « Démonstration — poutre belge »
+```
 
-Sans fichier `.env`, tout démarre quand même. `/ready` dit **ce qui manque**,
-sans révéler aucune valeur.
+Ce qui tourne alors, sur la boucle locale seulement :
 
-### Ce que vous pouvez faire tout de suite
+| conteneur | rôle |
+|---|---|
+| `db` | PostgreSQL 16, migrations appliquées, référentiel des annexes posé |
+| `demo-auth` | un émetteur de jetons **de démonstration**, clé de signature persistante |
+| `api` | l'image de production de l'API, sous le login applicatif non superutilisateur |
+| `web` | l'image de production de l'interface (`next build`, `next start`) |
 
-1. **Une vérification de poutre EC2 complète** — cinq chapitres : flexion,
-   effort tranchant, ancrage, ouverture des fissures, flèche. Le calcul est
-   déterministe et ne consulte aucune donnée d'autorité ; c'est pour cela
-   qu'il marche sans base.
-2. **Le PDF de la note** et **le DXF du plan de ferraillage**, plus l'aperçu
-   SVG tiré du même modèle géométrique.
-3. **Lire le bandeau de référentiel**, qui sépare trois états — transcrit,
-   décidé ici, utilisable — et qui affichera « **non interrogé** » pour le
-   deuxième, faute de base branchée. Ce n'est pas « zéro » : c'est
-   « personne n'a été interrogé », et les deux appellent des gestes opposés.
+Et, amorcés par les routes du produit sous le compte A : un bureau, le projet
+belge, et les habilitations normatives des deux comptes d'essai.
 
-### Ce que vous allez voir refuser, et c'est le produit qui fonctionne
+Les autres commandes : `deploy/demo.sh status`, `down` (arrête, **garde
+tout**), `comptes`, `reset` (détruit, avec consentement explicite).
 
-* **Le mode strict refuse**, et rend le refus comme une **liste de travail** :
-  chaque paramètre à faire confirmer, avec sa clause, son annexe et son folio.
-  Une vérification belge en réclame **19**.
-* **Décocher le mode strict** donne un résultat exploratoire — enregistré,
-  lisible, rejouable — portant **« PROJET — NON SIGNABLE »**. L'écran demande
-  une case explicite avant de partir, parce que ce choix ne se rattrape pas :
-  aucune correction de section ne rendra ce résultat signable.
-* **Une poutre déclarée en XF ou XA** est refusée sur `w_max`. Le tableau
-  belge ne donne aucune ligne pour ces classes ; le moteur ne leur attribue
-  pas 0,3 mm par défaut et demande la classe XC/XD/XS que porte aussi
-  l'élément. Rien dans la géométrie ne la révèle.
+## 3. Créer une étude, la retrouver — le parcours court
 
-## 3. Chemin 2 — avec la base, et le parcours d'autorité
+1. Ouvrir <http://127.0.0.1:3000>. Le bandeau **« Environnement de
+   démonstration »** est affiché : c'est voulu, voir §5.
+2. Se connecter avec le compte **A** (`deploy/demo.sh comptes`).
+3. Dans **Projet**, choisir « Démonstration — poutre belge ».
+4. Remplir les sept étapes de l'étude. Les valeurs du parcours de référence :
+   section 300 × 600, d = 550, portée 6000 mm ; C30/37, B500B, classe XC3 ;
+   M_Ed 250 kN·m, V_Ed 300 kN, M_car 180, M_qp 120 ; 4 Ø20, cadres 2 brins
+   Ø10 e = 150, enrobage 40, cot θ = 1,5, ancrage disponible 800 ;
+   φ(∞,t0) = 2,0, travée simplement appuyée.
+5. Étape **Mode** : décocher *strict*, cocher la case qui assume
+   l'exploratoire, puis **Lancer**. La synthèse affiche cinq chapitres et la
+   mention **« PROJET — NON SIGNABLE »**.
+6. **Note PDF** et **Plan DXF** : les deux se téléchargent ; leur empreinte
+   SHA-256 est celle que la base a enregistrée.
+7. Fermer le navigateur. Puis :
 
-Le parcours à quatre yeux dresse la pile entière et la pilote au clavier :
+   ```bash
+   deploy/demo.sh down
+   deploy/demo.sh up
+   ```
+
+8. Se reconnecter, choisir le projet : l'étude est dans l'**historique**, avec
+   ses livrables. La session, elle, n'a pas survécu — c'est le contrat : aucun
+   jeton n'est persisté.
+
+## 4. La même chose, au clavier, mesurée
 
 ```bash
-export PGHOST=/var/run/postgresql PGUSER=postgres \
-       EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
-
-db/test/parcours_livrable.sh <prefixe>    # les deux parcours Chromium
+deploy/demo_persistance.sh
 ```
 
-⚠️ `EUROSTRUCT_CLUSTER_JETABLE` est un consentement, pas une formalité : ce
-harnais crée et détruit bases et rôles. **Ne le pointez jamais vers un cluster
-qui contient quelque chose.**
+Il enchaîne `up`, un parcours Chromium qui fait les gestes du §3 et compare les
+octets reçus aux empreintes enregistrées, `down`, `up`, puis un second parcours
+qui retrouve l'étude — à l'écran, relue par l'API sous la même session, avec
+ses deux livrables. Il laisse l'environnement debout. Fichiers produits :
+`deploy/demo/note-de-calcul.pdf`, `deploy/demo/plan-de-ferraillage.dxf`,
+`deploy/demo/etat.json`.
 
-Pour vérifier l'ensemble avant d'y croire :
+## 5. Ce qui est de démonstration, et ce qui ne l'est pas
 
-```bash
-./run_tests.sh --require-db
-```
+**Les comptes.** A et B sont des comptes d'essai, tirés au hasard sur votre
+poste. Ils sont tous deux habilités sur BE / EN 1992-1-1 pour que le circuit
+à deux personnes puisse être **exercé** : A propose, B relit et approuve, la
+décision est consommée, et le mode strict s'ouvre pour ce paramètre. Une
+décision prise ainsi éprouve le circuit ; elle **ne représente aucune
+approbation réelle** d'un paramètre national. L'API le dit (`/health` :
+`"environnement": "demonstration"`), l'écran l'affiche.
 
-Le verdict ne dit `COMPLET` que si les **six** surfaces ont tourné — moteur,
-importeur, API, sécurité des harnais, garanties SQL, cohérence des artefacts.
-Une surface non exécutée y est aussi visible qu'une surface rouge.
+**Tout le reste est le produit** : mêmes images, mêmes migrations, mêmes
+politiques RLS, même vérification des jetons (RS256, JWKS, émetteur, audience,
+expiration), mêmes refus. Le seul écart avec `compose.yaml` : les livrables
+vont sur le volume `livrables` au lieu d'un MinIO — `--profile objets` le
+rend, voir [`DEPLOIEMENT_BASE_HEBERGEE.md`](DEPLOIEMENT_BASE_HEBERGEE.md) §7.
 
-## 4. Ce que vous ne pourrez pas faire seul, et pourquoi
+## 6. Ce que vous allez voir refuser, et c'est le produit qui fonctionne
 
-**Confirmer les 19 paramètres belges.** Il faut deux ingénieurs distincts :
-l'un propose depuis l'Annexe Nationale publiée, l'autre relit le dossier gelé
-et approuve, puis la décision est consommée.
+* **Le mode strict refuse** tant que les 19 paramètres belges ne sont pas
+  confirmés à quatre yeux **sur cette instance**, et rend le refus comme une
+  liste de travail. Le bandeau de référentiel sépare trois états — transcrit
+  dans le dépôt, décidé sur cette base, utilisable pour ce calcul.
+* **Décocher le mode strict** exige une case explicite, et le résultat porte
+  « PROJET — NON SIGNABLE » : aucune correction de section ne le rendra
+  signable.
+* **Une poutre en XF ou XA** est refusée sur `w_max` : le tableau belge ne
+  donne aucune ligne à ces classes, et le moteur ne rabat pas sur 0,3 mm.
 
-Ce n'est pas une option de configuration. PostgreSQL le refuse par contrainte
-de table :
+**Votre passage réel dans le circuit** — avec votre compte, sur une instance
+qui n'est pas de démonstration — exige une seconde personne, distincte,
+habilitée. PostgreSQL l'impose par contrainte de table
+(`decision_two_distinct_principals`). Rien de ce qui précède ne bloque le
+démarrage, les calculs exploratoires ni les exports en attendant.
 
-```sql
-constraint decision_two_distinct_principals
-  check (approver_id is null or approver_id <> proposer_id)
-```
+## 7. Ce qui a été suivi, et où
 
-Aucun rôle d'administration et aucun script du dépôt ne la lève — c'est
-délibéré : une valeur nationale doit porter le nom de deux personnes qui l'ont
-lue. L'écran **Décisions d'autorité** dit où vous en êtes des 19 sur
-l'instance courante, et `GET /v1/ndp/BE/couverture` le rend en JSON.
+Cette procédure a été suivie du début à la fin depuis un environnement vierge
+— Docker démarré à neuf, images construites depuis le dépôt, `demo.sh up`,
+parcours au clavier, `down`, `up`, `retrouver`. Deux contraintes de cet
+environnement-là, qui ne sont pas les vôtres :
 
-## 5. Ce qui n'a pas été essayé, et ne doit pas être annoncé
+* les conteneurs de construction ne connaissaient pas l'autorité de
+  certification de son proxy de sortie ; deux images de base locales la
+  portaient. Sur un poste ordinaire, `pip` et `npm` joignent leurs index
+  directement ;
+* le registre `minio/minio` y était injoignable ; la démonstration n'en a pas
+  besoin (§5).
+
+## 8. Ce qui n'a pas été essayé, et ne doit pas être annoncé
 
 | | état |
 |---|---|
-| Supabase réel | **jamais traversé.** `SUPABASE_UNVERIFIED`. Voir [`RECETTE_SUPABASE.md`](RECETTE_SUPABASE.md) : les sept étapes, et les 14 accès qui manquent |
-| AutoCAD, BricsCAD, LibreCAD | **aucun n'a été ouvert.** Ce qui est établi sur le DXF, et ce qui ne l'est pas, est au §5 de [`DESSIN_DXF.md`](DESSIN_DXF.md) |
+| Supabase réel | **jamais traversé.** `SUPABASE_UNVERIFIED`. La recette et ce qui lui manque : [`DEPLOIEMENT_BASE_HEBERGEE.md`](DEPLOIEMENT_BASE_HEBERGEE.md) §5–§6 |
+| AutoCAD, BricsCAD, LibreCAD | **aucun n'a été ouvert.** Ce qui est établi sur le DXF, et ce qui ne l'est pas : [`DESSIN_DXF.md`](DESSIN_DXF.md) §5 |
 | validation d'un projet calculé | distincte de la validation des paramètres, et non acquise |
 
-## 6. Avant tout usage réel
+## 9. Sans Docker : le moteur seul
+
+`./dev.sh` démarre l'API et l'interface sur l'hôte, sans base ni compte. Le
+**calcul exploratoire de flexion** y fonctionne — déterministe, rien n'est
+écrit. Ce chemin **ne donne pas** l'étude à cinq chapitres, ni le PDF, ni le
+DXF conservés : ils exigent un projet, donc la base et l'identité du §2.
+
+## 10. Avant tout usage réel
 
 Lire [`VALIDATION.md`](VALIDATION.md). Tout document produit par un calcul non
 strict porte **« PROJET — NON SIGNABLE »**, et cette mention n'est pas

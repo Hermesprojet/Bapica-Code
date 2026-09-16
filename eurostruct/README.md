@@ -50,9 +50,19 @@ LLM n'est atteignable depuis le moteur.
 ## Démarrer l'application
 
 **Il n'y a pas de lien à ouvrir** : rien n'est déployé, et l'application se
-lance sur votre poste. [`docs/ESSAYER.md`](docs/ESSAYER.md) en donne la
-procédure linéaire — ce qui marche sans base ni compte, ce que le produit
-refusera et pourquoi, et ce qui exige une seconde personne.
+lance sur votre poste. Le parcours complet — une étude à cinq chapitres, sa
+note PDF, son plan DXF, et l'étude retrouvée après un redémarrage — exige une
+base et une identité ; la composition de démonstration fournit les deux, en
+une commande, et [`docs/ESSAYER.md`](docs/ESSAYER.md) en donne la procédure
+telle qu'elle a été suivie, ce que le produit refusera et pourquoi, et ce qui
+exige une seconde personne.
+
+```bash
+deploy/demo.sh up           # base, émetteur de démonstration, API, interface
+```
+
+Pour le **moteur seul** — le calcul exploratoire de flexion, sans base ni
+compte, donc sans étude conservée ni PDF ni DXF :
 
 ```bash
 python -m venv .venv && source .venv/bin/activate

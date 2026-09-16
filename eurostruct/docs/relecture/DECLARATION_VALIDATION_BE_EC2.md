@@ -32,8 +32,9 @@ fichier ne fait pas exception.
 Elle identifie **un compte**, pas une personne vérifiée. Le chemin d'autorité
 n'accepte pas une adresse : il lit un `sub` dans un jeton signé par
 l'émetteur configuré, et c'est cette identité-là — pas celle-ci — qui sera
-inscrite dans `normative_rule_decisions`. Tant que la déclaration n'a pas été
-rejouée sous ce jeton, elle est une **intention consignée**, rien de plus.
+inscrite dans `normative_authority_decisions`. Tant que la déclaration n'a
+pas été rejouée sous ce jeton, elle est une **intention consignée**, rien de
+plus.
 
 ---
 
@@ -87,36 +88,63 @@ associée, ou refuse avec `w_max_sans_ligne`.
 
 ---
 
-## 3. Ce qui manque, nommément
+## 3. Ce qui manque, nommément — et ce que le logiciel exige vraiment
 
 Rien de ce qui suit n'est fabriqué par ce dépôt, et rien ne peut l'être.
+La liste ne porte que ce que **le logiciel** demande pour enregistrer une
+confirmation ; elle n'y ajoute aucune exigence dont la source ne serait pas
+dans ce dépôt.
 
 | | manquant | qui peut le fournir |
 |---|---|---|
-| **D1** | Nom légal complet du déclarant | le déclarant |
-| **D2** | Numéro d'inscription professionnelle (ordre / titre d'ingénieur) et pays de délivrance | le déclarant |
-| **D3** | Date de la déclaration au sens réglementaire | le déclarant |
-| **D4** | Identifiant du compte authentifié (`sub` du jeton) sous lequel les 19 propositions seront déposées | l'instance, à la connexion |
-| **S1** | **Un second ingénieur nommé, distinct du premier** | personne d'autre que lui |
+| **C1** | Un compte authentifié sur l'instance — le `sub` d'un jeton signé par l'émetteur configuré — sous lequel les 19 propositions seront déposées | le déclarant, en se connectant |
+| **S1** | **Un second compte authentifié, distinct du premier**, qui relit le dossier gelé et approuve | une seconde personne — personne d'autre |
 | **S2** | Son identité authentifiée dans la même instance | l'instance |
+| **H1** | L'habilitation `can_validate_normative_reference` pour BE / EN 1992-1-1 / l'édition en vigueur, sur les **deux** comptes, déléguée depuis la racine d'autorité amorcée | le détenteur de la racine, par délégation |
 | **I1** | Une instance avec base d'autorité joignable (`/ready` vert) | l'exploitant |
 
-`D1` à `D3` ne sont pas des formalités : c'est ce qui distingue une
-déclaration d'une signature. Ils sont laissés **vides**, pas remplis par
-défaut.
+Une version antérieure de ce document listait aussi un nom légal, un numéro
+d'inscription professionnelle et une « date au sens réglementaire ». **Ces
+trois lignes ont été retirées** : aucune source applicable ne les fonde dans
+ce dépôt, et le logiciel ne les vérifie pas. Si une exigence de qualification
+existe, elle relève du cadre de l'organisation qui exploite l'instance ; ce
+logiciel ne l'énonce pas et ne la contrôle pas.
 
-`S1` est la contrainte qui ne se contourne pas. PostgreSQL refuse, **par
-contrainte de table** et non par vérification applicative, que l'approbateur
-soit le proposant — `db/migrations/0014_four_eyes_decisions.sql` :
+### Ce que le logiciel garantit, et ce qu'il ne garantit pas
 
-```sql
-constraint decision_two_distinct_principals
-  check (approver_id is null or approver_id <> proposer_id)
-```
+**Garanti par PostgreSQL, quel que soit l'appelant :**
 
-Un `CHECK` s'évalue à chaque écriture, quel que soit l'appelant, et survit à
-la réécriture du code appelant. Aucune option de configuration, aucun rôle
-d'administration et aucun script du dépôt ne la lève.
+* le proposant et l'approbateur sont deux `sub` distincts —
+  `db/migrations/0014_four_eyes_decisions.sql` :
+
+  ```sql
+  constraint decision_two_distinct_principals
+    check (approver_id is null or approver_id <> proposer_id)
+  ```
+
+  Un `CHECK` s'évalue à chaque écriture et survit à la réécriture du code
+  appelant. Aucune option de configuration, aucun rôle d'administration et
+  aucun script du dépôt ne le lève ;
+* les deux habilitations sont encore **efficaces** au moment de la
+  consommation — une révocation intervenue entre l'approbation et la
+  consommation fait refuser (`normative_grant_is_effective`) ;
+* le dossier relu par le second est celui qui a été **gelé** à la proposition,
+  et ses empreintes sont recalculées sur ce qui est relu, jamais reprises d'un
+  champ stocké ;
+* une décision ne se consomme qu'une fois ; le rejeu est refusé ;
+* l'acteur est dérivé du jeton vérifié, jamais d'un champ du corps de requête.
+
+**Non garanti, et dit comme tel :**
+
+* **qui est la personne** derrière un `sub`. Le logiciel vérifie qu'un jeton
+  est signé par l'émetteur configuré ; l'identité de la personne titulaire du
+  compte relève de cet émetteur et de l'organisation qui a ouvert le compte ;
+* **la qualification** de cette personne. Rien dans ce dépôt ne la demande ni
+  ne la contrôle ;
+* qu'une confirmation faite sur un **environnement de démonstration** vaille
+  quelque chose : les comptes y sont des comptes d'essai, l'instance le
+  déclare (`EUROSTRUCT_ENVIRONNEMENT=demonstration`, bandeau à l'écran), et
+  une décision prise là éprouve le circuit sans approuver aucun paramètre.
 
 ---
 
