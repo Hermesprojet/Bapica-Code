@@ -286,7 +286,7 @@ try {
     console.log(`  PDF ${pdf.taille} o  sha256 ${pdf.sha256}`);
     console.log(`  DXF ${dxf.taille} o  sha256 ${dxf.sha256}`);
     console.log(`  etat: ${ETAT}`);
-  } else {
+  } else if (MODE === "retrouver") {
     exige(existsSync(ETAT), `${ETAT} absent: lancez d'abord « creer ».`);
     const etat = JSON.parse(readFileSync(ETAT, "utf8"));
 
