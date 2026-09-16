@@ -33,14 +33,15 @@ import { useEffect, useState } from "react";
 //: s'affichaient sans nom. Un refus qui porte une liste de travail devenait
 //: illisible.
 import type { PreflightBlockerDTO } from "@contracts/generated/engine";
-import { EtudeGuidee } from "./EtudeGuidee";
+import { champsDepuisEntrees } from "./champs";
+import { EtudeGuidee, type DemandeDeVariante } from "./EtudeGuidee";
 import { SyntheseEtude } from "./SyntheseEtude";
 import {
   creerLivrable, previsualiserDessin, telechargerLivrable,
   type Projet,
 } from "@/lib/atelier";
 import {
-  verifierPoutre,
+  relireVerification, verifierPoutre,
   type Ec2BeamVerificationRequest, type Ec2BeamVerificationResponse,
 } from "@/lib/verification";
 import { AppelRefuse, SessionExpiree, type PorteurDeJeton } from "@/lib/transport";
@@ -94,6 +95,9 @@ export function VerificationComplete({ projet, porteur, reouverture,
 }) {
   const [etat, setEtat] = useState<Etat>({ type: "vide" });
   const [enCours, setEnCours] = useState(false);
+  //: LA VARIANTE DEMANDÉE, à poser dans la saisie. Elle vient de l'étude
+  //: AFFICHÉE — lancée à l'instant ou rouverte — et de sa réponse serveur.
+  const [variante, setVariante] = useState<DemandeDeVariante | null>(null);
 
   //: LA RÉOUVERTURE REMPLACE CE QUI ÉTAIT AFFICHÉ, et amène la synthèse à
   //: l'écran: l'historique est en bas de page, la synthèse en haut, et un
@@ -107,6 +111,40 @@ export function VerificationComplete({ projet, porteur, reouverture,
         ?.scrollIntoView({ block: "start" });
     });
   }, [reouverture]);
+
+  /**
+   * « Créer une variante » : les entrées gelées de l'étude, remises en saisie.
+   *
+   * ON PART DE `etude.inputs`, LA FORME QUE LE MOTEUR A REÇUE — pas des champs
+   * tapés le jour du calcul, qui n'existent plus sur une étude rouverte. Le
+   * mode strict est celui de l'étude ; l'exploratoire, s'il y a lieu, reste à
+   * assumer d'un geste. L'origine est nommée, et le serveur la vérifiera.
+   */
+  function creerVariante(etude: Ec2BeamVerificationResponse) {
+    const { champs, nonRepris } = champsDepuisEntrees(
+      etude.inputs ?? {}, etude.strict_ndp);
+    setVariante((v) => ({
+      champs, nonRepris,
+      origine: { calculation_id: etude.calculation_id, element: etude.element },
+      rang: (v?.rang ?? 0) + 1,
+    }));
+  }
+
+  /** L'étude d'origine d'une variante, relue par le serveur. Rien n'est recalculé. */
+  async function rouvrirOrigine(calculationId: string) {
+    if (!projet) return;
+    try {
+      const etude = await relireVerification(porteur, projet.project_id,
+                                             calculationId);
+      setEtat({ type: "etude", etude, relue: true });
+      requestAnimationFrame(() => {
+        document.getElementById("synthese-etude")
+          ?.scrollIntoView({ block: "start" });
+      });
+    } catch (cause) {
+      setEtat(enEtatDeRefus(cause));
+    }
+  }
 
   async function lancer(requete: Ec2BeamVerificationRequest) {
     if (!projet) return;
@@ -140,7 +178,7 @@ export function VerificationComplete({ projet, porteur, reouverture,
   return (
     <>
       <EtudeGuidee projet={projet} enCours={enCours} surLancer={lancer}
-                   motifImpossible={droit} />
+                   motifImpossible={droit} variante={variante} />
 
       {etat.type === "panne" && (
         <div className="bandeau refus" role="alert">
@@ -182,6 +220,7 @@ export function VerificationComplete({ projet, porteur, reouverture,
       {etat.type === "etude" && projet && (
         <SyntheseEtude
           etude={etat.etude} relue={etat.relue}
+          surVariante={creerVariante} surRouvrirOrigine={rouvrirOrigine}
           actions={<ActionsEtude projet={projet} porteur={porteur}
                                  etude={etat.etude}
                                  surLivrable={surEnregistrement} />} />

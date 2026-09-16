@@ -16,7 +16,7 @@
  * L'ÉCRAN NE CALCULE RIEN. Pas une formule, pas un arrondi. Il montre ce que
  * le moteur a décidé, et le refuse tel quel quand le moteur refuse.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { BlockingParameterDTO } from "@contracts/generated/engine";
 import {
   couvertureDuReferentiel, etatDuReferentiel, planDeCharge, telechargerDxf,
@@ -157,6 +157,22 @@ function Ecran() {
   //: ecran, et lire l'etat d'un referentiel qui n'etait pas le sien.
   const paysEffectif: Pays = projet ? (projet.country as Pays) : champs.pays;
 
+  /**
+   * CHANGER DE PROJET EFFACE CE QUI ÉTAIT AFFICHÉ DU PRÉCÉDENT.
+   *
+   * Le résultat de flexion, l'étude rouverte et — par la clé posée sur
+   * `VerificationComplete` ci-dessous — la synthèse et la saisie en cours
+   * appartiennent au dossier qui les a produits. Les laisser à l'écran sous
+   * le nom d'un autre projet ferait lire une étude belge dans un dossier
+   * français. La déconnexion passe par le même chemin: l'atelier rend
+   * `null` quand la session tombe.
+   */
+  const choisirProjet = useCallback((p: Projet | null) => {
+    setProjet(p);
+    setIssue(null);
+    setReouverture(null);
+  }, []);
+
   const majuscule = (k: keyof Champs) => (e: { target: { value: string } }) =>
     setChamps((c) => ({ ...c, [k]: e.target.value }));
 
@@ -253,7 +269,7 @@ function Ecran() {
           neuf voyait jusqu'ici un selecteur de projets vide, sans un mot sur ce
           qui manquait. */}
       <Bureau surChangement={() => setRevisionAtelier((n) => n + 1)} />
-      <Atelier projet={projet} surSelection={setProjet}
+      <Atelier projet={projet} surSelection={choisirProjet}
                revision={revisionAtelier} />
       <DecisionsAutorite pays={paysEffectif} revision={revision}
                          surConsommation={() => setRevision((n) => n + 1)} />
@@ -271,7 +287,11 @@ function Ecran() {
           parcours navigateur reposent sur ses identifiants. Le supprimer
           aurait ete une refonte; le laisser sous son propre titre dit ce
           qu'il est. */}
+      {/* LA CLÉ EST LE PROJET: en changer REMONTE le composant, donc vide sa
+          synthèse, sa saisie et sa variante en cours. Une étude affichée ne
+          survit pas au dossier qui l'a produite, ni à la session. */}
       <VerificationComplete
+        key={projet?.project_id ?? "sans-projet"}
         projet={projet} porteur={auth.porteur}
         reouverture={reouverture}
         surEnregistrement={() => setRevisionAtelier((n) => n + 1)} />

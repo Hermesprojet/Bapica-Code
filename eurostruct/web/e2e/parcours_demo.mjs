@@ -3,6 +3,8 @@
  *
  *   node web/e2e/parcours_demo.mjs creer       # cree une etude, PDF, DXF
  *   node web/e2e/parcours_demo.mjs retrouver   # apres redemarrage: la retrouve
+ *   node web/e2e/parcours_demo.mjs variante    # en cree une variante, puis
+ *                                              # change de projet et se deconnecte
  *
  * CE QUE CE FICHIER PROUVE, ET CE QU'IL NE PROUVE PAS
  * -----------------------------------------------------
@@ -16,6 +18,14 @@
  * qu'aucun calcul soit relance — puis RETELECHARGER la note et le plan
  * depuis la liste des livrables, et comparer leurs octets aux empreintes du
  * premier jour. Une capture de l'etude rouverte est ecrite.
+ *
+ * Le mode « variante » rouvre l'etude, clique « Creer une variante », verifie
+ * que les sept etapes sont PREREMPLIES avec les entrees gelees de l'etude,
+ * passe de 4 a 5 barres, lance: le nouveau calcul recoit son propre
+ * identifiant, nomme son origine, et l'etude d'origine se rouvre encore avec
+ * ses cinq verdicts du premier jour. Puis il change de projet et se
+ * deconnecte, et verifie que l'ecran n'affiche plus rien du contexte
+ * precedent. Une capture de la variante est ecrite.
  *
  * Il ne prouve rien sur la validite normative de l'etude: elle est
  * EXPLORATOIRE, elle porte « PROJET — NON SIGNABLE », et c'est verifie ici.
@@ -42,8 +52,8 @@ const SORTIE = resolve(process.env.EUROSTRUCT_DEMO_SORTIE
                        || join(RACINE, "deploy", "demo"));
 const NOM_PROJET = "Démonstration — poutre belge";
 
-if (!["creer", "retrouver"].includes(MODE)) {
-  console.error("usage: parcours_demo.mjs creer | retrouver");
+if (!["creer", "retrouver", "variante"].includes(MODE)) {
+  console.error("usage: parcours_demo.mjs creer | retrouver | variante");
   process.exit(2);
 }
 
@@ -175,6 +185,42 @@ async function telecharger(selecteur, fichier) {
         + `l'empreinte enregistree (${String(cree.corps?.sha256).slice(0, 12)})`);
   return { fichier: chemin, taille: octets.length, sha256, kind: cree.corps?.kind,
            deliverable_id: cree.corps?.deliverable_id ?? null, octets };
+}
+
+/**
+ * Rouvre l'etude enregistree depuis l'historique et attend sa synthese relue.
+ * Rend le corps que la route de relecture a rendu.
+ */
+async function rouvrirDepuisHistorique(calculationId) {
+  const ligne = `tr[data-calcul="${calculationId}"]`;
+  await page.waitForSelector(ligne, { timeout: 30000 });
+  const relecture = page.waitForResponse(
+    (r) => r.url().includes(`/beam-verifications/${calculationId}`)
+           && r.request().method() === "GET", { timeout: 60000 });
+  await page.click(`${ligne} button:has-text("Rouvrir")`);
+  const reponse = await relecture;
+  exige(reponse.status() === 200, `la relecture a rendu ${reponse.status()}`);
+  await page.waitForSelector(
+    `#synthese-etude[data-calcul="${calculationId}"][data-relue="oui"]`,
+    { timeout: 30000 });
+  return reponse.json();
+}
+
+/** Les cinq chapitres affiches, compares a ceux enregistres. */
+async function exigerChapitres(attendus) {
+  for (const attendu of attendus) {
+    const rangee = page.locator(`#chapitre-${attendu.key}`);
+    exige(await rangee.count() === 1, `le chapitre « ${attendu.key} » n'est pas affiche`);
+    const etatAffiche = await rangee.getAttribute("data-etat");
+    exige(etatAffiche === attendu.status,
+          `chapitre « ${attendu.key} »: etat affiche « ${etatAffiche} », `
+          + `enregistre « ${attendu.status} »`);
+    const taux = (await rangee.locator("td.nombre").innerText()).trim();
+    const tauxAttendu = typeof attendu.utilisation === "number"
+      ? `${(attendu.utilisation * 100).toFixed(1)} %` : "—";
+    exige(taux === tauxAttendu,
+          `chapitre « ${attendu.key} »: taux affiche « ${taux} », attendu « ${tauxAttendu} »`);
+  }
 }
 
 const ETAT = join(SORTIE, "etat.json");
@@ -345,6 +391,193 @@ try {
                 + "et entrees tels qu'enregistres, aucun calcul relance; PDF et DXF "
                 + "retelecharges depuis l'interface, octets identiques au premier jour.");
     console.log(`  capture: ${capture}`);
+  }
+
+  if (MODE === "variante") {
+    exige(existsSync(ETAT), `${ETAT} absent: lancez d'abord « creer ».`);
+    const etat = JSON.parse(readFileSync(ETAT, "utf8"));
+    const origineId = etat.calculation_id;
+
+    etape("connexion, projet belge, « Rouvrir » l'etude enregistree");
+    await connecter();
+    const projetId = await page.$eval("#projet", (s) => s.value);
+    exige(projetId === etat.project_id, "le projet retrouve n'est pas celui de l'etude");
+    await rouvrirDepuisHistorique(origineId);
+    const lignesAvant = await page.locator("tr[data-calcul]").count();
+    exige(await page.locator("#etude-derivee").count() === 0,
+          "l'etude initiale se presente comme une variante");
+
+    etape("« Creer une variante »: les sept etapes preremplies depuis les entrees gelees");
+    await page.click("#etude-variante");
+    await page.waitForSelector(`#variante-origine[data-origine="${origineId}"]`,
+                               { timeout: 15000 });
+    exige(await page.locator("#variante-non-repris").count() === 0,
+          `le formulaire n'a pas repris: ${
+            await page.locator("#variante-non-repris").innerText().catch(() => "?")}`);
+    //: CHAQUE CHAMP PORTE LA VALEUR GELEE DE L'ETUDE — nombre sans unite, tel
+    //: que le champ le demande — et pas le defaut de l'ecran. Le mode strict
+    //: est celui de l'etude (exploratoire), l'assumer reste un geste.
+    const nombreDe = (texte) => String(texte).trim().split(/\s+/)[0];
+    const attendus = [
+      ["#etape-section", [["#vc-b", nombreDe(etat.inputs.geometry.b)],
+                          ["#vc-h", nombreDe(etat.inputs.geometry.h)],
+                          ["#vc-d", nombreDe(etat.inputs.geometry.d)],
+                          ["#vc-leff", nombreDe(etat.inputs.geometry.l_eff)]]],
+      ["#etape-materiaux", [["#vc-beton", etat.inputs.concrete_grade],
+                            ["#vc-acier", etat.inputs.steel_grade],
+                            ["#vc-expo", etat.inputs.exposure_class]]],
+      ["#etape-sollicitations", [["#vc-med", nombreDe(etat.inputs.M_Ed)],
+                                 ["#vc-ved", nombreDe(etat.inputs.V_Ed)],
+                                 ["#vc-mchar", nombreDe(etat.inputs.M_char)],
+                                 ["#vc-mqp", nombreDe(etat.inputs.M_qp)]]],
+      ["#etape-ferraillage", [["#vc-nb", String(etat.inputs.bars.count)],
+                              ["#vc-phi", nombreDe(etat.inputs.bars.diameter)],
+                              ["#vc-branches", String(etat.inputs.links.legs)],
+                              ["#vc-phiw", nombreDe(etat.inputs.links.diameter)],
+                              ["#vc-s", nombreDe(etat.inputs.links.spacing)],
+                              ["#vc-enrobage", nombreDe(etat.inputs.cover)],
+                              ["#vc-cot", String(etat.inputs.cot_theta)],
+                              ["#vc-ancrage", nombreDe(etat.inputs.anchorage_available)],
+                              ["#vc-adherence", etat.inputs.bond_condition]]],
+      ["#etape-service", [["#vc-phicreep", String(etat.inputs.phi_creep)],
+                          ["#vc-systeme", etat.inputs.system]]],
+    ];
+    for (const [onglet, champs] of attendus) {
+      await page.click(onglet);
+      for (const [sel, attendu] of champs) {
+        const lu = await page.$eval(sel, (e) => e.value);
+        exige(lu === attendu, `${sel}: prerempli « ${lu} », attendu « ${attendu} »`);
+      }
+    }
+    await page.click("#etape-mode");
+    exige(!(await page.isChecked("#vc-strict")),
+          "la variante d'une etude exploratoire devrait partir en mode exploratoire");
+    exige(!(await page.isChecked("#vc-assume")),
+          "l'exploratoire a ete assume tacitement: c'est un geste a refaire");
+
+    etape("modification du ferraillage: 4 -> 5 barres, puis lancement");
+    await page.click("#etape-ferraillage");
+    await page.fill("#vc-nb", "5");
+    await page.click("#etape-mode");
+    await page.check("#vc-assume");
+    const lances = calculsLances;
+    const reponse = await corpsDe("/beam-verifications", "POST",
+                                  () => page.click("#lancer-verification"));
+    exige(reponse.statut === 201, `la variante a rendu ${reponse.statut}`);
+    const variante = reponse.corps;
+    exige(calculsLances === lances + 1, "un seul calcul devait partir");
+    exige(variante.calculation_id && variante.calculation_id !== origineId,
+          "la variante n'a pas recu son propre identifiant");
+    exige(variante.derived_from_calculation_id === origineId,
+          `la variante nomme « ${variante.derived_from_calculation_id} » `
+          + `au lieu de son origine ${origineId}`);
+    exige(variante.status === "passed", `la variante n'a pas abouti: ${variante.status}`);
+    exige(variante.inputs?.bars?.count === 5, "la variante n'a pas 5 barres");
+    exige(variante.is_exploratory === true, "la variante n'est pas exploratoire");
+    await page.waitForSelector(
+      `#synthese-etude[data-calcul="${variante.calculation_id}"][data-relue="non"]`,
+      { timeout: 30000 });
+    await page.waitForSelector(`#etude-derivee[data-origine="${origineId}"]`,
+                               { timeout: 15000 });
+    exige((await page.locator("#synthese-etude").innerText()).includes("NON SIGNABLE"),
+          "la variante ne porte pas « PROJET — NON SIGNABLE »");
+    //: LA FLEXION A CHANGE AVEC LES BARRES: le taux affiche est celui de la
+    //: variante, pas celui de l'origine copie.
+    const flexionOrigine = etat.sections.find((s) => s.key === "flexure");
+    const flexionVariante = variante.sections.find((s) => s.key === "flexure");
+    exige(typeof flexionVariante?.utilisation === "number"
+          && flexionVariante.utilisation < flexionOrigine.utilisation,
+          "cinq barres au lieu de quatre devraient abaisser le taux de flexion");
+    await exigerChapitres(variante.sections.map((s) => ({
+      key: s.key, status: s.status, utilisation: s.utilisation ?? null })));
+    await page.waitForFunction(
+      (n) => document.querySelectorAll("tr[data-calcul]").length === n,
+      lignesAvant + 1, { timeout: 30000 });
+
+    etape("capture de la variante, puis sa note PDF");
+    const captureVariante = join(SORTIE, "etude-variante.png");
+    await page.locator("#synthese-etude").screenshot({ path: captureVariante });
+    const pdfVariante = await telecharger("#etude-note-pdf", "note-de-calcul.variante.pdf");
+    exige(pdfVariante.octets.subarray(0, 5).toString() === "%PDF-", "pas un PDF");
+
+    etape("« Rouvrir l'etude d'origine »: ses cinq verdicts du premier jour, intacts");
+    const relectureOrigine = page.waitForResponse(
+      (r) => r.url().includes(`/beam-verifications/${origineId}`)
+             && r.request().method() === "GET", { timeout: 60000 });
+    await page.click("#rouvrir-origine");
+    const origineRelue = await (await relectureOrigine).json();
+    exige(origineRelue.calculation_fingerprint === etat.calculation_fingerprint,
+          "l'origine relue n'a plus l'empreinte du premier jour");
+    exige(!origineRelue.derived_from_calculation_id,
+          "l'origine se presente maintenant comme une variante");
+    await page.waitForSelector(
+      `#synthese-etude[data-calcul="${origineId}"][data-relue="oui"]`, { timeout: 30000 });
+    await exigerChapitres(etat.sections);
+    exige(await page.locator("#etude-derivee").count() === 0,
+          "l'etude d'origine affiche un bandeau de variante");
+    //: LE LIVRABLE DE L'ORIGINE EST TOUJOURS LA, avec son empreinte.
+    exige(await page.locator(
+      `tr[data-livrable="${etat.pdf.deliverable_id}"] button:text-is("Télécharger")`)
+      .count() === 1, "la note PDF de l'etude d'origine n'est plus dans les livrables");
+    exige(calculsLances === lances + 1, "rouvrir l'origine a lance un calcul");
+
+    etape("changement de projet: l'ecran ne montre plus rien du dossier precedent");
+    await page.selectOption("#projet", "");
+    await page.waitForFunction(() => !document.querySelector("#synthese-etude"),
+                               null, { timeout: 15000 });
+    exige(await page.locator("tr[data-calcul]").count() === 0,
+          "l'historique du projet precedent est encore affiche");
+    exige(await page.locator("#table-livrables").count() === 0,
+          "les livrables du projet precedent sont encore affiches");
+    exige(await page.locator("#variante-origine").count() === 0,
+          "la saisie porte encore l'origine du projet precedent");
+    //: REVENIR SUR LE PROJET NE RESSUSCITE PAS L'ETUDE AFFICHEE: l'historique
+    //: revient, la synthese non — il faut la rouvrir.
+    await page.selectOption("#projet", projetId);
+    await page.waitForSelector(`tr[data-calcul="${variante.calculation_id}"]`,
+                               { timeout: 30000 });
+    exige(await page.locator("#synthese-etude").count() === 0,
+          "une synthese est reapparue sans qu'on l'ait rouverte");
+    await rouvrirDepuisHistorique(variante.calculation_id);
+    await page.waitForSelector(`#etude-derivee[data-origine="${origineId}"]`,
+                               { timeout: 15000 });
+
+    etape("deconnexion: plus de synthese, plus d'historique, plus de projet");
+    await page.click("#deconnecter");
+    await page.waitForSelector("#connecter", { timeout: 15000 });
+    await page.waitForFunction(() => !document.querySelector("#synthese-etude"),
+                               null, { timeout: 15000 });
+    exige(await page.locator("tr[data-calcul]").count() === 0,
+          "l'historique survit a la deconnexion");
+    exige(await page.locator("#projet").count() === 0,
+          "le selecteur de projet survit a la deconnexion");
+    exige(await page.locator("#etude-derivee, #variante-origine").count() === 0,
+          "un lien de variante survit a la deconnexion");
+
+    exige(criees.length === 0, `la page a crie: ${criees.slice(0, 3).join(" | ")}`);
+    writeFileSync(ETAT, JSON.stringify({
+      ...etat,
+      variante: {
+        creee_le: new Date().toISOString(),
+        calculation_id: variante.calculation_id,
+        derived_from_calculation_id: variante.derived_from_calculation_id,
+        modification: "bars.count 4 -> 5",
+        calculation_fingerprint: variante.calculation_fingerprint,
+        sections: variante.sections.map((s) => ({
+          key: s.key, status: s.status, utilisation: s.utilisation ?? null,
+        })),
+        capture: captureVariante,
+        pdf: { fichier: pdfVariante.fichier, taille: pdfVariante.taille,
+               sha256: pdfVariante.sha256, deliverable_id: pdfVariante.deliverable_id },
+      },
+    }, null, 2) + "\n");
+    console.log("");
+    console.log(`variante ${variante.calculation_id} creee depuis ${origineId} `
+                + "(5 barres au lieu de 4): identifiant propre, origine nommee, etude "
+                + "d'origine rouverte intacte; changement de projet et deconnexion "
+                + "effacent l'ecran.");
+    console.log(`  capture: ${captureVariante}`);
+    console.log(`  PDF ${pdfVariante.taille} o  sha256 ${pdfVariante.sha256}`);
   }
 } catch (cause) {
   console.error(`ECHEC: ${cause.message}`);

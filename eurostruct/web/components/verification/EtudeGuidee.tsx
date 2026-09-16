@@ -41,7 +41,24 @@ import type { Projet } from "@/lib/atelier";
  * `surEtude` reçoit l'étude ENREGISTRÉE, pas les champs saisis : l'écran
  * n'affiche jamais un résultat qu'il aurait composé lui-même.
  */
-export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
+/** L'étude dont une variante part : de quoi la nommer, et la retrouver. */
+export type OrigineDeVariante = { calculation_id: string; element: string };
+
+/**
+ * Une variante demandée depuis une étude affichée : les champs préremplis,
+ * l'origine, ce que le formulaire n'a pas pu reprendre, et un rang.
+ *
+ * LE RANG EST LÀ POUR QU'ON PUISSE DEMANDER DEUX FOIS LA MÊME VARIANTE. Sans
+ * lui, un second clic sur « Créer une variante » — après avoir retouché les
+ * champs — rendrait un objet égal au précédent, et rien ne se réinitialiserait.
+ */
+export type DemandeDeVariante = {
+  champs: ChampsEtude; origine: OrigineDeVariante; nonRepris: string[];
+  rang: number;
+};
+
+export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
+                              variante = null }: {
   projet: Projet | null;
   enCours: boolean;
   surLancer: (requete: ReturnType<typeof enRequete>) => void;
@@ -49,6 +66,10 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
   //: s'ajoute aux champs manquants plutôt que de les remplacer: l'ingénieur a
   //: droit aux deux raisons, pas à la première qu'on a trouvée.
   motifImpossible?: string | null;
+  //: UNE VARIANTE À PRÉREMPLIR. Elle vient de l'étude affichée — de sa
+  //: réponse serveur, pas de champs tapés un jour — et ce composant ne fait
+  //: que la poser dans les champs, puis nommer l'origine dans la requête.
+  variante?: DemandeDeVariante | null;
 }) {
   const [champs, setChamps] = useState<ChampsEtude>(CHAMPS_INITIAUX);
   const [etape, setEtape] = useState(0);
@@ -56,6 +77,28 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
   //: mode strict demande une confirmation, parce que le résultat qui en sort
   //: ne peut JAMAIS être finalisé — pas même après correction.
   const [exploratoireAssume, setExploratoireAssume] = useState(false);
+  //: L'ÉTUDE D'ORIGINE, TANT QUE LA SAISIE EN EST UNE VARIANTE. Elle part
+  //: dans la requête — `derived_from_calculation_id` — et le serveur vérifie
+  //: qu'elle existe dans le projet. Elle se détache d'un clic, et alors la
+  //: saisie redevient une étude initiale, sans filiation.
+  const [origine, setOrigine] = useState<OrigineDeVariante | null>(null);
+  const [nonRepris, setNonRepris] = useState<string[]>([]);
+
+  //: LA VARIANTE REMPLACE LA SAISIE EN COURS, et amène le formulaire à
+  //: l'écran, sur la section — la première étape qu'on modifie. L'exploratoire
+  //: n'est PAS reconduit tacitement: le mode vient de l'étude d'origine, mais
+  //: l'assumer reste un geste à refaire.
+  useEffect(() => {
+    if (!variante) return;
+    setChamps(variante.champs);
+    setOrigine(variante.origine);
+    setNonRepris(variante.nonRepris);
+    setExploratoireAssume(false);
+    setEtape(1);
+    requestAnimationFrame(() => {
+      document.getElementById("titre-etude")?.scrollIntoView({ block: "start" });
+    });
+  }, [variante]);
 
   const manquants = useMemo(() => champsManquants(champs), [champs]);
   const complet = etudeComplete(champs);
@@ -92,7 +135,7 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
 
   function lancer() {
     if (blocage) return;
-    surLancer(enRequete(champs));
+    surLancer(enRequete(champs, origine?.calculation_id ?? null));
   }
 
   const courante = ETAPES[etape];
@@ -142,6 +185,34 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
         fissures, flèche — vérifiés en une seule saisie, sous l&apos;Annexe
         Nationale du projet.
       </p>
+
+      {/* LA FILIATION EST ÉCRITE, TANT QU'ELLE TIENT. Une saisie partie d'une
+          étude enregistrée le dit, nomme l'étude, et dit ce que le formulaire
+          n'a pas su reprendre. Le bouton détache: la saisie garde ses valeurs
+          mais ne revendique plus d'origine. */}
+      {origine && (
+        <div className="bandeau" id="variante-origine" role="status"
+             data-origine={origine.calculation_id}>
+          <strong>Variante de l&apos;étude {origine.element}</strong>
+          Les champs portent les entrées enregistrées avec l&apos;étude{" "}
+          <code>{origine.calculation_id}</code>. Modifiez la section, les
+          charges ou le ferraillage, puis lancez : le nouveau calcul recevra
+          son propre identifiant, et l&apos;étude d&apos;origine — avec ses
+          documents — restera consultable dans l&apos;historique.
+          {nonRepris.length > 0 && (
+            <p className="aide manque" id="variante-non-repris">
+              Non repris par ce formulaire : {nonRepris.join(" ; ")}.
+            </p>
+          )}
+          <div className="rangee-boutons">
+            <button type="button" className="secondaire" id="variante-detacher"
+                    onClick={() => { setOrigine(null); setNonRepris([]); }}
+                    title="Garder les valeurs, sans lien avec l'étude d'origine">
+              Ne plus lier à l&apos;étude d&apos;origine
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* LE FIL DES ÉTAPES. Il montre l'avancement ET les manques: une étape
           traversée sans être remplie ne doit pas ressembler à une étape
@@ -220,8 +291,12 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible }: {
         </button>
         <button type="button" id="lancer-verification"
                 disabled={enCours || !!blocage} onClick={lancer}
-                title={blocage ?? "Enregistre l'étude sur le projet"}>
-          {enCours ? "Vérification en cours…" : "Vérifier les cinq chapitres"}
+                title={blocage ?? (origine
+                  ? `Enregistre une variante de l'étude ${origine.element} sur le projet`
+                  : "Enregistre l'étude sur le projet")}>
+          {enCours ? "Vérification en cours…"
+            : origine ? "Vérifier les cinq chapitres (variante)"
+            : "Vérifier les cinq chapitres"}
         </button>
       </div>
 

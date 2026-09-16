@@ -18,6 +18,12 @@
 #   5. `parcours_demo.mjs retrouver`         l'etude est dans l'historique, relue
 #                                            par l'API, et ses deux livrables
 #                                            portent encore leurs empreintes
+#   6. `parcours_demo.mjs variante`          « Creer une variante » depuis
+#                                            l'etude rouverte: champs preremplis,
+#                                            5 barres au lieu de 4, identifiant
+#                                            propre, origine nommee et intacte;
+#                                            changement de projet et deconnexion
+#                                            effacent l'ecran
 #
 # IL NE DETRUIT RIEN. Ce n'est pas un harnais: il laisse l'environnement
 # debout a la fin, avec l'etude dedans. C'est `demo.sh reset` qui detruit,
@@ -35,23 +41,28 @@ node "$RACINE/web/e2e/verifier_navigateur.mjs" >/dev/null 2>&1 \
 
 etape() { echo ""; echo "==> $*"; }
 
-etape "1/5 demo.sh up"
+etape "1/6 demo.sh up"
 "$ICI/demo.sh" up || exit 1
 
-etape "2/5 creer une etude, sa note PDF et son plan DXF"
+etape "2/6 creer une etude, sa note PDF et son plan DXF"
 node "$RACINE/web/e2e/parcours_demo.mjs" creer || exit 1
 
-etape "3/5 demo.sh down — le navigateur est ferme, les services s'arretent"
+etape "3/6 demo.sh down — le navigateur est ferme, les services s'arretent"
 "$ICI/demo.sh" down || exit 1
 
-etape "4/5 demo.sh up — memes volumes"
+etape "4/6 demo.sh up — memes volumes"
 "$ICI/demo.sh" up || exit 1
 
-etape "5/5 retrouver l'etude"
+etape "5/6 retrouver l'etude"
 node "$RACINE/web/e2e/parcours_demo.mjs" retrouver || exit 1
+
+etape "6/6 en creer une variante, changer de projet, se deconnecter"
+node "$RACINE/web/e2e/parcours_demo.mjs" variante || exit 1
 
 echo ""
 echo "=================================================================="
 echo " L'etude, sa note PDF et son plan DXF ont survecu a l'arret et au"
-echo " redemarrage des services. L'environnement est laisse debout."
+echo " redemarrage des services; une variante en a ete creee sans rien"
+echo " ressaisir, et l'etude d'origine est restee intacte."
+echo " L'environnement est laisse debout."
 echo "=================================================================="

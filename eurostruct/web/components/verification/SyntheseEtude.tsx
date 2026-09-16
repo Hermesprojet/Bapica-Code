@@ -35,7 +35,8 @@ const VERDICT: Record<string, string> = {
   incomplete: "L'étude ne conclut pas",
 };
 
-export function SyntheseEtude({ etude, actions, relue = false }: {
+export function SyntheseEtude({ etude, actions, relue = false, surVariante,
+                                surRouvrirOrigine }: {
   etude: Ec2BeamVerificationResponse;
   //: Les actions sont fournies par le parent — il détient la session et les
   //: droits. Ce composant ne sait ni télécharger ni écrire.
@@ -44,6 +45,13 @@ export function SyntheseEtude({ etude, actions, relue = false }: {
   //: même; la phrase qui le dit n'est pas décorative: elle promet que rien
   //: n'a été recalculé, et cette promesse est celle de la route qui relit.
   relue?: boolean;
+  //: « CRÉER UNE VARIANTE »: le parent remet les entrées gelées de CETTE
+  //: étude en saisie. Ce composant ne construit aucun champ; il passe
+  //: l'étude, telle que le serveur l'a rendue.
+  surVariante?: (etude: Ec2BeamVerificationResponse) => void;
+  //: Quand l'étude affichée est elle-même une variante: rouvrir son origine,
+  //: relue par le serveur — jamais recalculée.
+  surRouvrirOrigine?: (calculationId: string) => void;
 }) {
   const raison = raisonDeNonFinalisation(etude);
   const classe = etude.status === "passed" ? "ok"
@@ -61,6 +69,30 @@ export function SyntheseEtude({ etude, actions, relue = false }: {
           Rien n&apos;a été recalculé : les entrées, les cinq verdicts, les
           empreintes et le référentiel ci-dessous sont ceux qui ont été
           enregistrés le jour du calcul.
+        </p>
+      )}
+
+      {/* LA FILIATION EST DANS LA RÉPONSE, et l'écran la rend telle quelle:
+          une variante nomme l'étude dont elle part, par l'identifiant que la
+          requête gelée porte. Rien n'est déduit du repère ni de l'ordre de
+          l'historique. */}
+      {etude.derived_from_calculation_id && (
+        <p className="bandeau" id="etude-derivee" role="status"
+           data-origine={etude.derived_from_calculation_id}>
+          <strong>Variante de l&apos;étude{" "}
+            <code>{etude.derived_from_calculation_id}</code></strong>
+          L&apos;étude d&apos;origine n&apos;a pas été modifiée : elle reste
+          dans l&apos;historique avec ses documents.
+          {surRouvrirOrigine && (
+            <>
+              {" "}
+              <button type="button" className="secondaire" id="rouvrir-origine"
+                      onClick={() =>
+                        surRouvrirOrigine(etude.derived_from_calculation_id!)}>
+                Rouvrir l&apos;étude d&apos;origine
+              </button>
+            </>
+          )}
         </p>
       )}
 
@@ -115,6 +147,29 @@ export function SyntheseEtude({ etude, actions, relue = false }: {
       )}
 
       {actions}
+
+      {/* ITÉRER SANS RESSAISIR. La variante part des entrées GELÉES de cette
+          étude — celles qui ont servi au calcul — et le nouveau calcul aura
+          son propre identifiant; celui-ci ne bouge pas. */}
+      {surVariante && (
+        <div className="actions-etude">
+          <h3>Itérer</h3>
+          <div className="rangee-boutons">
+            <button type="button" id="etude-variante"
+                    onClick={() => surVariante(etude)}
+                    title="Prépare une nouvelle saisie à partir des entrées
+                           enregistrées de cette étude">
+              Créer une variante
+            </button>
+          </div>
+          <p className="aide">
+            Les entrées de cette étude préremplissent une nouvelle saisie.
+            Modifiez la section, les charges ou le ferraillage, puis relancez :
+            le nouveau calcul reçoit son propre identifiant, et cette étude,
+            avec ses documents, reste consultable telle quelle.
+          </p>
+        </div>
+      )}
 
       <Entrees etude={etude} />
       <Tracabilite etude={etude} />

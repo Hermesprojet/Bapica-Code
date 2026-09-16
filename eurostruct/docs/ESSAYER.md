@@ -97,6 +97,15 @@ tout**), `comptes`, `reset` (détruit, avec consentement explicite).
    **Livrables**, **Télécharger** rend la note et le plan : les mêmes octets,
    pas un document recomposé. La session, elle, n'a pas survécu — c'est le
    contrat : aucun jeton n'est persisté.
+9. **Créer une variante**, sous la synthèse de l'étude rouverte : les sept
+   étapes se préremplissent avec les entrées **enregistrées** de l'étude (pas
+   avec ce qui avait été tapé), et le bandeau nomme l'étude d'origine.
+   Modifier ce qu'on veut — par exemple 5 Ø20 au lieu de 4 — réassumer le
+   mode exploratoire, lancer. Le nouveau calcul reçoit **son propre
+   identifiant** et sa synthèse porte « Variante de l'étude … » avec un
+   bouton **Rouvrir l'étude d'origine** ; l'étude initiale et ses documents
+   restent tels quels dans l'historique et les livrables. Changer de projet
+   ou se déconnecter efface tout ce qui était affiché du dossier précédent.
 
 ## 4. La même chose, au clavier, mesurée
 
@@ -110,11 +119,18 @@ qui clique **Rouvrir** et vérifie, chapitre par chapitre, que l'état et le tau
 affichés sont ceux enregistrés le premier jour, que les entrées affichées sont
 celles du calcul gelé, qu'aucun calcul n'a été lancé (les POST sont comptés),
 puis retélécharge la note et le plan depuis la liste des livrables et compare
-leurs octets aux empreintes initiales. Il laisse l'environnement debout.
+leurs octets aux empreintes initiales. Un troisième parcours crée une variante
+depuis l'étude rouverte (chaque champ prérempli est comparé à l'entrée gelée,
+5 barres au lieu de 4, identifiant propre, origine nommée), rouvre l'origine
+et vérifie ses cinq verdicts du premier jour, puis change de projet et se
+déconnecte en vérifiant que l'écran ne montre plus rien du contexte
+précédent. Il laisse l'environnement debout.
 Fichiers produits : `deploy/demo/note-de-calcul.pdf`,
 `deploy/demo/plan-de-ferraillage.dxf`, `deploy/demo/etude-rouverte.png` (la
 capture de l'étude rouverte), `deploy/demo/note-de-calcul.retrouvee.pdf`,
-`deploy/demo/plan-de-ferraillage.retrouve.dxf`, `deploy/demo/etat.json`.
+`deploy/demo/plan-de-ferraillage.retrouve.dxf`, `deploy/demo/etude-variante.png`
+(la capture de la variante), `deploy/demo/note-de-calcul.variante.pdf`,
+`deploy/demo/etat.json`.
 
 ## 5. Ce qui est de démonstration, et ce qui ne l'est pas
 
