@@ -283,3 +283,45 @@ def test_generation_is_geometrically_deterministic(spec) -> None:
     d2, s2 = build_beam_section(spec)
     assert geometry(d1) == geometry(d2)
     assert [r.to_dict() for r in s1] == [r.to_dict() for r in s2]
+
+
+# ---------------------------------------------------------------------------
+# Ce que LibreCAD lit — mesure du 16/09 avec LibreCAD 2.2.0.2
+# ---------------------------------------------------------------------------
+def test_header_dimension_variables_match_the_dimstyle(built) -> None:
+    """LibreCAD redessine une cote avec les `$DIM*` de l'EN-TETE, pas avec la
+    table DIMSTYLE que l'entite cite.
+
+    Mesure: avec les valeurs par defaut d'ezdxf dans l'en-tete (`$DIMTXT
+    0.25`, `$DIMLFAC 100`, `$DIMSCALE 1`), les deux cotes de la coupe
+    s'imprimaient sans valeur ni fleches. En-tete aligne sur le style, elles
+    s'impriment « 300 » et « 600 ». Le fichier doit porter les deux, egaux.
+    """
+    doc, _, _ = built
+    style = doc.dimstyles.get("EUROSTRUCT")
+    for variable in ("dimtxt", "dimasz", "dimscale", "dimlfac", "dimdec",
+                     "dimlunit", "dimexe", "dimexo", "dimgap", "dimtih",
+                     "dimtoh"):
+        assert doc.header[f"${variable.upper()}"] == style.dxf.get(variable), variable
+    assert doc.header["$DIMSCALE"] == 20          # 1:20, celui de la coupe
+    assert doc.header["$DIMLFAC"] == 1.0          # une cote de 300 se lit 300
+    assert doc.header["$DIMTXSTY"] == "Standard"
+    assert doc.header["$DIMTSZ"] == 0.0
+
+
+def test_no_typographic_dash_reaches_the_dxf(built, spec) -> None:
+    """Le tiret cadratin (U+2014) s'affiche « ◊ » dans LibreCAD, dont la police
+    vectorielle n'a pas ce glyphe — les polices SHX d'AutoCAD non plus.
+
+    Le modele garde sa typographie; le DXF ne porte que le tiret ASCII. La
+    coupe de reference en contient deux (le nom du projet, le sous-titre):
+    ils doivent arriver en « - », et le reste du texte inchange.
+    """
+    doc, _, _ = built
+    textes = [e.dxf.text for e in doc.modelspace().query("TEXT")]
+    cadratin, demi_cadratin = chr(0x2014), chr(0x2013)
+    assert cadratin in spec.project, "la fixture ne porte plus de tiret cadratin"
+    for t in textes:
+        assert cadratin not in t and demi_cadratin not in t, t
+    assert any("EUROSTRUCT - cas de reference" in t for t in textes), textes
+    assert any(f"{spec.b:g} x {spec.h:g} mm - enrobage" in t for t in textes), textes

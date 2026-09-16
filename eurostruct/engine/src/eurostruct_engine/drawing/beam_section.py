@@ -149,17 +149,58 @@ def _setup_document(scale: float) -> Drawing:
     # identically in AutoCAD, BricsCAD and LibreCAD without a font substitution.
     ds = doc.dimstyles.add(DIMSTYLE)
     ds.dxf.dimtxsty = "Standard"
-    ds.dxf.dimscale = scale
-    ds.dxf.dimtxt = 2.5
-    ds.dxf.dimasz = 2.5
-    ds.dxf.dimexe = 1.25
-    ds.dxf.dimexo = 2.0
-    ds.dxf.dimgap = 0.8
-    ds.dxf.dimdec = 0
-    ds.dxf.dimlunit = 2
-    ds.dxf.dimtih = 0
-    ds.dxf.dimtoh = 0
+    for variable, valeur in _variables_de_cotation(scale).items():
+        setattr(ds.dxf, variable, valeur)
+
+    # LES MEMES VARIABLES DANS L'EN-TETE, ET CE N'EST PAS UNE REDONDANCE.
+    #
+    # MESURE LE 16/09 AVEC LibreCAD 2.2.0.2 (`librecad dxf2pdf`): les deux
+    # cotes de la coupe s'imprimaient SANS leur valeur ni leurs fleches — les
+    # lignes d'attache seules. LibreCAD lit les variables `$DIM*` de l'EN-TETE
+    # pour redessiner une cote, pas la table DIMSTYLE que l'entite cite; et
+    # `ezdxf.new(setup=True)` y laisse ses valeurs par defaut: `$DIMTXT 0.25`
+    # (un texte de 0,25 mm sur une section de 600), `$DIMLFAC 100` (une cote
+    # de 300 affichee « 30000 »), `$DIMSCALE 1`. En alignant l'en-tete sur le
+    # style, le meme fichier s'imprime avec « 300 » et « 600 » et leurs
+    # fleches. AutoCAD lit la table; LibreCAD lit l'en-tete; le fichier porte
+    # les deux, identiques.
+    for variable, valeur in _variables_de_cotation(scale).items():
+        doc.header[f"${variable.upper()}"] = valeur
+    doc.header["$DIMTXSTY"] = "Standard"
+    doc.header["$DIMBLK"] = ""     # fleches pleines, comme le style
+    doc.header["$DIMTSZ"] = 0.0    # pas de tirets obliques a la place
     return doc
+
+
+def _variables_de_cotation(scale: float) -> dict[str, float | int]:
+    """Les variables de cotation, UNE fois, pour la table ET l'en-tete."""
+    return {
+        "dimscale": scale, "dimtxt": 2.5, "dimasz": 2.5,
+        "dimexe": 1.25, "dimexo": 2.0, "dimgap": 0.8,
+        "dimdec": 0, "dimlunit": 2, "dimlfac": 1.0,
+        "dimtih": 0, "dimtoh": 0,
+    }
+
+
+#: CE QUE LE DXF PORTE A LA PLACE DES TIRETS TYPOGRAPHIQUES.
+#:
+#: MESURE LE 16/09 AVEC LibreCAD 2.2.0.2: le tiret cadratin (U+2014) de
+#: « PROJET — NON VALIDE », de « 300 x 600 mm — enrobage 40 mm » et du
+#: cartouche (« Date: — ») s'affichait comme un losange « ◊ » — la police
+#: vectorielle par defaut n'a pas ce glyphe, et les polices SHX d'AutoCAD ne
+#: l'ont pas davantage. Le modele garde sa typographie (la note et l'apercu
+#: SVG la rendent); le DXF, lui, ne porte que le tiret ASCII, que toute police
+#: de CAO possede. Les textes sont deja sans accent pour la meme raison.
+#: U+2014 (cadratin), U+2013 (demi-cadratin), U+2012 (tiret numerique) — nommes
+#: par leur code plutot qu'ecrits: un editeur qui les confond avec le tiret
+#: ASCII rendrait cette table vide sans que rien ne le dise.
+_TIRETS_CAO: Final = str.maketrans({chr(0x2014): "-", chr(0x2013): "-",
+                                    chr(0x2012): "-"})
+
+
+def _texte_cao(s: str) -> str:
+    """Le texte tel qu'il entre dans le DXF: tirets ASCII, rien d'autre change."""
+    return s.translate(_TIRETS_CAO)
 
 
 def _tracer_polyligne(msp: Any, p: Polyligne) -> None:
@@ -182,8 +223,8 @@ def _tracer_texte(msp: Any, t: Texte) -> None:
     attribs: dict[str, Any] = {"layer": t.calque}
     if t.couleur is not None:
         attribs["color"] = t.couleur
-    entite = msp.add_text(t.contenu, height=t.hauteur, rotation=t.rotation,
-                          dxfattribs=attribs)
+    entite = msp.add_text(_texte_cao(t.contenu), height=t.hauteur,
+                          rotation=t.rotation, dxfattribs=attribs)
     align = (TextEntityAlignment.MIDDLE_CENTER if t.ancrage == "centre"
              else TextEntityAlignment.LEFT)
     entite.set_placement((t.x, t.y), align=align)
@@ -198,7 +239,8 @@ def _text(
     :mod:`.beam_elevation` s'en sert encore directement, n'ayant pas encore
     son propre modele geometrique.
     """
-    msp.add_text(s, height=height, dxfattribs={"layer": layer}).set_placement(
+    msp.add_text(_texte_cao(s), height=height,
+                 dxfattribs={"layer": layer}).set_placement(
         (x, y), align=TextEntityAlignment.LEFT
     )
 

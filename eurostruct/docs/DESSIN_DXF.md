@@ -188,9 +188,11 @@ dépôt n'écrit jamais `confirmed`.
 
 ## 5. Ce qui a été essayé, et avec quoi
 
-**Aucun logiciel de CAO n'a tourné ici. Aucun test AutoCAD, BricsCAD ou
-LibreCAD réel n'a été exécuté à ce jour.** La grille du §4 reste entièrement à
-faire, sur un poste, à l'œil.
+**LibreCAD a tourné ici, sans écran (§5.5) : il a ouvert et imprimé le plan
+du parcours de démonstration, et il a trouvé trois défauts, corrigés depuis.
+AutoCAD et BricsCAD n'ont toujours pas été ouverts**, et la grille du §4 à
+l'écran — épaisseurs à l'impression, cotes serrées, trait d'axe — reste à
+faire sur un poste, à l'œil.
 
 ### 5.1 Relecture par `ezdxf` — `test_dxf.py`, `test_dxf_determinisme.py`
 
@@ -237,5 +239,62 @@ citée pour ce qu'elle vaut.
 Qu'un plan s'affiche **correctement**. L'échelle de tracé, la lisibilité des
 cotes serrées, le rendu du trait d'axe sur `AXES`, et la hiérarchie des
 épaisseurs à l'impression se jugent à l'œil, sur un poste, avec un vrai
-logiciel. Tant que cela n'a pas eu lieu, la compatibilité AutoCAD, BricsCAD et
-LibreCAD **n'est pas établie** et ne doit être annoncée nulle part.
+logiciel. Le §5.5 en fait une partie ; la compatibilité AutoCAD et BricsCAD
+**n'est pas établie** et ne doit être annoncée nulle part.
+
+### 5.5 LibreCAD 2.2.0.2 — ouverture réelle, sans écran (16/09)
+
+**Ce qui a été fait.** Le plan DXF du parcours de démonstration (`Démonstration
+— poutre belge`, coupe 300 × 600, 4 HA20, cadres HA10 e = 150, exploratoire)
+a été ouvert par LibreCAD 2.2.0.2 (paquet Ubuntu 24.04, `librecad`) en mode
+console, sur un poste sans affichage, et **imprimé** par lui :
+
+```
+QT_QPA_PLATFORM=offscreen librecad dxf2pdf -a -p 297x210 plan-de-ferraillage.dxf
+pdftoppm -png -r 110 -singlefile plan-de-ferraillage.pdf plan     # poppler
+```
+
+C'est le chemin d'impression de LibreCAD — celui que le §4.2 désigne comme le
+test décisif — et non son écran : ce qui suit vaut pour l'impression.
+
+**Ce qui a été constaté, point par point du §4.**
+
+| | constat |
+|---|---|
+| ouverture | aucune erreur, aucun message ; `Printing … DONE` |
+| 4.1 unités | la section se lit 300 × 600 sur les cotes, une fois le défaut 1 corrigé |
+| 4.2 calques | les sept sont dans le fichier ; couleurs rendues (coffrage noir, barres rouges, cadres verts, cotes cyan, textes jaunes, cartouche noir). `AXES` ne porte aucune entité sur une coupe : son trait d'axe **n'a pas été jugé**. Les épaisseurs **n'ont pas été jugées** non plus (tracé à 110 dpi) |
+| 4.3 textes | style `Standard`, rendu avec la police vectorielle de LibreCAD, sans substitution annoncée ; les textes sont sans accent par construction. **Défaut 2** ci-dessous |
+| 4.4 cotations | **Défaut 1** ci-dessous ; corrigées, elles s'impriment « 300 » et « 600 », flèches comprises, à leur place |
+| 4.5 cartouche | la mention de validation obligatoire est présente et lisible ; le filigrane de brouillon « PROJET - NON VALIDE » est en travers de la coupe. **Défaut 3** ci-dessous |
+
+**Trois défauts, tous corrigés et mesurés à nouveau dans LibreCAD.**
+
+1. **Les deux cotes s'imprimaient sans valeur ni flèches** — les lignes
+   d'attache seules. LibreCAD redessine une cote avec les variables `$DIM*`
+   de l'**en-tête**, pas avec la table `DIMSTYLE` que l'entité cite ; et
+   `ezdxf.new(setup=True)` laissait dans l'en-tête ses valeurs par défaut :
+   `$DIMTXT 0.25` (un texte de 0,25 mm sur une section de 600), `$DIMLFAC
+   100` (une cote de 300 se serait lue « 30000 »), `$DIMSCALE 1`. L'en-tête
+   porte désormais les mêmes valeurs que le style, et
+   `test_header_dimension_variables_match_the_dimstyle` l'exige.
+2. **Le tiret cadratin (U+2014) s'affichait « ◊ »** — dans « PROJET — NON
+   VALIDE », dans « 300 x 600 mm — enrobage 40 mm » et dans « Date: — » : la
+   police de LibreCAD n'a pas ce glyphe, et les polices SHX d'AutoCAD ne
+   l'ont pas davantage. Le DXF ne porte plus que le tiret ASCII ; le modèle,
+   la note et l'aperçu SVG gardent leur typographie.
+   `test_no_typographic_dash_reaches_the_dxf` l'exige.
+3. **Le cartouche du plan d'une étude exploratoire ne portait pas « PROJET —
+   NON SIGNABLE »** — seulement le filigrane de brouillon et la notice : le
+   plan se lisait « il ne manque qu'une signature », ce qui est faux. La coupe
+   gelée avec l'étude ne porte que la géométrie ; la mention se lit sur le
+   mode du calcul, et le chemin qui redessine la coupe gelée ne l'appliquait
+   pas (le chemin de la flexion seule, lui, l'appliquait). Corrigé dans
+   `_modele_du_dessin` ; `test_dessin_mention_gelee.py` l'exige, jusqu'aux
+   octets du DXF.
+
+**Ce que cela n'établit pas.** L'écran de LibreCAD (seule l'impression a
+tourné) ; la hiérarchie des épaisseurs et le trait d'axe (§4.2) ; les cotes
+serrées d'une poutre très armée (§4.6, un seul fichier a été ouvert) ; et rien
+sur AutoCAD ni BricsCAD. Les images produites ne sont pas versionnées : les
+deux commandes ci-dessus les refont en une minute sur le DXF du parcours.

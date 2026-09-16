@@ -39,6 +39,7 @@ import hashlib
 import io
 import json
 import zipfile
+from dataclasses import replace
 from typing import Any
 
 from eurostruct_engine.drawing.beam_section import rendre_dxf
@@ -374,7 +375,17 @@ def _modele_du_dessin(calcul: dict[str, Any], ferraillage: Any,
     coupe = ((calcul.get("result") or {}).get("result") or {}).get(
         "drawing_spec")
     if coupe:
-        return construire_modele(spec_depuis_dict(coupe))
+        # LA MENTION N'EST PAS DANS LA COUPE GELEE, ET ELLE DOIT ETRE SUR LE
+        # PLAN. La coupe gele la GEOMETRIE — barres, cadres, enrobage — que
+        # le plan doit redessiner a l'identique. « PROJET — NON SIGNABLE »
+        # n'est pas une geometrie: c'est ce que le mode du calcul impose a
+        # tout document qui en sort, et elle se lit sur `strict_ndp` de la
+        # ligne, comme pour la note. Mesure le 16/09 en ouvrant le DXF d'une
+        # etude exploratoire dans LibreCAD: le cartouche portait le filigrane
+        # de brouillon et la notice, mais pas cette mention — et le fichier
+        # se lisait « il ne manque qu'une signature », ce qui est faux.
+        return construire_modele(
+            replace(spec_depuis_dict(coupe), mention=mention or ""))
 
     if ferraillage is None:
         raise ConfirmationDomainError(
