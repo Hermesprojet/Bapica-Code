@@ -116,7 +116,10 @@ GRANT eurostruct_authority_backend TO app;
 ## 4. Exécuter : l'API sous le login applicatif
 
 L'API ne lit que l'environnement. Ce qu'elle exige dépend du **scénario**, et
-un scénario ne doit jamais réclamer ce dont il ne se sert pas.
+un scénario ne doit jamais réclamer ce dont il ne se sert pas. Sur
+l'hébergement cible, c'est `compose.staging.yaml` qui porte les deux images
+avec cet environnement, et `deploy/staging.sh` qui enchaîne les trois gestes
+de ce document dans l'ordre — voir [`STAGING.md`](STAGING.md).
 
 ### Secrets, valeurs publiques, choix de configuration
 

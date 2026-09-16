@@ -46,3 +46,12 @@ eurostruct/deploy/demo/
 # au depot: les versionner ferait entrer dans l'historique des notes de calcul
 # de developpement, avec des noms de projet et des resultats sans statut.
 eurostruct/.livrables/
+
+# L'ENVIRONNEMENT DE STAGING, rempli par l'exploitant: trois DSN, JWKS, cle
+# anonyme, jetons d'essai. Seul le gabarit `deploy/staging.env.example` est
+# versionne. La repetition locale de la composition de staging depose ses
+# fichiers (env genere, cle d'emetteur, journaux) sous deploy/staging-repetition/.
+eurostruct/deploy/staging.env
+**/deploy/staging.env
+eurostruct/deploy/staging-repetition/
+**/deploy/staging-repetition/

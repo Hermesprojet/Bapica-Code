@@ -1,0 +1,85 @@
+# EUROSTRUCT — la surcouche de STAGING de la composition
+#
+#     deploy/staging.sh up       # ce qu'elle execute, pour qui veut le lire:
+#     docker compose -p eurostruct-staging \
+#       -f compose.yaml -f compose.staging.yaml \
+#       --env-file deploy/staging.env up -d --wait
+#
+# CE QUE CE FICHIER RETIRE A `compose.yaml`, ET POURQUOI
+# ------------------------------------------------------
+# `compose.yaml` fait tourner la base, l'initialisation et le magasin objet a
+# cote de l'API: c'est la repetition generale sur UN poste. Sur l'hebergement
+# cible, la base est HEBERGEE — Supabase: PostgreSQL, `auth.users`, l'emetteur
+# de jetons — et n'est pas un conteneur de cette composition. Cette surcouche
+# range donc `db`, `init`, `objets` et `objets-init` sous un profil qui n'est
+# jamais active, et branche l'API sur la DSN du login applicatif et sur le
+# JWKS du projet Supabase.
+#
+# LES MIGRATIONS NE SONT PAS LANCEES PAR LA COMPOSITION. Elles sont un geste
+# separe, par deux roles distincts (plan de controle, migrateur), AVANT `up`:
+# `deploy/staging.sh migrer`. Une API montee sur une base non migree rendrait
+# des 500 en boucle; ici `/ready` reste rouge et dit ce qui manque.
+#
+# CE QUI DISTINGUE LE STAGING DE LA DEMONSTRATION (`compose.demo.yaml`)
+# -----------------------------------------------------------------------
+#   * l'authentification est REELLE: Supabase Auth, ses comptes, son JWKS —
+#     aucun emetteur de demonstration, aucun compte d'essai genere ici;
+#   * `EUROSTRUCT_ENVIRONNEMENT` est VIDE: ni l'API ni l'ecran ne portent le
+#     bandeau de demonstration. Une decision prise sur le staging est une
+#     decision du circuit a deux personnes, prise par des comptes reels; ce
+#     qui reste a etablir est l'habilitation de ces personnes, pas la nature
+#     de l'instance;
+#   * les URL sont PUBLIQUES, en https, et c'est le mandataire TLS de l'hote
+#     (nginx, Caddy, Traefik — hors de ce depot) qui les sert: les deux
+#     conteneurs n'ecoutent que sur la boucle locale de l'hote;
+#   * les livrables vivent sur le volume `livrables` de l'hote (`local`, une
+#     seule instance d'API) ou dans un compartiment S3 du fournisseur (`s3`):
+#     le choix est ecrit dans `deploy/staging.env`, jamais devine.
+#
+# AUCUN SECRET ICI. Tout vient de `deploy/staging.env` (0600, ignore par Git),
+# dont seul le gabarit `deploy/staging.env.example` est versionne. Les
+# variables marquees `:?` font REFUSER la composition si elles manquent:
+# une API qui demarrerait sans DSN ou sans JWKS servirait des 503 en silence.
+
+services:
+  db:
+    profiles: ["hors-staging"]
+  init:
+    profiles: ["hors-staging"]
+  objets:
+    profiles: ["hors-staging"]
+  objets-init:
+    profiles: ["hors-staging"]
+
+  api:
+    environment:
+      # LA DSN DU LOGIN APPLICATIF, ENTIERE, DEPUIS L'ENVIRONNEMENT. Elle
+      # remplace la composition « utilisateur@db » de compose.yaml: l'hote,
+      # le port et le mode TLS sont ceux du fournisseur. Jamais celle du
+      # migrateur, jamais un superutilisateur — RLS ne s'appliquerait pas.
+      EUROSTRUCT_DATABASE_URL: ${EUROSTRUCT_DATABASE_URL:?DSN du login applicatif absente de deploy/staging.env}
+      EUROSTRUCT_SUPABASE_JWKS_URL: ${EUROSTRUCT_SUPABASE_JWKS_URL:?URL du JWKS du projet Supabase absente}
+      EUROSTRUCT_SUPABASE_ISSUER: ${EUROSTRUCT_SUPABASE_ISSUER:?emetteur (iss) du projet Supabase absent}
+      EUROSTRUCT_SUPABASE_AUDIENCE: ${EUROSTRUCT_SUPABASE_AUDIENCE:-authenticated}
+      EUROSTRUCT_JWT_ALGORITHMS: ${EUROSTRUCT_JWT_ALGORITHMS:-RS256}
+      # L'ORIGINE DE L'INTERFACE, ET ELLE SEULE. `*` est refuse par l'API.
+      EUROSTRUCT_CORS_ORIGINS: ${EUROSTRUCT_CORS_ORIGINS:?origines CORS absentes (l'URL publique de l'interface)}
+      EUROSTRUCT_ENVIRONNEMENT: ""
+      EUROSTRUCT_STORAGE_BACKEND: ${EUROSTRUCT_STORAGE_BACKEND:-local}
+    # `!override` REMPLACE la liste de compose.yaml: sans lui, l'API attendrait
+    # `init` et `objets-init`, ranges sous un profil inactif.
+    depends_on: !override []
+    # SUR LA BOUCLE LOCALE DE L'HOTE. Le mandataire TLS publie; l'API, non.
+    ports: !override
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+
+  web:
+    environment:
+      # CE QUE LE NAVIGATEUR JOINT: l'URL publique de l'API, jamais `api:8000`.
+      EUROSTRUCT_API_URL: ${EUROSTRUCT_PUBLIC_API_URL:?URL publique de l'API absente}
+      EUROSTRUCT_SUPABASE_URL: ${EUROSTRUCT_PUBLIC_SUPABASE_URL:?URL du projet Supabase absente}
+      # LA CLE ANONYME, publique par nature. Jamais la cle de service.
+      EUROSTRUCT_SUPABASE_ANON_KEY: ${EUROSTRUCT_PUBLIC_SUPABASE_ANON_KEY:?cle anonyme du projet Supabase absente}
+      EUROSTRUCT_ENVIRONNEMENT: ""
+    ports: !override
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
