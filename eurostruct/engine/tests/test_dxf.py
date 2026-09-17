@@ -185,20 +185,25 @@ def test_mandatory_legal_notice_is_on_the_drawing(built) -> None:
     assert LEGAL_NOTICE.split(".")[0] in normalised.replace(",", "")
 
 
-def test_no_text_is_written_on_a_yellow_layer(built) -> None:
+def test_no_text_or_dimension_is_written_on_a_pale_layer(built) -> None:
     """Mesure LibreCAD 2.2.0.2, impression COULEUR du 16/09: les reperes de
     barres et le titre, sur le calque TEXTE en couleur 2, sortaient jaunes sur
-    fond blanc — illisibles. Un texte se lit sur papier: sa couleur de calque
-    est 7, que tout logiciel CAO imprime en noir.
+    fond blanc — illisibles — et les valeurs de cotes, en cyan (4), pales.
+    Ce qui se lit sur papier porte une couleur sombre sur blanc: 7 pour les
+    textes (noir a l'impression), 5 pour les cotes (bleu).
     """
-    from eurostruct_engine.drawing.layers import ACI_JAUNE, L_TEXTE
+    from eurostruct_engine.drawing.layers import (
+        ACI_JAUNE, ACI_PALES_SUR_BLANC, L_COTATION, L_TEXTE,
+    )
 
     doc, _, _ = built
     assert next(s for s in LAYERS if s.name == L_TEXTE).color == 7
+    assert next(s for s in LAYERS if s.name == L_COTATION).color == 5
+    assert ACI_JAUNE in ACI_PALES_SUR_BLANC
     for e in doc.modelspace():
-        if e.dxftype() in ("TEXT", "MTEXT"):
+        if e.dxftype() in ("TEXT", "MTEXT", "DIMENSION"):
             couleur = doc.layers.get(e.dxf.layer).dxf.color
-            assert couleur != ACI_JAUNE, (e.dxf.layer, e.dxf.text)
+            assert couleur not in ACI_PALES_SUR_BLANC, (e.dxftype(), e.dxf.layer)
 
 
 def test_cartouche_records_the_engine_version(built) -> None:

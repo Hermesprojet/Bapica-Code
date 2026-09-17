@@ -108,17 +108,20 @@ valeur. Si le logiciel propose une conversion à l'import, c'est un signal.
 | `COFFRAGE` | 7 | CONTINUOUS | 0,35 mm |
 | `FERR-PRINCIPAL` | 1 | CONTINUOUS | 0,50 mm |
 | `FERR-TRANSVERSAL` | 3 | CONTINUOUS | 0,35 mm |
-| `COTATION` | 4 | CONTINUOUS | 0,18 mm |
+| `COTATION` | 5 | CONTINUOUS | 0,18 mm |
 | `TEXTE` | 7 | CONTINUOUS | 0,18 mm |
 | `CARTOUCHE` | 7 | CONTINUOUS | 0,25 mm |
 
-`TEXTE` était en couleur 2 (jaune) jusqu'au 16/09 : sur l'impression
-**couleur** de LibreCAD, les repères de barres et le titre sortaient jaunes
-sur fond blanc, illisibles — la couleur 2 est une couleur d'écran sombre, pas
-de tirage. La couleur 7 est celle que tout logiciel CAO inverse selon le fond
+`TEXTE` était en couleur 2 (jaune) et `COTATION` en 4 (cyan) jusqu'au 16/09 :
+sur l'impression **couleur** de LibreCAD, les repères de barres et le titre
+sortaient jaunes sur fond blanc, illisibles, et les valeurs de cotes cyan
+pâle. Ce sont des couleurs d'écran sombre, pas de tirage : sur blanc, le
+contraste du jaune est de 1,07:1 et celui du cyan de 1,25:1, là où le bleu
+fait 8,6:1. La couleur 7 est celle que tout logiciel CAO inverse selon le fond
 (noire sur papier, blanche sur un espace de travail sombre) ; `COFFRAGE` et
-`CARTOUCHE` la portaient déjà. `test_no_text_is_written_on_a_yellow_layer`
-interdit qu'un texte retombe sur un calque jaune.
+`CARTOUCHE` la portaient déjà, `TEXTE` la rejoint ; les cotes passent au bleu,
+leur couleur usuelle. `test_no_text_or_dimension_is_written_on_a_pale_layer`
+interdit qu'un texte ou une cote retombe sur un calque jaune, vert ou cyan.
 | `AXES` | 5 | **CENTER** | 0,13 mm |
 
 À vérifier : les sept existent, aucun objet n'est sur le calque `0`, et `AXES`
