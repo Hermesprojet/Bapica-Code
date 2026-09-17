@@ -69,9 +69,18 @@
 # ordinaire REFUSE alors (code 3), et `--recover-pending` les reprend apres
 # avoir etabli ses preconditions.
 #
-# SUR UNE BASE DEJA ACTIVE, ce script INSTALLE ET VERIFIE mais ne met pas a
-# niveau: le depot et le registre sont rapproches EN LECTURE, et une migration
-# ajoutee depuis produit ACTIVE_SCHEMA_UPGRADE_REQUIRED (code 9).
+# SUR UNE BASE DEJA ACTIVE, ce script INSTALLE ET VERIFIE. Une migration
+# ajoutee depuis produit ACTIVE_SCHEMA_UPGRADE_REQUIRED (code 9) — sauf si la
+# MISE A NIVEAU est explicitement demandee:
+#
+#   --mettre-a-niveau --diagnostic     annonce et controle, SANS RIEN MODIFIER
+#   --mettre-a-niveau                  applique les migrations manquantes
+#   --reprendre-mise-a-niveau          reprend une mise a niveau interrompue
+#
+# LA MISE A NIVEAU EST UNE FENETRE, NOMMEE ET BORNEE. Elle n'est pas un effet
+# de bord d'une relance: elle exige un consentement qui nomme la base, une
+# sauvegarde verifiee, l'arret prouve des ecritures, et elle rend les emprunts
+# avant de retablir le service. Voir la section « LA MISE A NIVEAU » plus bas.
 #
 # CONTRAT TLS: seuls `sslmode` et `sslrootcert` sont portes depuis l'URL. Tout
 # autre parametre `ssl*` est REFUSE avant connexion — ce qui n'est pas teste
@@ -107,11 +116,17 @@ fi
 STRICT=1
 DRY_RUN=0
 RECOVER=0
+MISE_A_NIVEAU=0
+DIAGNOSTIC=0
+REPRENDRE_MAN=0
 for arg in "$@"; do
   case "$arg" in
     --auto-heberge)   STRICT=0 ;;
     --dry-run)        DRY_RUN=1 ;;
     --recover-pending) RECOVER=1 ;;
+    --mettre-a-niveau) MISE_A_NIVEAU=1 ;;
+    --diagnostic)      DIAGNOSTIC=1 ;;
+    --reprendre-mise-a-niveau) REPRENDRE_MAN=1; MISE_A_NIVEAU=1 ;;
     -h|--help)
       sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
@@ -119,9 +134,19 @@ for arg in "$@"; do
       echo "REFUS: option inconnue « $arg »." >&2
       echo "       Usage: deploy_eurostruct.sh [--auto-heberge] [--dry-run]" >&2
       echo "                                 [--recover-pending]" >&2
+      echo "                                 [--mettre-a-niveau [--diagnostic]]" >&2
+      echo "                                 [--reprendre-mise-a-niveau]" >&2
       exit 2 ;;
   esac
 done
+# `--diagnostic` NE VEUT RIEN DIRE SEUL, et le dire vaut mieux que l'ignorer:
+# un exploitant qui l'emploie croit demander un essai a blanc, et obtiendrait
+# une INSTALLATION.
+if ((DIAGNOSTIC)) && ! ((MISE_A_NIVEAU)); then
+  echo "REFUS: --diagnostic accompagne --mettre-a-niveau." >&2
+  echo "       Pour un essai a blanc de l'installation: --dry-run." >&2
+  exit 2
+fi
 
 # ==========================================================================
 # HYGIENE DE CONNEXION — les PG* ambiantes ne decident de rien
@@ -692,6 +717,28 @@ EOF
       echo "   ok: aucune capacite residuelle du migrateur, revocation constatee"
     fi
   fi
+  # LA BARRIERE D'ECRITURE EST LEVEE, MEME QUAND LA MISE A NIVEAU ECHOUE.
+  # Une fenetre ouverte puis abandonnee laisserait l'application incapable
+  # d'ecrire, sans que rien ne le dise: le refus serait un « permission denied »
+  # a la premiere etude, longtemps apres.
+  if [[ ${#BARRIERE_LOGINS[@]} -gt 0 && $SERVICE_RETABLI -eq 0 ]]; then
+    echo
+    echo "== compensation — la barriere d'ecriture est levee"
+    if retablir_le_service; then
+      echo "   ok: ${BARRIERE_LOGINS[*]} retrouve(nt) eurostruct_authority_backend"
+    else
+      NETTOYAGE_ECHOUE=5
+      cat >&2 <<EOF
+UPGRADE_WRITE_BARRIER_STUCK: l'appartenance a eurostruct_authority_backend n'a
+       PAS pu etre rendue a: ${BARRIERE_LOGINS[*]}
+
+       L'application ne peut plus ecrire sur cette base. Rendez-la a la main,
+       depuis « $PLAN_USER »:
+
+           GRANT eurostruct_authority_backend TO <login applicatif>;
+EOF
+    fi
+  fi
   if [[ $VERROU_TENU -eq 1 && -n "${VERROU_PID:-}" ]]; then
     # Fermer l'entree du co-processus termine `psql`, donc la session, donc le
     # verrou. Aucun `pg_advisory_unlock` explicite: on veut que la liberation
@@ -867,6 +914,444 @@ SQL
   constat "eurostruct_deployment accorde a « $PLAN_USER »"
 fi
 
+# ==========================================================================
+# LA MISE A NIVEAU D'UNE BASE EN SERVICE
+# ==========================================================================
+# CE QU'ELLE FERME. Jusqu'ici, une base ACTIVE restait sur son schema
+# d'installation: le depot pouvait porter une migration de plus, la commande la
+# nommait et s'arretait (code 9). La seule « reprise » etait de detruire les
+# donnees et de reinstaller — inacceptable pour une installation qui porte des
+# etudes, leurs variantes et leurs documents.
+#
+# POURQUOI CE N'ETAIT PAS UN OUBLI. Appliquer une migration exige de rendre au
+# migrateur `writer` et `bootstrap`, que la finalisation lui a repris. Les lui
+# rendre en silence, sur une base en service, defait la separation que toute
+# la phase 2 achete. La mise a niveau n'annule pas cette regle: elle OUVRE UNE
+# FENETRE, la nomme, la borne, et prouve qu'elle est refermee.
+#
+# CE QUI TIENT LA FENETRE, DANS L'ORDRE:
+#
+#   1. un CONSENTEMENT qui nomme la base (ESC_UPGRADE_CONSENTEMENT). Un
+#      consentement recopie d'un autre environnement ne l'ouvre pas.
+#   2. une SAUVEGARDE verifiee (ESC_UPGRADE_SAUVEGARDE): une archive
+#      `pg_dump -Fc` lisible, qui porte le registre des migrations. A defaut,
+#      une declaration explicite « fournisseur:<texte> », qui est CONSIGNEE
+#      comme declaration et non comme verification.
+#   3. l'EXCLUSION MUTUELLE: le verrou de deploiement, deja pris plus haut.
+#      Deux mises a niveau concurrentes sont refusees (code 4).
+#   4. l'ARRET DES ECRITURES, prouve et pose: aucune session du ou des logins
+#      applicatifs, puis RETRAIT de leur appartenance a
+#      `eurostruct_authority_backend`. Une application qui se reconnecterait
+#      pendant la fenetre n'ecrit rien — elle est refusee par la base, pas par
+#      une convention.
+#   5. les EMPRUNTS, temporaires, avec la meme precondition et la meme
+#      compensation que l'installation.
+#   6. les MIGRATIONS MANQUANTES, et elles seules, par le registre: les
+#      empreintes sont confrontees, une migration deja inscrite est sautee.
+#   7. la REVOCATION des emprunts, CONSTATEE.
+#   8. les CONTROLES avant retablissement: etat, registre, manifeste approuve
+#      inchange, topologie conforme, zero capacite residuelle.
+#   9. le RETABLISSEMENT du service: l'appartenance retiree en 4 est rendue.
+#
+# CE QUE LA MISE A NIVEAU NE FAIT PAS. Elle ne refinalise pas — la base est
+# deja ACTIVE et le reste; elle ne touche ni au sceau, ni a la racine, ni aux
+# declarations approuvees (le manifeste est confronte AVANT et APRES); elle
+# n'ecrit aucune decision normative. Les migrations historiques ne sont pas
+# rejouees: le registre les saute, et une empreinte divergente refuse.
+#
+# CE QU'ELLE NE PROUVE PAS SEULE. Que les etudes, les resultats et les
+# documents sont conserves ligne pour ligne: cela se prouve DE L'EXTERIEUR,
+# avant/apres, par un lecteur qui contourne RLS
+# (db/test/comparer_contenu.sh). La recette db/test/mise_a_niveau_active.sh
+# le fait; cette commande, elle, constate ce qu'un plan de controle peut voir.
+
+#: LES LOGINS DONT L'APPARTENANCE A ETE RETIREE POUR LA FENETRE. La
+#: compensation la rend, meme si la mise a niveau echoue: une fenetre ouverte
+#: qu'on ne referme pas laisserait l'application sans droit d'ecrire.
+BARRIERE_LOGINS=()
+SERVICE_RETABLI=0
+
+# `logins_applicatifs` — ce que la base DECLARE comme logins de service.
+#
+# LU AU CATALOGUE, comme le manifeste de l'etape 6:
+# `normative_declared_setting()` n'est pas accordee au plan de controle. La
+# declaration est celle qui a ete APPROUVEE a la finalisation — c'est donc la
+# liste dont l'application se sert, pas une liste devinee.
+logins_applicatifs() {
+  plan -tAc "select coalesce((select split_part(s, '=', 2)
+                                from pg_db_role_setting r
+                                join pg_database b on b.oid = r.setdatabase
+                               cross join lateral unnest(r.setconfig) as u(s)
+                               where b.datname = current_database() and r.setrole = 0
+                                 and split_part(s, '=', 1) = 'eurostruct.approved_service_logins'),
+                             '')" 2>/dev/null | tr -d ' "'
+}
+
+# `etat_du_registre` — combien de migrations la base porte, et laquelle est la
+# derniere. Interroge PAR LE MIGRATEUR: c'est lui qui lit le registre partout
+# ailleurs dans ce fichier, et deux lecteurs differents finiraient par diverger.
+etat_du_registre() {
+  mig -tA -F'|' -v ON_ERROR_STOP=1 -c \
+    "select count(*)::text, coalesce(max(migration_id), '(aucune)')
+       from normative_migration_ledger" 2>/dev/null
+}
+
+# `retablir_le_service` — rend aux logins l'appartenance retiree pour la
+# fenetre. Rend 0 si TOUS l'ont retrouvee, 1 sinon: une barriere qu'on croit
+# levee et qui ne l'est pas laisse l'application muette.
+retablir_le_service() {
+  local login reste=0
+  for login in "${BARRIERE_LOGINS[@]}"; do
+    plan -v ON_ERROR_STOP=1 -v l="$login" >/dev/null 2>&1 <<'SQL'
+grant eurostruct_authority_backend to :"l";
+SQL
+    if [[ "$(plan -tAc "select pg_has_role('$login', 'eurostruct_authority_backend', 'USAGE')::text" 2>/dev/null)" != "true" ]]; then
+      reste=1
+    fi
+  done
+  return $reste
+}
+
+# `annonce_des_versions` — ce que la base porte, ce que le depot demande.
+#
+# ELLE EST LA PREMIERE CHOSE IMPRIMEE, et avant tout controle: un exploitant
+# qui hesite doit pouvoir lire d'ou il part et ou il va sans rien engager.
+MAN_PRESENTES=""; MAN_DERNIERE=""; MAN_CIBLE=""; MAN_CIBLE_DERNIERE=""
+annonce_des_versions() {
+  local registre
+  registre="$(etat_du_registre)"
+  [[ "$registre" == *"|"* ]] \
+    || echec "le registre des migrations n'a pas pu etre lu par « $MIG_USER ».
+       Sans lui, on ne sait pas ce que cette base porte: rien n'est engage."
+  MAN_PRESENTES="${registre%%|*}"; MAN_DERNIERE="${registre#*|}"
+  MAN_CIBLE="$(find "$MIGRATIONS_DIR" -maxdepth 1 -name '*.sql' | wc -l | tr -d ' ')"
+  MAN_CIBLE_DERNIERE="$(basename "$(find "$MIGRATIONS_DIR" -maxdepth 1 -name '*.sql' | sort | tail -1)" .sql)"
+  echo "   version presente : $MAN_PRESENTES migration(s) inscrite(s), derniere « $MAN_DERNIERE »"
+  echo "   version cible    : $MAN_CIBLE migration(s) au depot, derniere « $MAN_CIBLE_DERNIERE »"
+  echo "   sceau            : « $SCEAU_VERSION », assurance « $SCEAU_ASSURANCE »"
+}
+
+# `mise_a_niveau` — la fenetre, de bout en bout. Ne rend jamais la main:
+# elle sort par 0 (appliquee, ou rien a faire), 2 (prerequis), 4 (concurrence)
+# ou par `echec`.
+MAN_KO=0
+controle() {   # controle <ok|non> <libelle> [remede]
+  if [[ "$1" == "ok" ]]; then printf '   ok      %s\n' "$2"; return 0; fi
+  MAN_KO=1
+  printf '   MANQUE  %s\n' "$2"
+  [[ -n "${3:-}" ]] && printf '           %s\n' "$3"
+  return 1
+}
+
+mise_a_niveau() {
+  local attendu="oui-mettre-a-niveau-$BASE"
+  local f logins sessions tmp sv taille date_sv
+  local manifeste_avant approuve topo_avant
+
+  echo
+  echo "=================================================================="
+  echo " MISE A NIVEAU de « $BASE »$( ((DIAGNOSTIC)) && echo ' — DIAGNOSTIC (rien ne sera modifie)')"
+  echo "=================================================================="
+  annonce_des_versions
+  if [[ ${#MANQUANTES[@]} -eq 0 ]]; then
+    echo "   a appliquer      : aucune — cette base porte deja la version du depot"
+    echo
+    echo "Rien a faire: le registre et le depot concordent, empreintes comprises."
+    exit 0
+  fi
+  echo "   a appliquer      : ${#MANQUANTES[@]} migration(s) manquante(s)"
+  for f in "${MANQUANTES[@]}"; do
+    printf '                      %-40s sha256 %s\n' \
+      "$(basename "$f")" "$(esc_empreinte_migration "$f" | cut -c1-16)"
+  done
+
+  # ------------------------------------------------------------------
+  # LES PREREQUIS — tous evalues, puis le verdict
+  # ------------------------------------------------------------------
+  # EN DIAGNOSTIC COMME EN APPLICATION, LA LISTE EST ENTIERE. S'arreter au
+  # premier manque ferait decouvrir les suivants un par un, a chaque relance,
+  # sur une base en service. Le verdict tombe apres.
+  echo
+  echo "== prerequis de la mise a niveau"
+
+  [[ "${ESC_UPGRADE_CONSENTEMENT:-}" == "$attendu" ]] \
+    && controle ok "consentement explicite, et il nomme cette base" \
+    || controle non "ESC_UPGRADE_CONSENTEMENT" \
+         "attendu: ESC_UPGRADE_CONSENTEMENT=$attendu"
+
+  # LA SAUVEGARDE: VERIFIEE, OU DECLAREE — et la difference est ecrite.
+  sv="${ESC_UPGRADE_SAUVEGARDE:-}"
+  tmp="$(mktemp -d)"; chmod 700 "$tmp"
+  if [[ -z "$sv" ]]; then
+    controle non "ESC_UPGRADE_SAUVEGARDE" \
+      "une archive « pg_dump -Fc » de cette base, ou « fournisseur:<texte> »
+           pour declarer une sauvegarde prise chez l'hebergeur."
+  elif [[ "$sv" == fournisseur:* ]]; then
+    controle ok "sauvegarde DECLAREE (non verifiee ici): « ${sv#fournisseur:} »"
+  elif [[ ! -r "$sv" || ! -s "$sv" ]]; then
+    controle non "la sauvegarde « $sv » est absente, vide ou illisible"
+  elif ! command -v pg_restore >/dev/null 2>&1; then
+    controle non "pg_restore est absent de cet hote" \
+      "sans lui, l'archive ne peut pas etre inspectee. Installez postgresql-client,
+           ou declarez la sauvegarde: ESC_UPGRADE_SAUVEGARDE=fournisseur:<texte>"
+  elif ! pg_restore -l "$sv" >"$tmp/toc" 2>/dev/null; then
+    controle non "« $sv » n'est pas une archive pg_dump lisible (format « custom » attendu)"
+  elif ! grep -q "normative_migration_ledger" "$tmp/toc"; then
+    controle non "l'archive « $sv » ne porte pas le registre des migrations" \
+      "elle ne sauvegarde donc pas cette base: verifiez ce que vous avez sauvegarde."
+  else
+    taille="$(stat -c %s "$sv")"; date_sv="$(date -u -r "$sv" '+%Y-%m-%dT%H:%M:%SZ')"
+    controle ok "sauvegarde verifiee: $(basename "$sv"), $taille o, $date_sv (UTC), registre present"
+  fi
+  rm -rf "$tmp"
+
+  # LES LOGINS APPLICATIFS, ET LEURS SESSIONS. La declaration approuvee dit
+  # QUI ecrit; `pg_stat_activity` dit si l'un d'eux est connecte MAINTENANT.
+  logins="$(logins_applicatifs)"
+  if [[ -z "$logins" ]]; then
+    controle non "aucun login applicatif declare (eurostruct.approved_service_logins)" \
+      "la barriere d'ecriture ne saurait pas quoi retirer. Declarez-le, ou
+           menez cette mise a niveau sur une base sans application."
+  else
+    controle ok "login(s) applicatif(s) declare(s): $logins"
+    sessions="$(plan -tAc "select coalesce(string_agg(distinct usename || ' (pid ' || pid || ')', ', '), '')
+                             from pg_stat_activity
+                            where datname = current_database()
+                              and usename = any(string_to_array('$logins', ','))" 2>/dev/null)"
+    [[ -z "$sessions" ]] \
+      && controle ok "aucune session applicative en cours: les ecritures sont arretees" \
+      || controle non "l'application ecrit encore: $sessions" \
+           "arretez l'API (et l'interface) AVANT la mise a niveau. La commande de
+           demonstration et celle de staging le font pour vous."
+  fi
+
+  # LE MIGRATEUR NE DOIT RIEN DETENIR — sinon une fenetre est deja ouverte.
+  if ! capacites_du_migrateur; then
+    controle non "l'etat des roles d'autorite n'a pas pu etre constate"
+  elif [[ -n "$CAPACITES" ]]; then
+    MAN_KO=1
+    printf '   MANQUE  « %s » detient deja: %s\n' "$MIG_USER" "$CAPACITES"
+    printf '           une mise a niveau est en cours, ou a ete interrompue.\n'
+    printf '           Reprise: tools/deploy_eurostruct.sh --reprendre-mise-a-niveau\n'
+  else
+    controle ok "« $MIG_USER » ne detient aucune capacite sur les roles d'autorite"
+  fi
+
+  # LES DECLARATIONS APPROUVEES, AVANT. Elles seront confrontees APRES: une
+  # mise a niveau qui elargirait la portee approuvee serait refusee.
+  manifeste_avant=$(plan -tAc "select normative_settings_manifest()" 2>&1)
+  approuve=$(plan -tAc "select normative_approved_manifest()" 2>&1)
+  if [[ "$manifeste_avant" =~ ^[0-9a-f]{64}$ && "$manifeste_avant" == "$approuve" ]]; then
+    controle ok "declarations conformes au manifeste approuve ($(cut -c1-16 <<<"$approuve"))"
+  else
+    controle non "les declarations de cette base ne sont pas celles qui ont ete approuvees" \
+      "courant ${manifeste_avant:0:16}, approuve ${approuve:0:16}. Une mise a niveau
+           ne regularise pas une configuration: retablissez-la d'abord."
+  fi
+  topo_avant=$(plan -tAc "select topologie from normative_deployment_readiness()" 2>&1)
+  [[ "$topo_avant" == "CONFORME" ]] \
+    && controle ok "topologie CONFORME avant la fenetre" \
+    || controle non "topologie « $topo_avant » avant la fenetre" \
+         "une base dont la topologie est refusee ne se met pas a niveau: elle se repare."
+
+  if ((MAN_KO)); then
+    echo
+    echo "MISE A NIVEAU REFUSEE: au moins un prerequis manque (voir MANQUE)." >&2
+    echo "       RIEN N'A ETE MODIFIE." >&2
+    exit 2
+  fi
+  echo
+  if ((DIAGNOSTIC)); then
+    echo "DIAGNOSTIC: les prerequis sont tenus. ${#MANQUANTES[@]} migration(s) seraient"
+    echo "            appliquees a « $BASE ». RIEN N'A ETE MODIFIE."
+    echo "            Pour les appliquer: la meme commande, sans --diagnostic."
+    exit 0
+  fi
+
+  # ------------------------------------------------------------------
+  # LA FENETRE
+  # ------------------------------------------------------------------
+  local login
+  etape_mutante "la barriere d'ecriture"
+  etape "mise a niveau 1/5 — barriere d'ecriture"
+  for login in ${logins//,/ }; do
+    # ON NE RETIRE QUE CE QUI EST LA, et on note ce qu'on retire: la
+    # compensation rend EXACTEMENT cela, ni plus ni moins.
+    if [[ "$(plan -tAc "select pg_has_role('$login', 'eurostruct_authority_backend', 'USAGE')::text" 2>/dev/null)" == "true" ]]; then
+      plan -v ON_ERROR_STOP=1 -v l="$login" >/dev/null 2>&1 <<'SQL'
+revoke eurostruct_authority_backend from :"l";
+SQL
+      if [[ "$(plan -tAc "select pg_has_role('$login', 'eurostruct_authority_backend', 'USAGE')::text" 2>/dev/null)" == "true" ]]; then
+        echec "la barriere d'ecriture n'a pas pris pour « $login »: il atteint
+       encore eurostruct_authority_backend. Aucune migration n'a ete appliquee."
+      fi
+      BARRIERE_LOGINS+=("$login")
+      constat "« $login » ne peut plus ecrire (appartenance retiree pour la fenetre)"
+    else
+      constat "« $login » n'avait pas eurostruct_authority_backend — rien a retirer"
+    fi
+  done
+
+  etape_mutante "l'octroi des emprunts de mise a niveau"
+  etape "mise a niveau 2/5 — emprunts temporaires a « $MIG_USER »"
+  SORTIE=$(plan -v ON_ERROR_STOP=1 -v m="$MIG_USER" 2>&1 <<'SQL'
+grant eurostruct_normative_writer    to :"m" with admin option;
+grant eurostruct_normative_bootstrap to :"m" with admin option;
+SQL
+) || echec "les emprunts n'ont pas pu etre accordes:
+$(grep -m2 -E 'ERROR|FATAL' <<<"$SORTIE" | sed 's/^/       /')"
+  EMPRUNTS_ACCORDES=1
+  constat "emprunts accordes — ils seront repris a l'etape 4/5"
+
+  etape "mise a niveau 3/5 — les migrations manquantes, et elles seules"
+  local appliquees=0
+  for f in "${MANQUANTES[@]}"; do
+    etape_mutante "$(basename "$f")"
+    esc_appliquer_migration "$f" mig
+    case $? in
+      0) if [[ "$ESC_MIGRATION_ETAT" == "SAUTEE" ]]; then
+           echo "   $(basename "$f")  — deja appliquee (course avec une autre commande ?)"
+         else
+           appliquees=$((appliquees + 1)); echo "   $(basename "$f")"
+         fi ;;
+      6) echec "$ESC_MIGRATION_SORTIE" ;;
+      *) echec "$(basename "$f") a ete refusee:
+$( { grep -m3 -E 'ERROR|FATAL|DETAIL' <<<"$ESC_MIGRATION_SORTIE" \
+       || grep -m16 -v '^[[:space:]]*$' <<<"$ESC_MIGRATION_SORTIE"; } | sed 's/^/       /')" ;;
+    esac
+  done
+  constat "$appliquees migration(s) appliquee(s)"
+
+  etape_mutante "la reprise des emprunts"
+  etape "mise a niveau 4/5 — reprise des emprunts"
+  if ! revoquer_les_emprunts; then
+    echec "la revocation des emprunts a echoue. Les migrations sont appliquees et
+       inscrites; « $MIG_USER » conserve peut-etre writer/bootstrap.
+       Reprenez par: tools/deploy_eurostruct.sh --reprendre-mise-a-niveau"
+  fi
+  if ! capacites_du_migrateur; then
+    echec "la reprise des emprunts n'a pas pu etre constatee. N'EXPLOITEZ PAS
+       cette base avant de l'avoir verifiee."
+  fi
+  [[ -z "$CAPACITES" ]] || echec "« $MIG_USER » conserve: $CAPACITES
+       La fenetre n'est pas refermee. Reprise: --reprendre-mise-a-niveau"
+  # LA COMPENSATION N'A PLUS D'EMPRUNT A REPRENDRE.
+  EMPRUNTS_ACCORDES=0
+  constat "zero capacite residuelle du migrateur"
+
+  etape "mise a niveau 5/5 — controles avant retablissement du service"
+  local etat_apres reste="" manifeste_apres topo_apres
+  etat_apres=$(plan -tAc "select normative_activation_state()" 2>&1)
+  [[ "$etat_apres" == "ACTIVE" ]] || echec "la base n'est plus ACTIVE (« $etat_apres »)."
+  constat "etat ACTIVE — l'activation d'origine n'a pas ete touchee"
+  if ! esc_verifier_historique "$MIGRATIONS_DIR" mig; then
+    echec "$ESC_HISTORIQUE_DIAG"
+  fi
+  for f in "$MIGRATIONS_DIR"/*.sql; do
+    esc_migration_etat "$f" mig
+    [[ "$ESC_MIGRATION_GATE_STATE" == "DEJA" ]] || reste="$reste$(basename "$f") "
+  done
+  [[ -z "$reste" ]] || echec "apres la mise a niveau, le registre n'a toujours pas: $reste"
+  constat "depot et registre concordent, empreintes comprises"
+  manifeste_apres=$(plan -tAc "select normative_settings_manifest()" 2>&1)
+  [[ "$manifeste_apres" == "$manifeste_avant" ]] \
+    || echec "les declarations approuvees ont change pendant la mise a niveau
+       ($manifeste_avant -> $manifeste_apres). La portee approuvee ne s'etend pas
+       par une migration."
+  constat "declarations inchangees (manifeste $(cut -c1-16 <<<"$manifeste_apres"))"
+  topo_apres=$(plan -tAc "select topologie from normative_deployment_readiness()" 2>&1)
+  [[ "$topo_apres" == "CONFORME" ]] || echec "topologie « $topo_apres » apres la mise a niveau."
+  constat "topologie CONFORME"
+
+  etape "retablissement du service"
+  if [[ ${#BARRIERE_LOGINS[@]} -eq 0 ]]; then
+    constat "aucune barriere n'avait ete posee — rien a rendre"
+  elif retablir_le_service; then
+    constat "${BARRIERE_LOGINS[*]} retrouve(nt) eurostruct_authority_backend"
+  else
+    echec "l'appartenance n'a pas pu etre rendue a ${BARRIERE_LOGINS[*]}.
+       Les migrations sont appliquees; l'application ne peut pas ecrire.
+       Rendez-la depuis « $PLAN_USER »:
+           GRANT eurostruct_authority_backend TO <login applicatif>;"
+  fi
+  SERVICE_RETABLI=1
+
+  echo
+  echo "=================================================================="
+  echo " « $BASE » mise a niveau: $MAN_PRESENTES -> $MAN_CIBLE migrations,"
+  echo " $appliquees appliquee(s), derniere « $MAN_CIBLE_DERNIERE »."
+  echo " Etat ACTIVE, topologie conforme, emprunts repris, service retabli."
+  echo " Redemarrez l'application sur la nouvelle version."
+  echo "=================================================================="
+  exit 0
+}
+
+# `reprendre_mise_a_niveau` — une fenetre laissee ouverte par un arret brutal.
+#
+# ELLE NE DEVINE RIEN. Les migrations sont inscrites une par une, dans leur
+# propre transaction: le registre dit exactement ou l'on s'est arrete. Ce qui
+# reste a faire est donc de REFERMER la fenetre — reprendre les emprunts, rendre
+# l'appartenance retiree — puis de laisser l'exploitant relancer la mise a
+# niveau, qui reprendra a la migration suivante.
+reprendre_mise_a_niveau() {
+  echo
+  echo "== reprise d'une mise a niveau interrompue (--reprendre-mise-a-niveau)"
+  annonce_des_versions
+  local logins login rendus=0 repris=0
+
+  if ! capacites_du_migrateur; then
+    echec "l'etat des roles d'autorite n'a pas pu etre constate: rien n'est repris."
+  fi
+  if [[ -n "$CAPACITES" ]]; then
+    etape_mutante "la reprise des emprunts"
+    revoquer_les_emprunts || true
+    if ! capacites_du_migrateur; then
+      echo "DEPLOYMENT_CLEANUP_UNVERIFIED: la reprise n'a pas pu etre constatee." >&2
+      exit 7
+    fi
+    [[ -z "$CAPACITES" ]] || { echo "DEPLOYMENT_CLEANUP_FAILED: « $MIG_USER » conserve: $CAPACITES" >&2; exit 5; }
+    repris=1
+    constat "emprunts repris: « $MIG_USER » ne detient plus rien"
+  else
+    constat "aucun emprunt a reprendre"
+  fi
+
+  # LA BARRIERE, RENDUE A CEUX QUI L'AVAIENT. On ne l'accorde pas a un login
+  # qui ne l'avait pas avant: la declaration approuvee dit qui est applicatif,
+  # et c'est a eux — et a eux seuls — que le droit d'ecrire revient.
+  logins="$(logins_applicatifs)"
+  for login in ${logins//,/ }; do
+    if [[ "$(plan -tAc "select pg_has_role('$login', 'eurostruct_authority_backend', 'USAGE')::text" 2>/dev/null)" != "true" ]]; then
+      etape_mutante "le retablissement du service"
+      BARRIERE_LOGINS+=("$login")
+    fi
+  done
+  if [[ ${#BARRIERE_LOGINS[@]} -gt 0 ]]; then
+    if retablir_le_service; then
+      rendus=1
+      constat "${BARRIERE_LOGINS[*]} retrouve(nt) eurostruct_authority_backend"
+    else
+      echo "UPGRADE_WRITE_BARRIER_STUCK: ${BARRIERE_LOGINS[*]} n'ecrit toujours pas." >&2
+      exit 5
+    fi
+  else
+    constat "le ou les logins applicatifs ecrivent deja — aucune barriere a lever"
+  fi
+  SERVICE_RETABLI=1
+
+  echo
+  if [[ ${#MANQUANTES[@]} -eq 0 ]]; then
+    echo "Reprise terminee. Le registre porte deja toutes les migrations du depot:"
+    echo "la mise a niveau interrompue etait allee jusqu'au bout des migrations."
+  else
+    echo "Reprise terminee ($( ((repris)) && echo 'emprunts repris, ' )$( ((rendus)) && echo 'service retabli, ' )fenetre refermee)."
+    echo "Il reste ${#MANQUANTES[@]} migration(s) a appliquer. Relancez:"
+    echo "    ESC_UPGRADE_CONSENTEMENT=oui-mettre-a-niveau-$BASE \\"
+    echo "    ESC_UPGRADE_SAUVEGARDE=<archive> tools/deploy_eurostruct.sh --mettre-a-niveau"
+  fi
+  exit 0
+}
+
 DEJA=$(plan -tAc "select normative_activation_state()" 2>&1)
 if [[ "$DEJA" == "ACTIVE" ]]; then
   echo
@@ -899,6 +1384,7 @@ if [[ "$DEJA" == "ACTIVE" ]]; then
     echec "$ESC_HISTORIQUE_DIAG"
   fi
   ECART_ACTIVE=""
+  MANQUANTES=()
   for f in "$MIGRATIONS_DIR"/*.sql; do
     esc_migration_etat "$f" mig
     case "$ESC_MIGRATION_GATE_STATE" in
@@ -910,13 +1396,23 @@ if [[ "$DEJA" == "ACTIVE" ]]; then
        applique: retrouvez la version appliquee, ou portez le correctif dans
        une NOUVELLE migration." ;;
       ABSENTE)
-        ECART_ACTIVE="${ECART_ACTIVE}$(basename "$f") " ;;
+        ECART_ACTIVE="${ECART_ACTIVE}$(basename "$f") "
+        MANQUANTES+=("$f") ;;
       *)
         echec "le registre n'a pas pu etre interroge pour « $(basename "$f") »
        sur cette base ACTIVE.
        ${ESC_MIGRATION_DIAG:-aucun diagnostic}" ;;
     esac
   done
+  # LA REPRISE D'ABORD: une fenetre laissee ouverte se referme avant qu'on
+  # regarde ce qui manque encore.
+  if ((REPRENDRE_MAN)); then
+    reprendre_mise_a_niveau
+  fi
+  if ((MISE_A_NIVEAU)); then
+    mise_a_niveau
+  fi
+
   if [[ -n "$ECART_ACTIVE" ]]; then
     cat >&2 <<EOF
 ACTIVE_SCHEMA_UPGRADE_REQUIRED: cette base est ACTIVE, et le depot porte des
@@ -924,14 +1420,24 @@ ACTIVE_SCHEMA_UPGRADE_REQUIRED: cette base est ACTIVE, et le depot porte des
 
            $ECART_ACTIVE
 
-       Cette commande INSTALLE et VERIFIE; elle ne met pas a niveau une base en
-       service. Appliquer ces migrations demanderait de reaccorder les emprunts
-       sur une base ACTIVE — ce que le modele de menace interdit — puis de
-       refinaliser, alors que des confirmations normatives ont peut-etre deja
-       ete emises sous le schema actuel.
+       Cette invocation INSTALLE et VERIFIE: elle n'applique rien a une base en
+       service, parce qu'appliquer une migration exige de rendre au migrateur
+       des emprunts que la finalisation lui a repris — une fenetre, qui ne doit
+       jamais s'ouvrir par inadvertance.
 
-       RIEN N'A ETE APPLIQUE. Le protocole de mise a niveau d'une base en
-       service reste a concevoir; voir docs/DEPLOIEMENT_PREREQUIS.md.
+       RIEN N'A ETE APPLIQUE. Pour la mettre a niveau EN CONSERVANT SES DONNEES:
+
+           tools/deploy_eurostruct.sh --mettre-a-niveau --diagnostic
+               annonce la version presente, la version cible, les migrations
+               prevues et les prerequis. Ne modifie rien.
+
+           ESC_UPGRADE_CONSENTEMENT=oui-mettre-a-niveau-$BASE \\
+           ESC_UPGRADE_SAUVEGARDE=<archive pg_dump -Fc> \\
+             tools/deploy_eurostruct.sh --mettre-a-niveau
+
+       Les commandes de demonstration et de staging l'enchainent avec l'arret
+       et le redemarrage de l'application: « deploy/demo.sh mettre-a-jour »,
+       « deploy/staging.sh mettre-a-niveau ». Voir docs/MISE_A_NIVEAU.md.
 EOF
     exit 9
   fi
@@ -939,6 +1445,16 @@ EOF
 else
   if [[ "$DEJA" != "PENDING" ]]; then
     echec "etat de deploiement inattendu: « $DEJA »."
+  fi
+
+  # LA MISE A NIVEAU NE S'APPLIQUE PAS A UNE BASE QUI N'EST PAS EN SERVICE.
+  # Une base PENDING n'a jamais ete finalisee: il n'y a pas de fenetre a
+  # ouvrir, il y a une installation a terminer.
+  if ((MISE_A_NIVEAU)); then
+    echec "cette base est PENDING: elle n'a jamais ete finalisee, et il n'y a
+       donc rien a mettre a niveau. Terminez l'installation:
+           tools/deploy_eurostruct.sh$( ((STRICT)) || echo ' --auto-heberge')
+       (ou, si un deploiement a ete interrompu: --recover-pending)."
   fi
 
 # ==========================================================================

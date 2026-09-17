@@ -55,3 +55,14 @@ eurostruct/deploy/staging.env
 **/deploy/staging.env
 eurostruct/deploy/staging-repetition/
 **/deploy/staging-repetition/
+
+# LES JOURNAUX DE LA RECETTE DE MISE A NIVEAU. Ils portent des noms de roles
+# jetables, des identifiants d'etudes fictives et les sorties completes des
+# commandes: utiles sur la machine qui les a produits, sans valeur au depot.
+eurostruct/db/test/mise-a-niveau/
+**/db/test/mise-a-niveau/
+
+# LES SAUVEGARDES PRISES PAR LA COMMANDE DE DEMONSTRATION. Elles contiennent
+# les etudes et les livrables de l'essai: elles appartiennent au poste.
+eurostruct/deploy/sauvegardes/
+**/deploy/sauvegardes/
