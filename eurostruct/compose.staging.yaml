@@ -29,9 +29,10 @@
 #     decision du circuit a deux personnes, prise par des comptes reels; ce
 #     qui reste a etablir est l'habilitation de ces personnes, pas la nature
 #     de l'instance;
-#   * les URL sont PUBLIQUES, en https, et c'est le mandataire TLS de l'hote
-#     (nginx, Caddy, Traefik — hors de ce depot) qui les sert: les deux
-#     conteneurs n'ecoutent que sur la boucle locale de l'hote;
+#   * les URL sont PUBLIQUES, en https, servies par le mandataire TLS de la
+#     composition (`mandataire`, Caddy, deploy/Caddyfile) — ou par celui de
+#     l'hote (nginx, Traefik) si `EUROSTRUCT_MANDATAIRE=non`: les deux
+#     conteneurs applicatifs n'ecoutent que sur la boucle locale de l'hote;
 #   * les livrables vivent sur le volume `livrables` de l'hote (`local`, une
 #     seule instance d'API) ou dans un compartiment S3 du fournisseur (`s3`):
 #     le choix est ecrit dans `deploy/staging.env`, jamais devine.
@@ -83,3 +84,44 @@ services:
       EUROSTRUCT_ENVIRONNEMENT: ""
     ports: !override
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
+
+  # LE MANDATAIRE TLS. Il sert les deux URL publiques sur 80 et 443 et renvoie
+  # vers `web` et `api` par le reseau de la composition (deploy/Caddyfile):
+  # c'est lui, et lui seul, que le navigateur joint. Profil `mandataire`,
+  # active par `deploy/staging.sh` sauf `EUROSTRUCT_MANDATAIRE=non` — le cas
+  # d'un hote qui a deja nginx ou Traefik, et qui renvoie alors lui-meme vers
+  # 127.0.0.1:WEB_PORT et 127.0.0.1:API_PORT.
+  #
+  # LES CERTIFICATS ET LA CONFIGURATION SURVIVENT AU CONTENEUR: deux volumes
+  # nommes. Sans eux, chaque redemarrage redemanderait un certificat a l'ACME,
+  # jusqu'a la limite de delivrance.
+  mandataire:
+    image: caddy:2.8-alpine
+    profiles: ["mandataire"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    environment:
+      EUROSTRUCT_PUBLIC_WEB_URL: ${EUROSTRUCT_PUBLIC_WEB_URL:?URL publique de l'interface absente}
+      EUROSTRUCT_PUBLIC_API_URL: ${EUROSTRUCT_PUBLIC_API_URL:?URL publique de l'API absente}
+      # Vide (ACME), « tls <courriel> » (ACME avec contact) ou « tls internal »
+      # (autorite locale: repetition seulement). Voir deploy/Caddyfile.
+      EUROSTRUCT_CADDY_TLS: ${EUROSTRUCT_CADDY_TLS:-}
+    # TOUTES LES INTERFACES PAR DEFAUT — c'est le seul service public. La
+    # repetition locale pose EUROSTRUCT_MANDATAIRE_ECOUTE=127.0.0.1: pour
+    # rester sur la boucle locale.
+    ports:
+      - "${EUROSTRUCT_MANDATAIRE_ECOUTE:-}80:80"
+      - "${EUROSTRUCT_MANDATAIRE_ECOUTE:-}443:443"
+      - "${EUROSTRUCT_MANDATAIRE_ECOUTE:-}443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - mandataire_donnees:/data
+      - mandataire_config:/config
+
+volumes:
+  mandataire_donnees:
+  mandataire_config:

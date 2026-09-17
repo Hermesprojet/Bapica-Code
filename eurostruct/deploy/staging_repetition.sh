@@ -18,12 +18,19 @@
 #     la procedure — et joint par les CONTENEURS a travers le pont Docker,
 #     comme une base distante;
 #   * l'emetteur de jetons des parcours navigateur (`web/e2e/supabase_local.mjs`)
-#     lance sur l'hote, HORS de la composition, comme Supabase Auth le serait.
+#     lance sur l'hote, HORS de la composition, comme Supabase Auth le serait;
+#   * le MANDATAIRE TLS de la composition (Caddy, deploy/Caddyfile) servant
+#     deux noms publics — staging.localhost et api.staging.localhost — en
+#     https sur 127.0.0.1:443, avec son autorite locale (`tls internal`): les
+#     noms sont resolus vers la boucle locale par `--resolve`, et le
+#     certificat est VERIFIE contre cette autorite, jamais ignore.
 #
-# Puis: prerequis, privileges, migrer, up, status, un parcours par l'API des
-# CONTENEURS (bureau, projet, etude, note PDF telechargee et verifiee), la
-# recette de bout en bout (`db/test/recette_supabase_staging.sh executer`),
-# down. Chaque pas est note EXECUTE / ECHOUE / NON EXECUTE.
+# Puis: prerequis, privileges, migrer, up, status (les controles des URL
+# publiques), un parcours PAR LES URL PUBLIQUES (bureau, projet, etude, note
+# PDF telechargee et verifiee), un REDEMARRAGE (down, up, relecture de l'etude
+# et de sa note a l'identique), la recette de bout en bout
+# (`db/test/recette_supabase_staging.sh executer`), down. Chaque pas est note
+# EXECUTE / ECHOUE / NON EXECUTE.
 #
 # CE QUE CELA N'ETABLIT PAS. Rien sur Supabase: ni ses roles, ni son JWKS, ni
 # son reseau. `SUPABASE_UNVERIFIED` reste vrai. C'est la repetition de la
@@ -31,11 +38,13 @@
 #
 # CE QU'IL EXIGE, ET CE QU'IL DETRUIT. Un cluster PostgreSQL JETABLE prouve
 # tel (lib_harnais.sh), qui accepte les connexions TCP depuis les ponts Docker
-# (`listen_addresses`, une ligne `pg_hba`); Docker, node, la venv de l'API.
-# Il ne detruit que ce qu'il a cree, nom par nom: ses bases, ses roles, sa
-# composition (`eurostruct-staging-repetition`), son emetteur. Ses fichiers —
-# env genere (0600), cle d'emetteur, journaux — vont sous
-# deploy/staging-repetition/, ignore par Git; l'env est efface a la sortie.
+# (`listen_addresses`, une ligne `pg_hba`); Docker, node, la venv de l'API;
+# les ports 80 et 443 de la boucle locale, libres. Il ne detruit que ce qu'il
+# a cree, nom par nom: ses bases, ses roles, sa composition
+# (`eurostruct-staging-repetition`, volumes compris), son emetteur. Ses
+# fichiers — env genere (0600), cle d'emetteur, autorite locale du
+# mandataire, journaux — vont sous deploy/staging-repetition/, ignore par
+# Git; l'env et l'autorite sont effaces a la sortie.
 #
 # CODES: 0 tout est tenu; 1 un pas a echoue; 2 refus (cluster non jetable,
 # roles presents); 4 non executable (prerequis).
@@ -66,6 +75,14 @@ done
 python3 -c "import eurostruct_api, uvicorn" 2>/dev/null \
   || { echo "NON EXECUTE: eurostruct_api ou uvicorn absent de python3 (EUROSTRUCT_VENV)." >&2; exit 4; }
 docker info >/dev/null 2>&1 || { echo "NON EXECUTE: le demon docker ne repond pas." >&2; exit 4; }
+# LE MANDATAIRE ECOUTE SUR 127.0.0.1:80 ET :443 — les ports d'un vrai staging,
+# sur la boucle locale. Pris, il ne demarrerait pas, et « up » le dirait tard.
+if command -v ss >/dev/null 2>&1; then
+  for p in 80 443; do
+    ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$p$" \
+      && { echo "NON EXECUTE: le port $p de l'hote est deja pris; le mandataire de la repetition l'ecoute sur 127.0.0.1." >&2; exit 4; }
+  done
+fi
 
 # ---------------------------------------------------------------------------
 # LES NOMS — tous suffixes d'un jeton, donc detruisibles nom par nom
@@ -74,6 +91,11 @@ HOTE="${EUROSTRUCT_REPETITION_HOTE:-172.17.0.1}"   # l'hote, vu des conteneurs
 PORT_API="${EUROSTRUCT_REPETITION_PORT_API:-8048}"
 PORT_WEB="${EUROSTRUCT_REPETITION_PORT_WEB:-3048}"
 PORT_AUTH="${EUROSTRUCT_REPETITION_PORT_AUTH:-54398}"
+# LES DEUX NOMS PUBLICS, servis par le mandataire sur 127.0.0.1:443 et resolus
+# par curl (--resolve): aucun DNS, aucun /etc/hosts touche.
+NOM_WEB="staging.localhost"; NOM_API="api.staging.localhost"
+URL_WEB="https://$NOM_WEB"; URL_API="https://$NOM_API"
+RESOLUTION="$NOM_WEB:443:127.0.0.1,$NOM_API:443:127.0.0.1,$NOM_WEB:80:127.0.0.1,$NOM_API:80:127.0.0.1"
 JETON="$(harnais_jeton)"
 P="esc_rep"
 MIG="${P}_mg_${JETON}"; CTL="${P}_pl_${JETON}"; SVC="${P}_ap_${JETON}"; SAV="${P}_sv_${JETON}"
@@ -86,6 +108,7 @@ PROJET_COMPOSE="eurostruct-staging-repetition"
 DOSSIER="$ICI/staging-repetition"
 mkdir -p "$DOSSIER"; chmod 700 "$DOSSIER"
 ENVR="$DOSSIER/staging.env"
+CA="$DOSSIER/mandataire-ca-$JETON.crt"   # l'autorite locale du mandataire, copiee par « up »
 JOURNAL="$DOSSIER/repetition-$(date -u +%Y%m%dT%H%M%SZ).log"
 TMP="$(mktemp -d)"; chmod 700 "$TMP"
 PID_AUTH=""
@@ -96,8 +119,9 @@ admb() { psql -X -q -d "$BASE" "$@"; }
 
 NOMS=("0 base joignable des conteneurs" "1 provisionnement (exploitant)"
       "2 emetteur exterieur" "3 staging.sh prerequis" "4 staging.sh privileges"
-      "5 staging.sh migrer" "6 staging.sh up" "7 staging.sh status"
-      "8 parcours par l'API des conteneurs" "9 recette de bout en bout" "10 staging.sh down")
+      "5 staging.sh migrer" "6 staging.sh up (mandataire TLS compris)" "7 staging.sh status (URL publiques)"
+      "8 parcours par les URL publiques" "9 redemarrage: down, up, relecture"
+      "10 recette de bout en bout" "11 staging.sh down")
 ETATS=(); DETAILS=()
 for _ in "${NOMS[@]}"; do ETATS+=("NON EXECUTE"); DETAILS+=("non tente"); done
 poser()    { ETATS[$1]="$2"; DETAILS[$1]="$3"; }
@@ -116,10 +140,12 @@ nettoyer() {
   echo ""
   echo "--- nettoyage: composition, emetteur, bases et roles crees ---"
   if [[ -f "$ENVR" ]]; then
-    docker compose -p "$PROJET_COMPOSE" -f "$RACINE/compose.yaml" -f "$RACINE/compose.staging.yaml" \
+    COMPOSE_PROFILES=mandataire docker compose -p "$PROJET_COMPOSE" \
+      -f "$RACINE/compose.yaml" -f "$RACINE/compose.staging.yaml" \
       --env-file "$ENVR" down -v --remove-orphans >/dev/null 2>&1 || true
     rm -f "$ENVR"
   fi
+  rm -f "$CA"
   [[ -n "$PID_AUTH" ]] && kill "$PID_AUTH" 2>/dev/null
   detruire_bases_creees
   detruire_roles_crees
@@ -241,11 +267,14 @@ EUROSTRUCT_SUPABASE_JWKS_URL=http://$HOTE:$PORT_AUTH/jwks
 EUROSTRUCT_SUPABASE_ISSUER=http://127.0.0.1:$PORT_AUTH/auth/v1
 EUROSTRUCT_SUPABASE_AUDIENCE=authenticated
 EUROSTRUCT_JWT_ALGORITHMS=RS256
-EUROSTRUCT_PUBLIC_API_URL=http://127.0.0.1:$PORT_API
-EUROSTRUCT_PUBLIC_WEB_URL=http://127.0.0.1:$PORT_WEB
+EUROSTRUCT_PUBLIC_API_URL=$URL_API
+EUROSTRUCT_PUBLIC_WEB_URL=$URL_WEB
 EUROSTRUCT_PUBLIC_SUPABASE_URL=http://127.0.0.1:$PORT_AUTH
 EUROSTRUCT_PUBLIC_SUPABASE_ANON_KEY=repetition-sans-cle-anonyme
-EUROSTRUCT_CORS_ORIGINS=http://127.0.0.1:$PORT_WEB
+EUROSTRUCT_CORS_ORIGINS=$URL_WEB
+EUROSTRUCT_MANDATAIRE=oui
+EUROSTRUCT_CADDY_TLS="tls internal"
+EUROSTRUCT_MANDATAIRE_ECOUTE=127.0.0.1:
 API_PORT=$PORT_API
 WEB_PORT=$PORT_WEB
 EUROSTRUCT_STORAGE_BACKEND=local
@@ -280,6 +309,8 @@ EUROSTRUCT_APP_DB_USER=
 EUROSTRUCT_APP_DB_PASSWORD=
 EUROSTRUCT_LOCAL_AUTH_STUB=non
 EUROSTRUCT_STAGING_SANS_TLS=oui
+EUROSTRUCT_STAGING_RESOLVE=$RESOLUTION
+EUROSTRUCT_STAGING_CA_BUNDLE=$CA
 FIN
 umask 022
 
@@ -345,33 +376,41 @@ SQL
     done
   fi
 fi
-pas 6 "staging.sh up (images api et web, base et JWKS exterieurs)" staging up
-pas 7 "staging.sh status" staging status
-grep -q "ready: True" "$TMP/pas-7.log" || echoue 7 "/ready n'est pas vert"
-grep -qE "^  200 http://127.0.0.1:$PORT_API/ready" "$TMP/pas-7.log" || echoue 7 "l'URL publique de l'API ne repond pas 200"
-grep -qE "^  200 http://127.0.0.1:$PORT_WEB/" "$TMP/pas-7.log" || echoue 7 "l'URL publique de l'interface ne repond pas 200"
+pas 6 "staging.sh up (images api et web, mandataire TLS; base et JWKS exterieurs)" staging up
+[[ -s "$CA" ]] || echoue 6 "l'autorite locale du mandataire n'a pas ete copiee ($(basename "$CA"))"
+pas 7 "staging.sh status (controles des URL publiques, certificat verifie)" staging status
+grep -q "ready: True" "$TMP/pas-7.log" || echoue 7 "/ready n'est pas vert sur la boucle locale"
+grep -qE "^  ok   $URL_API/ready -> 200, ready: True" "$TMP/pas-7.log" || echoue 7 "l'URL publique de l'API ne repond pas 200 ready par le mandataire"
+grep -qE "^  ok   $URL_WEB/ -> 200" "$TMP/pas-7.log" || echoue 7 "l'URL publique de l'interface ne repond pas 200 par le mandataire"
+grep -qE "^  ok   CORS: " "$TMP/pas-7.log" || echoue 7 "l'API n'admet pas l'origine de l'interface (CORS)"
+[[ "$(grep -cE "^  ok   certificat verifie sur " "$TMP/pas-7.log")" == "2" ]] || echoue 7 "le certificat n'est pas verifie sur les deux noms"
 
 # ---------------------------------------------------------------------------
-# 8. LE PARCOURS PAR L'API DES CONTENEURS — pas celle de la recette
+# 8. LE PARCOURS PAR LES URL PUBLIQUES — ce qu'un client fait, par le mandataire
 # ---------------------------------------------------------------------------
-echo "==> 8. parcours par l'API des conteneurs: bureau, projet, etude, note PDF"
+echo "==> 8. parcours par les URL publiques ($URL_API): bureau, projet, etude, note PDF"
 printf 'Authorization: Bearer %s\n' "$JETON_A" > "$TMP/entete"; chmod 600 "$TMP/entete"
+# LE CERTIFICAT EST VERIFIE contre l'autorite locale copiee par « up »; les
+# noms sont resolus vers la boucle locale. Jamais -k.
+curl_pub() {
+  curl --cacert "$CA" --resolve "$NOM_API:443:127.0.0.1" --resolve "$NOM_WEB:443:127.0.0.1" "$@"
+}
 api() {   # api <methode> <chemin> [fichier-corps] -> code; corps dans $TMP/reponse
   local -a opts=(-sS -o "$TMP/reponse" -w '%{http_code}' -X "$1" -H @"$TMP/entete"
                  -H 'Content-Type: application/json' --max-time 120)
   [[ -n "${3:-}" ]] && opts+=(-d @"$3")
-  curl "${opts[@]}" "http://127.0.0.1:$PORT_API$2" 2>/dev/null
+  curl_pub "${opts[@]}" "$URL_API$2" 2>/dev/null
 }
 json() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))" "$TMP/reponse" "$1" 2>/dev/null; }
-if [[ "${ETATS[6]}" != "EXECUTE" ]]; then
-  non_exec 8 "la composition n'est pas montee."
+if [[ "${ETATS[6]}" != "EXECUTE" || ! -s "$CA" ]]; then
+  non_exec 8 "la composition n'est pas montee, ou l'autorite du mandataire manque."
 else
   ok8=1
   # /health ne doit PAS dire « demonstration »: c'est la difference avec demo.sh.
-  env_api="$(curl -fsS "http://127.0.0.1:$PORT_API/health" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("environnement"))' 2>/dev/null)"
+  env_api="$(curl_pub -fsS "$URL_API/health" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("environnement"))' 2>/dev/null)"
   [[ "$env_api" == "None" || -z "$env_api" ]] || { echoue 8 "/health annonce l'environnement « $env_api » alors que le staging n'est pas une demonstration"; ok8=0; }
   # L'interface ne porte pas le bandeau de demonstration.
-  curl -fsS "http://127.0.0.1:$PORT_WEB/" 2>/dev/null | grep -qi "environnement-demonstration" \
+  curl_pub -fsS "$URL_WEB/" 2>/dev/null | grep -qi "environnement-demonstration" \
     && { echoue 8 "l'interface porte le bandeau de demonstration"; ok8=0; }
   printf '{"name":"FICTIF Bureau de repetition %s","country":"BE","display_name":"Ingenieur A (repetition)","professional_id":null}' "$JETON" > "$TMP/org.json"
   code="$(api POST /v1/organizations "$TMP/org.json")"
@@ -399,32 +438,71 @@ JSON
   code="$(api POST "/v1/projects/$projet/deliverables" "$TMP/liv.json")"
   [[ "$code" == "201" ]] || { echoue 8 "note PDF: $code $(cut -c1-120 "$TMP/reponse")"; ok8=0; }
   liv="$(json 'd["deliverable_id"]')"; attendu="$(json 'd["sha256"]')"
-  curl -fsS -H @"$TMP/entete" -o "$TMP/note.pdf" "http://127.0.0.1:$PORT_API/v1/projects/$projet/deliverables/$liv/download" 2>/dev/null
+  curl_pub -fsS -H @"$TMP/entete" -o "$TMP/note.pdf" "$URL_API/v1/projects/$projet/deliverables/$liv/download" 2>/dev/null
   recu="$(sha256sum "$TMP/note.pdf" 2>/dev/null | cut -d' ' -f1)"
   [[ -n "$attendu" && "$recu" == "$attendu" ]] || { echoue 8 "la note telechargee (${recu:0:12}) ne porte pas l'empreinte enregistree (${attendu:0:12})"; ok8=0; }
   head -c 5 "$TMP/note.pdf" 2>/dev/null | grep -q "%PDF-" || { echoue 8 "le telechargement n'est pas un PDF"; ok8=0; }
   # LE VOLUME PERSISTANT: l'objet est sur le volume nomme de la composition.
-  n_obj="$(docker compose -p "$PROJET_COMPOSE" -f "$RACINE/compose.yaml" -f "$RACINE/compose.staging.yaml" --env-file "$ENVR" \
+  n_obj="$(COMPOSE_PROFILES=mandataire docker compose -p "$PROJET_COMPOSE" -f "$RACINE/compose.yaml" -f "$RACINE/compose.staging.yaml" --env-file "$ENVR" \
             exec -T api sh -c 'find /var/lib/eurostruct/livrables -type f | wc -l' 2>/dev/null | tr -d ' \r')"
   [[ "${n_obj:-0}" -ge 1 ]] || { echoue 8 "aucun objet sur le volume livrables ($n_obj)"; ok8=0; }
-  (( ok8 )) && execute 8 "bureau, projet, etude $calcul (passed), note PDF ${attendu:0:12} telechargee a l'identique, $n_obj objet(s) sur le volume; /health sans « demonstration »"
+  (( ok8 )) && execute 8 "bureau, projet, etude $calcul (passed), note PDF ${attendu:0:12} telechargee a l'identique par $NOM_API, $n_obj objet(s) sur le volume; /health sans « demonstration »"
 fi
 
 # ---------------------------------------------------------------------------
-# 9. LA RECETTE DE BOUT EN BOUT — les sept etapes, sur cette base
+# 9. LE REDEMARRAGE — down, up, et l'etude est encore la, sa note aussi
 # ---------------------------------------------------------------------------
-echo "==> 9. recette de bout en bout (db/test/recette_supabase_staging.sh executer)"
-if staging recette executer >"$TMP/pas-9.log" 2>&1; then
-  execute 9 "sept etapes EXECUTEES (code 0)"
+# C'est la phrase « stockage persistant et redemarrage » mesuree: les
+# conteneurs s'arretent, repartent sur les memes volumes, et l'etude se relit
+# par l'URL publique avec la MEME empreinte; la note se retelecharge avec les
+# MEMES octets; le mandataire ressert le meme nom avec un certificat verifie.
+echo "==> 9. redemarrage: staging.sh down, staging.sh up, relecture par les URL publiques"
+if [[ "${ETATS[8]}" != "EXECUTE" ]]; then
+  non_exec 9 "le parcours du pas 8 n'a pas abouti: rien a relire."
+else
+  ok9=1
+  empreinte_avant="$(curl_pub -fsS -H @"$TMP/entete" "$URL_API/v1/projects/$projet/beam-verifications/$calcul" 2>/dev/null \
+                     | python3 -c 'import json,sys; print(json.load(sys.stdin)["calculation_fingerprint"])' 2>/dev/null)"
+  [[ -n "$empreinte_avant" ]] || { echoue 9 "l'etude ne se relit pas avant le redemarrage"; ok9=0; }
+  if (( ok9 )); then
+    staging down >"$TMP/pas-9-down.log" 2>&1 || { echoue 9 "down: code $?"; ok9=0; }
+  fi
+  if (( ok9 )); then
+    restants="$(COMPOSE_PROFILES=mandataire docker compose -p "$PROJET_COMPOSE" -f "$RACINE/compose.yaml" -f "$RACINE/compose.staging.yaml" --env-file "$ENVR" ps --status running -q 2>/dev/null | wc -l | tr -d ' ')"
+    [[ "$restants" == "0" ]] || { echoue 9 "$restants conteneur(s) encore en marche apres down"; ok9=0; }
+  fi
+  if (( ok9 )); then
+    staging up >"$TMP/pas-9-up.log" 2>&1 || { echoue 9 "up apres down: code $? — $(grep -m1 -E 'ECHEC|REFUS' "$TMP/pas-9-up.log" | cut -c1-120)"; ok9=0; }
+  fi
+  if (( ok9 )); then
+    empreinte_apres="$(curl_pub -fsS -H @"$TMP/entete" "$URL_API/v1/projects/$projet/beam-verifications/$calcul" 2>/dev/null \
+                       | python3 -c 'import json,sys; print(json.load(sys.stdin)["calculation_fingerprint"])' 2>/dev/null)"
+    [[ -n "$empreinte_apres" && "$empreinte_apres" == "$empreinte_avant" ]] \
+      || { echoue 9 "l'etude relue apres redemarrage n'a pas son empreinte (${empreinte_apres:0:12} / ${empreinte_avant:0:12})"; ok9=0; }
+    curl_pub -fsS -H @"$TMP/entete" -o "$TMP/note-apres.pdf" "$URL_API/v1/projects/$projet/deliverables/$liv/download" 2>/dev/null
+    recu_apres="$(sha256sum "$TMP/note-apres.pdf" 2>/dev/null | cut -d' ' -f1)"
+    [[ "$recu_apres" == "$attendu" ]] || { echoue 9 "la note retelechargee apres redemarrage (${recu_apres:0:12}) n'a plus ses octets (${attendu:0:12})"; ok9=0; }
+    code_web="$(curl_pub -sS -o /dev/null --max-time 15 -w '%{http_code}' "$URL_WEB/" 2>/dev/null || echo 000)"
+    [[ "$code_web" == "200" ]] || { echoue 9 "l'interface ne repond plus 200 par le mandataire apres redemarrage ($code_web)"; ok9=0; }
+  fi
+  (( ok9 )) && execute 9 "down puis up: etude $calcul relue avec son empreinte, note PDF aux memes octets, interface servie par $NOM_WEB"
+fi
+
+# ---------------------------------------------------------------------------
+# 10. LA RECETTE DE BOUT EN BOUT — les sept etapes, sur cette base
+# ---------------------------------------------------------------------------
+echo "==> 10. recette de bout en bout (db/test/recette_supabase_staging.sh executer)"
+if staging recette executer >"$TMP/pas-10.log" 2>&1; then
+  execute 10 "sept etapes EXECUTEES (code 0)"
 else
   rc=$?
-  echoue 9 "code $rc: $(grep -E '^ *(ECHOUEE|NON EXECUTEE)' "$TMP/pas-9.log" | head -3 | sed -E 's#postgres(ql)?://[^ ]*#<dsn>#g' | cut -c1-160 | tr '\n' ' ')"
+  echoue 10 "code $rc: $(grep -E '^ *(ECHOUEE|NON EXECUTEE)' "$TMP/pas-10.log" | head -3 | sed -E 's#postgres(ql)?://[^ ]*#<dsn>#g' | cut -c1-160 | tr '\n' ' ')"
 fi
-sed -E 's#postgres(ql)?://[^ ]*#<dsn>#g' "$TMP/pas-9.log" | grep -E "^ *[0-9] |VERDICT|EXECUTEE|ECHOUEE|NON EXECUTEE" | head -20 | tee -a "$JOURNAL"
+sed -E 's#postgres(ql)?://[^ ]*#<dsn>#g' "$TMP/pas-10.log" | grep -E "^ *[0-9] |VERDICT|EXECUTEE|ECHOUEE|NON EXECUTEE" | head -20 | tee -a "$JOURNAL"
 
-echo "==> 10. staging.sh down"
-if staging down >"$TMP/pas-10.log" 2>&1; then execute 10 "conteneurs arretes, volume garde"
-else echoue 10 "code $?"; fi
+echo "==> 11. staging.sh down"
+if staging down >"$TMP/pas-11.log" 2>&1; then execute 11 "conteneurs arretes, volumes gardes"
+else echoue 11 "code $?"; fi
 
 # ---------------------------------------------------------------------------
 # LE BILAN
@@ -438,7 +516,7 @@ else echoue 10 "code $?"; fi
   done
   echo ""
   if (( KO )); then echo " VERDICT: ECHEC — au moins un pas a echoue (journal: $JOURNAL)."
-  else echo " VERDICT: TENU — la composition de staging, la commande de migration et la recette tiennent ensemble contre une base et un emetteur exterieurs. Rien n'est etabli sur Supabase."
+  else echo " VERDICT: TENU — la composition de staging (mandataire TLS compris), la commande de migration, le redemarrage et la recette tiennent ensemble contre une base et un emetteur exterieurs. Rien n'est etabli sur Supabase, ni sur un certificat public."
   fi
   echo "=================================================================="
 } | tee -a "$JOURNAL"

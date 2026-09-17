@@ -1,0 +1,41 @@
+# EUROSTRUCT — LE MANDATAIRE TLS DE LA COMPOSITION DE STAGING (Caddy 2)
+#
+# Deux sites, et rien d'autre. Les adresses viennent de deploy/staging.env par
+# l'environnement du conteneur `mandataire` (compose.staging.yaml):
+#
+#   {$EUROSTRUCT_PUBLIC_WEB_URL}   ->  web:3000    l'interface
+#   {$EUROSTRUCT_PUBLIC_API_URL}   ->  api:8000    l'API
+#
+# LES CERTIFICATS VIENNENT DE {$EUROSTRUCT_CADDY_TLS}, une ligne entiere:
+#
+#   (vide)                     ACME — Let's Encrypt, puis ZeroSSL en repli —
+#                              certificat public, obtenu et renouvele par Caddy.
+#                              Les ports 80 et 443 de l'hote doivent etre
+#                              joignables d'Internet sous ces deux noms.
+#   tls contact@exemple.org    idem, avec le courriel de contact ACME.
+#   tls internal               l'autorite locale de Caddy: la REPETITION
+#                              seulement (deploy/staging_repetition.sh). Un
+#                              navigateur ne lui fait pas confiance, et c'est
+#                              voulu.
+#
+# CE QUE CE FICHIER NE FAIT PAS. Il ne reecrit aucun chemin, ne met rien en
+# cache, ne journalise aucun corps de requete, n'ajoute aucun en-tete
+# d'authentification: l'API verifie elle-meme chaque jeton, et une note de
+# calcul ne se sert pas depuis un cache. Le trafic http est redirige vers
+# https par Caddy, automatiquement, pour les deux noms.
+{
+	# Aucune API d'administration: le mandataire se configure par ce fichier
+	# et redemarre avec la composition.
+	admin off
+}
+
+{$EUROSTRUCT_PUBLIC_WEB_URL} {
+	{$EUROSTRUCT_CADDY_TLS}
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+{$EUROSTRUCT_PUBLIC_API_URL} {
+	{$EUROSTRUCT_CADDY_TLS}
+	reverse_proxy api:8000
+}

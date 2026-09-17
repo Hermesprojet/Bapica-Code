@@ -5,11 +5,11 @@
 #   deploy/staging.sh prerequis     ce qu'il faut sur l'hote et dans deploy/staging.env — ne lance rien
 #   deploy/staging.sh privileges    ce que les trois roles peuvent sur la base hebergee (lecture seule)
 #   deploy/staging.sh migrer        sceau, migrations, referentiel national, admission du login, racine si mandat
-#   deploy/staging.sh up            construit et demarre l'API et l'interface (boucle locale, derriere le mandataire TLS)
-#   deploy/staging.sh status        ce qui tourne; /ready par la boucle locale et par l'URL publique
+#   deploy/staging.sh up            construit et demarre l'API, l'interface et le mandataire TLS (Caddy, deploy/Caddyfile)
+#   deploy/staging.sh status        ce qui tourne; /ready local, puis les URL publiques: https, /ready, interface, CORS
 #   deploy/staging.sh recette [diagnostic|executer]   la recette de bout en bout sur cette base
-#   deploy/staging.sh journaux [service] [n]          les n dernieres lignes d'un service (api, web)
-#   deploy/staging.sh down          arrete l'API et l'interface; le volume des livrables reste
+#   deploy/staging.sh journaux [service] [n]          les n dernieres lignes d'un service (api, web, mandataire)
+#   deploy/staging.sh down          arrete l'API, l'interface et le mandataire; volumes (livrables, certificats) gardes
 #
 # CE QUE CETTE COMMANDE ETABLIT, ET CE QU'ELLE N'ETABLIT PAS
 # ------------------------------------------------------------
@@ -78,6 +78,31 @@ charger_env() {
   set +a
   # L'ORIGINE CORS EST L'INTERFACE, PAR DEFAUT. Une seule, jamais `*`.
   export EUROSTRUCT_CORS_ORIGINS="${EUROSTRUCT_CORS_ORIGINS:-${EUROSTRUCT_PUBLIC_WEB_URL:-}}"
+  # LE MANDATAIRE TLS DE LA COMPOSITION, sauf si l'hote a deja le sien. Le
+  # profil vaut pour TOUTES les commandes compose de ce script: `up` le monte,
+  # `down` l'arrete, `status` le liste.
+  if mandataire_actif; then export COMPOSE_PROFILES="mandataire"; else unset COMPOSE_PROFILES; fi
+}
+
+mandataire_actif() { [[ "${EUROSTRUCT_MANDATAIRE:-oui}" != "non" ]]; }
+
+hote_de() {   # hote_de <url> — le nom d'hote, sans port ni chemin
+  URL="$1" python3 -c 'import os; from urllib.parse import urlsplit; print(urlsplit(os.environ["URL"]).hostname or "")' 2>/dev/null
+}
+
+# `curl_public <args...>`: curl vers une URL PUBLIQUE, avec ce que la repetition
+# locale a besoin d'ajouter — l'autorite locale du mandataire (--cacert) et la
+# resolution forcee des noms (--resolve) — et rien de plus sur un staging reel.
+# JAMAIS -k: un certificat qui ne se verifie pas est un controle qui echoue.
+curl_public() {
+  local -a opts=()
+  [[ -n "${EUROSTRUCT_STAGING_CA_BUNDLE:-}" && -f "${EUROSTRUCT_STAGING_CA_BUNDLE}" ]] \
+    && opts+=(--cacert "$EUROSTRUCT_STAGING_CA_BUNDLE")
+  if [[ -n "${EUROSTRUCT_STAGING_RESOLVE:-}" ]]; then
+    local e
+    for e in ${EUROSTRUCT_STAGING_RESOLVE//,/ }; do opts+=(--resolve "$e"); done
+  fi
+  curl "${opts[@]}" "$@"
 }
 
 # `avec_url <variable-d-url> <commande...>`: PGHOST, PGPORT, PGUSER, PGPASSWORD,
@@ -201,6 +226,8 @@ verifier_env() {
     && ligne ok "EUROSTRUCT_CORS_ORIGINS admet l'interface" \
     || ligne non "EUROSTRUCT_CORS_ORIGINS" "n'inclut pas EUROSTRUCT_PUBLIC_WEB_URL: le navigateur serait refuse par l'API."
 
+  verifier_mandataire
+
   # LE STOCKAGE.
   case "${EUROSTRUCT_STORAGE_BACKEND:-local}" in
     local) ligne ok "livrables: volume ${PROJET}_livrables de l'hote (une instance d'API)" ;;
@@ -245,6 +272,64 @@ PY
       else ligne ok "JWKS joint: $lu"; fi
     fi
     rm -f "$fichier"
+  fi
+}
+
+# LE MANDATAIRE TLS ET LES URL PUBLIQUES, tels que la composition les servira.
+# Ce qui est controle ici ne demande AUCUNE connexion a la base ni au JWKS:
+# la forme des deux URL, leur resolution DNS depuis cet hote, la ligne de
+# certificat, et les ports 80/443 de l'hote.
+verifier_mandataire() {
+  local v
+  if ! mandataire_actif; then
+    ligne info "mandataire TLS: celui de l'hote (EUROSTRUCT_MANDATAIRE=non): il renvoie EUROSTRUCT_PUBLIC_WEB_URL vers 127.0.0.1:${WEB_PORT:-3000} et EUROSTRUCT_PUBLIC_API_URL vers 127.0.0.1:${API_PORT:-8000}"
+    return 0
+  fi
+  if [[ -f "$RACINE/deploy/Caddyfile" ]]; then ligne ok "mandataire TLS: Caddy de la composition (deploy/Caddyfile)"
+  else ligne non "deploy/Caddyfile" "absent du depot: le mandataire n'a pas de configuration."; fi
+  case "${EUROSTRUCT_CADDY_TLS:-}" in
+    "") ligne info "certificats: ACME sans courriel de contact (EUROSTRUCT_CADDY_TLS vide) — les ports 80 et 443 de cet hote doivent etre joignables d'Internet sous les deux noms publics" ;;
+    "tls internal")
+      if sans_tls; then ligne info "certificats: autorite locale de Caddy (repetition) — aucun navigateur ne lui fait confiance"
+      else ligne non "EUROSTRUCT_CADDY_TLS" "vaut « tls internal »: un certificat d'autorite locale n'est pas presentable a un navigateur. Sur un staging reel: vide, ou « tls <courriel> »."; fi ;;
+    tls\ *@*) ligne ok "certificats: ACME avec un courriel de contact" ;;
+    *) ligne non "EUROSTRUCT_CADDY_TLS" "vaut autre chose que vide, « tls <courriel> » ou « tls internal » (voir deploy/Caddyfile)." ;;
+  esac
+  local hote_api hote_web
+  for v in EUROSTRUCT_PUBLIC_API_URL EUROSTRUCT_PUBLIC_WEB_URL; do
+    [[ -n "${!v:-}" ]] || continue
+    if [[ "${!v}" =~ ^https?://[A-Za-z0-9.-]+$ ]]; then ligne ok "$v: un nom, sans port ni chemin (le mandataire sert 80 et 443)"
+    else ligne non "$v" "porte un port, un chemin ou une barre finale: le mandataire de la composition sert chaque nom a la racine, sur 80 et 443."; fi
+    local h; h="$(hote_de "${!v}")"
+    if [[ -n "${EUROSTRUCT_STAGING_RESOLVE:-}" ]]; then
+      [[ "$EUROSTRUCT_STAGING_RESOLVE" == *"$h:"* ]] && ligne info "$v: resolution forcee vers cet hote (EUROSTRUCT_STAGING_RESOLVE, repetition)" \
+        || ligne non "$v" "n'est pas dans EUROSTRUCT_STAGING_RESOLVE alors que la resolution est forcee."
+    elif getent ahosts "$h" >/dev/null 2>&1; then ligne ok "$v: le nom se resout depuis cet hote"
+    else ligne non "$v" "le nom « $h » ne se resout pas depuis cet hote: creer l'enregistrement DNS (A/AAAA) vers l'adresse publique de cet hote; sans lui, ni certificat ACME, ni controle."; fi
+  done
+  hote_api="$(hote_de "${EUROSTRUCT_PUBLIC_API_URL:-}")"; hote_web="$(hote_de "${EUROSTRUCT_PUBLIC_WEB_URL:-}")"
+  if [[ -n "$hote_api" && -n "$hote_web" ]]; then
+    if [[ "$hote_api" != "$hote_web" ]]; then ligne ok "deux noms distincts pour l'API et l'interface"
+    else ligne non "EUROSTRUCT_PUBLIC_API_URL / EUROSTRUCT_PUBLIC_WEB_URL" "designent le meme nom: le mandataire les sert comme deux sites (p. ex. api.<domaine> et <domaine>)."; fi
+  fi
+  case "${EUROSTRUCT_MANDATAIRE_ECOUTE:-}" in
+    "") ligne ok "le mandataire ecoutera sur toutes les interfaces (80, 443)" ;;
+    127.0.0.1:|localhost:) sans_tls && ligne info "le mandataire ecoutera sur la boucle locale seulement (repetition)" \
+      || ligne non "EUROSTRUCT_MANDATAIRE_ECOUTE" "restreint le mandataire a la boucle locale: personne ne joindra le staging. Vide sur un staging reel." ;;
+    *) ligne non "EUROSTRUCT_MANDATAIRE_ECOUTE" "vaut autre chose que vide ou « 127.0.0.1: »." ;;
+  esac
+  # LES PORTS 80 ET 443 DE L'HOTE: libres, ou deja tenus par CE mandataire.
+  if command -v ss >/dev/null 2>&1; then
+    local tenus; tenus="$(dc ps --status running -q mandataire 2>/dev/null | head -1)"
+    if [[ -n "$tenus" ]]; then ligne info "ports 80 et 443: tenus par le mandataire de cette composition (deja en service)"
+    else
+      local p
+      for p in 80 443; do
+        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$p$"; then
+          ligne non "port $p de l'hote" "deja pris par un autre service; le mandataire ne pourra pas ecouter. Liberer le port, ou EUROSTRUCT_MANDATAIRE=non et faire renvoyer ce service vers les ports locaux."
+        else ligne ok "port $p de l'hote libre"; fi
+      done
+    fi
   fi
 }
 
@@ -402,18 +487,53 @@ cmd_up() {
     || { echo "ECHEC: /ready ne passe pas au vert. Ce que l'API en dit:" >&2
          curl -sS "http://127.0.0.1:${API_PORT:-8000}/ready" 2>/dev/null | cut -c1-600 >&2
          echo "" >&2; echo "       Si « base » est rouge: « deploy/staging.sh migrer » n'a pas ete fait, ou la DSN est fausse." >&2; exit 1; }
+  if mandataire_actif; then
+    if [[ "${EUROSTRUCT_CADDY_TLS:-}" == "tls internal" && -n "${EUROSTRUCT_STAGING_CA_BUNDLE:-}" ]]; then
+      # L'AUTORITE LOCALE DU MANDATAIRE, copiee pour les controles de CET hote
+      # (repetition). Caddy la cree en delivrant son premier certificat: on
+      # attend qu'elle existe plutot que de la declarer absente trop tot.
+      local essai; for essai in $(seq 1 30); do
+        dc cp mandataire:/data/caddy/pki/authorities/local/root.crt "$EUROSTRUCT_STAGING_CA_BUNDLE" >/dev/null 2>&1 && break
+        sleep 1
+      done
+      [[ -s "$EUROSTRUCT_STAGING_CA_BUNDLE" ]] \
+        && dire "autorite locale du mandataire copiee dans $(basename "$EUROSTRUCT_STAGING_CA_BUNDLE") (repetition: curl la verifie, aucun navigateur ne lui fait confiance)" \
+        || echo "AVERTISSEMENT: l'autorite locale du mandataire n'a pas pu etre copiee; les controles des URL publiques echoueront sur le certificat." >&2
+    fi
+    dire "les URL publiques, par le mandataire (certificat verifie, jamais -k)"
+    local u
+    for u in "$EUROSTRUCT_PUBLIC_API_URL/ready" "$EUROSTRUCT_PUBLIC_WEB_URL/"; do
+      if attendre_public "$u" 90; then dire "joint: $u"
+      else
+        echo "ECHEC: $u ne repond pas par le mandataire (90 s). Ce que le mandataire en dit:" >&2
+        dc logs --no-color --tail 20 mandataire 2>&1 | sed 's/^/      mandataire | /' >&2
+        echo "       ACME: les ports 80 et 443 doivent etre joignables d'Internet sous ce nom, et le DNS pointer vers cet hote. Reprendre: « deploy/staging.sh status »." >&2
+        exit 1
+      fi
+    done
+  fi
   echo ""
   echo "=================================================================="
   echo " EUROSTRUCT — STAGING, sur cet hote"
   echo "   API (boucle locale) : http://127.0.0.1:${API_PORT:-8000}/ready"
   echo "   interface (locale)  : http://127.0.0.1:${WEB_PORT:-3000}"
   echo "   URL publiques       : $EUROSTRUCT_PUBLIC_API_URL  et  $EUROSTRUCT_PUBLIC_WEB_URL"
-  echo "                         (servies par votre mandataire TLS -> ces deux ports)"
+  if mandataire_actif; then
+  echo "                         (servies par le mandataire TLS de la composition, ports 80 et 443)"
+  else
+  echo "                         (servies par votre mandataire TLS -> ces deux ports locaux)"
+  fi
   echo "   controle            : deploy/staging.sh status"
   echo "   recette             : deploy/staging.sh recette diagnostic"
   echo "=================================================================="
 }
 
+attendre_public() { local url="$1" n="$2"; for _ in $(seq 1 "$n"); do curl_public -fsS --max-time 5 -o /dev/null "$url" 2>/dev/null && return 0; sleep 1; done; return 1; }
+
+# L'ETAT, ET LES CONTROLES DES URL PUBLIQUES — ceux qu'un navigateur ferait:
+# /ready par le nom public en https, l'interface sans bandeau de demonstration,
+# la reponse CORS de l'API a l'origine de l'interface, le certificat presente,
+# la redirection http -> https. Chaque controle rate met le code de sortie a 1.
 cmd_status() {
   charger_env
   dc ps
@@ -425,14 +545,63 @@ d=json.load(sys.stdin)
 print("  ready:", d.get("ready"), "| environnement:", repr(d.get("environnement")))
 for v in d.get("verifications", []):
     print("  %-22s %s" % (v["nom"], "ok" if v["ok"] else "NON"))' 2>/dev/null \
-    || echo "  l'API ne repond pas sur 127.0.0.1:${API_PORT:-8000}/ready."
-  echo "URL publiques (par le mandataire TLS de l'hote):"
-  local code
-  for u in "$EUROSTRUCT_PUBLIC_API_URL/ready" "$EUROSTRUCT_PUBLIC_WEB_URL/"; do
-    code="$(curl -sS -o /dev/null --max-time 10 -w '%{http_code}' "$u" 2>/dev/null || echo "000")"
-    printf '  %-3s %s\n' "$code" "$u"
-  done
-  echo "  (000 = injoignable depuis cet hote: DNS, mandataire ou pare-feu; verifier depuis un poste exterieur)"
+    || { echo "  l'API ne repond pas sur 127.0.0.1:${API_PORT:-8000}/ready."; KO=1; }
+  if mandataire_actif; then echo "URL publiques (par le mandataire TLS de la composition):"
+  else echo "URL publiques (par le mandataire TLS de l'hote):"; fi
+  local TMP; TMP="$(mktemp -d)"; chmod 700 "$TMP"
+  local api="${EUROSTRUCT_PUBLIC_API_URL%/}" web="${EUROSTRUCT_PUBLIC_WEB_URL%/}" code
+
+  # 1. /ready par le nom public: 200, et un JSON qui dit ready.
+  code="$(curl_public -sS -o "$TMP/ready.json" --max-time 15 -w '%{http_code}' "$api/ready" 2>"$TMP/ready.err" || echo "000")"
+  if [[ "$code" == "200" ]] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("ready") is True else 1)' "$TMP/ready.json" 2>/dev/null; then
+    printf '  ok   %s -> 200, ready: True\n' "$api/ready"
+  else
+    printf '  NON  %s -> %s%s\n' "$api/ready" "$code" "$( [[ "$code" == "200" ]] && echo ", mais ready n'est pas True" )"; KO=1
+    [[ -s "$TMP/ready.err" ]] && sed 's/^/       curl: /' "$TMP/ready.err" | head -2
+  fi
+  # 2. l'interface: 200, une page, sans le bandeau de demonstration.
+  code="$(curl_public -sS -o "$TMP/web.html" --max-time 15 -w '%{http_code}' "$web/" 2>"$TMP/web.err" || echo "000")"
+  if [[ "$code" == "200" ]] && grep -qi "<html" "$TMP/web.html" 2>/dev/null; then
+    if grep -qi "environnement-demonstration" "$TMP/web.html"; then printf '  NON  %s -> 200, mais l'"'"'interface porte le bandeau de demonstration\n' "$web/"; KO=1
+    else printf '  ok   %s -> 200, page servie, sans bandeau de demonstration\n' "$web/"; fi
+  else
+    printf '  NON  %s -> %s\n' "$web/" "$code"; KO=1
+    [[ -s "$TMP/web.err" ]] && sed 's/^/       curl: /' "$TMP/web.err" | head -2
+  fi
+  # 3. CORS: l'API doit admettre l'origine de l'interface, sinon le navigateur
+  #    est refuse a la premiere requete, et l'ecran reste vide sans dire pourquoi.
+  local admis
+  admis="$(curl_public -sS -o /dev/null --max-time 15 -X OPTIONS "$api/v1/projects" \
+             -H "Origin: $web" -H 'Access-Control-Request-Method: POST' \
+             -H 'Access-Control-Request-Headers: authorization,content-type' \
+             -D - 2>/dev/null | tr -d '\r' | awk 'tolower($1)=="access-control-allow-origin:" {print $2}' | head -1)"
+  if [[ "$admis" == "$web" ]]; then printf '  ok   CORS: l'"'"'API admet l'"'"'origine %s\n' "$web"
+  else printf '  NON  CORS: l'"'"'API repond « %s » a l'"'"'origine %s (EUROSTRUCT_CORS_ORIGINS)\n' "${admis:-rien}" "$web"; KO=1; fi
+  # 4. le certificat presente sur chaque nom, verifie par curl (et decrit si openssl est la).
+  if [[ "$api" == https://* ]]; then
+    local u
+    for u in "$api" "$web"; do
+      if curl_public -sS -o /dev/null --max-time 15 -w '%{certs}' "$u/" >"$TMP/certs.pem" 2>/dev/null && [[ -s "$TMP/certs.pem" ]]; then
+        local desc; desc="$(openssl x509 -noout -issuer -enddate -in "$TMP/certs.pem" 2>/dev/null | tr '\n' ' ' | sed 's/issuer=//; s/notAfter=/expire le /')"
+        printf '  ok   certificat verifie sur %s%s\n' "$(hote_de "$u")" "${desc:+ — $desc}"
+      else
+        printf '  NON  certificat non verifiable sur %s (autorite inconnue, nom absent du certificat, ou pas de TLS)\n' "$(hote_de "$u")"; KO=1
+      fi
+    done
+    # 5. http -> https: le mandataire redirige, il ne sert rien en clair.
+    if mandataire_actif; then
+      local hweb; hweb="$(hote_de "$web")"
+      code="$(curl_public -sS -o /dev/null --max-time 15 -w '%{http_code} %{redirect_url}' "http://$hweb/" 2>/dev/null || echo "000")"
+      if [[ "$code" =~ ^30[178]\ https:// ]]; then printf '  ok   http://%s/ -> %s\n' "$hweb" "$code"
+      else printf '  --   http://%s/ -> %s (pas de redirection vers https constatee depuis cet hote)\n' "$hweb" "${code:-000}"; fi
+    fi
+  fi
+  rm -rf "$TMP"
+  if (( KO )); then
+    echo "Au moins un controle des URL publiques a echoue. Depuis cet hote: DNS (getent ahosts <nom>), pare-feu (80, 443), « deploy/staging.sh journaux mandataire »; puis verifier depuis un poste exterieur." >&2
+    exit 1
+  fi
+  echo "Les URL publiques repondent comme un navigateur l'attend."
 }
 
 cmd_recette() {
@@ -448,7 +617,7 @@ cmd_recette() {
 cmd_journaux() {
   charger_env
   local service="${1:-api}" n="${2:-100}"
-  case "$service" in api|web) ;; *) refus "service inconnu « $service » (api, web)." ;; esac
+  case "$service" in api|web|mandataire) ;; *) refus "service inconnu « $service » (api, web, mandataire)." ;; esac
   [[ "$n" =~ ^[0-9]+$ ]] || refus "nombre de lignes invalide « $n »."
   dc logs --no-color --tail "$n" "$service"
 }

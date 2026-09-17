@@ -24,7 +24,7 @@ contre une base et un émetteur extérieurs à la composition.
 | migrations | par `init`, au démarrage | par `deploy/staging.sh migrer`, **avant** `up`, sous deux rôles distincts |
 | émetteur de jetons | `demo-auth`, comptes d'essai générés | **Supabase Auth**, comptes réels, JWKS du projet |
 | `EUROSTRUCT_ENVIRONNEMENT` | `demonstration` (bandeau, `/health`) | **vide** |
-| adresses | boucle locale, http | **https publiques**, servies par le mandataire TLS de l'hôte ; conteneurs sur la boucle locale |
+| adresses | boucle locale, http | **https publiques**, servies par le **mandataire TLS de la composition** (`mandataire`, Caddy, `deploy/Caddyfile`, ports 80 et 443, certificats ACME) — ou par celui de l'hôte si `EUROSTRUCT_MANDATAIRE=non` ; `api` et `web` sur la boucle locale |
 | livrables | volume `livrables` | volume `livrables` (`local`) ou compartiment S3 du fournisseur (`s3`) |
 | secrets | générés dans `deploy/demo.env` | **renseignés** par l'exploitant dans `deploy/staging.env` (0600, ignoré par Git) |
 | nom Docker | `eurostruct-demo` | `eurostruct-staging` |
@@ -47,9 +47,17 @@ Tout le reste est dans le dépôt. Ces valeurs se renseignent dans
 | `EUROSTRUCT_SUPABASE_ISSUER` | publique | `https://<ref>.supabase.co/auth/v1` |
 | `EUROSTRUCT_PUBLIC_SUPABASE_URL` | publique | `https://<ref>.supabase.co` |
 | `EUROSTRUCT_PUBLIC_SUPABASE_ANON_KEY` | publique | Project Settings → API → clé `anon` (jamais `service_role`) |
-| `EUROSTRUCT_PUBLIC_API_URL`, `EUROSTRUCT_PUBLIC_WEB_URL` | publiques | les deux URL https que le mandataire de l'hôte sert, vers `127.0.0.1:8000` et `127.0.0.1:3000` |
+| `EUROSTRUCT_PUBLIC_API_URL`, `EUROSTRUCT_PUBLIC_WEB_URL` | publiques | **deux noms distincts**, en `https://`, sans port ni chemin (p. ex. `https://api.eurostruct.exemple.org` et `https://eurostruct.exemple.org`) ; le mandataire de la composition les sert sur 80 et 443 |
 
-Et deux conditions qui ne sont pas des variables :
+Et quatre conditions qui ne sont pas des variables :
+
+* **deux enregistrements DNS** (A/AAAA) pour ces deux noms, vers l'adresse
+  publique de l'hôte ; `prerequis` vérifie qu'ils se résolvent depuis l'hôte ;
+* **les ports 80 et 443 de l'hôte libres et joignables d'Internet** : c'est là
+  que Caddy obtient ses certificats (ACME, défi HTTP) et sert les deux noms ;
+  `prerequis` vérifie qu'ils sont libres. Si l'hôte a déjà nginx ou Traefik :
+  `EUROSTRUCT_MANDATAIRE=non`, et c'est lui qui termine TLS vers
+  `127.0.0.1:3000` et `127.0.0.1:8000` ;
 
 * **les clés de signature du projet Supabase sont asymétriques** (Project
   Settings → JWT Keys → *JWT signing keys*, RSA ou P-256). L'API refuse
@@ -59,10 +67,12 @@ Et deux conditions qui ne sont pas des variables :
   **propriétaire** de la base : c'est la première question, et
   `deploy/staging.sh privileges` y répond sans rien modifier.
 
-Facultatif : un mandat d'amorçage (`EUROSTRUCT_BOOTSTRAP_ACTOR`, uuid d'un
-compte réel de Supabase Auth, et `_MANDATE`) pour poser la racine
-d'autorité ; deux comptes d'essai et leurs jetons pour la recette (§F du
-gabarit) ; les DSN de sauvegarde et de restauration pour son étape 6.
+Facultatif : un courriel de contact ACME (`EUROSTRUCT_CADDY_TLS="tls
+contact@exemple.org"`, qui recevra les avis d'expiration) ; un mandat
+d'amorçage (`EUROSTRUCT_BOOTSTRAP_ACTOR`, uuid d'un compte réel de Supabase
+Auth, et `_MANDATE`) pour poser la racine d'autorité ; deux comptes d'essai
+et leurs jetons pour la recette (§F du gabarit) ; les DSN de sauvegarde et de
+restauration pour son étape 6.
 
 ## 3. La commande suivante, puis les autres, dans l'ordre
 
@@ -79,18 +89,49 @@ deploy/staging.sh recette diagnostic                          # puis « executer
 
 `prerequis` vérifie l'hôte (Docker, Compose ≥ 2.24, `psql`), les neuf
 variables, trois rôles distincts, le TLS des DSN, le https des URL, l'origine
-CORS, le stockage, et **joint le JWKS** pour compter les clés compatibles avec
-l'algorithme déclaré. `migrer` exige `EUROSTRUCT_STAGING_CIBLE=staging`
-parce qu'il écrit ; chacun de ses pas est idempotent. `up` refuse un arbre
-de travail modifié (un staging sert un commit) sauf
-`EUROSTRUCT_STAGING_ARBRE_MODIFIE=oui`.
+CORS, le stockage, **joint le JWKS** pour compter les clés compatibles avec
+l'algorithme déclaré, puis le mandataire : la forme des deux URL (deux noms,
+sans port ni chemin), leur résolution DNS depuis l'hôte, la ligne de
+certificat, les ports 80 et 443. `migrer` exige
+`EUROSTRUCT_STAGING_CIBLE=staging` parce qu'il écrit ; chacun de ses pas est
+idempotent. `up` refuse un arbre de travail modifié (un staging sert un
+commit) sauf `EUROSTRUCT_STAGING_ARBRE_MODIFIE=oui` ; il construit les deux
+images, monte `api`, `web` et `mandataire`, attend `/ready` sur la boucle
+locale, puis **attend les deux URL publiques par le mandataire** — certificat
+vérifié, jamais `-k`.
 
-Le mandataire TLS (nginx, Caddy, Traefik) est celui de l'hôte et n'est pas
-dans ce dépôt : il termine TLS sur `EUROSTRUCT_PUBLIC_WEB_URL` →
-`127.0.0.1:3000` et `EUROSTRUCT_PUBLIC_API_URL` → `127.0.0.1:8000`. La
-sauvegarde de la base est celle du fournisseur (rôle `BYPASSRLS`,
+### 3.1 Le mandataire TLS et les contrôles des URL publiques
+
+Le service `mandataire` (`caddy:2.8-alpine`, configuration versionnée dans
+`deploy/Caddyfile`) sert `EUROSTRUCT_PUBLIC_WEB_URL` → `web:3000` et
+`EUROSTRUCT_PUBLIC_API_URL` → `api:8000` par le réseau de la composition,
+redirige http vers https, et obtient ses certificats par ACME (Let's Encrypt,
+puis ZeroSSL en repli) sur les ports 80 et 443 de l'hôte. Certificats et
+configuration vivent dans deux volumes nommés : un redémarrage ne redemande
+rien. Aucune réécriture de chemin, aucun cache, aucun en-tête
+d'authentification ajouté : l'API vérifie chaque jeton elle-même.
+
+`deploy/staging.sh status` fait ensuite ce qu'un navigateur ferait, et met
+son code de sortie à 1 au premier contrôle raté :
+
+| contrôle | ce qui est attendu |
+|---|---|
+| `https://<api>/ready` par le nom public | 200, et un JSON qui dit `ready: true` |
+| `https://<web>/` | 200, une page HTML, **sans** le bandeau de démonstration |
+| CORS : `OPTIONS /v1/projects` avec `Origin: <web>` | `access-control-allow-origin: <web>` — sinon l'écran reste vide à la première requête |
+| certificat, sur chaque nom | vérifié par `curl` (autorité, nom) ; émetteur et date d'expiration affichés si `openssl` est là |
+| `http://<web>/` | redirection 30x vers https (constat, pas un échec) |
+
+Sur un hôte qui ne résout pas les noms publics ou ne connaît pas l'autorité
+(la répétition locale), `EUROSTRUCT_STAGING_RESOLVE` et
+`EUROSTRUCT_STAGING_CA_BUNDLE` (§H du gabarit) donnent à `curl` la résolution
+forcée et l'autorité locale du mandataire, que `up` copie hors du conteneur.
+Vides sur un staging réel.
+
+La sauvegarde de la base est celle du fournisseur (rôle `BYPASSRLS`,
 `DEPLOIEMENT_BASE_HEBERGEE.md` §4) ; celle des livrables en `local` est celle
-du volume `eurostruct-staging_livrables` de l'hôte.
+du volume `eurostruct-staging_livrables` de l'hôte ; celle des certificats,
+le volume `eurostruct-staging_mandataire_donnees`.
 
 ## 4. Ce que `migrer` fait, et ce qu'il ne fait pas
 
@@ -119,32 +160,39 @@ aucune confirmation de paramètre national, et n'écrit aucun secret.
 PostgreSQL local **jetable** (prouvé tel par `db/test/lib_harnais.sh`),
 provisionné comme au §2 de `DEPLOIEMENT_BASE_HEBERGEE.md` et **joint par les
 conteneurs à travers le pont Docker** (`172.17.0.1`), avec l'émetteur de
-jetons des parcours navigateur lancé **hors de la composition**. Onze pas,
-chacun EXÉCUTÉ / ÉCHOUÉ / NON EXÉCUTÉ, et une postcondition de nettoyage
-vérifiée nom par nom.
+jetons des parcours navigateur lancé **hors de la composition**, et le
+**mandataire TLS de la composition** servant deux noms publics —
+`staging.localhost` et `api.staging.localhost` — en https sur
+`127.0.0.1:443` avec son autorité locale (`tls internal`) : les noms sont
+résolus vers la boucle locale par `--resolve`, le certificat est **vérifié**
+contre cette autorité, jamais ignoré. Douze pas, chacun EXÉCUTÉ / ÉCHOUÉ /
+NON EXÉCUTÉ, et une postcondition de nettoyage vérifiée nom par nom.
 
-**Résultat (16/09, cinquième exécution : TENUE, code 0)** — PostgreSQL 16
-local jetable, Docker 29.3.1, Compose 5.1.1, Ubuntu 24.04.4, sur l'arbre de
-travail du commit qui porte ce document :
+**Résultat (17/09, sixième exécution, la première avec le mandataire :
+TENUE, code 0)** — PostgreSQL 16 local jetable, Docker 29.3.1, Compose 5.1.1,
+Caddy 2.8 (`caddy:2.8-alpine`), Ubuntu 24.04.4, sur l'arbre de travail du
+commit qui porte ce document :
 
 | pas | résultat |
 |---|---|
 | 0 base joignable des conteneurs | EXÉCUTÉ — `pg_isready` depuis un conteneur `postgres:16` vers `172.17.0.1:5432` |
 | 1 provisionnement (exploitant) | EXÉCUTÉ — quatre rôles (plan, migrateur, applicatif, sauvegarde `BYPASSRLS`), deux bases, schéma `auth` fictif, réglages, **mandat posé par l'administrateur**, trois comptes dans `auth.users` ; base jointe de l'hôte par l'adresse du pont |
 | 2 émetteur extérieur | EXÉCUTÉ — JWKS servi sur `127.0.0.1` et sur l'adresse du pont |
-| 3 `prerequis` | EXÉCUTÉ — aucun MANQUE ; JWKS lu : 1 clé RSA, RS256 |
+| 3 `prerequis` | EXÉCUTÉ — aucun MANQUE ; JWKS lu : 1 clé RSA, RS256 ; mandataire : Caddyfile présent, autorité locale admise (répétition), deux noms sans port, résolution forcée, ports 80 et 443 libres |
 | 4 `privileges` | EXÉCUTÉ — aucun MANQUE sur un provisionnement conforme |
 | 5 `migrer` | EXÉCUTÉ — base `ACTIVE`, 4 annexes, login admis, racine amorcée (1 habilitation, vérifiée hors du produit) |
-| 6 `up` | EXÉCUTÉ — images api et web construites, base et JWKS extérieurs |
-| 7 `status` | EXÉCUTÉ — `/ready` vert, 200 sur les deux URL « publiques » |
-| 8 parcours par l'API des conteneurs | EXÉCUTÉ — bureau, projet, étude exploratoire `passed`, note PDF téléchargée avec l'empreinte enregistrée, objet présent sur le volume `livrables`, `/health` sans « demonstration » |
-| 9 recette de bout en bout | EXÉCUTÉ — sept étapes EXÉCUTÉES, verdict COMPLÈTE : quatre-yeux (A propose, ne s'approuve pas, B relit, approuve et consomme), étude stricte 422 puis exploratoire 201, PDF et DXF, sauvegarde et restauration au **contenu identique**, relecture après redémarrage |
-| 10 `down` | EXÉCUTÉ |
+| 6 `up` (mandataire compris) | EXÉCUTÉ — images api et web construites, base et JWKS extérieurs ; autorité locale du mandataire copiée hors du conteneur ; `https://api.staging.localhost/ready` et `https://staging.localhost/` **joints par le mandataire, certificat vérifié** |
+| 7 `status` (URL publiques) | EXÉCUTÉ — `/ready` vert sur la boucle locale ; par le mandataire : `/ready` 200 `ready: true`, interface 200 sans bandeau de démonstration, **CORS** : l'API admet `https://staging.localhost`, certificat vérifié sur les deux noms (émetteur « Caddy Local Authority - ECC Intermediate »), `http://staging.localhost/` → **308** vers https |
+| 8 parcours par les URL publiques | EXÉCUTÉ — bureau, projet, étude exploratoire `passed`, note PDF téléchargée **par `https://api.staging.localhost`** avec l'empreinte enregistrée, objet présent sur le volume `livrables`, `/health` sans « demonstration » |
+| 9 redémarrage : `down`, `up`, relecture | EXÉCUTÉ — aucun conteneur en marche après `down` ; après `up`, l'étude relue par l'URL publique avec **la même empreinte de calcul**, la note PDF retéléchargée **aux mêmes octets**, l'interface servie par le même nom avec un certificat vérifié |
+| 10 recette de bout en bout | EXÉCUTÉ — sept étapes EXÉCUTÉES, verdict COMPLÈTE : quatre-yeux (A propose, ne s'approuve pas, B relit, approuve et consomme), étude stricte 422 puis exploratoire 201, PDF et DXF, sauvegarde et restauration au **contenu identique**, relecture après redémarrage |
+| 11 `down` | EXÉCUTÉ — conteneurs arrêtés, volumes gardés |
 
 Postcondition de nettoyage vérifiée : aucun rôle, aucune base, aucun
-conteneur, aucun volume résiduels.
+conteneur, aucun volume résiduels (les volumes du mandataire compris).
 
-Les quatre exécutions rouges qui ont précédé nommaient chacune un défaut du
+La cinquième exécution (16/09, sans mandataire, onze pas) tenait déjà. Les
+quatre exécutions rouges qui l'ont précédée nommaient chacune un défaut du
 harnais ou de la procédure, corrigé avant la cinquième :
 
 * une valeur non citée dans l'env généré arrêtait bash à mi-fichier, et tout
@@ -165,7 +213,24 @@ harnais ou de la procédure, corrigé avant la cinquième :
   `demo.sh` le fait, et le dit comme un geste de provisionnement.
 
 **Ce que cela n'établit pas.** Les rôles, le JWKS, le réseau et les
-politiques d'une instance Supabase réelle ; le mandataire TLS ; un
-compartiment S3 du fournisseur. Le blocage le plus probable une fois les
-accès fournis n'est pas un secret mais un **droit** (`CREATEROLE` du plan de
-contrôle) — `privileges` le dit avant tout le reste.
+politiques d'une instance Supabase réelle ; un **certificat public** (la
+répétition emploie l'autorité locale de Caddy : la délivrance ACME sous un
+vrai nom, sur des ports 80/443 joignables d'Internet, n'a pas tourné) ; la
+résolution DNS des noms publics ; un navigateur passant par le mandataire
+(les contrôles du pas 7 sont ceux de `curl`, et le parcours du pas 8 est
+celui de l'API) ; un compartiment S3 du fournisseur. Le blocage le plus
+probable une fois les accès fournis n'est pas un secret mais un **droit**
+(`CREATEROLE` du plan de contrôle) — `privileges` le dit avant tout le reste.
+
+## 6. Ce qui a été exécuté ici, et ce qui l'a été sur Supabase
+
+| | localement, sur ce poste | sur Supabase |
+|---|---|---|
+| migrations, référentiel, admission du login, racine mandatée | exécutés (pas 5), six fois | **jamais** |
+| composition `api` + `web` + `mandataire`, TLS, URL publiques, CORS | exécutés (pas 6-7), certificat d'autorité locale | **jamais** |
+| parcours par les URL publiques, redémarrage, relecture | exécutés (pas 8-9) | **jamais** |
+| recette en sept étapes (quatre-yeux, PDF, DXF, sauvegarde, restauration) | exécutée (pas 10) | **jamais** |
+
+Le statut du produit reste `SUPABASE_UNVERIFIED`. Rien de ce document ne
+sera écrit autrement tant que la procédure du §3 n'aura pas tourné contre une
+instance réelle, avec les informations du §2.
