@@ -20,9 +20,10 @@
 #   * l'emetteur de jetons des parcours navigateur (`web/e2e/supabase_local.mjs`)
 #     lance sur l'hote, HORS de la composition, comme Supabase Auth le serait;
 #   * le MANDATAIRE TLS de la composition (Caddy, deploy/Caddyfile) servant
-#     deux noms publics — staging.localhost et api.staging.localhost — en
-#     https sur 127.0.0.1:443, avec son autorite locale (`tls internal`): les
-#     noms sont resolus vers la boucle locale par `--resolve`, et le
+#     TROIS noms publics — staging.localhost, api.staging.localhost et
+#     auth.staging.localhost — en https sur 127.0.0.1:443, avec son autorite
+#     locale (`tls internal`): les noms sont resolus vers la boucle locale par
+#     `--resolve` et par les regles de resolution du navigateur, et le
 #     certificat est VERIFIE contre cette autorite, jamais ignore.
 #
 # Puis: prerequis, privileges, migrer, up, status (les controles des URL
@@ -31,6 +32,14 @@
 # et de sa note a l'identique), la recette de bout en bout
 # (`db/test/recette_supabase_staging.sh executer`), down. Chaque pas est note
 # EXECUTE / ECHOUE / NON EXECUTE.
+#
+# ET UN NAVIGATEUR REEL, aux pas 8b et 9b: Chromium traverse le mandataire sous
+# les noms publics, avec l'autorite locale APPROUVEE dans son magasin de
+# certificats (certutil, base NSS d'un $HOME dedie) — jamais
+# `ignoreHTTPSErrors`. Il fait le parcours du produit, puis le refait apres le
+# redemarrage, et rapporte ce que `curl` ne peut pas dire: erreurs JavaScript,
+# ressources qu'il n'a pas pu charger, contenu mixte, echanges interface/API et
+# leurs codes, maintien de la session.
 #
 # CE QUE CELA N'ETABLIT PAS. Rien sur Supabase: ni ses roles, ni son JWKS, ni
 # son reseau. `SUPABASE_UNVERIFIED` reste vrai. C'est la repetition de la
@@ -91,11 +100,23 @@ HOTE="${EUROSTRUCT_REPETITION_HOTE:-172.17.0.1}"   # l'hote, vu des conteneurs
 PORT_API="${EUROSTRUCT_REPETITION_PORT_API:-8048}"
 PORT_WEB="${EUROSTRUCT_REPETITION_PORT_WEB:-3048}"
 PORT_AUTH="${EUROSTRUCT_REPETITION_PORT_AUTH:-54398}"
-# LES DEUX NOMS PUBLICS, servis par le mandataire sur 127.0.0.1:443 et resolus
-# par curl (--resolve): aucun DNS, aucun /etc/hosts touche.
+# LES NOMS PUBLICS, servis par le mandataire sur 127.0.0.1:443 et resolus
+# par curl (--resolve) et par le navigateur (--host-resolver-rules): aucun DNS,
+# aucun /etc/hosts touche.
 NOM_WEB="staging.localhost"; NOM_API="api.staging.localhost"
 URL_WEB="https://$NOM_WEB"; URL_API="https://$NOM_API"
-RESOLUTION="$NOM_WEB:443:127.0.0.1,$NOM_API:443:127.0.0.1,$NOM_WEB:80:127.0.0.1,$NOM_API:80:127.0.0.1"
+# LE TROISIEME NOM: L'EMETTEUR DE JETONS, LUI AUSSI EN HTTPS.
+#
+# Il tourne HORS de la composition, sur l'hote, comme Supabase Auth le serait.
+# Tant que le navigateur n'etait pas dans la boucle, son adresse en clair
+# suffisait: `curl` s'en accommode. UN NAVIGATEUR, NON — une page servie en
+# https qui va chercher son jeton en « http://127.0.0.1:… » fait du CONTENU
+# MIXTE, et Chromium le bloque: la connexion echoue sans qu'aucune erreur
+# n'apparaisse cote serveur. Le mandataire lui donne donc un nom et un
+# certificat, comme aux deux autres. Sur un staging reel, Supabase est deja en
+# https et ce troisieme site n'existe pas.
+NOM_AUTH="auth.staging.localhost"; URL_AUTH="https://$NOM_AUTH"
+RESOLUTION="$NOM_WEB:443:127.0.0.1,$NOM_API:443:127.0.0.1,$NOM_AUTH:443:127.0.0.1,$NOM_WEB:80:127.0.0.1,$NOM_API:80:127.0.0.1,$NOM_AUTH:80:127.0.0.1"
 JETON="$(harnais_jeton)"
 P="esc_rep"
 MIG="${P}_mg_${JETON}"; CTL="${P}_pl_${JETON}"; SVC="${P}_ap_${JETON}"; SAV="${P}_sv_${JETON}"
@@ -109,6 +130,10 @@ DOSSIER="$ICI/staging-repetition"
 mkdir -p "$DOSSIER"; chmod 700 "$DOSSIER"
 ENVR="$DOSSIER/staging.env"
 CA="$DOSSIER/mandataire-ca-$JETON.crt"   # l'autorite locale du mandataire, copiee par « up »
+CADDYFILE="$DOSSIER/Caddyfile-$JETON"    # celui du depot, plus le site de l'emetteur
+NSS="$DOSSIER/nss-$JETON"                # le magasin de certificats du navigateur
+ENVNAV="$DOSSIER/navigateur-$JETON.env"  # le compte d'essai, pour le parcours
+SORTIE_NAV="$DOSSIER/navigateur-$JETON"  # captures et etat du parcours navigateur
 JOURNAL="$DOSSIER/repetition-$(date -u +%Y%m%dT%H%M%SZ).log"
 TMP="$(mktemp -d)"; chmod 700 "$TMP"
 PID_AUTH=""
@@ -121,7 +146,9 @@ NOMS=("0 base joignable des conteneurs" "1 provisionnement (exploitant)"
       "2 emetteur exterieur" "3 staging.sh prerequis" "4 staging.sh privileges"
       "5 staging.sh migrer" "6 staging.sh up (mandataire TLS compris)" "7 staging.sh status (URL publiques)"
       "8 parcours par les URL publiques" "9 redemarrage: down, up, relecture"
-      "10 recette de bout en bout" "11 staging.sh down")
+      "10 recette de bout en bout" "11 staging.sh down"
+      "8b parcours NAVIGATEUR par les URL publiques (Chromium, certificat verifie)"
+      "9b parcours NAVIGATEUR apres redemarrage (session, relecture, octets)")
 ETATS=(); DETAILS=()
 for _ in "${NOMS[@]}"; do ETATS+=("NON EXECUTE"); DETAILS+=("non tente"); done
 poser()    { ETATS[$1]="$2"; DETAILS[$1]="$3"; }
@@ -145,7 +172,8 @@ nettoyer() {
       --env-file "$ENVR" down -v --remove-orphans >/dev/null 2>&1 || true
     rm -f "$ENVR"
   fi
-  rm -f "$CA"
+  rm -f "$CA" "$CADDYFILE"
+  rm -rf "$NSS"
   [[ -n "$PID_AUTH" ]] && kill "$PID_AUTH" 2>/dev/null
   detruire_bases_creees
   detruire_roles_crees
@@ -269,7 +297,7 @@ EUROSTRUCT_SUPABASE_AUDIENCE=authenticated
 EUROSTRUCT_JWT_ALGORITHMS=RS256
 EUROSTRUCT_PUBLIC_API_URL=$URL_API
 EUROSTRUCT_PUBLIC_WEB_URL=$URL_WEB
-EUROSTRUCT_PUBLIC_SUPABASE_URL=http://127.0.0.1:$PORT_AUTH
+EUROSTRUCT_PUBLIC_SUPABASE_URL=$URL_AUTH
 EUROSTRUCT_PUBLIC_SUPABASE_ANON_KEY=repetition-sans-cle-anonyme
 EUROSTRUCT_CORS_ORIGINS=$URL_WEB
 EUROSTRUCT_MANDATAIRE=oui
@@ -311,7 +339,18 @@ EUROSTRUCT_LOCAL_AUTH_STUB=non
 EUROSTRUCT_STAGING_SANS_TLS=oui
 EUROSTRUCT_STAGING_RESOLVE=$RESOLUTION
 EUROSTRUCT_STAGING_CA_BUNDLE=$CA
+EUROSTRUCT_CADDYFILE=$CADDYFILE
 FIN
+
+# LE FICHIER DU MANDATAIRE: celui du DEPOT, mot pour mot, plus le site de
+# l'emetteur. On ne le recopie pas a la main — on le concatene, pour qu'une
+# modification de deploy/Caddyfile soit dans la repetition sans rien reporter.
+{
+  cat "$RACINE/deploy/Caddyfile"
+  printf '\n# AJOUT DE LA REPETITION SEULEMENT: l emetteur de jetons, hors composition.\n'
+  printf '%s {\n\ttls internal\n\treverse_proxy %s:%s\n}\n' "$URL_AUTH" "$HOTE" "$PORT_AUTH"
+} > "$CADDYFILE"
+chmod 600 "$CADDYFILE"
 umask 022
 
 # ---------------------------------------------------------------------------
@@ -449,6 +488,80 @@ JSON
   (( ok8 )) && execute 8 "bureau, projet, etude $calcul (passed), note PDF ${attendu:0:12} telechargee a l'identique par $NOM_API, $n_obj objet(s) sur le volume; /health sans « demonstration »"
 fi
 
+
+# ---------------------------------------------------------------------------
+# LE PARCOURS NAVIGATEUR, PAR LES URL PUBLIQUES
+# ---------------------------------------------------------------------------
+# CE QUE `curl` NE PEUT PAS DIRE. Le pas 8 etablit que l'API et l'interface
+# repondent par le mandataire, avec un certificat verifie. Il ne dit rien de ce
+# qu'un NAVIGATEUR en fait: s'il execute la page sans erreur, s'il charge
+# toutes ses ressources, s'il refuse une ressource en clair depuis une page
+# chiffree, si la session tient d'un ecran a l'autre. C'est un parcours
+# Chromium qui le dit, et c'est celui du produit — `web/e2e/parcours_demo.mjs`,
+# pointe sur les noms publics.
+#
+# L'AUTORITE LOCALE EST APPROUVEE, JAMAIS IGNOREE. Chromium lit le magasin NSS
+# de $HOME; on lui en donne un a nous, ou l'autorite du mandataire est
+# INSTALLEE comme autorite de confiance. Le certificat est ensuite verifie
+# comme n'importe quel autre — `ignoreHTTPSErrors` n'apparait nulle part, et
+# un certificat qui ne se verifierait pas ferait echouer le parcours.
+approuver_autorite() {
+  command -v certutil >/dev/null 2>&1 || return 1
+  [[ -s "$CA" ]] || return 1
+  rm -rf "$NSS"; mkdir -p "$NSS/.pki/nssdb"
+  certutil -d "sql:$NSS/.pki/nssdb" -N --empty-password >/dev/null 2>&1 || return 1
+  certutil -d "sql:$NSS/.pki/nssdb" -A -t "C,," -n "eurostruct-repetition-$JETON" \
+    -i "$CA" >/dev/null 2>&1 || return 1
+  certutil -d "sql:$NSS/.pki/nssdb" -L 2>/dev/null | grep -q "eurostruct-repetition-$JETON"
+}
+
+parcours_navigateur() {   # parcours_navigateur <index> <mode> <libelle>
+  # `local a=$1 b=$a` ne fait PAS ce qu'on croit: les locales sont declarees
+  # avant que les affectations de la MEME ligne ne soient lues, et `$a` y vaut
+  # celui de la portee englobante — inexistant ici, donc « unbound variable »
+  # sous `set -u`. Mesure a la premiere execution.
+  local index="$1" mode="$2" libelle="$3"
+  # LE JOURNAL DU NAVIGATEUR SURVIT AU NETTOYAGE. Il porte le detail que le
+  # bilan ne peut pas tenir sur une ligne: les echanges, les refus, les
+  # ressources bloquees, les erreurs JavaScript, les empreintes des
+  # livrables telecharges.
+  mkdir -p "$SORTIE_NAV"
+  local log="$SORTIE_NAV/pas-${index}-nav.log"
+  if ! node "$RACINE/web/e2e/verifier_navigateur.mjs" >/dev/null 2>&1; then
+    non_exec "$index" "Playwright ou Chromium absent sur cet hote."; return
+  fi
+  if ! approuver_autorite; then
+    non_exec "$index" "l'autorite locale du mandataire n'a pas pu etre approuvee (certutil absent, ou autorite non copiee). Le parcours n'est PAS lance avec un certificat ignore."
+    return
+  fi
+  umask 077
+  cat > "$ENVNAV" <<FINNAV
+EUROSTRUCT_DEMO_COMPTE_A=a@repetition.invalid
+EUROSTRUCT_DEMO_MDP_A=FICTIF-A-$JETON
+FINNAV
+  umask 022
+  if HOME="$NSS" \
+     EUROSTRUCT_DEMO_ENV="$ENVNAV" \
+     EUROSTRUCT_DEMO_WEB="$URL_WEB" \
+     EUROSTRUCT_DEMO_API="$URL_API" \
+     EUROSTRUCT_DEMO_BANDEAU=non \
+     EUROSTRUCT_DEMO_RESOLVE="$RESOLUTION" \
+     EUROSTRUCT_DEMO_PROJET="FICTIF Repetition staging" \
+     EUROSTRUCT_DEMO_SORTIE="$SORTIE_NAV" \
+       node "$RACINE/web/e2e/parcours_demo.mjs" "$mode" >"$log" 2>&1; then
+    execute "$index" "$libelle — $(grep -m1 'echange(s) interface/API' "$log" | sed 's/^ *· *//')"
+  else
+    echoue "$index" "$(grep -m1 -E 'ECHEC|Error|erreur' "$log" | cut -c1-200)"
+  fi
+}
+
+echo "==> 8b. parcours navigateur (Chromium) par $NOM_WEB, certificat verifie"
+if [[ "${ETATS[8]}" != "EXECUTE" ]]; then
+  non_exec 12 "le parcours du pas 8 n'a pas abouti: aucun projet a ouvrir."
+else
+  parcours_navigateur 12 creer "etude creee a l'ecran, note PDF et plan DXF telecharges par le navigateur"
+fi
+
 # ---------------------------------------------------------------------------
 # 9. LE REDEMARRAGE — down, up, et l'etude est encore la, sa note aussi
 # ---------------------------------------------------------------------------
@@ -486,6 +599,13 @@ else
     [[ "$code_web" == "200" ]] || { echoue 9 "l'interface ne repond plus 200 par le mandataire apres redemarrage ($code_web)"; ok9=0; }
   fi
   (( ok9 )) && execute 9 "down puis up: etude $calcul relue avec son empreinte, note PDF aux memes octets, interface servie par $NOM_WEB"
+fi
+
+echo "==> 9b. parcours navigateur apres redemarrage: session, relecture, memes octets"
+if [[ "${ETATS[12]}" != "EXECUTE" || "${ETATS[9]}" != "EXECUTE" ]]; then
+  non_exec 13 "le parcours navigateur initial ou le redemarrage n'a pas abouti."
+else
+  parcours_navigateur 13 retrouver "etude rouverte sans recalcul, livrables retelecharges aux memes octets"
 fi
 
 # ---------------------------------------------------------------------------

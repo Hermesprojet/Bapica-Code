@@ -47,6 +47,26 @@
  *
  * AUCUN SECRET N'EST ECRIT. Le mot de passe du compte d'essai est lu dans
  * `deploy/demo.env` et ne sort ni sur la console, ni dans `etat.json`.
+ *
+ * AILLEURS QUE SUR LA DEMONSTRATION
+ * -----------------------------------
+ * Cinq variables suffisent a le lancer contre une autre mise a disposition —
+ * la repetition de staging s'en sert pour traverser le MANDATAIRE TLS, en
+ * https, sous les noms publics:
+ *
+ *   EUROSTRUCT_DEMO_ENV       le fichier ou lire le compte d'essai
+ *   EUROSTRUCT_DEMO_WEB       l'adresse de l'interface (defaut: 127.0.0.1:3000)
+ *   EUROSTRUCT_DEMO_API       l'adresse de l'API
+ *   EUROSTRUCT_DEMO_BANDEAU   `non` si cet environnement n'est PAS une
+ *                             demonstration — le bandeau doit alors etre absent
+ *   EUROSTRUCT_DEMO_RESOLVE   `hote:port:adresse,…`, comme `curl --resolve`
+ *
+ * CE QUE LE NAVIGATEUR EST CHARGE DE VOIR, en plus du parcours: les erreurs
+ * JavaScript, les ressources qu'il n'a pas pu charger, le contenu mixte (une
+ * ressource en clair depuis une page chiffree) et les echanges avec l'API —
+ * combien, et lesquels ont refuse. Le certificat n'est JAMAIS ignore: quand
+ * l'essai emploie une autorite locale, elle est approuvee dans le magasin du
+ * poste avant le lancement, et le navigateur la verifie comme une autre.
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -59,7 +79,10 @@ const RACINE = resolve(ICI, "..", "..");
 const MODE = process.argv[2] || "";
 const SORTIE = resolve(process.env.EUROSTRUCT_DEMO_SORTIE
                        || join(RACINE, "deploy", "demo"));
-const NOM_PROJET = "Démonstration — poutre belge";
+//: LE PROJET A OUVRIR. Celui de la demonstration par defaut; la repetition
+//: de staging nomme le sien, qu'elle vient de creer par l'API.
+const NOM_PROJET = process.env.EUROSTRUCT_DEMO_PROJET
+                   || "Démonstration — poutre belge";
 
 if (!["creer", "retrouver", "variante"].includes(MODE)) {
   console.error("usage: parcours_demo.mjs creer | retrouver | variante");
@@ -84,8 +107,26 @@ if (!existsSync(ENVF)) {
   process.exit(2);
 }
 const ENV = lireEnv(ENVF);
-const WEB = `http://127.0.0.1:${ENV.WEB_PORT || 3000}`;
-const API = ENV.EUROSTRUCT_PUBLIC_API_URL || `http://127.0.0.1:${ENV.API_PORT || 8000}`;
+// LES DEUX ADRESSES SONT SURCHARGEABLES, et c'est ce qui rend ce parcours
+// utilisable AILLEURS que sur la composition de demonstration: la repetition
+// de staging le lance contre les noms publics servis par le mandataire TLS,
+// en https. Sans surcharge, rien ne change pour `deploy/demo.sh`.
+const WEB = process.env.EUROSTRUCT_DEMO_WEB
+            || `http://127.0.0.1:${ENV.WEB_PORT || 3000}`;
+const API = process.env.EUROSTRUCT_DEMO_API
+            || ENV.EUROSTRUCT_PUBLIC_API_URL
+            || `http://127.0.0.1:${ENV.API_PORT || 8000}`;
+//: LE BANDEAU DE DEMONSTRATION N'EXISTE QUE SUR UNE DEMONSTRATION. Un staging
+//: qui le porterait serait le defaut; ici on dit lequel des deux on attend.
+const BANDEAU_DEMO = (process.env.EUROSTRUCT_DEMO_BANDEAU ?? "oui") !== "non";
+//: `hote:port:adresse,…` — la meme forme que `curl --resolve`, traduite en
+//: regles de resolution du navigateur. Les noms publics d'un essai local ne
+//: sont dans aucun DNS: sans cela, la page ne partirait meme pas.
+const RESOLUTION = process.env.EUROSTRUCT_DEMO_RESOLVE || "";
+//: EN HTTPS, TOUT DOIT ETRE EN HTTPS. Une seule ressource en clair depuis une
+//: page chiffree est du contenu mixte — le navigateur la bloque, et l'ecran a
+//: l'air casse sans que rien ne dise pourquoi.
+const EXIGE_HTTPS = WEB.startsWith("https:");
 const COMPTE = { courriel: ENV.EUROSTRUCT_DEMO_COMPTE_A, mdp: ENV.EUROSTRUCT_DEMO_MDP_A };
 if (!COMPTE.courriel || !COMPTE.mdp) {
   console.error("le compte d'essai A n'est pas dans deploy/demo.env.");
@@ -102,7 +143,20 @@ if (!chromium || !chrome) {
   process.exit(4);
 }
 mkdirSync(SORTIE, { recursive: true });
-const nav = await chromium.launch({ executablePath: chrome, args: ["--no-sandbox"] });
+const args = ["--no-sandbox"];
+if (RESOLUTION) {
+  // `MAP <hote> <adresse>`: le navigateur resout ces noms-la vers cette
+  // adresse-la, et continue de verifier le CERTIFICAT presente pour le nom
+  // demande. Ce n'est pas une exemption de TLS: c'est un fichier hosts.
+  args.push("--host-resolver-rules=" + RESOLUTION.split(",")
+    .filter(Boolean)
+    .map((e) => { const p = e.split(":"); return `MAP ${p[0]} ${p[2] || p[1]}`; })
+    .join(", "));
+}
+const nav = await chromium.launch({ executablePath: chrome, args });
+//: JAMAIS `ignoreHTTPSErrors`. Un certificat qu'on accepte sans le verifier ne
+//: prouve rien du transport: l'autorite de l'essai est APPROUVEE dans le magasin
+//: du poste (certutil, base NSS), et le navigateur la verifie comme une autre.
 const ctx = await nav.newContext({ acceptDownloads: true });
 const page = await ctx.newPage();
 
@@ -111,6 +165,43 @@ page.on("pageerror", (e) => criees.push(`erreur de page: ${e.message}`));
 page.on("console", (m) => {
   if (m.type() === "error") criees.push(`console: ${m.text()}`);
 });
+//: CE QUE LE NAVIGATEUR N'A PAS PU CHARGER. Une police, une feuille de style
+//: ou un appel d'API bloque ne leve aucune exception: la page s'affiche, en
+//: moins bien, et le parcours passerait sans rien voir.
+const bloquees = [];
+page.on("requestfailed", (r) => {
+  bloquees.push(`${r.method()} ${r.url()} — ${r.failure()?.errorText || "?"}`);
+});
+//: LES ECHANGES INTERFACE <-> API, comptes et notes. Ce sont eux qu'on relit
+//: a la fin: combien, lesquels ont refuse, et si l'un d'eux est parti en clair.
+const echanges = [];
+const enClair = [];
+page.on("response", (r) => {
+  const u = r.url();
+  if (u.startsWith(API)) echanges.push({ m: r.request().method(), u, s: r.status() });
+  //: TOUTE reponse en clair est notee, y compris depuis 127.0.0.1. Chromium
+  //: tient les adresses locales pour dignes de confiance et ne les bloque pas:
+  //: une page https qui irait chercher son jeton en clair passerait donc ici
+  //: sans etre vue, et ne passerait plus le jour ou l'emetteur est ailleurs.
+  if (EXIGE_HTTPS && /^http:\/\//.test(u)) enClair.push(`${r.request().method()} ${u}`);
+});
+
+/** Ce que le navigateur a vu passer, et ce qu'il a refuse. */
+function bilanNavigateur() {
+  const refuses = echanges.filter((e) => e.s >= 400);
+  console.log(`  · ${echanges.length} echange(s) interface/API`
+    + `, ${refuses.length} refus`
+    + `, ${bloquees.length} ressource(s) bloquee(s)`
+    + `, ${criees.length} erreur(s) JavaScript`
+    + (EXIGE_HTTPS ? `, ${enClair.length} ressource(s) en clair` : ""));
+  exige(bloquees.length === 0,
+        `ressource(s) bloquee(s): ${bloquees.slice(0, 3).join(" | ")}`);
+  exige(enClair.length === 0,
+        `contenu mixte: ${enClair.slice(0, 3).join(" | ")}`);
+  exige(refuses.length === 0,
+        `l'API a refuse: ${refuses.slice(0, 3).map((e) => `${e.s} ${e.m} ${e.u}`).join(" | ")}`);
+  exige(echanges.length > 0, "aucun echange avec l'API: l'ecran n'a rien demande");
+}
 //: LE JETON DE LA SESSION, CAPTURE AU PASSAGE. Il ne sert qu'a relire l'etude
 //: par l'API sous la meme identite que l'ecran, et n'est jamais ecrit.
 let autorisation = "";
@@ -169,8 +260,14 @@ async function corpsDe(motif, methode, action) {
 async function connecter() {
   await page.goto(WEB, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#connecter", { timeout: 30000 });
-  exige(await page.locator("#environnement-demonstration").count() === 1,
-        "le bandeau « environnement de démonstration » n'est pas affiché");
+  const bandeau = await page.locator("#environnement-demonstration").count();
+  if (BANDEAU_DEMO) {
+    exige(bandeau === 1, "le bandeau « environnement de démonstration » n'est pas affiché");
+  } else {
+    exige(bandeau === 0,
+          "le bandeau « environnement de démonstration » est affiché alors que "
+          + "cet environnement n'en est pas un");
+  }
   await page.fill("#courriel", COMPTE.courriel);
   await page.fill("#mdp", COMPTE.mdp);
   await page.click("#connecter");
@@ -309,6 +406,7 @@ try {
     exige(dxf.kind === "rebar_drawing_dxf", `nature inattendue: ${dxf.kind}`);
 
     exige(criees.length === 0, `la page a crie: ${criees.slice(0, 3).join(" | ")}`);
+    bilanNavigateur();
     //: LES CINQ VERDICTS DU PREMIER JOUR SONT GARDES, tels que le serveur les
     //: a rendus: apres le redemarrage, l'ecran devra montrer EXACTEMENT ceux-la.
     writeFileSync(ETAT, JSON.stringify({
@@ -451,6 +549,7 @@ try {
       retrouves[nom] = { fichier: chemin, sha256 };
     }
     exige(criees.length === 0, `la page a crie: ${criees.slice(0, 3).join(" | ")}`);
+    bilanNavigateur();
     writeFileSync(ETAT, JSON.stringify({
       ...etat,
       retrouvee_le: new Date().toISOString(),
@@ -844,6 +943,7 @@ try {
           "un lien de variante survit a la deconnexion");
 
     exige(criees.length === 0, `la page a crie: ${criees.slice(0, 3).join(" | ")}`);
+    bilanNavigateur();
     const resume = (e) => ({
       calculation_id: e.calculation_id,
       derived_from_calculation_id: e.derived_from_calculation_id ?? null,

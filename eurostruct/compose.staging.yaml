@@ -118,7 +118,13 @@ services:
       - "${EUROSTRUCT_MANDATAIRE_ECOUTE:-}443:443"
       - "${EUROSTRUCT_MANDATAIRE_ECOUTE:-}443:443/udp"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # LE FICHIER DU DEPOT, SAUF SI L'ESSAI EN GENERE UN AUTRE. La repetition
+      # locale ajoute un TROISIEME site — l'emetteur de jetons, qui tourne HORS
+      # de la composition — parce qu'un navigateur refuse qu'une page https
+      # aille chercher son jeton en clair: c'est du contenu mixte, et il le
+      # bloque. Sur un staging reel, l'emetteur est deja en https chez son
+      # fournisseur, et c'est le fichier du depot qui sert, sans difference.
+      - ${EUROSTRUCT_CADDYFILE:-./deploy/Caddyfile}:/etc/caddy/Caddyfile:ro
       - mandataire_donnees:/data
       - mandataire_config:/config
 
