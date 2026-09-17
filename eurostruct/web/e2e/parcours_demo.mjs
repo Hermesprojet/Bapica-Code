@@ -723,8 +723,8 @@ try {
           `la variante de l'etude avancee a perdu: ${ecartsAvanceeIdentique.join(", ")}`);
     await attendreLignes(lignesAvant + 4);
 
-    // -- D. LE RETOUR A L'ORIGINE, PUIS L'EFFACEMENT --------------------------
-    etape("D. « Rouvrir l'etude d'origine » puis l'etude du premier jour: intactes");
+    // -- D. L'HISTORIQUE DIT LA FILIATION, ET MENE DANS LES DEUX SENS ---------
+    etape("D. « Rouvrir l'etude d'origine » depuis la synthese de la variante avancee");
     const relectureD = page.waitForResponse(
       (r) => r.url().includes(`/beam-verifications/${avancee.calculation_id}`)
              && r.request().method() === "GET", { timeout: 60000 });
@@ -733,12 +733,41 @@ try {
     await page.waitForSelector(
       `#synthese-etude[data-calcul="${avancee.calculation_id}"][data-relue="oui"]`,
       { timeout: 30000 });
+
+    etape("D. l'historique distingue etude initiale et variante, et compte les variantes");
+    const ligneOrigine = `tr[data-calcul="${origineId}"]`;
+    const ligneVariante = `tr[data-calcul="${variante.calculation_id}"]`;
+    exige((await page.getAttribute(ligneVariante, "data-origine")) === origineId,
+          "la ligne d'historique de la variante ne nomme pas son origine");
+    exige((await page.getAttribute(ligneOrigine, "data-origine")) === null,
+          "la ligne d'historique de l'etude initiale se dit variante");
+    exige((await page.locator(`${ligneVariante} .etiquette`).innerText()).trim() === "variante",
+          "la ligne de la variante ne porte pas l'etiquette « variante »");
+    exige((await page.locator(`${ligneOrigine} .etiquette`).innerText()).trim() === "étude initiale",
+          "la ligne de l'origine ne porte pas l'etiquette « étude initiale »");
+    //: LE COMPTE VIENT DU SERVEUR: au moins la variante identique et la
+    //: variante modifiee (davantage si ce parcours a deja tourne sur l'etude).
+    const nbVariantes = Number(await page.getAttribute(ligneOrigine, "data-variantes"));
+    exige(nbVariantes >= 2, `l'origine compte ${nbVariantes} variante(s), attendu au moins 2`);
+    exige((await page.locator(`${ligneOrigine} details summary`).innerText()).trim()
+            === `${nbVariantes} variantes`,
+          "le nombre de variantes affiche n'est pas celui du serveur");
+    exige((await page.locator(`${ligneVariante}`).innerText()).includes(origineId.slice(0, 8)),
+          "la ligne de la variante ne montre pas l'identifiant court de son origine");
+
+    etape("D. de la variante a l'origine par l'historique: ses verdicts du premier jour");
     const lancesAvantRetour = calculsLances;
-    const origineRelue = await rouvrirDepuisHistorique(origineId);
+    const relectureO = page.waitForResponse(
+      (r) => r.url().includes(`/beam-verifications/${origineId}`)
+             && r.request().method() === "GET", { timeout: 60000 });
+    await page.click(`#origine-${variante.calculation_id}`);
+    const origineRelue = await (await relectureO).json();
     exige(origineRelue.calculation_fingerprint === etat.calculation_fingerprint,
           "l'origine relue n'a plus l'empreinte du premier jour");
     exige(!origineRelue.derived_from_calculation_id,
           "l'origine se presente maintenant comme une variante");
+    await page.waitForSelector(
+      `#synthese-etude[data-calcul="${origineId}"][data-relue="oui"]`, { timeout: 30000 });
     await exigerChapitres(etat.sections);
     exige(await page.locator("#etude-derivee").count() === 0,
           "l'etude d'origine affiche un bandeau de variante");
@@ -746,7 +775,23 @@ try {
     exige(await page.locator(
       `tr[data-livrable="${etat.pdf.deliverable_id}"] button:text-is("Télécharger")`)
       .count() === 1, "la note PDF de l'etude d'origine n'est plus dans les livrables");
-    exige(calculsLances === lancesAvantRetour, "rouvrir l'origine a lance un calcul");
+
+    etape("D. de l'origine a sa variante par l'historique: les verdicts de la variante");
+    await page.click(`#variantes-${origineId} > summary`);
+    const relectureV = page.waitForResponse(
+      (r) => r.url().includes(`/beam-verifications/${variante.calculation_id}`)
+             && r.request().method() === "GET", { timeout: 60000 });
+    await page.click(`#rouvrir-variante-${variante.calculation_id}`);
+    exige((await relectureV).status() === 200, "la relecture de la variante a echoue");
+    await page.waitForSelector(
+      `#synthese-etude[data-calcul="${variante.calculation_id}"][data-relue="oui"]`,
+      { timeout: 30000 });
+    await exigerChapitres(variante.sections.map((s) => ({
+      key: s.key, status: s.status, utilisation: s.utilisation ?? null })));
+    await page.waitForSelector(`#etude-derivee[data-origine="${origineId}"]`,
+                               { timeout: 15000 });
+    exige(calculsLances === lancesAvantRetour,
+          "passer de la variante a l'origine et retour a lance un calcul");
 
     etape("D. changement de projet: l'ecran ne montre plus rien du dossier precedent");
     await page.selectOption("#projet", "");

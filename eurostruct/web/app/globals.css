@@ -109,6 +109,21 @@ th { color: var(--encre-douce); font-weight: 600; font-size: .78rem;
      text-transform: uppercase; letter-spacing: .03em; }
 td.nombre { font-variant-numeric: tabular-nums; text-align: right; }
 
+/* LA NATURE D'UNE LIGNE D'HISTORIQUE: etude initiale, ou variante de quoi. */
+.etiquette {
+  display: inline-block; font-size: .74rem; padding: .05rem .45rem;
+  border: 1px solid var(--trait); border-radius: .7rem; margin-right: .3rem;
+  color: var(--encre-douce); white-space: nowrap;
+}
+.etiquette.variante { background: var(--alerte-fond); color: var(--alerte);
+                      border-color: var(--alerte-trait); }
+td.filiation code { font-size: .8rem; }
+td.filiation button { margin-left: .4rem; padding: .15rem .5rem; font-size: .8rem; }
+td.filiation details { margin-top: .3rem; }
+td.filiation details summary { cursor: pointer; color: var(--encre-douce); font-size: .85rem; }
+td.filiation details ul { margin: .3rem 0 0; padding-left: 1rem; }
+td.filiation details li { margin: .2rem 0; }
+
 .cartes { display: grid; gap: .75rem;
           grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
           margin: .5rem 0 1rem; }

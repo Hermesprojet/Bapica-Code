@@ -256,6 +256,8 @@ export interface CalculEnregistre {
 export interface CalculResume {
   calculation_id: string;
   created_at: string;
+  /** Identifiant de l'étude d'origine quand cette ligne est une variante ; absent pour une étude initiale. */
+  derived_from_calculation_id?: string | null;
   element?: string | null;
   engine_version: string;
   inputs_hash: string;
@@ -263,6 +265,8 @@ export interface CalculResume {
   /** 'succeeded' ou 'refused'. Un refus reste un refus dans l'historique: il n'est ni omis, ni dégradé en échec technique. */
   status: string;
   strict_ndp: boolean;
+  /** Nombre d'études du projet dérivées de celle-ci. */
+  variant_count?: number;
 }
 
 export interface CheckDTO {

@@ -1079,6 +1079,19 @@
           "title": "Created At",
           "type": "string"
         },
+        "derived_from_calculation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identifiant de l'étude d'origine quand cette ligne est une variante ; absent pour une étude initiale.",
+          "title": "Derived From Calculation Id"
+        },
         "element": {
           "anyOf": [
             {
@@ -1119,6 +1132,13 @@
         "strict_ndp": {
           "title": "Strict Ndp",
           "type": "boolean"
+        },
+        "variant_count": {
+          "default": 0,
+          "description": "Nombre d'études du projet dérivées de celle-ci.",
+          "minimum": 0,
+          "title": "Variant Count",
+          "type": "integer"
         }
       },
       "required": [

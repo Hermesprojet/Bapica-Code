@@ -254,6 +254,14 @@ class PostgresAtelier:
                         None if ligne["max_utilisation"] is None
                         else float(ligne["max_utilisation"])),
                     "created_at": _texte(ligne["created_at"]),
+                    #: LA FILIATION ET LE NOMBRE DE VARIANTES viennent de la
+                    #: primitive (0027), qui les lit dans la requete gelee et
+                    #: les compte sur le projet entier. L'ecran n'en deduit
+                    #: rien lui-meme.
+                    "derived_from_calculation_id": (
+                        None if ligne["derived_from_calculation_id"] is None
+                        else _texte(ligne["derived_from_calculation_id"])),
+                    "variant_count": int(ligne["variant_count"] or 0),
                 }
                 for ligne in self._lignes(u)
             ]

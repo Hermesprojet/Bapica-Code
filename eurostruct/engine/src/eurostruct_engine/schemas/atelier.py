@@ -152,6 +152,17 @@ class CalculResume(Strict):
     element: str | None = None
     max_utilisation: float | None = None
     created_at: str
+    #: LA FILIATION, LUE DANS LA REQUETE GELEE — jamais deduite du repere ni
+    #: de l'ordre de la liste. Absente pour une etude initiale.
+    derived_from_calculation_id: str | None = Field(
+        default=None,
+        description="Identifiant de l'étude d'origine quand cette ligne est "
+                    "une variante ; absent pour une étude initiale.")
+    #: COMBIEN D'ETUDES DU PROJET NOMMENT CETTE LIGNE COMME ORIGINE. Compte
+    #: par le serveur sur le projet entier, pas par l'ecran sur ce qu'il voit.
+    variant_count: int = Field(
+        default=0, ge=0,
+        description="Nombre d'études du projet dérivées de celle-ci.")
 
 
 class HistoriqueCalculs(Strict):

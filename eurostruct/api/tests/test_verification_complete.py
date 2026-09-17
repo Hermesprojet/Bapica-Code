@@ -1119,6 +1119,35 @@ def test_une_origine_d_un_autre_projet_est_refusee(
     assert _compte_calculs(projet) == avant
 
 
+def test_l_historique_dit_la_filiation_et_compte_les_variantes(
+        client, jeton, projet) -> None:
+    """DEUX LIGNES « P1 ABOUTI » NE SE DISTINGUAIENT PAS. Depuis 0027, la liste
+    dit laquelle est une variante, de quoi, et combien de variantes une etude
+    a engendrees — lu dans la requete gelee et compte sur le projet entier,
+    jamais deduit du repere ni de l'ordre.
+    """
+    origine = _verifier(client, jeton, projet).json()
+    v1 = _verifier(client, jeton, projet,
+                   derived_from_calculation_id=origine["calculation_id"]).json()
+    v2 = _verifier(client, jeton, projet,
+                   bars={"count": 5, "diameter": {"value": 20, "unit": "mm"}},
+                   derived_from_calculation_id=origine["calculation_id"]).json()
+
+    h = client.get(f"/v1/projects/{projet['project_id']}/calculations",
+                   headers=_entete(jeton(ACTEUR_A)))
+    assert h.status_code == 200, h.text
+    lignes = {ligne["calculation_id"]: ligne for ligne in h.json()["calculations"]}
+    assert lignes[origine["calculation_id"]]["derived_from_calculation_id"] is None
+    assert lignes[origine["calculation_id"]]["variant_count"] == 2
+    for v in (v1, v2):
+        assert lignes[v["calculation_id"]]["derived_from_calculation_id"] == origine["calculation_id"]
+        assert lignes[v["calculation_id"]]["variant_count"] == 0
+    #: DU PLUS RECENT AU PLUS ANCIEN, comme avant 0027.
+    ordre = [ligne["calculation_id"] for ligne in h.json()["calculations"]]
+    assert ordre.index(v2["calculation_id"]) < ordre.index(v1["calculation_id"]) \
+        < ordre.index(origine["calculation_id"])
+
+
 def test_un_calcul_de_flexion_seule_n_est_pas_l_origine_d_une_variante(
         client, jeton, projet) -> None:
     """LA VARIANTE D'UNE ETUDE EST UNE ETUDE. Une flexion seule n'en est pas une."""

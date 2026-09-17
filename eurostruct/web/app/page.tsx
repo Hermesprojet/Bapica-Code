@@ -1393,7 +1393,7 @@ function Historique({ projet, revision, surReouverture, surReouvertureEtude,
         <table>
           <thead>
             <tr>
-              <th>Repère</th><th>État</th><th>Mode</th>
+              <th>Repère</th><th>Nature</th><th>État</th><th>Mode</th>
               <th>Utilisation max</th><th>Moteur</th><th></th>
             </tr>
           </thead>
@@ -1404,8 +1404,18 @@ function Historique({ projet, revision, surReouverture, surReouvertureEtude,
                  boutons identiques; sans repere, « cliquer sur Produire un
                  brouillon » ne designe rien de precis — ni pour un parcours
                  automatise, ni pour quelqu'un qui decrit ce qu'il a fait. */
-              <tr key={c.calculation_id} data-calcul={c.calculation_id}>
+              <tr key={c.calculation_id} data-calcul={c.calculation_id}
+                  data-origine={c.derived_from_calculation_id ?? undefined}
+                  data-variantes={c.variant_count ?? 0}>
                 <td>{c.element ?? "—"}</td>
+                {/* LA NATURE EST LUE, PAS DEVINEE. « variante » vient de la
+                    requete gelee (0027), « n variante(s) » du compte fait par
+                    le serveur sur le projet entier. Deux lignes « P1 abouti »
+                    qui se suivent ne se distinguaient pas: on ne savait pas
+                    laquelle derivait de l'autre sans rouvrir les deux. */}
+                <td className="filiation">
+                  <Filiation ligne={c} lignes={lignes} surRouvrir={rouvrir} />
+                </td>
                 <td>{c.status === "refused" ? "refusé" : "abouti"}</td>
                 <td>{c.strict_ndp ? "strict" : "exploratoire"}</td>
                 {/* `null` N'EST PAS `0`. Un refus n'a produit aucune
@@ -1483,6 +1493,79 @@ function Historique({ projet, revision, surReouverture, surReouvertureEtude,
           surDxf={() => produire(planPour, "dxf")} />
       )}
     </section>
+  );
+}
+
+/**
+ * Étude initiale ou variante, et le passage de l'une à l'autre.
+ *
+ * DANS LES DEUX SENS, DEPUIS L'HISTORIQUE. Une variante porte un bouton vers
+ * son origine ; une origine liste ses variantes, chacune avec le sien. Les
+ * deux relisent le calcul enregistré (aucun recalcul) et amènent la synthèse
+ * à l'écran avec le repère et les verdicts de CE calcul-là.
+ *
+ * LE REPÈRE DE L'ORIGINE EST CHERCHÉ DANS LA LISTE REÇUE, et l'identifiant
+ * court l'accompagne toujours : deux études d'un même projet peuvent porter
+ * le même repère « P1 », et le repère seul ne désignerait rien. Le compte,
+ * lui, vient du serveur : si la liste ne montre pas toutes les variantes
+ * comptées, la différence est dite, pas tue.
+ */
+function Filiation({ ligne, lignes, surRouvrir }: {
+  ligne: CalculResume; lignes: CalculResume[];
+  surRouvrir: (calculationId: string) => void;
+}) {
+  const court = (id: string) => id.slice(0, 8);
+  if (ligne.derived_from_calculation_id) {
+    const origine = lignes.find(
+      (l) => l.calculation_id === ligne.derived_from_calculation_id);
+    return (
+      <>
+        <span className="etiquette variante">variante</span>
+        {" de "}{origine?.element ?? "—"}{" "}
+        <code title={ligne.derived_from_calculation_id}>
+          {court(ligne.derived_from_calculation_id)}
+        </code>
+        <button type="button" className="secondaire"
+                id={`origine-${ligne.calculation_id}`}
+                onClick={() => surRouvrir(ligne.derived_from_calculation_id!)}>
+          Rouvrir l&apos;origine
+        </button>
+      </>
+    );
+  }
+  const compte = ligne.variant_count ?? 0;
+  const variantes = lignes.filter(
+    (l) => l.derived_from_calculation_id === ligne.calculation_id);
+  return (
+    <>
+      <span className="etiquette">étude initiale</span>
+      {compte > 0 && (
+        <details className="variantes" id={`variantes-${ligne.calculation_id}`}>
+          <summary>{compte} variante{compte > 1 ? "s" : ""}</summary>
+          <ul>
+            {variantes.map((v) => (
+              <li key={v.calculation_id} data-variante={v.calculation_id}>
+                {v.element ?? "—"}{" "}
+                <code title={v.calculation_id}>{court(v.calculation_id)}</code>
+                {" — "}{v.status === "refused" ? "refusée" : "aboutie"}
+                {", "}{v.max_utilisation === null || v.max_utilisation === undefined
+                  ? "—" : `${(v.max_utilisation * 100).toFixed(1)} %`}
+                <button type="button" className="secondaire"
+                        id={`rouvrir-variante-${v.calculation_id}`}
+                        onClick={() => surRouvrir(v.calculation_id)}>
+                  Rouvrir
+                </button>
+              </li>
+            ))}
+            {variantes.length < compte && (
+              <li className="aide">
+                et {compte - variantes.length} autre(s), hors de cette liste
+              </li>
+            )}
+          </ul>
+        </details>
+      )}
+    </>
   );
 }
 
