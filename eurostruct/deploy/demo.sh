@@ -8,7 +8,27 @@
 #   deploy/demo.sh status    ce qui tourne, et ce que /ready en dit
 #   deploy/demo.sh comptes   les deux comptes d'essai, mot de passe compris
 #   deploy/demo.sh journaux [service] [n]   les n dernieres lignes d'un service (api, web, db, init, demo-auth)
+#
+#   deploy/demo.sh sauvegarder        base + livrables, dans deploy/sauvegardes/
+#   deploy/demo.sh diagnostic         ce qu'une mise a jour ferait — ne modifie rien
+#   deploy/demo.sh mettre-a-jour      la nouvelle version, en GARDANT les etudes
+#   deploy/demo.sh reprendre          reprend une mise a jour interrompue
+#   deploy/demo.sh restaurer <dossier>  remet une sauvegarde en place
 #   deploy/demo.sh reset     detruit les donnees — consentement explicite exige
+#
+# METTRE A JOUR N'EST PAS RECOMMENCER
+# -------------------------------------
+# `reset` DETRUIT: la base, les livrables, la cle de l'emetteur. C'est un geste
+# volontaire, et il reste disponible pour repartir de zero. Il n'est PAS la
+# facon de passer a une nouvelle version: une demonstration qu'on garde porte
+# des etudes, des variantes, des PDF et des DXF qu'on veut retrouver.
+#
+# `mettre-a-jour` construit la nouvelle version pendant que l'ancienne sert
+# encore, prend une sauvegarde, arrete les ecritures, ouvre la fenetre de mise
+# a niveau de la base — la MEME que `tools/deploy_eurostruct.sh --mettre-a-niveau`,
+# appelee par le service `init` — puis redemarre l'application. Les etudes et
+# les livrables sont conserves; c'est `db/test/mise_a_niveau_active.sh` qui le
+# mesure, ligne pour ligne et octet pour octet.
 #
 # CE QUE CETTE COMMANDE ETABLIT, ET QU'AUCUNE AUTRE N'ETABLISSAIT
 # -----------------------------------------------------------------
@@ -418,24 +438,28 @@ cmd_up() {
   dire "composition: demarrage et initialisation de la base (idempotente)"
   if ! dc up -d --wait --wait-timeout 900; then
     echo "" >&2
-    # UNE MIGRATION DE PLUS DANS LE DEPOT, ET UNE BASE DEJA EN SERVICE. La
-    # commande de deploiement installe et verifie; elle ne met pas a niveau
-    # (ACTIVE_SCHEMA_UPGRADE_REQUIRED, code 9) — mesure le 17/09 apres 0027 sur
-    # une demonstration montee la veille. Le journal generique disait
-    # « corrigez la cause », sans dire que la cause etait celle-la ni que la
-    # reprise est un reset: les donnees de demonstration sont jetables.
+    # UNE MIGRATION DE PLUS DANS LE DEPOT, ET UNE BASE DEJA EN SERVICE. `up`
+    # INSTALLE ET VERIFIE — elle n'ouvre aucune fenetre de migration sur une
+    # base qui sert (ACTIVE_SCHEMA_UPGRADE_REQUIRED, code 9). Ce n'est pas une
+    # panne: c'est le refus d'appliquer une migration par surprise a des
+    # donnees qu'on n'a pas sauvegardees.
+    #
+    # LA REPRISE N'EST PLUS UN `reset`. Elle l'a ete, et c'etait le defaut:
+    # « pour avoir la nouvelle version, jetez vos etudes ». La mise a jour
+    # conserve la base et les livrables.
     local journal_init
     journal_init="$(dc logs --no-color --tail 60 init 2>&1)"
     if grep -q "ACTIVE_SCHEMA_UPGRADE_REQUIRED" <<<"$journal_init"; then
       echo "ECHEC: cette version du depot porte une migration que la base de demonstration" >&2
       echo "       existante n'a pas:" >&2
       grep -E '^\s+[0-9]{4}_[a-z0-9_]+\.sql' <<<"$journal_init" | sed 's/^ */         /' >&2
-      echo "       La commande de deploiement installe et verifie; elle ne met pas a niveau" >&2
-      echo "       une base en service (protocole a concevoir: docs/DEPLOIEMENT_PREREQUIS.md §10)." >&2
-      echo "       Les donnees de demonstration sont jetables. Reprendre:" >&2
+      echo "       RIEN N'A ETE APPLIQUE, et vos etudes sont intactes. Pour passer a" >&2
+      echo "       cette version EN LES CONSERVANT:" >&2
+      echo "         deploy/demo.sh diagnostic       ce qui serait fait, sans rien modifier" >&2
+      echo "         deploy/demo.sh mettre-a-jour    sauvegarde, migration, redemarrage" >&2
+      echo "       Pour repartir de zero a la place — vos etudes sont alors PERDUES:" >&2
       echo "         EUROSTRUCT_DEMO_RESET=oui-detruire-les-donnees-de-demonstration deploy/demo.sh reset" >&2
       echo "         deploy/demo.sh up" >&2
-      echo "       deploy/demo.env et ses comptes sont conserves; le projet belge est re-amorce." >&2
       exit 1
     fi
     echo "ECHEC: la composition n'est pas montee. Etat des conteneurs, puis derniers" >&2
@@ -521,6 +545,312 @@ cmd_reset() {
   dire "deploy/demo.env est conserve; supprimez-le pour regenerer des comptes."
 }
 
+# ===========================================================================
+# GARDER SES ETUDES: SAUVEGARDER, METTRE A JOUR, REPRENDRE, RESTAURER
+# ===========================================================================
+# UNE SAUVEGARDE EN TROIS MORCEAUX, PARCE QU'UNE DEMONSTRATION VIT DANS TROIS
+# ENDROITS:
+#
+#   globals.sql    les ROLES du cluster — ils sont hors de la base, et un
+#                  `pg_dump` ne les porte pas. Sans eux, une restauration sur
+#                  un volume neuf rendrait chaque objet au superutilisateur, et
+#                  la topologie serait REFUSEE. Pris avec --no-role-passwords:
+#                  aucun mot de passe n'entre dans la sauvegarde, et ceux des
+#                  trois logins sont reposes depuis deploy/demo.env au
+#                  demarrage suivant.
+#   base.dump      la base, au format « custom » — c'est l'archive que la mise
+#                  a niveau inspecte avant d'ouvrir sa fenetre.
+#   livrables.tar  les OCTETS des PDF et des DXF, sur le volume `livrables`.
+#                  Une base sans eux promet des documents introuvables.
+#
+# AUCUN SECRET N'EST PASSE EN LIGNE DE COMMANDE. `pg_dump` et `pg_restore`
+# tournent DANS un conteneur qui a deja ces valeurs dans son environnement, et
+# les archives arrivent sur la sortie standard — donc dans des fichiers qui
+# appartiennent a l'utilisateur, pas a root.
+SAUV="$ICI/sauvegardes"
+DERNIERE_SAUVEGARDE=""
+
+# `sh -c` DANS LE CONTENEUR `init`: image postgres:16-bookworm, donc pg_dump,
+# pg_restore et psql; aucun volume de donnees monte; et POSTGRES_USER,
+# POSTGRES_PASSWORD, POSTGRES_DB, EUROSTRUCT_DB_HOST y sont deja declares par
+# compose.yaml. Les guillemets SIMPLES sont essentiels: c'est le shell du
+# CONTENEUR qui lit les variables, jamais celui du poste.
+pg_dans_init() {   # pg_dans_init <script-sh> [options docker compose run]
+  local script="$1"; shift
+  dc run --rm --no-deps -T "$@" --entrypoint sh init -c "$script"
+}
+
+# L'IMAGE `init` DOIT ETRE CELLE DE L'ARBRE PRESENT, ET PAS CELLE D'AVANT.
+# `docker compose run` ne reconstruit pas: il reprend l'image du projet, qui a
+# ete construite par le `up` de l'ANCIENNE version. Un diagnostic ou une
+# reprise lancee sans ce build annoncerait donc l'etat vu par l'ancien code —
+# et, sur une version qui ne connait pas encore la mise a niveau, echouerait
+# sur un mode inconnu.
+construire_init() {
+  dire "image d'initialisation: construction depuis l'arbre present"
+  dc build init >/dev/null 2>&1 || dc build init || refus "l'image « init » ne se construit pas."
+}
+
+cmd_sauvegarder() {
+  exiger_outils; charger_env
+  local horo dest magique
+  horo="$(date -u +%Y%m%dT%H%M%SZ)"
+  dest="$SAUV/$horo"
+  mkdir -p "$dest" || refus "impossible de creer « $dest »."
+  chmod 700 "$SAUV" "$dest"
+
+  dire "la base doit repondre pour etre sauvegardee"
+  dc up -d --wait --wait-timeout 300 db >/dev/null 2>&1 \
+    || { rm -rf "$dest"; refus "le service « db » ne demarre pas: rien n'a ete sauvegarde."; }
+
+  dire "sauvegarde 1/3 — les roles du cluster (sans aucun mot de passe)"
+  if ! pg_dans_init 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dumpall \
+         -h "$EUROSTRUCT_DB_HOST" -U "$POSTGRES_USER" \
+         --globals-only --no-role-passwords' > "$dest/globals.sql" 2>"$dest/.err"; then
+    sed -n '1,5p' "$dest/.err" >&2; rm -rf "$dest"
+    refus "la sauvegarde des roles a echoue: rien n'a ete conserve."
+  fi
+  [[ -s "$dest/globals.sql" ]] || { rm -rf "$dest"; refus "la sauvegarde des roles est vide."; }
+
+  dire "sauvegarde 2/3 — la base « $POSTGRES_DB » (pg_dump -Fc)"
+  if ! pg_dans_init 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump \
+         -h "$EUROSTRUCT_DB_HOST" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+       > "$dest/base.dump" 2>"$dest/.err"; then
+    sed -n '1,5p' "$dest/.err" >&2; rm -rf "$dest"
+    refus "la sauvegarde de la base a echoue: rien n'a ete conserve."
+  fi
+  # UNE ARCHIVE « CUSTOM » COMMENCE PAR `PGDMP`. Le poste n'a pas forcement
+  # `pg_restore` pour l'inspecter; ces cinq octets, eux, se lisent partout — et
+  # ils separent une archive d'un message d'erreur capture par megarde.
+  magique="$(head -c 5 "$dest/base.dump" 2>/dev/null)"
+  [[ "$magique" == "PGDMP" ]] \
+    || { rm -rf "$dest"; refus "l'archive produite n'est pas un « pg_dump -Fc »
+       (debut: « ${magique:-vide} »). Rien n'a ete conserve."; }
+
+  dire "sauvegarde 3/3 — les livrables (PDF, DXF) du volume « livrables »"
+  if ! dc run --rm --no-deps -T --user root \
+        --entrypoint tar api -C /var/lib/eurostruct/livrables -cf - . \
+        > "$dest/livrables.tar" 2>"$dest/.err"; then
+    sed -n '1,5p' "$dest/.err" >&2; rm -rf "$dest"
+    refus "la sauvegarde des livrables a echoue: rien n'a ete conserve."
+  fi
+  rm -f "$dest/.err"
+  chmod 600 "$dest"/*
+
+  DERNIERE_SAUVEGARDE="$dest"
+  echo ""
+  echo "  sauvegarde: $dest"
+  printf '    %-16s %s o\n' "globals.sql" "$(stat -c %s "$dest/globals.sql")"
+  printf '    %-16s %s o\n' "base.dump" "$(stat -c %s "$dest/base.dump")"
+  printf '    %-16s %s o, %s fichier(s)\n' "livrables.tar" \
+    "$(stat -c %s "$dest/livrables.tar")" \
+    "$(tar -tf "$dest/livrables.tar" 2>/dev/null | grep -v '/$' | wc -l | tr -d ' ')"
+  echo "  restaurer: EUROSTRUCT_DEMO_RESTAURER=oui-remplacer-par-la-sauvegarde \\"
+  echo "               deploy/demo.sh restaurer $dest"
+  echo ""
+}
+
+cmd_diagnostic() {
+  exiger_outils; charger_env
+  dc up -d --wait --wait-timeout 300 db >/dev/null 2>&1 \
+    || refus "le service « db » ne demarre pas."
+  construire_init
+  dire "diagnostic de mise a jour — rien ne sera modifie"
+  dc run --rm --no-deps init diagnostic
+  local code=$?
+  case $code in
+    0) : ;;
+    2) echo "" >&2
+       echo "Au moins un prerequis manque (voir MANQUE ci-dessus). Rien n'a ete" >&2
+       echo "modifie. « deploy/demo.sh mettre-a-jour » les remplit pour vous:" >&2
+       echo "elle arrete l'API et prend la sauvegarde avant d'ouvrir la fenetre." >&2 ;;
+    *) echo "" >&2
+       echo "Le diagnostic a rendu $code. Rien n'a ete modifie." >&2 ;;
+  esac
+  return $code
+}
+
+# LA MISE A JOUR, DANS L'ORDRE QUI MINIMISE LA COUPURE
+# ------------------------------------------------------
+# LA CONSTRUCTION D'ABORD, PENDANT QUE L'ANCIENNE VERSION SERT ENCORE. Une
+# image qui se construit en huit minutes ne doit pas les passer avec
+# l'application arretee. La sauvegarde ensuite, puis seulement l'arret des
+# ecritures: la fenetre reelle tient entre l'etape 3 et l'etape 5.
+cmd_mettre_a_jour() {
+  exiger_outils; charger_env
+  local code journal
+  EUROSTRUCT_BUILD_SHA="$(identite_de_build)"
+  export EUROSTRUCT_BUILD_SHA
+  dire "build cible: $EUROSTRUCT_BUILD_SHA"
+
+  dire "1/6 construction des images de la nouvelle version (l'application sert encore)"
+  if ! dc build; then
+    echo "ECHEC: la construction s'est interrompue. RIEN n'a ete touche: la" >&2
+    echo "       demonstration tourne toujours dans sa version actuelle." >&2
+    echo "       Reprendre: relancez « deploy/demo.sh mettre-a-jour »." >&2
+    exit 1
+  fi
+
+  dire "2/6 sauvegarde AVANT toute modification"
+  cmd_sauvegarder
+  [[ -n "$DERNIERE_SAUVEGARDE" ]] || refus "aucune sauvegarde: la mise a jour n'ira pas plus loin."
+
+  dire "3/6 arret de l'API et de l'interface — les ecritures s'arretent ici"
+  dc stop api web
+
+  dire "4/6 mise a niveau de la base, par la commande officielle de deploiement"
+  dc run --rm --no-deps \
+     -e ESC_UPGRADE_CONSENTEMENT="oui-mettre-a-niveau-$POSTGRES_DB" \
+     -e ESC_UPGRADE_SAUVEGARDE=/sauvegarde/base.dump \
+     -v "$DERNIERE_SAUVEGARDE:/sauvegarde:ro" \
+     init mise-a-niveau
+  code=$?
+  if [[ $code -ne 0 ]]; then
+    echo "" >&2
+    case $code in
+      2)
+        # PREREQUIS REFUSES: la fenetre ne s'est pas ouverte, la base est
+        # exactement dans l'etat ou elle etait. On redemarre l'application.
+        echo "ECHEC: la mise a niveau a REFUSE d'ouvrir sa fenetre (prerequis)." >&2
+        echo "       RIEN N'A ETE MODIFIE. L'application est redemarree dans sa" >&2
+        echo "       version actuelle." >&2
+        dc up -d --wait --wait-timeout 300 api web >/dev/null 2>&1
+        echo "       Sauvegarde conservee: $DERNIERE_SAUVEGARDE" >&2 ;;
+      4)
+        echo "ECHEC: une autre mise a niveau tient deja le verrou de deploiement." >&2
+        echo "       RIEN N'A ETE MODIFIE. Attendez qu'elle finisse." >&2 ;;
+      *)
+        # LA FENETRE A PU S'OUVRIR. On NE REDEMARRE PAS l'application: elle
+        # ecrirait dans une base a moitie migree. La reprise est un geste
+        # explicite, et elle referme ce qui est reste ouvert.
+        echo "ECHEC: la mise a niveau s'est arretee (code $code) apres avoir ouvert" >&2
+        echo "       sa fenetre. L'API et l'interface RESTENT ARRETEES: les laisser" >&2
+        echo "       repartir les ferait ecrire dans une base a moitie migree." >&2
+        echo "       Reprendre:  deploy/demo.sh reprendre" >&2
+        echo "       Revenir en arriere:" >&2
+        echo "         EUROSTRUCT_DEMO_RESTAURER=oui-remplacer-par-la-sauvegarde \\" >&2
+        echo "           deploy/demo.sh restaurer $DERNIERE_SAUVEGARDE" >&2 ;;
+    esac
+    exit 1
+  fi
+
+  dire "5/6 redemarrage de l'application dans la nouvelle version"
+  if ! dc up -d --wait --wait-timeout 900; then
+    journal="$(dc logs --no-color --tail 40 api 2>&1)"
+    echo "ECHEC: la base est a niveau, mais l'application ne repart pas." >&2
+    sed 's/^/      api | /' <<<"$journal" >&2
+    echo "       Sauvegarde: $DERNIERE_SAUVEGARDE" >&2
+    exit 1
+  fi
+  attendre "http://127.0.0.1:${API_PORT}/ready" 90 \
+    || { echo "ECHEC: /ready ne passe pas au vert apres la mise a jour." >&2
+         curl -sS "http://127.0.0.1:${API_PORT}/ready" 2>/dev/null | cut -c1-600 >&2
+         exit 1; }
+
+  dire "6/6 controle: /ready au vert"
+  echo ""
+  echo "=================================================================="
+  echo " MISE A JOUR FAITE — les etudes et les livrables sont conserves."
+  echo ""
+  echo "   interface : http://127.0.0.1:${WEB_PORT}"
+  echo "   build     : $EUROSTRUCT_BUILD_SHA"
+  echo "   sauvegarde: $DERNIERE_SAUVEGARDE"
+  echo ""
+  echo "   Vos etudes, variantes, PDF et DXF sont a leur place: rouvrez-les"
+  echo "   depuis « Mes etudes ». Aucun recalcul n'a lieu."
+  echo "=================================================================="
+}
+
+cmd_reprendre() {
+  exiger_outils; charger_env
+  local code
+  dire "la base doit repondre pour qu'une fenetre puisse etre refermee"
+  dc up -d --wait --wait-timeout 300 db >/dev/null 2>&1 \
+    || refus "le service « db » ne demarre pas."
+  construire_init
+  dire "reprise de la mise a jour interrompue"
+  dc run --rm --no-deps init reprendre
+  code=$?
+  if [[ $code -ne 0 ]]; then
+    echo "" >&2
+    echo "ECHEC: la reprise a rendu $code. L'API et l'interface restent arretees." >&2
+    echo "       Le journal ci-dessus nomme ce qui n'a pas pu etre etabli." >&2
+    exit 1
+  fi
+  dire "la fenetre est refermee; redemarrage de l'application"
+  dc up -d --wait --wait-timeout 900 \
+    || { echo "ECHEC: l'application ne repart pas. « deploy/demo.sh journaux api »." >&2; exit 1; }
+  attendre "http://127.0.0.1:${API_PORT}/ready" 90 \
+    || { echo "ECHEC: /ready ne passe pas au vert." >&2; exit 1; }
+  dire "reprise terminee: /ready au vert, donnees conservees."
+}
+
+# LA RESTAURATION REMPLACE. Elle n'est pas une reparation en douceur: elle
+# detruit les volumes en place et remet ceux de la sauvegarde. C'est pourquoi
+# elle exige le meme genre de consentement explicite que `reset`.
+cmd_restaurer() {
+  exiger_outils; charger_env
+  local dossier="${1:-}" magique erreurs
+  [[ -n "$dossier" ]] || refus "usage: deploy/demo.sh restaurer <dossier-de-sauvegarde>
+       Les sauvegardes prises ici sont sous $SAUV/"
+  dossier="${dossier%/}"
+  [[ -d "$dossier" ]] || refus "« $dossier » n'est pas un dossier de sauvegarde."
+  for f in globals.sql base.dump livrables.tar; do
+    [[ -s "$dossier/$f" ]] \
+      || refus "« $dossier/$f » est absent ou vide: cette sauvegarde est incomplete."
+  done
+  magique="$(head -c 5 "$dossier/base.dump")"
+  [[ "$magique" == "PGDMP" ]] \
+    || refus "« $dossier/base.dump » n'est pas une archive pg_dump -Fc."
+
+  if [[ "${EUROSTRUCT_DEMO_RESTAURER:-}" != "oui-remplacer-par-la-sauvegarde" ]]; then
+    echo "REFUS: restaurer DETRUIT la base, les livrables et la cle de l'emetteur" >&2
+    echo "       en place, et les remplace par ceux de « $dossier »." >&2
+    echo "       Pour l'autoriser:" >&2
+    echo "         EUROSTRUCT_DEMO_RESTAURER=oui-remplacer-par-la-sauvegarde \\" >&2
+    echo "           deploy/demo.sh restaurer $dossier" >&2
+    exit 2
+  fi
+
+  dire "1/5 destruction des volumes en place (base, livrables, cle de l'emetteur)"
+  dc down -v --remove-orphans || refus "les volumes n'ont pas pu etre detruits."
+  rm -f "$ICI/demo/projet_id"
+
+  dire "2/5 demarrage d'une base vide"
+  dc up -d --wait --wait-timeout 300 db >/dev/null \
+    || refus "le service « db » ne demarre pas."
+
+  # LES ROLES D'ABORD, LA BASE ENSUITE. `pg_restore` rend chaque objet a son
+  # proprietaire: si `eurostruct_normative_writer` n'existe pas encore, les
+  # tables d'autorite echoient au superutilisateur et la topologie sera
+  # REFUSEE. Les « role already exists » sont attendus — le superutilisateur de
+  # l'image, lui, vient d'etre cree par l'image elle-meme.
+  dire "3/5 remise des roles du cluster"
+  erreurs="$(pg_dans_init 'PGPASSWORD="$POSTGRES_PASSWORD" psql -X -q \
+               -h "$EUROSTRUCT_DB_HOST" -U "$POSTGRES_USER" -d postgres -f -' \
+               < "$dossier/globals.sql" 2>&1 \
+             | grep -v "already exists" | grep -E "ERROR|FATAL" | head -5)"
+  [[ -z "$erreurs" ]] || { echo "$erreurs" >&2
+    refus "la remise des roles a echoue. La base est vide: relancez la restauration."; }
+
+  dire "4/5 restauration de la base et des livrables"
+  if ! pg_dans_init 'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore \
+         -h "$EUROSTRUCT_DB_HOST" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+         --exit-on-error /sauvegarde/base.dump' -v "$dossier:/sauvegarde:ro"; then
+    refus "la restauration de la base a echoue (voir ci-dessus). La demonstration
+       est vide: corrigez la cause, puis relancez la restauration."
+  fi
+  dc run --rm --no-deps -T --user root \
+     --entrypoint tar api -C /var/lib/eurostruct/livrables -xf - \
+     < "$dossier/livrables.tar" \
+    || refus "les livrables n'ont pas pu etre remis en place."
+
+  dire "5/5 redemarrage: l'initialisation constate ce qui est deja la"
+  cmd_up
+  echo ""
+  echo "  restauree depuis: $dossier"
+}
+
 cmd_journaux() {   # journaux [service] [n]
   exiger_outils; charger_env
   local service="${1:-api}" n="${2:-100}"
@@ -542,14 +872,19 @@ cmd_prerequis() {
 }
 
 case "${1:-}" in
-  up)        cmd_up ;;
-  down)      cmd_down ;;
-  status)    cmd_status ;;
-  comptes)   cmd_comptes ;;
-  reset)     cmd_reset ;;
-  prerequis) cmd_prerequis ;;
-  journaux)  cmd_journaux "${2:-}" "${3:-}" ;;
+  up)             cmd_up ;;
+  down)           cmd_down ;;
+  status)         cmd_status ;;
+  comptes)        cmd_comptes ;;
+  reset)          cmd_reset ;;
+  prerequis)      cmd_prerequis ;;
+  journaux)       cmd_journaux "${2:-}" "${3:-}" ;;
+  sauvegarder)    cmd_sauvegarder ;;
+  diagnostic)     cmd_diagnostic ;;
+  mettre-a-jour)  cmd_mettre_a_jour ;;
+  reprendre)      cmd_reprendre ;;
+  restaurer)      cmd_restaurer "${2:-}" ;;
   *)
-    sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2 ;;
 esac

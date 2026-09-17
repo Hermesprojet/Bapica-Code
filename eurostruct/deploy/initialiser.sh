@@ -25,6 +25,36 @@
 # `drop owned by`. Ce n'est pas un harnais : relancée sur un volume qui porte
 # déjà tout, elle constate et sort — c'est ce qui rend le second démarrage sûr.
 #
+# LES QUATRE MODES — LE PREMIER ARGUMENT
+# ---------------------------------------
+# `docker compose run --rm init <mode>` choisit ce que l'étape 4 demande à la
+# commande officielle. TOUT LE RESTE EST COMMUN : mêmes rôles, mêmes DSN,
+# mêmes postconditions. Il n'existe donc pas deux chemins de déploiement qui
+# pourraient diverger.
+#
+#   installer      (défaut)  sceau, migrations, activation. Sur un volume déjà
+#                            servi, la commande constate et sort.
+#   diagnostic               annonce la version présente, la version cible et
+#                            les migrations prévues. NE MODIFIE RIEN — et
+#                            n'exécute même pas les étapes 1 à 3, qui écrivent.
+#   mise-a-niveau            ouvre la fenêtre de mise à niveau d'une base EN
+#                            SERVICE : consentement qui nomme la base,
+#                            sauvegarde inspectée, barrière d'écriture,
+#                            emprunts temporaires, migrations manquantes,
+#                            révocation constatée. L'API doit être ARRETEE :
+#                            la commande refuse tant qu'un login applicatif a
+#                            une session ouverte.
+#   reprendre                reprend une mise à niveau interrompue et referme
+#                            la fenêtre laissée ouverte.
+#
+# `mise-a-niveau` N'EST PAS UNE VARIANTE DE `installer`. Une base ACTIVE à qui
+# il manque des migrations fait sortir `installer` en 9 sans rien appliquer ;
+# la fenêtre ne s'ouvre que lorsqu'on la demande. Et l'inverse tient aussi :
+# `installer` sur une base dont la fenêtre est restée ouverte échoue à la
+# postcondition « zéro capacité résiduelle du migrateur » — donc AVANT
+# l'étape 5, qui rendrait l'écriture à l'application. Une reprise oubliée ne
+# se referme pas par inadvertance au redémarrage.
+#
 # AUCUN SECRET DANS `argv`
 # -------------------------
 # Les mots de passe viennent de l'environnement et ne sont jamais passés en
@@ -39,6 +69,23 @@ dire()  { echo "INIT: $*"; }
 # ligne, jamais un mot de passe — mais on ne le laisse pas trainer.
 TMPDIR_SEED_ERR="$(mktemp)"; chmod 600 "$TMPDIR_SEED_ERR"
 trap 'rm -f "$TMPDIR_SEED_ERR"' EXIT
+
+# ---------------------------------------------------------------------------
+# LE MODE — premier argument, `installer` par defaut
+# ---------------------------------------------------------------------------
+MODE="${1:-installer}"
+case "$MODE" in
+  installer|diagnostic|mise-a-niveau|reprendre) ;;
+  -h|--help|aide)
+    echo "usage: initialiser.sh [installer|diagnostic|mise-a-niveau|reprendre]"
+    exit 0 ;;
+  *)
+    echec "mode « $MODE » inconnu. Modes admis:
+       installer      (defaut) sceau, migrations, activation
+       diagnostic     annonce la mise a niveau prevue, sans rien modifier
+       mise-a-niveau  applique les migrations manquantes a une base EN SERVICE
+       reprendre      reprend une mise a niveau interrompue" ;;
+esac
 
 # ---------------------------------------------------------------------------
 # CE QUE L'ENVIRONNEMENT DOIT PORTER
@@ -83,6 +130,30 @@ supb() { PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" \
 q()    { PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" \
            psql -X -q -tA -d "$BASE" -c "$1" 2>/dev/null | tr -d ' '; }
 
+# ---------------------------------------------------------------------------
+# LA COMMANDE OFFICIELLE — un seul appel, quatre modes
+# ---------------------------------------------------------------------------
+# LES DSN SONT CONSTRUITES ICI, UNE FOIS. Un mode qui composerait les siennes
+# pourrait viser une autre base, un autre role ou un autre `sslmode` que celui
+# d'a cote — et l'ecart ne se verrait que le jour ou il compte.
+#
+# La sortie est CAPTUREE puis MASQUEE avant d'etre affichee: un diagnostic de
+# la commande peut citer une chaine de connexion, et une DSN dans les journaux
+# d'un runner y reste.
+SORTIE_DEPLOI=""
+deployer() {   # deployer [arguments de tools/deploy_eurostruct.sh]
+  local code
+  SORTIE_DEPLOI="$(
+    ESC_PLAN_URL="postgresql://$CTL:$EUROSTRUCT_PLAN_DB_PASSWORD@$HOTE:$PORT/$BASE?sslmode=${EUROSTRUCT_DB_SSLMODE:-disable}" \
+    ESC_MIGRATOR_URL="postgresql://$MIG:$EUROSTRUCT_MIGRATOR_DB_PASSWORD@$HOTE:$PORT/$BASE?sslmode=${EUROSTRUCT_DB_SSLMODE:-disable}" \
+    bash /opt/eurostruct/tools/deploy_eurostruct.sh --auto-heberge "$@" 2>&1
+  )"
+  code=$?
+  SORTIE_DEPLOI="$(sed -E 's#postgres(ql)?://[^ ]*#postgresql://<masquee>#g' \
+                     <<<"$SORTIE_DEPLOI")"
+  return $code
+}
+
 # `depends_on: service_healthy` couvre le cas ordinaire. Cette attente couvre
 # le cas ou le conteneur est relance seul, sans que la sonde ait rejoue.
 pret=0
@@ -94,6 +165,23 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 [[ "$pret" -eq 1 ]] || echec "la base $BASE sur $HOTE:$PORT ne repond pas."
+
+# ---------------------------------------------------------------------------
+# LE DIAGNOSTIC SORT ICI — avant la premiere ecriture
+# ---------------------------------------------------------------------------
+# UN DIAGNOSTIC QUI MUTE N'EST PAS UN DIAGNOSTIC. Les etapes 1 a 3 ecrivent:
+# elles reposent les mots de passe des trois logins et redeclarent les
+# reglages de la base. Les traverser « pour preparer le terrain » ferait de
+# `diagnostic` une demi-mise-a-niveau, exactement ce qu'on refuse a l'exploitant
+# qui demande a voir avant de decider. Seule l'attente de disponibilite
+# ci-dessus a eu lieu, et elle ne fait qu'un `select 1`.
+if [[ "$MODE" == "diagnostic" ]]; then
+  dire "diagnostic de mise a niveau — AUCUNE modification ne sera faite."
+  deployer --mettre-a-niveau --diagnostic
+  CODE_DIAG=$?
+  printf '%s\n' "$SORTIE_DEPLOI"
+  exit $CODE_DIAG
+fi
 
 # ---------------------------------------------------------------------------
 # 1. LES ROLES — CREES S'ILS MANQUENT, JAMAIS DETRUITS
@@ -214,19 +302,44 @@ fi
 # `--auto-heberge`: le plan de controle et le migrateur sont deux roles du
 # meme cluster, pose par le meme operateur. La commande exige qu'on l'assume
 # explicitement plutot que de le deviner.
-dire "deploiement (sceau, migrations, activation)…"
-SORTIE_DEPLOI="$(
-  ESC_PLAN_URL="postgresql://$CTL:$EUROSTRUCT_PLAN_DB_PASSWORD@$HOTE:$PORT/$BASE?sslmode=${EUROSTRUCT_DB_SSLMODE:-disable}" \
-  ESC_MIGRATOR_URL="postgresql://$MIG:$EUROSTRUCT_MIGRATOR_DB_PASSWORD@$HOTE:$PORT/$BASE?sslmode=${EUROSTRUCT_DB_SSLMODE:-disable}" \
-  bash /opt/eurostruct/tools/deploy_eurostruct.sh --auto-heberge 2>&1
-)"
+#
+# EN MODE `mise-a-niveau`, C'EST LA MEME COMMANDE qui ouvre la fenetre, pose la
+# barriere d'ecriture, prete les emprunts, applique les migrations manquantes
+# et constate la revocation. Rien n'est reimplemente ici: la procedure de mise
+# a jour de la composition EST la procedure officielle, appelee avec un
+# argument de plus.
+case "$MODE" in
+  mise-a-niveau)
+    dire "mise a niveau d'une base EN SERVICE (fenetre nommee, bornee, refermee)…"
+    deployer --mettre-a-niveau ;;
+  reprendre)
+    dire "reprise d'une mise a niveau interrompue…"
+    deployer --reprendre-mise-a-niveau ;;
+  *)
+    dire "deploiement (sceau, migrations, activation)…"
+    deployer ;;
+esac
 CODE_DEPLOI=$?
+if [[ "$MODE" == "mise-a-niveau" || "$MODE" == "reprendre" ]]; then
+  # LA FENETRE S'ECRIT EN ENTIER DANS LE JOURNAL, reussie ou non. C'est la
+  # seule trace de ce qui a ete retire, applique, puis rendu — et l'exploitant
+  # en a besoin AUSSI quand tout s'est bien passe.
+  printf '%s\n' "$SORTIE_DEPLOI"
+elif [[ $CODE_DEPLOI -ne 0 ]]; then
+  printf '%s\n' "$SORTIE_DEPLOI" >&2
+fi
 if [[ $CODE_DEPLOI -ne 0 ]]; then
-  # LE MOT DE PASSE N'EST PAS DANS `argv`, ET IL NE DOIT PAS ETRE DANS LE
-  # JOURNAL NON PLUS. On filtre toute chaine de connexion de la sortie avant
-  # de l'afficher: une DSN dans les journaux d'un runner y reste.
-  echo "$SORTIE_DEPLOI" | sed -E 's#postgres(ql)?://[^ ]*#postgresql://<masquee>#g' >&2
-  echec "la commande officielle de deploiement a rendu $CODE_DEPLOI."
+  case "$MODE" in
+    mise-a-niveau|reprendre)
+      # LE CODE DE LA COMMANDE OFFICIELLE EST CONSERVE TEL QUEL. Il distingue
+      # « rien n'a ete modifie » (2) d'une fenetre restee ouverte (5, 7, 8), et
+      # c'est sur cette distinction que l'appelant decide s'il peut redemarrer
+      # l'application. L'ecraser en 1 la lui retirerait.
+      echo "INIT: ECHEC — la mise a niveau a rendu $CODE_DEPLOI." >&2
+      exit $CODE_DEPLOI ;;
+    *)
+      echec "la commande officielle de deploiement a rendu $CODE_DEPLOI." ;;
+  esac
 fi
 
 # ---------------------------------------------------------------------------
@@ -328,5 +441,12 @@ EST_SUPER="$(q "select rolsuper from pg_roles where rolname = '$APP'")"
   || echec "le login applicatif « $APP » est SUPERUTILISATEUR: RLS ne
        s'appliquerait pas a lui, et toute politique serait decorative."
 
-dire "base $BASE ACTIVE; l'API se connectera comme « $APP » (non-superutilisateur)."
+case "$MODE" in
+  mise-a-niveau|reprendre)
+    dire "base $BASE a niveau et ACTIVE; les etudes et les livrables existants
+      sont conserves. L'API peut redemarrer: elle se connectera comme « $APP »
+      (non-superutilisateur), rendu au backend d'autorite." ;;
+  *)
+    dire "base $BASE ACTIVE; l'API se connectera comme « $APP » (non-superutilisateur)." ;;
+esac
 exit 0
