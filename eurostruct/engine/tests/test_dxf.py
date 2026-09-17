@@ -193,7 +193,10 @@ def test_no_text_or_dimension_is_written_on_a_pale_layer(built) -> None:
     textes (noir a l'impression), 5 pour les cotes (bleu).
     """
     from eurostruct_engine.drawing.layers import (
-        ACI_JAUNE, ACI_PALES_SUR_BLANC, L_COTATION, L_TEXTE,
+        ACI_JAUNE,
+        ACI_PALES_SUR_BLANC,
+        L_COTATION,
+        L_TEXTE,
     )
 
     doc, _, _ = built
