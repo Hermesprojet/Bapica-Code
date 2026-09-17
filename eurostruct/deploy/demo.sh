@@ -551,13 +551,15 @@ cmd_reset() {
 # UNE SAUVEGARDE EN TROIS MORCEAUX, PARCE QU'UNE DEMONSTRATION VIT DANS TROIS
 # ENDROITS:
 #
-#   globals.sql    les ROLES du cluster — ils sont hors de la base, et un
-#                  `pg_dump` ne les porte pas. Sans eux, une restauration sur
-#                  un volume neuf rendrait chaque objet au superutilisateur, et
-#                  la topologie serait REFUSEE. Pris avec --no-role-passwords:
+#   globals.sql    les ROLES du cluster et leurs APPARTENANCES — ils sont hors
+#                  de la base, et un `pg_dump` ne les porte pas. La restauration
+#                  les rejoue pour rendre une appartenance qu'une fenetre
+#                  interrompue aurait retiree. Pris avec --no-role-passwords:
 #                  aucun mot de passe n'entre dans la sauvegarde, et ceux des
 #                  trois logins sont reposes depuis deploy/demo.env au
-#                  demarrage suivant.
+#                  demarrage suivant. Ce fichier est aussi ce qu'il faudrait
+#                  pour repartir d'une grappe vide — au prix nomme dans
+#                  `cmd_restaurer`: des roles recrees sont d'AUTRES principaux.
 #   base.dump      la base, au format « custom » — c'est l'archive que la mise
 #                  a niveau inspecte avant d'ouvrir sa fenetre.
 #   livrables.tar  les OCTETS des PDF et des DXF, sur le volume `livrables`.
@@ -785,9 +787,31 @@ cmd_reprendre() {
   dire "reprise terminee: /ready au vert, donnees conservees."
 }
 
-# LA RESTAURATION REMPLACE. Elle n'est pas une reparation en douceur: elle
-# detruit les volumes en place et remet ceux de la sauvegarde. C'est pourquoi
-# elle exige le meme genre de consentement explicite que `reset`.
+# LA RESTAURATION REMPLACE. Elle n'est pas une reparation en douceur: la base
+# en place et les livrables en place sont remplaces par ceux de la sauvegarde.
+# C'est pourquoi elle exige le meme genre de consentement explicite que `reset`.
+#
+# ELLE RESTE DANS LE MEME CLUSTER, ET CE N'EST PAS UN DETAIL D'IMPLEMENTATION.
+# Premiere version, mesuree le 17/09: elle detruisait les volumes (`down -v`),
+# repartait d'une grappe vide et y rejouait `globals.sql`. La base revenait
+# entiere — memes etudes, memes livrables, memes proprietaires de tables — et
+# la mise a niveau suivante REFUSAIT, a raison:
+#
+#   topologie: « eurostruct_plan » atteint « eurostruct_normative_activator »
+#   (admin=t). CE ROLE PORTE LE NOM DU PLAN DE CONTROLE APPROUVE SANS ETRE LUI:
+#   approuve = oid 16386, present sous ce nom = oid 16394.
+#
+# LE PLAN DE CONTROLE APPROUVE EST FIGE PAR SON OID, pas par son nom — un nom
+# se reprend, une identite non. Des roles recrees dans une grappe neuve sont
+# d'AUTRES principaux, meme sous les memes noms, et l'exemption d'ADMIN
+# residuel ne leur est pas transmise. C'est exactement ce qu'on veut: une base
+# restauree dans une grappe etrangere ne peut pas revendiquer en silence
+# l'assurance de celle qui l'a produite.
+#
+# On remplace donc la BASE a l'interieur de la grappe qui l'a vue naitre, et
+# les roles gardent leur identite. `globals.sql` reste dans la sauvegarde: il
+# est rejoue ici pour rendre les APPARTENANCES, et il est ce qu'il faudrait
+# pour repartir d'une grappe vide — en sachant ce que cela coute.
 cmd_restaurer() {
   exiger_outils; charger_env
   local dossier="${1:-}" magique erreurs
@@ -795,6 +819,11 @@ cmd_restaurer() {
        Les sauvegardes prises ici sont sous $SAUV/"
   dossier="${dossier%/}"
   [[ -d "$dossier" ]] || refus "« $dossier » n'est pas un dossier de sauvegarde."
+  # UN CHEMIN RELATIF PASSE A `-v` N'EST PAS UN CHEMIN POUR DOCKER: c'est un
+  # NOM DE VOLUME, et « deploy/sauvegardes/… » est refuse comme nom. Mesure le
+  # 17/09: la restauration avait deja detruit les volumes quand l'erreur est
+  # tombee. On resout ici, avant tout geste destructeur.
+  dossier="$(cd "$dossier" && pwd)" || refus "« $dossier » n'est pas lisible."
   for f in globals.sql base.dump livrables.tar; do
     [[ -s "$dossier/$f" ]] \
       || refus "« $dossier/$f » est absent ou vide: cette sauvegarde est incomplete."
@@ -804,51 +833,73 @@ cmd_restaurer() {
     || refus "« $dossier/base.dump » n'est pas une archive pg_dump -Fc."
 
   if [[ "${EUROSTRUCT_DEMO_RESTAURER:-}" != "oui-remplacer-par-la-sauvegarde" ]]; then
-    echo "REFUS: restaurer DETRUIT la base, les livrables et la cle de l'emetteur" >&2
-    echo "       en place, et les remplace par ceux de « $dossier »." >&2
-    echo "       Pour l'autoriser:" >&2
+    echo "REFUS: restaurer REMPLACE la base et les livrables en place par ceux" >&2
+    echo "       de « $dossier ». Ce qui a ete fait depuis cette sauvegarde est" >&2
+    echo "       perdu. Pour l'autoriser:" >&2
     echo "         EUROSTRUCT_DEMO_RESTAURER=oui-remplacer-par-la-sauvegarde \\" >&2
     echo "           deploy/demo.sh restaurer $dossier" >&2
     exit 2
   fi
 
-  dire "1/5 destruction des volumes en place (base, livrables, cle de l'emetteur)"
-  dc down -v --remove-orphans || refus "les volumes n'ont pas pu etre detruits."
-  rm -f "$ICI/demo/projet_id"
-
-  dire "2/5 demarrage d'une base vide"
+  dire "1/5 arret des ecrivains — la base, elle, reste debout"
+  dc stop api web >/dev/null 2>&1
   dc up -d --wait --wait-timeout 300 db >/dev/null \
-    || refus "le service « db » ne demarre pas."
+    || refus "le service « db » ne demarre pas: rien n'a ete remplace."
 
-  # LES ROLES D'ABORD, LA BASE ENSUITE. `pg_restore` rend chaque objet a son
-  # proprietaire: si `eurostruct_normative_writer` n'existe pas encore, les
-  # tables d'autorite echoient au superutilisateur et la topologie sera
-  # REFUSEE. Les « role already exists » sont attendus — le superutilisateur de
-  # l'image, lui, vient d'etre cree par l'image elle-meme.
-  dire "3/5 remise des roles du cluster"
+  # LES APPARTENANCES D'ABORD. Les roles sont deja la — c'est la meme grappe —
+  # mais une appartenance a pu etre retiree depuis (une fenetre de mise a niveau
+  # interrompue, par exemple). Les « already exists » sont donc attendus, et
+  # c'est meme le cas normal.
+  dire "2/5 remise des appartenances de la grappe (les roles y sont deja)"
   erreurs="$(pg_dans_init 'PGPASSWORD="$POSTGRES_PASSWORD" psql -X -q \
                -h "$EUROSTRUCT_DB_HOST" -U "$POSTGRES_USER" -d postgres -f -' \
                < "$dossier/globals.sql" 2>&1 \
              | grep -v "already exists" | grep -E "ERROR|FATAL" | head -5)"
   [[ -z "$erreurs" ]] || { echo "$erreurs" >&2
-    refus "la remise des roles a echoue. La base est vide: relancez la restauration."; }
+    refus "la remise des appartenances a echoue. RIEN n'a ete remplace."; }
+
+  # LA BASE EST REMPLACEE, PAS FUSIONNEE. `pg_restore` sur une base qui porte
+  # deja le schema echouerait objet par objet et laisserait un melange des deux
+  # versions — ce qui serait le pire resultat possible pour une restauration.
+  dire "3/5 remplacement de la base « $POSTGRES_DB »"
+  if ! pg_dans_init 'PGPASSWORD="$POSTGRES_PASSWORD" psql -X -q -v ON_ERROR_STOP=1 \
+         -h "$EUROSTRUCT_DB_HOST" -U "$POSTGRES_USER" -d postgres \
+         -c "drop database if exists \"$POSTGRES_DB\"" \
+         -c "create database \"$POSTGRES_DB\" owner \"$EUROSTRUCT_MIGRATOR_DB_USER\""'; then
+    refus "la base n'a pas pu etre remplacee (une session y est-elle encore
+       ouverte ?). Ce qui etait en place n'a PAS ete detruit si le « drop » a
+       echoue; sinon, relancez cette meme commande."
+  fi
 
   dire "4/5 restauration de la base et des livrables"
   if ! pg_dans_init 'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore \
          -h "$EUROSTRUCT_DB_HOST" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
          --exit-on-error /sauvegarde/base.dump' -v "$dossier:/sauvegarde:ro"; then
-    refus "la restauration de la base a echoue (voir ci-dessus). La demonstration
-       est vide: corrigez la cause, puis relancez la restauration."
+    refus "la restauration de la base a echoue (voir ci-dessus). La base est
+       vide: corrigez la cause, puis relancez la restauration."
   fi
-  dc run --rm --no-deps -T --user root \
-     --entrypoint tar api -C /var/lib/eurostruct/livrables -xf - \
+  # LE MAGASIN AUSSI EST REMPLACE. Laisser les octets en place et deverser la
+  # sauvegarde par-dessus donnerait une base qui connait N documents et un
+  # magasin qui en porte N+3 — des orphelins que plus rien ne nomme.
+  dc run --rm --no-deps -T --user root --entrypoint sh api -c \
+     'find /var/lib/eurostruct/livrables -mindepth 1 -delete \
+      && tar -C /var/lib/eurostruct/livrables -xf -' \
      < "$dossier/livrables.tar" \
     || refus "les livrables n'ont pas pu etre remis en place."
 
+  # LA RESTAURATION EST FINIE ICI, ET ON LE DIT AVANT DE REDEMARRER. Ce qui
+  # suit est un demarrage ordinaire, qui peut tres bien REFUSER: une sauvegarde
+  # ANCIENNE remise sous un depot PLUS RECENT porte moins de migrations que
+  # l'arbre present, et `up` sortira alors en ACTIVE_SCHEMA_UPGRADE_REQUIRED —
+  # a raison. Presenter cela comme un echec de la restauration serait faux.
+  echo ""
+  echo "  base et livrables restaures depuis: $dossier"
+  echo "  Si l'arbre present est PLUS RECENT que cette sauvegarde, le demarrage"
+  echo "  qui suit le dira et « deploy/demo.sh mettre-a-jour » est l'etape"
+  echo "  suivante — la restauration, elle, est faite."
+  echo ""
   dire "5/5 redemarrage: l'initialisation constate ce qui est deja la"
   cmd_up
-  echo ""
-  echo "  restauree depuis: $dossier"
 }
 
 cmd_journaux() {   # journaux [service] [n]

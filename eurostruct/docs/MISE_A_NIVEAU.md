@@ -173,7 +173,7 @@ fichiers, et les trois sont necessaires :
 
 | fichier | pourquoi il est la |
 |---|---|
-| `globals.sql` | les **roles du cluster**. Ils vivent hors de la base : un `pg_dump` ne les porte pas. Sans eux, chaque objet reviendrait au superutilisateur et la topologie serait REFUSEE. Pris avec `--no-role-passwords` : **aucun mot de passe n'entre dans la sauvegarde**. |
+| `globals.sql` | les **roles du cluster et leurs appartenances**. Ils vivent hors de la base : un `pg_dump` ne les porte pas. La restauration les rejoue pour rendre une appartenance qu'une fenetre interrompue aurait retiree. Pris avec `--no-role-passwords` : **aucun mot de passe n'entre dans la sauvegarde**. |
 | `base.dump` | la base, format `custom`. C'est l'archive que la mise a niveau inspecte avant d'ouvrir sa fenetre. |
 | `livrables.tar` | les **octets** des PDF et des DXF. Une base sans eux promet des documents introuvables. |
 
@@ -184,14 +184,40 @@ EUROSTRUCT_DEMO_RESTAURER=oui-remplacer-par-la-sauvegarde \
   deploy/demo.sh restaurer deploy/sauvegardes/<horodatage>
 ```
 
-**Restaurer remplace.** La commande detruit les volumes en place, remet les
-roles, restaure la base, remet les livrables, puis redemarre par le chemin
-ordinaire — l'initialisation constate ce qui est deja la. Le consentement
-explicite est exige pour la meme raison que pour `reset`.
+**Restaurer remplace.** La commande arrete les ecrivains, rejoue les
+appartenances, **remplace la base** par celle de la sauvegarde, remplace les
+octets du magasin, puis redemarre par le chemin ordinaire — l'initialisation
+constate ce qui est deja la. Le consentement explicite est exige pour la meme
+raison que pour `reset`.
 
-Ce que la restauration ne remet pas : les reglages declares au niveau de la
-base (`ALTER DATABASE … SET`). Ils sont dans le **catalogue du cluster**, pas
-dans le dump, et c'est l'initialisation qui les repose depuis le fichier
+### La restauration reste dans la meme grappe, et ce n'est pas un detail
+
+Premiere version de cette commande, mesuree le 17/09 : elle detruisait les
+volumes, repartait d'une grappe vide et y rejouait `globals.sql`. La base
+revenait entiere — memes etudes, memes livrables, memes proprietaires de
+tables — et la mise a niveau suivante a **refuse** :
+
+```
+topologie: « eurostruct_plan » atteint « eurostruct_normative_activator »
+(admin=t). CE ROLE PORTE LE NOM DU PLAN DE CONTROLE APPROUVE SANS ETRE LUI:
+approuve = oid 16386, present sous ce nom = oid 16394.
+```
+
+Le plan de controle approuve est **fige par son identifiant interne, pas par
+son nom**. Un nom se reprend ; une identite non. Des roles recrees dans une
+grappe neuve sont d'**autres principaux**, meme sous les memes noms, et
+l'exemption d'ADMIN residuel dont beneficie le plan de controle d'origine ne
+leur est pas transmise.
+
+C'est le comportement voulu : une base restauree dans une grappe etrangere ne
+peut pas revendiquer en silence l'assurance de celle qui l'a produite. La
+consequence pratique : **une sauvegarde se restaure dans la grappe qui l'a
+produite.** Remonter une grappe entiere depuis zero est une autre operation,
+qui repart d'une installation neuve.
+
+Ce que la restauration ne remet pas non plus : les reglages declares au niveau
+de la base (`ALTER DATABASE … SET`). Ils sont dans le **catalogue du cluster**,
+pas dans le dump, et c'est l'initialisation qui les repose depuis le fichier
 d'environnement au demarrage suivant. Une restauration sur un environnement
 dont le fichier a change produit donc un manifeste different de celui qui avait
 ete approuve — et la prochaine mise a niveau le refusera, a raison.

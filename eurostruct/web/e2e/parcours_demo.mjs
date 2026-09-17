@@ -364,13 +364,27 @@ try {
     exige(corps.is_exploratory === true, "l'etude relue n'est plus exploratoire");
     exige(corps.calculation_fingerprint === etat.calculation_fingerprint,
           "l'empreinte de calcul relue n'est pas celle du premier jour");
-    exige(corps.engineering_inputs_hash === etat.engineering_inputs_hash,
-          "l'empreinte des entrees relue n'est pas celle du premier jour");
+    //: UN ETAT ECRIT PAR UNE VERSION ANTERIEURE NE PORTE PAS LES CHAMPS
+    //: AJOUTES DEPUIS, et c'est le cas NORMAL quand cette recette sert a
+    //: verifier une MISE A JOUR: l'etude a ete creee par l'ancienne version,
+    //: elle est relue par la nouvelle. Comparer une valeur presente a un champ
+    //: absent n'etablit rien — on le DIT, et on ne le compte pas comme un
+    //: ecart. Les champs PRESENTS, eux, sont compares sans indulgence.
+    if (etat.engineering_inputs_hash === undefined) {
+      etape("etat du premier jour anterieur au champ « engineering_inputs_hash »: non comparable");
+    } else {
+      exige(corps.engineering_inputs_hash === etat.engineering_inputs_hash,
+            "l'empreinte des entrees relue n'est pas celle du premier jour");
+    }
     //: LA REQUETE GELEE REVIENT A L'IDENTIQUE apres le redemarrage — valeurs
     //: et unites saisies — sinon aucune variante fidele n'en repartirait.
-    const ecartsRequete = ecarts(etat.request, corps.request);
-    exige(ecartsRequete.length === 0,
-          `la requete gelee relue differe de celle du premier jour: ${ecartsRequete.join(", ")}`);
+    if (etat.request === undefined || etat.request === null) {
+      etape("etat du premier jour anterieur a la requete gelee: non comparable");
+    } else {
+      const ecartsRequete = ecarts(etat.request, corps.request);
+      exige(ecartsRequete.length === 0,
+            `la requete gelee relue differe de celle du premier jour: ${ecartsRequete.join(", ")}`);
+    }
     await page.waitForSelector(
       `#synthese-etude[data-calcul="${etat.calculation_id}"][data-relue="oui"]`,
       { timeout: 30000 });
