@@ -430,11 +430,16 @@ def _modele_du_dessin(calcul: dict[str, Any], ferraillage: Any,
         ) from cause
 
     try:
+        # LE MEME LIBELLE DE DOSSIER QUE SUR LE PLAN D'UNE ETUDE COMPLETE:
+        # « nom (reference) », relu de la ligne du projet. Sans projet — le
+        # chemin exploratoire — l'identifiant du calcul est imprime, comme
+        # avant.
         modele, _tableau, _reponse = verify_and_model_beam_section(
             Ec2BeamSectionRequest(
                 calculation=requete,
                 reinforcement=ferraillage,
                 mention=mention or "",
+                project_label=_libelle_projet(projet) or None,
             ),
             provider=lecture.provider if lecture else None,
         )

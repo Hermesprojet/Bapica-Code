@@ -1526,6 +1526,19 @@
           "title": "Plot Scale",
           "type": "number"
         },
+        "project_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Libellé du dossier pour le cartouche — « nom (référence) » du projet, relu par le serveur. Absent : l'identifiant du projet est imprimé.",
+          "title": "Project Label"
+        },
         "reinforcement": {
           "$ref": "#/$defs/ReinforcementChoiceDTO"
         }

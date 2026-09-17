@@ -109,8 +109,16 @@ valeur. Si le logiciel propose une conversion à l'import, c'est un signal.
 | `FERR-PRINCIPAL` | 1 | CONTINUOUS | 0,50 mm |
 | `FERR-TRANSVERSAL` | 3 | CONTINUOUS | 0,35 mm |
 | `COTATION` | 4 | CONTINUOUS | 0,18 mm |
-| `TEXTE` | 2 | CONTINUOUS | 0,18 mm |
+| `TEXTE` | 7 | CONTINUOUS | 0,18 mm |
 | `CARTOUCHE` | 7 | CONTINUOUS | 0,25 mm |
+
+`TEXTE` était en couleur 2 (jaune) jusqu'au 16/09 : sur l'impression
+**couleur** de LibreCAD, les repères de barres et le titre sortaient jaunes
+sur fond blanc, illisibles — la couleur 2 est une couleur d'écran sombre, pas
+de tirage. La couleur 7 est celle que tout logiciel CAO inverse selon le fond
+(noire sur papier, blanche sur un espace de travail sombre) ; `COFFRAGE` et
+`CARTOUCHE` la portaient déjà. `test_no_text_is_written_on_a_yellow_layer`
+interdit qu'un texte retombe sur un calque jaune.
 | `AXES` | 5 | **CENTER** | 0,13 mm |
 
 À vérifier : les sept existent, aucun objet n'est sur le calque `0`, et `AXES`

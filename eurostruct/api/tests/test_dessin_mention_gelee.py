@@ -123,3 +123,63 @@ def test_le_nom_du_dossier_ne_touche_pas_a_la_geometrie() -> None:
     assert avec.polylignes == sans.polylignes
     assert avec.disques == sans.disques
     assert avec.cotes == sans.cotes
+
+
+# ---------------------------------------------------------------------------
+# LE CHEMIN DE LA FLEXION SEULE PORTE LE MEME LIBELLE DE DOSSIER
+#
+# MESURE LE 16/09 DANS LibreCAD 2.2.0.2 : le plan tire d'un calcul de flexion
+# seule imprimait l'IDENTIFIANT technique du projet — un uuid — en premiere
+# ligne du cartouche, la ou le plan d'une etude complete porte
+# « nom (reference) ». Le libelle vient de la ligne du projet relue par l'API,
+# et traverse `Ec2BeamSectionRequest.project_label` jusqu'au dessin.
+# ---------------------------------------------------------------------------
+IDENTIFIANT_PROJET = "0f0e0d0c-0b0a-4908-8706-050403020100"
+
+
+def _calcul_de_flexion() -> dict:
+    """Une ligne de calcul de flexion seule, telle que l'atelier la relit :
+    sa requete gelee, et aucune coupe (le ferraillage vient de l'ecran)."""
+    return {
+        "strict_ndp": False,
+        "request": {
+            "project_id": IDENTIFIANT_PROJET, "element": "P1", "country": "BE",
+            "strict_ndp": False,
+            "section": {"b": {"value": 300, "unit": "mm"},
+                        "h": {"value": 600, "unit": "mm"},
+                        "d": {"value": 550, "unit": "mm"}},
+            "materials": {"concrete_grade": "C30/37", "steel_grade": "B500B"},
+            "M_Ed": {"value": 250, "unit": "kN*m"},
+        },
+    }
+
+
+def _ferraillage():
+    from eurostruct_engine.schemas.ec2_beam import ReinforcementChoiceDTO
+    return ReinforcementChoiceDTO(
+        cover=40.0, link_diameter=10.0, link_spacing=150.0,
+        bottom=[{"count": 4, "diameter": 20.0, "mark": "A1"}])
+
+
+def test_le_plan_de_flexion_seule_nomme_le_dossier_comme_l_etude_complete() -> None:
+    modele = _modele_du_dessin(_calcul_de_flexion(), _ferraillage(), MENTION,
+                               projet=PROJET)
+    cartouche = _cartouche(modele)
+    assert cartouche[0] == "Démonstration — poutre belge (DEMO-BE-001)"
+    assert IDENTIFIANT_PROJET not in " ".join(cartouche), (
+        "l'identifiant technique du projet ne doit plus apparaitre au cartouche")
+
+
+def test_sans_projet_le_plan_de_flexion_seule_garde_l_identifiant() -> None:
+    """Le chemin exploratoire n'a pas de dossier relu : l'identifiant, comme avant."""
+    modele = _modele_du_dessin(_calcul_de_flexion(), _ferraillage(), MENTION)
+    assert _cartouche(modele)[0] == IDENTIFIANT_PROJET
+
+
+def test_le_libelle_du_dossier_ne_change_pas_le_ferraillage_dessine() -> None:
+    sans = _modele_du_dessin(_calcul_de_flexion(), _ferraillage(), MENTION)
+    avec = _modele_du_dessin(_calcul_de_flexion(), _ferraillage(), MENTION,
+                             projet=PROJET)
+    assert avec.polylignes == sans.polylignes
+    assert avec.disques == sans.disques
+    assert avec.cotes == sans.cotes

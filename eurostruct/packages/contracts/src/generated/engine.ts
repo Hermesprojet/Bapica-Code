@@ -366,6 +366,8 @@ export interface Ec2BeamSectionRequest {
   /** Mention supplementaire portee au cartouche du dessin. */
   mention?: string;
   plot_scale?: number;
+  /** Libellé du dossier pour le cartouche — « nom (référence) » du projet, relu par le serveur. Absent : l'identifiant du projet est imprimé. */
+  project_label?: string | null;
   reinforcement: ReinforcementChoiceDTO;
 }
 

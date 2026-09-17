@@ -272,8 +272,11 @@ def verify_and_model_beam_section(
             failing=rates,
         )
 
+    # LE CARTOUCHE NOMME LE DOSSIER, PAS SON IDENTIFIANT — quand le libelle
+    # est connu. Le chemin de l'etude complete le porte deja; celui-ci
+    # l'imprimait comme un uuid (mesure le 16/09 dans LibreCAD).
     dessin = BeamSectionDrawingRequest(
-        project=req.calculation.project_id,
+        project=req.project_label or req.calculation.project_id,
         element=req.calculation.element,
         b=req.calculation.section.b.value,
         h=req.calculation.section.h.value,

@@ -213,6 +213,17 @@ class Ec2BeamSectionRequest(Strict):
     mention: str = Field(
         default="",
         description="Mention supplementaire portee au cartouche du dessin.")
+    #: LE NOM DU DOSSIER, TEL QUE LE CARTOUCHE L'IMPRIME. Mesure le 16/09 sur
+    #: le plan du parcours de flexion seule: la premiere ligne du cartouche
+    #: portait l'identifiant technique du projet (un uuid), la ou le plan
+    #: d'une etude complete porte « nom (reference) ». Le libelle vient de la
+    #: ligne du projet relue par l'API, jamais du navigateur; absent, le
+    #: cartouche retombe sur l'identifiant, comme avant.
+    project_label: str | None = Field(
+        default=None,
+        description="Libellé du dossier pour le cartouche — « nom "
+                    "(référence) » du projet, relu par le serveur. Absent : "
+                    "l'identifiant du projet est imprimé.")
 
 
 class BeamSectionDrawingRequest(Strict):
