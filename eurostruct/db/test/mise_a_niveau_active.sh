@@ -31,8 +31,10 @@
 #    6. les refus: sans consentement, sans sauvegarde, application connectee
 #    7. deux mises a niveau concurrentes: une seule applique
 #    8. la mise a niveau, puis sa relance (idempotence)
-#    9. restauration de la sauvegarde dans une base ISOLEE, et comparaison
-#       ligne pour ligne des tables metier avec la base mise a niveau
+#    9. restauration de la sauvegarde dans une base ISOLEE — base ET magasin:
+#       comparaison ligne pour ligne des tables metier avec la base mise a
+#       niveau, puis chaque livrable retrouve dans le magasin, empreinte
+#       comprise
 #   10. interruption a une etape critique, sur la base restauree, puis reprise
 #       et achevement
 #   11. verification PAR LE PRODUIT NOUVEAU: memes identifiants, memes
@@ -386,8 +388,31 @@ if pg_restore -d "$BASE_R" "$ARCHIVE" >"$TMP/restore.log" 2>&1 || [[ -s "$TMP/re
         bash "$ICI/comparer_contenu.sh" "$t" >"$TMP/cmp-$t.log" 2>&1 \
         || DIFF="$DIFF $t"
     done
-    if [[ -z "$DIFF" ]]; then
-      execute 9 "base restauree ($N_R migrations, avant la mise a niveau); ${#TABLES[@]} tables metier IDENTIQUES ligne pour ligne a la base mise a niveau"
+    # LE MAGASIN AUSSI, ET PAS SEULEMENT LA BASE. Une restauration qui ne
+    # rendrait que les lignes donnerait une base qui promet des documents
+    # introuvables. On confronte donc, pour CHAQUE livrable de la base
+    # restauree, l'octet du magasin sauvegarde: le fichier existe, et son
+    # empreinte est celle que la base a inscrite. C'est le couple (base,
+    # magasin) qui est eprouve, pas l'un des deux.
+    MANQUANTS=""; FAUX=""
+    while IFS='|' read -r chemin empreinte; do
+      [[ -n "$chemin" ]] || continue
+      if [[ ! -s "$MAGASIN_COPIE/$chemin" ]]; then
+        MANQUANTS="$MANQUANTS $(basename "$chemin")"
+      elif [[ "$(sha256sum "$MAGASIN_COPIE/$chemin" | cut -d' ' -f1)" != "$empreinte" ]]; then
+        FAUX="$FAUX $(basename "$chemin")"
+      fi
+      N_LIV=$((${N_LIV:-0} + 1))
+    done < <(PGPASSWORD="$MDP" psql -X -q -tA -F'|' -h 127.0.0.1 -U "$SAV" -d "$BASE_R" \
+               -c "select storage_path, sha256 from deliverables" 2>/dev/null)
+    if [[ -n "$MANQUANTS" ]]; then
+      echoue 9 "livrable(s) absent(s) du magasin sauvegarde:$MANQUANTS"
+    elif [[ -n "$FAUX" ]]; then
+      echoue 9 "livrable(s) dont les octets ne portent plus leur empreinte:$FAUX"
+    elif [[ "${N_LIV:-0}" -eq 0 ]]; then
+      echoue 9 "la base restauree ne declare aucun livrable: la comparaison du magasin n'etablirait rien"
+    elif [[ -z "$DIFF" ]]; then
+      execute 9 "base restauree ($N_R migrations, avant la mise a niveau); ${#TABLES[@]} tables metier IDENTIQUES ligne pour ligne a la base mise a niveau; $N_LIV livrable(s) retrouve(s) dans le magasin sauvegarde, empreintes comprises"
     else
       echoue 9 "tables differentes apres la mise a niveau:$DIFF"
     fi
