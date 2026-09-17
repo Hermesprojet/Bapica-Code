@@ -1425,7 +1425,11 @@ function Historique({ projet, revision, surReouverture, surReouvertureEtude,
                       ? "—" : c.max_utilisation.toFixed(3)}</td>
                 <td>{c.engine_version}</td>
                 <td>
-                  <button type="button"
+                  {/* UN IDENTIFIANT SUR LE BOUTON: la ligne porte maintenant
+                      d'autres « Rouvrir » (l'origine, les variantes), et un
+                      parcours qui cherchait « le bouton Rouvrir de la ligne »
+                      tombait sur le premier venu — mesure le 17/09. */}
+                  <button type="button" id={`rouvrir-${c.calculation_id}`}
                           onClick={() => rouvrir(c.calculation_id)}>
                     Rouvrir
                   </button>

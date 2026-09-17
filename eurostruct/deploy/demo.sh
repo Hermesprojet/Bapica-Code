@@ -418,6 +418,26 @@ cmd_up() {
   dire "composition: demarrage et initialisation de la base (idempotente)"
   if ! dc up -d --wait --wait-timeout 900; then
     echo "" >&2
+    # UNE MIGRATION DE PLUS DANS LE DEPOT, ET UNE BASE DEJA EN SERVICE. La
+    # commande de deploiement installe et verifie; elle ne met pas a niveau
+    # (ACTIVE_SCHEMA_UPGRADE_REQUIRED, code 9) — mesure le 17/09 apres 0027 sur
+    # une demonstration montee la veille. Le journal generique disait
+    # « corrigez la cause », sans dire que la cause etait celle-la ni que la
+    # reprise est un reset: les donnees de demonstration sont jetables.
+    local journal_init
+    journal_init="$(dc logs --no-color --tail 60 init 2>&1)"
+    if grep -q "ACTIVE_SCHEMA_UPGRADE_REQUIRED" <<<"$journal_init"; then
+      echo "ECHEC: cette version du depot porte une migration que la base de demonstration" >&2
+      echo "       existante n'a pas:" >&2
+      grep -E '^\s+[0-9]{4}_[a-z0-9_]+\.sql' <<<"$journal_init" | sed 's/^ */         /' >&2
+      echo "       La commande de deploiement installe et verifie; elle ne met pas a niveau" >&2
+      echo "       une base en service (protocole a concevoir: docs/DEPLOIEMENT_PREREQUIS.md §10)." >&2
+      echo "       Les donnees de demonstration sont jetables. Reprendre:" >&2
+      echo "         EUROSTRUCT_DEMO_RESET=oui-detruire-les-donnees-de-demonstration deploy/demo.sh reset" >&2
+      echo "         deploy/demo.sh up" >&2
+      echo "       deploy/demo.env et ses comptes sont conserves; le projet belge est re-amorce." >&2
+      exit 1
+    fi
     echo "ECHEC: la composition n'est pas montee. Etat des conteneurs, puis derniers" >&2
     echo "       journaux de l'initialisation et de l'API:" >&2
     dc ps 2>&1 | sed 's/^/      /' >&2

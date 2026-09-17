@@ -233,7 +233,10 @@ async function rouvrirDepuisHistorique(calculationId) {
   const relecture = page.waitForResponse(
     (r) => r.url().includes(`/beam-verifications/${calculationId}`)
            && r.request().method() === "GET", { timeout: 60000 });
-  await page.click(`${ligne} button:has-text("Rouvrir")`);
+  //: LE BOUTON DE LA LIGNE, PAS LE PREMIER « ROUVRIR » VENU: une ligne de
+  //: variante porte aussi « Rouvrir l'origine », une origine liste ses
+  //: variantes avec leur propre « Rouvrir ».
+  await page.click(`${ligne} #rouvrir-${calculationId}`);
   const reponse = await relecture;
   exige(reponse.status() === 200, `la relecture a rendu ${reponse.status()}`);
   await page.waitForSelector(
@@ -352,7 +355,7 @@ try {
     const relecture = page.waitForResponse(
       (r) => r.url().includes(`/beam-verifications/${etat.calculation_id}`)
              && r.request().method() === "GET", { timeout: 60000 });
-    await page.click(`${ligne} button:has-text("Rouvrir")`);
+    await page.click(`${ligne} #rouvrir-${etat.calculation_id}`);
     const reponseRelue = await relecture;
     exige(reponseRelue.status() === 200, `la relecture a rendu ${reponseRelue.status()}`);
     const corps = await reponseRelue.json();

@@ -123,47 +123,40 @@ ordinaires :
 | `ECHEC: la construction des images s'est interrompue` | réseau coupé, proxy, Ctrl-C, disque plein | relancer `deploy/demo.sh up` : la construction repart du dernier étage réussi ; `docker system df` si le disque est en cause |
 | `ECHEC: la composition n'est pas montee` puis les journaux `init` et `api` | l'initialisation de la base a refusé, ou un conteneur ne passe pas sa sonde | lire la cause dans le journal affiché (`deploy/demo.sh journaux init`), corriger, relancer `up` — l'initialisation constate ce qui est déjà fait |
 | `ECHEC: /ready ne passe pas au vert` | l'API tourne mais une dépendance est rouge | `deploy/demo.sh status` nomme la vérification rouge ; `deploy/demo.sh journaux api` porte la cause |
+| `ECHEC: cette version du depot porte une migration que la base de demonstration existante n'a pas` | vous avez mis à jour le dépôt (p. ex. `0027`, le 17/09) et la commande de déploiement **ne met pas à niveau une base déjà en service** — protocole à concevoir, `DEPLOIEMENT_PREREQUIS.md` §10 | les données de démonstration sont jetables : `EUROSTRUCT_DEMO_RESET=oui-detruire-les-donnees-de-demonstration deploy/demo.sh reset`, puis `deploy/demo.sh up` — comptes conservés, projet belge ré-amorcé |
 | « Session expirée » après un redémarrage | aucun jeton n'est persisté | se reconnecter (§2.1) |
 
-## 3. Créer une étude, la retrouver — le parcours court
+## 3. Le parcours court, avec ce que vous devez voir à chaque pas
 
-1. Ouvrir <http://127.0.0.1:3000>. Le bandeau **« Environnement de
-   démonstration »** est affiché : c'est voulu, voir §5.
-2. Se connecter avec le compte **A** (`deploy/demo.sh comptes`).
-3. Dans **Projet**, choisir « Démonstration — poutre belge ».
-4. Remplir les sept étapes de l'étude. Les valeurs du parcours de référence :
-   section 300 × 600, d = 550, portée 6000 mm ; C30/37, B500B, classe XC3 ;
-   M_Ed 250 kN·m, V_Ed 300 kN, M_car 180, M_qp 120 ; 4 Ø20, cadres 2 brins
-   Ø10 e = 150, enrobage 40, cot θ = 1,5, ancrage disponible 800 ;
-   φ(∞,t0) = 2,0, travée simplement appuyée.
-5. Étape **Mode** : décocher *strict*, cocher la case qui assume
-   l'exploratoire, puis **Lancer**. La synthèse affiche cinq chapitres et la
-   mention **« PROJET — NON SIGNABLE »**.
-6. **Note PDF** et **Plan DXF** : les deux se téléchargent ; leur empreinte
-   SHA-256 est celle que la base a enregistrée.
-7. Fermer le navigateur. Puis :
+Connexion → projet belge → étude → PDF/DXF → réouverture → variante → retour
+à l'origine. Les résultats attendus sont ceux **mesurés** par le parcours au
+clavier du §4 sur le même dépôt ; les fichiers de référence qu'il produit
+(`deploy/demo/`) sont ceux joints au rapport de lot. Quand ce que vous voyez
+diffère de la colonne « attendu », c'est une anomalie à signaler — avec le
+pas, et la valeur vue.
 
-   ```bash
-   deploy/demo.sh down
-   deploy/demo.sh up
-   ```
+Avant : `deploy/demo.sh up`, puis `deploy/demo.sh comptes` pour le mot de
+passe du compte A.
 
-8. Se reconnecter, choisir le projet : l'étude est dans l'**historique**.
-   **Rouvrir** la ramène dans la synthèse à cinq chapitres — les mêmes
-   verdicts, les mêmes taux, les mêmes entrées et les mêmes empreintes que le
-   jour du calcul, et la synthèse dit que rien n'a été recalculé. Dans
-   **Livrables**, **Télécharger** rend la note et le plan : les mêmes octets,
-   pas un document recomposé. La session, elle, n'a pas survécu — c'est le
-   contrat : aucun jeton n'est persisté.
-9. **Créer une variante**, sous la synthèse de l'étude rouverte : les sept
-   étapes se préremplissent avec les entrées **enregistrées** de l'étude (pas
-   avec ce qui avait été tapé), et le bandeau nomme l'étude d'origine.
-   Modifier ce qu'on veut — par exemple 5 Ø20 au lieu de 4 — réassumer le
-   mode exploratoire, lancer. Le nouveau calcul reçoit **son propre
-   identifiant** et sa synthèse porte « Variante de l'étude … » avec un
-   bouton **Rouvrir l'étude d'origine** ; l'étude initiale et ses documents
-   restent tels quels dans l'historique et les livrables. Changer de projet
-   ou se déconnecter efface tout ce qui était affiché du dossier précédent.
+| # | geste | attendu | si ce n'est pas cela |
+|---|---|---|---|
+| 1 | ouvrir <http://127.0.0.1:3000> | le bandeau **« Environnement de démonstration »** (voulu, §5) et le formulaire de connexion | page vide ou erreur : `deploy/demo.sh status`, puis `journaux web` |
+| 2 | se connecter avec le compte **A** | le bouton **Déconnexion** et le sélecteur **Projet** | « identifiants refusés » : `deploy/demo.sh comptes` (le mot de passe est dans `deploy/demo.env`) |
+| 3 | choisir « Démonstration — poutre belge » | l'étape 1 affiche le référentiel **BE — 2026-…** en lecture seule ; l'**Historique** est vide au premier essai ; l'écran ne propose ni pays ni annexe à choisir | projet absent : `deploy/demo.sh up` refait l'amorçage |
+| 4 | remplir les sept étapes avec les valeurs de référence : section 300 × 600, d = 550, portée 6000 ; C30/37, B500B, XC3 ; M_Ed 250, V_Ed 300, M_car 180, M_qp 120 ; 4 Ø20, cadres 2 brins Ø10 e = 150, enrobage 40, cot θ 1,5, ancrage 800 ; φ(∞,t0) 2,0, travée simplement appuyée ; entrées facultatives (b_eff/b_w, classe associée, α1–α6) **vides** | chaque onglet passe de « incomplète » à « remplie » ; le bouton de lancement reste gris tant que le mode strict est coché et qu'aucun paramètre belge n'est confirmé sur cette instance (§6) | un champ refusé « un nombre » : virgule ou point acceptés, pas d'unité dans le champ |
+| 5 | étape **Mode** : décocher *strict*, cocher la case qui assume l'exploratoire, **Vérifier les cinq chapitres** | la synthèse **Étude P1**, cinq chapitres verts : flexion **92,2 %**, effort tranchant **88,7 %**, ancrage **81,6 %**, fissuration **92,3 %**, flèche **58,9 %** ; la mention **« PROJET — NON SIGNABLE »** ; l'historique gagne une ligne **« étude initiale »** | un chapitre rouge : une valeur du pas 4 diffère (le taux dit lequel) ; un refus 422 : le bandeau nomme le paramètre et la clause, rien n'est enregistré |
+| 6 | **Note PDF** | un fichier `note-de-calcul…pdf` de **12 pages** : cinq chapitres dans l'ordre, données d'entrée avec unités, verdicts, clauses ; la mention en tête et en pied ; dans **Livrables**, la ligne porte la même empreinte SHA-256 que le fichier reçu (`sha256sum`) | pas de téléchargement : `deploy/demo.sh journaux api` |
+| 7 | **Plan DXF** | un fichier DXF **R2018** (`AC1032`) ; ouvert dans LibreCAD : coupe 300 × 600, 4 HA20 en lit inférieur, cadre HA10 e = 150, deux cotes « 300 » et « 600 », cartouche **« Démonstration — poutre belge (DEMO-BE-001) »**, « PROJET - NON SIGNABLE », notice de validation ; textes noirs en impression couleur comme en monochrome (§8) | textes jaunes ou losanges « ◊ » : version antérieure au 17/09 |
+| 8 | fermer le navigateur ; `deploy/demo.sh down` puis `deploy/demo.sh up` ; se reconnecter, choisir le projet | la session n'a pas survécu (voulu : aucun jeton persisté) ; l'étude est dans l'**historique** ; **Rouvrir** montre **les mêmes cinq verdicts et taux qu'au pas 5**, « rouverte sans recalcul », les entrées gelées avec leurs unités ; dans **Livrables**, **Télécharger** rend **les mêmes octets** (même SHA-256) | historique vide : les volumes ont été détruits (`reset`) ou `demo.env` a changé |
+| 9 | **Créer une variante** sous la synthèse, ne rien modifier, réassumer l'exploratoire, lancer | un **nouvel identifiant** ; le bandeau « Variante de l'étude … » avec **Rouvrir l'étude d'origine** ; les mêmes cinq taux qu'au pas 5 ; dans l'historique, la ligne **« variante de P1 <id court> »** et, sur l'origine, **« 1 variante »** | « Non repris — lancement bloqué » : une entrée de l'origine n'a pas pu être reprise ; le message la nomme, saisissez-la ou détachez |
+| 10 | **Rouvrir l'origine**, **Créer une variante**, mettre **5** barres, lancer | flexion **75,8 %**, effort tranchant 88,7 %, ancrage **65,3 %**, fissuration **84,8 %**, flèche **50,7 %** ; l'origine affiche **« 2 variantes »** | un autre taux : une autre valeur a bougé ; comparez les entrées de la synthèse |
+| 11 | **Rouvrir l'étude d'origine** (bouton de la synthèse, ou de la ligne d'historique) | les cinq verdicts **du pas 5**, aucun bandeau de variante, sa note PDF toujours dans les livrables ; depuis l'historique, déplier « 2 variantes » puis **Rouvrir** l'une d'elles ramène ses propres taux | — |
+| 12 | changer de projet, ou **Déconnexion** | plus de synthèse, plus d'historique, plus de lien de variante : rien du dossier précédent ne reste à l'écran | — |
+
+Les valeurs des pas 5 et 10 sont celles du moteur pour ces entrées sous
+l'Annexe belge transcrite (paramètres **non confirmés** : mode exploratoire).
+Elles ne changent qu'avec les entrées, le moteur ou le référentiel — et alors
+l'empreinte de calcul change avec elles.
 
 ## 4. La même chose, au clavier, mesurée
 
@@ -177,19 +170,26 @@ qui clique **Rouvrir** et vérifie, chapitre par chapitre, que l'état et le tau
 affichés sont ceux enregistrés le premier jour, que les entrées affichées sont
 celles du calcul gelé, qu'aucun calcul n'a été lancé (les POST sont comptés),
 puis retélécharge la note et le plan depuis la liste des livrables et compare
-leurs octets aux empreintes initiales. Un troisième parcours crée une variante
-depuis l'étude rouverte (chaque champ prérempli est comparé à l'entrée gelée,
-5 barres au lieu de 4, identifiant propre, origine nommée), rouvre l'origine
-et vérifie ses cinq verdicts du premier jour, puis change de projet et se
-déconnecte en vérifiant que l'écran ne montre plus rien du contexte
-précédent. Il laisse l'environnement debout.
+leurs octets aux empreintes initiales. Un troisième parcours mesure les
+variantes en quatre temps : **A** une variante sans modification — chaque
+champ prérempli est comparé à la **requête gelée** de l'origine (valeur et
+unité saisies), et le calcul lancé rend la même empreinte d'entrées et la
+même empreinte de calcul, sous un identifiant différent qui nomme l'origine ;
+**B** une variante à 5 barres, dont les entrées gelées ne diffèrent de
+l'origine que sur `bars.count` ; **C** une étude portant les paramètres
+avancés (XF1 avec classe associée XC3, b_eff/b_w, six coefficients d'ancrage)
+puis sa variante identique ; **D** le retour à l'origine par l'historique et
+dans l'autre sens, ses cinq verdicts du premier jour intacts, puis le
+changement de projet et la déconnexion, qui effacent l'écran. Il laisse
+l'environnement debout.
 Fichiers produits : `deploy/demo/note-de-calcul.pdf`,
 `deploy/demo/plan-de-ferraillage.dxf`, `deploy/demo/etude-creee.png` (la
 capture de l'étude au premier jour), `deploy/demo/etude-rouverte.png` (la
 capture de l'étude rouverte), `deploy/demo/note-de-calcul.retrouvee.pdf`,
 `deploy/demo/plan-de-ferraillage.retrouve.dxf`, `deploy/demo/etude-variante.png`
-(la capture de la variante), `deploy/demo/note-de-calcul.variante.pdf`,
-`deploy/demo/etat.json`.
+(la capture de la variante à 5 barres), `deploy/demo/note-de-calcul.variante.pdf`,
+`deploy/demo/etat.json` (identifiants, empreintes, entrées gelées et requête
+gelée de l'étude, de ses variantes et de l'étude avancée).
 
 ## 5. Ce qui est de démonstration, et ce qui ne l'est pas
 
