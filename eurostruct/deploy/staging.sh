@@ -11,6 +11,11 @@
 #   deploy/staging.sh journaux [service] [n]          les n dernieres lignes d'un service (api, web, mandataire)
 #   deploy/staging.sh down          arrete l'API, l'interface et le mandataire; volumes (livrables, certificats) gardes
 #
+#   deploy/staging.sh diagnostic       ce qu'une mise a niveau ferait — ne modifie rien
+#   deploy/staging.sh sauvegarder      pg_dump -Fc par la DSN d'administration declaree
+#   deploy/staging.sh mettre-a-niveau  applique les migrations manquantes, en GARDANT les donnees
+#   deploy/staging.sh reprendre        reprend une mise a niveau interrompue
+#
 # CE QUE CETTE COMMANDE ETABLIT, ET CE QU'ELLE N'ETABLIT PAS
 # ------------------------------------------------------------
 # Elle REUTILISE ce qui existe: `compose.yaml` et sa surcouche
@@ -450,6 +455,157 @@ cmd_migrer() {
   exit "$code"
 }
 
+# ===========================================================================
+# METTRE A JOUR UN STAGING QUI SERT DEJA
+# ===========================================================================
+# LA MEME IMPLEMENTATION QUE PARTOUT AILLEURS: `tools/deploy_eurostruct.sh
+# --mettre-a-niveau`. Ce qui change ici, c'est ce que ce script peut faire
+# AUTOUR — arreter l'API et l'interface de CETTE composition, puis les
+# redemarrer et refaire les controles publics.
+#
+# LA BASE EST HEBERGEE, ET CE SCRIPT NE SAUVEGARDE PAS A LA PLACE DE
+# L'EXPLOITANT. Sur `demo.sh`, la pile possede sa propre base et prend sa
+# sauvegarde elle-meme; ici la base appartient a un fournisseur, l'acces
+# d'administration n'est pas dans `staging.env`, et une commande qui
+# pretendrait sauvegarder avec le migrateur produirait une archive
+# PARTIELLE — RLS forcee, tables illisibles — qui se restaurerait sans rien
+# dire. `ESC_UPGRADE_SAUVEGARDE` est donc exigee, et l'archive est inspectee
+# par la commande officielle avant que la fenetre ne s'ouvre.
+esc_man() {   # esc_man <arguments de tools/deploy_eurostruct.sh>
+  local -a AUTO=(); sans_tls && AUTO=(--auto-heberge)
+  ESC_PLAN_URL="$ESC_PLAN_URL" ESC_MIGRATOR_URL="$ESC_MIGRATOR_URL" \
+    bash "$RACINE/tools/deploy_eurostruct.sh" "${AUTO[@]}" "$@"
+}
+
+cmd_diagnostic() {
+  exiger_prerequis
+  dire "diagnostic de mise a niveau — AUCUNE modification ne sera faite"
+  esc_man --mettre-a-niveau --diagnostic
+  local code=$?
+  case $code in
+    0) : ;;
+    2) echo "" >&2
+       echo "Au moins un prerequis manque (voir MANQUE). Rien n'a ete modifie." >&2
+       echo "« deploy/staging.sh mettre-a-niveau » arrete l'API pour vous; la" >&2
+       echo "sauvegarde, elle, reste votre geste: ESC_UPGRADE_SAUVEGARDE." >&2 ;;
+    *) echo "" >&2; echo "Le diagnostic a rendu $code. Rien n'a ete modifie." >&2 ;;
+  esac
+  return $code
+}
+
+cmd_sauvegarder() {
+  exiger_prerequis
+  local base horo dest magique
+  base="$(champ_url ESC_MIGRATOR_URL base)"
+  if [[ -z "${EUROSTRUCT_SAUVEGARDE_URL:-}" ]]; then
+    echo "REFUS: aucune DSN de sauvegarde declaree." >&2
+    echo "       Une archive prise par le MIGRATEUR serait PARTIELLE: RLS est" >&2
+    echo "       forcee sur les tables d'autorite, et ce qu'il ne lit pas" >&2
+    echo "       n'entre pas dans le dump — sans que rien ne le signale." >&2
+    echo "       Deux voies:" >&2
+    echo "         1. declarez dans staging.env la DSN du compte" >&2
+    echo "            d'administration du fournisseur:" >&2
+    echo "              EUROSTRUCT_SAUVEGARDE_URL=postgresql://…" >&2
+    echo "            puis relancez « deploy/staging.sh sauvegarder »;" >&2
+    echo "         2. prenez la sauvegarde chez l'hebergeur, et declarez-la:" >&2
+    echo "              ESC_UPGRADE_SAUVEGARDE=fournisseur:<ce qui a ete pris, quand>" >&2
+    echo "       Voir docs/DEPLOIEMENT_BASE_HEBERGEE.md et docs/MISE_A_NIVEAU.md." >&2
+    exit 2
+  fi
+  horo="$(date -u +%Y%m%dT%H%M%SZ)"
+  dest="$ICI/sauvegardes/$horo"
+  mkdir -p "$dest" || refus "impossible de creer « $dest »."
+  chmod 700 "$ICI/sauvegardes" "$dest"
+  dire "sauvegarde de « $base » par la DSN d'administration declaree"
+  if ! avec_url EUROSTRUCT_SAUVEGARDE_URL pg_dump -Fc > "$dest/base.dump" 2>"$dest/.err"; then
+    sed -n '1,5p' "$dest/.err" >&2; rm -rf "$dest"
+    refus "la sauvegarde a echoue: rien n'a ete conserve."
+  fi
+  rm -f "$dest/.err"
+  magique="$(head -c 5 "$dest/base.dump" 2>/dev/null)"
+  [[ "$magique" == "PGDMP" ]] \
+    || { rm -rf "$dest"; refus "l'archive produite n'est pas un « pg_dump -Fc »."; }
+  chmod 600 "$dest/base.dump"
+
+  # LE MAGASIN D'OBJETS, SEULEMENT S'IL EST SUR CET HOTE. En `s3`, les octets
+  # sont chez un fournisseur et ce script n'a pas a pretendre les sauvegarder.
+  if [[ "${EUROSTRUCT_STORAGE_BACKEND:-local}" == "local" ]]; then
+    if dc run --rm --no-deps -T --user root --entrypoint tar api \
+         -C /var/lib/eurostruct/livrables -cf - . > "$dest/livrables.tar" 2>/dev/null; then
+      chmod 600 "$dest/livrables.tar"
+      dire "livrables du volume local archives"
+    else
+      rm -f "$dest/livrables.tar"
+      echo "AVERTISSEMENT: les livrables locaux n'ont pas pu etre archives." >&2
+    fi
+  else
+    echo "NON COUVERT: EUROSTRUCT_STORAGE_BACKEND=${EUROSTRUCT_STORAGE_BACKEND}." >&2
+    echo "             Les octets des PDF et des DXF sont dans le magasin objet" >&2
+    echo "             du fournisseur: sauvegardez-le par ses moyens. Cette" >&2
+    echo "             archive ne porte QUE la base." >&2
+  fi
+  echo ""
+  echo "  sauvegarde: $dest/base.dump ($(stat -c %s "$dest/base.dump") o)"
+  echo "  pour la mise a niveau: ESC_UPGRADE_SAUVEGARDE=$dest/base.dump"
+  echo ""
+}
+
+cmd_mettre_a_niveau() {
+  exiger_prerequis
+  local base code
+  base="$(champ_url ESC_MIGRATOR_URL base)"
+  [[ "${EUROSTRUCT_STAGING_CIBLE:-}" == "staging" ]] \
+    || refus "« mettre-a-niveau » APPLIQUE des migrations a la base hebergee « $base ».
+       Pour l'assumer: EUROSTRUCT_STAGING_CIBLE=staging deploy/staging.sh mettre-a-niveau"
+  [[ -n "${ESC_UPGRADE_SAUVEGARDE:-}" ]] \
+    || refus "aucune sauvegarde declaree. Prenez-en une (« deploy/staging.sh sauvegarder »
+       ou chez l'hebergeur), puis:
+           ESC_UPGRADE_SAUVEGARDE=<archive pg_dump -Fc>   ou   fournisseur:<texte>"
+  #: LE CONSENTEMENT NOMME LA BASE, et c'est la porte « CIBLE=staging » qui
+  #: fait qu'il est donne: un consentement recopie d'un autre environnement ne
+  #: correspondrait pas a ce nom-la.
+  export ESC_UPGRADE_CONSENTEMENT="oui-mettre-a-niveau-$base"
+
+  EUROSTRUCT_BUILD_SHA="$(identite_de_build)"; export EUROSTRUCT_BUILD_SHA
+  dire "1/4 construction des images de la nouvelle version (le staging sert encore)"
+  dc build || { echo "ECHEC: la construction s'est interrompue. RIEN n'a ete touche." >&2; exit 1; }
+
+  dire "2/4 arret de l'API et de l'interface — les ecritures s'arretent ici"
+  dc stop api web
+
+  dire "3/4 mise a niveau de « $base », par la commande officielle"
+  esc_man --mettre-a-niveau
+  code=$?
+  if [[ $code -ne 0 ]]; then
+    echo "" >&2
+    case $code in
+      2) echo "ECHEC: prerequis refuses. RIEN N'A ETE MODIFIE; l'application repart." >&2
+         dc up -d --wait --wait-timeout 600 api web >/dev/null 2>&1 ;;
+      4) echo "ECHEC: une autre mise a niveau tient le verrou. RIEN N'A ETE MODIFIE." >&2 ;;
+      *) echo "ECHEC: la mise a niveau s'est arretee (code $code) apres avoir ouvert sa" >&2
+         echo "       fenetre. L'API et l'interface RESTENT ARRETEES." >&2
+         echo "       Reprendre: deploy/staging.sh reprendre" >&2 ;;
+    esac
+    exit 1
+  fi
+
+  dire "4/4 redemarrage et controles publics"
+  cmd_up
+}
+
+cmd_reprendre() {
+  exiger_prerequis
+  local code
+  dire "reprise d'une mise a niveau interrompue"
+  esc_man --reprendre-mise-a-niveau
+  code=$?
+  [[ $code -eq 0 ]] || { echo "" >&2
+    echo "ECHEC: la reprise a rendu $code. L'API et l'interface restent arretees." >&2
+    exit 1; }
+  dire "la fenetre est refermee; redemarrage"
+  cmd_up
+}
+
 identite_de_build() {
   local sha
   sha="$(git -C "$RACINE" rev-parse HEAD 2>/dev/null || true)"
@@ -629,15 +785,19 @@ cmd_down() {
 }
 
 case "${1:-}" in
-  prerequis)  cmd_prerequis ;;
-  privileges) cmd_privileges ;;
-  migrer)     cmd_migrer ;;
-  up)         cmd_up ;;
-  status)     cmd_status ;;
-  recette)    cmd_recette "${2:-diagnostic}" ;;
-  journaux)   cmd_journaux "${2:-}" "${3:-}" ;;
-  down)       cmd_down ;;
+  prerequis)       cmd_prerequis ;;
+  privileges)      cmd_privileges ;;
+  migrer)          cmd_migrer ;;
+  up)              cmd_up ;;
+  status)          cmd_status ;;
+  recette)         cmd_recette "${2:-diagnostic}" ;;
+  journaux)        cmd_journaux "${2:-}" "${3:-}" ;;
+  down)            cmd_down ;;
+  diagnostic)      cmd_diagnostic ;;
+  sauvegarder)     cmd_sauvegarder ;;
+  mettre-a-niveau) cmd_mettre_a_niveau ;;
+  reprendre)       cmd_reprendre ;;
   *)
-    sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2 ;;
 esac

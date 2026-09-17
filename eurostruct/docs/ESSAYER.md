@@ -91,6 +91,34 @@ Les autres commandes : `deploy/demo.sh status`, `down` (arrête, **garde
 tout**), `comptes`, `journaux [service] [n]`, `reset` (détruit, avec
 consentement explicite).
 
+### 2.0 Passer à une nouvelle version sans perdre vos études
+
+Vous récupérez une version plus récente du dépôt, et elle porte une migration
+que votre base n'a pas. `up` **refuse** alors, sans rien appliquer — c'est
+voulu. La suite :
+
+```bash
+deploy/demo.sh diagnostic      # ce qui serait fait — ne modifie RIEN
+deploy/demo.sh mettre-a-jour   # sauvegarde, migration, redémarrage
+```
+
+`mettre-a-jour` construit la nouvelle version **pendant que l'ancienne sert
+encore**, prend une sauvegarde complète, arrête les écritures, applique les
+migrations manquantes, puis redémarre. Vos projets, études, variantes, PDF et
+DXF sont là ensuite, aux mêmes identifiants et aux mêmes octets.
+
+| commande | ce qu'elle fait |
+|---|---|
+| `deploy/demo.sh sauvegarder` | rôles, base et livrables dans `deploy/sauvegardes/<horodatage>/` |
+| `deploy/demo.sh diagnostic` | annonce la version présente, la cible, les migrations prévues. Ne modifie rien |
+| `deploy/demo.sh mettre-a-jour` | la mise à jour complète, données conservées |
+| `deploy/demo.sh reprendre` | referme une mise à jour interrompue (machine éteinte, Ctrl-C) |
+| `deploy/demo.sh restaurer <dossier>` | remet une sauvegarde en place (consentement explicite) |
+
+`reset` reste **autre chose** : une suppression volontaire, qui ne prétend rien
+conserver. Ce n'est pas la façon de changer de version. Détail complet :
+`docs/MISE_A_NIVEAU.md`.
+
 ### 2.1 Où vivent les données, et ce qui les garde
 
 Tout est sur **ce poste**, dans Docker ; rien ne part ailleurs.
@@ -123,7 +151,7 @@ ordinaires :
 | `ECHEC: la construction des images s'est interrompue` | réseau coupé, proxy, Ctrl-C, disque plein | relancer `deploy/demo.sh up` : la construction repart du dernier étage réussi ; `docker system df` si le disque est en cause |
 | `ECHEC: la composition n'est pas montee` puis les journaux `init` et `api` | l'initialisation de la base a refusé, ou un conteneur ne passe pas sa sonde | lire la cause dans le journal affiché (`deploy/demo.sh journaux init`), corriger, relancer `up` — l'initialisation constate ce qui est déjà fait |
 | `ECHEC: /ready ne passe pas au vert` | l'API tourne mais une dépendance est rouge | `deploy/demo.sh status` nomme la vérification rouge ; `deploy/demo.sh journaux api` porte la cause |
-| `ECHEC: cette version du depot porte une migration que la base de demonstration existante n'a pas` | vous avez mis à jour le dépôt (p. ex. `0027`, le 17/09) et la commande de déploiement **ne met pas à niveau une base déjà en service** — protocole à concevoir, `DEPLOIEMENT_PREREQUIS.md` §10 | les données de démonstration sont jetables : `EUROSTRUCT_DEMO_RESET=oui-detruire-les-donnees-de-demonstration deploy/demo.sh reset`, puis `deploy/demo.sh up` — comptes conservés, projet belge ré-amorcé |
+| `ECHEC: cette version du depot porte une migration que la base de demonstration existante n'a pas` | vous avez récupéré une version plus récente du dépôt, et `up` **n'applique aucune migration à une base en service** : rien n'a été fait, vos études sont intactes | `deploy/demo.sh diagnostic` pour voir, puis `deploy/demo.sh mettre-a-jour` : sauvegarde, migration, redémarrage, **données conservées** (§2.0, `docs/MISE_A_NIVEAU.md`) |
 | « Session expirée » après un redémarrage | aucun jeton n'est persisté | se reconnecter (§2.1) |
 
 ## 3. Le parcours court, avec ce que vous devez voir à chaque pas

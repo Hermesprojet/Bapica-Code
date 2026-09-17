@@ -154,6 +154,43 @@ le volume `eurostruct-staging_mandataire_donnees`.
 Il ne crée aucun rôle de connexion, ne touche pas au schéma `auth`, ne pose
 aucune confirmation de paramètre national, et n'écrit aucun secret.
 
+### 4 bis. Mettre à jour un staging qui sert déjà
+
+`migrer` **installe** : sur une base déjà en service à qui il manque des
+migrations, la commande officielle sort en `ACTIVE_SCHEMA_UPGRADE_REQUIRED`
+sans rien appliquer. Mettre à jour est une autre commande :
+
+```bash
+deploy/staging.sh diagnostic          # annonce, ne modifie rien
+
+deploy/staging.sh sauvegarder         # si EUROSTRUCT_SAUVEGARDE_URL est déclarée
+
+EUROSTRUCT_STAGING_CIBLE=staging \
+ESC_UPGRADE_SAUVEGARDE=<archive ou fournisseur:<texte>> \
+  deploy/staging.sh mettre-a-niveau   # construit, arrête, migre, redémarre
+
+deploy/staging.sh reprendre           # si l'opération a été interrompue
+```
+
+C'est **la même implémentation** que partout ailleurs :
+`tools/deploy_eurostruct.sh --mettre-a-niveau`, décrite en entier dans
+`docs/MISE_A_NIVEAU.md`. Ce que `staging.sh` ajoute autour : la construction
+des images pendant que le staging sert encore, l'arrêt de l'API et de
+l'interface, puis le redémarrage **avec les contrôles publics de `up`**.
+
+Deux différences avec la démonstration, et elles sont voulues :
+
+* **La sauvegarde n'est pas prise à votre place.** La base appartient à un
+  hébergeur et l'accès d'administration n'est pas dans `staging.env`. Une
+  archive prise par le *migrateur* serait **partielle** — RLS est forcée sur
+  les tables d'autorité, et ce qu'il ne lit pas n'entre pas dans le dump, sans
+  que rien ne le signale. Déclarez `EUROSTRUCT_SAUVEGARDE_URL` (le compte
+  d'administration du fournisseur) pour que `sauvegarder` la prenne, ou
+  prenez-la chez l'hébergeur et déclarez-la : `fournisseur:<texte>`.
+* **Le magasin d'objets n'est couvert que s'il est local.** En `s3`, les
+  octets sont chez le fournisseur : `sauvegarder` le dit et n'archive que la
+  base.
+
 ## 5. Ce qui a été répété ici, et comment
 
 `deploy/staging_repetition.sh` rejoue la procédure du §3 sur un cluster

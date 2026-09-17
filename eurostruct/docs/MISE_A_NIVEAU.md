@@ -240,11 +240,19 @@ fenetre nommee et bornee, dans cet ordre :
    c'est consigne comme **declaration**, pas comme verification ;
 3. l'**exclusion mutuelle** par le verrou de deploiement : deux mises a niveau
    concurrentes, une seule applique ;
-4. l'**arret des ecritures**, prouve puis pose : aucune session des logins
-   applicatifs declares, puis **retrait** de leur appartenance a
+4. l'**arret des ecritures**, constate puis **pose** : aucune session des
+   logins applicatifs declares, puis **retrait** de leur appartenance a
    `eurostruct_authority_backend`. Une application qui se reconnecterait
    pendant la fenetre n'ecrit rien — elle est refusee par la base, pas par une
-   convention ;
+   convention.
+
+   *Le constat seul ne suffirait pas, et il faut le dire :* l'API ouvre une
+   connexion par requete et la referme. Entre deux requetes, une API qui tourne
+   ne montre **aucune** session — mesure le 17/09, `/ready` au vert et
+   `pg_stat_activity` vide de tout login applicatif. Ce qui arrete reellement
+   les ecritures, c'est le retrait de l'appartenance ; le constat attrape les
+   reservoirs de connexions a longue duree, et les commandes de demonstration
+   et de staging arretent l'API **avant**, ce qui ferme le reste ;
 5. les **emprunts temporaires** rendus au migrateur (`writer`, `bootstrap`) ;
 6. les **migrations manquantes, et elles seules**, par le registre ;
 7. la **revocation** des emprunts, **constatee** ;
