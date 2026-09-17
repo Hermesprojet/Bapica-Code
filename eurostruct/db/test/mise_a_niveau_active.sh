@@ -514,7 +514,7 @@ fi
   echo " MISE A NIVEAU D'UNE INSTALLATION EN SERVICE — bilan"
   echo " ancienne version: $ANCIEN | depot courant: $(git -C "$DEPOT" rev-parse --short HEAD 2>/dev/null)"
   for i in "${!NOMS[@]}"; do
-    printf '  %-48s %-12s %s\n' "${NOMS[$i]}" "${ETATS[$i]}" "$(cut -c1-104 <<<"${DETAILS[$i]}")"
+    printf '  %-48s %-12s %s\n' "${NOMS[$i]}" "${ETATS[$i]}" "$(cut -c1-180 <<<"${DETAILS[$i]}")"
   done
   echo ""
   if (( KO )); then
