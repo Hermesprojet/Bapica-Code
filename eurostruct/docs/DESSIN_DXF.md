@@ -326,6 +326,39 @@ porte pas le nom du projet ; il vient désormais de la ligne du projet relue
 borné à deux lignes, parce qu'un libellé de 80 caractères sortait du cadre
 par la droite. `test_dessin_mention_gelee.py` l'exige, jusqu'aux octets.
 
+**Troisième passe (17/09), en couleur ET en monochrome, sur le DXF livré par
+le parcours de démonstration reconstruit** (`plan-de-ferraillage.dxf`,
+64 183 o, SHA-256 `684a47f5…`, calque `TEXTE` en 7) :
+
+```
+QT_QPA_PLATFORM=offscreen librecad dxf2pdf -a -p 420x297 plan.dxf       # couleur
+QT_QPA_PLATFORM=offscreen librecad dxf2pdf -m -a -p 420x297 plan.dxf    # monochrome
+pdftoppm -png -r 110 -singlefile plan.pdf plan
+```
+
+| point | couleur | monochrome |
+|---|---|---|
+| titre « COUPE POUTRE P1 », « 300 x 600 mm - enrobage 40 mm », « C1: cadre HA10 e = 150 mm », « A1: 4 HA20 (inf.) » | **noirs** — ils sortaient jaunes à la seconde passe | noirs |
+| coffrage, cadre, barres | noir, vert, rouge (barres pleines) | noir |
+| cotes « 600 » et « 300 » | présentes, flèches comprises, **cyan pâle** (calque `COTATION` en 4) — corrigé ensuite en bleu (5), §4.2 ; le DXF de livraison finale est réimprimé ci-dessous | noires |
+| cartouche | « Démonstration - poutre belge (DEMO-BE-001) », élément, indice, béton, acier, exposition, échelle, moteur, « PROJET - NON SIGNABLE », notice sur deux lignes — noir | idem |
+| filigrane « PROJET - NON VALIDE » | en travers de la coupe, gris | gris |
+
+**Le DXF de livraison finale**, produit par le même parcours après le passage
+des cotes en bleu (`plan-de-ferraillage.dxf`, 64 183 o, SHA-256
+`7bd99d82…`), imprimé de la même façon : en couleur, cotes **bleues**,
+textes et cartouche noirs, barres rouges, cadre vert, coffrage noir ; en
+monochrome, tout en noir. Rien d'autre n'a bougé entre les deux fichiers
+(même taille, même géométrie, mêmes textes).
+
+**Le cartouche de la flexion seule** : un calcul de flexion (`P2`) et son plan
+demandés par l'API de la pile de démonstration (`plan-flexion.dxf`, 64 181 o,
+SHA-256 `4c0f1ad2…`), imprimés de la même façon : la première ligne du
+cartouche est « Démonstration - poutre belge (DEMO-BE-001) », et l'identifiant
+technique du projet n'apparaît plus nulle part dans le fichier (il s'y
+imprimait à la seconde passe). `Exposition: -` est exact : la requête de
+flexion seule n'en porte pas.
+
 **Ce que cela n'établit pas.** L'écran de LibreCAD (seule l'impression a
 tourné) ; la hiérarchie des épaisseurs et le trait d'axe (§4.2) ; les cotes
 serrées d'une poutre très armée (§4.6, un seul fichier a été ouvert) ; et rien
