@@ -1091,13 +1091,15 @@ export interface Preremplissage {
 
 export interface PreuveGeometrique {
   blocks?: string[] | null;
-  classified_by: "bloc" | "calque" | "type_de_ligne" | "forme";
+  /** style : un style de trait APPRIS d'une feuille PDF (axes, cotes). */
+  classified_by: "bloc" | "calque" | "style" | "type_de_ligne" | "forme";
   entity_types: string[];
-  /** Poignées DXF des entités citées. */
+  /** Poignées DXF des entités citées (rang de l'objet sur une feuille PDF). */
   handles: string[];
   handles_not_listed?: number | null;
   /** Poignées des INSERT qui ont placé les entités. */
   inserts?: string[] | null;
+  /** Calques DXF ; sur une feuille PDF, style du trait (pdf:#RRGGBB:épaisseur). */
   layers: string[];
   /** Le nom (calque, bloc, type de ligne) qui a décidé. */
   matched_name?: string | null;
@@ -1307,7 +1309,9 @@ export interface UnitesDuDessin {
   evidence?: Record<string, unknown> | null;
   insunits: number | null;
   quantum: number;
-  /** $INSUNITS, ou declaration_et_cotes (mention écrite ET cotes). */
+  /** Feuille PDF : page, mm_per_point (null sans échelle établie), page_height_pt, page_width_pt. */
+  sheet?: Record<string, unknown> | null;
+  /** $INSUNITS, declaration_et_cotes (mention écrite ET cotes), ou echelle_ecrite_et_cotes (feuille PDF : échelle écrite ET cotes). */
   source: string | null;
   tolerance: number;
 }

@@ -14,8 +14,8 @@
  *   1. A se connecte et crée un projet ;
  *   2. le DXF part en octets bruts ; la liste relue dit qu'un modèle
  *      structurel a été reconstruit — poteaux, poutres, travées, dalles, unité ;
- *   3. la revue sépare les sources : « Géométrie du DXF » et « Texte ou cote
- *      du DXF », chacune avec son compte, égal à celui de la base ;
+ *   3. la revue sépare les sources : « Géométrie du dessin » et « Texte ou
+ *      cote du DXF », chacune avec son compte, égal à celui de la base ;
  *   4. le modèle est DESSINÉ : 6 poteaux, 3 poutres, 5 travées, et le tableau
  *      des travées dit P1 : A1 → B1, 600 cm entre axes, 570 cm nu à nu ;
  *   5. aucune portée ne vient d'un texte : filtrées par source, toutes les
@@ -176,7 +176,7 @@ try {
   exige(await page.locator('#revue-tableau tr[data-source="geometry"]').count() === geo.length,
         "la revue ne montre pas toutes les valeurs geometriques");
   const sources = await page.innerText("#revue-sources");
-  exige(sources.includes(`Géométrie du DXF ${geo.length}`)
+  exige(sources.includes(`Géométrie du dessin ${geo.length}`)
         && sources.includes(`Texte ou cote du DXF ${texteDxf.length}`),
         `le resume des sources dit « ${sources} »`);
 

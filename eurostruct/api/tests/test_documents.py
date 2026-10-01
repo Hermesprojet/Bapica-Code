@@ -24,6 +24,7 @@ from eurostruct_api import documents as service
 # LES PLANS FABRIQUES DU MODULE D'EXTRACTION, les memes que ses tests lisent.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "extraction" / "tests"))
 from fabrique_geometrie import dxf_coffrage_s101
+from fabrique_pdf_vectoriel import pdf_plan_vectoriel
 
 PROJET = "aaaaaaaa-0000-0000-0000-00000000000a"
 
@@ -427,6 +428,34 @@ def test_le_modele_se_lit_type_tel_qu_il_a_ete_enregistre():
     assert "distance entre appuis" in lu.notice
     assert service.en_structure(PROJET, _document({"insunits": 5})) is None
     assert service.en_structure(PROJET, _document(None)) is None
+
+
+@cache
+def _analyse_feuille_pdf():
+    return service.analyser(pdf_plan_vectoriel())
+
+
+def test_le_modele_d_une_feuille_pdf_se_relit_par_le_contrat():
+    """Une feuille PDF fabriquée: le style appris et la feuille (page, échelle)
+    passent le contrat fermé du modèle sans perte."""
+    _, resultat = _analyse_feuille_pdf()
+    lu = service.en_structure(PROJET, _document({"structure": resultat.structure}))
+    assert lu is not None
+    unites = lu.structure.units
+    assert (unites.drawing, unites.source) == ("mm", "echelle_ecrite_et_cotes")
+    assert unites.sheet is not None and unites.sheet["page"] == 1
+    assert {a.label for a in lu.structure.grid} == {"A", "B", "C", "1", "2"}
+    assert {a.evidence.classified_by for a in lu.structure.grid} == {"style"}
+
+
+def test_une_mesure_sur_une_feuille_pdf_dit_qu_elle_vient_du_pdf():
+    ligne = _ligne("beam_span", 6000, "mm", label="P1", methode="geometrie")
+    ligne["position"] = {"source": "geometry", "space": "page"}
+    extraction = service.en_extraction(ligne)
+    assert (extraction.source_type, extraction.source_label) == ("geometry", "Géométrie du PDF")
+    (champ,) = service.preremplissage(PROJET, [ligne], "P1").fields
+    assert champ.source_label == "Géométrie du PDF"
+    assert "(géométrie du pdf)" in champ.provenance.detail
 
 
 def test_meme_valeur_par_le_texte_et_la_geometrie_la_provenance_est_la_geometrie():

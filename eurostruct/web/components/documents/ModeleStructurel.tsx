@@ -180,7 +180,9 @@ export function ModeleStructurel({ projet, porteur, document, selection, surSele
         {" "}{c.slabs} dalle(s) — longueurs en{" "}
         <strong>{m.units.drawing ?? "unité non déclarée"}</strong>
         {m.units.source === "declaration_et_cotes"
-          ? " (mention écrite et cotes du dessin)" : ""}.
+          ? " (mention écrite et cotes du dessin)" : ""}
+        {m.units.source === "echelle_ecrite_et_cotes"
+          ? " (échelle écrite sur la feuille et cotes concordantes)" : ""}.
         {" "}{lu?.notice}
       </p>
       {figure}

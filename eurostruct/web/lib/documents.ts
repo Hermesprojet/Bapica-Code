@@ -46,7 +46,7 @@ export type SourceDeValeur = Extraction["source_type"];
  * concordent : la mesure sur le dessin d'abord, l'OCR en dernier.
  */
 export const SOURCES: ReadonlyArray<readonly [SourceDeValeur, string]> = [
-  ["geometry", "Géométrie du DXF"],
+  ["geometry", "Géométrie du dessin"],
   ["cad_text", "Texte ou cote du DXF"],
   ["text", "Texte du PDF"],
   ["vision", "Détection visuelle"],
@@ -213,6 +213,12 @@ export function origineDeLUnite(x: Extraction): string | null {
       return `le dessin ne déclare pas son unité ; « ${String(d.raw_text ?? "")} » `
         + "et les cotes du dessin la donnent";
     }
+    if (d.source === "echelle_ecrite_et_cotes") {
+      const ecrite = (d.written ?? {}) as Record<string, unknown>;
+      return `feuille PDF : échelle « ${String(ecrite.text ?? d.scale ?? "")} » écrite sur `
+        + `la feuille, confirmée par ${String(d.concordant_dimensions ?? "?")} cote(s) sur `
+        + `${String(d.dimensions_read ?? "?")} (nombres lus en ${String(d.dimension_unit ?? "?")})`;
+    }
     return `déclarée dans le document : « ${String(d.raw_text ?? "")} »`
       + (d.page ? ` (page ${d.page})` : "");
   }
@@ -284,6 +290,7 @@ export function deriveeDuDessin(x: Extraction): string | null {
     morceaux.push(`${p.count ?? p.instances.length} élément(s) de même section`);
   }
   const regle = { bloc: "bloc", calque: "calque", type_de_ligne: "type de ligne",
+                  style: "style de trait appris de la feuille",
                   forme: "forme et position" }[String(f.classified_by ?? "")];
   if (regle) morceaux.push(`reconnu par ${regle}`);
   for (const c of (Array.isArray(f.dimensions) ? f.dimensions : []) as Fondement[]) {

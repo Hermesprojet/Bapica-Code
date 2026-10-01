@@ -331,8 +331,16 @@ def en_structure(project_id: str, ligne: dict[str, Any]) -> StructureDuDocument 
         notice=AVIS_STRUCTURE)
 
 
-def _source(methode: str) -> tuple[str, str]:
-    return SOURCES_DE_VALEUR.get(methode, ("text", methode))
+#: Une mesure faite sur une FEUILLE PDF (position dans l'espace « page ») et
+#: non sur un DXF : même méthode, autre support, dit tel quel.
+LIBELLE_GEOMETRIE_PDF: Final[str] = "Géométrie du PDF"
+
+
+def _source(methode: str, position: Any = None) -> tuple[str, str]:
+    source = SOURCES_DE_VALEUR.get(methode, ("text", methode))
+    if methode == "geometrie" and isinstance(position, dict) and position.get("space") == "page":
+        return source[0], LIBELLE_GEOMETRIE_PDF
+    return source
 
 
 def en_extraction(ligne: dict[str, Any]) -> Extraction:
@@ -355,8 +363,8 @@ def en_extraction(ligne: dict[str, Any]) -> Extraction:
         form_field=champ.chemin if champ else None,
         form_field_label=champ.libelle if champ else None,
         form_warning=champ.avertissement if champ else None,
-        source_type=_source(ligne["method"])[0],  # type: ignore[arg-type]
-        source_label=_source(ligne["method"])[1])
+        source_type=_source(ligne["method"], ligne["position"])[0],  # type: ignore[arg-type]
+        source_label=_source(ligne["method"], ligne["position"])[1])
 
 
 # ------------------------------------------------------- report et contrôle
@@ -420,7 +428,7 @@ def _provenance(ligne: dict[str, Any]) -> ProvenanceDTO:
     # LA SOURCE EST DITE quand ce n'est pas le texte d'un PDF: une valeur
     # mesuree sur le dessin ne se relit pas comme une valeur ecrite.
     if ligne.get("method") not in (None, "texte_natif"):
-        detail += f" ({_source(ligne['method'])[1].lower()})"
+        detail += f" ({_source(ligne['method'], ligne.get('position'))[1].lower()})"
     if ligne.get("element_label"):
         detail += f", repère {ligne['element_label']}"
     # UNE CORRECTION DIT CE QUI AVAIT ETE LU: la note doit permettre de
@@ -477,7 +485,7 @@ def preremplissage(project_id: str, lignes: list[dict[str, Any]],
                 kind_label=categorie.libelle if categorie else ligne["kind"],
                 reason=str(motif)))
             continue
-        source, libelle_source = _source(ligne.get("method", ""))
+        source, libelle_source = _source(ligne.get("method", ""), ligne.get("position"))
         sources[ligne["extraction_id"]] = source
         par_chemin.setdefault(champ.chemin, []).append(ChampPrerempli(
             path=champ.chemin, label=champ.libelle, value=valeur, unit=unite,

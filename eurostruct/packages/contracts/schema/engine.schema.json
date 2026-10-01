@@ -5667,9 +5667,11 @@
           "title": "Blocks"
         },
         "classified_by": {
+          "description": "style : un style de trait APPRIS d'une feuille PDF (axes, cotes).",
           "enum": [
             "bloc",
             "calque",
+            "style",
             "type_de_ligne",
             "forme"
           ],
@@ -5684,7 +5686,7 @@
           "type": "array"
         },
         "handles": {
-          "description": "Poignées DXF des entités citées.",
+          "description": "Poignées DXF des entités citées (rang de l'objet sur une feuille PDF).",
           "items": {
             "type": "string"
           },
@@ -5720,6 +5722,7 @@
           "title": "Inserts"
         },
         "layers": {
+          "description": "Calques DXF ; sur une feuille PDF, style du trait (pdf:#RRGGBB:épaisseur).",
           "items": {
             "type": "string"
           },
@@ -6817,6 +6820,20 @@
           "title": "Quantum",
           "type": "number"
         },
+        "sheet": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Feuille PDF : page, mm_per_point (null sans échelle établie), page_height_pt, page_width_pt.",
+          "title": "Sheet"
+        },
         "source": {
           "anyOf": [
             {
@@ -6826,7 +6843,7 @@
               "type": "null"
             }
           ],
-          "description": "$INSUNITS, ou declaration_et_cotes (mention écrite ET cotes).",
+          "description": "$INSUNITS, declaration_et_cotes (mention écrite ET cotes), ou echelle_ecrite_et_cotes (feuille PDF : échelle écrite ET cotes).",
           "title": "Source"
         },
         "tolerance": {

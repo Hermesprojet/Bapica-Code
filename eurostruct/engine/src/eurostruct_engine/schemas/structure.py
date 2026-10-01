@@ -64,10 +64,13 @@ class _Lecture(Strict):
 
 
 class PreuveGeometrique(_Lecture):
-    handles: list[str] = Field(description="Poignées DXF des entités citées.")
-    layers: list[str]
+    handles: list[str] = Field(
+        description="Poignées DXF des entités citées (rang de l'objet sur une feuille PDF).")
+    layers: list[str] = Field(
+        description="Calques DXF ; sur une feuille PDF, style du trait (pdf:#RRGGBB:épaisseur).")
     entity_types: list[str]
-    classified_by: Literal["bloc", "calque", "type_de_ligne", "forme"]
+    classified_by: Literal["bloc", "calque", "style", "type_de_ligne", "forme"] = Field(
+        description="style : un style de trait APPRIS d'une feuille PDF (axes, cotes).")
     handles_not_listed: int | None = None
     inserts: list[str] | None = Field(
         default=None, description="Poignées des INSERT qui ont placé les entités.")
@@ -81,11 +84,16 @@ class UnitesDuDessin(_Lecture):
         description="mm, cm, m, in, ft — ou null : le dessin ne déclare pas son unité.")
     basis: Literal["declaration", "absente"]
     source: str | None = Field(
-        description="$INSUNITS, ou declaration_et_cotes (mention écrite ET cotes).")
+        description="$INSUNITS, declaration_et_cotes (mention écrite ET cotes), ou "
+                    "echelle_ecrite_et_cotes (feuille PDF : échelle écrite ET cotes).")
     insunits: int | None
     tolerance: float
     quantum: float
     evidence: dict[str, Any] | None = None
+    sheet: dict[str, Any] | None = Field(
+        default=None,
+        description="Feuille PDF : page, mm_per_point (null sans échelle établie), "
+                    "page_height_pt, page_width_pt.")
 
 
 class AxeDeGrille(_Lecture):
