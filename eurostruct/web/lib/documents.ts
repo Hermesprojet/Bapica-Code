@@ -213,6 +213,14 @@ export function origineDeLUnite(x: Extraction): string | null {
       return `le dessin ne déclare pas son unité ; « ${String(d.raw_text ?? "")} » `
         + "et les cotes du dessin la donnent";
     }
+    if (d.source === "echelle_de_presentation") {
+      const ecrite = (d.written ?? {}) as Record<string, unknown>;
+      const fenetre = (d.viewport ?? {}) as Record<string, unknown>;
+      return `le dessin ne déclare pas son unité ; l'échelle « ${String(ecrite.text ?? "")} » `
+        + `écrite dans la présentation « ${String(d.layout ?? "")} » et sa fenêtre `
+        + `(${String(fenetre.drawing_units_per_paper_unit ?? "?")} unités par unité de papier) `
+        + "la donnent";
+    }
     if (d.source === "echelle_ecrite_et_cotes") {
       const ecrite = (d.written ?? {}) as Record<string, unknown>;
       return `feuille PDF : échelle « ${String(ecrite.text ?? d.scale ?? "")} » écrite sur `

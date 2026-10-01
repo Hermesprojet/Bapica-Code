@@ -4544,6 +4544,14 @@
           "title": "Openings",
           "type": "array"
         },
+        "piles": {
+          "description": "Les pieux (absents des modèles enregistrés avant leur lecture).",
+          "items": {
+            "$ref": "#/$defs/PieuLu"
+          },
+          "title": "Piles",
+          "type": "array"
+        },
         "report": {
           "additionalProperties": true,
           "title": "Report",
@@ -5234,6 +5242,163 @@
         "description"
       ],
       "title": "ParameterVariantDTO",
+      "type": "object"
+    },
+    "PieuLu": {
+      "additionalProperties": false,
+      "description": "Un pieu : montré et compté, jamais un poteau ; aucune valeur n'en est\nproposée (fondations profondes hors du domaine validé du moteur).",
+      "properties": {
+        "centre": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "title": "Centre",
+          "type": "array"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "depth": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Depth"
+        },
+        "diameter": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Diameter"
+        },
+        "evidence": {
+          "$ref": "#/$defs/PreuveGeometrique"
+        },
+        "grid_node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Grid Node"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "mark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mark"
+        },
+        "mark_source": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mark Source"
+        },
+        "outline": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Le contour, sauf pour un cercle (centre et diamètre suffisent).",
+          "title": "Outline"
+        },
+        "shape": {
+          "enum": [
+            "rectangle",
+            "cercle",
+            "polygone"
+          ],
+          "title": "Shape",
+          "type": "string"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Width"
+        }
+      },
+      "required": [
+        "id",
+        "mark",
+        "shape",
+        "centre",
+        "diameter",
+        "width",
+        "depth",
+        "outline",
+        "grid_node",
+        "confidence",
+        "mark_source",
+        "evidence"
+      ],
+      "title": "PieuLu",
       "type": "object"
     },
     "PoteauLu": {
@@ -6843,7 +7008,7 @@
               "type": "null"
             }
           ],
-          "description": "$INSUNITS, declaration_et_cotes (mention écrite ET cotes), ou echelle_ecrite_et_cotes (feuille PDF : échelle écrite ET cotes).",
+          "description": "$INSUNITS, declaration_et_cotes (mention écrite ET cotes), echelle_de_presentation (DXF : échelle écrite dans la présentation ET fenêtre), ou echelle_ecrite_et_cotes (feuille PDF : échelle écrite ET cotes).",
           "title": "Source"
         },
         "tolerance": {

@@ -51,6 +51,7 @@ function emprise(m: Modele): [number, number, number, number] | null {
   const ajouter = (points: Pt[]) => points.forEach((p) => { xs.push(p[0]); ys.push(p[1]); });
   m.grid.forEach((a) => ajouter(a.line));
   m.columns.forEach((c) => ajouter(c.outline));
+  (m.piles ?? []).forEach((p) => ajouter([p.centre]));
   m.walls.forEach((w) => ajouter(w.outline));
   m.beams.forEach((b) => ajouter(b.axis));
   m.slabs.forEach((s) => ajouter(s.outline));
@@ -158,6 +159,20 @@ export function ModeleStructurel({ projet, porteur, document, selection, surSele
             </g>
           );
         })}
+        {/* LES PIEUX: montrés et comptés, jamais des poteaux; rien n'en est
+            proposé. */}
+        {(m.piles ?? []).map((p) => {
+          const [cx, cy] = vers(p.centre);
+          return p.shape === "cercle" && p.diameter
+            ? <circle key={p.id} className="plan-pieu" cx={cx} cy={cy} r={p.diameter / 2}>
+                <title>{`Pieu ${p.mark ?? p.id} : Ø ${nombre(p.diameter)}${unite}`}</title>
+              </circle>
+            : p.outline
+              ? <polygon key={p.id} className="plan-pieu" points={chemin(p.outline)}>
+                  <title>{`Pieu ${p.mark ?? p.id}`}</title>
+                </polygon>
+              : null;
+        })}
         {/* LES POTEAUX PAR-DESSUS: un appui se voit, et se choisit, au-dessus
             des travées qu'il porte. */}
         {m.columns.map((p) => (
@@ -175,14 +190,18 @@ export function ModeleStructurel({ projet, porteur, document, selection, surSele
     <div className="modele" id="modele-structurel" data-document={document.document_id}>
       <h4>Modèle structurel lu sur le dessin</h4>
       <p className="aide" id="modele-resume">
-        {c.grid_axes} axe(s), {c.columns} poteau(x), {c.walls} voile(s), {c.beams}{" "}
+        {c.grid_axes} axe(s), {c.columns} poteau(x)
+        {c.piles ? `, ${c.piles} pieu(x) (montrés, rien n'en est proposé)` : ""},
+        {" "}{c.walls} voile(s), {c.beams}{" "}
         poutre(s), {c.spans} travée(s){c.cantilevers ? `, ${c.cantilevers} console(s)` : ""},
         {" "}{c.slabs} dalle(s) — longueurs en{" "}
         <strong>{m.units.drawing ?? "unité non déclarée"}</strong>
         {m.units.source === "declaration_et_cotes"
           ? " (mention écrite et cotes du dessin)" : ""}
         {m.units.source === "echelle_ecrite_et_cotes"
-          ? " (échelle écrite sur la feuille et cotes concordantes)" : ""}.
+          ? " (échelle écrite sur la feuille et cotes concordantes)" : ""}
+        {m.units.source === "echelle_de_presentation"
+          ? " (échelle écrite dans la présentation et fenêtre du dessin)" : ""}.
         {" "}{lu?.notice}
       </p>
       {figure}

@@ -898,6 +898,8 @@ export interface ModeleStructurel {
   labels: LibelleAffecte[];
   levels: NiveauLu[];
   openings: TremieLue[];
+  /** Les pieux (absents des modèles enregistrés avant leur lecture). */
+  piles?: PieuLu[];
   report: Record<string, unknown>;
   schema: "eurostruct.structure/1";
   slabs: DalleLue[];
@@ -1023,6 +1025,23 @@ export interface ParameterVariantDTO {
   /** What the annex says about this branch. */
   description: string;
   value: number;
+}
+
+/** Un pieu : montré et compté, jamais un poteau ; aucune valeur n'en est proposée (fondations profondes hors du domaine validé du moteur). */
+export interface PieuLu {
+  centre: number[];
+  confidence: number;
+  depth: number | null;
+  diameter: number | null;
+  evidence: PreuveGeometrique;
+  grid_node: string | null;
+  id: string;
+  mark: string | null;
+  mark_source: Record<string, unknown> | null;
+  /** Le contour, sauf pour un cercle (centre et diamètre suffisent). */
+  outline: number[][] | null;
+  shape: "rectangle" | "cercle" | "polygone";
+  width: number | null;
 }
 
 export interface PoteauLu {
@@ -1311,7 +1330,7 @@ export interface UnitesDuDessin {
   quantum: number;
   /** Feuille PDF : page, mm_per_point (null sans échelle établie), page_height_pt, page_width_pt. */
   sheet?: Record<string, unknown> | null;
-  /** $INSUNITS, declaration_et_cotes (mention écrite ET cotes), ou echelle_ecrite_et_cotes (feuille PDF : échelle écrite ET cotes). */
+  /** $INSUNITS, declaration_et_cotes (mention écrite ET cotes), echelle_de_presentation (DXF : échelle écrite dans la présentation ET fenêtre), ou echelle_ecrite_et_cotes (feuille PDF : échelle écrite ET cotes). */
   source: string | null;
   tolerance: number;
 }

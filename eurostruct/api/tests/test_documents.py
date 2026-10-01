@@ -23,7 +23,7 @@ from eurostruct_api import documents as service
 
 # LES PLANS FABRIQUES DU MODULE D'EXTRACTION, les memes que ses tests lisent.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "extraction" / "tests"))
-from fabrique_geometrie import dxf_coffrage_s101
+from fabrique_geometrie import dxf_coffrage_s101, dxf_fondations_pieux
 from fabrique_pdf_vectoriel import pdf_plan_vectoriel
 
 PROJET = "aaaaaaaa-0000-0000-0000-00000000000a"
@@ -446,6 +446,22 @@ def test_le_modele_d_une_feuille_pdf_se_relit_par_le_contrat():
     assert unites.sheet is not None and unites.sheet["page"] == 1
     assert {a.label for a in lu.structure.grid} == {"A", "B", "C", "1", "2"}
     assert {a.evidence.classified_by for a in lu.structure.grid} == {"style"}
+
+
+def test_un_modele_avec_pieux_et_unite_de_presentation_se_relit_par_le_contrat():
+    """Les pieux passent le contrat fermé du modèle ; un modèle enregistré avant
+    eux (sans la clé) aussi."""
+    _, resultat = service.analyser(dxf_fondations_pieux())
+    lu = service.en_structure(PROJET, _document({"structure": resultat.structure}))
+    assert lu is not None
+    assert len(lu.structure.piles) == 11
+    assert lu.structure.units.source == "echelle_de_presentation"
+    assert {p.diameter for p in lu.structure.piles} == {60, 63}
+    ancien = {k: v for k, v in resultat.structure.items() if k != "piles"}
+    relu = service.en_structure(PROJET, _document({"structure": ancien}))
+    assert relu is not None and relu.structure.piles == []
+    resume = service.en_document(_document({"structure": resultat.structure})).structure_summary
+    assert (resume.drawing_units, resume.counts["piles"]) == ("cm", 11)
 
 
 def test_une_mesure_sur_une_feuille_pdf_dit_qu_elle_vient_du_pdf():

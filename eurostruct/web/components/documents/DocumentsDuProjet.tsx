@@ -225,6 +225,8 @@ export function DocumentsDuProjet({ projet, porteur, elementCourant, surReport }
                   {d.structure_summary && (
                     <span className="aide modele-resume" id={`modele-resume-${d.document_id}`}>
                       {" "}Modèle structurel : {d.structure_summary.counts.columns ?? 0} poteau(x),
+                      {d.structure_summary.counts.piles
+                        ? ` ${d.structure_summary.counts.piles} pieu(x),` : ""}
                       {" "}{d.structure_summary.counts.beams ?? 0} poutre(s),
                       {" "}{d.structure_summary.counts.spans ?? 0} travée(s),
                       {" "}{d.structure_summary.counts.slabs ?? 0} dalle(s)

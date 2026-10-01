@@ -47,7 +47,7 @@ pytestmark = [
 # propres tests lisent. Aucune copie: une seconde fabrique deriverait.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "extraction" / "tests"))
 from fabrique import LIGNES_DU_PLAN, dxf_de_plan, entete_dwg, pdf_de_texte  # noqa: E402
-from fabrique_geometrie import dxf_coffrage_s101
+from fabrique_geometrie import dxf_coffrage_s101, dxf_fondations_pieux
 from fabrique_pdf_vectoriel import pdf_plan_vectoriel
 
 ISSUER = "https://fictif.documents.test/auth/v1"
@@ -640,6 +640,30 @@ def test_une_feuille_pdf_vectorielle_donne_un_modele_et_des_mesures_tracees(
     assert modele["units"]["source"] == "echelle_ecrite_et_cotes"
     assert modele["units"]["sheet"]["page"] == 1
     assert {n["element"] for n in modele["unresolved"]} >= {"poutres"}
+
+
+def test_un_plan_de_fondations_garde_ses_pieux_et_son_unite_de_presentation(
+        client, entete, projet_geo):
+    reponse = _deposer(client, entete, projet_geo, dxf_fondations_pieux(),
+                       kind="formwork_drawing", nom="FICTIF-fondations.dxf")
+    assert reponse.status_code == 201, reponse.text
+    document = reponse.json()["document"]
+    assert document["structure_summary"]["drawing_units"] == "cm"
+    assert document["structure_summary"]["counts"]["piles"] == 11
+    assert document["structure_summary"]["counts"]["columns"] == 4
+    modele = client.get(
+        f"/v1/projects/{projet_geo['project_id']}/documents/"
+        f"{document['document_id']}/structure", headers=entete(V)).json()["structure"]
+    assert len(modele["piles"]) == 11
+    assert modele["units"]["source"] == "echelle_de_presentation"
+    # AUCUNE PROPOSITION NE VIENT D'UN PIEU; la base garde l'unite citee.
+    lignes = _observer(
+        "select kind, proposed_value->>'unit', basis->'unit_declaration'->>'source' "
+        "from extractions where document_id = %s and method = 'geometrie'",
+        document["document_id"])
+    assert lignes and not any(kind == "column_diameter" for kind, _, _ in lignes)
+    assert {(u, src) for kind, u, src in lignes if kind == "grid_spacing"} == {
+        ("cm", "echelle_de_presentation")}
 
 
 def test_un_document_sans_geometrie_n_a_pas_de_modele(client, entete, projet, plan):

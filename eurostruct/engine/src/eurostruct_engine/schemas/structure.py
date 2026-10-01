@@ -42,6 +42,7 @@ __all__ = [
     "NoeudDeGrille",
     "NoeudDuGraphe",
     "NonResolu",
+    "PieuLu",
     "PoteauLu",
     "PoutreLue",
     "PreuveGeometrique",
@@ -84,8 +85,10 @@ class UnitesDuDessin(_Lecture):
         description="mm, cm, m, in, ft — ou null : le dessin ne déclare pas son unité.")
     basis: Literal["declaration", "absente"]
     source: str | None = Field(
-        description="$INSUNITS, declaration_et_cotes (mention écrite ET cotes), ou "
-                    "echelle_ecrite_et_cotes (feuille PDF : échelle écrite ET cotes).")
+        description="$INSUNITS, declaration_et_cotes (mention écrite ET cotes), "
+                    "echelle_de_presentation (DXF : échelle écrite dans la présentation ET "
+                    "fenêtre), ou echelle_ecrite_et_cotes (feuille PDF : échelle écrite ET "
+                    "cotes).")
     insunits: int | None
     tolerance: float
     quantum: float
@@ -141,6 +144,25 @@ class PoteauLu(_Lecture):
     angle_deg: float
     grid_node: str | None
     filled: bool
+    confidence: float
+    mark_source: dict[str, Any] | None
+    evidence: PreuveGeometrique
+
+
+class PieuLu(_Lecture):
+    """Un pieu : montré et compté, jamais un poteau ; aucune valeur n'en est
+    proposée (fondations profondes hors du domaine validé du moteur)."""
+
+    id: str
+    mark: str | None
+    shape: Literal["rectangle", "cercle", "polygone"]
+    centre: Point
+    diameter: Nombre | None
+    width: Nombre | None
+    depth: Nombre | None
+    outline: list[Point] | None = Field(
+        description="Le contour, sauf pour un cercle (centre et diamètre suffisent).")
+    grid_node: str | None
     confidence: float
     mark_source: dict[str, Any] | None
     evidence: PreuveGeometrique
@@ -314,6 +336,9 @@ class ModeleStructurel(_Lecture):
     grid_families: list[FamilleDeGrille]
     grid_nodes: list[NoeudDeGrille]
     columns: list[PoteauLu]
+    piles: list[PieuLu] = Field(
+        default_factory=list,
+        description="Les pieux (absents des modèles enregistrés avant leur lecture).")
     walls: list[VoileLu]
     beams: list[PoutreLue]
     spans: list[TraveeLue]

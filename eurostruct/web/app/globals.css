@@ -272,6 +272,7 @@ td.decomptes { font-size: .82rem; color: var(--encre-douce); }
 .plan-poutre { fill: var(--trait); stroke: var(--encre-douce); stroke-width: 1; cursor: pointer; }
 .plan-voile { fill: var(--encre-douce); stroke: var(--encre); stroke-width: 1; cursor: pointer; }
 .plan-poteau { fill: var(--encre); stroke: var(--encre); stroke-width: 1; cursor: pointer; }
+.plan-pieu { fill: none; stroke: var(--encre-douce); stroke-width: 0.6; stroke-dasharray: 3 2; }
 .plan-travee { cursor: pointer; }
 .plan-travee line { stroke: var(--ok); stroke-width: 1.5; }
 .plan-travee text { fill: var(--ok); font-family: ui-sans-serif, sans-serif; }
