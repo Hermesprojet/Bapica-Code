@@ -23,6 +23,7 @@ béton armé.** Pas quarante modules à 30 %.
 | **Vérification complète en cinq chapitres** — flexion, effort tranchant, ancrage, ouverture des fissures, flèche — en une seule saisie | ✅ orchestrateur déterministe, quatre états par chapitre |
 | **Saisie guidée en sept étapes**, qui rend visible ce qui manque plutôt que de le faire découvrir au refus | ✅ |
 | **Lecture des plans** — dépôt PDF/DXF (DWG conservé), valeurs **proposées** avec page, position, texte lu et confiance ; revue nommée (confirmer, corriger, rejeter) ; report dans la saisie avec son origine | ✅ règles déterministes, OCR borné ; aucune valeur n'entre dans un calcul sans décision humaine, et le serveur la relit au lancement — [`docs/LECTURE_DES_PLANS.md`](docs/LECTURE_DES_PLANS.md) |
+| **Géométrie des DXF** — grille, poteaux, voiles, poutres et leurs appuis, travées (entre-axes, nu à nu), dalles reconstruits depuis les traits ; portées mesurées **même quand aucun texte ne les écrit** ; modèle structurel dessiné dans la revue, source de chaque valeur affichée | ✅ règles géométriques déterministes, refus nommés hors domaine ; plans éprouvés fabriqués par les tests, rappel sur plans réels non mesuré — [`docs/GEOMETRIE_DXF.md`](docs/GEOMETRIE_DXF.md) |
 | **Note de calcul à cinq chapitres**, HTML et PDF, avec la mention obligatoire de validation | ✅ PDF sans horodatage : deux compositions rendent les mêmes octets |
 | **Plan de ferraillage DXF R2018** depuis la coupe gelée avec l'étude | ✅ déterministe entre processus, germes et appels concurrents |
 | **Aperçu SVG** du plan, depuis le même modèle géométrique, sans rien déposer | ✅ non contractuel, et il le dit |
@@ -311,6 +312,7 @@ eurostruct/
 │   └── src/eurostruct_extraction/
 │       ├── lecteurs/           PDF (couche texte, OCR borné), DXF, DWG (version seule)
 │       ├── extracteurs/        règles déterministes FR/NL/EN; protocole de vision
+│       ├── geometrie/          DXF lu par ses traits: modèle structurel, travées
 │       ├── analyse.py          parse_document — octets reconnus, pages lues
 │       └── registre.py         extract_engineering_data — propositions tracées
 ├── api/                        FastAPI: santé, calcul, atelier, livrables

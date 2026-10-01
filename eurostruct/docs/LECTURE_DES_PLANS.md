@@ -101,7 +101,7 @@ ligne qui ne porte pas tout ceci (contrainte `extraction_is_traced`, §2) :
 | boîte ou position | `bbox` (x0, y0, x1, y1 en points PDF, origine en haut à gauche) **ou** `position` (jsonb : calque, poignée, point d'insertion DXF ; dimensions de page) |
 | score de confiance | `confidence` dans [0 ; 1[ — **jamais 1** : indicatif, il n'ouvre aucune acceptation automatique |
 | texte brut lu | `raw_text` (non vide) |
-| méthode | `method` : `texte_natif`, `ocr`, `dxf`, `vision` |
+| méthode | `method` : `texte_natif`, `ocr`, `dxf`, `vision`, et depuis `0029` `geometrie` — une valeur **mesurée** sur les traits d'un DXF ([`GEOMETRIE_DXF.md`](GEOMETRIE_DXF.md)) |
 | règle et version | `model_name` (= `VERSION_EXTRACTEUR`), `basis` (règle appliquée, origine de l'unité) |
 
 **L'unité n'est jamais devinée en silence.** `basis.unit_basis` vaut
@@ -423,6 +423,13 @@ Commits séparés, dans cet ordre ; chaque étape a ses tests.
 | 9 — aucun arrondi complaisant | égalité exacte en `Decimal` entre valeur envoyée et valeur retenue, après conversion par facteur exact |
 
 ## 7. Ce qui a été réalisé, et ce qui l'a mesuré
+
+> **Suite : la géométrie des DXF.** Un DXF est désormais lu par ses traits
+> avant ses textes : grille, poteaux, voiles, poutres, travées et appuis, dalles,
+> et des portées mesurées même quand aucun texte ne les écrit. Conception,
+> résultats et écarts : [`GEOMETRIE_DXF.md`](GEOMETRIE_DXF.md). La revue y
+> distingue cinq sources — texte du PDF, OCR, texte ou cote du DXF, géométrie
+> du DXF, détection visuelle.
 
 Les commits, dans l'ordre du §5 :
 

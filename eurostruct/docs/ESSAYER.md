@@ -197,11 +197,21 @@ saisie manuelle reste entière.
 | # | geste | attendu |
 |---|---|---|
 | 1 | choisir la nature, le fichier, **Déposer et analyser** | la pièce apparaît avec son statut de lecture (« analysé », « partiellement lu : … », « DWG conservé, non lu ») et ses décomptes « N à revoir · 0 confirmée(s) » ; la revue s'ouvre |
-| 2 | dans la revue, lire une ligne | la valeur **proposée**, le texte cité tel qu'il a été lu, la page, la méthode (couche texte, OCR, entité DXF), la confiance, et d'où vient l'unité ; « Vous décidez en tant que *votre nom* » |
+| 2 | dans la revue, lire une ligne | la valeur **proposée**, sa **source** (texte du PDF, OCR, texte ou cote du DXF, géométrie du DXF), le texte cité tel qu'il a été lu, la page, la confiance, et d'où vient l'unité ; « Vous décidez en tant que *votre nom* » |
 | 3 | **Confirmer**, **Corriger** (valeur, unité, motif) ou **Rejeter** (motif) | la ligne revient décidée, à votre nom, datée par le serveur, et n'offre plus de geste : une décision est définitive |
 | 4 | **Reporter dans l'étude** (repère en cours, ex. « P1 ») | les champs correspondants se remplissent **dans l'unité du champ** (30 cm → 300 mm), chacun avec son origine (pièce, page, texte, décision) ; une valeur rejetée ou seulement proposée n'est jamais reportée |
 | 5 | modifier un champ reporté | son origine disparaît : la valeur redevient une saisie |
 | 6 | lancer l'étude | la note PDF gagne une section « Origine des données d'entrée » qui cite la pièce, la page et la décision de chaque champ reporté |
+
+**Un DXF est lu par sa géométrie.** Au-dessus du tableau, le modèle lu sur le
+dessin : grille, poteaux, poutres, travées avec leurs longueurs, dalles, et ce
+qui n'a pas pu être résolu. Une portée que le plan n'écrit nulle part est
+proposée, source « Géométrie du DXF », avec la phrase qui dit comment elle a
+été mesurée (« entre les centres de poteau C1 en A1 et de poteau C1 en B1 · …
+· la cote du dessin (« 600 ») concorde »). « Voir sur le dessin » désigne
+l'élément ; un poteau cliqué sur le dessin restreint la revue à ses valeurs.
+Une portée mesurée est une distance **entre appuis** : reportée dans `l_eff`,
+elle porte l'avertissement de la portée utile (EN 1992-1-1 §5.3.2.2).
 
 Un fichier qui n'est ni PDF, ni DXF, ni DWG est refusé **sur ses octets**,
 quelle que soit son extension. Une charge lue (« Q = 2,5 kN/m² ») se confirme

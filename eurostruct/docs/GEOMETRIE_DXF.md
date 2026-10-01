@@ -4,6 +4,9 @@
 > [`LECTURE_DES_PLANS.md`](LECTURE_DES_PLANS.md) : même circuit (proposition →
 > décision nommée → report → contrôle au calcul), une nouvelle **source** de
 > propositions — la géométrie du dessin.
+>
+> **Réalisée ensuite.** Le §14 dit ce qui a été fait, ce qui l'a mesuré, et où
+> le code s'écarte de ce plan ; le §9 montre une sortie réelle.
 
 ## 0. Point de départ mesuré
 
@@ -414,36 +417,108 @@ proposition chacun.
 
 Stocké dans `documents.analysis_report.structure` — figé avec les
 propositions, comme le reste du compte rendu — et servi par une route dédiée.
-Extrait pour S-101 :
+Extrait **réel** de la lecture de S-101 (un élément par liste ; le modèle
+complet compte 5 axes, 6 poteaux, 3 poutres, 5 travées, 2 dalles, 6 cotes) :
 
 ```json
 {
   "schema": "eurostruct.structure/1",
-  "units": {"drawing": "cm", "basis": "declaration", "source": "$INSUNITS",
-            "insunits": 5, "tolerance": 0.1},
-  "grid": [{"id": "grid:A", "label": "A", "family": 0,
-            "line": [[0, -90], [0, 700]], "handles": ["2B"], "layer": "AXES"}],
-  "columns": [{"id": "column:A1", "mark": "C1", "shape": "rectangle",
-               "centre": [0, 0], "width": 30, "depth": 30, "grid_node": "A1",
-               "classified_by": "forme", "handles": ["5C"], "confidence": 0.6}],
-  "beams": [{"id": "beam:1", "marks": ["P1", "P2"], "width": 30,
-             "axis": [[-15, 0], [1065, 0]], "supports": ["column:A1",
-             "column:B1", "column:C1"], "spans": ["span:P1", "span:P2"]}],
-  "spans": [{"id": "span:P1", "beam": "beam:1", "mark": "P1", "index": 1,
-             "count": 2, "from": {"support": "column:A1", "centre": 0,
-             "faces": [-15, 15], "grid_node": "A1"},
-             "to": {"support": "column:B1", "centre": 600, "faces": [585, 615],
-             "grid_node": "B1"},
-             "axis_length": 600, "clear_length": 570,
-             "dimensions": [{"handle": "3F", "measures": "axis_length",
-                             "displayed": "600", "agrees": true}]}],
-  "slabs": [{"id": "slab:A-B/1-2", "sides": {"1": "P1", "2": "P3", "B": "P5",
-             "A": "bord libre"}, "lx": 600, "ly": 600,
-             "label": "Dalle pleine ép. 20"}],
-  "walls": [], "openings": [], "levels": [{"text": "Niv. +3,20", "value": 3.2}],
-  "dimensions": [], "labels": [],
-  "graph": {"nodes": [], "edges": []},
-  "unresolved": [], "counts": {}
+  "units": {
+    "drawing": "cm", "basis": "declaration", "source": "$INSUNITS",
+    "insunits": 5, "tolerance": 0.1, "quantum": 0.0001
+  },
+  "grid": [
+    {
+      "id": "grid:A", "label": "A", "name": "A", "family": 1,
+      "line": [[0, -90], [0, 700]], "confidence": 0.85,
+      "label_source": {"via": "bulle", "handle": "93"},
+      "evidence": {
+        "handles": ["91"], "layers": ["AXES"], "classified_by": "calque"
+      }
+    }
+  ],
+  "columns": [
+    {
+      "id": "column:A1", "mark": "C1", "shape": "rectangle", "centre": [0, 0],
+      "width": 30, "depth": 30, "grid_node": "A1", "filled": true,
+      "confidence": 0.65,
+      "evidence": {
+        "handles": ["E4"], "layers": ["COFFRAGE"], "classified_by": "forme"
+      }
+    }
+  ],
+  "beams": [
+    {
+      "id": "beam:1", "marks": ["P1", "P2"], "width": 30,
+      "axis": [[-15, 0], [1065, 0]], "drawn_as": "rectangle",
+      "supports": ["column:A1", "column:B1", "column:C1"],
+      "spans": ["span:1.1", "span:1.2"], "supported_by_beams": [],
+      "merged_through": [], "confidence": 0.6
+    }
+  ],
+  "spans": [
+    {
+      "id": "span:1.1", "beam": "beam:1", "kind": "span", "mark": "P1",
+      "index": 1, "count": 2,
+      "from": {
+        "support": "column:A1", "kind": "poteau", "centre": 0,
+        "faces": [-15, 15], "width": 30, "grid_node": "A1",
+        "touching_only": false, "gap": 0
+      },
+      "to": {
+        "support": "column:B1", "kind": "poteau", "centre": 600,
+        "faces": [585, 615], "width": 30, "grid_node": "B1",
+        "touching_only": false, "gap": 0
+      },
+      "line": [[0, 0], [600, 0]], "axis_length": 600, "clear_length": 570,
+      "dimensions": [
+        {
+          "handle": "A1", "measures": "axis_length", "measured": 600,
+          "displayed": "600", "measure_agrees": true, "forced_mismatch": false
+        }
+      ],
+      "confidence": 0.65
+    }
+  ],
+  "slabs": [
+    {
+      "id": "slab:A-B/1-2", "kind": "panneau",
+      "edges": [
+        {"side": "A", "supported_by": null},
+        {"side": "2", "supported_by": "P3"},
+        {"side": "B", "supported_by": "P5"},
+        {"side": "1", "supported_by": "P1"}
+      ],
+      "lx": 600, "ly": 600, "cross_marker": true, "crossed_by": [],
+      "label": "Dalle pleine ép. 20", "confidence": 0.7
+    }
+  ],
+  "levels": [
+    {
+      "value": 3.2,
+      "mentions": [
+        {
+          "text": "Niv. +3,20 — Échelle 1/50", "point": [1165, -460],
+          "handle": "131"
+        }
+      ]
+    }
+  ],
+  "graph": {
+    "edges": [
+      {
+        "id": "span:1.1", "type": "beam_span", "beam": "beam:1", "mark": "P1",
+        "from": "column:A1", "to": "column:B1", "axis_length": 600,
+        "clear_length": 570
+      }
+    ]
+  },
+  "unresolved": [],
+  "counts": {
+    "grid_axes": 5, "grid_nodes": 6, "columns": 6, "walls": 0, "beams": 3,
+    "spans": 5, "cantilevers": 0, "slabs": 2, "openings": 0, "dimensions": 6,
+    "levels": 1, "unresolved": 0
+  }
 }
 ```
 
@@ -464,10 +539,10 @@ en unités du dessin, l'unité dite une fois en tête.
 
 | route | ce qu'elle rend |
 |---|---|
-| `GET /v1/projects/{id}/documents/{doc}/structure` (nouvelle) | le modèle structurel typé (`StructureDocument`), ou un refus 404 s'il n'y en a pas |
+| `GET /v1/projects/{id}/documents/{doc}/structure` (nouvelle) | le modèle structurel typé (`StructureDuDocument`, contrat fermé `ModeleStructurel`), ou un refus 404 s'il n'y en a pas |
 | `GET …/documents` | `has_structure` et un résumé (`structure_summary` : nombres d'axes, poteaux, poutres, travées, éléments non résolus) ; le modèle complet n'y voyage pas |
 | `GET …/extractions` | `source_type` par proposition : `text`, `ocr`, `cad_text`, `geometry`, `vision` |
-| `GET …/extractions/prefill` | candidats ordonnés par source (§8) ; `source_type` sur chaque champ |
+| `GET …/extractions/prefill` | candidats ordonnés par source (§8) ; `source_type` et `source_label` sur chaque champ et chaque candidat d'un conflit |
 
 Le contrôle de provenance au calcul est **inchangé** : une valeur géométrique
 confirmée s'y vérifie comme les autres — égalité exacte avec la décision
@@ -546,3 +621,84 @@ Indicative, jamais une probabilité ; strictement inférieure à 1 (contrainte d
 | 6 — rien hors du domaine | refus nommés : XREF, courbes, grilles polaires, poutre sans appui |
 | 7 — pas de « DWG natif » | inchangé |
 | 9 — aucun arrondi complaisant | quantification au micromètre réel, valeur brute conservée ; cote forcée discordante signalée, jamais « corrigée » |
+
+## 14. Ce qui a été réalisé, et ce qui l'a mesuré
+
+Les commits, dans l'ordre du §12 :
+
+| commit | contenu |
+|---|---|
+| `3eb7ecb` | ce document, avant le code |
+| `ad95fea` | migration `0029` et ses garanties SQL (`07_extraction_geometrie.sql`) |
+| `cfd4e52` | module `geometrie/` ; chaîne DXF « géométrie d'abord », corroboration et confrontation ; `DIMLFAC` ; extracteur en version 0.2.0 ; tests sur plans fabriqués |
+| `3b125dc` | API : modèle enregistré avec l'analyse, route `/structure`, `source_type`, priorité au préremplissage ; contrats TypeScript ; harnais PostgreSQL |
+| `6937e7e` | le tracé de chaque travée dans le plan (`line`), pour l'écran |
+| `9f436e0` | écran : pastilles et filtre de source, dérivation, confrontations, modèle dessiné, désignation croisée ; quatrième parcours Chromium |
+| `1b26ef8` | refus nommé d'une grille polaire (promis au §13, d'abord écrit seulement en commentaire) |
+| `a6711ed` | le préremplissage dit la source de chaque champ et de chaque candidat d'un conflit (promis au §10) |
+
+### 14.1 Ce que les plans fabriqués établissent
+
+Aucun plan réel : chaque DXF est produit par `extraction/tests/fabrique_geometrie.py`.
+
+| plan | ce qui en est lu |
+|---|---|
+| **S-101** (coffrage, cm, tout sur le calque générique `COFFRAGE`) | 5 axes par leurs bulles, 6 poteaux 30 × 30 aux nœuds, 3 poutres, **5 travées : P1 600/570, P2 450/420, P3 600/570, P4 450/420, P5 600/570 cm** (entre-axes / nu à nu), chacune confirmée par la cote du dessin ; 2 dalles portées sur leurs bords ; la coupe au 1/20 reste hors du modèle. **Aucun texte du plan n'écrit une portée.** 26 propositions géométriques, 7 corroborées par le texte (« P1 30x60 », « C1 30x30 ») |
+| S-101 tourné de 30° | les mêmes portées, les mêmes sections |
+| S-101 sans `$INSUNITS` | avec « Toutes les cotes sont en cm » : l'unité est attachée (mention **et** cotes concordantes), portées en cm ; sans la mention : longueurs sans unité, confiance − 0,2, rien ne se reporte |
+| S-101 + « Portée P1 : 6,00 m » | le texte **corrobore** la mesure (600 cm = 6,00 m, confiance + 0,05) |
+| S-101 + « Portée P1 : 6,50 m » | les deux propositions restent, chacune nomme l'autre (`conflicts_with`) |
+| **charpente AIA** (mm, `S-GRID`, `S-COLS`, `S-BEAM`…) | poteaux en blocs, dont un tourné de 90° (500 × 300) ; bulles à attribut ; poutres en paires de traits **interrompues au poteau** et réunies à travers lui ; **console** de 1 500 mm au-delà du nu ; poutre **sur voile** 6 000 / 5 700 ; **solive portée par deux poutres** 5 000 / 4 700 (« B1 → B3 ») ; une cote forcée « 6000 » sur un entraxe de 5 800 **plafonne la confiance à 0,4** et le dit |
+| calque `0`, en mètres | axes reconnus par leur type de ligne, poteaux hachurés par leur forme et leur position ; portées 6 m ; axes non étiquetés nommés `famille.rang` — aucune lettre inventée |
+| refus | référence externe, poutre courbe, poutre sans appui : nommées dans `unresolved`, **aucune proposition** ; une grille de six axes rayonnants : nommée « grille polaire », ni files ni nœuds, ses étiquettes restent des textes lus |
+| grille 20 × 20 | 400 poteaux, 760 travées, 361 dalles en **0,5 s** |
+
+### 14.2 Mesures
+
+| surface | résultat |
+|---|---|
+| module d'extraction (`pytest`) | **219 tests verts**, dont 66 unitaires de géométrie (noyau, classification en quatre langues, repères) et 27 sur les plans fabriqués |
+| suite SQL complète sur `ad95fea` | verte, `07_extraction_geometrie.sql` compris (arbre isolé) |
+| `db/test/documents_extractions.sh` | **32 cas verts**, dont : un DXF qui n'écrit aucune portée est déposé, son modèle lu par la route, la portée P1 mesurée (600 cm) confirmée, reportée en `l_eff` = 6 000 mm, et le calcul l'accepte avec une provenance « géométrie du dxf » |
+| API sans base, moteur | API sans base : 256 tests verts ; moteur 1 138 ; audit de dépendances du moteur vert ; contrat TypeScript à jour |
+| `db/test/parcours_livrable.sh` | **quatre parcours Chromium verts sur une même pile** — livrable, vérification complète, lecture des plans, **géométrie d'un DXF** : 26 valeurs mesurées et 28 lues dans le texte du DXF, séparées et comptées comme en base ; modèle dessiné ; P1 A1 → B1, 600 / 570 cm ; `l_eff` = 6 000 mm reporté et accepté au calcul avec l'origine « géométrie du dxf » |
+
+### 14.3 Écarts au plan, et pourquoi
+
+* **Une cote à `DIMLFAC ≠ 1` n'hérite plus de `$INSUNITS`.** Le plan prévoyait
+  seulement de multiplier la mesure par `DIMLFAC`. Mais un dessin en mètres coté
+  en centimètres (`DIMLFAC = 100`) et un détail au 1/20 (`DIMLFAC = 0,4`) ne se
+  distinguent pas : le nombre affiché n'est pas dans l'unité du dessin. Seule
+  une mention écrite (« Cotes en cm ») lui en donne une ; sinon il reste sans
+  unité et ne se reporte pas.
+* **Seuil des repères : six hauteurs de texte**, non quatre — une étiquette
+  posée sous un poteau, décalée d'un trait de rappel, n'était pas lue ; pour un
+  poteau, la porte est aussi deux fois sa plus grande dimension.
+* **Un groupe de poteaux sans repère garde un repère nul.** Le §5.8 voulait un
+  repère de grille pour chaque élément ; un groupe couvre plusieurs nœuds, il
+  n'en a pas un seul. Sans effet sur le report : aucune catégorie de poteau ne
+  renseigne un champ de l'étude.
+* **Une poutre sans appui ne propose rien**, pas même sa largeur : elle est
+  dans `unresolved`, et un élément non résolu ne fournit aucune valeur.
+* **Un panneau traversé par une poutre n'est pas subdivisé** : il la cite
+  (`crossed_by`).
+* **Un niveau écrit plusieurs fois est un niveau** (`levels[].mentions`).
+* **Le pas de quantification est décimal** (1 µm réel ramené au pas décimal
+  inférieur : 1e-5 in, 1e-6 ft ; sans unité, 1e-8 de la diagonale ramené de
+  même) : sans cela, l'entre-axes 450 d'un dessin sans unité s'écrivait
+  450,00001.
+* **Clés des cotes** : `measure_agrees` (les points de définition mesurent
+  l'élément) et `forced_mismatch` (le texte forcé contredit la mesure), au lieu
+  d'un seul `agrees` qui confondait les deux.
+* **Chaque travée porte son tracé** (`line`) : l'écran dessine sans refaire de
+  géométrie.
+* **Performance** : la première mesure sur la grille 20 × 20 était de 5,7 s
+  (détection des poteaux et réunion des poutres quadratiques) ; un index
+  spatial la ramène à 0,5 s.
+
+### 14.4 Non mesuré, et à ne pas annoncer
+
+Le **rappel sur des plans réels** de bureau d'études : tous les plans éprouvés
+sont fabriqués par les tests, et les conventions de dessin varient. La lecture
+dans la composition Docker et sur Supabase (`SUPABASE_UNVERIFIED`), comme pour
+la lecture des plans en général.
