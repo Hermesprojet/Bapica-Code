@@ -24,9 +24,11 @@ from fabrique import LIGNES_DU_PLAN, dxf_de_plan, pdf_de_texte
 from fabrique_geometrie import (
     dxf_charpente_mm,
     dxf_coffrage_s101,
+    dxf_etiquettes_d_axes,
+    dxf_fondations_pieux,
     dxf_sans_calques_m,
 )
-from fabrique_pdf_vectoriel import pdf_plan_sans_echelle_ecrite, pdf_plan_vectoriel
+from fabrique_pdf_vectoriel import pdf_plan_gaine, pdf_plan_sans_echelle_ecrite, pdf_plan_vectoriel
 
 #: Les méthodes que ``extraction_is_traced`` admet (0029).
 METHODES = {"texte_natif", "ocr", "dxf", "vision", "geometrie"}
@@ -42,6 +44,10 @@ _DOCUMENTS = {
     # UNE FEUILLE PDF: boite sur la feuille ET position, ensemble.
     "feuille_pdf": pdf_plan_vectoriel,
     "feuille_pdf_sans_echelle": pdf_plan_sans_echelle_ecrite,
+    # PIEUX, GAINES, ETIQUETTES, UNITE PAR LA PRESENTATION.
+    "fondations_pieux": dxf_fondations_pieux,
+    "etiquettes_d_axes": dxf_etiquettes_d_axes,
+    "feuille_pdf_gaine": pdf_plan_gaine,
 }
 
 

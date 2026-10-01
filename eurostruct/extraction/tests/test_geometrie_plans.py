@@ -158,7 +158,7 @@ def test_le_modele_est_un_json_stable_et_ses_comptes_le_resument(s101):
                 "dimensions", "levels", "labels", "graph", "unresolved"):
         assert cle in modele
     assert modele["counts"] == {
-        "grid_axes": 5, "grid_nodes": 6, "columns": 6, "walls": 0, "beams": 3,
+        "grid_axes": 5, "grid_nodes": 6, "columns": 6, "piles": 0, "walls": 0, "beams": 3,
         "spans": 5, "cantilevers": 0, "slabs": 2, "openings": 0, "dimensions": 6,
         "levels": 1, "unresolved": 0}
     assert modele["unresolved"] == []

@@ -1,6 +1,6 @@
 """``construire_modele`` : des primitives au modèle structurel, dans un ordre fixe.
 
-    tolérances → axes → contours → poteaux → voiles → bandes → graphe
+    tolérances → axes → contours → pieux → poteaux → voiles → bandes → graphe
     → cotes → repères → dalles et trémies → niveaux
 
 L'UNITÉ D'UN DESSIN QUI NE LA DÉCLARE PAS (``$INSUNITS = 0``) n'est attachée
@@ -9,6 +9,12 @@ moins deux cotes rattachées qui affichent leur propre mesure (``DIMLFAC = 1``,
 aucun texte forcé discordant). Le modèle est alors reconstruit avec cette
 unité — les seuils de plausibilité en millimètres s'appliquent — et la
 proposition cite les deux sources. Sinon, les longueurs restent sans unité.
+
+OU SI SA PRÉSENTATION LE DIT (``presentation.py``) : une échelle écrite au
+cartouche et une fenêtre qui montre ``r`` unités du dessin par mm de papier
+donnent ``n / r`` mm par unité — une unité si c'est celui du mm, du cm, du m,
+du pouce ou du pied à 0,5 % près. Si la mention écrite et la présentation se
+contredisent, rien n'est établi, et c'est dit.
 
 UNE FEUILLE PDF (``prims.cadre``) arrive déjà convertie en millimètres réels
 quand son échelle est écrite ET confirmée par ses cotes (``echelle.py``) ;
@@ -32,8 +38,10 @@ from .libelles import affecter_libelles
 from .modele import ModeleStructurel, NonResolu, Poutre, UnitesDessin
 from .niveaux import lire_niveaux
 from .noyau import MM_PAR_UNITE, IndexSpatial, Tolerances, boite_de, distance
+from .pieux import detecter_pieux
 from .poteaux import detecter_poteaux, formes_fermees
 from .poutres import detecter_bandes
+from .presentation import unite_par_presentation
 from .primitives import PrimitivesDxf, Segment
 from .voiles import detecter_voiles
 
@@ -143,10 +151,12 @@ def _construire(prims: PrimitivesDxf, declarations: list[Declaration], unites: U
     grille, etiquettes, doutes_axes = detecter_axes(prims, tol)
     lignes = _segments_pour_rectangles(prims, list(grille.noeuds), grille.entraxe_median(), tol)
     formes = formes_fermees(prims, tol, lignes)
-    poteaux, formes_poteaux, doutes_poteaux = detecter_poteaux(prims, tol, grille, formes)
-    voiles, formes_voiles, segments_voiles = detecter_voiles(prims, tol, grille, formes,
-                                                              formes_poteaux)
-    prises = formes_poteaux | formes_voiles
+    pieux = detecter_pieux(prims, tol, grille, formes)
+    poteaux, formes_poteaux, doutes_poteaux, rejets = detecter_poteaux(
+        prims, tol, grille, formes, pieux.formes_prises)
+    voiles, formes_voiles, segments_voiles = detecter_voiles(
+        prims, tol, grille, formes, formes_poteaux | pieux.formes_prises)
+    prises = formes_poteaux | formes_voiles | pieux.formes_prises
     refus_feuille: list[NonResolu] = []
     if prims.cadre is not None:
         # UNE FEUILLE PDF NE DIT PAS OÙ SONT LES POUTRES : aucun style n'en est
@@ -179,10 +189,13 @@ def _construire(prims: PrimitivesDxf, declarations: list[Declaration], unites: U
                        "texts": len(prims.textes), "dimensions": len(prims.cotes),
                        "inserts": len(prims.insertions)},
         "dimension_chains": rattachements.chaines,
+        "piles": pieux.compte_rendu,
+        "column_candidates_rejected": dict(sorted(rejets.items())),
         **compte,
     }
     modele = ModeleStructurel(
-        unites=unites, grille=grille, poteaux=poteaux, voiles=voiles, poutres=poutres,
+        unites=unites, grille=grille, poteaux=poteaux, pieux=pieux.pieux, voiles=voiles,
+        poutres=poutres,
         dalles=dalles, tremies=tremies, cotes=cotes, niveaux=niveaux, libelles=libelles,
         non_resolus=(doutes_axes + doutes_poteaux + doutes_graphe + refus_feuille
                      + _refus(prims)),
@@ -226,11 +239,29 @@ def _inferer(modele: ModeleStructurel, declarations: list[Declaration]
 def construire_modele(prims: PrimitivesDxf, declarations: list[Declaration]
                       ) -> ModeleStructurel:
     modele = _construire(prims, declarations, _unites_declarees(prims, prims.unites))
-    if prims.unites is None and prims.cadre is None:
-        inference = _inferer(modele, declarations)
-        if inference is not None:
-            unite, citation = inference
-            tol = tolerances_du_dessin(prims, unite)
-            modele = _construire(prims, declarations, UnitesDessin(
-                unite, "declaration", "declaration_et_cotes", prims.insunits, tol, citation))
+    if prims.unites is not None or prims.cadre is not None:
+        return modele
+    par_mention = _inferer(modele, declarations)
+    unite_p, citation_p, refus_p = unite_par_presentation(prims.presentations)
+    choix: tuple[str, str, dict[str, Any]] | None = None
+    doutes: list[NonResolu] = []
+    if par_mention is not None and unite_p is not None and par_mention[0] != unite_p:
+        doutes.append(NonResolu("unite", (
+            f"la mention ecrite et les cotes donnent {par_mention[0]}, la presentation "
+            f"{unite_p}: les deux sources se contredisent, les longueurs restent sans unite")))
+    elif unite_p is not None and citation_p is not None:
+        citation = dict(citation_p)
+        if par_mention is not None:
+            citation["confirmed_by_mention"] = par_mention[1]
+        choix = (unite_p, "echelle_de_presentation", citation)
+    elif par_mention is not None:
+        choix = (par_mention[0], "declaration_et_cotes", par_mention[1])
+    elif refus_p is not None:
+        doutes.append(NonResolu("unite", refus_p))
+    if choix is not None:
+        unite, source, citation = choix
+        tol = tolerances_du_dessin(prims, unite)
+        modele = _construire(prims, declarations, UnitesDessin(
+            unite, "declaration", source, prims.insunits, tol, citation))
+    modele.non_resolus.extend(doutes)
     return modele

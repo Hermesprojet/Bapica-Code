@@ -20,7 +20,8 @@ le modèle de ce qu'un logiciel de DAO exporte quand il aplatit ses calques :
 Variantes : sans échelle écrite ; « 1/50 » écrit mais dessiné au 1/100 ; motif
 de tirets par ATTRIBUT et bulles en courbes de Bézier, texte en ``1 Tf`` mis à
 l'échelle par ``Tm`` (la convention d'un autre exporteur) ; deux pages ; une
-page de texte sans dessin.
+page de texte sans dessin ; une cage d'ascenseur au nœud B2 (contour, cabine,
+chevron plein) et la lettre géante d'un noyau au bout de l'axe 2.
 
 Tous les textes disent FICTIF là où un plan réel porterait un nom.
 """
@@ -166,6 +167,13 @@ class _Feuille:
                  centre[1] + rayon * math.sin((i + 1) * pas))
             self.trait(a, b)
 
+    def contour(self, points_mm: Sequence[tuple[float, float]]) -> None:
+        """Un contour fermé, tracé, non rempli."""
+        pts = [self.p(*q) for q in points_mm]
+        chemin = " ".join(f"{x:.3f} {y:.3f} {'m' if i == 0 else 'l'}"
+                          for i, (x, y) in enumerate(pts))
+        self.ops.append(f"0 G 0.6 w [] 0 d {chemin} h S")
+
     def plein(self, points_mm: Sequence[tuple[float, float]], gris: float) -> None:
         pts = [self.p(*q) for q in points_mm]
         chemin = " ".join(f"{x:.3f} {y:.3f} {'m' if i == 0 else 'l'}"
@@ -239,8 +247,13 @@ def _cote(f: _Feuille, a_mm: tuple[float, float], b_mm: tuple[float, float],
                    de_plus=de_plus)
 
 
+def _rectangle(cx: float, cy: float, lx: float, ly: float) -> list[tuple[float, float]]:
+    return [(cx - lx / 2, cy - ly / 2), (cx + lx / 2, cy - ly / 2),
+            (cx + lx / 2, cy + ly / 2), (cx - lx / 2, cy + ly / 2)]
+
+
 def _plan(*, echelle: int = 50, ecrite: str | None = "1/50", tirets_par_attribut: bool = False,
-          corps_dans_tm: bool = False) -> _Feuille:
+          corps_dans_tm: bool = False, gaine: bool = False) -> _Feuille:
     f = _Feuille(echelle=echelle, angle_deg=10.0, origine=(260.0, 150.0),
                  tirets_par_attribut=tirets_par_attribut, corps_dans_tm=corps_dans_tm)
     x_min, x_max = AXES_X[0][1], AXES_X[-1][1]
@@ -252,8 +265,15 @@ def _plan(*, echelle: int = 50, ecrite: str | None = "1/50", tirets_par_attribut
     # Les poteaux pleins aux nœuds, le voile, la poutre (deux traits).
     for _, x in AXES_X:
         for _, y in AXES_Y:
+            if gaine and (x, y) == (6000.0, 5000.0):
+                continue
             d = POTEAU_MM / 2.0
             f.plein([(x - d, y - d), (x + d, y - d), (x + d, y + d), (x - d, y + d)], 0.2)
+    if gaine:
+        # B2 : la cage d'ascenseur (1,9 × 1,8 m), la cabine, le chevron plein.
+        f.contour(_rectangle(6000.0, 5000.0, 1900.0, 1800.0))
+        f.contour(_rectangle(6000.0, 4900.0, 1200.0, 1000.0))
+        f.plein([(5200.0, 5750.0), (6700.0, 5750.0), (5400.0, 5550.0), (5200.0, 4300.0)], 0.13)
     e = VOILE_MM / 2.0
     f.plein([(6000 + 150, 5000 - e), (12000 - 150, 5000 - e), (12000 - 150, 5000 + e),
              (6000 + 150, 5000 + e)], 0.35)
@@ -291,6 +311,10 @@ def _plan(*, echelle: int = 50, ecrite: str | None = "1/50", tirets_par_attribut
     _cote(f, (x_min, y_max), (6000.0, y_max), 900.0, "600", attache_mm=300.0)
     _cote(f, (6000.0, y_max), (x_max, y_max), 900.0, "605", attache_mm=300.0)
 
+    if gaine:
+        # La lettre du noyau, trois fois la hauteur des étiquettes de bulle,
+        # posée au bout de l'axe 2 (sans bulle de ce côté).
+        f.texte_centre("B", f.p(x_max + depasse + 1500.0, AXES_Y[-1][1]), 30.0, NOIR)
     # Un repère de local : un nombre noir, sur aucune ligne de cote.
     f.texte("12", f.p(3000.0, 2500.0), 8.0, NOIR)
     # Le cartouche : l'échelle écrite, loin du dessin, non tournée.
@@ -317,6 +341,12 @@ def pdf_plan_hors_echelle() -> bytes:
 def pdf_plan_tirets_par_attribut() -> bytes:
     """Le motif des axes et des bulles par attribut ``d``, le corps dans ``Tm``."""
     return assembler([_plan(tirets_par_attribut=True, corps_dans_tm=True).flux()])
+
+
+def pdf_plan_gaine() -> bytes:
+    """La feuille de base, avec une cage d'ascenseur au lieu du poteau B2 et
+    la lettre géante d'un noyau au bout de l'axe 2."""
+    return assembler([_plan(gaine=True).flux()])
 
 
 def pdf_deux_pages() -> bytes:

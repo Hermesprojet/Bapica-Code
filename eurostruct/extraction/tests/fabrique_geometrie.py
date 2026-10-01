@@ -20,7 +20,16 @@ Chaque fabrique suit une convention de dessin courante, et la nomme :
 * ``dxf_cercle_sans_unite`` : un seul cercle, sans unité déclarée — la forme
   du fichier réel « R12_with_trash_beyond_EOF.dxf » des tests d'ezdxf, qui
   prenait 30 s ;
-* ``dxf_grande_grille`` : n × n axes, pour le temps de lecture.
+* ``dxf_grande_grille`` : n × n axes, pour le temps de lecture ;
+* ``dxf_fondations_pieux`` : un plan de fondations SANS unité déclarée, dont la
+  PRÉSENTATION dit l'échelle (« 1/100 », fenêtre à 10 unités par mm) — poteaux
+  préfabriqués sur des socles cachés concentriques, une paroi de pieux sécants
+  dessinée deux fois (calque et xréf) avec remplissages et lentilles, des pieux
+  aux nœuds (calque, bloc, repère), une cage d'ascenseur (cabine, chevron), une
+  trémie barrée, une gaine nommée, une semelle ;
+* ``dxf_etiquettes_d_axes`` : une lettre géante et une lettre égarée au bout
+  d'axes à bulle, deux bulles qui se contredisent, un pieu numéroté au bout
+  d'un axe.
 
 Tous les textes disent FICTIF là où un plan réel porterait un nom.
 """
@@ -369,4 +378,176 @@ def dxf_grande_grille(n: int = 20, *, entraxe: float = 6000.0) -> bytes:
                                close=True, dxfattribs={"layer": "POUTRES"})
             msp.add_lwpolyline([(c - 150, a), (c + 150, a), (c + 150, b), (c - 150, b)],
                                close=True, dxfattribs={"layer": "POUTRES"})
+    return _ecrire(doc)
+
+
+# ------------------------------------------------------- FONDATIONS (cm)
+def dxf_fondations_pieux(*, echelles: tuple[str, ...] = ("1/100",), rapport: float = 10.0,
+                         insunits: int = 0, mention: str | None = None,
+                         presentation: bool = True) -> bytes:
+    """Un plan de fondations en cm, SANS ``$INSUNITS`` : la présentation « H »
+    écrit ``echelles`` et sa fenêtre montre ``rapport`` unités par mm de papier.
+
+    Files A–D (0, 600, 1200, 1800) et 1–3 (0, 500, 1000), bulles en haut et à
+    gauche. Aux nœuds : A1, B1, C1, A2 poteaux préfabriqués 50 × 50 hachurés,
+    chacun sur un socle caché 170 × 170 ; B2 une cage d'ascenseur 190 × 180
+    (cabine, chevron plein) ; C2 une trémie 80 × 80 barrée ; D1 une gaine
+    60 × 60 nommée « GAINE » ; D2 une semelle 120 × 120 (calque ``SEMELLES``) ;
+    A3, B3 des pieux Ø 60 (calque ; le premier en double dans une xréf, rempli,
+    repéré « P12 » ; le second repéré « PIEU 13 ») ; C3 un pieu par bloc
+    ``PIEU_D60``. Sous la grille, une paroi de huit pieux sécants Ø 63 tous les
+    50 cm : calque, copie cachée de xréf, remplissages, lentilles.
+
+    ``mention`` écrit une note (« Cotes en mm ») et deux cotes d'axe à axe :
+    la règle « mention et cotes » s'applique alors aussi."""
+    import ezdxf
+    from ezdxf.enums import TextEntityAlignment as A
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = insunits
+    msp = doc.modelspace()
+    # « DASHED » : le trait caché du gabarit d'ezdxf (le plan réel dit « HIDDEN »).
+    for nom, trait in (("AXES", "DASHDOT"), ("BETON_PREFAB_COUPE", "CONTINUOUS"),
+                       ("HACH_BETON_PREFAB", "CONTINUOUS"), ("BETON_CACHE", "DASHED"),
+                       ("PIEUX_COUPE", "CONTINUOUS"), ("XREF$0$PIEUX_COUPE", "DASHED"),
+                       ("HACH_BETON_CACHE", "CONTINUOUS"), ("HACH_PIEUX_COUPE", "CONTINUOUS"),
+                       ("PIEUX_TEXTE", "CONTINUOUS"), ("TEXTES", "CONTINUOUS"),
+                       ("SEMELLES", "CONTINUOUS"), ("OMBRE", "CONTINUOUS"),
+                       ("EQUIPEMENT", "CONTINUOUS"), ("BETON_COUPE", "CONTINUOUS"),
+                       ("COTES", "CONTINUOUS"), ("DIVERS", "CONTINUOUS")):
+        doc.layers.add(nom, linetype=trait)
+
+    def rect(cx: float, cy: float, lx: float, ly: float, calque: str) -> list[Point]:
+        pts = [(cx - lx / 2, cy - ly / 2), (cx + lx / 2, cy - ly / 2),
+               (cx + lx / 2, cy + ly / 2), (cx - lx / 2, cy + ly / 2)]
+        msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": calque})
+        return pts
+
+    def plein(points: list[Point], calque: str) -> None:
+        hachure = msp.add_hatch(color=8, dxfattribs={"layer": calque})
+        hachure.paths.add_polyline_path(points, is_closed=True)
+
+    def disque(cx: float, cy: float, r: float, calque: str) -> None:
+        hachure = msp.add_hatch(color=8, dxfattribs={"layer": calque})
+        hachure.paths.add_edge_path().add_arc((cx, cy), r, 0, 360)
+
+    def texte(t: str, x: float, y: float, h: float, calque: str = "TEXTES") -> None:
+        msp.add_text(t, height=h, dxfattribs={"layer": calque}).set_placement(
+            (x, y), align=A.MIDDLE_CENTER)
+
+    axes_x = {"A": 0.0, "B": 600.0, "C": 1200.0, "D": 1800.0}
+    axes_y = {"1": 0.0, "2": 500.0, "3": 1000.0}
+    for nom, x in axes_x.items():
+        msp.add_line((x, -100), (x, 1100), dxfattribs={"layer": "AXES"})
+        msp.add_circle((x, 1140), 40, dxfattribs={"layer": "AXES"})
+        texte(nom, x, 1140, 30, "AXES")
+    for nom, y in axes_y.items():
+        msp.add_line((-100, y), (1900, y), dxfattribs={"layer": "AXES"})
+        msp.add_circle((-140, y), 40, dxfattribs={"layer": "AXES"})
+        texte(nom, -140, y, 30, "AXES")
+
+    # Poteaux préfabriqués hachurés, chacun sur un socle caché concentrique.
+    for x, y in ((0, 0), (600, 0), (1200, 0), (0, 500)):
+        plein(rect(x, y, 50, 50, "BETON_PREFAB_COUPE"), "HACH_BETON_PREFAB")
+        rect(x, y, 170, 170, "BETON_CACHE")
+    texte("C1", 45, -45, 12)
+
+    # B2 : la cage d'ascenseur, la cabine, le chevron plein du symbole.
+    rect(600, 500, 190, 180, "BETON_COUPE")
+    rect(600, 490, 120, 100, "EQUIPEMENT")
+    chevron = [(520, 575), (670, 575), (540, 555), (520, 430)]
+    msp.add_lwpolyline(chevron, close=True, dxfattribs={"layer": "OMBRE"})
+    plein(chevron, "OMBRE")
+    # C2 : une trémie barrée de ses deux diagonales.
+    coins = rect(1200, 500, 80, 80, "BETON_COUPE")
+    msp.add_line(coins[0], coins[2], dxfattribs={"layer": "BETON_COUPE"})
+    msp.add_line(coins[1], coins[3], dxfattribs={"layer": "BETON_COUPE"})
+    # D1 : une gaine nommée ; D2 : une semelle.
+    rect(1800, 0, 60, 60, "BETON_COUPE")
+    texte("GAINE", 1800, 0, 10)
+    rect(1800, 500, 120, 120, "SEMELLES")
+
+    # A3, B3 : des pieux sur un calque de pieux ; C3 : un pieu par bloc.
+    for x in (0, 600):
+        msp.add_circle((x, 1000), 30, dxfattribs={"layer": "PIEUX_COUPE"})
+    msp.add_circle((0, 1000), 30, dxfattribs={"layer": "XREF$0$PIEUX_COUPE"})
+    disque(0, 1000, 30, "HACH_BETON_CACHE")
+    texte("P12", 45, 1040, 12, "PIEUX_TEXTE")
+    texte("PIEU 13", 660, 1040, 12)
+    bloc = doc.blocks.new("PIEU_D60")
+    bloc.add_circle((0, 0), 30, dxfattribs={"layer": "0"})
+    msp.add_blockref("PIEU_D60", (1200, 1000), dxfattribs={"layer": "DIVERS"})
+
+    # La paroi de pieux sécants, sous la grille.
+    centres = [(100.0 + 50.0 * i, -250.0) for i in range(8)]
+    for cx, cy in centres:
+        msp.add_circle((cx, cy), 31.5, dxfattribs={"layer": "PIEUX_COUPE"})
+        msp.add_circle((cx, cy), 31.5, dxfattribs={"layer": "XREF$0$PIEUX_COUPE"})
+        disque(cx, cy, 31.5, "HACH_BETON_CACHE")
+    demi = math.degrees(math.acos(25.0 / 31.5))
+    for (ax, ay), (bx, by) in zip(centres, centres[1:], strict=False):
+        lentille = msp.add_hatch(color=8, dxfattribs={"layer": "HACH_PIEUX_COUPE"})
+        chemin = lentille.paths.add_edge_path()
+        chemin.add_arc((ax, ay), 31.5, -demi, demi)
+        chemin.add_arc((bx, by), 31.5, 180.0 - demi, 180.0 + demi)
+
+    if mention is not None:
+        texte(mention, 900, -450, 15)
+        style = doc.dimstyles.duplicate_entry("EZDXF", "COTES_1")
+        style.dxf.dimlfac, style.dxf.dimdec = 1, 0
+        for x0, x1 in ((0, 600), (600, 1200)):
+            msp.add_linear_dim(base=(x0, 1250), p1=(x0, 1100), p2=(x1, 1100),
+                               dimstyle="COTES_1", dxfattribs={"layer": "COTES"}).render()
+
+    if presentation:
+        papier = doc.paperspace()
+        papier.page_setup(size=(1189, 841), margins=(0, 0, 0, 0), units="mm")
+        papier.add_viewport(center=(600, 420), size=(1000, 700), view_center_point=(900, 450),
+                            view_height=700 * rapport)
+        for rang, echelle in enumerate(echelles):
+            papier.add_text(echelle, height=2.5, dxfattribs={"layer": "CARTOUCHE"}).set_placement(
+                (1100, 40 + 10 * rang))
+        papier.add_text("PLAN DE FONDATIONS FICTIF", height=5,
+                        dxfattribs={"layer": "CARTOUCHE"}).set_placement((900, 20))
+    return _ecrire(doc)
+
+
+# ------------------------------------------------------- ÉTIQUETTES (mm)
+def dxf_etiquettes_d_axes() -> bytes:
+    """Une grille en mm, bulles en haut (A–C) et à gauche (1–4), et ce qui a
+    trompé l'étiquetage sur des feuilles réelles :
+
+    * au bout de l'axe 2, une lettre « B » de 1 200 mm (un noyau d'ascenseur),
+      quatre fois la hauteur des étiquettes de bulle ;
+    * au bout de l'axe 3, une lettre « K » de la hauteur des étiquettes, sans
+      bulle ;
+    * au bout de l'axe 4, une seconde BULLE, « 8 » : deux preuves de même force ;
+    * au bout de l'axe C, un pieu numéroté « 12 » (cercle d'un calque de pieux)."""
+    import ezdxf
+    from ezdxf.enums import TextEntityAlignment as A
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 4
+    msp = doc.modelspace()
+    for nom in ("AXES", "TEXTES", "PIEUX"):
+        doc.layers.add(nom)
+
+    def texte(t: str, x: float, y: float, h: float, calque: str) -> None:
+        msp.add_text(t, height=h, dxfattribs={"layer": calque}).set_placement(
+            (x, y), align=A.MIDDLE_CENTER)
+
+    for nom, x in (("A", 0.0), ("B", 6000.0), ("C", 12000.0)):
+        msp.add_line((x, -1000), (x, 11000), dxfattribs={"layer": "AXES"})
+        msp.add_circle((x, 11400), 400, dxfattribs={"layer": "AXES"})
+        texte(nom, x, 11400, 300, "AXES")
+    for nom, y in (("1", 0.0), ("2", 3500.0), ("3", 7000.0), ("4", 10000.0)):
+        msp.add_line((-1000, y), (13000, y), dxfattribs={"layer": "AXES"})
+        msp.add_circle((-1400, y), 400, dxfattribs={"layer": "AXES"})
+        texte(nom, -1400, y, 300, "AXES")
+    texte("B", 14500, 3500, 1200, "TEXTES")
+    texte("K", 13500, 7000, 300, "TEXTES")
+    msp.add_circle((13400, 10000), 400, dxfattribs={"layer": "AXES"})
+    texte("8", 13400, 10000, 300, "AXES")
+    msp.add_circle((12000, -1400), 400, dxfattribs={"layer": "PIEUX"})
+    texte("12", 12000, -1400, 300, "PIEUX")
     return _ecrire(doc)

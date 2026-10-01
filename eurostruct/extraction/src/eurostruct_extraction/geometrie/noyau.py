@@ -29,12 +29,14 @@ __all__ = [
     "angle_deg",
     "boite_de",
     "centroide",
+    "compacite",
     "decouper_par_bande",
     "distance",
     "distance_point_droite",
     "distance_point_polygone",
     "distance_point_segment",
     "ecart_angulaire",
+    "enveloppe_convexe",
     "intersection_droites",
     "intervalle_projete",
     "normale",
@@ -181,6 +183,37 @@ def point_dans_polygone(p: Point, points: Sequence[Point], tolerance: float = 0.
             if xi > x:
                 dedans = not dedans
     return dedans
+
+
+def enveloppe_convexe(points: Sequence[Point]) -> list[Point]:
+    """L'enveloppe convexe (chaîne monotone d'Andrew), sens trigonométrique."""
+    pts = sorted(set(points))
+    if len(pts) < 3:
+        return list(pts)
+
+    def croix(o: Point, a: Point, b: Point) -> float:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    bas: list[Point] = []
+    for q in pts:
+        while len(bas) >= 2 and croix(bas[-2], bas[-1], q) <= 0:
+            bas.pop()
+        bas.append(q)
+    haut: list[Point] = []
+    for q in reversed(pts):
+        while len(haut) >= 2 and croix(haut[-2], haut[-1], q) <= 0:
+            haut.pop()
+        haut.append(q)
+    return bas[:-1] + haut[:-1]
+
+
+def compacite(points: Sequence[Point]) -> float:
+    """Aire du contour / aire de son enveloppe convexe : 1 pour un rectangle ou
+    un cercle, ≈ 0,7 pour un L courant, ≈ 0,3 pour un chevron. Un contour qui
+    se recoupe (un « nœud papillon ») a une aire signée presque nulle."""
+    enveloppe = enveloppe_convexe(points)
+    surface = abs(aire(enveloppe)) if len(enveloppe) >= 3 else 0.0
+    return abs(aire(points)) / surface if surface > 0 else 0.0
 
 
 def distance_point_polygone(p: Point, points: Sequence[Point]) -> float:

@@ -194,6 +194,9 @@ class PrimitivesDxf:
     origine_unites: dict[str, Any] | None = None
     #: Ce que la lecture n'a pas pu établir : (élément, raison).
     remarques: list[tuple[str, str]] = field(default_factory=list)
+    #: Les présentations d'un DXF (échelles écrites, fenêtres, papier), pour
+    #: l'unité d'un dessin qui ne la déclare pas (``presentation.py``).
+    presentations: list[Any] = field(default_factory=list)
 
     def nombre(self) -> int:
         return (len(self.segments) + len(self.contours) + len(self.cercles)
@@ -553,4 +556,10 @@ def lire_primitives(document: Any, *, insunits: int | None = None,
         if lecteur.p.tronquee:
             break
         lecteur.visiter(entite)
+    from .presentation import lire_presentations
+
+    try:
+        lecteur.p.presentations = lire_presentations(document)
+    except Exception:  # noqa: BLE001 — une présentation illisible ne dit rien
+        lecteur.ecarter("presentation illisible")
     return lecteur.p

@@ -13,6 +13,10 @@ Au-delà de six hauteurs de texte (ou deux tailles d'élément), aucun lien.
 Les liens sont pris par coût croissant ; un texte sert une fois. Un texte
 vertical est une étiquette comme une autre : le DXF la donne exacte.
 
+UN TEXTE DE PIEU N'EST LE REPÈRE D'AUCUN ÉLÉMENT : posé sur un calque ou dans
+un bloc de pieu ou de fondation, ou nommant un pieu (« PIEU 12 »), il est
+rattaché au pieu par ``pieux.py``, jamais à un poteau, un voile, une poutre.
+
 UNE POUTRE PEUT PORTER PLUSIEURS REPÈRES : un par travée (P1 de A à B, P2 de B
 à C sur un même rectangle). Un repère UNIQUE sur une poutre continue s'étend à
 toutes ses travées, et le fondement le dit. Une travée sans repère reçoit un
@@ -28,6 +32,7 @@ from typing import Any, Final
 
 from ..extracteurs.unites import Declaration, unite_declaree
 from ..nombres import lire_nombre
+from .classification import classer, nomme_un_pieu
 from .modele import Grille, LibelleAffecte, Poteau, Poutre, Travee, Voile
 from .noyau import (
     MM_PAR_UNITE,
@@ -170,6 +175,10 @@ def affecter_libelles(textes: list[Texte], poteaux: list[Poteau], voiles: list[V
     lus = []
     for texte in textes:
         if texte.source.poignee and texte.source.poignee in deja_pris:
+            continue
+        if (classer(texte.calque, texte.source.blocs, texte.type_ligne).role in ("pieu",
+                                                                               "fondation")
+                or nomme_un_pieu(texte.texte)):
             continue
         info = lire_repere(texte.texte)
         if info is not None:

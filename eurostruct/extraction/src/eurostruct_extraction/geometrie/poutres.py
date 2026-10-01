@@ -49,7 +49,7 @@ LARGEUR_MAX_MM: Final[float] = 1500.0
 #: Ce qu'une bande ne peut jamais être.
 _EXCLUS: Final[frozenset[str]] = frozenset(
     {"axe", "cote", "texte", "niveau", "armature", "cadre", "tremie", "dalle", "voile",
-     "poteau", "hachure"})
+     "poteau", "hachure", "pieu", "fondation"})
 
 
 def intervalle_sur_bande(points: tuple[Point, ...], origine: Point, u: Point,

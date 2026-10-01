@@ -9,6 +9,17 @@ DEUX MANIÈRES DE LES RECONNAÎTRE, ET LE FONDEMENT DIT LAQUELLE
   grille (ou y est centré). Confiance 0,6. Hors nœud, un rectangle isolé n'est
   pas un poteau : c'est souvent une coupe, un détail, une réservation.
 
+UNE SECTION DE POTEAU EST PLEINE ET COMPACTE (``docs/GEOMETRIE_PIEUX_GAINES_UNITE.md``,
+§ 2). Un candidat reconnu par la seule forme est écarté, et la raison comptée,
+s'il est le dessin d'un pieu, s'il CONTIENT un autre contour fermé plus petit
+(socle, massif, gaine, pièce), s'il n'est pas compact (chevron de gaine, flèche),
+s'il est barré de ses deux diagonales (trémie), si un texte posé dedans le
+nomme ouverture (« GAINE », « ASC. »), ou si, VIDE, il est posé dans une
+enceinte continue de la taille d'un poteau (la cabine dans la gaine) — une
+enceinte cachée, elle, est sous la coupe (un socle) : le poteau qu'elle porte
+reste un poteau. Un poteau nommé par son calque ou son bloc garde la règle de
+son nom. Un pieu, un massif ne sont jamais des poteaux.
+
 UN POTEAU DESSINÉ DEUX FOIS (contour ET hachure) N'EST QU'UN POTEAU, avec deux
 preuves. Un poteau dessiné en quatre ``LINE`` est reconstitué : quatre
 segments qui se ferment à angles droits.
@@ -20,7 +31,8 @@ famille d'axes la plus proche de l'horizontale, la profondeur selon l'autre.
 from __future__ import annotations
 
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 from typing import Final
 
@@ -33,11 +45,14 @@ from .noyau import (
     angle_deg,
     boite_de,
     centroide,
+    compacite,
     distance,
+    distance_point_polygone,
     ecart_angulaire,
     point_dans_polygone,
     rectangle_de,
 )
+from .ouvertures import diagonales, nomme_une_ouverture
 from .primitives import Primitive, PrimitivesDxf, Segment
 
 __all__ = ["Forme", "detecter_poteaux", "formes_fermees"]
@@ -52,7 +67,17 @@ FRACTION_ENTRAXE_MAX: Final[float] = 0.3
 #: Les rôles qui ne sont JAMAIS un poteau.
 _JAMAIS: Final[frozenset[str]] = frozenset(
     {"axe", "cote", "texte", "niveau", "armature", "cadre", "tremie", "poutre", "voile",
-     "dalle"})
+     "dalle", "pieu", "fondation"})
+#: En dessous, l'aire d'un contour par rapport à son enveloppe convexe ne fait
+#: pas une section : un L courant est vers 0,7, un chevron de gaine vers 0,3.
+COMPACITE_MIN: Final[float] = 0.5
+#: Un contour CONTENU est plus petit que 90 % du petit côté du contenant : la
+#: hachure d'un poteau, de même taille, ne fait pas de lui un contenant.
+TAILLE_CONTENUE_MAX: Final[float] = 0.9
+#: Ces contours ne font pas d'une forme un contenant (une armature, un cadre de
+#: texte, une flèche de cote dessinés dans un poteau).
+_CONTENU_IGNORE: Final[frozenset[str]] = frozenset(
+    {"cote", "texte", "niveau", "armature", "cadre"})
 
 
 @dataclass(frozen=True)
@@ -177,16 +202,149 @@ def _noeud_proche(centre: Point, rayon: float, grille: Grille, points: tuple[Poi
     return meilleur[1] if meilleur else None
 
 
+class _Controle:
+    """Les quatre règles d'une section, sur des index construits à la demande."""
+
+    def __init__(self, prims: PrimitivesDxf, formes: list[Forme],
+                 tolerances: Tolerances, entraxe: float | None) -> None:
+        self.prims = prims
+        self.formes = formes
+        self.tol = tolerances
+        self.entraxe = entraxe
+        self._formes: IndexSpatial | None = None
+        self._segments: IndexSpatial | None = None
+        self._textes: IndexSpatial | None = None
+
+    def _case(self) -> float:
+        emprise = self.prims.emprise()
+        diagonale = (math.hypot(emprise[2] - emprise[0], emprise[3] - emprise[1])
+                     if emprise else 1.0)
+        return max(10.0 * self.tol.longueur, 0.01 * diagonale)
+
+    def raison(self, rang: int, forme: Forme, cotes: tuple[float, float]) -> str | None:
+        if forme.genre != "cercle" and compacite(forme.points) < COMPACITE_MIN:
+            return "non_compact"
+        if self._contient(rang, forme, cotes):
+            return "contenant"
+        if forme.genre == "rectangle" and self._barree(forme):
+            return "ouverture_barree"
+        if self._nommee(forme):
+            return "ouverture_nommee"
+        if not forme.rempli and self._dans_une_enceinte(rang, forme, cotes):
+            return "dans_une_enceinte"
+        return None
+
+    def _index_des_formes(self) -> IndexSpatial:
+        if self._formes is None:
+            self._formes = IndexSpatial(self._case())
+            for f in self.formes:
+                self._formes.ajouter(boite_de(f.points) if f.points else (0.0, 0.0, 0.0, 0.0))
+        return self._formes
+
+    def _dans_une_enceinte(self, rang: int, forme: Forme, cotes: tuple[float, float]) -> bool:
+        """Un contour VIDE dans un contour continu, vide, de la taille d'un poteau.
+
+        Le contour d'un poteau hachuré a un JUMEAU plein (sa hachure, même
+        boîte) : c'est une section, jamais l'équipement d'une gaine."""
+        x0, y0, x1, y1 = boite_de(forme.points)
+        grand = max(cotes)
+        bord = 2.0 * self.tol.longueur
+        voisins = self._index_des_formes().pres_de((x0, y0, x1, y1), marge=bord)
+        for j in voisins:
+            autre = self.formes[j]
+            if j != rang and autre.rempli and autre.points:
+                bx0, by0, bx1, by1 = boite_de(autre.points)
+                if max(abs(bx0 - x0), abs(by0 - y0), abs(bx1 - x1), abs(by1 - y1)) <= bord:
+                    return False
+        for j in voisins:
+            autre = self.formes[j]
+            if (j == rang or not autre.points or autre.rempli or autre.classement.cache
+                    or autre.classement.role != "inconnu"):
+                continue
+            bx0, by0, bx1, by1 = boite_de(autre.points)
+            if not (bx0 < x0 and by0 < y0 and bx1 > x1 and by1 > y1):
+                continue
+            cotes_autre = _cotes_de(autre, self.tol)
+            if (cotes_autre is None or grand > TAILLE_CONTENUE_MAX * min(cotes_autre)
+                    or not _plausible(cotes_autre, self.tol, self.entraxe)):
+                continue
+            if all(point_dans_polygone(p, autre.points) for p in forme.points):
+                return True
+        return False
+
+    def _contient(self, rang: int, forme: Forme, cotes: tuple[float, float]) -> bool:
+        x0, y0, x1, y1 = boite_de(forme.points)
+        petit = min(cotes)
+        bord = self.tol.longueur
+        for j in self._index_des_formes().pres_de((x0, y0, x1, y1)):
+            autre = self.formes[j]
+            if j == rang or not autre.points or autre.classement.role in _CONTENU_IGNORE:
+                continue
+            bx0, by0, bx1, by1 = boite_de(autre.points)
+            if (bx0 <= x0 + bord or by0 <= y0 + bord or bx1 >= x1 - bord or by1 >= y1 - bord
+                    or max(bx1 - bx0, by1 - by0) > TAILLE_CONTENUE_MAX * petit):
+                continue
+            if all(point_dans_polygone(p, forme.points)
+                   and distance_point_polygone(p, forme.points) > bord for p in autre.points):
+                return True
+        return False
+
+    def _barree(self, forme: Forme) -> bool:
+        rect = rectangle_de(forme.points, self.tol)
+        if rect is None:
+            return False
+        if self._segments is None:
+            self._segments = IndexSpatial(self._case())
+            for s in self.prims.segments:
+                self._segments.ajouter(boite_de((s.a, s.b)))
+        u, v = rect.u, rect.v
+        hu, hv = rect.longueur_u / 2.0, rect.longueur_v / 2.0
+        c = rect.centre
+        coins = tuple((c[0] + su * hu * u[0] + sv * hv * v[0],
+                       c[1] + su * hu * u[1] + sv * hv * v[1])
+                      for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1)))
+        rayon = max(2.0 * self.tol.longueur, 0.02 * rect.petit_cote)
+        trouvees = diagonales(coins, self.prims.segments, rayon,  # type: ignore[arg-type]
+                              self._segments)
+        paires = ((coins[0], coins[2]), (coins[1], coins[3]))
+
+        def barre(c1: Point, c2: Point) -> bool:
+            return any((distance(s.a, c1) <= rayon and distance(s.b, c2) <= rayon)
+                       or (distance(s.a, c2) <= rayon and distance(s.b, c1) <= rayon)
+                       for s in trouvees)
+
+        return all(barre(c1, c2) for c1, c2 in paires)
+
+    def _nommee(self, forme: Forme) -> bool:
+        if self._textes is None:
+            self._textes = IndexSpatial(self._case())
+            for t in self.prims.textes:
+                self._textes.ajouter((t.centre[0], t.centre[1], t.centre[0], t.centre[1]))
+        for k in self._textes.pres_de(boite_de(forme.points)):
+            t = self.prims.textes[k]
+            if point_dans_polygone(t.centre, forme.points) and nomme_une_ouverture(t.texte):
+                return True
+        return False
+
+
 def detecter_poteaux(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grille,
-                     formes: list[Forme]) -> tuple[list[Poteau], set[int], list[NonResolu]]:
-    """Les poteaux, les rangs des formes utilisées, et les doutes."""
+                     formes: list[Forme], exclues: Collection[int] = frozenset()
+                     ) -> tuple[list[Poteau], set[int], list[NonResolu], Counter[str]]:
+    """Les poteaux, les rangs des formes utilisées, les doutes, et les candidats
+    écartés par raison. ``exclues`` : les formes qui sont le dessin d'un pieu."""
     entraxe = grille.entraxe_median()
     index_noeuds = _index_des_noeuds(grille, tolerances)
     retenus: list[tuple[Forme, int, float, str, str | None]] = []
     doutes: list[NonResolu] = []
+    rejets: Counter[str] = Counter()
+    #: Un contour écarté compte une fois, même dessiné deux fois (polyligne et
+    #: ses traits, calque et copie de xréf).
+    rejets_vus: set[tuple[str, tuple[int, ...]]] = set()
+    pas = max(2.0 * tolerances.longueur, 1e-9)
+    controle = _Controle(prims, formes, tolerances, entraxe)
     for rang, forme in enumerate(formes):
         role, regle = forme.classement.role, forme.classement.regle
-        if role in _JAMAIS:
+        if role in _JAMAIS and role not in ("pieu", "fondation"):
             continue
         cotes = _cotes_de(forme, tolerances)
         if cotes is None:
@@ -206,7 +364,21 @@ def detecter_poteaux(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grill
                 continue
             retenus.append((forme, rang, 0.85, regle, forme.classement.motif))
         elif noeud is not None and _plausible(cotes, tolerances, entraxe):
-            # SANS CALQUE NI BLOC, LA FORME ET LA POSITION: au nœud de la grille.
+            # SANS CALQUE NI BLOC, LA FORME ET LA POSITION: au nœud de la grille —
+            # si ce n'est ni un pieu, ni un massif, ni le dessin d'un pieu, et
+            # si la forme est celle d'une section.
+            if role in ("pieu", "fondation"):
+                raison: str | None = role
+            elif rang in exclues:
+                raison = "dessin_de_pieu"
+            else:
+                raison = controle.raison(rang, forme, cotes)
+            if raison is not None:
+                cle = (raison, tuple(round(v / pas) for v in boite_de(forme.points)))
+                if cle not in rejets_vus:
+                    rejets_vus.add(cle)
+                    rejets[raison] += 1
+                continue
             retenus.append((forme, rang, 0.65 if forme.rempli else 0.6, "forme", None))
 
     # UN POTEAU DESSINE DEUX FOIS (contour et hachure) N'EN FAIT QU'UN.
@@ -288,4 +460,4 @@ def detecter_poteaux(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grill
         else:
             vus[base] = 1
         nommes.append(replace(p, id=base))
-    return nommes, utilises, doutes
+    return nommes, utilises, doutes, rejets

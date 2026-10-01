@@ -38,6 +38,7 @@ __all__ = [
     "Niveau",
     "Noeud",
     "NonResolu",
+    "Pieu",
     "Poteau",
     "Poutre",
     "Preuve",
@@ -246,6 +247,26 @@ class Poteau:
 
 
 @dataclass(frozen=True)
+class Pieu:
+    """Un pieu : montré et compté, jamais un poteau, rien n'en est proposé
+    (le dimensionnement des fondations profondes est hors du domaine validé)."""
+
+    id: str
+    #: ``cercle``, ``rectangle``, ``polygone``.
+    forme: str
+    contour: tuple[Point, ...]
+    centre: Point
+    diametre: float | None
+    largeur: float | None
+    profondeur: float | None
+    noeud: str | None
+    preuve: Preuve
+    confiance: float
+    repere: str | None = None
+    repere_source: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
 class Voile:
     id: str
     contour: tuple[Point, ...]
@@ -428,6 +449,7 @@ class ModeleStructurel:
     unites: UnitesDessin
     grille: Grille = field(default_factory=Grille)
     poteaux: list[Poteau] = field(default_factory=list)
+    pieux: list[Pieu] = field(default_factory=list)
     voiles: list[Voile] = field(default_factory=list)
     poutres: list[Poutre] = field(default_factory=list)
     dalles: list[Dalle] = field(default_factory=list)
@@ -475,7 +497,8 @@ class ModeleStructurel:
 
     def resume(self) -> dict[str, int]:
         return {"grid_axes": len(self.grille.axes), "grid_nodes": len(self.grille.noeuds),
-                "columns": len(self.poteaux), "walls": len(self.voiles),
+                "columns": len(self.poteaux), "piles": len(self.pieux),
+                "walls": len(self.voiles),
                 "beams": len(self.poutres),
                 "spans": sum(1 for t in self.travees() if t.genre == "travee"),
                 "cantilevers": sum(1 for t in self.travees() if t.genre == "console"),
@@ -505,6 +528,15 @@ class ModeleStructurel:
                     "grid_node": p.noeud, "filled": p.rempli, "confidence": p.confiance,
                     "mark_source": p.repere_source, "evidence": p.preuve.en_json()}
                    for p in self.poteaux]
+        pieux = [{"id": p.id, "mark": p.repere, "shape": p.forme, "centre": self._pt(p.centre),
+                  "diameter": self._q(p.diametre), "width": self._q(p.largeur),
+                  "depth": self._q(p.profondeur),
+                  # Un cercle se dit par son centre et son diamètre : 475 pieux
+                  # ne transportent pas 24 sommets chacun.
+                  "outline": None if p.forme == "cercle" else self._pts(p.contour),
+                  "grid_node": p.noeud, "confidence": p.confiance,
+                  "mark_source": p.repere_source, "evidence": p.preuve.en_json()}
+                 for p in self.pieux]
         voiles = [{"id": v.id, "mark": v.repere, "outline": self._pts(v.contour),
                    "axis": self._pts(v.axe) if v.axe else None,
                    "thickness": self._q(v.epaisseur), "length": self._q(v.longueur),
@@ -577,6 +609,7 @@ class ModeleStructurel:
                             "point": self._pt(n.point),
                             "axes": list(n.axes)} for n in g.noeuds],
             "columns": poteaux,
+            "piles": pieux,
             "walls": voiles,
             "beams": poutres,
             "spans": travees,

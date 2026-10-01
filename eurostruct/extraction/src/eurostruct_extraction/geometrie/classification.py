@@ -11,6 +11,13 @@ LE PLUS SPÉCIFIQUE L'EMPORTE. `S-BEAM-TEXT` est un calque de texte, pas de
 poutre ; `POUTRES-COTES` un calque de cotes. Les rôles d'annotation passent
 donc avant les rôles d'éléments.
 
+LES PIEUX ET LES FONDATIONS PASSENT JUSTE APRÈS LES COTES (voir
+``docs/GEOMETRIE_PIEUX_GAINES_UNITE.md``). Un pieu n'est jamais un poteau, un
+axe de pieux (`Pr_Pieux_axe`) n'est pas un axe de grille, le texte d'un calque
+de pieux est un repère de pieu, son niveau n'est pas un niveau de plancher.
+Un massif (`PILE_CAP`, `POER`, `SEMELLE`) est lu avant le pieu : ce n'est pas
+un pieu, et ce n'est pas un poteau.
+
 UN BLOC PRIME SUR SON CALQUE. Un bloc `POT30x30` inséré sur `0` reste un
 poteau ; le bloc le plus intérieur qui se reconnaît décide.
 """
@@ -29,13 +36,30 @@ __all__ = [
     "classer",
     "est_type_de_ligne_cache",
     "est_type_de_ligne_d_axe",
+    "nomme_un_pieu",
     "role_du_nom",
 ]
 
 Role = Literal["axe", "poteau", "poutre", "voile", "dalle", "tremie", "cote",
-               "texte", "niveau", "armature", "cadre", "hachure", "inconnu"]
+               "texte", "niveau", "armature", "cadre", "hachure", "pieu", "fondation",
+               "inconnu"]
 
 _AVANT: Final[str] = r"(?<![A-Z])"
+
+#: LES PIEUX, en cinq langues. Les composés néerlandais et allemands sont
+#: LISTÉS, pas devinés : « paal » est une sous-chaîne de ``BEPAALD``. La tête
+#: d'un pieu (``PAALKOP``, ``PFAHLKOPF``) est le pieu ; ``PILOTIS`` (poteaux)
+#: n'en est pas un.
+_PIEU: Final[str] = (
+    r"(?:MICRO[ _.-]?)?PIEUX?|PILES?(?![A-Z])|PILING|PILOTES?(?![A-Z])|"
+    r"(?:HEI|BOOR|SCHROEF|PREFAB|VIBRO|FUNDERINGS?)?PA(?:AL|LEN)(?:KOP(?:PEN)?)?(?![A-Z])|"
+    r"(?:BOHR|RAMM|MIKRO|GRUNDUNGS|GRUENDUNGS)?PF(?:AHL|AEHLE|AHLE)"
+    r"(?:KOPF|KOEPFE|KOPFE)?(?![A-Z])")
+#: Les fondations qui ne sont pas des pieux : massifs, semelles, têtes de
+#: groupe. Lues AVANT les pieux (``PILE_CAP`` est un massif).
+_FONDATION: Final[str] = (
+    r"PILE[ _.-]?CAPS?|SEMELLES?(?![A-Z])|MASSIFS?(?![A-Z])|FOOTINGS?|"
+    r"POER(?:EN)?(?![A-Z])|(?:EINZEL|STREIFEN)FUNDAMENTE?|PFAHLKOPFPLATTEN?|PFAHLROST")
 
 #: L'ORDRE EST LA PRIORITÉ: annotation d'abord, éléments ensuite.
 _ROLES: Final[tuple[tuple[str, re.Pattern[str]], ...]] = tuple(
@@ -43,6 +67,8 @@ _ROLES: Final[tuple[tuple[str, re.Pattern[str]], ...]] = tuple(
     for role, motif in (
         ("cote", r"COTES?(?![A-Z])|COTATIONS?|DIMS?(?![A-Z])|DIMENSIONS?|MAATVOERING|"
                  r"MAAT(?![A-Z])|MATEN|BEMASSUNG|BEMASZUNG"),
+        ("fondation", _FONDATION),
+        ("pieu", _PIEU),
         ("texte", r"TEXTES?|TEXT(?![A-Z])|TXT|TEKST|ANNO(?:T|TATION|TATIONS)?(?![A-Z])|"
                   r"LABELS?|REPERES?|LEGENDE|NOMENCLATURE|BESCHRIFTUNG"),
         ("niveau", r"NIVEAUX?|NIV(?![A-Z])|LEVELS?|PEIL"),
@@ -92,6 +118,15 @@ def _normaliser(nom: str) -> str:
     sans_accents = "".join(c for c in unicodedata.normalize("NFKD", nom)
                            if not unicodedata.combining(c))
     return sans_accents.upper()
+
+
+#: Un texte qui NOMME un pieu (« PIEU 12 », « pile P3 », « Paal 4 ») : jamais le
+#: repère d'un poteau, d'un voile ou d'une poutre.
+_TEXTE_PIEU: Final[re.Pattern[str]] = re.compile(_AVANT + r"(?:" + _PIEU + r")")
+
+
+def nomme_un_pieu(texte: str) -> bool:
+    return bool(_TEXTE_PIEU.search(_normaliser(texte)))
 
 
 def role_du_nom(nom: str) -> Role | None:

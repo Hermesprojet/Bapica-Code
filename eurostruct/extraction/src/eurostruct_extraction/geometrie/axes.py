@@ -6,9 +6,11 @@ c'est la distance entre deux droites parallèles, exacte, que l'entraxe cite.
 
 L'ÉTIQUETTE EST LUE LÀ OÙ LE DESSIN LA MET : dans une bulle (cercle centré sur
 le prolongement de l'axe), dans un bloc de bulle (attribut), ou dans un texte
-court posé dans le prolongement. Deux extrémités qui portent deux étiquettes
-différentes ne sont pas départagées : l'axe reste sans étiquette, et c'est
-signalé.
+court posé dans le prolongement. Une bulle ou un bloc l'emporte sur un texte
+libre, qui est cité comme écarté ; un texte libre bien plus grand ou plus petit
+que les étiquettes en bulle du dessin n'est pas une étiquette. Deux extrémités
+qui portent deux étiquettes différentes de MÊME force ne sont pas départagées :
+l'axe reste sans étiquette, et c'est signalé. Un pieu n'est jamais une bulle.
 
 GRILLE POLAIRE OU COURBE : non prise en charge. Seules les droites sont des
 axes ; trois directions ou plus portant chacune UN axe, concourants en un même
@@ -37,7 +39,7 @@ from .noyau import (
     projeter,
     unitaire,
 )
-from .primitives import Insertion, PrimitivesDxf, Segment, Texte
+from .primitives import Cercle, Insertion, PrimitivesDxf, Segment, Texte
 
 __all__ = ["ETIQUETTE_AXE", "detecter_axes"]
 
@@ -121,9 +123,23 @@ class _Candidat:
     poignee: str
     via: str
     distance: float
+    #: La hauteur du texte, quand l'étiquette est un texte (bulle ou libre).
+    hauteur: float | None = None
 
 
-def _etiquettes_possibles(ligne: _Ligne, prims: PrimitivesDxf, courts: list[Texte],
+#: UNE BULLE OU UN BLOC EST UNE PREUVE PLUS FORTE QU'UN TEXTE LIBRE : un cercle
+#: centré sur le prolongement de l'axe, l'étiquette dedans. Entre deux preuves
+#: de forces différentes, la plus forte l'emporte et l'autre est citée ; entre
+#: deux preuves de même force qui se contredisent, l'axe reste sans étiquette.
+_FORCE: Final[dict[str, int]] = {"bulle": 2, "bloc": 2, "texte": 1}
+#: Quand le dessin a des étiquettes en bulle, un texte libre n'est candidat que
+#: si sa hauteur est entre la moitié et le double de leur hauteur médiane : la
+#: lettre de 54 pt d'un noyau d'ascenseur n'étiquette pas un axe dont les
+#: bulles portent des lettres de 16 pt.
+_HAUTEUR_LIBRE: Final[tuple[float, float]] = (0.5, 2.0)
+
+
+def _etiquettes_possibles(ligne: _Ligne, cercles: list[Cercle], courts: list[Texte],
                           bulles_bloc: list[tuple[Insertion, str]],
                           hauteur_type: float) -> list[tuple[int, _Candidat]]:
     """Les étiquettes candidates, pour chaque extrémité (0 : début, 1 : fin)."""
@@ -132,7 +148,7 @@ def _etiquettes_possibles(ligne: _Ligne, prims: PrimitivesDxf, courts: list[Text
     for bout, t_bout, sens in ((0, ligne.debut, -1.0), (1, ligne.fin, 1.0)):
         extremite = (origine[0] + t_bout * ligne.u[0], origine[1] + t_bout * ligne.u[1])
         # (a) une bulle: un cercle centré sur le prolongement, un texte dedans.
-        for cercle in prims.cercles:
+        for cercle in cercles:
             r = cercle.rayon
             if distance_point_droite(cercle.centre, origine, ligne.u) > max(0.25 * r, 1e-9):
                 continue
@@ -143,7 +159,8 @@ def _etiquettes_possibles(ligne: _Ligne, prims: PrimitivesDxf, courts: list[Text
             if dedans:
                 texte = min(dedans, key=lambda t: distance(t.centre, cercle.centre))
                 trouves.append((bout, _Candidat(texte.texte.strip(), texte.source.poignee,
-                                                "bulle", distance(extremite, cercle.centre))))
+                                                "bulle", distance(extremite, cercle.centre),
+                                                texte.hauteur)))
         # (b) un bloc de bulle et son attribut.
         for insertion, valeur in bulles_bloc:
             if distance_point_droite(insertion.point, origine, ligne.u) > 2.0 * hauteur_type:
@@ -162,7 +179,7 @@ def _etiquettes_possibles(ligne: _Ligne, prims: PrimitivesDxf, courts: list[Text
             if not -h <= au_dela <= 4.0 * h:
                 continue
             trouves.append((bout, _Candidat(texte.texte.strip(), texte.source.poignee,
-                                            "texte", distance(extremite, texte.centre) + h)))
+                                            "texte", distance(extremite, texte.centre) + h, h)))
     return trouves
 
 
@@ -188,13 +205,25 @@ def detecter_axes(prims: PrimitivesDxf, tolerances: Tolerances
         if valeurs:
             bulles_bloc.append((insertion, valeurs[0]))
 
+    # UN PIEU N'EST PAS UNE BULLE: un pieu numéroté au bout d'une file de pieux
+    # n'étiquette pas un axe.
+    cercles = [c for c in prims.cercles
+               if classer(c.calque, c.source.blocs, c.type_ligne).role not in ("pieu",
+                                                                              "fondation")]
     # L'AFFECTATION DES ETIQUETTES EST GLOBALE: un texte sert un seul axe, le
     # plus proche.
     propositions: list[tuple[float, int, int, _Candidat]] = []
     for rang, ligne in enumerate(lignes):
-        for bout, candidat in _etiquettes_possibles(ligne, prims, courts, bulles_bloc,
+        for bout, candidat in _etiquettes_possibles(ligne, cercles, courts, bulles_bloc,
                                                     hauteur_type):
             propositions.append((candidat.distance, rang, bout, candidat))
+    hauteurs_bulles = sorted(c.hauteur for *_, c in propositions
+                             if c.via == "bulle" and c.hauteur)
+    if hauteurs_bulles:
+        h_bulle = hauteurs_bulles[len(hauteurs_bulles) // 2]
+        bas, haut = _HAUTEUR_LIBRE[0] * h_bulle, _HAUTEUR_LIBRE[1] * h_bulle
+        propositions = [x for x in propositions if x[3].via != "texte"
+                        or (x[3].hauteur is not None and bas <= x[3].hauteur <= haut)]
     propositions.sort(key=lambda x: (x[0], x[1], x[2], x[3].poignee))
     par_bout: dict[tuple[int, int], _Candidat] = {}
     utilisees: set[str] = set()
@@ -209,15 +238,28 @@ def detecter_axes(prims: PrimitivesDxf, tolerances: Tolerances
     etiquettes: list[tuple[str | None, dict[str, Any] | None]] = []
     for rang in range(len(lignes)):
         a, b = par_bout.get((rang, 0)), par_bout.get((rang, 1))
+        ecarte: _Candidat | None = None
         if a and b and a.texte != b.texte:
-            doutes.append(NonResolu(f"axe {rang + 1}", (
-                f"etiquettes contradictoires aux deux extremites: « {a.texte} » et "
-                f"« {b.texte} »; l'axe reste sans etiquette")))
-            etiquettes.append((None, None))
-            continue
+            if _FORCE[a.via] == _FORCE[b.via]:
+                doutes.append(NonResolu(f"axe {rang + 1}", (
+                    f"etiquettes contradictoires aux deux extremites: « {a.texte} » "
+                    f"({a.via}) et « {b.texte} » ({b.via}), preuves de meme force; "
+                    "l'axe reste sans etiquette")))
+                etiquettes.append((None, None))
+                continue
+            if _FORCE[a.via] < _FORCE[b.via]:
+                a, b = b, a
+            ecarte, b = b, None
         choisi = a or b
-        etiquettes.append((choisi.texte, {"via": choisi.via, "handle": choisi.poignee})
-                          if choisi else (None, None))
+        source: dict[str, Any] | None = None
+        if choisi:
+            source = {"via": choisi.via, "handle": choisi.poignee}
+            if ecarte is not None:
+                source["discarded"] = {
+                    "text": ecarte.texte, "via": ecarte.via, "handle": ecarte.poignee,
+                    "reason": (f"« {ecarte.texte} » ({ecarte.via}) a l'autre extremite: une "
+                               f"{choisi.via} l'emporte sur un texte libre")}
+        etiquettes.append((choisi.texte, source) if choisi else (None, None))
 
     # FAMILLES: directions egales a la tolerance pres.
     ordre = sorted(range(len(lignes)), key=lambda i: lignes[i].theta)
