@@ -440,12 +440,14 @@ Mesuré dans l'environnement de ce lot (PostgreSQL 16 jetable, Tesseract
 
 | surface | résultat |
 |---|---|
-| module d'extraction (`pytest`) | 111 tests verts, dont un PDF sans couche texte lu par OCR, un DXF binaire, une signature DWG |
+| module d'extraction (`pytest`) | 112 tests verts, dont un PDF sans couche texte lu par OCR, un DXF binaire, une signature DWG |
 | suite SQL complète (`db/test/run.sh`) sur `cd8cce1` | verte, dans un arbre isolé |
 | `db/test/documents_extractions.sh` | 28 cas verts : dépôt réel, déduplication, analyse, décisions, refus (lecteur, autre organisation, adhésion sans nom, décision rejouée), préremplissage, calcul accepté, calcul refusé sur valeur non confirmée ou modifiée, rapprochement du magasin |
 | API sans base | verte ; la requête gelée d'une étude sans document est inchangée (même identité d'exécution) |
 | `db/test/parcours_livrable.sh` | **trois parcours Chromium verts** sur une même pile : livrable, vérification complète, lecture des plans |
 | étage d'installation de l'image | rejoué hors conteneur : `./engine ./extraction ./api` en une résolution, application importée, six routes de documents présentes |
+| **`run_tests.sh --require-db` sur `115bc2c` gelé**, arbre isolé, environnement Python propre | **COMPLET — 7 surfaces vertes** : moteur 1138, importeur 113, extraction 112, API 579 collectés (245 réussis, 334 exécutés par les harnais de la surface SQL), 30 barrières de harnais, 14 groupes de garanties SQL, cohérence (seed, contrat TypeScript, dépendances du moteur) |
+| `db/test/mise_a_niveau_active.sh` depuis `da01259` et depuis `9287409`, vers `115bc2c` | **TENU** les deux fois — 26 → 28 et 27 → 28 : installation ancienne peuplée par son propre produit, diagnostic sans modification, quatre refus, concurrence refusée, relance idempotente, restauration isolée identique ligne pour ligne, interruption reprise, études et livrables relus aux mêmes empreintes et aux mêmes octets |
 
 **Écart au plan : la conversion d'unités n'emploie pas pint.** Le §3 prévoyait
 une égalité de grandeurs par pint ; le code emploie des facteurs décimaux
