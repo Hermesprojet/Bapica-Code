@@ -95,11 +95,21 @@ def _cote_porte(a: Point, b: Point, poutres: list[Poutre], voiles: list[Voile],
 
 
 def _diagonales(coins: tuple[Point, Point, Point, Point], segments: list[Segment],
-                rayon: float) -> list[Segment]:
-    """Les segments qui relient deux coins opposés (à ``rayon`` près)."""
+                rayon: float, index: IndexSpatial) -> list[Segment]:
+    """Les segments qui relient deux coins opposés (à ``rayon`` près).
+
+    Seuls ceux dont la boîte touche le voisinage du premier ou du deuxième coin
+    sont examinés (``index`` : les boîtes de ``segments``, dans leur ordre) : une
+    feuille PDF porte des dizaines de milliers de traits, et chaque panneau de
+    la grille les parcourait tous.
+    """
     trouvees = []
     paires = ((coins[0], coins[2]), (coins[1], coins[3]))
-    for s in segments:
+    proches: set[int] = set()
+    for coin in coins[:2]:
+        proches.update(index.pres_de((coin[0], coin[1], coin[0], coin[1]), marge=rayon))
+    for rang in sorted(proches):
+        s = segments[rang]
         for c1, c2 in paires:
             if ((distance(s.a, c1) <= rayon and distance(s.b, c2) <= rayon)
                     or (distance(s.a, c2) <= rayon and distance(s.b, c1) <= rayon)):
@@ -117,6 +127,10 @@ def detecter_dalles(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grille
               and classer(s.calque, s.source.blocs, s.type_ligne).role in ("inconnu", "dalle",
                                                                           "tremie")]
     textes_dalle: list[Texte] = [t for t in prims.textes if _TEXTE_DALLE.search(t.texte)]
+    index_libres = IndexSpatial(max(0.2 * (grille.entraxe_median() or 0.0),
+                                    10.0 * tolerances.longueur))
+    for s in libres:
+        index_libres.ajouter(boite_de((s.a, s.b)))
 
     familles = sorted((f for f in grille.familles if len(f.axes) >= 2),
                       key=lambda f: (-len(f.axes), f.index))
@@ -163,7 +177,7 @@ def detecter_dalles(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grille
                 lx = abs(a1.decalage - a0.decalage)
                 ly = abs(b1.decalage - b0.decalage)
                 rayon = max(0.2 * min(lx, ly), 2.0 * tolerances.longueur)
-                diagonales = _diagonales(coins, libres, rayon)
+                diagonales = _diagonales(coins, libres, rayon, index_libres)
                 marqueur = len({id(s) for s in diagonales}) >= 2
                 libelle = next((t.texte for t in sorted(
                     textes_dalle, key=lambda t: distance(t.centre, centroide(coins)))
@@ -217,7 +231,8 @@ def detecter_dalles(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grille
                                 c[1] + su * hu * u[1] + sv * hv * v[1])
                                for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1)))
             barre = len({id(s) for s in _diagonales(coins_rect, libres,  # type: ignore[arg-type]
-                                                    2.0 * tolerances.longueur)}) >= 2
+                                                    2.0 * tolerances.longueur,
+                                                    index_libres)}) >= 2
         if role == "tremie" or barre:
             panneau = next((d.id for d in dalles if d.origine == "panneau"
                             and point_dans_polygone(centroide(forme.points), d.contour)), None)
