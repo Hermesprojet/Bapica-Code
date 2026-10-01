@@ -48,7 +48,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e eurostruct/engine
           pip install -e eurostruct/tools/ndp_import
+          pip install -e "eurostruct/extraction[dev]"
           pip install pytest
+
+      # LA LECTURE DES PLANS LIT AUSSI LES PAGES NUMERISEES. Sans Tesseract,
+      # le cas d'OCR reel de la surface « extraction » est ignore — et le
+      # verdict le compte comme tel. La CI l'installe pour qu'il S'EXECUTE.
+      # Les langues sont celles que le produit demande: francais et anglais.
+      - name: Tesseract (OCR de la lecture des plans)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng
+          tesseract --list-langs
 
       # LE PILOTE POSTGRESQL, POUR LE CONTRAT DU PROVIDER.
       #

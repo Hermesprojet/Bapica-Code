@@ -14,6 +14,9 @@
 #   2. importeur      tools/ndp_import/tests  pytest
 #   3. garanties SQL  db/test/run.sh          contre un vrai PostgreSQL
 #
+# (D'autres sont venues depuis — API, securite des harnais, coherence, lecture
+# des plans —; le verdict les compte, il ne les ecrit pas en dur.)
+#
 # C'est exactement ainsi qu'un compte rendu « tous verts » a pu etre produit
 # trois fois de suite alors qu'un test de l'IMPORTEUR etait rouge: le
 # changement portait sur une donnee du MOTEUR, seule la suite moteur avait ete
@@ -113,6 +116,15 @@ run_pytest "moteur" "$HERE/engine"
 
 echo "--> importeur"
 run_pytest "importeur" "$HERE/tools/ndp_import"
+
+# LA LECTURE DES PLANS. Paquet SEPARE du moteur: son audit de dependances
+# refuse un lecteur de PDF et un moteur d'OCR, et lire un plan ne calcule
+# rien. Ses tests fabriquent leurs propres documents (PDF, DXF, en-tete DWG):
+# aucun plan reel n'est commite. Le cas d'OCR reel est IGNORE — et compte
+# comme ignore dans le detail ci-dessous — sur un poste sans Tesseract; la CI
+# l'installe, et l'y execute.
+echo "--> extraction"
+run_pytest "extraction" "$HERE/extraction"
 
 # LA COUCHE HTTP. Ses cas ne touchent ni base ni reseau: refus 422, refus de
 # jeton, rotation JWKS. Le parcours d'autorite complet, lui, exige un vrai

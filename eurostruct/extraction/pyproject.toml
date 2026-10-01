@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eurostruct-extraction"
+version = "0.1.0"
+description = "Lecture des plans et cahiers des charges: propositions tracees, jamais confirmees (EUROSTRUCT)"
+requires-python = ">=3.11"
+# VOLONTAIREMENT HORS DU MOTEUR. Son audit de dependances refuse un lecteur de
+# PDF et un moteur d'OCR: lire un plan ne calcule rien, et le code qui produit
+# les resultats de calcul n'a pas a porter cette surface. Ce paquet ne connait
+# ni la base, ni le reseau, ni l'identite: il recoit des octets et rend des
+# propositions.
+dependencies = [
+    "pdfplumber>=0.11",
+    "pypdfium2>=4.0",
+    "ezdxf>=1.1",
+    "Pillow>=10.1",
+    # LE PILOTE DE TESSERACT, PAS TESSERACT LUI-MEME. Le programme est un
+    # paquet du systeme (`tesseract-ocr`, langues fra et eng). Absent, l'OCR
+    # est declare indisponible et les pages sans couche texte sont nommees
+    # « non lues » dans le compte rendu — jamais lues a moitie en silence.
+    "pytesseract>=0.3.10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# LES CARACTERES « × », « ’ », « – » SONT VOULUS: ce sont ceux des plans, et
+# les motifs doivent les reconnaitre. Les regles qui les signalent (RUF001 a
+# RUF003) ne sont donc pas retenues.
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
