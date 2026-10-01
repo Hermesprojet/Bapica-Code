@@ -720,7 +720,28 @@ relue ni réécrite) et sur sa postcondition.
 celle du dessin », non « unité unité du dessin »), vu sur la capture ;
 vérifié par le typage seulement. Puis ce compte rendu.
 
-### 14.5 Non mesuré, et à ne pas annoncer
+### 14.5 Sur des fichiers réels : robustesse, pas encore un plan de structure
+
+Aucun plan de structure réel n'est disponible dans cet environnement. Les 36
+DXF réels des tests d'intégration d'`ezdxf` 1.4.4 (exports AutoCAD R12 à
+R2018, ASCII et binaires, un relevé Leica Disto, fichiers volontairement
+abîmés : poignées dupliquées ou vides, données après EOF, blocs sans nom) ont
+été lus par toute la chaîne. Ce ne sont **pas** des plans de structure : ils
+éprouvent qu'un vrai fichier de DAO ne fait ni planter la lecture ni inventer
+d'élément.
+
+* **aucun plantage, aucun élément inventé** : 0 poteau, 0 poutre, 0 travée,
+  0 proposition sur les 36 ;
+* **un défaut trouvé** : 27 s pour 419 traits, 11 s pour 25, 31 s pour un
+  fichier de 144 octets portant un seul cercle. Dans un dessin sans unité ni
+  grille, les cases de l'index spatial valent 1e-5 de la diagonale et une
+  recherche les parcourait toutes. Corrigé par `c771cc5` (une recherche est
+  bornée par les cases occupées ; une boîte trop grande est rangée à part) :
+  **1,4 s pour les 36 fichiers**, 0,3 s au plus ; tests de non-régression
+  ajoutés. Vérifié par le module d'extraction (221 tests), l'API sans base et
+  `documents_extractions.sh` (32 cas) — pas par une nouvelle campagne entière.
+
+### 14.6 Non mesuré, et à ne pas annoncer
 
 Le **rappel sur des plans réels** de bureau d'études : tous les plans éprouvés
 sont fabriqués par les tests, et les conventions de dessin varient. La lecture
