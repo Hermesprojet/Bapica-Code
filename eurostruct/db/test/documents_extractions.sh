@@ -24,7 +24,9 @@
 #   7. le rapprochement voit les pieces deposees: aucun orphelin, aucun absent;
 #   8. un DXF qui n'ecrit aucune portee donne son modele structurel (0029:
 #      propositions « geometrie » admises); une portee mesuree sur le dessin,
-#      decidee, entre dans le calcul avec sa provenance.
+#      decidee, entre dans le calcul avec sa provenance;
+#   9. une feuille PDF vectorielle d'une page donne aussi son modele: la base
+#      admet chaque mesure avec sa boite sur la feuille ET sa position.
 #
 # CINQ IDENTITES, CHACUNE POUR UN REFUS PRECIS: A ingenieur nomme, V
 # validateur nomme, W lecteur, N ingenieur SANS nom enregistre, B ingenieur

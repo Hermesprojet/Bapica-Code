@@ -26,6 +26,7 @@ from fabrique_geometrie import (
     dxf_coffrage_s101,
     dxf_sans_calques_m,
 )
+from fabrique_pdf_vectoriel import pdf_plan_sans_echelle_ecrite, pdf_plan_vectoriel
 
 #: Les méthodes que ``extraction_is_traced`` admet (0029).
 METHODES = {"texte_natif", "ocr", "dxf", "vision", "geometrie"}
@@ -38,6 +39,9 @@ _DOCUMENTS = {
     "coffrage_sans_unite": lambda: dxf_coffrage_s101(insunits=0, declaration=False),
     "charpente_mm": dxf_charpente_mm,
     "sans_calques_m": dxf_sans_calques_m,
+    # UNE FEUILLE PDF: boite sur la feuille ET position, ensemble.
+    "feuille_pdf": pdf_plan_vectoriel,
+    "feuille_pdf_sans_echelle": pdf_plan_sans_echelle_ecrite,
 }
 
 

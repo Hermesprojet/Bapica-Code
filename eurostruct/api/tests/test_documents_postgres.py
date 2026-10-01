@@ -48,6 +48,7 @@ pytestmark = [
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "extraction" / "tests"))
 from fabrique import LIGNES_DU_PLAN, dxf_de_plan, entete_dwg, pdf_de_texte  # noqa: E402
 from fabrique_geometrie import dxf_coffrage_s101
+from fabrique_pdf_vectoriel import pdf_plan_vectoriel
 
 ISSUER = "https://fictif.documents.test/auth/v1"
 AUDIENCE = "authenticated"
@@ -601,6 +602,44 @@ def test_le_modele_structurel_se_lit_par_sa_route(client, entete, projet_geo, co
         ("P5", "column:B1", "column:B2", 600)}
     # UNE AUTRE ORGANISATION NE LE LIT PAS.
     assert client.get(url, headers=entete(B)).status_code in (403, 404, 422)
+
+
+@pytest.fixture(scope="module")
+def feuille_pdf(client, entete, projet_geo):
+    reponse = _deposer(client, entete, projet_geo, pdf_plan_vectoriel(),
+                       kind="architect_drawing", nom="FICTIF-feuille-vectorielle.pdf")
+    assert reponse.status_code == 201, reponse.text
+    corps = reponse.json()
+    extractions = client.get(
+        f"/v1/projects/{projet_geo['project_id']}/extractions",
+        params={"document_id": corps["document"]["document_id"]},
+        headers=entete(A)).json()["extractions"]
+    return corps, extractions
+
+
+def test_une_feuille_pdf_vectorielle_donne_un_modele_et_des_mesures_tracees(
+        client, entete, projet_geo, feuille_pdf):
+    corps, extractions = feuille_pdf
+    document = corps["document"]
+    assert document["has_structure"] is True
+    assert document["structure_summary"]["drawing_units"] == "mm"
+    entraxes = {x["element_label"]: x for x in extractions
+                if x["kind"] == "grid_spacing" and x["method"] == "geometrie"}
+    assert {r: x["proposed_value"] for r, x in entraxes.items()} == {
+        "A-B": {"value": 6000, "unit": "mm"}, "B-C": {"value": 6000, "unit": "mm"},
+        "1-2": {"value": 5000, "unit": "mm"}}
+    assert {x["source_label"] for x in entraxes.values()} == {"Géométrie du PDF"}
+    # LA BASE A ADMIS LA BOITE SUR LA FEUILLE ET LA POSITION, ENSEMBLE.
+    lignes = _observer(
+        "select page, bbox is not null, position->>'space' from extractions "
+        "where document_id = %s and method = 'geometrie'", document["document_id"])
+    assert lignes and set(lignes) == {(1, True, "page")}
+    modele = client.get(
+        f"/v1/projects/{projet_geo['project_id']}/documents/"
+        f"{document['document_id']}/structure", headers=entete(V)).json()["structure"]
+    assert modele["units"]["source"] == "echelle_ecrite_et_cotes"
+    assert modele["units"]["sheet"]["page"] == 1
+    assert {n["element"] for n in modele["unresolved"]} >= {"poutres"}
 
 
 def test_un_document_sans_geometrie_n_a_pas_de_modele(client, entete, projet, plan):
