@@ -92,7 +92,8 @@ def pdf_numerise(lignes: Sequence[str], *, dpi: int = 200) -> bytes:
 
 
 def dxf_de_plan(*, insunits: int = 4, binaire: bool = False,
-                texte_force: str | None = None) -> bytes:
+                texte_force: str | None = None, dimlfac: float = 1.0,
+                mention: str | None = None) -> bytes:
     """Un plan DXF R2018 : textes, deux axes étiquetés, une cote d'axes, une cote."""
     import ezdxf
 
@@ -105,14 +106,21 @@ def dxf_de_plan(*, insunits: int = 4, binaire: bool = False,
                     dxfattribs={"layer": "TEXTE", "height": 100}).set_placement((1000, 2000))
     espace.add_mtext("Beton C25/30\\PEnrobage 30 mm",
                      dxfattribs={"layer": "TEXTE", "char_height": 100}).set_location((1000, 3000))
+    if mention:
+        espace.add_text(mention, dxfattribs={"layer": "TEXTE", "height": 100}
+                        ).set_placement((1000, 4000))
     espace.add_line((0, 0), (0, 10000), dxfattribs={"layer": "AXES"})
     espace.add_line((6000, 0), (6000, 10000), dxfattribs={"layer": "AXES"})
     espace.add_text("A", dxfattribs={"layer": "AXES", "height": 250}).set_placement((0, 10500))
     espace.add_text("B", dxfattribs={"layer": "AXES", "height": 250}).set_placement((6000, 10500))
+    # UN STYLE DE COTE QUI AFFICHE LA MESURE (DIMLFAC = 1) : le style « EZDXF »
+    # d'ezdxf, fait pour un dessin en m coté en cm, la multiplie par 100.
+    style = document.dimstyles.duplicate_entry("EZDXF", "COTES_MM")
+    style.dxf.dimlfac = dimlfac
     espace.add_linear_dim(base=(0, 11000), p1=(0, 10000), p2=(6000, 10000),
-                          dxfattribs={"layer": "AXES"}).render()
+                          dimstyle="COTES_MM", dxfattribs={"layer": "AXES"}).render()
     cote = espace.add_linear_dim(base=(0, -1000), p1=(0, 0), p2=(2500, 0),
-                                 text=texte_force or "<>",
+                                 text=texte_force or "<>", dimstyle="COTES_MM",
                                  dxfattribs={"layer": "COTES"})
     cote.render()
     if binaire:

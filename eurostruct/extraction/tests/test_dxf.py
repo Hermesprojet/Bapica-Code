@@ -24,22 +24,34 @@ def test_l_espace_objet_est_lu_et_son_unite_aussi(resultat):
 
 
 def test_les_etiquettes_d_axes_deviennent_des_files(resultat):
+    # LA GEOMETRIE LIT L'AXE ET SON ETIQUETTE ENSEMBLE: le trait et le texte
+    # sont cites, et l'etiquette n'est pas proposee une seconde fois.
     _, candidats = resultat
     files = sorted(c.valeur for c in candidats if c.categorie == "grid_line")
     assert files == ["A", "B"]
     a = [c for c in candidats if c.valeur == "A"][0]
-    assert a.position["layer"] == "AXES"
-    assert a.position["handle"]
+    assert a.methode == "geometrie"
+    assert a.position["evidence"]["layers"] == ["AXES"]
+    assert a.position["evidence"]["handles"]
+    assert a.fondement["label_source"]["via"] == "texte"
+    assert a.fondement["label_source"]["handle"]
     assert a.boite is None and a.page == 1
 
 
 def test_une_cote_sur_un_calque_d_axes_est_un_entraxe_dans_l_unite_du_dessin(resultat):
+    # L'ENTRAXE EST LA DISTANCE ENTRE LES DEUX DROITES; la cote accrochee aux
+    # deux axes le confirme et elle est citee, pas proposee a part.
     _, candidats = resultat
-    entraxe = [c for c in candidats if c.categorie == "grid_spacing"][0]
+    entraxes = [c for c in candidats if c.categorie == "grid_spacing"]
+    assert len(entraxes) == 1
+    entraxe = entraxes[0]
     assert (entraxe.valeur, entraxe.unite) == (6000, "mm")
     assert entraxe.fondement["unit_basis"] == "declaration"
     assert entraxe.fondement["unit_declaration"]["source"] == "$INSUNITS"
-    assert entraxe.methode == "dxf"
+    assert entraxe.methode == "geometrie"
+    [cote] = entraxe.fondement["dimensions"]
+    assert (cote["displayed"], cote["measure_agrees"], cote["forced_mismatch"]) == (
+        "6000", True, False)
 
 
 def test_une_cote_ailleurs_reste_une_cote_non_classee(resultat):
@@ -86,3 +98,29 @@ def test_un_dessin_sans_unite_donne_des_cotes_sans_unite():
                if c.categorie == "grid_spacing"][0]
     assert entraxe.unite is None
     assert entraxe.fondement["unit_basis"] == "absente"
+
+
+def test_une_cote_a_l_echelle_n_herite_pas_de_l_unite_du_dessin():
+    # DIMLFAC = 100 sur un dessin en mm: le nombre affiche (250000) n'est pas
+    # en mm. Rien ne dit en quoi il est: il reste sans unite, DIMLFAC cite.
+    analyse = parse_document(dxf_de_plan(dimlfac=100.0))
+    cote = [c for c in extract_engineering_data(analyse).candidats
+            if c.categorie == "dimension"][0]
+    assert (cote.valeur, cote.unite) == (250000, None)
+    assert cote.fondement["unit_basis"] == "absente"
+    assert cote.fondement["dimlfac"] == 100.0
+    assert cote.fondement["drawing_units"] == "mm"
+    assert cote.fondement["measured"] == "2500"
+
+
+def test_une_mention_ecrite_donne_l_unite_d_une_cote_a_l_echelle():
+    # UN DETAIL AU 1/20 SUR UN PLAN AU 1/50 (DIMLFAC 0,4): « Cotes en cm » dit
+    # en quoi le nombre affiche est ecrit, et cette mention est citee.
+    analyse = parse_document(dxf_de_plan(insunits=5, dimlfac=0.4,
+                                         mention="Toutes les cotes sont en cm"))
+    cote = [c for c in extract_engineering_data(analyse).candidats
+            if c.categorie == "dimension"][0]
+    assert (cote.valeur, cote.unite) == (1000, "cm")
+    assert cote.fondement["unit_basis"] == "declaration"
+    assert cote.fondement["unit_declaration"]["source"] == "mention_ecrite"
+    assert "en cm" in cote.fondement["unit_declaration"]["raw_text"]

@@ -101,6 +101,9 @@ class EntiteDxf:
     mesure: float | None = None
     points_de_definition: tuple[tuple[float, float], ...] = ()
     hauteur_texte: float | None = None
+    #: Pour une cote : ``DIMLFAC`` effectif — la valeur affichée est
+    #: ``mesure × facteur`` (un détail au 1/20 sur un plan au 1/50).
+    facteur: float | None = None
 
 
 @dataclass(frozen=True)
@@ -125,6 +128,9 @@ class DocumentAnalyse:
     #: Les octets lus, pour les extracteurs qui doivent RENDRE une page (vision).
     #: Hors de la représentation : un ``repr`` de 30 Mio n'aide personne.
     octets: bytes = field(default=b"", repr=False, compare=False)
+    #: Pour un DXF : les primitives géométriques (``geometrie.PrimitivesDxf``),
+    #: lues dans la même passe que les textes. Hors représentation.
+    primitives_dxf: Any = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)

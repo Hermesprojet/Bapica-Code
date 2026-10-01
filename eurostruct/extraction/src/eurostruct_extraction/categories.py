@@ -32,6 +32,10 @@ _LISTE: Final[tuple[Categorie, ...]] = (
     Categorie("grid_line", "Axe (file)", "texte"),
     Categorie("grid_spacing", "Entraxe de files", "longueur"),
     Categorie("beam_span", "Portée de poutre", "longueur"),
+    #: Mesurée entre les nus des deux appuis (géométrie) : revue seulement.
+    Categorie("beam_clear_span", "Portée libre (nu à nu)", "longueur"),
+    #: Porte-à-faux depuis le nu de l'appui (géométrie) : revue seulement.
+    Categorie("cantilever_length", "Longueur de console", "longueur"),
     Categorie("beam_width", "Largeur de poutre", "longueur"),
     Categorie("beam_depth", "Hauteur de poutre", "longueur"),
     Categorie("slab_thickness", "Épaisseur de dalle", "longueur"),

@@ -38,6 +38,10 @@ class LectureDxf:
     version: str | None = None
     tronquee: bool = False
     erreurs_corrigees: int = 0
+    #: Les primitives géométriques (``geometrie.PrimitivesDxf``), même passe.
+    primitives: Any = None
+    #: Si la lecture géométrique a échoué : pourquoi. Les textes restent lus.
+    erreur_geometrie: str | None = None
 
 
 def _point(valeur: Any) -> tuple[float, float] | None:
@@ -79,6 +83,16 @@ def lire_dxf(octets: bytes) -> LectureDxf:
             lecture.tronquee = True
             break
         lecture.entites.extend(_lire_entite(entite))
+
+    # LA GEOMETRIE, DANS LA MEME OUVERTURE DU FICHIER. Son echec ne fait pas
+    # echouer la lecture des textes: il est dit, et rien n'en est propose.
+    from ..geometrie.primitives import lire_primitives
+
+    try:
+        lecture.primitives = lire_primitives(document, insunits=lecture.insunits,
+                                             unites=lecture.unites)
+    except Exception as cause:  # noqa: BLE001 — la geometrie illisible se constate
+        lecture.erreur_geometrie = f"{type(cause).__name__}: {' '.join(str(cause).split())[:160]}"
     return lecture
 
 
@@ -109,9 +123,13 @@ def _lire_entite(entite: Any, calque_parent: str | None = None) -> list[EntiteDx
         points = tuple(p for p in (_point(entite.dxf.get("defpoint")),
                                    _point(entite.dxf.get("defpoint2")),
                                    _point(entite.dxf.get("defpoint3"))) if p)
+        try:
+            facteur = float(entite.override().get("dimlfac", 1.0) or 1.0)
+        except Exception:  # noqa: BLE001 — un style illisible: facteur 1, dit tel
+            facteur = 1.0
         return [EntiteDxf(type_, calque, poignee, texte=texte,
                           point=_point(entite.dxf.get("text_midpoint")),
-                          mesure=mesure, points_de_definition=points)]
+                          mesure=mesure, points_de_definition=points, facteur=facteur)]
 
     if type_ == "LINE":
         debut, fin = _point(entite.dxf.start), _point(entite.dxf.end)

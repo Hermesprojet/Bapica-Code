@@ -38,7 +38,7 @@ class DetecteurDeTest:
 
 
 def test_la_chaine_par_defaut_ne_contient_aucun_modele_de_vision():
-    assert [e.nom for e in CHAINE_PAR_DEFAUT] == ["motifs", "entites_dxf"]
+    assert [e.nom for e in CHAINE_PAR_DEFAUT] == ["geometrie", "motifs", "entites_dxf"]
     analyse = parse_document(pdf_de_texte([LIGNES_DU_PLAN]), ocr=None)
     assert all(c.methode != "vision"
                for c in extract_engineering_data(analyse).candidats)

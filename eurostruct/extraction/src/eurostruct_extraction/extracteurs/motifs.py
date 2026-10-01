@@ -37,7 +37,7 @@ from ..nombres import NOMBRE, NOMBRE_AVEC_MILLIERS, lire_nombre
 from .lignes import Ligne
 from .unites import Declaration, unite_declaree
 
-__all__ = ["Contexte", "extraire_des_lignes"]
+__all__ = ["MOTIF_NIVEAU", "Contexte", "extraire_des_lignes"]
 
 #: Une lecture OCR ne vaut jamais plus que cela, quelle que soit la règle.
 PLAFOND_OCR: Final[float] = 0.60
@@ -76,6 +76,11 @@ class Contexte:
     """Ce qu'une règle sait du document au-delà de sa ligne."""
 
     declarations: list[Declaration] = field(default_factory=list)
+    #: Les poignées que la lecture géométrique a déjà rattachées (cotes,
+    #: étiquettes d'axes) : l'extracteur d'entités ne les propose pas deux fois.
+    absorbees: set[str] = field(default_factory=set)
+    #: Le modèle structurel reconstruit, quand le document en a un (DXF).
+    structure: dict[str, Any] | None = None
 
 
 class _Fabrique:
@@ -257,6 +262,8 @@ def _charge(f: _Fabrique) -> None:
 _NIVEAU = re.compile(
     r"(?P<kw>(?i:niveaux?|niv\.|peil|level|lvl|altitude|TOP|NGF|AN)\b)?\s*[:=]?\s*"
     r"(?P<s>[+\-−±])\s?(?P<n>\d{1,3}[.,]\d{2,3})(?![\d.,])\s*(?P<u>m(?![\w²³/^]))?")
+#: Public pour la lecture géométrique, qui situe les niveaux sans les proposer.
+MOTIF_NIVEAU: Final[re.Pattern[str]] = _NIVEAU
 _NOM_NIVEAU = re.compile(
     r"(?i:\b(?:R\s?[+\-]\s?\d{1,2}|RDC|rez(?:-de-chauss[ée]e)?|sous-sol|SS\d?|"
     r"N\s?[+\-]\s?\d{1,2}|(?:niveau|[ée]tage|verdieping|level|floor)\s+[+\-]?\d{1,2}(?![.,]\d)|"

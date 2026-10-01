@@ -131,13 +131,26 @@ def _analyser_dxf(octets: bytes, fmt: str, *,
         "texts": textes, "dimensions": cotes, "truncated": lecture.tronquee,
         "repairs": lecture.erreurs_corrigees,
     }
+    primitives = lecture.primitives
+    if primitives is not None:
+        detail += (f"; geometrie: {len(primitives.segments)} trait(s), "
+                   f"{len(primitives.contours)} contour(s), {len(primitives.cercles)} cercle(s), "
+                   f"{len(primitives.insertions)} bloc(s) explose(s)")
+        compte_rendu["geometry_read"] = {
+            "segments": len(primitives.segments), "outlines": len(primitives.contours),
+            "circles": len(primitives.cercles), "inserts": len(primitives.insertions),
+            "truncated": primitives.tronquee}
+    if lecture.erreur_geometrie:
+        detail += "; geometrie illisible, seuls les textes sont lus"
+        compte_rendu["geometry_error"] = lecture.erreur_geometrie
     if conversion is not None:
         compte_rendu["conversion"] = conversion
+    partiel = lecture.tronquee or bool(primitives is not None and primitives.tronquee)
     return DocumentAnalyse(
-        format=fmt, statut="partiel" if lecture.tronquee else "analyse",
+        format=fmt, statut="partiel" if partiel else "analyse",
         detail=detail + ".", nombre_de_pages=1, couche_texte=True,
         entites_dxf=tuple(lecture.entites), unites_dxf=lecture.unites,
-        compte_rendu=compte_rendu, octets=octets)
+        compte_rendu=compte_rendu, octets=octets, primitives_dxf=primitives)
 
 
 def _analyser_dwg(octets: bytes, detecte: FormatDetecte,
@@ -160,4 +173,5 @@ def _analyser_dwg(octets: bytes, detecte: FormatDetecte,
         detail=f"converti par {convertisseur.nom}; {analyse.detail}",
         nombre_de_pages=analyse.nombre_de_pages, couche_texte=analyse.couche_texte,
         entites_dxf=analyse.entites_dxf, unites_dxf=analyse.unites_dxf,
-        version_dwg=detecte.version, compte_rendu=analyse.compte_rendu, octets=octets)
+        version_dwg=detecte.version, compte_rendu=analyse.compte_rendu, octets=octets,
+        primitives_dxf=analyse.primitives_dxf)

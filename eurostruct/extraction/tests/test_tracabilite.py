@@ -21,13 +21,29 @@ from eurostruct_extraction import (
 )
 from eurostruct_extraction.modele import Boite
 from fabrique import LIGNES_DU_PLAN, dxf_de_plan, pdf_de_texte
+from fabrique_geometrie import (
+    dxf_charpente_mm,
+    dxf_coffrage_s101,
+    dxf_sans_calques_m,
+)
 
-METHODES = {"texte_natif", "ocr", "dxf", "vision"}
+#: Les méthodes que ``extraction_is_traced`` admet (0029).
+METHODES = {"texte_natif", "ocr", "dxf", "vision", "geometrie"}
+
+_DOCUMENTS = {
+    "pdf": lambda: pdf_de_texte([LIGNES_DU_PLAN]),
+    "dxf": dxf_de_plan,
+    # LA GEOMETRIE: chaque proposition d'un modele structurel passe aussi.
+    "coffrage_cm": dxf_coffrage_s101,
+    "coffrage_sans_unite": lambda: dxf_coffrage_s101(insunits=0, declaration=False),
+    "charpente_mm": dxf_charpente_mm,
+    "sans_calques_m": dxf_sans_calques_m,
+}
 
 
-@pytest.fixture(scope="module", params=["pdf", "dxf"])
+@pytest.fixture(scope="module", params=list(_DOCUMENTS))
 def candidats(request):
-    octets = pdf_de_texte([LIGNES_DU_PLAN]) if request.param == "pdf" else dxf_de_plan()
+    octets = _DOCUMENTS[request.param]()
     resultat = extract_engineering_data(parse_document(octets, ocr=None))
     assert resultat.candidats
     return resultat.candidats
