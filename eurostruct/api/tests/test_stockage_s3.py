@@ -640,13 +640,14 @@ class TestApresRedemarrage:
         """
         import psycopg2
 
-        from eurostruct_api.reconciliation import _lignes_de_livrables
+        from eurostruct_api.reconciliation import _lignes_du_magasin
 
         connexion = psycopg2.connect(DSN_OBS)
         try:
             connexion.set_session(readonly=True)
-            lignes = _lignes_de_livrables(connexion)
-            assert lignes, "le decor est cense porter au moins un livrable"
+            lignes = _lignes_du_magasin(connexion)
+            assert any(ligne["source"] == "deliverables" for ligne in lignes), (
+                "le decor est cense porter au moins un livrable")
 
             with connexion.cursor() as curseur, pytest.raises(Exception) as pris:  # noqa: PT011
                 curseur.execute(

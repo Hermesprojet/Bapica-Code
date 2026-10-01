@@ -226,6 +226,27 @@ def rendre_note_verification(projet: dict[str, Any], calcul: dict[str, Any],
         "</dl>",
     ]
 
+    # --- 3 bis. L'ORIGINE DES ENTREES REPORTEES DEPUIS UN DOCUMENT --------
+    #
+    # SEULEMENT QUAND IL Y EN A: une etude saisie a la main garde la note
+    # d'hier, octet pour octet. La provenance est celle que le SERVEUR a
+    # reecrite depuis la decision enregistree, jamais celle du client.
+    origines = _origines(calcul)
+    if origines:
+        parties += [
+            "<h2>Origine des données d'entrée</h2>",
+            ("<p>Les entrées ci-dessous ont été reportées depuis un document du "
+             "projet. Chacune a été confirmée ou corrigée par la personne "
+             "nommée avant le calcul, et le serveur l'a vérifiée au moment du "
+             "calcul. Les autres entrées ont été saisies.</p>"),
+            ("<table><thead><tr><th>Entrée</th><th>Source lue</th>"
+             "<th>Décision</th></tr></thead><tbody>"),
+        ]
+        for libelle, source, decision in origines:
+            parties.append(f"<tr><td>{_e(libelle)}</td><td>{_e(source)}</td>"
+                           f"<td>{_e(decision)}</td></tr>")
+        parties.append("</tbody></table>")
+
     # --- 4. LES CINQ CHAPITRES -------------------------------------------
     for index, s in enumerate(sections, start=1):
         parties += _chapitre_html(index, s, journaux.get(s.get("key")) or {})
@@ -353,6 +374,39 @@ def _chapitre_html(index: int, section: dict[str, Any],
     return parties
 
 
+def _origines(calcul: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """(entrée, source lue, décision) pour chaque entrée reportée d'un document.
+
+    Lu dans la REQUÊTE GELÉE — là où la route a écrit la provenance vérifiée
+    —, dans l'ordre du contrat. Une requête sans provenance rend une liste
+    vide, et la note n'a pas de section de plus.
+    """
+    from .documents import CHAMPS_REPORTABLES
+
+    provenance = (calcul.get("request") or {}).get("provenance") or {}
+    lignes = []
+    for chemin, champ in CHAMPS_REPORTABLES.items():
+        origine = provenance.get(chemin)
+        if not isinstance(origine, dict):
+            continue
+        decision = (f"{origine.get('confirmed_by') or '—'}, "
+                    f"{str(origine.get('confirmed_at') or '—')[:16]}")
+        lignes.append((champ.libelle, str(origine.get("detail") or "—"), decision))
+    return lignes
+
+
+def _citation_pdf(texte: str) -> str:
+    """Un texte cité, sans caractère perdu EN SILENCE.
+
+    Un caractère sans glyphe dans le PDF (« ⌀ », par exemple) est écrit sous
+    la forme ``[U+2300]``: la citation reste lisible, et ce qui n'a pas pu
+    être reproduit est dit — jamais remplacé par un autre symbole.
+    """
+    from .pdf import representable
+
+    return "".join(c if representable(c) else f"[U+{ord(c):04X}]" for c in texte)
+
+
 # ---------------------------------------------------------------------------
 # PDF
 # ---------------------------------------------------------------------------
@@ -439,6 +493,21 @@ def rendre_note_verification_pdf(projet: dict[str, Any],
              "oui" if etude.get("strict_ndp") else "non (exploratoire)"),
         ]),
     ]
+
+    origines = _origines(calcul)
+    if origines:
+        blocs += [
+            Titre("Origine des données d'entrée"),
+            Paragraphe("Les entrées ci-dessous ont été reportées depuis un "
+                       "document du projet. Chacune a été confirmée ou "
+                       "corrigée par la personne nommée avant le calcul, et le "
+                       "serveur l'a vérifiée au moment du calcul. Les autres "
+                       "entrées ont été saisies."),
+            Tableau(["Entrée", "Source lue", "Décision"],
+                    [[_citation_pdf(libelle), _citation_pdf(source),
+                      _citation_pdf(decision)]
+                     for libelle, source, decision in origines]),
+        ]
 
     for index, s in enumerate(sections, start=1):
         blocs += _chapitre_pdf(index, s, journaux.get(s.get("key")) or {})

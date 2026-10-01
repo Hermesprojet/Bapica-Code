@@ -49,6 +49,10 @@ def _lire(texte: str) -> list[tuple]:
     ("C25/30 XC4 XF1", [("concrete_class", "C25/30", None),
                         ("exposure_class", "XC4", None), ("exposure_class", "XF1", None)]),
     ("Profil IPE 300 S355J2", [("steel_grade", "S355J2", None)]),
+    ("Armatures B400A et B600C", [("steel_grade", "B400A", None),
+                                  ("steel_grade", "B600C", None),
+                                  ("material_specification",
+                                   "Armatures B400A et B600C", None)]),
     ("niveau -0,60", [("floor_level", -0.6, "m")]),
 ])
 def test_ce_qui_est_ecrit_est_lu(texte, attendu):

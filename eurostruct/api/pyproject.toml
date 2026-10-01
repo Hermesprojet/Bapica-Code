@@ -9,6 +9,9 @@ description = "HTTP layer for EUROSTRUCT. Separate from the deterministic engine
 requires-python = ">=3.11"
 dependencies = [
     "eurostruct-engine>=0.3.0",
+    # LA LECTURE DES PLANS, PAQUET SEPARE DU MOTEUR. Elle entre ici, dans la
+    # couche qui recoit les fichiers, et nulle part dans celle qui calcule.
+    "eurostruct-extraction>=0.1.0",
     "fastapi>=0.110",
     "pydantic>=2.6",
     # LE PILOTE ET LA CRYPTO SONT DES DEPENDANCES DE **CETTE** COUCHE.

@@ -67,6 +67,19 @@ from eurostruct_engine.schemas.organisation import (  # noqa: E402
     Organisation,
     OrganisationCreation,
 )
+from eurostruct_engine.schemas.documents import (  # noqa: E402
+    ChampPrerempli,
+    ConflitDePreremplissage,
+    DecisionExtraction,
+    DocumentDepose,
+    DocumentTeleverse,
+    Extraction,
+    ListeDocuments,
+    ListeExtractions,
+    NonReportable,
+    Preremplissage,
+    ValeurExtraite,
+)
 from eurostruct_engine.schemas.common import (  # noqa: E402
     EngineErrorDTO,
     NdpSummaryDTO,
@@ -184,6 +197,21 @@ ROOTS = [
     ListeMembres,
     MembreModification,
     AdhesionModifiee,
+    # LES PIECES DEPOSEES ET LEUR REVUE. L'ecran depose, liste, compare,
+    # decide et reporte. Il POSTE un seul corps — la decision — et ce corps ne
+    # porte ni nom ni date: le type genere ne lui laisse pas la place de les
+    # ecrire. Les valeurs preremplies arrivent deja dans l'unite du champ.
+    ValeurExtraite,
+    DocumentDepose,
+    ListeDocuments,
+    DocumentTeleverse,
+    Extraction,
+    ListeExtractions,
+    DecisionExtraction,
+    ChampPrerempli,
+    ConflitDePreremplissage,
+    NonReportable,
+    Preremplissage,
 ]
 
 TS_OUT = REPO / "packages" / "contracts" / "src" / "generated" / "engine.ts"

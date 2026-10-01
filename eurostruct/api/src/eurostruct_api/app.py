@@ -32,6 +32,7 @@ from .erreurs import installer_gestionnaires
 from .routes import (
     autorite,
     calculs,
+    documents,
     livrables,
     organisations,
     projets,
@@ -158,6 +159,10 @@ def creer_application(reglages: Reglages | None = None) -> FastAPI:
     # sont montees apres parce qu'elles exigent une contrainte de plus — un
     # magasin d'objets — et que l'ordre rend cette dependance lisible.
     app.include_router(livrables.routeur)
+    # LES PIECES DU PROJET ET LEUR REVUE. Meme prefixe, aucune route commune:
+    # elles exigent ce que les livrables exigent — identite, base, magasin —
+    # et s'y ajoutent apres eux pour que la dependance se lise.
+    app.include_router(documents.routeur)
     # L'ENTREE — fonder son bureau, inviter, administrer les membres.
     #
     # MONTEE APRES L'ATELIER, ET C'EST LE CONTRAIRE DE L'ORDRE D'USAGE: on

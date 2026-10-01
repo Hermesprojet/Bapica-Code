@@ -241,6 +241,12 @@ def _winansi(caractere: str) -> int:
         return -1
 
 
+def representable(caractere: str) -> bool:
+    """Vrai si le caractère a un glyphe ici (WinAnsi, grec, ou équivalent)."""
+    return all(c in _GREC or _winansi(c) >= 0
+               for c in _EQUIVALENTS.get(caractere, caractere))
+
+
 # ------------------------------------------------------------- segments
 def _segments(texte: str) -> list[tuple[str, bool]]:
     """Découpe en ``(fragment, en_symbole)``.

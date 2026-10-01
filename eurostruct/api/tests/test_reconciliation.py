@@ -264,3 +264,41 @@ def test_le_magasin_est_intact_apres_un_rapprochement(magasin, tmp_path):
     assert not rapport.sain, "le decor porte volontairement des ecarts"
 
     assert photo() == avant
+
+
+# ===========================================================================
+# LES PIECES DEPOSEES (0028) — meme magasin, autre table
+# ===========================================================================
+def test_une_piece_deposee_est_rapprochee_et_nommee_comme_telle(magasin):
+    """Un plan déposé n'est pas un orphelin : sa ligne est dans `documents`."""
+    octets = b"%PDF-1.4 FICTIF plan depose"
+    empreinte = hashlib.sha256(octets).hexdigest()
+    chemin = f"pieces/{ORG}/{PROJET}/{empreinte}.pdf"
+    magasin.deposer(chemin, octets)
+    piece = dict(_ligne(octets, identifiant="p1", chemin=chemin), source="documents")
+
+    rapport = rapprocher([piece], magasin, empreintes=True)
+
+    assert _verdicts(rapport) == {ABSENT: 0, DIVERGENT: 0, ORPHELIN: 0, INTACT: 1}
+    (constat,) = rapport.constats
+    assert (constat.document_id, constat.deliverable_id) == ("p1", None)
+
+
+def test_une_piece_sans_ligne_est_un_orphelin_que_le_constat_attribue_aux_deux_tables(
+        magasin):
+    octets = b"%PDF-1.4 FICTIF plan abandonne"
+    empreinte = hashlib.sha256(octets).hexdigest()
+    magasin.deposer(f"pieces/{ORG}/{PROJET}/{empreinte}.pdf", octets)
+
+    (constat,) = rapprocher([], magasin).constats
+
+    assert constat.verdict == ORPHELIN
+    assert "`deliverables` ni de `documents`" in constat.detail
+
+
+def test_une_piece_promise_et_absente_est_le_verdict_grave(magasin):
+    piece = dict(_ligne(b"FICTIF jamais depose", identifiant="p2",
+                        chemin=f"pieces/{ORG}/{PROJET}/{'e' * 64}.pdf"),
+                 source="documents")
+    (constat,) = rapprocher([piece], magasin).constats
+    assert (constat.verdict, constat.document_id) == (ABSENT, "p2")

@@ -59,6 +59,7 @@ __all__ = [
     "StockageLocal",
     "StockageS3",
     "chemin_de_livrable",
+    "chemin_de_piece",
     "disposition_de_fichier",
     "empreinte",
     "stockage_configure",
@@ -200,6 +201,24 @@ def chemin_de_livrable(*, org_id: str, project_id: str, sha256: str,
             f"l'extension « {extension} » n'est pas alphanumerique."
         )
     return f"{org_id}/{project_id}/{sha256}.{suffixe}"
+
+
+#: LE PREFIXE DES PIECES DEPOSEES. Elles partagent le magasin des livrables
+#: mais pas leur arborescence: un plan d'architecte n'est pas un document que
+#: le produit a compose, et le rapprochement les distingue par leur table.
+PREFIXE_PIECES: Final[str] = "pieces"
+
+
+def chemin_de_piece(*, org_id: str, project_id: str, sha256: str,
+                    extension: str) -> str:
+    """Le chemin d'une pièce déposée, **dérivé de son contenu** comme celui
+    d'un livrable — mêmes contrôles, sous le préfixe ``pieces/``.
+
+    Le nom de fichier choisi par l'utilisateur ne traverse jamais jusqu'ici :
+    il vit en base, pour l'affichage, et nulle part dans le magasin.
+    """
+    return f"{PREFIXE_PIECES}/" + chemin_de_livrable(
+        org_id=org_id, project_id=project_id, sha256=sha256, extension=extension)
 
 
 def _identifiant_sur(valeur: str) -> bool:

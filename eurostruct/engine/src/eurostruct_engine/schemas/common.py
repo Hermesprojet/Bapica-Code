@@ -96,6 +96,15 @@ class ProvenanceDTO(Strict):
     ndp_key: str | None = None
     confirmed_by: str | None = None
     confirmed_at: str | None = None
+    #: LA DECISION ENREGISTREE, PAS SEULEMENT UN NOM. ``confirmed_by`` est ce
+    #: que l'appelant declare; ``extraction_id`` designe la ligne
+    #: d'``extractions`` que le serveur relit pour le VERIFIER — statut,
+    #: categorie, valeur — avant que la valeur n'entre dans un calcul.
+    extraction_id: str | None = Field(
+        default=None,
+        description="Identifiant de l'extraction confirmée dont la valeur "
+                    "provient. Le serveur la relit et refuse le calcul si elle "
+                    "n'est pas confirmée ou corrigée, ou si la valeur diffère.")
 
 
 class ClauseDTO(Strict):

@@ -795,6 +795,50 @@ def _exiger_origine_de_variante(ouvert: Any, jeton: str, project_id: str,
         )
 
 
+def _provenance_verifiee(ouvert: Any, jeton: str, project_id: str,
+                         corps: Any) -> Any:
+    """La requête, sa provenance vérifiée et RÉÉCRITE depuis la base — ou 422.
+
+    LES EXTRACTIONS SONT RELUES SOUS L'IDENTITÉ DE L'APPELANT, dans ce projet:
+    une extraction d'un autre projet ou d'une autre organisation n'apparaît
+    pas, et la provenance qui la nomme est refusée comme introuvable. Un
+    identifiant qui n'a pas la forme d'un uuid n'atteint même pas la base.
+    """
+    from uuid import UUID
+
+    from .. import documents as service
+
+    motifs: list[tuple[str, str]] = []
+    ids: set[str] = set()
+    for chemin, origine in corps.provenance.items():
+        try:
+            ids.add(str(UUID(origine.extraction_id or "")))
+        except ValueError:
+            motifs.append((chemin, "l'identifiant d'extraction n'a pas la forme "
+                                   "d'un identifiant"))
+    if not motifs:
+        try:
+            lignes = ouvert.atelier.extractions(jeton, project_id=project_id,
+                                                ids=sorted(ids))
+        except (AuthentificationRequise, ConfirmationDomainError) as cause:
+            raise _refus(cause) from cause
+        try:
+            reecrites = service.verifier_provenance(
+                corps, {ligne["extraction_id"]: ligne for ligne in lignes})
+        except service.ProvenanceRefusee as refus:
+            motifs.extend(refus.motifs)
+    if motifs:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "provenance_refusee", "what": "provenance",
+                    "detail": ("une entree reportee depuis un document ne "
+                               "correspond pas a une valeur confirmee de ce "
+                               "projet. Aucun calcul n'a ete lance et rien n'a "
+                               "ete enregistre."),
+                    "fields": [{"path": c, "reason": m} for c, m in motifs]})
+    return corps.model_copy(update={"provenance": reecrites})
+
+
 def _requete_gelee(relu: dict[str, Any]) -> Any:
     """La requête gelée d'une étude, relue dans la forme du contrat.
 
@@ -944,6 +988,17 @@ def verifier_poutre_completement(
             _exiger_origine_de_variante(
                 ouvert, jeton, project_id, corps.derived_from_calculation_id)
 
+        # --- 2c. LA PROVENANCE DOCUMENTAIRE, AVANT LE MOTEUR ---------------
+        #
+        # Une entree reportee depuis un plan nomme l'extraction CONFIRMEE dont
+        # elle vient. Ce que le client en dit n'est pas cru: l'extraction est
+        # relue sous son identite, dans CE projet, et doit etre confirmee ou
+        # corrigee, de la bonne categorie, et de MEME valeur. Sinon: refus,
+        # sans calcul ni ecriture. Acceptee, la provenance est REECRITE depuis
+        # la base avant d'entrer dans la charge gelee (interdiction 5).
+        if corps.provenance:
+            corps = _provenance_verifiee(ouvert, jeton, project_id, corps)
+
         # --- 3. LE REFERENTIEL EST RESOLU UNE FOIS, ET UNE SEULE ----------
         #
         # `resolve_beam_context` applique les confirmations du provider et rend
@@ -1011,7 +1066,13 @@ def verifier_poutre_completement(
             "country": pays,
             "region": region,
             "as_of": as_of.isoformat(),
-            **corps.model_dump(mode="json"),
+            # UNE ETUDE SAISIE A LA MAIN GARDE SA CHARGE D'HIER, OCTET POUR
+            # OCTET: la cle `provenance` n'y entre que si elle porte quelque
+            # chose. Sans cela, chaque etude changerait d'identite d'execution
+            # pour un dictionnaire vide.
+            **corps.model_dump(
+                mode="json",
+                exclude=None if corps.provenance else {"provenance"}),
         }
 
         # UNE SEULE IDENTITE D'EXECUTION, CALCULEE ICI ET NULLE PART AILLEURS.

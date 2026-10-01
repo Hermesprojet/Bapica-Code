@@ -95,6 +95,9 @@ class Constat:
     project_id: str | None = None
     deliverable_id: str | None = None
     detail: str = ""
+    #: Une PIECE DEPOSEE (0028) plutot qu'un livrable: meme magasin, autre
+    #: table. Le constat dit laquelle, pour qu'on sache qui attend l'objet.
+    document_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -116,25 +119,34 @@ class Rapport:
 
 
 # --------------------------------------------------------------------- base
-def _lignes_de_livrables(connexion: Any) -> list[dict[str, Any]]:
-    """Les livrables, tels que la base les enregistre.
+def _lignes_du_magasin(connexion: Any) -> list[dict[str, Any]]:
+    """Les livrables ET les pièces déposées, tels que la base les enregistre.
 
     LA TRANSACTION EST EN LECTURE SEULE, ET C'EST POSTGRESQL QUI LE TIENT.
     ``set transaction read only`` fait refuser toute ecriture par le serveur,
     y compris une ecriture qu'un defaut de ce fichier tenterait. C'est la
     difference entre « cet outil ne veut pas ecrire » et « cet outil ne peut
     pas ecrire ».
+
+    LES DEUX TABLES DANS LA MEME TRANSACTION: un instantane unique, sans quoi
+    une piece deposee entre les deux lectures pourrait passer pour orpheline.
+    Le role de rapprochement lit sur ``documents`` les memes sept colonnes que
+    sur ``deliverables`` (0028), et rien d'autre.
     """
+    lignes: list[dict[str, Any]] = []
     with connexion.cursor() as curseur:
         curseur.execute("set transaction read only")
-        curseur.execute(
-            "select id::text, org_id::text, project_id::text, "
-            "       storage_path, sha256, size_bytes, storage_backend "
-            "  from deliverables "
-            " order by org_id, project_id, storage_path"
-        )
-        colonnes = [d[0] for d in curseur.description]
-        return [dict(zip(colonnes, r, strict=True)) for r in curseur.fetchall()]
+        for table in ("deliverables", "documents"):
+            curseur.execute(
+                "select id::text, org_id::text, project_id::text, "
+                "       storage_path, sha256, size_bytes, storage_backend "
+                f"  from {table} "
+                " order by org_id, project_id, storage_path"
+            )
+            colonnes = [d[0] for d in curseur.description]
+            lignes.extend(dict(zip(colonnes, r, strict=True), source=table)
+                          for r in curseur.fetchall())
+    return lignes
 
 
 # ------------------------------------------------------------ rapprochement
@@ -164,11 +176,13 @@ def rapprocher(lignes: list[dict[str, Any]], magasin: MagasinLisible, *,
 
     for chemin, concernees in sorted(attendus.items()):
         ligne = concernees[0]
+        piece = ligne.get("source") == "documents"
         commun = {
             "chemin": chemin,
             "org_id": ligne["org_id"],
             "project_id": ligne["project_id"],
-            "deliverable_id": ligne["id"],
+            "deliverable_id": None if piece else ligne["id"],
+            "document_id": ligne["id"] if piece else None,
         }
         taille = presents.get(chemin)
         if taille is None:
@@ -210,8 +224,8 @@ def rapprocher(lignes: list[dict[str, Any]], magasin: MagasinLisible, *,
     for chemin in sorted(set(presents) - set(attendus)):
         constats.append(Constat(
             verdict=ORPHELIN, chemin=chemin,
-            detail=("aucune ligne de `deliverables` ne nomme cet objet; il "
-                    "n'est PAS supprime"),
+            detail=("aucune ligne de `deliverables` ni de `documents` ne "
+                    "nomme cet objet; il n'est PAS supprime"),
         ))
 
     ordre = {ABSENT: 0, DIVERGENT: 1, ORPHELIN: 2, INTACT: 3}
@@ -264,7 +278,8 @@ def rendre(rapport: Rapport, *, json_: bool, flux: Any) -> None:
 def main(argv: list[str] | None = None) -> int:
     analyseur = argparse.ArgumentParser(
         prog="eurostruct-reconciliation",
-        description=("Rapproche `deliverables` du magasin d'objets. "
+        description=("Rapproche `deliverables` et `documents` du magasin "
+                     "d'objets. "
                      "Ne modifie NI l'un NI l'autre."),
     )
     analyseur.add_argument(
@@ -306,13 +321,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # LA SESSION EST EN LECTURE SEULE DES L'ORIGINE. `set_session(readonly)`
     # vaut pour toutes les transactions de cette connexion; `set transaction
-    # read only` dans `_lignes_de_livrables` le redit au niveau transactionnel,
+    # read only` dans `_lignes_du_magasin` le redit au niveau transactionnel,
     # pour que la garantie tienne aussi quand la connexion vient d'ailleurs.
     connexion = None
     try:
         connexion = psycopg2.connect(dsn)
         connexion.set_session(readonly=True)
-        lignes = _lignes_de_livrables(connexion)
+        lignes = _lignes_du_magasin(connexion)
     except Exception as cause:  # noqa: BLE001
         # LE DSN N'APPARAIT PAS DANS CE MESSAGE. Il porte un mot de passe.
         print(f"REFUS: la base n'a pas repondu ({type(cause).__name__}).",

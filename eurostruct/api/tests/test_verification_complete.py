@@ -1239,10 +1239,14 @@ def test_la_reponse_rend_la_requete_gelee_telle_que_recue(
     #: LE CONTEXTE DU PROJET N'EN FAIT PAS PARTIE: il est fige sur le projet.
     assert not {"country", "region", "ndp_as_of", "project_id"} & set(requete)
     #: CE QUI A ETE ENVOYE S'Y RELIT, champ pour champ. Le corps de reference
-    #: ne nomme pas `bond_condition`: le contrat le pose a « good », et la
-    #: requete rendue le dit — c'est le seul champ que le client n'a pas ecrit.
-    assert _ecarts(corps, _sans_filiation(requete)) == {"bond_condition"}
+    #: ne nomme ni `bond_condition` ni `provenance`: le contrat pose le premier
+    #: a « good » et le second a vide (une saisie n'a pas de provenance), et la
+    #: requete rendue le dit — ce sont les seuls champs que le client n'a pas
+    #: ecrits. La CHARGE GELEE, elle, ne porte pas la provenance vide: voir
+    #: `test_documents_postgres.py::test_une_etude_saisie_garde_sa_charge_d_hier`.
+    assert _ecarts(corps, _sans_filiation(requete)) == {"bond_condition", "provenance"}
     assert requete["bond_condition"] == "good"
+    assert requete["provenance"] == {}
 
     #: ET LA RELECTURE — par un autre processus — rend la MEME requete.
     relu = client_neuf.get(f"{_url(projet)}/{cree['calculation_id']}",

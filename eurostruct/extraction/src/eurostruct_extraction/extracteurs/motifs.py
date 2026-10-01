@@ -173,7 +173,7 @@ def _classe_exposition(f: _Fabrique) -> None:
 
 
 _ACIER = re.compile(
-    r"(?<![\w])(?P<g>B\s?500\s?(?:SD|[ABCS])|B\s?450\s?C|BE\s?[45]00\s?[SD]?|"
+    r"(?<![\w])(?P<g>B\s?[456]00\s?(?:SD|[ABCS])|B\s?450\s?C|BE\s?[45]00\s?[SD]?|"
     r"Fe\s?E\s?[45]00|S\s?(?:235|275|355|420|460)(?:\s?(?:JR|J0|J2|K2|NL|ML|N|M|W|H))?)"
     r"(?![\w])")
 

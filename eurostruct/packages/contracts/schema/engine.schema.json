@@ -1152,6 +1152,93 @@
       "title": "CalculResume",
       "type": "object"
     },
+    "ChampPrerempli": {
+      "additionalProperties": false,
+      "properties": {
+        "element_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Element Label"
+        },
+        "extraction_id": {
+          "title": "Extraction Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "path": {
+          "description": "Chemin du contrat de l'étude, p. ex. geometry.b.",
+          "title": "Path",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/ProvenanceDTO",
+          "description": "À renvoyer telle quelle avec la requête de calcul : le serveur la vérifiera et la réécrira depuis la base."
+        },
+        "source_value": {
+          "$ref": "#/$defs/ValeurExtraite",
+          "description": "La valeur retenue, telle qu'elle a été décidée."
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Dans l'unité du champ : aucune conversion n'est laissée au navigateur.",
+          "title": "Value"
+        },
+        "warning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Warning"
+        }
+      },
+      "required": [
+        "path",
+        "label",
+        "value",
+        "unit",
+        "extraction_id",
+        "provenance",
+        "source_value"
+      ],
+      "title": "ChampPrerempli",
+      "type": "object"
+    },
     "CheckDTO": {
       "additionalProperties": false,
       "properties": {
@@ -1271,6 +1358,83 @@
       "title": "ClauseDTO",
       "type": "object"
     },
+    "ConflitDePreremplissage": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/ChampPrerempli"
+          },
+          "title": "Candidates",
+          "type": "array"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "label",
+        "candidates",
+        "reason"
+      ],
+      "title": "ConflitDePreremplissage",
+      "type": "object"
+    },
+    "DecisionExtraction": {
+      "additionalProperties": false,
+      "description": "Ce que la personne décide. Ni son nom, ni la date : le serveur les pose.",
+      "properties": {
+        "decision": {
+          "enum": [
+            "confirm",
+            "correct",
+            "reject"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "final_value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValeurExtraite"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Exigée pour une correction, interdite pour un rejet, facultative pour une confirmation (elle doit alors être la valeur proposée)."
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "decision"
+      ],
+      "title": "DecisionExtraction",
+      "type": "object"
+    },
     "DesignSituationDTO": {
       "enum": [
         "persistent",
@@ -1280,6 +1444,223 @@
       ],
       "title": "DesignSituationDTO",
       "type": "string"
+    },
+    "DocumentDepose": {
+      "additionalProperties": false,
+      "properties": {
+        "analysed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Analysed At"
+        },
+        "analysis_detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Analysis Detail"
+        },
+        "analysis_report": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Analysis Report"
+        },
+        "analysis_status": {
+          "enum": [
+            "en_attente",
+            "analyse",
+            "partiel",
+            "non_lu",
+            "echec"
+          ],
+          "title": "Analysis Status",
+          "type": "string"
+        },
+        "analysis_status_label": {
+          "title": "Analysis Status Label",
+          "type": "string"
+        },
+        "can_reanalyse": {
+          "description": "Vrai tant qu'aucune proposition n'est enregistrée : une nouvelle analyse ne contredit alors rien.",
+          "title": "Can Reanalyse",
+          "type": "boolean"
+        },
+        "confirmed_count": {
+          "minimum": 0,
+          "title": "Confirmed Count",
+          "type": "integer"
+        },
+        "corrected_count": {
+          "minimum": 0,
+          "title": "Corrected Count",
+          "type": "integer"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "extractor_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Extractor Version"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "format": {
+          "description": "Constaté sur la signature des octets.",
+          "enum": [
+            "pdf",
+            "dxf",
+            "dwg"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Nature déclarée au dépôt.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "kind_label": {
+          "title": "Kind Label",
+          "type": "string"
+        },
+        "mime_type": {
+          "title": "Mime Type",
+          "type": "string"
+        },
+        "page_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Count"
+        },
+        "proposed_count": {
+          "minimum": 0,
+          "title": "Proposed Count",
+          "type": "integer"
+        },
+        "rejected_count": {
+          "minimum": 0,
+          "title": "Rejected Count",
+          "type": "integer"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "text_layer": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Layer"
+        },
+        "uploaded_by_me": {
+          "title": "Uploaded By Me",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "document_id",
+        "kind",
+        "kind_label",
+        "filename",
+        "format",
+        "mime_type",
+        "size_bytes",
+        "sha256",
+        "analysis_status",
+        "analysis_status_label",
+        "uploaded_by_me",
+        "created_at",
+        "proposed_count",
+        "confirmed_count",
+        "corrected_count",
+        "rejected_count",
+        "can_reanalyse"
+      ],
+      "title": "DocumentDepose",
+      "type": "object"
+    },
+    "DocumentTeleverse": {
+      "additionalProperties": false,
+      "description": "La réponse au dépôt : le document, et ce que son analyse a proposé.",
+      "properties": {
+        "already_present": {
+          "description": "Les mêmes octets étaient déjà déposés dans ce projet : le document existant est rendu, sans seconde analyse.",
+          "title": "Already Present",
+          "type": "boolean"
+        },
+        "document": {
+          "$ref": "#/$defs/DocumentDepose"
+        },
+        "extractions_created": {
+          "minimum": 0,
+          "title": "Extractions Created",
+          "type": "integer"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document",
+        "already_present",
+        "extractions_created",
+        "notice"
+      ],
+      "title": "DocumentTeleverse",
+      "type": "object"
     },
     "Ec2BeamFlexureRequest": {
       "additionalProperties": false,
@@ -1653,6 +2034,14 @@
           "title": "Phi Creep",
           "type": "number"
         },
+        "provenance": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ProvenanceDTO"
+          },
+          "description": "Pour chaque entrée reportée depuis un document, l'extraction confirmée dont elle provient, par chemin du contrat (geometry.b, materials.concrete_grade…). Absente pour une saisie.",
+          "title": "Provenance",
+          "type": "object"
+        },
         "strict_ndp": {
           "default": true,
           "description": "Quand vrai, un paramètre national non confirmé bloque AVANT le calcul, et rien n'est enregistré.",
@@ -1932,6 +2321,227 @@
         "detail"
       ],
       "title": "EngineErrorDTO",
+      "type": "object"
+    },
+    "Extraction": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Basis"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "[x0, y0, x1, y1] en points PDF, origine en haut à gauche.",
+          "title": "Bbox"
+        },
+        "confidence": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "confirmed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirmed At"
+        },
+        "confirmed_by_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirmed By Name"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "decision_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decision Note"
+        },
+        "document_filename": {
+          "title": "Document Filename",
+          "type": "string"
+        },
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "element_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Element Label"
+        },
+        "extraction_id": {
+          "title": "Extraction Id",
+          "type": "string"
+        },
+        "final_value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValeurExtraite"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "form_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le chemin de l'étude que cette catégorie peut renseigner, ou null si aucun champ ne la reçoit.",
+          "title": "Form Field"
+        },
+        "form_field_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Form Field Label"
+        },
+        "form_warning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ce que l'ingénieur doit vérifier avant de reporter, p. ex. qu'une portée entre axes n'est pas toujours la portée utile.",
+          "title": "Form Warning"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "kind_label": {
+          "title": "Kind Label",
+          "type": "string"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "model_name": {
+          "title": "Model Name",
+          "type": "string"
+        },
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dimensions de la page, ou calque / poignée / point d'insertion pour un DXF.",
+          "title": "Position"
+        },
+        "proposed_value": {
+          "$ref": "#/$defs/ValeurExtraite"
+        },
+        "raw_text": {
+          "title": "Raw Text",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "confirmed",
+            "corrected",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "extraction_id",
+        "document_id",
+        "document_filename",
+        "kind",
+        "kind_label",
+        "proposed_value",
+        "status",
+        "page",
+        "confidence",
+        "method",
+        "model_name",
+        "raw_text",
+        "created_at"
+      ],
+      "title": "Extraction",
       "type": "object"
     },
     "HistoriqueCalculs": {
@@ -2224,6 +2834,55 @@
         "clauses"
       ],
       "title": "JournalDTO",
+      "type": "object"
+    },
+    "ListeDocuments": {
+      "additionalProperties": false,
+      "properties": {
+        "documents": {
+          "items": {
+            "$ref": "#/$defs/DocumentDepose"
+          },
+          "title": "Documents",
+          "type": "array"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "documents"
+      ],
+      "title": "ListeDocuments",
+      "type": "object"
+    },
+    "ListeExtractions": {
+      "additionalProperties": false,
+      "properties": {
+        "extractions": {
+          "items": {
+            "$ref": "#/$defs/Extraction"
+          },
+          "title": "Extractions",
+          "type": "array"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "extractions",
+        "notice"
+      ],
+      "title": "ListeExtractions",
       "type": "object"
     },
     "ListeInvitations": {
@@ -3321,6 +3980,35 @@
       "title": "NdpSummaryDTO",
       "type": "object"
     },
+    "NonReportable": {
+      "additionalProperties": false,
+      "properties": {
+        "extraction_id": {
+          "title": "Extraction Id",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "kind_label": {
+          "title": "Kind Label",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "extraction_id",
+        "kind",
+        "kind_label",
+        "reason"
+      ],
+      "title": "NonReportable",
+      "type": "object"
+    },
     "Organisation": {
       "additionalProperties": false,
       "description": "Un bureau, tel que l'écran d'entrée le montre.",
@@ -3525,6 +4213,61 @@
         "blocking"
       ],
       "title": "PreflightReportDTO",
+      "type": "object"
+    },
+    "Preremplissage": {
+      "additionalProperties": false,
+      "properties": {
+        "conflicts": {
+          "items": {
+            "$ref": "#/$defs/ConflitDePreremplissage"
+          },
+          "title": "Conflicts",
+          "type": "array"
+        },
+        "element": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Element"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/ChampPrerempli"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "not_reportable": {
+          "items": {
+            "$ref": "#/$defs/NonReportable"
+          },
+          "title": "Not Reportable",
+          "type": "array"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "fields",
+        "conflicts",
+        "not_reportable",
+        "notice"
+      ],
+      "title": "Preremplissage",
       "type": "object"
     },
     "Projet": {
@@ -3782,6 +4525,19 @@
           ],
           "default": null,
           "title": "Document Id"
+        },
+        "extraction_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Identifiant de l'extraction confirmée dont la valeur provient. Le serveur la relit et refuse le calcul si elle n'est pas confirmée ou corrigée, ou si la valeur diffère.",
+          "title": "Extraction Id"
         },
         "kind": {
           "$ref": "#/$defs/ProvenanceKindDTO"
@@ -4217,6 +4973,44 @@
         "spacing"
       ],
       "title": "TransverseLinksDTO",
+      "type": "object"
+    },
+    "ValeurExtraite": {
+      "additionalProperties": false,
+      "description": "Une grandeur : un nombre ou un texte, et son unité — ou ``null``.\n\n``null`` VEUT DIRE « AUCUNE UNITÉ N'EST ÉCRITE », jamais « en millimètres ».\nUne longueur sans unité ne se reporte pas dans une étude : elle se corrige\nd'abord.",
+      "properties": {
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Unité lisible par pint (mm, m, kN/m^2), ou null quand aucune n'est écrite ni déclarée.",
+          "title": "Unit"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ],
+      "title": "ValeurExtraite",
       "type": "object"
     },
     "ValidationStatusDTO": {

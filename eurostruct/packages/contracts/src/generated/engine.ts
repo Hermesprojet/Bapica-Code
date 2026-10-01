@@ -269,6 +269,22 @@ export interface CalculResume {
   variant_count?: number;
 }
 
+export interface ChampPrerempli {
+  element_label?: string | null;
+  extraction_id: string;
+  label: string;
+  /** Chemin du contrat de l'étude, p. ex. geometry.b. */
+  path: string;
+  /** À renvoyer telle quelle avec la requête de calcul : le serveur la vérifiera et la réécrira depuis la base. */
+  provenance: ProvenanceDTO;
+  /** La valeur retenue, telle qu'elle a été décidée. */
+  source_value: ValeurExtraite;
+  unit: string | null;
+  /** Dans l'unité du champ : aucune conversion n'est laissée au navigateur. */
+  value: number | string;
+  warning?: string | null;
+}
+
 export interface CheckDTO {
   acting: string;
   clause: ClauseDTO;
@@ -294,11 +310,64 @@ export interface ClauseDTO {
   standard: string;
 }
 
+export interface ConflitDePreremplissage {
+  candidates: ChampPrerempli[];
+  label: string;
+  path: string;
+  reason: string;
+}
+
+/** Ce que la personne décide. Ni son nom, ni la date : le serveur les pose. */
+export interface DecisionExtraction {
+  decision: "confirm" | "correct" | "reject";
+  /** Exigée pour une correction, interdite pour un rejet, facultative pour une confirmation (elle doit alors être la valeur proposée). */
+  final_value?: ValeurExtraite | null;
+  note?: string | null;
+}
+
 export type DesignSituationDTO =
   | "persistent"
   | "transient"
   | "accidental"
   | "seismic";
+
+export interface DocumentDepose {
+  analysed_at?: string | null;
+  analysis_detail?: string | null;
+  analysis_report?: Record<string, unknown> | null;
+  analysis_status: "en_attente" | "analyse" | "partiel" | "non_lu" | "echec";
+  analysis_status_label: string;
+  /** Vrai tant qu'aucune proposition n'est enregistrée : une nouvelle analyse ne contredit alors rien. */
+  can_reanalyse: boolean;
+  confirmed_count: number;
+  corrected_count: number;
+  created_at: string;
+  document_id: string;
+  extractor_version?: string | null;
+  filename: string;
+  /** Constaté sur la signature des octets. */
+  format: "pdf" | "dxf" | "dwg";
+  /** Nature déclarée au dépôt. */
+  kind: string;
+  kind_label: string;
+  mime_type: string;
+  page_count?: number | null;
+  proposed_count: number;
+  rejected_count: number;
+  sha256: string;
+  size_bytes: number;
+  text_layer?: boolean | null;
+  uploaded_by_me: boolean;
+}
+
+/** La réponse au dépôt : le document, et ce que son analyse a proposé. */
+export interface DocumentTeleverse {
+  /** Les mêmes octets étaient déjà déposés dans ce projet : le document existant est rendu, sans seconde analyse. */
+  already_present: boolean;
+  document: DocumentDepose;
+  extractions_created: number;
+  notice: string;
+}
 
 /** Input of the ULS bending verification of a rectangular section. */
 export interface Ec2BeamFlexureRequest {
@@ -399,6 +468,8 @@ export interface Ec2BeamVerificationRequest {
   materials: VerificationMaterialsDTO;
   /** Coefficient de fluage φ(∞,t0), §3.1.4. Fourni par l'ingénieur, jamais deviné : il dépend du rayon moyen, de l'humidité et de l'âge au chargement. */
   phi_creep: number;
+  /** Pour chaque entrée reportée depuis un document, l'extraction confirmée dont elle provient, par chemin du contrat (geometry.b, materials.concrete_grade…). Absente pour une saisie. */
+  provenance?: Record<string, ProvenanceDTO>;
   /** Quand vrai, un paramètre national non confirmé bloque AVANT le calcul, et rien n'est enregistré. */
   strict_ndp?: boolean;
   /** Ligne du Tableau 7.4N. Aucun défaut. */
@@ -449,6 +520,37 @@ export interface EngineErrorDTO {
   error: "out_of_validation_domain" | "national_annex_incomplete" | "unverified_national_parameter" | "deprecated_national_parameter" | "inconsistent_input" | "unit_error" | "reinforcement_not_verified";
   preflight?: PreflightReportDTO | null;
   what: string;
+}
+
+export interface Extraction {
+  basis?: Record<string, unknown> | null;
+  /** [x0, y0, x1, y1] en points PDF, origine en haut à gauche. */
+  bbox?: number[] | null;
+  confidence: number;
+  confirmed_at?: string | null;
+  confirmed_by_name?: string | null;
+  created_at: string;
+  decision_note?: string | null;
+  document_filename: string;
+  document_id: string;
+  element_label?: string | null;
+  extraction_id: string;
+  final_value?: ValeurExtraite | null;
+  /** Le chemin de l'étude que cette catégorie peut renseigner, ou null si aucun champ ne la reçoit. */
+  form_field?: string | null;
+  form_field_label?: string | null;
+  /** Ce que l'ingénieur doit vérifier avant de reporter, p. ex. qu'une portée entre axes n'est pas toujours la portée utile. */
+  form_warning?: string | null;
+  kind: string;
+  kind_label: string;
+  method: string;
+  model_name: string;
+  page: number;
+  /** Dimensions de la page, ou calque / poignée / point d'insertion pour un DXF. */
+  position?: Record<string, unknown> | null;
+  proposed_value: ValeurExtraite;
+  raw_text: string;
+  status: "proposed" | "confirmed" | "corrected" | "rejected";
 }
 
 /** L'historique d'un projet, du plus récent au plus ancien. */
@@ -511,6 +613,17 @@ export interface JournalDTO {
   clauses: string[];
   steps: CalcStepDTO[];
   title: string;
+}
+
+export interface ListeDocuments {
+  documents: DocumentDepose[];
+  project_id: string;
+}
+
+export interface ListeExtractions {
+  extractions: Extraction[];
+  notice: string;
+  project_id: string;
 }
 
 export interface ListeInvitations {
@@ -704,6 +817,13 @@ export interface NdpSummaryDTO {
   unverified: string[];
 }
 
+export interface NonReportable {
+  extraction_id: string;
+  kind: string;
+  kind_label: string;
+  reason: string;
+}
+
 /** Un bureau, tel que l'écran d'entrée le montre. */
 export interface Organisation {
   country: "BE" | "FR" | "ES" | "DE";
@@ -752,6 +872,15 @@ export interface PreflightReportDTO {
   strict: boolean;
 }
 
+export interface Preremplissage {
+  conflicts: ConflitDePreremplissage[];
+  element?: string | null;
+  fields: ChampPrerempli[];
+  not_reportable: NonReportable[];
+  notice: string;
+  project_id: string;
+}
+
 /** Un projet, tel que l'atelier le montre. ``organization_name`` accompagne ``organization_id`` : un identifiant seul obligerait l'écran à un second appel pour afficher « Bureau A », et c'est ce genre de second appel qui finit par ne jamais être fait. */
 export interface Projet {
   /** Combien de calculs sont enregistrés sur ce projet. */
@@ -796,6 +925,8 @@ export interface ProvenanceDTO {
   confirmed_by?: string | null;
   detail: string;
   document_id?: string | null;
+  /** Identifiant de l'extraction confirmée dont la valeur provient. Le serveur la relit et refuse le calcul si elle n'est pas confirmée ou corrigée, ou si la valeur diffère. */
+  extraction_id?: string | null;
   kind: ProvenanceKindDTO;
   ndp_key?: string | null;
   page?: number | null;
@@ -898,6 +1029,13 @@ export interface TransverseLinksDTO {
   diameter: QuantityDTO;
   legs: number;
   spacing: QuantityDTO;
+}
+
+/** Une grandeur : un nombre ou un texte, et son unité — ou ``null``. ``null`` VEUT DIRE « AUCUNE UNITÉ N'EST ÉCRITE », jamais « en millimètres ». Une longueur sans unité ne se reporte pas dans une étude : elle se corrige d'abord. */
+export interface ValeurExtraite {
+  /** Unité lisible par pint (mm, m, kN/m^2), ou null quand aucune n'est écrite ni déclarée. */
+  unit: string | null;
+  value: number | string;
 }
 
 /** How far a national value has been verified — see TICKET 1.1. */

@@ -37,13 +37,14 @@ dit que non.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
-from .common import QuantityDTO, Strict
+from .common import ProvenanceDTO, QuantityDTO, Strict
 
 __all__ = [
+    "PROVENANCE_CHEMINS",
     "AnchorageCoefficientsDTO",
     "BeamGeometryDTO",
     "Ec2BeamVerificationRequest",
@@ -105,6 +106,22 @@ class AnchorageCoefficientsDTO(Strict):
     alpha_6: float = Field(
         description="Proportion de barres recouvertes dans la même section, "
                     "Tableau 8.3.")
+
+
+#: LES ENTREES QU'UN DOCUMENT PEUT FOURNIR, ET ELLES SEULES.
+#:
+#: Ce sont les chemins du contrat qu'une valeur lue sur un plan ou un cahier
+#: des charges, puis CONFIRMEE par une personne nommee, peut renseigner. Les
+#: autres n'y figurent pas, et l'absence est voulue: ``geometry.d`` est une
+#: grandeur DERIVEE (hauteur, enrobage, diametres) que le produit ne derive
+#: jamais a la place de l'ingenieur; les sollicitations (``M_Ed``, ``V_Ed``…)
+#: ne se lisent pas sur un plan — une charge n'est pas un moment.
+PROVENANCE_CHEMINS: Final[tuple[str, ...]] = (
+    "geometry.b", "geometry.h", "geometry.l_eff",
+    "materials.concrete_grade", "materials.steel_grade",
+    "exposure_class", "cover",
+    "bars.count", "bars.diameter", "links.diameter", "links.spacing",
+)
 
 
 class Ec2BeamVerificationRequest(Strict):
@@ -193,6 +210,47 @@ class Ec2BeamVerificationRequest(Strict):
                     "une étude complète à cinq chapitres ; sinon la requête "
                     "est refusée sans écriture. Absent pour une étude "
                     "initiale.")
+
+    #: L'ORIGINE DOCUMENTAIRE D'UNE ENTREE, CHAMP PAR CHAMP — et rien d'autre.
+    #:
+    #: Une entree saisie n'a pas de provenance: la cle est absente. Une entree
+    #: reportee depuis un document porte ici l'extraction CONFIRMEE dont elle
+    #: vient. Ce que le client ecrit dans cette provenance n'est pas cru: le
+    #: serveur relit l'extraction, verifie statut, categorie et valeur, refuse
+    #: le calcul au moindre ecart, puis REECRIT la provenance depuis la base
+    #: avant de geler la requete (interdiction 5).
+    provenance: dict[str, ProvenanceDTO] = Field(
+        default_factory=dict,
+        description="Pour chaque entrée reportée depuis un document, "
+                    "l'extraction confirmée dont elle provient, par chemin du "
+                    "contrat (geometry.b, materials.concrete_grade…). Absente "
+                    "pour une saisie.")
+
+    @model_validator(mode="after")
+    def _provenance_documentaire_confirmee(self) -> Ec2BeamVerificationRequest:
+        """Interdiction 5, au premier mur: le contrat lui-même.
+
+        Le second mur est la relecture de la décision en base (route), le
+        troisième la contrainte qui interdit une confirmation non signée.
+        """
+        for chemin, origine in self.provenance.items():
+            if chemin not in PROVENANCE_CHEMINS:
+                raise ValueError(
+                    f"provenance « {chemin} »: aucune entree reportable ne porte "
+                    "ce chemin. La hauteur utile d se derive et les "
+                    "sollicitations ne se lisent pas sur un plan: elles se "
+                    "saisissent.")
+            if origine.kind.value != "document_extraction":
+                raise ValueError(
+                    f"provenance « {chemin} »: seule une origine documentaire "
+                    "se declare ici. Une saisie n'a pas de provenance.")
+            if not origine.extraction_id or not origine.confirmed_by:
+                raise ValueError(
+                    f"la valeur « {chemin} » provient d'une extraction "
+                    "documentaire qui ne nomme ni sa decision ni la personne "
+                    "qui l'a confirmee. Toute cote extraite d'un plan doit etre "
+                    "validee explicitement avant d'entrer dans le calcul.")
+        return self
 
 
 class SectionOutcomeDTO(Strict):

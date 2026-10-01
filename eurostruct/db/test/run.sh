@@ -405,6 +405,19 @@ echo "==> livrable: brouillon, relecture, attestation, emission"
 etape "livrable et validation" \
   "$HERE/livrable_validation.sh" "${DB_NAME:0:20}lv"
 
+# LA LECTURE DES PLANS: DEPOT, ANALYSE, REVUE, DECISION, REPORT, CALCUL.
+#
+# `documents` et `extractions` existaient depuis 0001 sans chemin produit.
+# Ce harnais eprouve celui que 0028 leur donne — et surtout la seule porte
+# par laquelle une valeur lue sur un plan entre dans un calcul: une decision
+# humaine NOMMEE, relue par le serveur au moment du calcul, de la meme valeur.
+# Memes dependances que l'atelier, plus le module d'extraction; ni node, ni
+# Docker. L'OCR n'y est pas exerce (les documents ont une couche texte): il
+# l'est par la surface « extraction » de `run_tests.sh`.
+echo "==> lecture des plans: depot, analyse, revue, decision, report"
+etape "lecture des plans" \
+  "$HERE/documents_extractions.sh" "${DB_NAME:0:20}dx"
+
 # LE ROLE DE RAPPROCHEMENT — CE QU'IL LIT, ET CE QU'IL NE PEUT PAS.
 #
 # `reconciliation.py` pose `set transaction read only`, ce qui est reel mais

@@ -760,3 +760,177 @@ class PostgresAtelier:
                 }
                 for ligne in self._lignes(u)
             ]
+
+    # ------------------------------------------------- pièces et propositions
+    #
+    # LE MÊME PATRON QUE LES LIVRABLES: l'appelant dépose et relit les octets
+    # AVANT d'inscrire le document; l'analyse et toutes ses propositions
+    # s'enregistrent en UN appel. Aucune méthode ne prend `org_id`, aucune ne
+    # prend un nom de décideur: la primitive le dérive de l'adhésion.
+    def inscrire_document(
+        self, preuve: Any, *, project_id: str, kind: str, filename: str,
+        mime_type: str, format: str, storage_backend: str, storage_path: str,
+        sha256: str, size_bytes: int,
+    ) -> tuple[str, bool]:
+        """Inscrit un document déjà déposé. Rend (identifiant, déjà présent)."""
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select * from project_document_register("
+                "%s::uuid, %s::document_kind, %s, %s, %s, %s, %s, %s, %s::bigint)",
+                (project_id, kind, filename, mime_type, format, storage_backend,
+                 storage_path, sha256, size_bytes))
+            ligne = u.curseur.fetchone()
+            if not ligne or not ligne[0]:
+                raise ConfirmationDomainError(
+                    "l'inscription n'a rendu aucun identifiant de document. On "
+                    "refuse plutot que d'annoncer une piece introuvable."
+                )
+            return str(ligne[0]), bool(ligne[1])
+
+    def enregistrer_analyse(
+        self, preuve: Any, *, document_id: str, status: str, detail: str | None,
+        page_count: int | None, text_layer: bool | None,
+        report: dict[str, Any] | None, extractor_version: str,
+        extractions: list[dict[str, Any]],
+    ) -> int:
+        """``createExtractionRecords()``: le compte rendu et TOUTES les
+        propositions, dans une seule transaction. Rend le nombre inscrit."""
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select project_document_record_analysis("
+                "%s::uuid, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb)",
+                (document_id, status, detail, page_count, text_layer,
+                 json.dumps(report) if report is not None else None,
+                 extractor_version, json.dumps(extractions)))
+            ligne = u.curseur.fetchone()
+            return int(ligne[0]) if ligne and ligne[0] is not None else 0
+
+    @staticmethod
+    def _document(ligne: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "document_id": _texte(ligne["document_id"]),
+            "kind": _texte(ligne["kind"]),
+            "filename": ligne["filename"],
+            "format": ligne["format"],
+            "mime_type": ligne["mime_type"],
+            "size_bytes": int(ligne["size_bytes"]),
+            "sha256": ligne["sha256"],
+            "page_count": ligne["page_count"],
+            "text_layer": ligne["text_layer"],
+            "analysis_status": ligne["analysis_status"],
+            "analysis_detail": ligne["analysis_detail"],
+            "analysis_report": _json_ou_none(ligne["analysis_report"]),
+            "extractor_version": ligne["extractor_version"],
+            "analysed_at": _texte(ligne["analysed_at"]),
+            "uploaded_by_me": bool(ligne["uploaded_by_me"]),
+            "created_at": _texte(ligne["created_at"]),
+            "proposed_count": int(ligne["proposed_count"]),
+            "confirmed_count": int(ligne["confirmed_count"]),
+            "corrected_count": int(ligne["corrected_count"]),
+            "rejected_count": int(ligne["rejected_count"]),
+        }
+
+    def documents(self, preuve: Any, *, project_id: str) -> list[dict[str, Any]]:
+        """Les documents du projet, du plus récent au plus ancien."""
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer("select * from project_document_list(%s::uuid)", (project_id,))
+            return [self._document(ligne) for ligne in self._lignes(u)]
+
+    def octets_du_document(self, preuve: Any, *, project_id: str,
+                           document_id: str) -> dict[str, Any]:
+        """Où sont les octets d'une pièce. Le chemin ne va pas à l'écran."""
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select * from project_document_bytes(%s::uuid, %s::uuid)",
+                (project_id, document_id))
+            lignes = self._lignes(u)
+        if not lignes:
+            raise ConfirmationDomainError(
+                f"document {document_id}: introuvable dans ce projet."
+            )
+        ligne = lignes[0]
+        return {
+            "storage_backend": ligne["storage_backend"],
+            "storage_path": ligne["storage_path"],
+            "sha256": ligne["sha256"],
+            "size_bytes": int(ligne["size_bytes"]),
+            "filename": ligne["filename"],
+            "mime_type": ligne["mime_type"],
+            "format": ligne["format"],
+            "kind": _texte(ligne["kind"]),
+            "analysis_status": ligne["analysis_status"],
+        }
+
+    @staticmethod
+    def _extraction(ligne: dict[str, Any]) -> dict[str, Any]:
+        boite = ligne["bbox"]
+        return {
+            "extraction_id": _texte(ligne["extraction_id"]),
+            "document_id": _texte(ligne["document_id"]),
+            "document_filename": ligne["document_filename"],
+            "document_sha256": ligne["document_sha256"],
+            "kind": ligne["kind"],
+            "proposed_value": _json_ou_none(ligne["proposed_value"]),
+            "final_value": _json_ou_none(ligne["final_value"]),
+            "status": _texte(ligne["status"]),
+            "page": ligne["page"],
+            "bbox": [float(x) for x in boite] if boite is not None else None,
+            "position": _json_ou_none(ligne["doc_position"]),
+            "confidence": float(ligne["confidence"]),
+            "method": ligne["method"],
+            "model_name": ligne["model_name"],
+            "raw_text": ligne["raw_text"],
+            "element_label": ligne["element_label"],
+            "basis": _json_ou_none(ligne["basis"]),
+            "confirmed_by": _texte(ligne["confirmed_by"]),
+            "confirmed_by_name": ligne["confirmed_by_name"],
+            "confirmed_at": _texte(ligne["confirmed_at"]),
+            "decision_note": ligne["decision_note"],
+            "created_at": _texte(ligne["created_at"]),
+        }
+
+    def extractions(self, preuve: Any, *, project_id: str,
+                    document_id: str | None = None,
+                    ids: list[str] | None = None) -> list[dict[str, Any]]:
+        """Les propositions d'un projet, d'un document, ou d'une liste nommée.
+
+        La liste nommée sert au contrôle de provenance d'un calcul: elle est
+        relue SOUS L'IDENTITÉ DE L'APPELANT, si bien qu'une extraction d'un
+        autre projet ou d'une autre organisation n'y apparaît simplement pas.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select * from project_extraction_list(%s::uuid, %s::uuid, %s::uuid[])",
+                (project_id, document_id, list(ids) if ids is not None else None))
+            return [self._extraction(ligne) for ligne in self._lignes(u)]
+
+    def decider_extraction(
+        self, preuve: Any, *, project_id: str, extraction_id: str, decision: str,
+        final_value: dict[str, Any] | None = None, note: str | None = None,
+    ) -> dict[str, Any]:
+        """``confirmExtraction()``: confirmer, corriger ou rejeter.
+
+        NI NOM NI DATE NE SONT PASSÉS. La primitive dérive le nom de
+        l'adhésion de l'appelant et pose la date du serveur.
+        """
+        with RefusSqlTraduits(), self._unite(preuve) as u:
+            u.executer(
+                "select * from project_extraction_decide("
+                "%s::uuid, %s::uuid, %s, %s::jsonb, %s)",
+                (project_id, extraction_id, decision,
+                 json.dumps(final_value) if final_value is not None else None, note))
+            lignes = self._lignes(u)
+        if not lignes:
+            raise ConfirmationDomainError(
+                "la decision n'a rendu aucune ligne: elle n'est pas annoncee."
+            )
+        ligne = lignes[0]
+        return {
+            "extraction_id": _texte(ligne["extraction_id"]),
+            "status": _texte(ligne["status"]),
+            "final_value": _json_ou_none(ligne["final_value"]),
+            "confirmed_by": _texte(ligne["confirmed_by"]),
+            "confirmed_by_name": ligne["confirmed_by_name"],
+            "confirmed_at": _texte(ligne["confirmed_at"]),
+            "decision_note": ligne["decision_note"],
+        }
