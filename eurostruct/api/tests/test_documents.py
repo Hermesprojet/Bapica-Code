@@ -434,6 +434,7 @@ def test_meme_valeur_par_le_texte_et_la_geometrie_la_provenance_est_la_geometrie
               _ligne("beam_span", 600, "cm", label="P1", ident="geo", methode="geometrie")]
     (champ,) = service.preremplissage(PROJET, lignes, "P1").fields
     assert (champ.value, champ.extraction_id) == (6000, "geo")
+    assert (champ.source_type, champ.source_label) == ("geometry", "Géométrie du DXF")
     assert "(géométrie du dxf)" in champ.provenance.detail
 
 
@@ -443,7 +444,8 @@ def test_deux_valeurs_differentes_restent_un_conflit_geometrie_en_tete():
     rempli = service.preremplissage(PROJET, lignes, "P1")
     assert not rempli.fields
     (conflit,) = rempli.conflicts
-    assert [c.extraction_id for c in conflit.candidates] == ["geo", "ocr"]
+    assert [(c.extraction_id, c.source_type) for c in conflit.candidates] == [
+        ("geo", "geometry"), ("ocr", "ocr")]
 
 
 def test_la_route_du_modele_exige_une_identite(client):

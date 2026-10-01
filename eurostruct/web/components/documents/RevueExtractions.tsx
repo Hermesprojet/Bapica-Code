@@ -243,7 +243,8 @@ export function RevueExtractions({ projet, porteur, document, peutDecider,
             {preremplissage.conflicts.map((c) => (
               <li key={c.path}>
                 {c.label} : {c.candidates.map((x) => `${x.value}${x.unit ? " " + x.unit : ""}`
-                  + (x.element_label ? ` (${x.element_label})` : "")).join(" ou ")}
+                  + (x.element_label ? ` (${x.element_label})` : "")
+                  + ` — ${x.source_label.toLowerCase()}`).join(" ou ")}
                 {" "}— reportez celle de l&apos;élément étudié ligne par ligne.
               </li>
             ))}

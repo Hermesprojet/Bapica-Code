@@ -318,6 +318,9 @@ export interface ChampPrerempli {
   path: string;
   /** À renvoyer telle quelle avec la requête de calcul : le serveur la vérifiera et la réécrira depuis la base. */
   provenance: ProvenanceDTO;
+  source_label: string;
+  /** D'où vient la valeur décidée : à valeur égale, la géométrie passe devant le texte, le texte devant l'OCR. */
+  source_type: "text" | "ocr" | "cad_text" | "geometry" | "vision";
   /** La valeur retenue, telle qu'elle a été décidée. */
   source_value: ValeurExtraite;
   unit: string | null;

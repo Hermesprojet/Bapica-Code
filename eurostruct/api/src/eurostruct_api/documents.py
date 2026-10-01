@@ -477,13 +477,16 @@ def preremplissage(project_id: str, lignes: list[dict[str, Any]],
                 kind_label=categorie.libelle if categorie else ligne["kind"],
                 reason=str(motif)))
             continue
-        sources[ligne["extraction_id"]] = _source(ligne.get("method", ""))[0]
+        source, libelle_source = _source(ligne.get("method", ""))
+        sources[ligne["extraction_id"]] = source
         par_chemin.setdefault(champ.chemin, []).append(ChampPrerempli(
             path=champ.chemin, label=champ.libelle, value=valeur, unit=unite,
             extraction_id=ligne["extraction_id"], provenance=_provenance(ligne),
             source_value=ValeurExtraite(**ligne["final_value"]),
             element_label=ligne.get("element_label"),
-            warning=champ.avertissement))
+            warning=champ.avertissement,
+            source_type=source,  # type: ignore[arg-type]
+            source_label=libelle_source))
 
     champs: list[ChampPrerempli] = []
     conflits: list[ConflitDePreremplissage] = []

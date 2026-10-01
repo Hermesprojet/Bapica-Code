@@ -198,6 +198,10 @@ class ChampPrerempli(Strict):
         description="La valeur retenue, telle qu'elle a été décidée.")
     element_label: str | None = None
     warning: str | None = None
+    source_type: SourceDeValeur = Field(
+        description="D'où vient la valeur décidée : à valeur égale, la "
+                    "géométrie passe devant le texte, le texte devant l'OCR.")
+    source_label: str
 
 
 class ConflitDePreremplissage(Strict):
