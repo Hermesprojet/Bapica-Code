@@ -446,6 +446,7 @@ Mesuré dans l'environnement de ce lot (PostgreSQL 16 jetable, Tesseract
 | API sans base | verte ; la requête gelée d'une étude sans document est inchangée (même identité d'exécution) |
 | `db/test/parcours_livrable.sh` | **trois parcours Chromium verts** sur une même pile : livrable, vérification complète, lecture des plans |
 | étage d'installation de l'image | rejoué hors conteneur : `./engine ./extraction ./api` en une résolution, application importée, six routes de documents présentes |
+| **construction réelle de l'image**, intégration continue sur `7863b49` | **construite** : `COPY extraction/`, `tesseract-ocr` 5.3 avec `fra` et `eng`, une seule résolution pip (`eurostruct-extraction` construit depuis l'arbre), `api Built`. La composition ne démarre pas ensuite — le registre refuse `minio/minio` —, comme sur `9287409` avant ce lot |
 | **`run_tests.sh --require-db` sur `115bc2c` gelé**, arbre isolé, environnement Python propre | **COMPLET — 7 surfaces vertes** : moteur 1138, importeur 113, extraction 112, API 579 collectés (245 réussis, 334 exécutés par les harnais de la surface SQL), 30 barrières de harnais, 14 groupes de garanties SQL, cohérence (seed, contrat TypeScript, dépendances du moteur) |
 | `db/test/mise_a_niveau_active.sh` depuis `da01259` et depuis `9287409`, vers `115bc2c` | **TENU** les deux fois — 26 → 28 et 27 → 28 : installation ancienne peuplée par son propre produit, diagnostic sans modification, quatre refus, concurrence refusée, relance idempotente, restauration isolée identique ligne pour ligne, interruption reprise, études et livrables relus aux mêmes empreintes et aux mêmes octets |
 
@@ -464,8 +465,8 @@ donc ses faits sur la liste que l'écran relit **depuis la base** après le
 dépôt, et compare la réponse au dépôt quand elle est lisible ; il écrit
 dans son bilan quand elle ne l'est pas.
 
-**Non mesuré, et à ne pas annoncer :** la construction réelle de l'image
-(aucun démon Docker dans cet environnement) ; la composition de démonstration
-avec cette fonction ; Supabase (`SUPABASE_UNVERIFIED`) ; le rappel sur des
+**Non mesuré, et à ne pas annoncer :** la composition — de production ou de
+démonstration — démarrée avec cette fonction (aucun démon Docker dans
+l'environnement de ce lot, et `minio/minio` refusé en intégration continue) ; Supabase (`SUPABASE_UNVERIFIED`) ; le rappel sur des
 plans réels de bureau d'études — tous les plans éprouvés sont fabriqués par
 les tests.
