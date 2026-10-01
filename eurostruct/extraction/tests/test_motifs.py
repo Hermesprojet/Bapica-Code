@@ -68,6 +68,9 @@ def test_ce_qui_est_ecrit_est_lu(texte, attendu):
     "mur mitoyen 3,00 m",           # un mur sans « ep. »: rien n'est suppose
     "4 HA 23",                      # pas un diametre du commerce
     "Ref. A1 12x18",                # repere de prefixe inconnu
+    "Terras 2",                     # « as » dans un mot: pas un axe (plan reel)
+    "Glas 4 mm",                    # idem
+    "profiles 2",                   # « files » dans un mot
 ])
 def test_ce_qui_n_est_pas_dit_n_est_pas_devine(texte):
     lu = _lire(texte)
@@ -75,6 +78,15 @@ def test_ce_qui_n_est_pas_dit_n_est_pas_devine(texte):
     assert not categories - {"floor_level"}, lu
     if texte.startswith("Plancher"):
         assert lu == [("floor_level", 3.2, "m")]
+
+
+@pytest.mark.parametrize(("texte", "attendu"), [
+    ("as B", [("grid_line", "B", None)]),
+    ("Axe 3", [("grid_line", "3", None)]),
+    ("Terras 2 - as 4", [("grid_line", "4", None)]),
+])
+def test_un_axe_nomme_par_un_mot_entier_reste_lu(texte, attendu):
+    assert _lire(texte) == attendu
 
 
 def test_un_meme_texte_ne_nourrit_qu_une_proposition():

@@ -486,8 +486,12 @@ def _enrobage(f: _Fabrique) -> None:
                    regle="enrobage", unite=m.group("u"))
 
 
+#: LE MOT-CLE COMMENCE UN MOT: « as » (axe, en neerlandais) se lisait dans
+#: « Terras 2 » — un axe 2 propose sur un plan d'architecte reel —, et de
+#: meme dans « glas », « plas ». Les autres regles admettent les composes
+#: neerlandais (« buitenmuur 30 »); un axe, jamais.
 _AXE = re.compile(
-    r"(?P<kw>(?i:axes?|files?|grid(?:lines?)?|stramien(?:lijnen|lijn)?|assen|as))\s+"
+    r"\b(?P<kw>(?i:axes?|files?|grid(?:lines?)?|stramien(?:lijnen|lijn)?|assen|as))\s+"
     r"(?P<a>[A-Z]{1,2}|\d{1,2})(?![\w,.])"
     r"(?:\s*(?:-|–|/|(?i:tot|to))\s*(?P<b>[A-Z]{1,2}|\d{1,2})(?![\w,.]))?"
     r"(?:\s*[:=]?\s*(?P<n>" + NOMBRE + r")\s*" + _U_OPT + r")?")
