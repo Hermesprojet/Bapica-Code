@@ -251,3 +251,30 @@ td.decomptes { font-size: .82rem; color: var(--encre-douce); }
      (DXF) » se replie sur trois lignes dans une colonne de 150 px. */
   .rangee-boutons button, .navigation-etapes button { flex: 1 1 100%; }
 }
+
+/* LA SOURCE D'UNE VALEUR, et le modèle lu sur le dessin. */
+.source { display: inline-block; border-radius: 4px; padding: 0 .4rem;
+          font-size: .75rem; border: 1px solid var(--trait); color: var(--encre-douce); }
+.source-geometry { background: var(--ok-fond); color: var(--ok); border-color: var(--ok); }
+.source-cad_text { background: var(--papier); color: var(--encre); }
+.source-ocr { background: var(--alerte-fond); color: var(--alerte); border-color: var(--alerte-trait); }
+.revue .derivee, .revue .accord, .revue .desaccord { display: block; }
+.revue tr.choisi td, .modele tr.choisi td { background: var(--alerte-fond); }
+.modele { margin: .8rem 0 1rem; }
+.modele h4 { font-size: .9rem; margin: .6rem 0 .3rem; }
+.modele tbody tr { cursor: pointer; }
+.plan-modele { width: 100%; max-height: 28rem; background: var(--papier);
+               border: 1px solid var(--trait); border-radius: 6px; margin: .4rem 0; }
+.plan-modele * { vector-effect: non-scaling-stroke; }
+.plan-dalle { fill: var(--ok-fond); stroke: none; }
+.plan-axe line { stroke: var(--encre-douce); stroke-width: 1; stroke-dasharray: 10 4 2 4; }
+.plan-axe text { fill: var(--encre-douce); font-family: ui-sans-serif, sans-serif; }
+.plan-poutre { fill: var(--trait); stroke: var(--encre-douce); stroke-width: 1; cursor: pointer; }
+.plan-voile { fill: var(--encre-douce); stroke: var(--encre); stroke-width: 1; cursor: pointer; }
+.plan-poteau { fill: var(--encre); stroke: var(--encre); stroke-width: 1; cursor: pointer; }
+.plan-travee { cursor: pointer; }
+.plan-travee line { stroke: var(--ok); stroke-width: 1.5; }
+.plan-travee text { fill: var(--ok); font-family: ui-sans-serif, sans-serif; }
+.plan-modele .choisi, .plan-modele .choisi line { stroke: var(--alerte); stroke-width: 3; }
+.plan-modele polygon.choisi { fill: var(--alerte-fond); }
+.plan-modele .choisi text { fill: var(--alerte); font-weight: 600; }

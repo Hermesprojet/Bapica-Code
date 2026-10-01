@@ -124,8 +124,10 @@ export function DocumentsDuProjet({ projet, porteur, elementCourant, surReport }
         valeurs lues — axes, portées, sections, épaisseurs, niveaux, classes,
         nuances, charges, notes — sont des <strong>propositions</strong> :
         aucune n&apos;entre dans l&apos;étude avant votre décision, et le
-        serveur relit cette décision au moment du calcul. Un DWG est conservé
-        mais pas lu (licence ODA ou RealDWG requise) : exportez-le en DXF.
+        serveur relit cette décision au moment du calcul. Un DXF est lu par sa
+        géométrie : grille, poteaux, poutres et leurs appuis donnent les portées
+        même quand aucun texte ne les écrit. Un DWG est conservé mais pas lu
+        (licence ODA ou RealDWG requise) : exportez-le en DXF.
       </p>
 
       <fieldset>
@@ -219,6 +221,17 @@ export function DocumentsDuProjet({ projet, porteur, elementCourant, surReport }
                   </span>
                   {d.analysis_detail && (
                     <span className="aide detail-analyse"> {d.analysis_detail}</span>
+                  )}
+                  {d.structure_summary && (
+                    <span className="aide modele-resume" id={`modele-resume-${d.document_id}`}>
+                      {" "}Modèle structurel : {d.structure_summary.counts.columns ?? 0} poteau(x),
+                      {" "}{d.structure_summary.counts.beams ?? 0} poutre(s),
+                      {" "}{d.structure_summary.counts.spans ?? 0} travée(s),
+                      {" "}{d.structure_summary.counts.slabs ?? 0} dalle(s)
+                      {d.structure_summary.counts.unresolved
+                        ? `, ${d.structure_summary.counts.unresolved} non résolu(s)` : ""}
+                      {" "}— {d.structure_summary.drawing_units ?? "unité non déclarée"}.
+                    </span>
                   )}
                 </td>
                 <td className="decomptes">

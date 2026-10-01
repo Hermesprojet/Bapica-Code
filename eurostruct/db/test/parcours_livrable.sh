@@ -52,6 +52,13 @@
 # l'etude guidee. Son fait decisif: la decision part SANS nom ni date, et la
 # provenance d'un champ reporte ne survit pas a sa modification.
 #
+# ET LA QUATRIEME: LA GEOMETRIE D'UN DXF
+# ---------------------------------------
+# `parcours_geometrie_dxf.mjs` depose un plan de coffrage DXF fabrique qui
+# n'ecrit AUCUNE portee. Son fait decisif: la portee de P1 vient des traits
+# du dessin, l'ecran le dit et le montre, et une fois decidee elle entre dans
+# le calcul avec une provenance qui dit « geometrie du DXF ».
+#
 # LE DECOR CONFIRME LES PARAMETRES AVANT DE CALCULER, ET C'EST UN DECOR.
 # Une attestation ne peut porter que sur un calcul STRICT abouti, et le mode
 # strict ne s'ouvre que par le quatre-yeux. Le harnais fait donc passer les
@@ -524,7 +531,7 @@ if ! attendre_url "http://127.0.0.1:$PORT_WEB" 60 "$PID_WEB"; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. LES TROIS PARCOURS
+# 5. LES QUATRE PARCOURS
 # ---------------------------------------------------------------------------
 # UN SEUL DECOR POUR DEUX VERTICALES, ET C'EST DELIBERE.
 #
@@ -580,6 +587,26 @@ PY
   [[ $CODE -eq 0 ]] && CODE=$CODE_LP
 fi
 
+# LA QUATRIEME VERTICALE: UN DXF LU PAR SA GEOMETRIE. Meme regle: le plan est
+# fabrique ici, par la fabrique des tests du module de lecture, et rien n'y
+# ecrit une portee.
+if [[ $CODE -eq 0 || $CODE -eq 1 ]]; then
+  echo ""
+  python3 - "$RACINE/extraction/tests" "$TMP/FICTIF-S-101-coffrage.dxf" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from fabrique_geometrie import dxf_coffrage_s101
+with open(sys.argv[2], "wb") as sortie:
+    sortie.write(dxf_coffrage_s101())
+PY
+  EUROSTRUCT_WEB="http://127.0.0.1:$PORT_WEB" \
+  EUROSTRUCT_API="http://127.0.0.1:$PORT_API" \
+  EUROSTRUCT_E2E_PLAN_DXF="$TMP/FICTIF-S-101-coffrage.dxf" \
+    node "$RACINE/web/e2e/parcours_geometrie_dxf.mjs"
+  CODE_GEO=$?
+  [[ $CODE -eq 0 ]] && CODE=$CODE_GEO
+fi
+
 # CE QUE LES SERVEURS ONT DIT PENDANT LE PARCOURS.
 #
 # Un parcours rouge se lit d'abord dans le navigateur — c'est ce que voit
@@ -626,6 +653,12 @@ if [[ $CODE -eq 0 ]]; then
   echo " reviennent au nom de l'adhesion, un report dans"
   echo " l'unite de chaque champ, une provenance que le"
   echo " serveur reecrit, et qu'une modification retire."
+  echo ""
+  echo " Et la geometrie d'un DXF: un plan qui n'ecrit aucune"
+  echo " portee donne son modele structurel, dessine; la revue"
+  echo " separe la mesure sur le dessin du texte lu, et la"
+  echo " portee mesuree, decidee, entre dans le calcul avec"
+  echo " une provenance qui dit la geometrie."
   echo "==================================================="
 fi
 exit $CODE

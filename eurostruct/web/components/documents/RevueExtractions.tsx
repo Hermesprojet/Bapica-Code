@@ -7,10 +7,13 @@
  * CE QUE LA PERSONNE VOIT AVANT DE DÉCIDER
  * -----------------------------------------
  * La valeur proposée et la valeur retenue côte à côte, le texte lu tel quel,
- * la page, la méthode (couche texte, OCR, DXF) et sa confiance — indicative,
- * jamais une certitude —, l'origine de l'unité, et le champ de l'étude que la
- * valeur peut renseigner. Et le nom sous lequel elle décidera : celui que
- * l'organisation a enregistré, que l'écran ne fait qu'afficher.
+ * la page, la SOURCE — texte du PDF, OCR, texte ou cote du DXF, géométrie du
+ * DXF — et sa confiance (indicative, jamais une certitude), l'origine de
+ * l'unité, et le champ de l'étude que la valeur peut renseigner. Pour une
+ * valeur MESURÉE sur le dessin : entre quels appuis, par quelle règle, ce que
+ * les cotes et les autres lectures en disent, et l'élément sur le modèle
+ * dessiné. Et le nom sous lequel elle décidera : celui que l'organisation a
+ * enregistré, que l'écran ne fait qu'afficher.
  *
  * CE QUE L'ÉCRAN NE FAIT PAS
  * ---------------------------
@@ -19,9 +22,11 @@
  * de lui-même : chaque décision est un geste, et elle est définitive.
  */
 import { useEffect, useMemo, useState } from "react";
+import { ModeleStructurel } from "./ModeleStructurel";
 import type { Projet } from "@/lib/atelier";
 import {
-  confirmExtraction, enClairValeur, listExtractions, origineDeLUnite, prefill,
+  SOURCES, confirmExtraction, confrontations, deriveeDuDessin, elementsDe,
+  enClairValeur, listExtractions, origineDeLUnite, prefill,
   type ChampPrerempli, type DocumentDepose, type Extraction, type Preremplissage,
 } from "@/lib/documents";
 import { AppelRefuse, type PorteurDeJeton } from "@/lib/transport";
@@ -33,9 +38,6 @@ const STATUT_LISIBLE: Record<string, string> = {
 };
 const STATUT_CLASSE: Record<string, string> = {
   proposed: "attente", confirmed: "ok", corrected: "ok", rejected: "silence",
-};
-const METHODE_LISIBLE: Record<string, string> = {
-  texte_natif: "couche texte", ocr: "OCR", dxf: "entité DXF", vision: "vision",
 };
 
 function enPhrase(cause: unknown): string {
@@ -60,6 +62,11 @@ export function RevueExtractions({ projet, porteur, document, peutDecider,
   const [extractions, setExtractions] = useState<Extraction[] | null>(null);
   const [filtreStatut, setFiltreStatut] = useState("tous");
   const [filtreCategorie, setFiltreCategorie] = useState("toutes");
+  const [filtreSource, setFiltreSource] = useState("toutes");
+  //: L'ELEMENT DESIGNE, depuis le dessin (la revue se restreint a ses
+  //: valeurs) ou depuis une ligne (le dessin le montre).
+  const [selection, setSelection] = useState<{ ids: Set<string>;
+                                               depuis: "plan" | "revue" } | null>(null);
   const [correction, setCorrection] = useState<{ id: string; valeur: string;
                                                  unite: string; note: string } | null>(null);
   const [rejet, setRejet] = useState<{ id: string; note: string } | null>(null);
@@ -85,9 +92,18 @@ export function RevueExtractions({ projet, porteur, document, peutDecider,
     () => Array.from(new Map((extractions ?? []).map((x) => [x.kind, x.kind_label]))
       .entries()),
     [extractions]);
+  const parSource = useMemo(() => {
+    const compte = new Map<string, number>();
+    for (const x of extractions ?? []) compte.set(x.source_type, (compte.get(x.source_type) ?? 0) + 1);
+    return compte;
+  }, [extractions]);
+  const designe = (x: Extraction) =>
+    !!selection && elementsDe(x).some((id) => selection.ids.has(id));
   const visibles = (extractions ?? []).filter(
     (x) => (filtreStatut === "tous" || x.status === filtreStatut)
-      && (filtreCategorie === "toutes" || x.kind === filtreCategorie));
+      && (filtreCategorie === "toutes" || x.kind === filtreCategorie)
+      && (filtreSource === "toutes" || x.source_type === filtreSource)
+      && (selection?.depuis !== "plan" || designe(x)));
 
   //: LE NOM SOUS LEQUEL LA PERSONNE DECIDERA, tel que l'adhesion le porte.
   //: Absent, la base refusera: on le dit avant le clic plutot qu'apres.
@@ -193,6 +209,13 @@ export function RevueExtractions({ projet, porteur, document, peutDecider,
           {Object.entries(STATUT_LISIBLE).map(([v, l]) => (
             <option key={v} value={v}>{l}</option>))}
         </select>
+        <label htmlFor="revue-source">Source</label>
+        <select id="revue-source" value={filtreSource}
+                onChange={(e) => setFiltreSource(e.target.value)}>
+          <option value="toutes">Toutes</option>
+          {SOURCES.filter(([s]) => parSource.has(s)).map(([s, l]) => (
+            <option key={s} value={s}>{l} ({parSource.get(s)})</option>))}
+        </select>
         <label htmlFor="revue-categorie">Catégorie</label>
         <select id="revue-categorie" value={filtreCategorie}
                 onChange={(e) => setFiltreCategorie(e.target.value)}>
@@ -228,6 +251,33 @@ export function RevueExtractions({ projet, porteur, document, peutDecider,
         </div>
       )}
 
+      {extractions !== null && parSource.size > 0 && (
+        <p className="aide" id="revue-sources">
+          {SOURCES.filter(([s]) => parSource.has(s)).map(([s, l], i) => (
+            <span key={s}>{i > 0 ? " · " : ""}
+              <span className={`source source-${s}`}>{l}</span> {parSource.get(s)}
+            </span>))}
+          {parSource.has("geometry")
+            && " — les valeurs « géométrie » sont mesurées sur les traits du dessin, "
+              + "même quand aucun texte ne les écrit."}
+        </p>
+      )}
+
+      {document.has_structure && (
+        <ModeleStructurel projet={projet} porteur={porteur} document={document}
+                          selection={selection?.ids ?? new Set<string>()}
+                          surSelection={(ids) => setSelection(
+                            { ids: new Set(ids), depuis: "plan" })} />
+      )}
+      {selection?.depuis === "plan" && (
+        <p className="bandeau ok" id="revue-selection" role="status">
+          Valeurs de l&apos;élément choisi sur le dessin
+          ({Array.from(selection.ids).join(", ")}).{" "}
+          <button type="button" className="lien" id="revue-tout-afficher"
+                  onClick={() => setSelection(null)}>Tout afficher</button>
+        </p>
+      )}
+
       {extractions === null ? (
         <p className="aide" id="revue-chargement" role="status">
           Chargement des valeurs lues…
@@ -246,9 +296,14 @@ export function RevueExtractions({ projet, porteur, document, peutDecider,
                 {visibles.map((x) => {
                   const unite = origineDeLUnite(x);
                   const occupe = enCours === x.extraction_id;
+                  const derivee = deriveeDuDessin(x);
+                  const { accord, desaccord } = confrontations(x);
+                  const elements = elementsDe(x);
                   return (
                     <tr key={x.extraction_id} id={`extraction-${x.extraction_id}`}
-                        data-categorie={x.kind} data-statut={x.status}>
+                        data-categorie={x.kind} data-statut={x.status}
+                        data-source={x.source_type}
+                        className={designe(x) ? "choisi" : undefined}>
                       <td>
                         {x.kind_label}
                         {x.element_label && <span className="etiquette">{x.element_label}</span>}
@@ -259,12 +314,35 @@ export function RevueExtractions({ projet, porteur, document, peutDecider,
                       <td className="valeur-proposee">{enClairValeur(x.proposed_value)}</td>
                       <td className="valeur-retenue">{enClairValeur(x.final_value)}</td>
                       <td>
+                        <span className={`source source-${x.source_type}`}>
+                          {x.source_label}
+                        </span>{" "}
                         <q className="texte-lu">{x.raw_text}</q>
                         <span className="aide">
-                          {" "}page {x.page} · {METHODE_LISIBLE[x.method] ?? x.method} ·
-                          confiance {Math.round(x.confidence * 100)} %
+                          {" "}page {x.page} · confiance {Math.round(x.confidence * 100)} %
                           {unite ? ` · unité ${unite}` : ""}
                         </span>
+                        {derivee && (
+                          <span className="aide derivee"> Mesurée : {derivee}.</span>
+                        )}
+                        {accord.length > 0 && (
+                          <span className="aide accord">
+                            {" "}Corroborée par {accord.join(" ; ")}.
+                          </span>
+                        )}
+                        {desaccord.length > 0 && (
+                          <span className="aide manque desaccord">
+                            {" "}Une autre lecture donne {desaccord.join(" ; ")} : à trancher.
+                          </span>
+                        )}
+                        {elements.length > 0 && document.has_structure && (
+                          <button type="button" className="lien voir-sur-plan"
+                                  id={`voir-${x.extraction_id}`}
+                                  onClick={() => setSelection(
+                                    { ids: new Set(elements), depuis: "revue" })}>
+                            {" "}Voir sur le dessin
+                          </button>
+                        )}
                         {x.form_warning && x.status !== "rejected" && (
                           <span className="aide manque"> {x.form_warning}</span>
                         )}

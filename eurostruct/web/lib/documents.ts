@@ -3,9 +3,11 @@
  * décider, reporter.
  *
  * CE MODULE NE LIT AUCUN DOCUMENT ET NE PROPOSE AUCUNE VALEUR. Le serveur lit
- * (couche texte, OCR, entités DXF), propose, et enregistre ; l'écran montre ce
- * qui a été lu, recueille la décision d'une personne, et reporte dans l'étude
- * des valeurs DÉJÀ converties par le serveur dans l'unité de chaque champ.
+ * (couche texte, OCR, entités et géométrie DXF), propose, et enregistre ;
+ * l'écran montre ce qui a été lu, recueille la décision d'une personne, et
+ * reporte dans l'étude des valeurs DÉJÀ converties par le serveur dans l'unité
+ * de chaque champ. Le modèle structurel d'un DXF se DESSINE ici ; il n'est
+ * jamais recalculé.
  *
  * LA DÉCISION NE PORTE NI NOM NI DATE. Le type généré `DecisionExtraction`
  * n'a pas de place pour eux : le nom vient de l'adhésion, la date du serveur.
@@ -19,9 +21,11 @@ import type {
   Extraction,
   ListeDocuments,
   ListeExtractions,
+  ModeleStructurel,
   NonReportable,
   Preremplissage,
   ProvenanceDTO,
+  StructureDuDocument,
   ValeurExtraite,
 } from "@contracts/generated/engine";
 import {
@@ -31,9 +35,23 @@ import {
 
 export type {
   ChampPrerempli, ConflitDePreremplissage, DecisionExtraction, DocumentDepose,
-  DocumentTeleverse, Extraction, NonReportable, Preremplissage, ProvenanceDTO,
-  ValeurExtraite,
+  DocumentTeleverse, Extraction, ModeleStructurel, NonReportable, Preremplissage,
+  ProvenanceDTO, StructureDuDocument, ValeurExtraite,
 };
+
+export type SourceDeValeur = Extraction["source_type"];
+
+/**
+ * LES SOURCES D'UNE VALEUR, dans l'ordre où le serveur les préfère quand elles
+ * concordent : la mesure sur le dessin d'abord, l'OCR en dernier.
+ */
+export const SOURCES: ReadonlyArray<readonly [SourceDeValeur, string]> = [
+  ["geometry", "Géométrie du DXF"],
+  ["cad_text", "Texte ou cote du DXF"],
+  ["text", "Texte du PDF"],
+  ["vision", "Détection visuelle"],
+  ["ocr", "OCR"],
+];
 
 /** Les natures qu'on dépose ici, et leur libellé. La base refuse les autres. */
 export const NATURES: ReadonlyArray<readonly [string, string]> = [
@@ -112,6 +130,23 @@ export async function confirmExtraction(
     porteur, { methode: "POST", corps: decision }))!;
 }
 
+/**
+ * Le modèle structurel d'un DXF, tel qu'enregistré avec son analyse. `null`
+ * pour un document qui n'en a pas (PDF, DXF sans géométrie lue).
+ */
+export async function lireStructure(
+  porteur: PorteurDeJeton, projectId: string, documentId: string,
+): Promise<StructureDuDocument | null> {
+  try {
+    return await appelProtege<StructureDuDocument>(
+      `${projet(projectId)}/documents/${encodeURIComponent(documentId)}/structure`,
+      porteur, { methode: "GET", idempotent: true });
+  } catch (cause) {
+    if (cause instanceof AppelRefuse && cause.statut === 404) return null;
+    throw cause;
+  }
+}
+
 /** Les valeurs DÉCIDÉES, déjà dans l'unité de chaque champ de l'étude. */
 export async function prefill(
   porteur: PorteurDeJeton, projectId: string, element?: string,
@@ -174,8 +209,103 @@ export function origineDeLUnite(x: Extraction): string | null {
   if (base_ === "declaration") {
     const d = (fondement.unit_declaration ?? {}) as Record<string, unknown>;
     if (d.source === "$INSUNITS") return `unité du dessin ($INSUNITS = ${d.value})`;
+    if (d.source === "declaration_et_cotes") {
+      return `le dessin ne déclare pas son unité ; « ${String(d.raw_text ?? "")} » `
+        + "et les cotes du dessin la donnent";
+    }
     return `déclarée dans le document : « ${String(d.raw_text ?? "")} »`
       + (d.page ? ` (page ${d.page})` : "");
   }
   return null;
+}
+
+type Fondement = Record<string, unknown>;
+
+/**
+ * LES ÉLÉMENTS DU MODÈLE qu'une proposition géométrique désigne : la travée et
+ * sa poutre, le poteau, les deux axes d'un entraxe. Vide pour une valeur lue
+ * dans un texte : elle n'a pas de forme sur le dessin.
+ */
+export function elementsDe(x: Extraction): string[] {
+  if (x.source_type !== "geometry") return [];
+  const p = (x.position ?? {}) as Fondement;
+  const ids = new Set<string>();
+  const element = (p.element ?? {}) as Fondement;
+  if (typeof element.id === "string" && !String(element.type).endsWith("_group")
+      && element.type !== "grid_spacing" && element.type !== "grid_extent") {
+    ids.add(element.id);
+  }
+  if (typeof p.beam === "string") ids.add(p.beam);
+  for (const axe of (Array.isArray(p.axes) ? p.axes : [])) {
+    if (typeof axe === "string") ids.add(axe);
+  }
+  for (const i of (Array.isArray(p.instances) ? p.instances : [])) {
+    if (typeof i === "string") ids.add(i);
+    else if (i && typeof (i as Fondement).id === "string") ids.add((i as Fondement).id as string);
+  }
+  return Array.from(ids);
+}
+
+function appuiEnClair(a: unknown): string {
+  const appui = (a ?? {}) as Fondement;
+  if (!appui.support) return "extrémité libre";
+  const genre = { poteau: "poteau", voile: "voile", poutre: "poutre" }[
+    String(appui.kind)] ?? "appui";
+  const nom = appui.mark && appui.mark !== genre ? ` ${appui.mark}` : "";
+  return `${genre}${nom}${appui.grid_node ? ` en ${appui.grid_node}` : ""}`;
+}
+
+/**
+ * COMMENT UNE VALEUR A ÉTÉ MESURÉE SUR LE DESSIN, en une phrase : entre quels
+ * appuis, par quelle règle, et ce que les cotes du dessin en disent.
+ */
+export function deriveeDuDessin(x: Extraction): string | null {
+  if (x.source_type !== "geometry") return null;
+  const f = (x.basis ?? {}) as Fondement;
+  const p = (x.position ?? {}) as Fondement;
+  const unite = x.proposed_value.unit ? ` ${x.proposed_value.unit}` : "";
+  const morceaux: string[] = [];
+  const travee = (p.span ?? null) as Fondement | null;
+  if (travee) {
+    morceaux.push(x.kind === "beam_clear_span"
+      ? `entre les nus de ${appuiEnClair(travee.from)} et de ${appuiEnClair(travee.to)}`
+      : `entre les centres de ${appuiEnClair(travee.from)} et de ${appuiEnClair(travee.to)}`);
+    morceaux.push(`travée ${travee.index}/${travee.count}`);
+    if (f.axis_length !== undefined && f.clear_length !== undefined) {
+      morceaux.push(`entre-axes ${f.axis_length}${unite}, nu à nu ${f.clear_length}${unite}`);
+    }
+  } else if (p.support) {
+    morceaux.push(`console depuis le nu de ${appuiEnClair(p.support)}`);
+  } else if (f.rule === "largeur_de_bande") {
+    morceaux.push(`distance entre les deux faces de la poutre (${String(f.drawn_as ?? "")})`);
+  } else if (f.rule === "entraxe_droites_paralleles") {
+    morceaux.push("distance entre deux axes parallèles de la grille");
+  } else if (Array.isArray(p.instances)) {
+    morceaux.push(`${p.count ?? p.instances.length} élément(s) de même section`);
+  }
+  const regle = { bloc: "bloc", calque: "calque", type_de_ligne: "type de ligne",
+                  forme: "forme et position" }[String(f.classified_by ?? "")];
+  if (regle) morceaux.push(`reconnu par ${regle}`);
+  for (const c of (Array.isArray(f.dimensions) ? f.dimensions : []) as Fondement[]) {
+    morceaux.push(c.forced_mismatch
+      ? `la cote du dessin affiche « ${c.displayed} » et contredit la mesure`
+      : `la cote du dessin (« ${c.displayed} ») concorde`);
+  }
+  return morceaux.length ? morceaux.join(" · ") : null;
+}
+
+/** Ce que les AUTRES lectures du document disent de la même grandeur. */
+export function confrontations(x: Extraction): { accord: string[]; desaccord: string[] } {
+  const f = (x.basis ?? {}) as Fondement;
+  const enClairTrace = (t: Fondement) => {
+    const source = SOURCES.find(([s]) => s === ({ texte_natif: "text", ocr: "ocr",
+      dxf: "cad_text", geometrie: "geometry", vision: "vision" } as Record<string, string>)[
+      String(t.method)])?.[1] ?? String(t.method);
+    return `${t.value}${t.unit ? " " + t.unit : ""} (${source.toLowerCase()} : `
+      + `« ${String(t.raw_text ?? "").slice(0, 80)} »)`;
+  };
+  return {
+    accord: ((f.corroborated_by ?? []) as Fondement[]).map(enClairTrace),
+    desaccord: ((f.conflicts_with ?? []) as Fondement[]).map(enClairTrace),
+  };
 }
