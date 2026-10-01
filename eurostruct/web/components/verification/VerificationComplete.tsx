@@ -33,8 +33,12 @@ import { useEffect, useState } from "react";
 //: s'affichaient sans nom. Un refus qui porte une liste de travail devenait
 //: illisible.
 import type { PreflightBlockerDTO } from "@contracts/generated/engine";
-import { champsDepuisRequete } from "./champs";
-import { EtudeGuidee, type DemandeDeVariante } from "./EtudeGuidee";
+import { champsDepuisRequete, reportDepuisPreremplissage } from "./champs";
+import {
+  EtudeGuidee, type DemandeDeReport, type DemandeDeVariante,
+} from "./EtudeGuidee";
+import { DocumentsDuProjet } from "@/components/documents/DocumentsDuProjet";
+import type { ChampPrerempli } from "@/lib/documents";
 import { SyntheseEtude } from "./SyntheseEtude";
 import {
   creerLivrable, previsualiserDessin, telechargerLivrable,
@@ -98,6 +102,24 @@ export function VerificationComplete({ projet, porteur, reouverture,
   //: LA VARIANTE DEMANDÉE, à poser dans la saisie. Elle vient de l'étude
   //: AFFICHÉE — lancée à l'instant ou rouverte — et de sa réponse serveur.
   const [variante, setVariante] = useState<DemandeDeVariante | null>(null);
+  //: LES VALEURS DÉCIDÉES À REPORTER depuis la revue des documents, et le
+  //: repère de la saisie — pour que la revue préremplisse CET élément.
+  const [report, setReport] = useState<DemandeDeReport | null>(null);
+  const [elementCourant, setElementCourant] = useState("");
+
+  /**
+   * Le report d'une revue vers la saisie. AUCUNE CONVERSION ICI : le serveur
+   * a rendu chaque valeur dans l'unité de son champ ; une valeur qui ne s'y
+   * prête pas est écartée, et la raison s'ajoute au résumé.
+   */
+  function reporter(champs: ChampPrerempli[], resume: string) {
+    const { valeurs, provenances, ecartes } = reportDepuisPreremplissage(champs);
+    setReport((r) => ({
+      valeurs, provenances,
+      resume: ecartes.length ? `${resume} Non reporté : ${ecartes.join(" ; ")}.` : resume,
+      rang: (r?.rang ?? 0) + 1,
+    }));
+  }
 
   //: LA RÉOUVERTURE REMPLACE CE QUI ÉTAIT AFFICHÉ, et amène la synthèse à
   //: l'écran: l'historique est en bas de page, la synthèse en haut, et un
@@ -123,10 +145,10 @@ export function VerificationComplete({ projet, porteur, reouverture,
    * qui ne peut pas être repris BLOQUE le lancement, dans `EtudeGuidee`.
    */
   function creerVariante(etude: Ec2BeamVerificationResponse) {
-    const { champs, nonRepris } = champsDepuisRequete(
+    const { champs, nonRepris, provenances } = champsDepuisRequete(
       etude.request ?? null, etude.strict_ndp);
     setVariante((v) => ({
-      champs, nonRepris,
+      champs, nonRepris, provenances,
       origine: { calculation_id: etude.calculation_id, element: etude.element },
       rang: (v?.rang ?? 0) + 1,
     }));
@@ -179,8 +201,14 @@ export function VerificationComplete({ projet, porteur, reouverture,
 
   return (
     <>
+      {/* L'ÉTAPE PRÉALABLE: les pièces du projet et la revue de ce qui en a
+          été lu. Facultative — l'étude guidée fonctionne sans elle. */}
+      <DocumentsDuProjet projet={projet} porteur={porteur}
+                         elementCourant={elementCourant} surReport={reporter} />
+
       <EtudeGuidee projet={projet} enCours={enCours} surLancer={lancer}
-                   motifImpossible={droit} variante={variante} />
+                   motifImpossible={droit} variante={variante}
+                   report={report} surElement={setElementCourant} />
 
       {etat.type === "panne" && (
         <div className="bandeau refus" role="alert">

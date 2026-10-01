@@ -31,7 +31,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ALPHAS, CHAMPS_INITIAUX, CLASSES_W_MAX, ETAPES, EXPOSITIONS, SYSTEMES,
   champsManquants, enRequete, etudeComplete,
-  type ChampsEtude, type CleEtape, type NonRepris,
+  type ChampTexte, type ChampsEtude, type CleEtape, type NonRepris,
+  type ProvenanceDeChamp, type Provenances,
 } from "./champs";
 import type { Projet } from "@/lib/atelier";
 
@@ -55,10 +56,26 @@ export type OrigineDeVariante = { calculation_id: string; element: string };
 export type DemandeDeVariante = {
   champs: ChampsEtude; origine: OrigineDeVariante; nonRepris: NonRepris[];
   rang: number;
+  //: L'origine documentaire reprise de l'étude d'origine, s'il y en a une.
+  provenances?: Provenances;
+};
+
+/**
+ * Des valeurs DÉCIDÉES à reporter depuis la revue des documents.
+ *
+ * Elles arrivent déjà dans l'unité de chaque champ — le serveur les a
+ * converties — et portent leur provenance. Le rang permet de reporter deux
+ * fois la même chose: chaque demande est un geste.
+ */
+export type DemandeDeReport = {
+  valeurs: Partial<Record<ChampTexte, string>>;
+  provenances: Provenances;
+  resume: string;
+  rang: number;
 };
 
 export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
-                              variante = null }: {
+                              variante = null, report = null, surElement }: {
   projet: Projet | null;
   enCours: boolean;
   surLancer: (requete: ReturnType<typeof enRequete>) => void;
@@ -70,8 +87,19 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
   //: réponse serveur, pas de champs tapés un jour — et ce composant ne fait
   //: que la poser dans les champs, puis nommer l'origine dans la requête.
   variante?: DemandeDeVariante | null;
+  //: DES VALEURS DÉCIDÉES DANS LA REVUE DES DOCUMENTS, à poser dans les champs
+  //: avec leur provenance. Elles ne remplacent que les champs qu'elles nomment.
+  report?: DemandeDeReport | null;
+  //: Le repère saisi, pour que la revue préremplisse CET élément-là.
+  surElement?: (element: string) => void;
 }) {
   const [champs, setChamps] = useState<ChampsEtude>(CHAMPS_INITIAUX);
+  //: L'ORIGINE DOCUMENTAIRE DES CHAMPS REPORTÉS. Un champ modifié la perd:
+  //: sa valeur redevient une saisie, et ne part plus comme extraite.
+  const [provenances, setProvenances] = useState<Provenances>({});
+  //: CE QUE LE DERNIER REPORT A FAIT, écrit — pas seulement des champs qui
+  //: changent ailleurs dans la page.
+  const [dernierReport, setDernierReport] = useState<string | null>(null);
   const [etape, setEtape] = useState(0);
   //: L'EXPLORATOIRE EST UN CHOIX EXPLICITE, PAS UNE CASE OUBLIÉE. Décocher le
   //: mode strict demande une confirmation, parce que le résultat qui en sort
@@ -98,12 +126,33 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
     setChamps(variante.champs);
     setOrigine(variante.origine);
     setNonRepris(variante.nonRepris);
+    setProvenances(variante.provenances ?? {});
+    setDernierReport(null);
     setExploratoireAssume(false);
     setEtape(1);
     requestAnimationFrame(() => {
       document.getElementById("titre-etude")?.scrollIntoView({ block: "start" });
     });
   }, [variante]);
+
+  //: LE REPORT REMPLACE LES SEULS CHAMPS QU'IL NOMME, et lève les manques
+  //: qu'il comble. Le reste de la saisie ne bouge pas.
+  useEffect(() => {
+    if (!report) return;
+    setChamps((c) => ({ ...c, ...report.valeurs }));
+    setProvenances((p) => ({ ...p, ...report.provenances }));
+    const reportes = Object.keys(report.valeurs) as ChampTexte[];
+    setNonRepris((liste) => liste.filter(
+      (n) => n.champ === "*" || !reportes.includes(n.champ as ChampTexte)));
+    setDernierReport(report.resume);
+    requestAnimationFrame(() => {
+      document.getElementById("titre-etude")?.scrollIntoView({ block: "start" });
+    });
+  }, [report]);
+
+  //: LE REPÈRE REMONTE, pour que la revue des documents préremplisse l'élément
+  //: étudié plutôt que tous ceux du plan.
+  useEffect(() => { surElement?.(champs.element); }, [champs.element, surElement]);
 
   const manquants = useMemo(() => champsManquants(champs), [champs]);
   const complet = etudeComplete(champs);
@@ -114,6 +163,13 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
   const majuscule = (k: keyof ChampsEtude) => (e: { target: { value: string } }) => {
     setChamps((c) => ({ ...c, [k]: e.target.value }));
     resoudre(k);
+    //: MODIFIER UN CHAMP REPORTÉ EN FAIT UNE SAISIE: la provenance tombe.
+    setProvenances((p) => {
+      if (!(k in p)) return p;
+      const reste = { ...p };
+      delete reste[k as ChampTexte];
+      return reste;
+    });
   };
 
   /**
@@ -151,7 +207,7 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
 
   function lancer() {
     if (blocage) return;
-    surLancer(enRequete(champs, origine?.calculation_id ?? null));
+    surLancer(enRequete(champs, origine?.calculation_id ?? null, provenances));
   }
 
   const courante = ETAPES[etape];
@@ -233,6 +289,23 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
         </div>
       )}
 
+      {/* CE QUI VIENT DES DOCUMENTS, ÉCRIT. Le nombre de champs reportés, et la
+          règle: le serveur relira chaque décision au calcul, et un champ
+          modifié redevient une saisie. */}
+      {(dernierReport || Object.keys(provenances).length > 0) && (
+        <div className="bandeau ok" id="report-documents" role="status"
+             data-reportes={Object.keys(provenances).length}>
+          <strong>
+            {Object.keys(provenances).length} entrée(s) reportée(s) depuis les
+            documents du projet
+          </strong>
+          {dernierReport && <span>{dernierReport} </span>}
+          Chaque valeur reportée porte la décision qui l&apos;a retenue ; le
+          serveur la relira au calcul et refusera tout écart. Modifier un champ
+          reporté en fait une saisie.
+        </div>
+      )}
+
       {/* LE FIL DES ÉTAPES. Il montre l'avancement ET les manques: une étape
           traversée sans être remplie ne doit pas ressembler à une étape
           faite. */}
@@ -265,16 +338,19 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
           <EtapeDossier projet={projet} champs={champs} majuscule={majuscule} />
         )}
         {courante.cle === "section" && (
-          <EtapeSection champs={champs} majuscule={majuscule} />
+          <EtapeSection champs={champs} majuscule={majuscule}
+                        provenances={provenances} />
         )}
         {courante.cle === "materiaux" && (
-          <EtapeMateriaux champs={champs} majuscule={majuscule} />
+          <EtapeMateriaux champs={champs} majuscule={majuscule}
+                          provenances={provenances} />
         )}
         {courante.cle === "sollicitations" && (
           <EtapeSollicitations champs={champs} majuscule={majuscule} />
         )}
         {courante.cle === "ferraillage" && (
-          <EtapeFerraillage champs={champs} majuscule={majuscule} />
+          <EtapeFerraillage champs={champs} majuscule={majuscule}
+                            provenances={provenances} />
         )}
         {courante.cle === "service" && (
           <EtapeService champs={champs} majuscule={majuscule}
@@ -355,6 +431,25 @@ export function EtudeGuidee({ projet, enCours, surLancer, motifImpossible,
 type Passeur = (k: keyof ChampsEtude) =>
   (e: { target: { value: string } }) => void;
 
+/**
+ * L'ORIGINE D'UN CHAMP REPORTÉ : le texte lu, le document, la page, et qui a
+ * décidé, quand. Rien de tout cela n'est composé ici — c'est la provenance
+ * que le serveur a rendue avec la valeur.
+ */
+function Origine({ cle, p }: { cle: ChampTexte; p?: ProvenanceDeChamp }) {
+  if (!p) return null;
+  const quand = (p.provenance.confirmed_at ?? "").slice(0, 16).replace("T", " ");
+  return (
+    <span className="origine" id={`origine-${cle}`} data-chemin={p.chemin}
+          data-extraction={p.provenance.extraction_id ?? ""}>
+      Extrait : {p.provenance.detail} — décidé par{" "}
+      {p.provenance.confirmed_by ?? "—"}
+      {quand ? `, le ${quand}` : ""}.
+      {p.avertissement && <em className="manque"> {p.avertissement}</em>}
+    </span>
+  );
+}
+
 function EtapeDossier({ projet, champs, majuscule }: {
   projet: Projet | null; champs: ChampsEtude; majuscule: Passeur;
 }) {
@@ -393,8 +488,8 @@ function EtapeDossier({ projet, champs, majuscule }: {
   );
 }
 
-function EtapeSection({ champs, majuscule }: {
-  champs: ChampsEtude; majuscule: Passeur;
+function EtapeSection({ champs, majuscule, provenances }: {
+  champs: ChampsEtude; majuscule: Passeur; provenances: Provenances;
 }) {
   return (
     <div className="grille">
@@ -402,11 +497,13 @@ function EtapeSection({ champs, majuscule }: {
         <label htmlFor="vc-b">Largeur b (mm)</label>
         <input id="vc-b" inputMode="decimal" value={champs.b}
                onChange={majuscule("b")} />
+        <Origine cle="b" p={provenances.b} />
       </div>
       <div>
         <label htmlFor="vc-h">Hauteur h (mm)</label>
         <input id="vc-h" inputMode="decimal" value={champs.h}
                onChange={majuscule("h")} />
+        <Origine cle="h" p={provenances.h} />
       </div>
       <div>
         <label htmlFor="vc-d">Hauteur utile d (mm)</label>
@@ -423,6 +520,7 @@ function EtapeSection({ champs, majuscule }: {
         <span className="aide">
           §5.3.2.2. Elle décide de la dispense du calcul de flèche.
         </span>
+        <Origine cle="l_eff" p={provenances.l_eff} />
       </div>
       <div>
         <label htmlFor="vc-beff">Rapport b<sub>eff</sub> / b<sub>w</sub> (facultatif)</label>
@@ -437,8 +535,8 @@ function EtapeSection({ champs, majuscule }: {
   );
 }
 
-function EtapeMateriaux({ champs, majuscule }: {
-  champs: ChampsEtude; majuscule: Passeur;
+function EtapeMateriaux({ champs, majuscule, provenances }: {
+  champs: ChampsEtude; majuscule: Passeur; provenances: Provenances;
 }) {
   return (
     <div className="grille">
@@ -446,10 +544,12 @@ function EtapeMateriaux({ champs, majuscule }: {
         <label htmlFor="vc-beton">Béton</label>
         <input id="vc-beton" value={champs.beton} onChange={majuscule("beton")} />
         <span className="aide">Désignation du Tableau 3.1, p. ex. C30/37.</span>
+        <Origine cle="beton" p={provenances.beton} />
       </div>
       <div>
         <label htmlFor="vc-acier">Acier</label>
         <input id="vc-acier" value={champs.acier} onChange={majuscule("acier")} />
+        <Origine cle="acier" p={provenances.acier} />
       </div>
       <div>
         <label htmlFor="vc-expo">Classe d&apos;exposition</label>
@@ -462,6 +562,7 @@ function EtapeMateriaux({ champs, majuscule }: {
           de §7.2(2) : c&apos;est un jugement sur l&apos;environnement, que la
           géométrie ne révèle pas.
         </span>
+        <Origine cle="exposition" p={provenances.exposition} />
       </div>
       <div>
         <label htmlFor="vc-wmax">Classe associée pour w<sub>max</sub> (facultatif)</label>
@@ -523,8 +624,8 @@ function EtapeSollicitations({ champs, majuscule }: {
   );
 }
 
-function EtapeFerraillage({ champs, majuscule }: {
-  champs: ChampsEtude; majuscule: Passeur;
+function EtapeFerraillage({ champs, majuscule, provenances }: {
+  champs: ChampsEtude; majuscule: Passeur; provenances: Provenances;
 }) {
   return (
     <>
@@ -533,11 +634,13 @@ function EtapeFerraillage({ champs, majuscule }: {
           <label htmlFor="vc-nb">Barres tendues — nombre</label>
           <input id="vc-nb" inputMode="numeric" value={champs.barres_nb}
                  onChange={majuscule("barres_nb")} />
+          <Origine cle="barres_nb" p={provenances.barres_nb} />
         </div>
         <div>
           <label htmlFor="vc-phi">Barres tendues — diamètre (mm)</label>
           <input id="vc-phi" inputMode="decimal" value={champs.barres_diametre}
                  onChange={majuscule("barres_diametre")} />
+          <Origine cle="barres_diametre" p={provenances.barres_diametre} />
         </div>
         <div>
           <label htmlFor="vc-branches">Cadres — branches</label>
@@ -549,16 +652,19 @@ function EtapeFerraillage({ champs, majuscule }: {
           <label htmlFor="vc-phiw">Cadres — diamètre (mm)</label>
           <input id="vc-phiw" inputMode="decimal" value={champs.cadres_diametre}
                  onChange={majuscule("cadres_diametre")} />
+          <Origine cle="cadres_diametre" p={provenances.cadres_diametre} />
         </div>
         <div>
           <label htmlFor="vc-s">Cadres — espacement (mm)</label>
           <input id="vc-s" inputMode="decimal" value={champs.cadres_espacement}
                  onChange={majuscule("cadres_espacement")} />
+          <Origine cle="cadres_espacement" p={provenances.cadres_espacement} />
         </div>
         <div>
           <label htmlFor="vc-enrobage">Enrobage (mm)</label>
           <input id="vc-enrobage" inputMode="decimal" value={champs.enrobage}
                  onChange={majuscule("enrobage")} />
+          <Origine cle="enrobage" p={provenances.enrobage} />
         </div>
         <div>
           <label htmlFor="vc-cot">cot θ</label>

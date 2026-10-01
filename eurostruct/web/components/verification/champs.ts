@@ -14,6 +14,7 @@
  * grandeur dérivée qu'on ajouterait ici serait une SECONDE SOURCE, et le jour
  * où elle diverge du moteur, l'écran affirmerait autre chose que la note.
  */
+import type { ChampPrerempli, ProvenanceDTO } from "@contracts/generated/engine";
 import type { Ec2BeamVerificationRequest } from "@/lib/verification";
 
 /**
@@ -53,6 +54,87 @@ export type ChampsEtude = {
   //: Mode
   strict: boolean;
 };
+
+/** Les champs-texte de la saisie : tous sauf les deux cases à cocher. */
+export type ChampTexte = Exclude<keyof ChampsEtude, "cloisons_fragiles" | "strict">;
+
+/**
+ * LE CHEMIN DU CONTRAT ET LE CHAMP DE LA SAISIE, POUR LES ONZE ENTRÉES QU'UN
+ * DOCUMENT PEUT RENSEIGNER — et pour elles seules.
+ *
+ * Les chemins sont ceux de `PROVENANCE_CHEMINS` côté serveur. `d` n'y figure
+ * pas (grandeur dérivée), ni aucune sollicitation (une charge lue sur un plan
+ * n'est pas un moment) : ces champs se saisissent, toujours.
+ */
+export const CHAMP_DE_CHEMIN: Readonly<Record<string, ChampTexte>> = {
+  "geometry.b": "b",
+  "geometry.h": "h",
+  "geometry.l_eff": "l_eff",
+  "materials.concrete_grade": "beton",
+  "materials.steel_grade": "acier",
+  "exposure_class": "exposition",
+  "cover": "enrobage",
+  "bars.count": "barres_nb",
+  "bars.diameter": "barres_diametre",
+  "links.diameter": "cadres_diametre",
+  "links.spacing": "cadres_espacement",
+};
+
+/** L'unité dans laquelle chaque champ reçoit sa valeur. `null` : sans unité. */
+const UNITE_DU_CHAMP: Readonly<Partial<Record<ChampTexte, string | null>>> = {
+  b: "mm", h: "mm", l_eff: "mm", enrobage: "mm", barres_diametre: "mm",
+  cadres_diametre: "mm", cadres_espacement: "mm",
+  beton: null, acier: null, exposition: null, barres_nb: null,
+};
+
+/**
+ * L'origine documentaire d'un champ : la provenance que le serveur a rendue,
+ * et la valeur reportée. MODIFIER LE CHAMP LA RETIRE — la valeur redevient une
+ * saisie, et n'est plus envoyée comme extraite d'un document.
+ */
+export type ProvenanceDeChamp = {
+  chemin: string;
+  provenance: ProvenanceDTO;
+  valeur: string;
+  avertissement?: string | null;
+};
+export type Provenances = Partial<Record<ChampTexte, ProvenanceDeChamp>>;
+
+/**
+ * Les valeurs DÉCIDÉES, reportées dans la saisie — sans aucune conversion.
+ *
+ * Le serveur les a déjà mises dans l'unité de chaque champ ; une unité
+ * inattendue n'est donc PAS convertie ici : la valeur est écartée, et la
+ * raison est rendue pour être affichée.
+ */
+export function reportDepuisPreremplissage(champs: ChampPrerempli[]): {
+  valeurs: Partial<Record<ChampTexte, string>>;
+  provenances: Provenances;
+  ecartes: string[];
+} {
+  const valeurs: Partial<Record<ChampTexte, string>> = {};
+  const provenances: Provenances = {};
+  const ecartes: string[] = [];
+  for (const c of champs) {
+    const cle = CHAMP_DE_CHEMIN[c.path];
+    if (!cle) {
+      ecartes.push(`${c.label} : aucun champ de l'étude ne la reçoit`);
+      continue;
+    }
+    const attendue = UNITE_DU_CHAMP[cle] ?? null;
+    if ((c.unit ?? null) !== attendue) {
+      ecartes.push(`${c.label} : rendue en « ${c.unit ?? "sans unité"} », le champ `
+        + `attend « ${attendue ?? "sans unité"} » — saisissez-la`);
+      continue;
+    }
+    const valeur = String(c.value);
+    valeurs[cle] = valeur;
+    provenances[cle] = {
+      chemin: c.path, provenance: c.provenance, valeur, avertissement: c.warning,
+    };
+  }
+  return { valeurs, provenances, ecartes };
+}
 
 /** Les six coefficients, dans l'ordre du Tableau 8.2. */
 export const ALPHAS = [
@@ -214,16 +296,25 @@ export function etudeComplete(c: ChampsEtude): boolean {
  * désactivant le bouton avec le motif écrit à côté.
  */
 export function enRequete(
-  c: ChampsEtude, origine: string | null = null,
+  c: ChampsEtude, origine: string | null = null, provenances: Provenances = {},
 ): Ec2BeamVerificationRequest {
   const mm = (v: string) => ({ value: Number(v.trim().replace(",", ".")), unit: "mm" });
   const val = (v: string) => Number(v.trim().replace(",", "."));
   const alphas = ALPHAS.every((a) => c[a].trim() !== "");
+  //: L'ORIGINE DOCUMENTAIRE, CHAMP PAR CHAMP — seulement pour une valeur
+  //: restee celle qui a ete reportee. Le serveur relira chaque decision et
+  //: refusera tout ecart; l'ecran ne la renvoie donc que quand elle tient.
+  const provenance = Object.fromEntries(
+    (Object.entries(provenances) as [ChampTexte, ProvenanceDeChamp | undefined][])
+      .filter(([cle, p]) => p && c[cle].trim() === p.valeur)
+      .map(([, p]) => [p!.chemin, p!.provenance]));
   return {
     //: LA FILIATION D'UNE VARIANTE, quand il y en a une. La clé n'est posée
     //: que dans ce cas: le corps d'une étude initiale reste celui d'hier,
     //: octet pour octet.
     ...(origine ? { derived_from_calculation_id: origine } : {}),
+    //: MEME REGLE POUR LA PROVENANCE: absente d'une etude saisie.
+    ...(Object.keys(provenance).length ? { provenance } : {}),
     element: c.element.trim(),
     strict_ndp: c.strict,
     geometry: { b: mm(c.b), h: mm(c.h), d: mm(c.d), l_eff: mm(c.l_eff) },
@@ -270,7 +361,13 @@ export function enRequete(
  */
 export type NonRepris = { champ: keyof ChampsEtude | "*"; motif: string };
 
-export type ChampsDeVariante = { champs: ChampsEtude; nonRepris: NonRepris[] };
+export type ChampsDeVariante = {
+  champs: ChampsEtude; nonRepris: NonRepris[];
+  //: L'ORIGINE DOCUMENTAIRE DE L'ETUDE D'ORIGINE, reprise avec ses valeurs:
+  //: une variante sans modification renvoie les memes decisions, que le
+  //: serveur reverifiera.
+  provenances: Provenances;
+};
 
 /** Les unités que chaque champ attend. Aucune conversion n'est faite ici. */
 const MM = ["mm"];
@@ -304,6 +401,7 @@ export function champsDepuisRequete(
   if (!requete) {
     return {
       champs: { ...CHAMPS_INITIAUX, strict },
+      provenances: {},
       nonRepris: [{
         champ: "*",
         motif: "la requête gelée de l'étude d'origine n'est pas relisible dans "
@@ -388,5 +486,13 @@ export function champsDepuisRequete(
   if (adherence === "good" || adherence === "poor") champs.adherence = adherence;
   else nonRepris.push({ champ: "adherence",
                         motif: `adherence : « ${adherence} » n'est ni « good » ni « poor »` });
-  return { champs, nonRepris };
+  //: LA PROVENANCE GELEE, reprise pour les champs repris tels quels.
+  const provenances: Provenances = {};
+  for (const [chemin, p] of Object.entries(requete.provenance ?? {})) {
+    const cle = CHAMP_DE_CHEMIN[chemin];
+    if (cle && p && champs[cle].trim() !== "") {
+      provenances[cle] = { chemin, provenance: p, valeur: champs[cle].trim() };
+    }
+  }
+  return { champs, nonRepris, provenances };
 }

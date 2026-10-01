@@ -172,6 +172,16 @@ type Options = {
   methode?: "GET" | "POST" | "PATCH" | "DELETE";
   corps?: unknown;
   /**
+   * LES OCTETS D'UN FICHIER, ENVOYÉS TELS QUELS — pas du JSON.
+   *
+   * Le dépôt d'une pièce envoie le fichier lui-même comme corps : pas de
+   * formulaire multipart, pas d'encodage. Le type annoncé est toujours
+   * `application/octet-stream` — le serveur constate le format sur les
+   * octets, et un `Content-Type` choisi par le navigateur n'y changerait rien.
+   * Exclusif de `corps`.
+   */
+  octets?: Blob;
+  /**
    * L'appel peut-il être REPETE sans effet supplémentaire ?
    *
    * FAUX PAR DEFAUT, ET CE DEFAUT EST LE POINT. Proposer, approuver et
@@ -189,9 +199,10 @@ async function _lire(reponse: Response): Promise<unknown> {
   return reponse.json().catch(() => null);
 }
 
-function _entetes(corps: unknown): Record<string, string> {
+function _entetes(corps: unknown, octets?: Blob): Record<string, string> {
   const e: Record<string, string> = { Accept: "application/json" };
-  if (corps !== undefined) e["Content-Type"] = "application/json";
+  if (octets !== undefined) e["Content-Type"] = "application/octet-stream";
+  else if (corps !== undefined) e["Content-Type"] = "application/json";
   return e;
 }
 
@@ -238,7 +249,7 @@ export async function appelProtege<T>(
   porteur: PorteurDeJeton,
   options: Options = {},
 ): Promise<T | null> {
-  const { methode = "POST", corps, idempotent = false } = options;
+  const { methode = "POST", corps, octets, idempotent = false } = options;
   const jeton = await porteur.jetonUtilisable();
   if (!jeton) throw new SessionExpiree();
 
@@ -251,8 +262,8 @@ export async function appelProtege<T>(
     try {
       return await fetch(`${adresse}${chemin}`, {
         method: methode,
-        headers: { ..._entetes(corps), Authorization: `Bearer ${avec}` },
-        body: corps === undefined ? undefined : JSON.stringify(corps),
+        headers: { ..._entetes(corps, octets), Authorization: `Bearer ${avec}` },
+        body: octets ?? (corps === undefined ? undefined : JSON.stringify(corps)),
       });
     } catch (cause) {
       throw new ApiInjoignable(cause);

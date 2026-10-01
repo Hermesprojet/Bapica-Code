@@ -45,6 +45,13 @@
 # et le format — aucun ferraillage ne part du navigateur, parce que la coupe
 # est gelee avec l'etude.
 #
+# ET LA TROISIEME: LA LECTURE DES PLANS
+# --------------------------------------
+# `parcours_lecture_des_plans.mjs` depose un plan PDF fabrique, revoit les
+# valeurs proposees, en confirme, corrige et rejette, puis les reporte dans
+# l'etude guidee. Son fait decisif: la decision part SANS nom ni date, et la
+# provenance d'un champ reporte ne survit pas a sa modification.
+#
 # LE DECOR CONFIRME LES PARAMETRES AVANT DE CALCULER, ET C'EST UN DECOR.
 # Une attestation ne peut porter que sur un calcul STRICT abouti, et le mode
 # strict ne s'ouvre que par le quatre-yeux. Le harnais fait donc passer les
@@ -517,7 +524,7 @@ if ! attendre_url "http://127.0.0.1:$PORT_WEB" 60 "$PID_WEB"; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. LES DEUX PARCOURS
+# 5. LES TROIS PARCOURS
 # ---------------------------------------------------------------------------
 # UN SEUL DECOR POUR DEUX VERTICALES, ET C'EST DELIBERE.
 #
@@ -546,6 +553,31 @@ if [[ $CODE -eq 0 || $CODE -eq 1 ]]; then
     node "$RACINE/web/e2e/parcours_verification.mjs"
   CODE_VC=$?
   [[ $CODE -eq 0 ]] && CODE=$CODE_VC
+fi
+
+# LA TROISIEME VERTICALE: UNE PIECE DEPOSEE, LUE, REVUE, REPORTEE.
+#
+# LE PLAN EST FABRIQUE ICI, PAS COMMITE. C'est la fabrique des tests du module
+# de lecture: une ligne par categorie, a une position connue — aucun plan d'un
+# vrai bureau. Le faux fichier porte une extension `.pdf` et la signature d'une
+# archive ZIP: le serveur juge sur les octets, et c'est ce qu'il faut voir.
+if [[ $CODE -eq 0 || $CODE -eq 1 ]]; then
+  echo ""
+  python3 - "$RACINE/extraction/tests" "$TMP/FICTIF plan R+1.pdf" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from fabrique import LIGNES_DU_PLAN, pdf_de_texte
+with open(sys.argv[2], "wb") as sortie:
+    sortie.write(pdf_de_texte([LIGNES_DU_PLAN]))
+PY
+  printf 'PK\003\004 FICTIF: une archive, pas un plan\n' >"$TMP/plan-faux.pdf"
+  EUROSTRUCT_WEB="http://127.0.0.1:$PORT_WEB" \
+  EUROSTRUCT_API="http://127.0.0.1:$PORT_API" \
+  EUROSTRUCT_E2E_PLAN_PDF="$TMP/FICTIF plan R+1.pdf" \
+  EUROSTRUCT_E2E_PIECE_REFUSEE="$TMP/plan-faux.pdf" \
+    node "$RACINE/web/e2e/parcours_lecture_des_plans.mjs"
+  CODE_LP=$?
+  [[ $CODE -eq 0 ]] && CODE=$CODE_LP
 fi
 
 # CE QUE LES SERVEURS ONT DIT PENDANT LE PARCOURS.
@@ -586,6 +618,14 @@ if [[ $CODE -eq 0 ]]; then
   echo " les octets portent l'empreinte enregistree, un plan"
   echo " produit SANS qu'aucun ferraillage ne parte du"
   echo " navigateur, et les memes octets apres F5."
+  echo ""
+  echo " Et la lecture des plans: un format inconnu refuse"
+  echo " sur ses octets, un plan depose en octets bruts dont"
+  echo " les valeurs sont proposees sans etre confirmees,"
+  echo " des decisions qui partent sans nom ni date et"
+  echo " reviennent au nom de l'adhesion, un report dans"
+  echo " l'unite de chaque champ, une provenance que le"
+  echo " serveur reecrit, et qu'une modification retire."
   echo "==================================================="
 fi
 exit $CODE
