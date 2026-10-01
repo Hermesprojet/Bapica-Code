@@ -208,7 +208,7 @@ export function origineDeLUnite(x: Extraction): string | null {
   if (base_ === "absente") return "aucune unité écrite ni déclarée : à préciser en corrigeant";
   if (base_ === "declaration") {
     const d = (fondement.unit_declaration ?? {}) as Record<string, unknown>;
-    if (d.source === "$INSUNITS") return `unité du dessin ($INSUNITS = ${d.value})`;
+    if (d.source === "$INSUNITS") return `celle du dessin ($INSUNITS = ${d.value})`;
     if (d.source === "declaration_et_cotes") {
       return `le dessin ne déclare pas son unité ; « ${String(d.raw_text ?? "")} » `
         + "et les cotes du dessin la donnent";
