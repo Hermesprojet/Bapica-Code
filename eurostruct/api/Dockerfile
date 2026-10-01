@@ -32,26 +32,33 @@ WORKDIR /src
 
 # LE MOTEUR D'ABORD. Il change moins souvent que la couche HTTP: le mettre en
 # premier garde son étage en cache quand seule l'API bouge.
+#
+# LE MODULE DE LECTURE DES PLANS EST UN TROISIEME PAQUET DU MEME ARBRE. L'API
+# en dépend (`eurostruct-extraction`), et il n'est publié sur aucun index: sans
+# cette copie, la résolution le chercherait sur PyPI et l'image ne se
+# construirait plus. Il reste HORS du moteur, qui n'en sait rien.
 COPY engine/ /src/engine/
+COPY extraction/ /src/extraction/
 COPY api/ /src/api/
 
 # `--prefix` PLUTOT QU'UN VENV. On copie ensuite l'arbre entier dans l'étage
 # final: pas de chemin d'activation à reproduire, pas de venv qui référence un
 # préfixe qui n'existe plus.
 #
-# LES TROIS EN UNE SEULE RESOLUTION, ET C'EST LE CORRECTIF. Trois `pip install`
+# TOUS EN UNE SEULE RESOLUTION, ET C'EST LE CORRECTIF. Trois `pip install`
 # successifs échouaient: `--prefix=/opt/eurostruct` installe HORS des chemins
 # que pip interroge ensuite, si bien que le second appel ne voyait pas le
 # moteur qu'il venait d'installer. Il le cherchait donc sur PyPI, où il n'est
 # pas publié — et rendait « No matching distribution found for
 # eurostruct-engine>=0.3.0 ». Cette image ne s'était donc JAMAIS construite.
 #
-# Une seule invocation met les deux chemins locaux dans la même résolution:
-# pip satisfait `eurostruct-api -> eurostruct-engine` avec l'arbre présent,
-# sans jamais interroger d'index pour un paquet qui n'y sera jamais.
+# Une seule invocation met les trois chemins locaux dans la même résolution:
+# pip satisfait `eurostruct-api -> eurostruct-engine` et
+# `eurostruct-api -> eurostruct-extraction` avec l'arbre présent, sans jamais
+# interroger d'index pour un paquet qui n'y sera jamais.
 RUN python -m pip install --upgrade pip \
  && python -m pip install --prefix=/opt/eurostruct \
-      ./engine ./api "uvicorn[standard]>=0.29"
+      ./engine ./extraction ./api "uvicorn[standard]>=0.29"
 
 
 FROM python:3.11-slim-bookworm AS runtime
@@ -60,6 +67,21 @@ FROM python:3.11-slim-bookworm AS runtime
 # compte sur l'orchestrateur pour poser `user:` tourne en root partout où on
 # oublie de le poser.
 RUN useradd --system --create-home --uid 10001 eurostruct
+
+# TESSERACT, LE PROGRAMME — `pytesseract` n'en est que le pilote.
+#
+# Un plan numérisé n'a pas de couche texte: sans ce programme, ses pages sont
+# déclarées « non lues » dans le compte rendu (jamais lues à moitié en
+# silence), et le produit fonctionne — mais n'en lit rien. Les langues sont
+# celles que le lecteur demande (`fra+eng`); une langue absente est nommée,
+# pas contournée.
+#
+# `--no-install-recommends` et le cache d'apt vidé dans la même couche: ni
+# outil de compilation, ni liste de paquets ne restent dans l'image.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng \
+ && rm -rf /var/lib/apt/lists/*
 
 # L'IDENTITE DU BUILD, INJECTEE A LA CONSTRUCTION.
 #
