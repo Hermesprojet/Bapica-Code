@@ -16,6 +16,7 @@ Chaque fabrique suit une convention de dessin courante, et la nomme :
   de ligne, poteaux hachurés ;
 * ``dxf_refus`` : une référence externe, une poutre courbe, une poutre sans
   appui ;
+* ``dxf_grille_polaire`` : six axes rayonnants autour d'un centre ;
 * ``dxf_grande_grille`` : n × n axes, pour le temps de lecture.
 
 Tous les textes disent FICTIF là où un plan réel porterait un nom.
@@ -297,6 +298,25 @@ def dxf_refus() -> bytes:
     msp.add_arc((500, 500), 330, 0, 90, dxfattribs={"layer": "POUTRES"})
     msp.add_lwpolyline([(2000, 0), (2600, 0), (2600, 30), (2000, 30)], close=True,
                        dxfattribs={"layer": "POUTRES"})
+    return _ecrire(doc)
+
+
+# ------------------------------------------------------------ grille polaire
+def dxf_grille_polaire() -> bytes:
+    """Six axes rayonnants (tous les 30°) autour de l'origine, étiquetés 1 à 6
+    à leur extrémité : une grille polaire, hors du domaine reconnu."""
+    import ezdxf
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 4
+    msp = doc.modelspace()
+    doc.layers.add("AXES", linetype="CENTER")
+    for i in range(6):
+        a = math.radians(30.0 * i)
+        bout = (12000 * math.cos(a), 12000 * math.sin(a))
+        msp.add_line((0, 0), bout, dxfattribs={"layer": "AXES"})
+        msp.add_text(str(i + 1), height=300, dxfattribs={"layer": "AXES"}).set_placement(
+            (12600 * math.cos(a), 12600 * math.sin(a)))
     return _ecrire(doc)
 
 

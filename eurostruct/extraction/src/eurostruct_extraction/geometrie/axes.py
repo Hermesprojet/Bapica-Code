@@ -11,7 +11,9 @@ différentes ne sont pas départagées : l'axe reste sans étiquette, et c'est
 signalé.
 
 GRILLE POLAIRE OU COURBE : non prise en charge. Seules les droites sont des
-axes ; une famille de droites concourantes n'est pas une grille ici.
+axes ; trois directions ou plus portant chacune UN axe, concourants en un même
+point, sont une grille rayonnante : elle est nommée dans ``unresolved`` et ses
+axes sont écartés — ni files, ni nœuds, ni étiquettes absorbées.
 """
 
 from __future__ import annotations
@@ -228,6 +230,26 @@ def detecter_axes(prims: PrimitivesDxf, tolerances: Tolerances
             <= tolerances.parallele_deg):
         familles_idx[0].extend(familles_idx.pop())
 
+    # UNE GRILLE RAYONNANTE N'EST PAS UNE GRILLE DE FILES: elle est nommee et
+    # ecartee, jamais approchee par des files d'un seul axe.
+    seules = [m[0] for m in familles_idx if len(m) == 1]
+    if len(seules) >= 3:
+        def origine(i: int) -> Point:
+            n = normale(lignes[i].u)
+            return (lignes[i].decalage * n[0], lignes[i].decalage * n[1])
+
+        centre = intersection_droites(origine(seules[0]), lignes[seules[0]].u,
+                                      origine(seules[1]), lignes[seules[1]].u)
+        if centre is not None and all(
+                distance_point_droite(centre, origine(i), lignes[i].u)
+                <= 10.0 * tolerances.longueur for i in seules):
+            familles_idx = [m for m in familles_idx if len(m) != 1]
+            doutes.append(NonResolu("grille", (
+                f"{len(seules)} axes concourants en un meme point (grille polaire ou "
+                "rayonnante): non prise en charge; ils ne forment pas de files et "
+                "aucun noeud n'en est tire")))
+    gardes = {i for membres in familles_idx for i in membres}
+
     vues: dict[str, int] = {}
     axes: list[Axe] = []
     familles: list[Famille] = []
@@ -289,7 +311,8 @@ def detecter_axes(prims: PrimitivesDxf, tolerances: Tolerances
                     ident = (f"node:{etiquette}" if etiquette
                              else f"node:{a.nom}x{b.nom}")
                     noeuds.append(Noeud(ident, etiquette, p, (a.id, b.id)))
-    absorbees = {c.poignee for c in par_bout.values() if c.poignee}
+    absorbees = {c.poignee for (rang, _), c in par_bout.items()
+                 if c.poignee and rang in gardes}
     return Grille(tuple(axes), tuple(familles), tuple(noeuds), repere_x), absorbees, doutes
 
 

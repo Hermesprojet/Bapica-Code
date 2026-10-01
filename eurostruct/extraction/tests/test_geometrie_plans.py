@@ -20,6 +20,7 @@ from fabrique_geometrie import (
     dxf_charpente_mm,
     dxf_coffrage_s101,
     dxf_grande_grille,
+    dxf_grille_polaire,
     dxf_refus,
     dxf_sans_calques_m,
 )
@@ -350,6 +351,20 @@ def test_ce_qui_ne_permet_pas_de_conclure_est_refuse_avec_sa_raison():
     assert modele["spans"] == []
     # RIEN N'EST PROPOSE d'un element non resolu, pas meme sa largeur.
     assert resultat.candidats == ()
+
+
+def test_une_grille_polaire_est_nommee_et_ecartee():
+    _, resultat = _lire(dxf_grille_polaire())
+    modele = resultat.structure
+    [refus] = [n for n in modele["unresolved"] if n["element"] == "grille"]
+    assert "6 axes concourants" in refus["reason"] and "polaire" in refus["reason"]
+    assert modele["grid"] == [] and modele["grid_nodes"] == []
+    assert not [c for c in resultat.candidats if c.methode == "geometrie"]
+    # LES ETIQUETTES NE SONT PAS ABSORBEES: elles restent des textes lus, sans
+    # qu'aucune file n'en soit tiree.
+    assert sorted(c.valeur for c in resultat.candidats if c.categorie == "grid_line") == [
+        "1", "2", "3", "4", "5", "6"]
+    assert {c.methode for c in resultat.candidats if c.categorie == "grid_line"} == {"dxf"}
 
 
 # ======================================================== grande grille
