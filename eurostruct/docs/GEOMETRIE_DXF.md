@@ -696,7 +696,31 @@ Aucun plan réel : chaque DXF est produit par `extraction/tests/fabrique_geometr
   (détection des poteaux et réunion des poutres quadratiques) ; un index
   spatial la ramène à 0,5 s.
 
-### 14.4 Non mesuré, et à ne pas annoncer
+### 14.4 Campagne sur SHA gelé : `3c5638f`
+
+Dans un arbre isolé (worktree détaché), avec son propre environnement Python
+installé depuis cet arbre, et rien d'autre sur la base pendant la campagne :
+
+| surface | résultat |
+|---|---|
+| `run_tests.sh --require-db` | **COMPLET — 7 surfaces vertes** : moteur 1 138, importeur 113, extraction 219, API 594 collectés (256 réussis ici, 338 exécutés par les harnais de la surface SQL), 30 barrières de harnais toutes refusantes, **15 groupes de garanties SQL** (un de plus : `07_extraction_geometrie.sql`), cohérence (seed, contrat TypeScript, dépendances du moteur, moteur sans avertissement) |
+| `mise_a_niveau_active.sh` depuis `da01259` | **TENU** — 26 → 29 : installation ancienne peuplée par son propre produit, diagnostic sans modification, quatre refus, concurrence refusée, relance idempotente, restauration isolée identique ligne pour ligne, interruption reprise, études et livrables relus aux mêmes empreintes et aux mêmes octets |
+| `mise_a_niveau_active.sh` depuis `fb39867` | **TENU** — 28 → 29, mêmes pas ; 10 tables métier identiques ligne pour ligne, 3 livrables aux mêmes octets |
+| `parcours_livrable.sh` | **quatre parcours Chromium verts**, dont la géométrie d'un DXF (26 valeurs mesurées, 28 lues dans le texte du DXF ; `l_eff` = 6 000 mm accepté au calcul) ; capture de la revue et du modèle dessiné prise par le parcours, non commitée |
+| intégration continue sur `3c5638f` | « eurostruct — tests » **vert** (push et PR). « EUROSTRUCT » rouge sur les **quatre mêmes travaux, aux mêmes pas**, qu'avant ce lot sur `fb39867` : image MinIO refusée par le registre (deux travaux), tests du moteur, « Migrations et garanties structurelles » — non causé par ce lot, non diagnostiqué ici |
+
+**Ce que la recette de mise à niveau n'exerce pas.** Elle peuple l'ancienne base
+par l'ancien produit — projets, études, variantes, livrables —, pas par des
+documents ni des propositions. Le passage à 0029 de propositions **déjà
+décidées** n'est donc pas mesuré par elle ; il repose sur la forme de 0029
+(contrainte remplacée à l'identique plus une méthode, `not valid`, aucune ligne
+relue ni réécrite) et sur sa postcondition.
+
+**Après le SHA gelé** : `682d91c` corrige un libellé de la revue (« unité
+celle du dessin », non « unité unité du dessin »), vu sur la capture ;
+vérifié par le typage seulement. Puis ce compte rendu.
+
+### 14.5 Non mesuré, et à ne pas annoncer
 
 Le **rappel sur des plans réels** de bureau d'études : tous les plans éprouvés
 sont fabriqués par les tests, et les conventions de dessin varient. La lecture
