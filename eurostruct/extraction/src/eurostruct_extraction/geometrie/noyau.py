@@ -350,35 +350,58 @@ class IndexSpatial:
 
     Sans elle, chercher les appuis de chaque poutre parmi tous les poteaux
     serait quadratique — un plan de 400 poteaux et 800 poutres le sentirait.
+
+    LE COÛT D'UNE RECHERCHE EST BORNÉ PAR CE QUI EST RANGÉ, pas par la taille
+    des cases. Un dessin sans unité ni grille donne des cases minuscules
+    (1e-5 de sa diagonale) : parcourir chaque case d'une boîte de recherche y
+    coûtait des dizaines de millions de pas pour un seul cercle. Une recherche
+    parcourt donc les cases OCCUPÉES quand elles sont moins nombreuses que les
+    cases de la boîte ; et une boîte qui couvrirait trop de cases est rangée à
+    part, examinée directement à chaque recherche.
     """
+
+    #: Au-delà, une boîte n'est pas découpée en cases : elle est rangée à part.
+    CASES_PAR_BOITE_MAX: Final[int] = 4096
 
     def __init__(self, case: float) -> None:
         self.case = case if case > 0 else 1.0
         self._cases: dict[tuple[int, int], list[int]] = {}
         self._boites: list[tuple[float, float, float, float]] = []
+        self._grandes: list[int] = []
 
-    def _clefs(self, boite: tuple[float, float, float, float]) -> Iterable[tuple[int, int]]:
+    def _plage(self, boite: tuple[float, float, float, float]) -> tuple[int, int, int, int]:
         x0, y0, x1, y1 = boite
-        i0, j0 = math.floor(x0 / self.case), math.floor(y0 / self.case)
-        i1, j1 = math.floor(x1 / self.case), math.floor(y1 / self.case)
-        for i in range(i0, i1 + 1):
-            for j in range(j0, j1 + 1):
-                yield (i, j)
+        return (math.floor(x0 / self.case), math.floor(y0 / self.case),
+                math.floor(x1 / self.case), math.floor(y1 / self.case))
 
     def ajouter(self, boite: tuple[float, float, float, float]) -> int:
         rang = len(self._boites)
         self._boites.append(boite)
-        for clef in self._clefs(boite):
-            self._cases.setdefault(clef, []).append(rang)
+        i0, j0, i1, j1 = self._plage(boite)
+        if (i1 - i0 + 1) * (j1 - j0 + 1) > self.CASES_PAR_BOITE_MAX:
+            self._grandes.append(rang)
+            return rang
+        for i in range(i0, i1 + 1):
+            for j in range(j0, j1 + 1):
+                self._cases.setdefault((i, j), []).append(rang)
         return rang
 
     def pres_de(self, boite: tuple[float, float, float, float],
                 marge: float = 0.0) -> list[int]:
+        if not self._boites:
+            return []
         x0, y0, x1, y1 = boite
         cherche = (x0 - marge, y0 - marge, x1 + marge, y1 + marge)
-        trouves: set[int] = set()
-        for clef in self._clefs(cherche):
-            trouves.update(self._cases.get(clef, ()))
+        i0, j0, i1, j1 = self._plage(cherche)
+        trouves: set[int] = set(self._grandes)
+        if (i1 - i0 + 1) * (j1 - j0 + 1) <= len(self._cases):
+            for i in range(i0, i1 + 1):
+                for j in range(j0, j1 + 1):
+                    trouves.update(self._cases.get((i, j), ()))
+        else:
+            for (i, j), rangs in self._cases.items():
+                if i0 <= i <= i1 and j0 <= j <= j1:
+                    trouves.update(rangs)
         resultat = []
         for rang in sorted(trouves):
             bx0, by0, bx1, by1 = self._boites[rang]

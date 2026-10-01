@@ -17,6 +17,7 @@ import pytest
 from eurostruct_extraction import extract_engineering_data, parse_document
 from eurostruct_extraction.geometrie import PLAFOND_GEOMETRIE, SCHEMA
 from fabrique_geometrie import (
+    dxf_cercle_sans_unite,
     dxf_charpente_mm,
     dxf_coffrage_s101,
     dxf_grande_grille,
@@ -365,6 +366,17 @@ def test_une_grille_polaire_est_nommee_et_ecartee():
     assert sorted(c.valeur for c in resultat.candidats if c.categorie == "grid_line") == [
         "1", "2", "3", "4", "5", "6"]
     assert {c.methode for c in resultat.candidats if c.categorie == "grid_line"} == {"dxf"}
+
+
+def test_un_dessin_minuscule_sans_unite_se_lit_vite():
+    # LES CASES DE L'INDEX y valent 1e-5 de la diagonale: une recherche
+    # parcourait chacune d'elles — 30 s pour un cercle, mesure sur un fichier
+    # reel des tests d'ezdxf. Elle est maintenant bornee par ce qui est range.
+    debut = time.perf_counter()
+    _, resultat = _lire(dxf_cercle_sans_unite())
+    assert time.perf_counter() - debut < 5.0
+    assert resultat.structure["counts"]["columns"] == 0
+    assert resultat.candidats == ()
 
 
 # ======================================================== grande grille

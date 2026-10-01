@@ -82,6 +82,22 @@ def test_la_bande_d_une_poutre_decoupe_un_poteau():
     assert not point_dans_polygone((6300, 0), poteau)
 
 
+def test_une_recherche_de_l_index_est_bornee_par_ce_qui_est_range():
+    # Des cases de 1e-4 et une boite de recherche de 4 x 4: 1,6e9 cases, que
+    # la recherche ne parcourt plus.
+    import time
+
+    index = IndexSpatial(1e-4)
+    petit = index.ajouter((0.0, 0.0, 0.0, 0.0))
+    grand = index.ajouter((-1000.0, -1000.0, 1000.0, 1000.0))  # rangee a part
+    loin = index.ajouter((50.0, 50.0, 50.0, 50.0))
+    debut = time.perf_counter()
+    assert index.pres_de((0.0, 0.0, 0.0, 0.0), marge=2.0) == [petit, grand]
+    assert index.pres_de((49.0, 49.0, 49.0, 49.0), marge=2.0) == [grand, loin]
+    assert time.perf_counter() - debut < 1.0
+    assert IndexSpatial(1e-4).pres_de((0, 0, 1, 1), marge=1.0) == []
+
+
 def test_l_index_spatial_ne_rend_que_ce_qui_est_proche():
     index = IndexSpatial(1000.0)
     proches = [index.ajouter((x, x, x, x)) for x in (0.0, 500.0, 5000.0)]

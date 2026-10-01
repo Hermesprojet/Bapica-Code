@@ -17,6 +17,9 @@ Chaque fabrique suit une convention de dessin courante, et la nomme :
 * ``dxf_refus`` : une référence externe, une poutre courbe, une poutre sans
   appui ;
 * ``dxf_grille_polaire`` : six axes rayonnants autour d'un centre ;
+* ``dxf_cercle_sans_unite`` : un seul cercle, sans unité déclarée — la forme
+  du fichier réel « R12_with_trash_beyond_EOF.dxf » des tests d'ezdxf, qui
+  prenait 30 s ;
 * ``dxf_grande_grille`` : n × n axes, pour le temps de lecture.
 
 Tous les textes disent FICTIF là où un plan réel porterait un nom.
@@ -317,6 +320,17 @@ def dxf_grille_polaire() -> bytes:
         msp.add_line((0, 0), bout, dxfattribs={"layer": "AXES"})
         msp.add_text(str(i + 1), height=300, dxfattribs={"layer": "AXES"}).set_placement(
             (12600 * math.cos(a), 12600 * math.sin(a)))
+    return _ecrire(doc)
+
+
+# ------------------------------------------------------- cercle sans unité
+def dxf_cercle_sans_unite() -> bytes:
+    """Un cercle de rayon 1,5 à l'origine, ``$INSUNITS = 0``, rien d'autre."""
+    import ezdxf
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 0
+    doc.modelspace().add_circle((0, 0), 1.5)
     return _ecrire(doc)
 
 
