@@ -15,8 +15,8 @@
 # UN DROIT NE SE DEMANDE PAS. Il est absent, et rien dans la session ne peut le
 # rendre present. Ce harnais mesure l'absence.
 #
-# LES NEUF CONTROLES
-# --------------------
+# LES DIX CONTROLES
+# -------------------
 #   1. LE ROLE EST NOLOGIN. On ne s'y connecte pas: un compte LOGIN distinct,
 #      fourni par l'infrastructure, s'y rattache.
 #   2. IL N'A AUCUN ATTRIBUT — ni super, ni bypassrls, ni createrole, ni
@@ -33,6 +33,8 @@
 #   8. TRUNCATE refuse.
 #   9. LES PRIMITIVES D'AUTORITE sont hors de portee — un outil de constat qui
 #      peut appeler une primitive metier n'est plus un outil de constat.
+#  10. LES PIECES DEPOSEES (0028): les sept colonnes qui designent des octets,
+#      rien d'autre; aucune ecriture; aucune lecture des propositions.
 #
 # LE COMPTE DE CONNEXION EST FICTIF, cree ici et detruit a la sortie. Il ne
 # porte AUCUN droit propre: tout ce qu'il peut, il le tient du role. C'est
@@ -206,6 +208,19 @@ insert into deliverables (id, org_id, project_id, calculation_id, kind,
             || repeat('b', 64) || '.pdf',
           repeat('b', 64), 1234, '0.0.0-FICTIF',
           '22222222-7777-7777-7777-77777777aaa1');
+-- UNE PIECE DEPOSEE (0028): elle vit dans le meme magasin que les livrables,
+-- et le rapprochement doit la voir, sans quoi il la dirait orpheline.
+insert into documents (id, org_id, project_id, kind, filename, storage_path,
+                       mime_type, size_bytes, sha256, uploaded_by,
+                       storage_backend, format)
+  values ('cccccccc-7777-7777-7777-777777777701',
+          '44444444-7777-7777-7777-7777777777c1',
+          '66666666-7777-7777-7777-7777777777a1',
+          'architect_drawing', 'FICTIF-plan.pdf',
+          'pieces/44444444-7777-7777-7777-7777777777c1/66666666-7777-7777-7777-7777777777a1/'
+            || repeat('d', 64) || '.pdf',
+          'application/pdf', 4321, repeat('d', 64),
+          '22222222-7777-7777-7777-77777777aaa1', 'local', 'pdf');
 SQL
 )
 # UN AVERTISSEMENT N'EST PAS UNE ERREUR. On ne rougit que sur `ERROR`:
@@ -298,11 +313,42 @@ else
   rouge "9. primitives atteignables: $PORTEE"
 fi
 
+# --- 10 : LES PIECES DEPOSEES, PAR COLONNES ------------------------------
+#
+# 0028 ouvre au rapprochement les colonnes de `documents` qui designent des
+# octets — et rien d'autre: ni le nom du fichier, ni le deposant, ni le compte
+# rendu d'analyse. Les propositions extraites ne le concernent pas du tout.
+LUES_DOC=$(rec -tAc "select count(*) from documents" 2>&1 | tr -d ' ')
+if [[ "$LUES_DOC" == "1" ]]; then
+  ok "10. il lit les pieces deposees — 1 ligne, celle du decor"
+else
+  rouge "10. lecture des pieces: « $LUES_DOC » au lieu de 1. Chaque piece serait declaree orpheline."
+fi
+for COLONNE in filename kind uploaded_by analysis_report mime_type; do
+  SORTIE=$(rec -tAc "select $COLONNE from documents limit 1" 2>&1)
+  if grep -qi "permission denied\|droit refuse" <<<"$SORTIE"; then
+    ok "10. « documents.$COLONNE » est hors de portee"
+  else
+    rouge "10. « documents.$COLONNE » est lisible: « $(cut -c1-90 <<<"$SORTIE") »"
+  fi
+done
+for COLONNE in id storage_path sha256 size_bytes org_id project_id storage_backend; do
+  SORTIE=$(rec -tAc "select $COLONNE from documents limit 1" 2>&1)
+  if grep -qi "permission denied\|droit refuse" <<<"$SORTIE"; then
+    rouge "10. « documents.$COLONNE » devrait etre lisible et ne l'est pas"
+  fi
+done
+ok "10. les sept colonnes des pieces deposees sont lisibles"
+essai_refuse "10. UPDATE documents" "update documents set size_bytes = 0"
+essai_refuse "10. DELETE documents" "delete from documents"
+essai_refuse "10. lecture des propositions" "select count(*) from extractions"
+
 if [[ $CODE -eq 0 ]]; then
   echo ""
   echo "================================================="
-  echo " Le rapprochement lit les livrables et ne peut"
-  echo " rien ecrire — le droit le dit, pas le programme."
+  echo " Le rapprochement lit les livrables et les pieces"
+  echo " deposees, et ne peut rien ecrire — le droit le dit,"
+  echo " pas le programme."
   echo "================================================="
 fi
 exit $CODE

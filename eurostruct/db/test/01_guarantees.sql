@@ -306,22 +306,35 @@ $$;
 -- ---------------------------------------------------------------------
 -- 8. Une extraction confirmee doit etre signee et porter sa valeur retenue
 -- ---------------------------------------------------------------------
+-- LE DOCUMENT ET L'EXTRACTION SONT ENTIEREMENT TRACES (0028): empreinte
+-- sha256, chemin qui en derive, magasin, format; texte lu, page, boite,
+-- confiance, methode, version. Sans cela, le refus ci-dessous pourrait venir
+-- de la tracabilite manquante et non de la signature absente — et le test
+-- passerait pour une autre raison que celle qu'il nomme. Le controle positif
+-- qui suit le prouve: la MEME ligne, proposee, est acceptee.
 insert into documents (id, org_id, project_id, kind, filename, storage_path,
-                       mime_type, size_bytes, sha256, uploaded_by)
+                       mime_type, size_bytes, sha256, uploaded_by,
+                       storage_backend, format)
 values ('99999999-0000-0000-0000-000000000001',
         'aaaaaaaa-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000001',
-        'architect_drawing', 'plan.pdf', 's3://plan.pdf', 'application/pdf',
-        2048, 'sha256:plan', '11111111-1111-1111-1111-111111111111');
+        'architect_drawing', 'plan.pdf',
+        'pieces/aaaaaaaa-0000-0000-0000-000000000001/cccccccc-0000-0000-0000-000000000001/'
+        || repeat('a1', 32) || '.pdf',
+        'application/pdf', 2048, repeat('a1', 32),
+        '11111111-1111-1111-1111-111111111111', 'local', 'pdf');
 
 do $$
 declare ok boolean := false;
 begin
   begin
     insert into extractions (org_id, project_id, document_id, kind,
-                             proposed_value, status)
+                             proposed_value, status, page, bbox, confidence,
+                             model_name, raw_text, method)
     values ('aaaaaaaa-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000001',
             '99999999-0000-0000-0000-000000000001', 'slab_thickness',
-            '{"value": 200, "unit": "mm"}'::jsonb, 'confirmed');
+            '{"value": 200, "unit": "mm"}'::jsonb, 'confirmed', 1,
+            array[10, 20, 60, 30]::double precision[], 0.8,
+            'FICTIF-extracteur/0', 'dalle ep. 200 mm', 'texte_natif');
   exception when check_violation then ok := true;
   end;
   if not ok then
@@ -329,6 +342,17 @@ begin
   end if;
 end
 $$;
+
+-- LE CONTROLE POSITIF: la meme proposition, NON confirmee, est acceptee. Le
+-- refus ci-dessus tient donc a la seule confirmation sans signataire.
+insert into extractions (org_id, project_id, document_id, kind,
+                         proposed_value, status, page, bbox, confidence,
+                         model_name, raw_text, method)
+values ('aaaaaaaa-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000001',
+        '99999999-0000-0000-0000-000000000001', 'slab_thickness',
+        '{"value": 200, "unit": "mm"}'::jsonb, 'proposed', 1,
+        array[10, 20, 60, 30]::double precision[], 0.8,
+        'FICTIF-extracteur/0', 'dalle ep. 200 mm', 'texte_natif');
 
 
 \echo ''
