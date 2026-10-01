@@ -21,7 +21,10 @@
 #   6. un calcul n'accepte une provenance que si elle designe une decision de
 #      CE projet, de la bonne categorie et de la MEME valeur — et il la
 #      reecrit depuis la base; sinon 422, et aucune ligne n'est ecrite;
-#   7. le rapprochement voit les pieces deposees: aucun orphelin, aucun absent.
+#   7. le rapprochement voit les pieces deposees: aucun orphelin, aucun absent;
+#   8. un DXF qui n'ecrit aucune portee donne son modele structurel (0029:
+#      propositions « geometrie » admises); une portee mesuree sur le dessin,
+#      decidee, entre dans le calcul avec sa provenance.
 #
 # CINQ IDENTITES, CHACUNE POUR UN REFUS PRECIS: A ingenieur nomme, V
 # validateur nomme, W lecteur, N ingenieur SANS nom enregistre, B ingenieur

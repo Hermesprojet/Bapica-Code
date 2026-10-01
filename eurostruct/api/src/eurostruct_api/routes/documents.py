@@ -31,6 +31,7 @@ from eurostruct_engine.schemas.documents import (
     ListeDocuments,
     ListeExtractions,
     Preremplissage,
+    StructureDuDocument,
 )
 from eurostruct_extraction import FormatNonPrisEnCharge, detecter_format
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -219,6 +220,39 @@ def lister(project_id: str, ouvert: Any = Depends(ouvrir_atelier)) -> ListeDocum
         ouvert.fermer()
     return ListeDocuments(project_id=project_id,
                           documents=[service.en_document(ligne) for ligne in lignes])
+
+
+@routeur.get("/{project_id}/documents/{document_id}/structure",
+             response_model=StructureDuDocument)
+def structure(project_id: str, document_id: str,
+              ouvert: Any = Depends(ouvrir_atelier)) -> StructureDuDocument:
+    """Le modèle structurel reconstruit depuis la géométrie d'un DXF.
+
+    Poteaux, voiles, poutres, travées et leurs appuis, dalles, grille, cotes
+    rattachées, et ce qui n'a pas pu être résolu — tel qu'enregistré avec
+    l'analyse. Un document sans modèle (PDF, DXF sans géométrie lue) répond
+    404 : il n'y a rien à montrer, et rien n'est reconstruit à la demande.
+    """
+    try:
+        lignes = ouvert.atelier.documents(_jeton_de(ouvert), project_id=project_id)
+    except (AuthentificationRequise, ConfirmationDomainError) as cause:
+        raise _refus(cause) from cause
+    finally:
+        ouvert.fermer()
+    ligne = next((x for x in lignes if x["document_id"] == document_id), None)
+    if ligne is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "document_introuvable", "what": "document_id",
+                    "detail": "document introuvable dans ce projet."})
+    lu = service.en_structure(project_id, ligne)
+    if lu is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "structure_absente", "what": "document_id",
+                    "detail": ("ce document n'a pas de modele structurel: seule la "
+                               "geometrie d'un DXF en donne un.")})
+    return lu
 
 
 @routeur.get("/{project_id}/documents/{document_id}/download")

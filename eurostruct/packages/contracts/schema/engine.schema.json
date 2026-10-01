@@ -71,6 +71,200 @@
       "title": "AnchorageCoefficientsDTO",
       "type": "object"
     },
+    "AppuiDeTravee": {
+      "additionalProperties": false,
+      "properties": {
+        "centre": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Centre"
+        },
+        "faces": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "title": "Faces",
+          "type": "array"
+        },
+        "gap": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Gap"
+        },
+        "grid_node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Grid Node"
+        },
+        "kind": {
+          "enum": [
+            "poteau",
+            "voile",
+            "poutre"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "support": {
+          "title": "Support",
+          "type": "string"
+        },
+        "touching_only": {
+          "title": "Touching Only",
+          "type": "boolean"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Width"
+        }
+      },
+      "required": [
+        "support",
+        "kind",
+        "centre",
+        "faces",
+        "width",
+        "grid_node",
+        "touching_only",
+        "gap"
+      ],
+      "title": "AppuiDeTravee",
+      "type": "object"
+    },
+    "AreteDuGraphe": {
+      "additionalProperties": false,
+      "properties": {
+        "axis_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Axis Length"
+        },
+        "beam": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Beam"
+        },
+        "clear_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clear Length"
+        },
+        "from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "From"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "mark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mark"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "To"
+        },
+        "type": {
+          "enum": [
+            "beam_span",
+            "cantilever",
+            "beam_on_beam"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "from",
+        "to"
+      ],
+      "title": "AreteDuGraphe",
+      "type": "object"
+    },
     "AttestationDemande": {
       "additionalProperties": false,
       "description": "Ce que le validateur écrit, et **rien d'autre**.\n\nNI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION. Les trois sortent de\n``organization_members`` sous l'identité du jeton. Les accepter ici\ndonnerait l'illusion qu'ils comptent, alors que PostgreSQL les écrase de\ntoute façon — et l'illusion est pire que l'absence, parce qu'un écran\nfinirait par les afficher.\n\nNI IDENTIFIANT DE CALCUL, NI EMPREINTE. L'attestation porte sur le calcul\ndu livrable et sur les octets réellement enregistrés ; les faire venir du\ncorps laisserait attester un calcul et en signer un autre.",
@@ -511,6 +705,84 @@
       "title": "AuthorityReviewPackage",
       "type": "object"
     },
+    "AxeDeGrille": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence": {
+          "$ref": "#/$defs/PreuveGeometrique"
+        },
+        "family": {
+          "title": "Family",
+          "type": "integer"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "L'étiquette LUE ; jamais inventée.",
+          "title": "Label"
+        },
+        "label_source": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label Source"
+        },
+        "line": {
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "title": "Line",
+          "type": "array"
+        },
+        "name": {
+          "description": "L'étiquette, ou « famille.rang » à défaut.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "name",
+        "family",
+        "line",
+        "confidence",
+        "label_source",
+        "evidence"
+      ],
+      "title": "AxeDeGrille",
+      "type": "object"
+    },
     "BarRowDTO": {
       "additionalProperties": false,
       "properties": {
@@ -758,6 +1030,33 @@
         "parameter_name"
       ],
       "title": "BlockingParameterDTO",
+      "type": "object"
+    },
+    "BordDeDalle": {
+      "additionalProperties": false,
+      "properties": {
+        "side": {
+          "title": "Side",
+          "type": "string"
+        },
+        "supported_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null : bord libre.",
+          "title": "Supported By"
+        }
+      },
+      "required": [
+        "side",
+        "supported_by"
+      ],
+      "title": "BordDeDalle",
       "type": "object"
     },
     "CalcStepDTO": {
@@ -1390,6 +1689,304 @@
       "title": "ConflitDePreremplissage",
       "type": "object"
     },
+    "CoteDeTravee": {
+      "additionalProperties": false,
+      "properties": {
+        "displayed": {
+          "title": "Displayed",
+          "type": "string"
+        },
+        "forced_mismatch": {
+          "description": "Le texte forcé contredit la mesure.",
+          "title": "Forced Mismatch",
+          "type": "boolean"
+        },
+        "handle": {
+          "title": "Handle",
+          "type": "string"
+        },
+        "measure_agrees": {
+          "description": "Les points de définition mesurent l'élément.",
+          "title": "Measure Agrees",
+          "type": "boolean"
+        },
+        "measured": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Measured"
+        },
+        "measures": {
+          "title": "Measures",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle",
+        "measures",
+        "measured",
+        "displayed",
+        "measure_agrees",
+        "forced_mismatch"
+      ],
+      "title": "CoteDeTravee",
+      "type": "object"
+    },
+    "CoteDuDessin": {
+      "additionalProperties": false,
+      "properties": {
+        "chain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Chain"
+        },
+        "dimlfac": {
+          "title": "Dimlfac",
+          "type": "number"
+        },
+        "displayed": {
+          "title": "Displayed",
+          "type": "string"
+        },
+        "forced": {
+          "title": "Forced",
+          "type": "boolean"
+        },
+        "forced_mismatch": {
+          "title": "Forced Mismatch",
+          "type": "boolean"
+        },
+        "handle": {
+          "title": "Handle",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "layer": {
+          "title": "Layer",
+          "type": "string"
+        },
+        "measure_agrees": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Measure Agrees"
+        },
+        "measured": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Measured"
+        },
+        "measures": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Ce que la cote mesure (entraxe, travée, largeur…), ou null.",
+          "title": "Measures"
+        },
+        "p1": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "title": "P1",
+          "type": "array"
+        },
+        "p2": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "title": "P2",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "handle",
+        "layer",
+        "p1",
+        "p2",
+        "measured",
+        "dimlfac",
+        "displayed",
+        "forced",
+        "forced_mismatch",
+        "measures",
+        "measure_agrees",
+        "chain"
+      ],
+      "title": "CoteDuDessin",
+      "type": "object"
+    },
+    "DalleLue": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "cross_marker": {
+          "title": "Cross Marker",
+          "type": "boolean"
+        },
+        "crossed_by": {
+          "description": "Travées qui traversent le panneau ; il n'est pas subdivisé.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Crossed By",
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/BordDeDalle"
+          },
+          "title": "Edges",
+          "type": "array"
+        },
+        "evidence": {
+          "$ref": "#/$defs/PreuveGeometrique"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "panneau",
+            "contour"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "lx": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lx"
+        },
+        "ly": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ly"
+        },
+        "mark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mark"
+        },
+        "outline": {
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "title": "Outline",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "mark",
+        "kind",
+        "outline",
+        "edges",
+        "lx",
+        "ly",
+        "cross_marker",
+        "crossed_by",
+        "label",
+        "confidence",
+        "evidence"
+      ],
+      "title": "DalleLue",
+      "type": "object"
+    },
     "DecisionExtraction": {
       "additionalProperties": false,
       "description": "Ce que la personne décide. Ni son nom, ni la date : le serveur les pose.",
@@ -1549,6 +2146,12 @@
           "title": "Format",
           "type": "string"
         },
+        "has_structure": {
+          "default": false,
+          "description": "Un modèle structurel a été reconstruit depuis la géométrie (DXF) ; il se lit sur /documents/{id}/structure.",
+          "title": "Has Structure",
+          "type": "boolean"
+        },
         "kind": {
           "description": "Nature déclarée au dépôt.",
           "title": "Kind",
@@ -1591,6 +2194,17 @@
         "size_bytes": {
           "title": "Size Bytes",
           "type": "integer"
+        },
+        "structure_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResumeDeStructure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "text_layer": {
           "anyOf": [
@@ -2323,6 +2937,52 @@
       "title": "EngineErrorDTO",
       "type": "object"
     },
+    "EntraxeDeGrille": {
+      "additionalProperties": false,
+      "properties": {
+        "distance": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Distance"
+        },
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "labels": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Labels",
+          "type": "array"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "labels",
+        "distance"
+      ],
+      "title": "EntraxeDeGrille",
+      "type": "object"
+    },
     "Extraction": {
       "additionalProperties": false,
       "properties": {
@@ -2515,6 +3175,22 @@
           "title": "Raw Text",
           "type": "string"
         },
+        "source_label": {
+          "title": "Source Label",
+          "type": "string"
+        },
+        "source_type": {
+          "description": "text, ocr, cad_text (texte ou cote du DXF), geometry (mesurée sur le dessin), vision.",
+          "enum": [
+            "text",
+            "ocr",
+            "cad_text",
+            "geometry",
+            "vision"
+          ],
+          "title": "Source Type",
+          "type": "string"
+        },
         "status": {
           "enum": [
             "proposed",
@@ -2539,9 +3215,71 @@
         "method",
         "model_name",
         "raw_text",
-        "created_at"
+        "created_at",
+        "source_type",
+        "source_label"
       ],
       "title": "Extraction",
+      "type": "object"
+    },
+    "FamilleDeGrille": {
+      "additionalProperties": false,
+      "properties": {
+        "angle_deg": {
+          "title": "Angle Deg",
+          "type": "number"
+        },
+        "axes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Axes",
+          "type": "array"
+        },
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "spacings": {
+          "items": {
+            "$ref": "#/$defs/EntraxeDeGrille"
+          },
+          "title": "Spacings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "index",
+        "angle_deg",
+        "axes",
+        "spacings"
+      ],
+      "title": "FamilleDeGrille",
+      "type": "object"
+    },
+    "GrapheStructurel": {
+      "additionalProperties": false,
+      "properties": {
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/AreteDuGraphe"
+          },
+          "title": "Edges",
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/NoeudDuGraphe"
+          },
+          "title": "Nodes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "title": "GrapheStructurel",
       "type": "object"
     },
     "HistoriqueCalculs": {
@@ -2834,6 +3572,40 @@
         "clauses"
       ],
       "title": "JournalDTO",
+      "type": "object"
+    },
+    "LibelleAffecte": {
+      "additionalProperties": false,
+      "properties": {
+        "assigned_to": {
+          "title": "Assigned To",
+          "type": "string"
+        },
+        "cost": {
+          "title": "Cost",
+          "type": "number"
+        },
+        "handle": {
+          "title": "Handle",
+          "type": "string"
+        },
+        "mark": {
+          "title": "Mark",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "handle",
+        "mark",
+        "assigned_to",
+        "cost"
+      ],
+      "title": "LibelleAffecte",
       "type": "object"
     },
     "ListeDocuments": {
@@ -3644,6 +4416,181 @@
       "title": "MembreModification",
       "type": "object"
     },
+    "MentionDeNiveau": {
+      "additionalProperties": false,
+      "properties": {
+        "handle": {
+          "title": "Handle",
+          "type": "string"
+        },
+        "point": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "title": "Point",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "point",
+        "handle"
+      ],
+      "title": "MentionDeNiveau",
+      "type": "object"
+    },
+    "ModeleStructurel": {
+      "additionalProperties": false,
+      "properties": {
+        "beams": {
+          "items": {
+            "$ref": "#/$defs/PoutreLue"
+          },
+          "title": "Beams",
+          "type": "array"
+        },
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/PoteauLu"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts",
+          "type": "object"
+        },
+        "dimensions": {
+          "items": {
+            "$ref": "#/$defs/CoteDuDessin"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "graph": {
+          "$ref": "#/$defs/GrapheStructurel"
+        },
+        "grid": {
+          "items": {
+            "$ref": "#/$defs/AxeDeGrille"
+          },
+          "title": "Grid",
+          "type": "array"
+        },
+        "grid_families": {
+          "items": {
+            "$ref": "#/$defs/FamilleDeGrille"
+          },
+          "title": "Grid Families",
+          "type": "array"
+        },
+        "grid_nodes": {
+          "items": {
+            "$ref": "#/$defs/NoeudDeGrille"
+          },
+          "title": "Grid Nodes",
+          "type": "array"
+        },
+        "labels": {
+          "items": {
+            "$ref": "#/$defs/LibelleAffecte"
+          },
+          "title": "Labels",
+          "type": "array"
+        },
+        "levels": {
+          "items": {
+            "$ref": "#/$defs/NiveauLu"
+          },
+          "title": "Levels",
+          "type": "array"
+        },
+        "openings": {
+          "items": {
+            "$ref": "#/$defs/TremieLue"
+          },
+          "title": "Openings",
+          "type": "array"
+        },
+        "report": {
+          "additionalProperties": true,
+          "title": "Report",
+          "type": "object"
+        },
+        "schema": {
+          "const": "eurostruct.structure/1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "slabs": {
+          "items": {
+            "$ref": "#/$defs/DalleLue"
+          },
+          "title": "Slabs",
+          "type": "array"
+        },
+        "spans": {
+          "items": {
+            "$ref": "#/$defs/TraveeLue"
+          },
+          "title": "Spans",
+          "type": "array"
+        },
+        "units": {
+          "$ref": "#/$defs/UnitesDuDessin"
+        },
+        "unresolved": {
+          "items": {
+            "$ref": "#/$defs/NonResolu"
+          },
+          "title": "Unresolved",
+          "type": "array"
+        },
+        "walls": {
+          "items": {
+            "$ref": "#/$defs/VoileLu"
+          },
+          "title": "Walls",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema",
+        "units",
+        "grid",
+        "grid_families",
+        "grid_nodes",
+        "columns",
+        "walls",
+        "beams",
+        "spans",
+        "slabs",
+        "openings",
+        "dimensions",
+        "levels",
+        "labels",
+        "graph",
+        "unresolved",
+        "counts",
+        "report"
+      ],
+      "title": "ModeleStructurel",
+      "type": "object"
+    },
     "NationalAnnexDTO": {
       "additionalProperties": false,
       "description": "One published National Annex document, at one edition.",
@@ -3980,6 +4927,129 @@
       "title": "NdpSummaryDTO",
       "type": "object"
     },
+    "NiveauLu": {
+      "additionalProperties": false,
+      "properties": {
+        "mentions": {
+          "items": {
+            "$ref": "#/$defs/MentionDeNiveau"
+          },
+          "title": "Mentions",
+          "type": "array"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "mentions"
+      ],
+      "title": "NiveauLu",
+      "type": "object"
+    },
+    "NoeudDeGrille": {
+      "additionalProperties": false,
+      "properties": {
+        "axes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Axes",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "point": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "title": "Point",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "name",
+        "point",
+        "axes"
+      ],
+      "title": "NoeudDeGrille",
+      "type": "object"
+    },
+    "NoeudDuGraphe": {
+      "additionalProperties": false,
+      "properties": {
+        "grid_node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Grid Node"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "mark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mark"
+        },
+        "type": {
+          "enum": [
+            "column",
+            "wall"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "mark"
+      ],
+      "title": "NoeudDuGraphe",
+      "type": "object"
+    },
     "NonReportable": {
       "additionalProperties": false,
       "properties": {
@@ -4007,6 +5077,25 @@
         "reason"
       ],
       "title": "NonReportable",
+      "type": "object"
+    },
+    "NonResolu": {
+      "additionalProperties": false,
+      "properties": {
+        "element": {
+          "title": "Element",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "element",
+        "reason"
+      ],
+      "title": "NonResolu",
       "type": "object"
     },
     "Organisation": {
@@ -4127,6 +5216,277 @@
         "description"
       ],
       "title": "ParameterVariantDTO",
+      "type": "object"
+    },
+    "PoteauLu": {
+      "additionalProperties": false,
+      "properties": {
+        "angle_deg": {
+          "title": "Angle Deg",
+          "type": "number"
+        },
+        "centre": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "title": "Centre",
+          "type": "array"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "depth": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Depth"
+        },
+        "diameter": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Diameter"
+        },
+        "evidence": {
+          "$ref": "#/$defs/PreuveGeometrique"
+        },
+        "filled": {
+          "title": "Filled",
+          "type": "boolean"
+        },
+        "grid_node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Grid Node"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "mark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mark"
+        },
+        "mark_source": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mark Source"
+        },
+        "outline": {
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "title": "Outline",
+          "type": "array"
+        },
+        "shape": {
+          "enum": [
+            "rectangle",
+            "cercle",
+            "polygone"
+          ],
+          "title": "Shape",
+          "type": "string"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Selon l'axe x de la grille.",
+          "title": "Width"
+        }
+      },
+      "required": [
+        "id",
+        "mark",
+        "shape",
+        "outline",
+        "centre",
+        "width",
+        "depth",
+        "diameter",
+        "angle_deg",
+        "grid_node",
+        "filled",
+        "confidence",
+        "mark_source",
+        "evidence"
+      ],
+      "title": "PoteauLu",
+      "type": "object"
+    },
+    "PoutreLue": {
+      "additionalProperties": false,
+      "properties": {
+        "axis": {
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "title": "Axis",
+          "type": "array"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "drawn_as": {
+          "description": "rectangle, paire_de_traits, filaire.",
+          "title": "Drawn As",
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/PreuveGeometrique"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "labels": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Labels",
+          "type": "array"
+        },
+        "marks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Marks",
+          "type": "array"
+        },
+        "merged_through": {
+          "description": "Les appuis à travers lesquels deux morceaux dessinés ont été réunis.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Merged Through",
+          "type": "array"
+        },
+        "spans": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Spans",
+          "type": "array"
+        },
+        "supported_by_beams": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supported By Beams",
+          "type": "array"
+        },
+        "supports": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supports",
+          "type": "array"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Width"
+        }
+      },
+      "required": [
+        "id",
+        "marks",
+        "width",
+        "axis",
+        "drawn_as",
+        "supports",
+        "spans",
+        "supported_by_beams",
+        "merged_through",
+        "labels",
+        "confidence",
+        "evidence"
+      ],
+      "title": "PoutreLue",
       "type": "object"
     },
     "PreflightBlockerDTO": {
@@ -4268,6 +5628,107 @@
         "notice"
       ],
       "title": "Preremplissage",
+      "type": "object"
+    },
+    "PreuveGeometrique": {
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blocks"
+        },
+        "classified_by": {
+          "enum": [
+            "bloc",
+            "calque",
+            "type_de_ligne",
+            "forme"
+          ],
+          "title": "Classified By",
+          "type": "string"
+        },
+        "entity_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entity Types",
+          "type": "array"
+        },
+        "handles": {
+          "description": "Poignées DXF des entités citées.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Handles",
+          "type": "array"
+        },
+        "handles_not_listed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Handles Not Listed"
+        },
+        "inserts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Poignées des INSERT qui ont placé les entités.",
+          "title": "Inserts"
+        },
+        "layers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Layers",
+          "type": "array"
+        },
+        "matched_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Le nom (calque, bloc, type de ligne) qui a décidé.",
+          "title": "Matched Name"
+        }
+      },
+      "required": [
+        "handles",
+        "layers",
+        "entity_types",
+        "classified_by"
+      ],
+      "title": "PreuveGeometrique",
       "type": "object"
     },
     "Projet": {
@@ -4796,6 +6257,46 @@
       "title": "ReinforcementChoiceDTO",
       "type": "object"
     },
+    "ResumeDeStructure": {
+      "additionalProperties": false,
+      "description": "Ce que la liste des documents dit du modèle, sans le transporter.",
+      "properties": {
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts",
+          "type": "object"
+        },
+        "drawing_units": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Drawing Units"
+        },
+        "schema_version": {
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "unit_basis": {
+          "title": "Unit Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "drawing_units",
+        "unit_basis",
+        "counts"
+      ],
+      "title": "ResumeDeStructure",
+      "type": "object"
+    },
     "RetourAuBrouillon": {
       "additionalProperties": false,
       "description": "Renvoyer une pièce en relecture vers le brouillon, **avec un motif**.\n\nLE MOTIF EST OBLIGATOIRE, ET LA BASE LE REFUSE VIDE ELLE AUSSI. Celui qui\nreprend le document doit savoir ce qui lui est reproché ; un retour muet\nest une décision qu'on ne peut pas relire six mois plus tard.",
@@ -4892,6 +6393,52 @@
       "title": "SourceTypeDTO",
       "type": "string"
     },
+    "StructureDuDocument": {
+      "additionalProperties": false,
+      "description": "Le modèle structurel d'un DXF, tel qu'il a été enregistré avec l'analyse.\n\nIl est figé avec les propositions qu'il a produites : la même lecture,\nrelue dix ans plus tard, montre les mêmes poteaux et les mêmes travées.",
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "extractor_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Extractor Version"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "structure": {
+          "$ref": "#/$defs/ModeleStructurel"
+        }
+      },
+      "required": [
+        "project_id",
+        "document_id",
+        "filename",
+        "extractor_version",
+        "structure",
+        "notice"
+      ],
+      "title": "StructureDuDocument",
+      "type": "object"
+    },
     "Transition": {
       "additionalProperties": false,
       "description": "Un pas dans le parcours de relecture, horodaté et attribué.",
@@ -4973,6 +6520,292 @@
         "spacing"
       ],
       "title": "TransverseLinksDTO",
+      "type": "object"
+    },
+    "TraveeLue": {
+      "additionalProperties": false,
+      "properties": {
+        "axis_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Entre les centres des appuis.",
+          "title": "Axis Length"
+        },
+        "beam": {
+          "title": "Beam",
+          "type": "string"
+        },
+        "clear_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Entre les nus des appuis.",
+          "title": "Clear Length"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "dimensions": {
+          "items": {
+            "$ref": "#/$defs/CoteDeTravee"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "from": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AppuiDeTravee"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "span",
+            "cantilever"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "mark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mark"
+        },
+        "mark_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mark Source"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AppuiDeTravee"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "beam",
+        "kind",
+        "mark",
+        "mark_source",
+        "index",
+        "count",
+        "from",
+        "to",
+        "axis_length",
+        "clear_length",
+        "dimensions",
+        "confidence"
+      ],
+      "title": "TraveeLue",
+      "type": "object"
+    },
+    "TremieLue": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/PreuveGeometrique"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Length"
+        },
+        "outline": {
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "title": "Outline",
+          "type": "array"
+        },
+        "slab": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Slab"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Width"
+        }
+      },
+      "required": [
+        "id",
+        "outline",
+        "width",
+        "length",
+        "slab",
+        "evidence"
+      ],
+      "title": "TremieLue",
+      "type": "object"
+    },
+    "UnitesDuDessin": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "enum": [
+            "declaration",
+            "absente"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "mm, cm, m, in, ft — ou null : le dessin ne déclare pas son unité.",
+          "title": "Drawing"
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence"
+        },
+        "insunits": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Insunits"
+        },
+        "quantum": {
+          "title": "Quantum",
+          "type": "number"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "$INSUNITS, ou declaration_et_cotes (mention écrite ET cotes).",
+          "title": "Source"
+        },
+        "tolerance": {
+          "title": "Tolerance",
+          "type": "number"
+        }
+      },
+      "required": [
+        "drawing",
+        "basis",
+        "source",
+        "insunits",
+        "tolerance",
+        "quantum"
+      ],
+      "title": "UnitesDuDessin",
       "type": "object"
     },
     "ValeurExtraite": {
@@ -5079,6 +6912,114 @@
         "checks"
       ],
       "title": "VerificationReportDTO",
+      "type": "object"
+    },
+    "VoileLu": {
+      "additionalProperties": false,
+      "properties": {
+        "axis": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Axis"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence": {
+          "$ref": "#/$defs/PreuveGeometrique"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Length"
+        },
+        "mark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mark"
+        },
+        "outline": {
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "title": "Outline",
+          "type": "array"
+        },
+        "thickness": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Thickness"
+        }
+      },
+      "required": [
+        "id",
+        "mark",
+        "outline",
+        "axis",
+        "thickness",
+        "length",
+        "confidence",
+        "evidence"
+      ],
+      "title": "VoileLu",
       "type": "object"
     }
   }

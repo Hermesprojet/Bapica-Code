@@ -8,6 +8,10 @@ analyse, revue, décision, report, calcul — est dans
 """
 from __future__ import annotations
 
+import sys
+from functools import cache
+from pathlib import Path
+
 import pytest
 from eurostruct_engine.schemas.ec2_verification import (
     PROVENANCE_CHEMINS,
@@ -17,12 +21,16 @@ from pydantic import ValidationError
 
 from eurostruct_api import documents as service
 
+# LES PLANS FABRIQUES DU MODULE D'EXTRACTION, les memes que ses tests lisent.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "extraction" / "tests"))
+from fabrique_geometrie import dxf_coffrage_s101
+
 PROJET = "aaaaaaaa-0000-0000-0000-00000000000a"
 
 
 def _ligne(kind: str, value, unit, *, status: str = "confirmed",
            label: str | None = None, ident: str = "e1",
-           proposee=None) -> dict:
+           proposee=None, methode: str = "texte_natif") -> dict:
     """Une extraction telle que ``PostgresAtelier.extractions`` la rend."""
     return {
         "extraction_id": ident, "document_id": "d1",
@@ -32,7 +40,7 @@ def _ligne(kind: str, value, unit, *, status: str = "confirmed",
         "final_value": ({"value": value, "unit": unit}
                         if status in ("confirmed", "corrected") else None),
         "status": status, "page": 2, "bbox": [10.0, 20.0, 60.0, 30.0],
-        "position": None, "confidence": 0.6, "method": "texte_natif",
+        "position": None, "confidence": 0.6, "method": methode,
         "model_name": "eurostruct-extraction/0.1.0",
         "raw_text": "Poutre P1 30x60", "element_label": label, "basis": None,
         "confirmed_by": "11111111-1111-1111-1111-111111111111",
@@ -337,3 +345,108 @@ def test_un_caractere_sans_glyphe_est_dit_et_non_remplace_en_silence():
     from eurostruct_api.note_verification import _citation_pdf
 
     assert _citation_pdf("Poteau ⌀40 — Ø40, φ") == "Poteau [U+2300]40 — Ø40, φ"
+
+
+# =========================================== la geometrie et sa source
+@cache
+def _analyse_s101():
+    return service.analyser(dxf_coffrage_s101())
+
+
+def _document(rapport: dict | None, *, ident: str = "d1") -> dict:
+    """Un document tel que ``PostgresAtelier.documents`` le rend."""
+    return {
+        "document_id": ident, "kind": "formwork_drawing",
+        "filename": "FICTIF-S-101.dxf", "format": "dxf", "mime_type": "image/vnd.dxf",
+        "size_bytes": 1000, "sha256": "b" * 64, "page_count": 1, "text_layer": None,
+        "analysis_status": "analyse", "analysis_detail": "lu",
+        "analysis_report": rapport, "extractor_version": "eurostruct-extraction/0.2.0",
+        "analysed_at": "2026-10-01 09:00:00+00:00", "uploaded_by_me": True,
+        "created_at": "2026-10-01 09:00:00+00:00", "proposed_count": 26,
+        "confirmed_count": 0, "corrected_count": 0, "rejected_count": 0,
+    }
+
+
+@pytest.mark.parametrize(("methode", "source"), [
+    ("texte_natif", "text"), ("ocr", "ocr"), ("dxf", "cad_text"),
+    ("geometrie", "geometry"), ("vision", "vision"),
+])
+def test_chaque_valeur_dit_sa_source(methode, source):
+    extraction = service.en_extraction(_ligne("beam_span", 600, "cm", methode=methode))
+    assert extraction.source_type == source
+    assert extraction.source_label
+
+
+class _AtelierQuiRetient:
+    def __init__(self):
+        self.recu: dict = {}
+
+    def enregistrer_analyse(self, jeton, **champs):
+        self.recu = champs
+        return len(champs["extractions"])
+
+
+def test_le_modele_structurel_est_enregistre_avec_l_analyse():
+    analyse, resultat = _analyse_s101()
+    atelier = _AtelierQuiRetient()
+    ouvert = type("Ouvert", (), {"atelier": atelier})()
+    crees = service.create_extraction_records(ouvert, "jeton", "d1", analyse, resultat)
+    assert crees == len(resultat.candidats) > 0
+    rapport = atelier.recu["report"]
+    assert rapport["structure"]["schema"] == "eurostruct.structure/1"
+    assert rapport["structure"]["counts"]["spans"] == 5
+    assert {x["method"] for x in atelier.recu["extractions"]} >= {"geometrie", "dxf"}
+
+
+def test_la_liste_ne_transporte_pas_le_modele_mais_le_resume():
+    _, resultat = _analyse_s101()
+    document = service.en_document(_document({"insunits": 5,
+                                              "structure": resultat.structure}))
+    assert document.has_structure is True
+    assert "structure" not in document.analysis_report
+    assert document.analysis_report["insunits"] == 5
+    resume = document.structure_summary
+    assert (resume.schema_version, resume.drawing_units, resume.unit_basis) == (
+        "eurostruct.structure/1", "cm", "declaration")
+    assert resume.counts["columns"] == 6
+    sans = service.en_document(_document({"insunits": 5}))
+    assert sans.has_structure is False and sans.structure_summary is None
+
+
+def test_le_modele_se_lit_type_tel_qu_il_a_ete_enregistre():
+    _, resultat = _analyse_s101()
+    lu = service.en_structure(PROJET, _document({"structure": resultat.structure}))
+    assert lu is not None and lu.document_id == "d1"
+    portees = {t.mark: (t.axis_length, t.clear_length) for t in lu.structure.spans}
+    assert portees == {"P1": (600, 570), "P2": (450, 420), "P3": (600, 570),
+                       "P4": (450, 420), "P5": (600, 570)}
+    assert lu.structure.spans[0].from_.grid_node == "A1"
+    # LE CONTRAT EST FERME ET SANS PERTE: relu par alias, c'est le meme JSON.
+    assert lu.structure.model_dump(mode="json", by_alias=True,
+                                   exclude_none=True)["counts"] == resultat.structure["counts"]
+    assert "distance entre appuis" in lu.notice
+    assert service.en_structure(PROJET, _document({"insunits": 5})) is None
+    assert service.en_structure(PROJET, _document(None)) is None
+
+
+def test_meme_valeur_par_le_texte_et_la_geometrie_la_provenance_est_la_geometrie():
+    lignes = [_ligne("beam_span", 6, "m", label="P1", ident="texte", methode="dxf"),
+              _ligne("beam_span", 600, "cm", label="P1", ident="geo", methode="geometrie")]
+    (champ,) = service.preremplissage(PROJET, lignes, "P1").fields
+    assert (champ.value, champ.extraction_id) == (6000, "geo")
+    assert "(géométrie du dxf)" in champ.provenance.detail
+
+
+def test_deux_valeurs_differentes_restent_un_conflit_geometrie_en_tete():
+    lignes = [_ligne("beam_span", 6.5, "m", label="P1", ident="ocr", methode="ocr"),
+              _ligne("beam_span", 600, "cm", label="P1", ident="geo", methode="geometrie")]
+    rempli = service.preremplissage(PROJET, lignes, "P1")
+    assert not rempli.fields
+    (conflit,) = rempli.conflicts
+    assert [c.extraction_id for c in conflit.candidates] == ["geo", "ocr"]
+
+
+def test_la_route_du_modele_exige_une_identite(client):
+    reponse = client.get(f"/v1/projects/{PROJET}/documents/d1/structure")
+    assert reponse.status_code == 401
+

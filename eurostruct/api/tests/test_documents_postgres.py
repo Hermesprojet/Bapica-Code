@@ -47,6 +47,7 @@ pytestmark = [
 # propres tests lisent. Aucune copie: une seconde fabrique deriverait.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "extraction" / "tests"))
 from fabrique import LIGNES_DU_PLAN, dxf_de_plan, entete_dwg, pdf_de_texte  # noqa: E402
+from fabrique_geometrie import dxf_coffrage_s101
 
 ISSUER = "https://fictif.documents.test/auth/v1"
 AUDIENCE = "authenticated"
@@ -531,6 +532,134 @@ def test_une_provenance_sans_decision_valable_refuse_le_calcul_sans_ecriture(
     assert detail["error"] == "provenance_refusee"
     assert chemin in {f["path"] for f in detail["fields"]}
     assert _nombre_de_calculs(projet) == avant
+
+
+# ================================================ la géométrie d'un DXF
+#: LE PLAN S-101: aucun texte n'y ecrit une portee; la geometrie les donne.
+S101 = dxf_coffrage_s101()
+
+
+@pytest.fixture(scope="module")
+def projet_geo(client, entete):
+    return _creer_projet(client, entete, "FICTIF S-101 (geometrie du dessin)")
+
+
+@pytest.fixture(scope="module")
+def coffrage(client, entete, projet_geo):
+    reponse = _deposer(client, entete, projet_geo, S101, kind="formwork_drawing",
+                       nom="FICTIF-S-101-coffrage.dxf")
+    assert reponse.status_code == 201, reponse.text
+    corps = reponse.json()
+    extractions = client.get(
+        f"/v1/projects/{projet_geo['project_id']}/extractions",
+        params={"document_id": corps["document"]["document_id"]},
+        headers=entete(A)).json()["extractions"]
+    return corps, extractions
+
+
+def test_un_dxf_depose_donne_un_modele_structurel_et_des_propositions_geometriques(
+        coffrage):
+    corps, extractions = coffrage
+    document = corps["document"]
+    assert document["has_structure"] is True
+    assert document["structure_summary"]["counts"]["spans"] == 5
+    assert document["structure_summary"]["drawing_units"] == "cm"
+    # LA LISTE NE TRANSPORTE PAS LE MODELE; la base, elle, le garde.
+    assert "structure" not in (document["analysis_report"] or {})
+    ((schema,),) = _observer(
+        "select analysis_report->'structure'->>'schema' from documents where id = %s",
+        document["document_id"])
+    assert schema == "eurostruct.structure/1"
+    portees = {x["element_label"]: x for x in extractions
+               if x["kind"] == "beam_span" and x["method"] == "geometrie"}
+    assert {r: x["proposed_value"] for r, x in portees.items()} == {
+        "P1": {"value": 600, "unit": "cm"}, "P2": {"value": 450, "unit": "cm"},
+        "P3": {"value": 600, "unit": "cm"}, "P4": {"value": 450, "unit": "cm"},
+        "P5": {"value": 600, "unit": "cm"}}
+    assert {x["source_type"] for x in portees.values()} == {"geometry"}
+    assert all(x["status"] == "proposed" for x in extractions)
+    # LA BASE A ADMIS LA METHODE (0029), position tracee comprise.
+    lignes = _observer(
+        "select method, position->>'source', position->'element'->>'type' "
+        "from extractions where document_id = %s and kind = 'beam_span'",
+        document["document_id"])
+    assert set(lignes) == {("geometrie", "geometry", "span")}
+
+
+def test_le_modele_structurel_se_lit_par_sa_route(client, entete, projet_geo, coffrage):
+    corps, _ = coffrage
+    url = (f"/v1/projects/{projet_geo['project_id']}/documents/"
+           f"{corps['document']['document_id']}/structure")
+    reponse = client.get(url, headers=entete(V))
+    assert reponse.status_code == 200, reponse.text
+    modele = reponse.json()["structure"]
+    assert modele["schema"] == "eurostruct.structure/1"
+    assert {(t["mark"], t["from"]["support"], t["to"]["support"], t["axis_length"])
+            for t in modele["spans"]} == {
+        ("P1", "column:A1", "column:B1", 600), ("P2", "column:B1", "column:C1", 450),
+        ("P3", "column:A2", "column:B2", 600), ("P4", "column:B2", "column:C2", 450),
+        ("P5", "column:B1", "column:B2", 600)}
+    # UNE AUTRE ORGANISATION NE LE LIT PAS.
+    assert client.get(url, headers=entete(B)).status_code in (403, 404, 422)
+
+
+def test_un_document_sans_geometrie_n_a_pas_de_modele(client, entete, projet, plan):
+    corps, _ = plan
+    reponse = client.get(
+        f"/v1/projects/{projet['project_id']}/documents/"
+        f"{corps['document']['document_id']}/structure", headers=entete(A))
+    assert reponse.status_code == 404
+    assert reponse.json()["detail"]["error"] == "structure_absente"
+
+
+def test_une_portee_mesuree_sur_le_dessin_decidee_entre_dans_le_calcul(
+        client, entete, projet_geo, coffrage):
+    _, extractions = coffrage
+    p1 = [x for x in extractions if x["kind"] == "beam_span" and x["method"] == "geometrie"
+          and x["element_label"] == "P1"]
+    largeur = [x for x in extractions if x["kind"] == "beam_width"
+               and x["method"] == "geometrie" and x["element_label"] == "P1"]
+    assert len(p1) == 1 and len(largeur) == 1
+    for extraction in (p1[0], largeur[0]):
+        reponse = _decider(client, entete, projet_geo, extraction, "confirm")
+        assert reponse.status_code == 200, reponse.text
+        assert reponse.json()["confirmed_by_name"] == "FICTIF Ing. A"
+
+    prefill = client.get(f"/v1/projects/{projet_geo['project_id']}/extractions/prefill",
+                         params={"element": "P1"}, headers=entete(A)).json()
+    champs = {c["path"]: c for c in prefill["fields"]}
+    assert (champs["geometry.l_eff"]["value"], champs["geometry.l_eff"]["unit"]) == (
+        6000, "mm")
+    assert (champs["geometry.b"]["value"], champs["geometry.b"]["unit"]) == (300, "mm")
+    assert "(géométrie du dxf)" in champs["geometry.l_eff"]["provenance"]["detail"]
+    assert "5.3.2.2" in champs["geometry.l_eff"]["warning"]
+
+    corps = {
+        "element": "P1", "strict_ndp": False,
+        "geometry": {"b": {"value": 300, "unit": "mm"}, "h": {"value": 600, "unit": "mm"},
+                     "d": {"value": 550, "unit": "mm"},
+                     "l_eff": {"value": 6000, "unit": "mm"}},
+        "materials": {"concrete_grade": "C30/37", "steel_grade": "B500B"},
+        "M_Ed": {"value": 250, "unit": "kN*m"}, "V_Ed": {"value": 300, "unit": "kN"},
+        "M_char": {"value": 180, "unit": "kN*m"}, "M_qp": {"value": 120, "unit": "kN*m"},
+        "phi_creep": 2.0, "exposure_class": "XC3",
+        "structural_system": "simply_supported", "supports_brittle_partitions": False,
+        "bars": {"count": 4, "diameter": {"value": 20, "unit": "mm"}},
+        "links": {"legs": 2, "diameter": {"value": 10, "unit": "mm"},
+                  "spacing": {"value": 150, "unit": "mm"}},
+        "cot_theta": 1.5, "cover": {"value": 40, "unit": "mm"},
+        "anchorage_available": {"value": 800, "unit": "mm"},
+        "provenance": {chemin: champs[chemin]["provenance"]
+                       for chemin in ("geometry.l_eff", "geometry.b")},
+    }
+    reponse = client.post(f"/v1/projects/{projet_geo['project_id']}/beam-verifications",
+                          json=corps, headers=entete(A))
+    assert reponse.status_code == 201, reponse.text
+    provenance = reponse.json()["request"]["provenance"]
+    assert set(provenance) == {"geometry.l_eff", "geometry.b"}
+    assert "FICTIF-S-101-coffrage.dxf" in provenance["geometry.l_eff"]["detail"]
+    assert "géométrie du dxf" in provenance["geometry.l_eff"]["detail"]
+    assert provenance["geometry.l_eff"]["extraction_id"] == p1[0]["extraction_id"]
 
 
 # ============================================================ rapprochement

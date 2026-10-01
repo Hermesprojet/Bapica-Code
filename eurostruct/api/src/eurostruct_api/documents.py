@@ -32,15 +32,18 @@ from eurostruct_engine.ec2.serviceability import ExposureClass
 from eurostruct_engine.materials import CONCRETE_GRADES, STEEL_GRADES
 from eurostruct_engine.schemas.common import ProvenanceDTO
 from eurostruct_engine.schemas.documents import (
+    SOURCES_DE_VALEUR,
     ChampPrerempli,
     ConflitDePreremplissage,
     DocumentDepose,
     Extraction,
     NonReportable,
     Preremplissage,
+    StructureDuDocument,
     ValeurExtraite,
 )
 from eurostruct_engine.schemas.ec2_verification import Ec2BeamVerificationRequest
+from eurostruct_engine.schemas.structure import ModeleStructurel, ResumeDeStructure
 from eurostruct_extraction import (
     CATEGORIES,
     VERSION_EXTRACTEUR,
@@ -59,6 +62,7 @@ from .stockage import (
 
 __all__ = [
     "AVIS_PROPOSITIONS",
+    "AVIS_STRUCTURE",
     "CHAMPS_REPORTABLES",
     "NATURES",
     "ProvenanceRefusee",
@@ -67,10 +71,20 @@ __all__ = [
     "create_extraction_records",
     "en_document",
     "en_extraction",
+    "en_structure",
     "preremplissage",
     "upload_document",
     "verifier_provenance",
 ]
+
+#: CE QUE DIT LE MODELE STRUCTUREL, ET CE QU'IL NE DIT PAS.
+AVIS_STRUCTURE: Final[str] = (
+    "Ce modèle est une LECTURE de la géométrie du dessin : poteaux, poutres, "
+    "travées et liaisons reconnus par leurs calques, leurs blocs et leurs "
+    "formes. Ses longueurs sont dans l'unité du dessin; une portée y est une "
+    "distance entre appuis, pas la portée utile. Aucune valeur n'entre dans "
+    "un calcul sans avoir été confirmée depuis la revue."
+)
 
 #: LA PHRASE QUI ACCOMPAGNE TOUTE LISTE DE PROPOSITIONS.
 AVIS_PROPOSITIONS: Final[str] = (
@@ -104,6 +118,14 @@ SAISIE: Final[frozenset[str]] = frozenset(
 #: Les facteurs EXACTS vers le millimetre. Rien d'autre n'est converti.
 FACTEURS_MM: Final[dict[str, Decimal]] = {
     "mm": Decimal(1), "cm": Decimal(10), "m": Decimal(1000)}
+
+#: LA GEOMETRIE D'ABORD. Quand plusieurs décisions donnent la MEME valeur à un
+#: champ, la provenance retenue est celle de la source la plus directe: la
+#: mesure sur le dessin, puis le texte du dessin, le texte d'un PDF, une
+#: détection visuelle, l'OCR. Des valeurs DIFFERENTES restent un conflit que
+#: l'ingénieur tranche — l'ordre ne choisit jamais à sa place.
+PRIORITE_DES_SOURCES: Final[tuple[str, ...]] = (
+    "geometry", "cad_text", "text", "vision", "ocr")
 
 AVERTISSEMENT_PORTEE: Final[str] = (
     "Une portée lue sur un plan est souvent une portée entre axes ; la portée "
@@ -221,6 +243,10 @@ def create_extraction_records(ouvert: Any, jeton: str, document_id: str,
     compte_rendu = dict(analyse.compte_rendu)
     if resultat.compte_rendu:
         compte_rendu["extraction"] = resultat.compte_rendu
+    if resultat.structure is not None:
+        # LE MODELE EST FIGE AVEC LES PROPOSITIONS QU'IL A PRODUITES (0028:
+        # le compte rendu ne change plus une fois des propositions inscrites).
+        compte_rendu["structure"] = resultat.structure
     return ouvert.atelier.enregistrer_analyse(
         jeton, document_id=document_id, status=analyse.statut,
         detail=analyse.detail, page_count=analyse.nombre_de_pages,
@@ -255,21 +281,58 @@ def confirm_extraction(ouvert: Any, jeton: str, *, project_id: str,
         note=note)
 
 
+def _structure_de(ligne: dict[str, Any]) -> dict[str, Any] | None:
+    rapport = ligne.get("analysis_report")
+    structure = rapport.get("structure") if isinstance(rapport, dict) else None
+    return structure if isinstance(structure, dict) else None
+
+
 def en_document(ligne: dict[str, Any]) -> DocumentDepose:
+    """Le document, SANS son modèle structurel (il se lit à part) : une liste
+    de pièces ne transporte pas le plan de chacune."""
     analysee = (ligne["proposed_count"] + ligne["confirmed_count"]
                 + ligne["corrected_count"] + ligne["rejected_count"]) > 0
+    structure = _structure_de(ligne)
+    rapport = ligne["analysis_report"]
+    if structure is not None:
+        rapport = {k: v for k, v in rapport.items() if k != "structure"}
+    resume = None
+    if structure is not None:
+        unites = structure.get("units") or {}
+        resume = ResumeDeStructure(
+            schema_version=str(structure.get("schema")),
+            drawing_units=unites.get("drawing"), unit_basis=str(unites.get("basis")),
+            counts=dict(structure.get("counts") or {}))
     return DocumentDepose(
         **{k: ligne[k] for k in (
             "document_id", "kind", "filename", "format", "mime_type",
             "size_bytes", "sha256", "page_count", "text_layer",
-            "analysis_status", "analysis_detail", "analysis_report",
+            "analysis_status", "analysis_detail",
             "extractor_version", "analysed_at", "uploaded_by_me", "created_at",
             "proposed_count", "confirmed_count", "corrected_count",
             "rejected_count")},
+        analysis_report=rapport,
         kind_label=NATURES.get(ligne["kind"], ligne["kind"]),
         analysis_status_label=STATUTS_ANALYSE.get(ligne["analysis_status"],
                                                   ligne["analysis_status"]),
-        can_reanalyse=not analysee)
+        can_reanalyse=not analysee,
+        has_structure=structure is not None, structure_summary=resume)
+
+
+def en_structure(project_id: str, ligne: dict[str, Any]) -> StructureDuDocument | None:
+    """Le modèle structurel enregistré avec l'analyse, ou ``None``."""
+    structure = _structure_de(ligne)
+    if structure is None:
+        return None
+    return StructureDuDocument(
+        project_id=project_id, document_id=ligne["document_id"],
+        filename=ligne["filename"], extractor_version=ligne["extractor_version"],
+        structure=ModeleStructurel.model_validate(structure),
+        notice=AVIS_STRUCTURE)
+
+
+def _source(methode: str) -> tuple[str, str]:
+    return SOURCES_DE_VALEUR.get(methode, ("text", methode))
 
 
 def en_extraction(ligne: dict[str, Any]) -> Extraction:
@@ -291,7 +354,9 @@ def en_extraction(ligne: dict[str, Any]) -> Extraction:
         created_at=ligne["created_at"],
         form_field=champ.chemin if champ else None,
         form_field_label=champ.libelle if champ else None,
-        form_warning=champ.avertissement if champ else None)
+        form_warning=champ.avertissement if champ else None,
+        source_type=_source(ligne["method"])[0],  # type: ignore[arg-type]
+        source_label=_source(ligne["method"])[1])
 
 
 # ------------------------------------------------------- report et contrôle
@@ -352,6 +417,10 @@ def _provenance(ligne: dict[str, Any]) -> ProvenanceDTO:
     texte = ligne["raw_text"]
     texte = texte if len(texte) <= 160 else texte[:157] + "..."
     detail = f"« {texte} » — {ligne['document_filename']}, page {ligne['page']}"
+    # LA SOURCE EST DITE quand ce n'est pas le texte d'un PDF: une valeur
+    # mesuree sur le dessin ne se relit pas comme une valeur ecrite.
+    if ligne.get("method") not in (None, "texte_natif"):
+        detail += f" ({_source(ligne['method'])[1].lower()})"
     if ligne.get("element_label"):
         detail += f", repère {ligne['element_label']}"
     # UNE CORRECTION DIT CE QUI AVAIT ETE LU: la note doit permettre de
@@ -383,10 +452,12 @@ def preremplissage(project_id: str, lignes: list[dict[str, Any]],
 
     Un champ que deux décisions renseignent différemment n'est pas choisi
     ici : c'est un conflit, que l'ingénieur tranche depuis la revue. Une
-    valeur d'un autre repère n'est pas proposée pour celui-ci.
+    valeur d'un autre repère n'est pas proposée pour celui-ci. Les candidats
+    sont rangés selon :data:`PRIORITE_DES_SOURCES` — la géométrie d'abord.
     """
     repere = _repere(element)
     par_chemin: dict[str, list[ChampPrerempli]] = {}
+    sources: dict[str, str] = {}
     non_reportables: list[NonReportable] = []
     for ligne in lignes:
         if ligne["status"] not in ("confirmed", "corrected"):
@@ -406,6 +477,7 @@ def preremplissage(project_id: str, lignes: list[dict[str, Any]],
                 kind_label=categorie.libelle if categorie else ligne["kind"],
                 reason=str(motif)))
             continue
+        sources[ligne["extraction_id"]] = _source(ligne.get("method", ""))[0]
         par_chemin.setdefault(champ.chemin, []).append(ChampPrerempli(
             path=champ.chemin, label=champ.libelle, value=valeur, unit=unite,
             extraction_id=ligne["extraction_id"], provenance=_provenance(ligne),
@@ -415,8 +487,10 @@ def preremplissage(project_id: str, lignes: list[dict[str, Any]],
 
     champs: list[ChampPrerempli] = []
     conflits: list[ConflitDePreremplissage] = []
+    rang = {source: i for i, source in enumerate(PRIORITE_DES_SOURCES)}
     for chemin, champ in CHAMPS_REPORTABLES.items():
-        candidats = par_chemin.get(chemin, [])
+        candidats = sorted(par_chemin.get(chemin, []),
+                           key=lambda c: rang.get(sources[c.extraction_id], len(rang)))
         if not candidats:
             continue
         if repere:

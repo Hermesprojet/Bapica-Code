@@ -37,6 +37,28 @@ export interface AnchorageCoefficientsDTO {
   alpha_6: number;
 }
 
+export interface AppuiDeTravee {
+  centre: number;
+  faces: number[];
+  gap: number;
+  grid_node: string | null;
+  kind: "poteau" | "voile" | "poutre";
+  support: string;
+  touching_only: boolean;
+  width: number;
+}
+
+export interface AreteDuGraphe {
+  axis_length?: number | null;
+  beam?: string | null;
+  clear_length?: number | null;
+  from: string | null;
+  id: string;
+  mark?: string | null;
+  to: string | null;
+  type: "beam_span" | "cantilever" | "beam_on_beam";
+}
+
 /** Ce que le validateur écrit, et **rien d'autre**. NI NOM, NI RÔLE, NI NUMÉRO D'INSCRIPTION. Les trois sortent de ``organization_members`` sous l'identité du jeton. Les accepter ici donnerait l'illusion qu'ils comptent, alors que PostgreSQL les écrase de toute façon — et l'illusion est pire que l'absence, parce qu'un écran finirait par les afficher. NI IDENTIFIANT DE CALCUL, NI EMPREINTE. L'attestation porte sur le calcul du livrable et sur les octets réellement enregistrés ; les faire venir du corps laisserait attester un calcul et en signer un autre. */
 export interface AttestationDemande {
   /** Réserves émises par le validateur. Elles font partie de l'attestation et sont conservées avec elle. */
@@ -139,6 +161,19 @@ export interface AuthorityReviewPackage {
   statement: string;
 }
 
+export interface AxeDeGrille {
+  confidence: number;
+  evidence: PreuveGeometrique;
+  family: number;
+  id: string;
+  /** L'étiquette LUE ; jamais inventée. */
+  label: string | null;
+  label_source: Record<string, unknown> | null;
+  line: number[][];
+  /** L'étiquette, ou « famille.rang » à défaut. */
+  name: string;
+}
+
 export interface BarRowDTO {
   count: number;
   /** Nominal bar diameter, mm */
@@ -193,6 +228,12 @@ export interface BlockingParameterDTO {
   /** Machine-readable cause, for CI. */
   reason: "annex_missing" | "missing" | "pending_verification" | "deprecated";
   standard: string;
+}
+
+export interface BordDeDalle {
+  side: string;
+  /** null : bord libre. */
+  supported_by: string | null;
 }
 
 /** One traceable line of the calculation — see section 8.1. */
@@ -317,6 +358,50 @@ export interface ConflitDePreremplissage {
   reason: string;
 }
 
+export interface CoteDeTravee {
+  displayed: string;
+  /** Le texte forcé contredit la mesure. */
+  forced_mismatch: boolean;
+  handle: string;
+  /** Les points de définition mesurent l'élément. */
+  measure_agrees: boolean;
+  measured: number;
+  measures: string;
+}
+
+export interface CoteDuDessin {
+  chain: string | null;
+  dimlfac: number;
+  displayed: string;
+  forced: boolean;
+  forced_mismatch: boolean;
+  handle: string;
+  id: string;
+  layer: string;
+  measure_agrees: boolean | null;
+  measured: number;
+  /** Ce que la cote mesure (entraxe, travée, largeur…), ou null. */
+  measures: Record<string, unknown> | null;
+  p1: number[];
+  p2: number[];
+}
+
+export interface DalleLue {
+  confidence: number;
+  cross_marker: boolean;
+  /** Travées qui traversent le panneau ; il n'est pas subdivisé. */
+  crossed_by: string[];
+  edges: BordDeDalle[];
+  evidence: PreuveGeometrique;
+  id: string;
+  kind: "panneau" | "contour";
+  label: string | null;
+  lx: number | null;
+  ly: number | null;
+  mark: string | null;
+  outline: number[][];
+}
+
 /** Ce que la personne décide. Ni son nom, ni la date : le serveur les pose. */
 export interface DecisionExtraction {
   decision: "confirm" | "correct" | "reject";
@@ -347,6 +432,8 @@ export interface DocumentDepose {
   filename: string;
   /** Constaté sur la signature des octets. */
   format: "pdf" | "dxf" | "dwg";
+  /** Un modèle structurel a été reconstruit depuis la géométrie (DXF) ; il se lit sur /documents/{id}/structure. */
+  has_structure?: boolean;
   /** Nature déclarée au dépôt. */
   kind: string;
   kind_label: string;
@@ -356,6 +443,7 @@ export interface DocumentDepose {
   rejected_count: number;
   sha256: string;
   size_bytes: number;
+  structure_summary?: ResumeDeStructure | null;
   text_layer?: boolean | null;
   uploaded_by_me: boolean;
 }
@@ -522,6 +610,13 @@ export interface EngineErrorDTO {
   what: string;
 }
 
+export interface EntraxeDeGrille {
+  distance: number;
+  from: string;
+  labels: (string | null)[];
+  to: string;
+}
+
 export interface Extraction {
   basis?: Record<string, unknown> | null;
   /** [x0, y0, x1, y1] en points PDF, origine en haut à gauche. */
@@ -550,7 +645,22 @@ export interface Extraction {
   position?: Record<string, unknown> | null;
   proposed_value: ValeurExtraite;
   raw_text: string;
+  source_label: string;
+  /** text, ocr, cad_text (texte ou cote du DXF), geometry (mesurée sur le dessin), vision. */
+  source_type: "text" | "ocr" | "cad_text" | "geometry" | "vision";
   status: "proposed" | "confirmed" | "corrected" | "rejected";
+}
+
+export interface FamilleDeGrille {
+  angle_deg: number;
+  axes: string[];
+  index: number;
+  spacings: EntraxeDeGrille[];
+}
+
+export interface GrapheStructurel {
+  edges: AreteDuGraphe[];
+  nodes: NoeudDuGraphe[];
 }
 
 /** L'historique d'un projet, du plus récent au plus ancien. */
@@ -613,6 +723,14 @@ export interface JournalDTO {
   clauses: string[];
   steps: CalcStepDTO[];
   title: string;
+}
+
+export interface LibelleAffecte {
+  assigned_to: string;
+  cost: number;
+  handle: string;
+  mark: string;
+  text: string;
 }
 
 export interface ListeDocuments {
@@ -759,6 +877,33 @@ export interface MembreModification {
   update_names?: boolean;
 }
 
+export interface MentionDeNiveau {
+  handle: string;
+  point: number[];
+  text: string;
+}
+
+export interface ModeleStructurel {
+  beams: PoutreLue[];
+  columns: PoteauLu[];
+  counts: Record<string, number>;
+  dimensions: CoteDuDessin[];
+  graph: GrapheStructurel;
+  grid: AxeDeGrille[];
+  grid_families: FamilleDeGrille[];
+  grid_nodes: NoeudDeGrille[];
+  labels: LibelleAffecte[];
+  levels: NiveauLu[];
+  openings: TremieLue[];
+  report: Record<string, unknown>;
+  schema: "eurostruct.structure/1";
+  slabs: DalleLue[];
+  spans: TraveeLue[];
+  units: UnitesDuDessin;
+  unresolved: NonResolu[];
+  walls: VoileLu[];
+}
+
 /** One published National Annex document, at one edition. */
 export interface NationalAnnexDTO {
   country_code: string;
@@ -817,10 +962,35 @@ export interface NdpSummaryDTO {
   unverified: string[];
 }
 
+export interface NiveauLu {
+  mentions: MentionDeNiveau[];
+  value: number;
+}
+
+export interface NoeudDeGrille {
+  axes: string[];
+  id: string;
+  label: string | null;
+  name: string;
+  point: number[];
+}
+
+export interface NoeudDuGraphe {
+  grid_node?: string | null;
+  id: string;
+  mark: string | null;
+  type: "column" | "wall";
+}
+
 export interface NonReportable {
   extraction_id: string;
   kind: string;
   kind_label: string;
+  reason: string;
+}
+
+export interface NonResolu {
+  element: string;
   reason: string;
 }
 
@@ -852,6 +1022,41 @@ export interface ParameterVariantDTO {
   value: number;
 }
 
+export interface PoteauLu {
+  angle_deg: number;
+  centre: number[];
+  confidence: number;
+  depth: number | null;
+  diameter: number | null;
+  evidence: PreuveGeometrique;
+  filled: boolean;
+  grid_node: string | null;
+  id: string;
+  mark: string | null;
+  mark_source: Record<string, unknown> | null;
+  outline: number[][];
+  shape: "rectangle" | "cercle" | "polygone";
+  /** Selon l'axe x de la grille. */
+  width: number | null;
+}
+
+export interface PoutreLue {
+  axis: number[][];
+  confidence: number;
+  /** rectangle, paire_de_traits, filaire. */
+  drawn_as: string;
+  evidence: PreuveGeometrique;
+  id: string;
+  labels: (Record<string, unknown>)[];
+  marks: string[];
+  /** Les appuis à travers lesquels deux morceaux dessinés ont été réunis. */
+  merged_through: string[];
+  spans: string[];
+  supported_by_beams: string[];
+  supports: string[];
+  width: number | null;
+}
+
 /** Un paramètre qui empêche le calcul, et le module qui le réclame. */
 export interface PreflightBlockerDTO {
   annex: string;
@@ -879,6 +1084,20 @@ export interface Preremplissage {
   not_reportable: NonReportable[];
   notice: string;
   project_id: string;
+}
+
+export interface PreuveGeometrique {
+  blocks?: string[] | null;
+  classified_by: "bloc" | "calque" | "type_de_ligne" | "forme";
+  entity_types: string[];
+  /** Poignées DXF des entités citées. */
+  handles: string[];
+  handles_not_listed?: number | null;
+  /** Poignées des INSERT qui ont placé les entités. */
+  inserts?: string[] | null;
+  layers: string[];
+  /** Le nom (calque, bloc, type de ligne) qui a décidé. */
+  matched_name?: string | null;
 }
 
 /** Un projet, tel que l'atelier le montre. ``organization_name`` accompagne ``organization_id`` : un identifiant seul obligerait l'écran à un second appel pour afficher « Bureau A », et c'est ce genre de second appel qui finit par ne jamais être fait. */
@@ -988,6 +1207,14 @@ export interface ReinforcementChoiceDTO {
   top?: BarRowDTO[];
 }
 
+/** Ce que la liste des documents dit du modèle, sans le transporter. */
+export interface ResumeDeStructure {
+  counts: Record<string, number>;
+  drawing_units: string | null;
+  schema_version: string;
+  unit_basis: string;
+}
+
 /** Renvoyer une pièce en relecture vers le brouillon, **avec un motif**. LE MOTIF EST OBLIGATOIRE, ET LA BASE LE REFUSE VIDE ELLE AUSSI. Celui qui reprend le document doit savoir ce qui lui est reproché ; un retour muet est une décision qu'on ne peut pas relire six mois plus tard. */
 export interface RetourAuBrouillon {
   /** Ce qui est reproché à la pièce. Repris dans l'historique des transitions et affiché à celui qui la reprend. */
@@ -1013,6 +1240,16 @@ export type SourceTypeDTO =
   | "en_recommended"
   | "national_regulation";
 
+/** Le modèle structurel d'un DXF, tel qu'il a été enregistré avec l'analyse. Il est figé avec les propositions qu'il a produites : la même lecture, relue dix ans plus tard, montre les mêmes poteaux et les mêmes travées. */
+export interface StructureDuDocument {
+  document_id: string;
+  extractor_version: string | null;
+  filename: string;
+  notice: string;
+  project_id: string;
+  structure: ModeleStructurel;
+}
+
 /** Un pas dans le parcours de relecture, horodaté et attribué. */
 export interface Transition {
   /** Qui a provoqué la transition. Dérivé de la session, jamais du corps de la requête. */
@@ -1029,6 +1266,45 @@ export interface TransverseLinksDTO {
   diameter: QuantityDTO;
   legs: number;
   spacing: QuantityDTO;
+}
+
+export interface TraveeLue {
+  /** Entre les centres des appuis. */
+  axis_length: number | null;
+  beam: string;
+  /** Entre les nus des appuis. */
+  clear_length: number | null;
+  confidence: number;
+  count: number;
+  dimensions: CoteDeTravee[];
+  from: AppuiDeTravee | null;
+  id: string;
+  index: number;
+  kind: "span" | "cantilever";
+  mark: string | null;
+  mark_source: string | null;
+  to: AppuiDeTravee | null;
+}
+
+export interface TremieLue {
+  evidence: PreuveGeometrique;
+  id: string;
+  length: number | null;
+  outline: number[][];
+  slab: string | null;
+  width: number | null;
+}
+
+export interface UnitesDuDessin {
+  basis: "declaration" | "absente";
+  /** mm, cm, m, in, ft — ou null : le dessin ne déclare pas son unité. */
+  drawing: string | null;
+  evidence?: Record<string, unknown> | null;
+  insunits: number | null;
+  quantum: number;
+  /** $INSUNITS, ou declaration_et_cotes (mention écrite ET cotes). */
+  source: string | null;
+  tolerance: number;
 }
 
 /** Une grandeur : un nombre ou un texte, et son unité — ou ``null``. ``null`` VEUT DIRE « AUCUNE UNITÉ N'EST ÉCRITE », jamais « en millimètres ». Une longueur sans unité ne se reporte pas dans une étude : elle se corrige d'abord. */
@@ -1055,4 +1331,15 @@ export interface VerificationReportDTO {
   element: string;
   max_utilisation: number;
   passed: boolean;
+}
+
+export interface VoileLu {
+  axis: number[][] | null;
+  confidence: number;
+  evidence: PreuveGeometrique;
+  id: string;
+  length: number | null;
+  mark: string | null;
+  outline: number[][];
+  thickness: number | null;
 }

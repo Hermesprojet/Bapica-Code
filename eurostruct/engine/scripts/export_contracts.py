@@ -78,7 +78,12 @@ from eurostruct_engine.schemas.documents import (  # noqa: E402
     ListeExtractions,
     NonReportable,
     Preremplissage,
+    StructureDuDocument,
     ValeurExtraite,
+)
+from eurostruct_engine.schemas.structure import (  # noqa: E402
+    ModeleStructurel,
+    ResumeDeStructure,
 )
 from eurostruct_engine.schemas.common import (  # noqa: E402
     EngineErrorDTO,
@@ -212,6 +217,11 @@ ROOTS = [
     ConflitDePreremplissage,
     NonReportable,
     Preremplissage,
+    # LE MODELE STRUCTUREL D'UN DXF: ce que l'ecran dessine et explique. Il
+    # est en LECTURE seule: aucun corps envoye ne le porte.
+    ResumeDeStructure,
+    ModeleStructurel,
+    StructureDuDocument,
 ]
 
 TS_OUT = REPO / "packages" / "contracts" / "src" / "generated" / "engine.ts"

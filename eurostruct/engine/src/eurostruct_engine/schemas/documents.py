@@ -23,8 +23,10 @@ from typing import Any, Literal
 from pydantic import Field
 
 from .common import ProvenanceDTO, Strict
+from .structure import ModeleStructurel, ResumeDeStructure
 
 __all__ = [
+    "SOURCES_DE_VALEUR",
     "ChampPrerempli",
     "ConflitDePreremplissage",
     "DecisionExtraction",
@@ -35,12 +37,25 @@ __all__ = [
     "ListeExtractions",
     "NonReportable",
     "Preremplissage",
+    "StructureDuDocument",
     "ValeurExtraite",
 ]
 
 NatureDeDocument = Literal["architect_drawing", "formwork_drawing", "cctp", "other"]
 StatutAnalyse = Literal["en_attente", "analyse", "partiel", "non_lu", "echec"]
 StatutExtraction = Literal["proposed", "confirmed", "corrected", "rejected"]
+#: D'OU VIENT UNE VALEUR, pour que la revue les distingue : le texte d'un PDF,
+#: l'OCR d'un PDF numérisé, un texte ou une cote du DXF, la géométrie du DXF,
+#: un détecteur visuel.
+SourceDeValeur = Literal["text", "ocr", "cad_text", "geometry", "vision"]
+#: La méthode enregistrée (``extractions.method``) -> sa source, et son libellé.
+SOURCES_DE_VALEUR: dict[str, tuple[SourceDeValeur, str]] = {
+    "texte_natif": ("text", "Texte du PDF"),
+    "ocr": ("ocr", "OCR (PDF numérisé)"),
+    "dxf": ("cad_text", "Texte ou cote du DXF"),
+    "geometrie": ("geometry", "Géométrie du DXF"),
+    "vision": ("vision", "Détection visuelle"),
+}
 
 
 class ValeurExtraite(Strict):
@@ -84,6 +99,11 @@ class DocumentDepose(Strict):
     can_reanalyse: bool = Field(
         description="Vrai tant qu'aucune proposition n'est enregistrée : une "
                     "nouvelle analyse ne contredit alors rien.")
+    has_structure: bool = Field(
+        default=False,
+        description="Un modèle structurel a été reconstruit depuis la géométrie "
+                    "(DXF) ; il se lit sur /documents/{id}/structure.")
+    structure_summary: ResumeDeStructure | None = None
 
 
 class ListeDocuments(Strict):
@@ -139,6 +159,10 @@ class Extraction(Strict):
         description="Ce que l'ingénieur doit vérifier avant de reporter, "
                     "p. ex. qu'une portée entre axes n'est pas toujours la "
                     "portée utile.")
+    source_type: SourceDeValeur = Field(
+        description="text, ocr, cad_text (texte ou cote du DXF), geometry "
+                    "(mesurée sur le dessin), vision.")
+    source_label: str
 
 
 class ListeExtractions(Strict):
@@ -196,4 +220,19 @@ class Preremplissage(Strict):
     fields: list[ChampPrerempli]
     conflicts: list[ConflitDePreremplissage]
     not_reportable: list[NonReportable]
+    notice: str
+
+
+class StructureDuDocument(Strict):
+    """Le modèle structurel d'un DXF, tel qu'il a été enregistré avec l'analyse.
+
+    Il est figé avec les propositions qu'il a produites : la même lecture,
+    relue dix ans plus tard, montre les mêmes poteaux et les mêmes travées.
+    """
+
+    project_id: str
+    document_id: str
+    filename: str
+    extractor_version: str | None
+    structure: ModeleStructurel
     notice: str
