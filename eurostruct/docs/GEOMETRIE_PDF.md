@@ -51,6 +51,10 @@ Aujourd'hui, ces feuilles donnent : aucun modèle, une valeur (un niveau).
   rattachées) ;
 * les calques OCG (absents des feuilles mesurées) ;
 * les murs dessinés en hachures : une hachure n'est pas une face ;
+* **les poutres** : aucun style n'en est appris, et deux traits parallèles
+  d'un plan d'architecte sont aussi des murs, des marches ou du mobilier.
+  Aucune poutre n'est tirée de la seule forme sur une feuille ; le refus est
+  inscrit dans `unresolved` (`poutres`) ;
 * les hauteurs, épaisseurs de dalle, niveaux : ils restent des textes.
 
 ## 2. Architecture
@@ -79,28 +83,45 @@ contour plein ; une courbe de Bézier est aplatie. Le « calque » d'un trait
 est son **style** — couleur de trait, épaisseur, motif — nommé lisiblement
 (`pdf:#DE0000:1.5`). Il ne dit rien du rôle tant qu'un style n'est pas appris.
 
-**Mots.** Les caractères de même matrice (rotation), même taille et même
+**Mots.** Les caractères de même matrice (rotation), même corps et même
 couleur, contigus le long de leur ligne de base, forment un mot ; sa rotation
-est celle de la matrice, sa boîte celle de ses caractères.
+est celle de la matrice, sa boîte celle de ses caractères. **Le corps** ne se
+lit pas dans la matrice d'un caractère (pdfminer en retire `Tf`) : un
+exporteur écrit `1 Tf` et met l'échelle dans `Tm`, un autre `10 Tf` et une
+rotation seule. Il se retrouve depuis la boîte : la glyphe est un rectangle
+« avance × corps » que la matrice transforme.
 
 **Bulles.** Pour chaque mot qui a la forme d'une étiquette d'axe (`A`, `12`,
-`B'`) : les segments courts dans un rayon de deux hauteurs de texte ; un cercle
-ajusté par moindres carrés ; une bulle si le centre est à moins de 0,35 r du
-centre du texte, l'écart moyen sous 5 % de r et l'arc couvert au moins à
-moitié.
+`B'`) : les segments courts dans un rayon de 2,5 hauteurs ; un cercle ajusté
+par moindres carrés (deux passes) ; une bulle si le centre est à moins de
+0,35 r du centre du texte, l'écart moyen sous 6 % de r, et si **au moins huit
+morceaux TANGENTS** au cercle couvrent la moitié du tour. Mesuré : sans la
+tangence, l'amas des traits d'attache et des tirets autour d'un nombre de
+cote (« 10 ») s'ajuste aussi sur un cercle — ses traits sont radiaux ou
+obliques.
 
-**Style des axes.** Autour de chaque bulle, les segments entre r et 6 r du
-centre et dirigés vers lui (à 5° près) : leur style. Le style majoritaire,
-**vu sur au moins deux bulles**, est celui des axes ; ses traits sont classés
-« axe », et la chaîne réunit leurs morceaux colinéaires.
+**Style des axes et axes.** Candidats : les styles des morceaux qui partent
+radialement d'au moins deux bulles. Pour chaque candidat, l'axe est
+**reconstitué depuis sa bulle** : direction des morceaux qui en partent,
+droite réajustée sur tous les morceaux de son couloir, de proche en proche
+jusqu'au premier trou de plus de dix rayons. Retenu : le style dont les axes
+partent du plus grand nombre de bulles. Mesuré : l'axe passe à 0,2 rayon du
+centre de sa bulle — la droite est celle des morceaux, pas celle du centre.
+Une bulle d'où ne part aucun axe (repère de local, numéro de marche) n'en est
+pas une pour la grille.
 
-**Style des cotes et cotes.** Les nombres (`650`, `17,5`) au-dessus d'une ligne
-parallèle (à 3° près, à moins de 2,5 hauteurs, au milieu de la ligne) donnent
-le style des cotes. Sur chaque ligne de ce style, les **points de coupe** sont
-ses intersections avec les autres traits du même style qui la croisent (traits
-d'attache, tirets obliques) ; un nombre posé entre deux coupes consécutives est
-la cote de cet intervalle. Une chaîne de cotes donne autant de cotes que de
-nombres.
+**Style des cotes et cotes.** Le style des lignes qui portent des nombres
+parallèles (à 3° près, à moins de 2,5 hauteurs), chaque nombre comptant une
+fois par style ; parmi les trois plus fréquents, celui dont les cotes
+confirment une échelle écrite. **Le style des nombres** s'apprend aussi (la
+majorité de ceux posés sur ces lignes) : un numéro de marche noir posé sur
+une ligne de cote bleue n'est pas une cote. **Les marques** (tirets obliques,
+d'un autre style que la ligne) s'apprennent aux bouts des lignes de cote. Une
+ligne de cote est **prolongée** par ses morceaux colinéaires du même style
+(les dépassements au-delà des marques) ; ses **coupes** sont ses marques et
+les traits d'attache qui **s'arrêtent** près d'elle — pas ceux d'une chaîne
+voisine qui la traversent de part en part. Un nombre posé vers le milieu d'un
+intervalle en est la cote.
 
 ## 4. L'échelle : écrite ET confirmée
 
@@ -126,15 +147,17 @@ DXF, et elle se rattache aux axes de la même manière.
 * **tolérance** : 1 mm réel ou deux centièmes de point à l'échelle, le plus
   grand ; **pas de quantification** : 0,1 mm (sous la précision des
   coordonnées, 0,01 pt ≈ 0,18 mm au 1/50), valeur brute conservée ;
-* **confiance** : plafond 0,85 pour une feuille PDF (0,90 pour un DXF) ; un
-  axe vu par sa bulle 0,8 ; une forme sans style appris garde les bases du
-  DXF ;
+* **confiance** : plafond 0,85 pour une feuille PDF (0,90 pour un DXF) ; une
+  forme sans style appris garde les bases du DXF ;
+* **source** : la revue et la provenance du report disent « Géométrie du
+  PDF » (« Géométrie du DXF » pour un DXF) ;
 * **trace** : page, boîte de l'élément sur la feuille, style des traits
   (couleur, épaisseur), règle (`style_appris_des_bulles`, `forme`…),
   échelle et ses deux sources.
 
 Aucune migration : la méthode `geometrie` existe (0029), et `extraction_is_traced`
-admet boîte et position ensemble.
+admet boîte et position ensemble — le harnais `db/test/documents_extractions.sh`
+le vérifie contre un PostgreSQL réel (point 9).
 
 ## 6. Tests
 
@@ -153,3 +176,50 @@ axes et leurs étiquettes, les entraxes mesurés comparés aux cotes écrites,
 les poteaux, voiles et poutres reconnus — et ce que la feuille ne contient pas.
 Un plan d'architecte ne dessine pas les poutres : n'en trouver aucune est le
 résultat juste, pas un échec.
+
+## 8. Ce que les deux feuilles réelles ont donné
+
+Mesuré sur le code commité, en local ; ni les feuilles ni leurs sorties ne
+sont dans le dépôt.
+
+| | feuille A (étage) | feuille B (étage) |
+|---|---|---|
+| analyse complète (lecture + modèle) | 11,8 s | 23,5 s |
+| traits lus | 32 434 | 63 561 |
+| cercles autour d'une étiquette / bulles d'axe | 56 / 15 | 114 / 24 |
+| style des axes appris | rouge, 1,5, tirets | rouge, 1,5, tirets |
+| axes reconstitués (étiquetés) | 10 (8) | 20 (18) |
+| style des cotes appris | bleu, 1,5 | bleu, 2,1 |
+| cotes reconstituées / concordantes à 1/50 en cm | 280 / 219 (78 %) | 629 / 514 (82 %) |
+| échelle | **1/50 établie**, écrite au cartouche | **1/50 établie**, écrite au cartouche |
+| propositions | 45 | 84 |
+
+Avant ce lot, ces feuilles donnaient : aucun modèle, une valeur (un niveau).
+
+**Ce qui est juste.** L'échelle et ses deux sources ; la grille, étiquetée par
+ses bulles, superposée aux axes dessinés ; les entraxes en mm (5 499,1 ;
+6 676,5 ; 1 112,2…) ; aucune poutre, et le refus est dit.
+
+**Ce qui ne l'est pas, ou pas encore** :
+
+* sur la feuille B, un contour de 1,9 × 1,8 m du noyau central, à un nœud
+  de la grille, est pris pour un poteau par la règle de forme du DXF
+  (confiance 0,6) et sa « section » est proposée ; les autres « poteaux » sont
+  des polygones pleins, dont aucune section n'est proposée ;
+* les murs pleins (hachurés) deviennent des voiles par la même règle : 66 et
+  85, de 98 à 450 mm — cloisons comprises ; une feuille ne dit pas lesquels
+  portent ;
+* deux axes par feuille restent sans étiquette : une bulle à un bout, une
+  lettre isolée dans le prolongement de l'autre — la règle refuse de choisir ;
+* les entraxes ne sont corroborés par aucune cote : l'architecte cote les
+  murs et les baies, presque jamais d'axe à axe (2 cotes sur 629 touchent un
+  axe) ;
+* 18 % à 22 % des cotes ne concordent pas : des cotes écrites qui ne sont pas
+  celles du trait (« 90 » écrit, à plusieurs endroits, sur un intervalle
+  mesuré à 78 cm), et des coupes encore mal placées dans les chaînes denses.
+
+## 9. Limites
+
+Une page seulement ; une échelle dominante ; ni OCG, ni PDF numérisé ; aucune
+poutre ; le texte de la page reste lu par le lecteur de texte (lignes
+horizontales), indépendamment des mots tournés que lit la géométrie.
