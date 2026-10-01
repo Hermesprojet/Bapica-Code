@@ -196,6 +196,9 @@ class TraveeLue(_Lecture):
     count: int
     from_: AppuiDeTravee | None = Field(alias="from")
     to: AppuiDeTravee | None
+    line: list[Point] = Field(
+        description="Dans le plan : d'un centre d'appui à l'autre ; pour une "
+                    "console, du centre de l'appui au bout dessiné.")
     axis_length: Nombre | None = Field(description="Entre les centres des appuis.")
     clear_length: Nombre | None = Field(description="Entre les nus des appuis.")
     dimensions: list[CoteDeTravee]

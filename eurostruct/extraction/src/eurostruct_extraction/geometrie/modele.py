@@ -460,6 +460,13 @@ class ModeleStructurel:
                 "width": self._q(appui.largeur), "grid_node": appui.noeud,
                 "touching_only": appui.contact, "gap": self._q(appui.ecart)}
 
+    def _ligne_de(self, t: Travee, b: Bande) -> list[list[int | float | None]]:
+        """La travée dans le plan : d'un centre d'appui à l'autre ; pour une
+        console, du centre de l'appui au bout dessiné."""
+        debut = t.debut.centre if t.debut else b.debut
+        fin = t.fin.centre if t.fin else b.fin
+        return self._pts((b.point(debut), b.point(fin)))
+
     def travees(self) -> list[Travee]:
         return [t for p in self.poutres for t in p.travees]
 
@@ -510,10 +517,12 @@ class ModeleStructurel:
                 "spans": [t.id for t in p.travees], "supported_by_beams": list(p.portee_par),
                 "merged_through": list(b.fusions), "labels": list(p.libelles),
                 "confidence": p.confiance, "evidence": b.preuve.en_json()})
+        bandes = {p.id: p.bande for p in self.poutres}
         travees = [{"id": t.id, "beam": t.poutre, "kind": "span" if t.genre == "travee"
                     else "cantilever", "mark": t.repere, "mark_source": t.repere_source,
                     "index": t.index, "count": t.nombre,
                     "from": self._appui(t.debut), "to": self._appui(t.fin),
+                    "line": self._ligne_de(t, bandes[t.poutre]),
                     "axis_length": self._q(t.entre_axes), "clear_length": self._q(t.nu_a_nu),
                     "dimensions": [{"handle": c.poignee, "measures": c.mesure_de,
                                     "measured": self._q(c.mesure), "displayed": c.affichee,

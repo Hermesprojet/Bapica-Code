@@ -1281,6 +1281,8 @@ export interface TraveeLue {
   id: string;
   index: number;
   kind: "span" | "cantilever";
+  /** Dans le plan : d'un centre d'appui à l'autre ; pour une console, du centre de l'appui au bout dessiné. */
+  line: number[][];
   mark: string | null;
   mark_source: string | null;
   to: AppuiDeTravee | null;

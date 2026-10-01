@@ -6600,6 +6600,24 @@
           "title": "Kind",
           "type": "string"
         },
+        "line": {
+          "description": "Dans le plan : d'un centre d'appui à l'autre ; pour une console, du centre de l'appui au bout dessiné.",
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "title": "Line",
+          "type": "array"
+        },
         "mark": {
           "anyOf": [
             {
@@ -6643,6 +6661,7 @@
         "count",
         "from",
         "to",
+        "line",
         "axis_length",
         "clear_length",
         "dimensions",
