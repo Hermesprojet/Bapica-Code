@@ -128,8 +128,8 @@ class DocumentAnalyse:
     #: Les octets lus, pour les extracteurs qui doivent RENDRE une page (vision).
     #: Hors de la représentation : un ``repr`` de 30 Mio n'aide personne.
     octets: bytes = field(default=b"", repr=False, compare=False)
-    #: Pour un DXF : les primitives géométriques (``geometrie.PrimitivesDxf``),
-    #: lues dans la même passe que les textes. Hors représentation.
+    #: Pour un DXF, ou un PDF vectoriel d'une page : les primitives
+    #: géométriques (``geometrie.PrimitivesDxf``). Hors représentation.
     primitives_dxf: Any = field(default=None, repr=False, compare=False)
 
 

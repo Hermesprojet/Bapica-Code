@@ -9,6 +9,11 @@ moins deux cotes rattachées qui affichent leur propre mesure (``DIMLFAC = 1``,
 aucun texte forcé discordant). Le modèle est alors reconstruit avec cette
 unité — les seuils de plausibilité en millimètres s'appliquent — et la
 proposition cite les deux sources. Sinon, les longueurs restent sans unité.
+
+UNE FEUILLE PDF (``prims.cadre``) arrive déjà convertie en millimètres réels
+quand son échelle est écrite ET confirmée par ses cotes (``echelle.py``) ;
+sinon en points-papier, sans unité. Aucune inférence de plus n'est tentée :
+l'échelle est la seule source d'unité d'une feuille.
 """
 
 from __future__ import annotations
@@ -42,7 +47,19 @@ def _puissance_de_dix(pas: float) -> float:
     return 10.0 ** math.floor(math.log10(pas))
 
 
+#: Une feuille PDF : la précision des coordonnées (0,01 pt ≈ 0,18 mm au 1/50)
+#: interdit de quantifier plus fin que le dixième de millimètre.
+QUANTUM_FEUILLE_MM = 0.1
+#: Deux points d'une feuille sont confondus sous 1 mm réel, ou sous deux
+#: centièmes de point à l'échelle quand c'est plus grand.
+CENTIEMES_DE_POINT = 0.02
+
+
 def tolerances_du_dessin(prims: PrimitivesDxf, unite: str | None) -> Tolerances:
+    mm_par_point = (prims.cadre or {}).get("mm_per_point")
+    if unite == "mm" and mm_par_point:
+        return Tolerances(longueur=max(1.0, CENTIEMES_DE_POINT * float(mm_par_point)),
+                          quantum=QUANTUM_FEUILLE_MM, mm_par_unite=1.0)
     if unite in MM_PAR_UNITE:
         mm = float(MM_PAR_UNITE[unite])  # type: ignore[index]
         return Tolerances(longueur=1.0 / mm, quantum=_puissance_de_dix(0.001 / mm),
@@ -115,6 +132,8 @@ def _refus(prims: PrimitivesDxf) -> list[NonResolu]:
     if prims.tronquee:
         refus.append(NonResolu("lecture", (
             "lecture arretee a la borne de primitives: le modele est partiel")))
+    for element, raison in prims.remarques:
+        refus.append(NonResolu(element, raison))
     return refus
 
 
@@ -128,8 +147,20 @@ def _construire(prims: PrimitivesDxf, declarations: list[Declaration], unites: U
     voiles, formes_voiles, segments_voiles = detecter_voiles(prims, tol, grille, formes,
                                                               formes_poteaux)
     prises = formes_poteaux | formes_voiles
-    bandes = detecter_bandes(prims, tol, grille, formes, prises, segments_voiles, poteaux,
-                             voiles)
+    refus_feuille: list[NonResolu] = []
+    if prims.cadre is not None:
+        # UNE FEUILLE PDF NE DIT PAS OÙ SONT LES POUTRES : aucun style n'en est
+        # appris, et deux traits parallèles d'un plan d'architecte sont des
+        # murs, des marches ou du mobilier. Aucune poutre n'est tirée de la
+        # seule forme ; le refus est dit.
+        bandes = []
+        refus_feuille.append(NonResolu("poutres", (
+            "feuille PDF: aucune poutre n'est reconnue par la seule forme (aucun style de "
+            "poutre n'est appris de la feuille; deux traits paralleles y sont aussi des "
+            "murs, des marches ou du mobilier): aucune portee n'en est tiree")))
+    else:
+        bandes = detecter_bandes(prims, tol, grille, formes, prises, segments_voiles, poteaux,
+                                 voiles)
     poutres, doutes_graphe, compte = construire_poutres(bandes, poteaux, voiles, grille, tol)
     cotes, rattachements = rattacher_cotes(lire_cotes(prims.cotes), grille, poteaux, voiles,
                                            poutres, tol)
@@ -153,7 +184,8 @@ def _construire(prims: PrimitivesDxf, declarations: list[Declaration], unites: U
     modele = ModeleStructurel(
         unites=unites, grille=grille, poteaux=poteaux, voiles=voiles, poutres=poutres,
         dalles=dalles, tremies=tremies, cotes=cotes, niveaux=niveaux, libelles=libelles,
-        non_resolus=doutes_axes + doutes_poteaux + doutes_graphe + _refus(prims),
+        non_resolus=(doutes_axes + doutes_poteaux + doutes_graphe + refus_feuille
+                     + _refus(prims)),
         compte_rendu=compte_rendu, absorbees=set(etiquettes) | rattachements.absorbees,
         rattachements=rattachements)
     return modele
@@ -161,6 +193,11 @@ def _construire(prims: PrimitivesDxf, declarations: list[Declaration], unites: U
 
 def _unites_declarees(prims: PrimitivesDxf, unite: str | None) -> UnitesDessin:
     tol = tolerances_du_dessin(prims, unite)
+    if prims.cadre is not None:
+        if unite is not None:
+            return UnitesDessin(unite, "declaration", "echelle_ecrite_et_cotes", None, tol,
+                                prims.origine_unites, prims.cadre)
+        return UnitesDessin(None, "absente", None, None, tol, cadre=prims.cadre)
     if unite is not None:
         return UnitesDessin(unite, "declaration", "$INSUNITS", prims.insunits, tol)
     return UnitesDessin(None, "absente", None, prims.insunits, tol)
@@ -189,7 +226,7 @@ def _inferer(modele: ModeleStructurel, declarations: list[Declaration]
 def construire_modele(prims: PrimitivesDxf, declarations: list[Declaration]
                       ) -> ModeleStructurel:
     modele = _construire(prims, declarations, _unites_declarees(prims, prims.unites))
-    if prims.unites is None:
+    if prims.unites is None and prims.cadre is None:
         inference = _inferer(modele, declarations)
         if inference is not None:
             unite, citation = inference

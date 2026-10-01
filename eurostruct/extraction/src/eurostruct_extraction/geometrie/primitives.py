@@ -187,6 +187,13 @@ class PrimitivesDxf:
     tronquee: bool = False
     insunits: int | None = None
     unites: str | None = None
+    #: Pour une feuille PDF : page, millimètres réels par point (``None`` si
+    #: l'échelle n'est pas établie), dimensions de la page en points.
+    cadre: dict[str, Any] | None = None
+    #: Pour une feuille PDF : les deux sources de l'échelle (écrite, cotes).
+    origine_unites: dict[str, Any] | None = None
+    #: Ce que la lecture n'a pas pu établir : (élément, raison).
+    remarques: list[tuple[str, str]] = field(default_factory=list)
 
     def nombre(self) -> int:
         return (len(self.segments) + len(self.contours) + len(self.cercles)

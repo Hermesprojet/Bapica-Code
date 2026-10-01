@@ -24,20 +24,36 @@ les calques et les coordonnées.
 
 LA CONFIANCE EST INDICATIVE, plafonnée à 0,90 comme la vision, et diminuée de
 0,2 quand l'unité du dessin n'est pas connue.
+
+UNE FEUILLE PDF (``unites.cadre``) : plafond 0,85 — ses traits sont un export
+aplati, ses rôles appris du style —, la page de la feuille, et la BOÎTE de
+l'élément sur la feuille (points PDF, origine en haut à gauche, comme les
+boîtes de texte), pour que la revue le montre où il est dessiné.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from typing import Any, Final
 
-from ..modele import Candidat
-from .modele import Appui, ModeleStructurel, Poteau, Poutre, RattachementCote, Travee, Voile
-from .noyau import projeter, quantifier
+from ..modele import Boite, Candidat
+from .modele import (
+    Appui,
+    Bande,
+    ModeleStructurel,
+    Poteau,
+    Poutre,
+    RattachementCote,
+    Travee,
+    Voile,
+)
+from .noyau import Point, normale, projeter, quantifier
 
-__all__ = ["PLAFOND_GEOMETRIE", "propositions_du_modele"]
+__all__ = ["PLAFOND_GEOMETRIE", "PLAFOND_GEOMETRIE_PDF", "propositions_du_modele"]
 
 PLAFOND_GEOMETRIE: Final[float] = 0.90
+PLAFOND_GEOMETRIE_PDF: Final[float] = 0.85
 PENALITE_SANS_UNITE: Final[float] = 0.2
 INSTANCES_CITEES_MAX: Final[int] = 50
 
@@ -48,6 +64,10 @@ class _Fabrique:
         self.u = modele.unites
         self.unite = modele.unites.unite
         self.libelle_unite = f" {self.unite}" if self.unite else " (unite non declaree)"
+        self.cadre = modele.unites.cadre
+        self.plafond = PLAFOND_GEOMETRIE_PDF if self.cadre else PLAFOND_GEOMETRIE
+        #: Une feuille PDF n'a pas de calques : le « calque » d'un trait est son style.
+        self.mot_calque = "style" if self.cadre else "calque"
         self.candidats: list[Candidat] = []
         self.marques: dict[str, str] = {}
         for p in modele.poteaux:
@@ -65,11 +85,26 @@ class _Fabrique:
     def confiance(self, base: float) -> float:
         if self.u.base == "absente":
             base -= PENALITE_SANS_UNITE
-        return round(min(max(base, 0.05), PLAFOND_GEOMETRIE), 3)
+        return round(min(max(base, 0.05), self.plafond), 3)
+
+    def boite(self, points: Iterable[Point]) -> Boite | None:
+        """La boîte de l'élément sur la feuille PDF : points PDF, y vers le bas."""
+        if not self.cadre:
+            return None
+        k = float(self.cadre.get("mm_per_point") or 1.0)
+        hauteur = float(self.cadre["page_height_pt"])
+        xs, ys = [], []
+        for x, y in points:
+            xs.append(x / k)
+            ys.append(hauteur - y / k)
+        if not xs:
+            return None
+        return Boite(round(min(xs), 2), round(min(ys), 2), round(max(xs), 2), round(max(ys), 2))
 
     def proposer(self, categorie: str, valeur: Any, texte: str, confiance: float,
                  position: dict[str, Any], fondement: dict[str, Any],
-                 repere: str | None, *, longueur: bool = True) -> None:
+                 repere: str | None, *, longueur: bool = True,
+                 points: Iterable[Point] = ()) -> None:
         if valeur is None:
             return
         fond = dict(fondement)
@@ -78,11 +113,19 @@ class _Fabrique:
             fond["quantum"] = self.u.tolerances.quantum
         self.candidats.append(Candidat(
             categorie=categorie, valeur=valeur, unite=self.unite if longueur else None,
-            texte_brut=texte[:500], page=1, confiance=self.confiance(confiance),
-            methode="geometrie",
-            position={"source": "geometry", "space": "modelspace",
+            texte_brut=texte[:500], page=int(self.cadre["page"]) if self.cadre else 1,
+            confiance=self.confiance(confiance), methode="geometrie", boite=self.boite(points),
+            position={"source": "geometry", "space": "page" if self.cadre else "modelspace",
                       "drawing_units": self.unite, **position},
             repere=repere, fondement=fond))
+
+    @staticmethod
+    def coins(b: Bande, t0: float, t1: float) -> list[Point]:
+        """Les quatre coins de la bande entre deux abscisses de son axe."""
+        n = normale(b.direction)
+        demi = (b.largeur or 0.0) / 2.0
+        return [(p[0] + s * demi * n[0], p[1] + s * demi * n[1])
+                for p in (b.point(t0), b.point(t1)) for s in (-1.0, 1.0)]
 
     # -------------------------------------------------------------- libellés
     def marque(self, appui: Appui, portee: Poutre) -> str:
@@ -138,13 +181,15 @@ class _Fabrique:
                 continue
             self.proposer(
                 "grid_line", axe.etiquette,
-                f"file {axe.etiquette} (calque {', '.join(axe.preuve.calques)} ; geometrie)",
+                f"file {axe.etiquette} ({self.mot_calque} {', '.join(axe.preuve.calques)} ; "
+                "geometrie)",
                 axe.confiance,
                 {"element": {"type": "grid_axis", "id": axe.id},
                  "line": [[self.q(c) for c in p] for p in axe.extremites],
                  "evidence": axe.preuve.en_json()},
                 {"rule": "axe_de_grille", "label_source": axe.etiquette_source,
-                 "classified_by": axe.preuve.regle}, None, longueur=False)
+                 "classified_by": axe.preuve.regle}, None, longueur=False,
+                points=axe.extremites)
         for famille in g.familles:
             axes = [g.axe(i) for i in famille.axes]
             for a, b in zip(axes, axes[1:], strict=False):
@@ -160,7 +205,8 @@ class _Fabrique:
                     {"element": {"type": "grid_spacing", "id": f"{a.id}..{b.id}"},
                      "axes": [a.id, b.id], "evidence": a.preuve.fusion(b.preuve).en_json()},
                     {"rule": "entraxe_droites_paralleles", "measured_raw": brute,
-                     "dimensions": self.notes(notes)}, repere)
+                     "dimensions": self.notes(notes)}, repere,
+                    points=(*a.extremites, *b.extremites))
             if len(axes) >= 3 and axes[0].etiquette and axes[-1].etiquette:
                 a, b = axes[0], axes[-1]
                 brute = abs(b.decalage - a.decalage)
@@ -173,7 +219,8 @@ class _Fabrique:
                     {"element": {"type": "grid_extent", "id": f"{a.id}..{b.id}"},
                      "axes": [ax.id for ax in axes]},
                     {"rule": "axes_extremes", "measured_raw": brute,
-                     "dimensions": self.notes(notes)}, f"{a.etiquette}-{b.etiquette}")
+                     "dimensions": self.notes(notes)}, f"{a.etiquette}-{b.etiquette}",
+                    points=(*a.extremites, *b.extremites))
 
     # -------------------------------------------------------------- poteaux
     def poteaux(self) -> None:
@@ -195,22 +242,24 @@ class _Fabrique:
             position = {"element": {"type": "column_group", "id": membres[0].id},
                         "instances": instances, "count": len(membres)}
             nom = repere or "poteau"
+            contours = [pt for p in membres for pt in p.contour]
             if forme == "cercle":
                 self.proposer(
                     "column_diameter", diametre,
                     f"{nom} : diametre {diametre}{self.libelle_unite}, {len(membres)} poteau(x) "
                     f"({', '.join(noeuds[:12])}) ; geometrie", confiance, position,
                     {"rule": "poteau_circulaire", "instances": len(membres),
-                     "classified_by": membres[0].preuve.regle}, repere)
+                     "classified_by": membres[0].preuve.regle}, repere, points=contours)
                 continue
             texte = (f"{nom} : {largeur} x {profondeur}{self.libelle_unite}, {len(membres)} "
                      f"poteau(x) ({', '.join(noeuds[:12])}) ; geometrie")
             fondement = {"rule": "poteau_rectangulaire", "instances": len(membres),
                          "classified_by": membres[0].preuve.regle,
                          "convention": "largeur selon l'axe x de la grille, profondeur selon y"}
-            self.proposer("column_width", largeur, texte, confiance, position, fondement, repere)
+            self.proposer("column_width", largeur, texte, confiance, position, fondement, repere,
+                          points=contours)
             self.proposer("column_depth", profondeur, texte, confiance, position, fondement,
-                          repere)
+                          repere, points=contours)
 
     # -------------------------------------------------------------- voiles
     def voiles(self) -> None:
@@ -229,7 +278,8 @@ class _Fabrique:
                  "instances": [v.id for v in membres[:INSTANCES_CITEES_MAX]],
                  "count": len(membres)},
                 {"rule": "epaisseur_de_voile", "instances": len(membres),
-                 "classified_by": membres[0].preuve.regle}, repere)
+                 "classified_by": membres[0].preuve.regle}, repere,
+                points=[pt for v in membres for pt in v.contour])
 
     # -------------------------------------------------------------- poutres
     def poutres(self) -> None:
@@ -256,15 +306,16 @@ class _Fabrique:
             self.proposer(
                 "beam_width", self.q(b.largeur),
                 f"{repere or 'poutre'} : largeur {self.q(b.largeur)}{self.libelle_unite} "
-                f"entre les deux faces ({b.dessin}, calque {', '.join(b.preuve.calques)} ; "
-                "geometrie)",
+                f"entre les deux faces ({b.dessin}, {self.mot_calque} "
+                f"{', '.join(b.preuve.calques)} ; geometrie)",
                 self.ajuster(poutre.confiance, notes),
                 {"element": {"type": "beam", "id": poutre.id},
                  "axis": [[self.q(c) for c in b.point(b.debut)],
                           [self.q(c) for c in b.point(b.fin)]],
                  "evidence": b.preuve.en_json()},
                 {"rule": "largeur_de_bande", "drawn_as": b.dessin, "measured_raw": b.largeur,
-                 "classified_by": b.preuve.regle, "dimensions": self.notes(notes)}, repere)
+                 "classified_by": b.preuve.regle, "dimensions": self.notes(notes)}, repere,
+                points=self.coins(b, b.debut, b.fin))
 
     def _travee(self, poutre: Poutre, t: Travee) -> None:
         b = poutre.bande
@@ -285,19 +336,22 @@ class _Fabrique:
             "measured_raw": t.entre_axes, "classified_by": b.preuve.regle}
         intitule = f"{t.repere or 'poutre'} — travee {t.index}/{t.nombre} : " \
                    f"{self.appui(t.debut, poutre)} -> {self.appui(t.fin, poutre)}"
+        coins = self.coins(b, t.debut.centre, t.fin.centre)  # type: ignore[union-attr]
         self.proposer(
             "beam_span", self.q(t.entre_axes),
             f"{intitule}, entre-axes {self.q(t.entre_axes)}{self.libelle_unite} (geometrie)",
-            t.confiance, position, fondement, t.repere)
+            t.confiance, position, fondement, t.repere, points=coins)
         self.proposer(
             "beam_clear_span", self.q(t.nu_a_nu),
             f"{intitule}, nu a nu {self.q(t.nu_a_nu)}{self.libelle_unite} (geometrie)",
             t.confiance - 0.05, position,
-            {**fondement, "rule": "nu_a_nu_des_appuis", "measured_raw": t.nu_a_nu}, t.repere)
+            {**fondement, "rule": "nu_a_nu_des_appuis", "measured_raw": t.nu_a_nu}, t.repere,
+            points=coins)
 
     def _console(self, poutre: Poutre, t: Travee) -> None:
         appui = t.debut or t.fin
         b = poutre.bande
+        libre = b.debut if t.debut is None else b.fin
         self.proposer(
             "cantilever_length", self.q(t.nu_a_nu),
             f"{t.repere or 'poutre'} — console depuis {self.appui(appui, poutre)} : "
@@ -308,7 +362,8 @@ class _Fabrique:
              "support": self.appui_json(appui, poutre), "evidence": b.preuve.en_json()},
             {"rule": "porte_a_faux", "axis_length": self.q(t.entre_axes),
              "clear_length": self.q(t.nu_a_nu), "measured_raw": t.nu_a_nu,
-             "mark_source": t.repere_source}, t.repere)
+             "mark_source": t.repere_source}, t.repere,
+            points=self.coins(b, appui.centre, libre) if appui else ())
 
 
 def propositions_du_modele(modele: ModeleStructurel) -> list[Candidat]:

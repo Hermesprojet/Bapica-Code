@@ -82,7 +82,11 @@ def _lignes_candidates(prims: PrimitivesDxf, tolerances: Tolerances,
         classement = classer(s.calque, s.source.blocs, s.type_ligne)
         if classement.role != "axe":
             continue
+        # UN AXE D'UNE FEUILLE PDF (règle « style ») est déjà reconstitué depuis
+        # sa bulle et borné en longueur par le lecteur: le cartouche agrandit
+        # l'emprise, et un dixième de la feuille écarterait les axes courts.
         seuil = (0.3 * diagonale if classement.regle == "type_de_ligne"
+                 else 10.0 * tolerances.longueur if classement.regle == "style"
                  else max(10.0 * tolerances.longueur, 0.1 * diagonale))
         if s.longueur < seuil:
             continue

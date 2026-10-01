@@ -95,8 +95,8 @@ class Preuve:
 
 
 #: Plus le rang est petit, plus la règle est forte.
-_RANG_REGLE: Final[dict[str, int]] = {"bloc": 0, "calque": 1, "type_de_ligne": 2,
-                                      "forme": 3}
+_RANG_REGLE: Final[dict[str, int]] = {"bloc": 0, "calque": 1, "style": 1,
+                                      "type_de_ligne": 2, "forme": 3}
 
 
 def preuve_de(primitives: Iterable[Primitive], regle: str,
@@ -130,6 +130,8 @@ class UnitesDessin:
     tolerances: Tolerances
     #: Pour une unité inférée : la mention écrite et les cotes concordantes.
     citation: dict[str, Any] | None = None
+    #: Pour une feuille PDF : page, millimètres par point, taille de la page.
+    cadre: dict[str, Any] | None = None
 
     def fondement(self) -> dict[str, Any]:
         sortie: dict[str, Any] = {"unit_basis": self.base}
@@ -146,7 +148,8 @@ class UnitesDessin:
         return {"drawing": self.unite, "basis": self.base, "source": self.source,
                 "insunits": self.insunits, "tolerance": self.tolerances.longueur,
                 "quantum": self.tolerances.quantum,
-                **({"evidence": self.citation} if self.citation else {})}
+                **({"evidence": self.citation} if self.citation else {}),
+                **({"sheet": self.cadre} if self.cadre else {})}
 
 
 # ---------------------------------------------------------------- éléments

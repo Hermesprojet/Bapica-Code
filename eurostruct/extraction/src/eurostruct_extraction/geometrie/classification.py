@@ -78,7 +78,7 @@ _GENERIQUES: Final[re.Pattern[str]] = re.compile(
 @dataclass(frozen=True)
 class Classement:
     role: Role
-    #: ``bloc``, ``calque``, ``type_de_ligne`` ou ``aucune``.
+    #: ``bloc``, ``calque``, ``style`` (PDF), ``type_de_ligne`` ou ``aucune``.
     regle: str
     #: Le nom qui a décidé (calque, bloc, type de ligne), cité tel quel.
     motif: str | None = None
@@ -113,7 +113,20 @@ def est_type_de_ligne_cache(nom: str) -> bool:
 
 @lru_cache(maxsize=8192)
 def classer(calque: str, blocs: tuple[str, ...], type_ligne: str) -> Classement:
-    """Le rôle d'une primitive, et ce qui l'a décidé."""
+    """Le rôle d'une primitive, et ce qui l'a décidé.
+
+    UNE FEUILLE PDF N'A PAS DE CALQUES : son « calque » est le style du trait
+    (``pdf:#DE0000:1.5``). Un style APPRIS de la feuille — celui des traits qui
+    partent des bulles, celui des lignes qui portent les cotes — est nommé
+    ``pdf:axe:…`` ou ``pdf:cote:…`` ; la règle est alors « style ». Un autre
+    style ne dit rien : la forme décidera.
+    """
+    if calque.startswith("pdf:"):
+        morceaux = calque.split(":")
+        if len(morceaux) > 1 and morceaux[1] in ("axe", "cote"):
+            return Classement(morceaux[1], "style", calque)  # type: ignore[arg-type]
+        return Classement("inconnu", "aucune", None, cache=calque.endswith(":tirets"),
+                          generique=True)
     for bloc in reversed(blocs):
         role = role_du_nom(bloc)
         if role is not None:

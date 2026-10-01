@@ -87,7 +87,9 @@ def lire_cotes(cotes: list[CoteDxf]) -> list[CoteLue]:
             affichee = texte.replace("<>", _format(affichable))
         else:
             affichee = texte
-            forcee = True
+            # SUR UNE FEUILLE PDF, le nombre écrit EST la cote: il n'en
+            # remplace aucune; sa concordance se juge comme celle d'un texte forcé.
+            forcee = c.genre != "pdf"
             lu = _NOMBRE_SEUL.fullmatch(texte)
             if lu is None:
                 valeur = None

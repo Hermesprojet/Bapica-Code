@@ -10,6 +10,11 @@ LE STATUT DIT LA VÉRITÉ SUR LA LECTURE, page par page :
 ``echec``     la lecture a échoué (fichier corrompu, PDF protégé) ; une
               nouvelle analyse reste possible.
 
+UN PDF D'UNE SEULE PAGE QUI PORTE DES TRAITS est aussi lu comme un dessin
+(``geometrie/pdf_vectoriel.py``) : ses primitives passent dans la même chaîne
+géométrique que celles d'un DXF. Un PDF de plusieurs pages, ou sans traits,
+n'est lu que pour son texte, et le compte rendu dit pourquoi.
+
 UN ÉCHEC N'EST PAS UNE EXCEPTION QUI REMONTE. Le document est déposé et
 inscrit ; ce qui a échoué, c'est sa lecture, et cela se constate sur la ligne
 du document plutôt que dans un journal que personne ne lit.
@@ -20,6 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from .formats import FormatDetecte, FormatNonPrisEnCharge, detecter_format
+from .geometrie.pdf_vectoriel import lire_geometrie_pdf
 from .lecteurs.dwg import MOTIF_DWG_NON_LU, ConvertisseurDWG
 from .lecteurs.dxf import lire_dxf
 from .lecteurs.ocr import LecteurOcr, OcrTesseract
@@ -110,10 +116,32 @@ def _analyser_pdf(octets: bytes, ocr: LecteurOcr | None, pages_max_texte: int,
                 "reason_unavailable": raison_ocr},
         "limits": {"text_pages_max": pages_max_texte, "ocr_pages_max": pages_max_ocr},
     }
+    detail = ", ".join(morceaux)
+    primitives = None
+    try:
+        geometrie = lire_geometrie_pdf(octets)
+    except Exception as cause:  # noqa: BLE001 — le texte reste lu
+        detail += "; geometrie illisible, seuls les textes sont lus"
+        compte_rendu["geometry_error"] = type(cause).__name__
+    else:
+        primitives = geometrie.primitives
+        compte_rendu["geometry_read"] = (
+            {"read": False, "reason": geometrie.motif} if primitives is None
+            else {"read": True, **geometrie.compte_rendu})
+        if primitives is not None:
+            echelle = geometrie.compte_rendu["scale"]
+            detail += (f"; geometrie: {len(primitives.segments)} trait(s), "
+                       f"{len(primitives.cercles)} bulle(s) d'axe, "
+                       f"{geometrie.compte_rendu['dimensions_rebuilt']} cote(s) reconstituee(s); "
+                       + (f"echelle {echelle['scale']} ecrite et confirmee par "
+                          f"{echelle['concordant']} cote(s) sur {echelle['dimensions']} "
+                          f"(lues en {echelle['dimension_unit']})" if echelle["established"]
+                          else "echelle non etablie, longueurs en points sans unite"))
     return DocumentAnalyse(
-        format="pdf", statut=statut, detail=", ".join(morceaux) + ".",
+        format="pdf", statut=statut, detail=detail + ".",
         nombre_de_pages=lecture.nombre_de_pages, couche_texte=lecture.couche_texte,
-        pages=tuple(lecture.pages), compte_rendu=compte_rendu, octets=octets)
+        pages=tuple(lecture.pages), compte_rendu=compte_rendu, octets=octets,
+        primitives_dxf=primitives)
 
 
 def _analyser_dxf(octets: bytes, fmt: str, *,
