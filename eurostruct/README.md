@@ -22,6 +22,7 @@ béton armé.** Pas quarante modules à 30 %.
 |---|---|
 | **Vérification complète en cinq chapitres** — flexion, effort tranchant, ancrage, ouverture des fissures, flèche — en une seule saisie | ✅ orchestrateur déterministe, quatre états par chapitre |
 | **Saisie guidée en sept étapes**, qui rend visible ce qui manque plutôt que de le faire découvrir au refus | ✅ |
+| **Lecture des plans** — dépôt PDF/DXF (DWG conservé), valeurs **proposées** avec page, position, texte lu et confiance ; revue nommée (confirmer, corriger, rejeter) ; report dans la saisie avec son origine | ✅ règles déterministes, OCR borné ; aucune valeur n'entre dans un calcul sans décision humaine, et le serveur la relit au lancement — [`docs/LECTURE_DES_PLANS.md`](docs/LECTURE_DES_PLANS.md) |
 | **Note de calcul à cinq chapitres**, HTML et PDF, avec la mention obligatoire de validation | ✅ PDF sans horodatage : deux compositions rendent les mêmes octets |
 | **Plan de ferraillage DXF R2018** depuis la coupe gelée avec l'étude | ✅ déterministe entre processus, germes et appels concurrents |
 | **Aperçu SVG** du plan, depuis le même modèle géométrique, sans rien déposer | ✅ non contractuel, et il le dit |
@@ -36,7 +37,10 @@ béton armé.** Pas quarante modules à 30 %.
 Poutres rectangulaires uniquement : pas de dalle, pas de poteau, pas de
 fondation, pas de charpente métallique. **Pas de descente de charges** — les
 sollicitations sont *saisies*, elles ne sont pas calculées. Pas de DWG natif :
-DXF R2018 par `ezdxf`, la question de licence ODA reste ouverte.
+DXF R2018 par `ezdxf`, la question de licence ODA reste ouverte — un DWG
+déposé est conservé, pas lu. La lecture des plans **propose** : elle ne
+reconnaît que des écritures courantes, aucun modèle de vision n'est livré, et
+une charge lue ne devient jamais une sollicitation.
 
 ## Le principe non négociable, dans le code
 
@@ -166,7 +170,7 @@ importeur, API, sécurité des harnais, garanties SQL, cohérence des artefacts.
 Une surface non exécutée est aussi visible qu'une surface rouge — c'est la
 propriété que ce script existe pour garantir.
 
-### Les deux parcours navigateur
+### Les trois parcours navigateur
 
 `run_tests.sh` ne pilote pas Chromium. La verticale telle qu'un ingénieur la
 vit se mesure séparément, sur une pile dressée pour l'occasion :
@@ -176,13 +180,15 @@ export PGHOST=/var/run/postgresql PGUSER=postgres \
        EUROSTRUCT_CLUSTER_JETABLE=oui-cluster-jetable-et-isole
 
 db/test/livrable_validation.sh <prefixe>   # primitives et routes, sous identité
-db/test/parcours_livrable.sh    <prefixe>  # les DEUX parcours Chromium
+db/test/documents_extractions.sh <prefixe> # dépôt, lecture, décision, report, sous identité
+db/test/parcours_livrable.sh    <prefixe>  # les TROIS parcours Chromium
 ```
 
-Le second dresse la pile entière — base, migrations, sceau, quatre-yeux,
+Le dernier dresse la pile entière — base, migrations, sceau, quatre-yeux,
 émetteur de jetons RS256 fictif, API, **build de production** de l'interface —
-puis la pilote au clavier. Il éprouve le livrable *et* la vérification
-complète, et **toute erreur de console y fait échouer le parcours**.
+puis la pilote au clavier. Il éprouve le livrable, la vérification complète
+*et* la lecture des plans (dépôt d'un PDF fabriqué, revue, décisions, report
+avec provenance), et **toute erreur de console y fait échouer le parcours**.
 
 ### La recette de production
 
@@ -301,12 +307,19 @@ eurostruct/
 │   │   ├── schemas/            Contrat Pydantic
 │   │   └── service.py          Adaptateur DTO ↔ domaine
 │   └── tests/                  Suite du moteur — comptée par run_tests.sh
+├── extraction/                 Lecture des plans — HORS du moteur, ne calcule rien
+│   └── src/eurostruct_extraction/
+│       ├── lecteurs/           PDF (couche texte, OCR borné), DXF, DWG (version seule)
+│       ├── extracteurs/        règles déterministes FR/NL/EN; protocole de vision
+│       ├── analyse.py          parse_document — octets reconnus, pages lues
+│       └── registre.py         extract_engineering_data — propositions tracées
 ├── api/                        FastAPI: santé, calcul, atelier, livrables
 │   └── src/eurostruct_api/
-│       ├── routes/             projets, livrables, autorité, référentiel
+│       ├── routes/             projets, livrables, documents, autorité, référentiel
+│       ├── documents.py        dépôt, analyse, décision, préremplissage, provenance
 │       ├── note.py, pdf.py     note à cinq chapitres, HTML puis PDF
 │       └── s3.py               magasin d'objets, chemin dérivé du contenu
-├── web/                        Next.js — saisie guidée, synthèse, documents
+├── web/                        Next.js — pièces, revue, saisie guidée, synthèse
 │   └── e2e/                    Parcours Chromium et recette de production
 ├── db/
 │   ├── migrations/             Schéma, RLS, immuabilité, autorité, livrables

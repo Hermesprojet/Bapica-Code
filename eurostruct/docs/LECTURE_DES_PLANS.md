@@ -216,7 +216,7 @@ sequenceDiagram
   A->>P: project_extraction_decide → confirmed_by, confirmed_by_name, confirmed_at = now()
   N->>A: GET /extractions/prefill?element=P1
   A->>P: project_extraction_list (confirmed, corrected)
-  A-->>N: valeurs dans l'unité de chaque champ (pint), avec leur provenance
+  A-->>N: valeurs dans l'unité de chaque champ (facteurs décimaux exacts), avec leur provenance
   N->>A: POST /beam-verifications {…, provenance}
   A->>P: project_extraction_list(ids) — statut, catégorie, valeur
   A->>A: provenance réécrite depuis la base, sinon 422 sans calcul
@@ -309,7 +309,7 @@ ou base indisponible.
 | `POST /v1/projects/{id}/documents/{doc}/analysis` | — | nouvelle analyse, **seulement** si aucune proposition n'existe (échec, DWG non lu, aucun résultat) |
 | `GET /v1/projects/{id}/extractions?document_id=&status=` | filtres facultatifs | `ListeExtractions` |
 | `POST /v1/projects/{id}/extractions/{ext}/decision` | `{"decision": "confirm" \| "correct" \| "reject", "final_value": {value, unit}?, "note": "…"?}` | l'extraction décidée, avec nom et date du décideur |
-| `GET /v1/projects/{id}/extractions/prefill?element=P1` | repère facultatif | `Preremplissage` : pour chaque champ de l'étude, la valeur confirmée **convertie par pint dans l'unité du champ**, sa provenance ; les conflits ; ce qui ne se reporte pas, et pourquoi |
+| `GET /v1/projects/{id}/extractions/prefill?element=P1` | repère facultatif | `Preremplissage` : pour chaque champ de l'étude, la valeur confirmée **convertie dans l'unité du champ par des facteurs décimaux exacts** (mm, cm, m), sa provenance ; les conflits ; ce qui ne se reporte pas, et pourquoi |
 | `POST /v1/projects/{id}/beam-verifications` | inchangé, plus `provenance` facultative : `{chemin: {kind: "document_extraction", extraction_id, …}}` | inchangé ; **422 `provenance_refusee`** sans calcul ni écriture si une provenance ne correspond pas à une extraction confirmée ou corrigée du projet, de la bonne catégorie, et de **même valeur** |
 
 Le contrôle de provenance est le cœur de l'exigence 6 :
@@ -319,8 +319,8 @@ Le contrôle de provenance est le cœur de l'exigence 6 :
    flexion) ;
 2. l'API relit chaque extraction **sous l'identité de l'appelant** : statut
    `confirmed`/`corrected`, catégorie compatible avec le champ, valeur
-   envoyée = valeur retenue (égalité de grandeurs par pint : `6 m` = `6000
-   mm`) — sinon refus ;
+   envoyée = valeur retenue (égalité exacte en `Decimal` après conversion :
+   `6 m` = `6000 mm`, `6,0004 m` ≠ `6000 mm`) — sinon refus ;
 3. la provenance enregistrée est **réécrite depuis la base** (document, page,
    boîte, nom et date du confirmateur) : un client ne peut pas faire écrire
    une provenance qu'il a inventée ;
@@ -420,4 +420,50 @@ Commits séparés, dans cet ordre ; chaque étape a ses tests.
 | 5 — aucune cote extraite sans confirmation | statut `proposed` à l'écriture ; décision humaine signée en base ; contrôle de provenance avant le moteur |
 | 7 — pas de « DWG natif » | DWG conservé, non lu ; conversion déclarée comme protocole |
 | 8 — mention obligatoire | inchangée : les notes la portent, qu'une valeur vienne d'un plan ou d'une saisie |
-| 9 — aucun arrondi complaisant | égalité de grandeurs exacte (pint) entre valeur envoyée et valeur retenue |
+| 9 — aucun arrondi complaisant | égalité exacte en `Decimal` entre valeur envoyée et valeur retenue, après conversion par facteur exact |
+
+## 7. Ce qui a été réalisé, et ce qui l'a mesuré
+
+Les commits, dans l'ordre du §5 :
+
+| commit | contenu |
+|---|---|
+| `e342eb2` | ce document, avant le code |
+| `cd8cce1` | migration `0028`, garanties SQL, surface du backend (34 primitives), rapprochement |
+| `88cf0b5` | module `eurostruct/extraction/`, surface « extraction » de `run_tests.sh` et de l'intégration continue |
+| `e14ba07` | **l'API et les contrats en entier** — service, routes, contrôle de provenance, note, rapprochement, harnais `documents_extractions.sh` — *et* la lecture des nuances B400/B600. Son titre ne nomme que la seconde : une erreur d'indexation au moment du commit, laissée telle quelle plutôt que de réécrire l'historique |
+| `ed70b0b` | l'interface : étape Documents, revue, report avec origine ; troisième parcours Chromium |
+| suivant | l'image de l'API (paquet de lecture, `tesseract-ocr` fra/eng) et cette documentation |
+
+Mesuré dans l'environnement de ce lot (PostgreSQL 16 jetable, Tesseract
+5, Chromium) :
+
+| surface | résultat |
+|---|---|
+| module d'extraction (`pytest`) | 111 tests verts, dont un PDF sans couche texte lu par OCR, un DXF binaire, une signature DWG |
+| suite SQL complète (`db/test/run.sh`) sur `cd8cce1` | verte, dans un arbre isolé |
+| `db/test/documents_extractions.sh` | 28 cas verts : dépôt réel, déduplication, analyse, décisions, refus (lecteur, autre organisation, adhésion sans nom, décision rejouée), préremplissage, calcul accepté, calcul refusé sur valeur non confirmée ou modifiée, rapprochement du magasin |
+| API sans base | verte ; la requête gelée d'une étude sans document est inchangée (même identité d'exécution) |
+| `db/test/parcours_livrable.sh` | **trois parcours Chromium verts** sur une même pile : livrable, vérification complète, lecture des plans |
+| étage d'installation de l'image | rejoué hors conteneur : `./engine ./extraction ./api` en une résolution, application importée, six routes de documents présentes |
+
+**Écart au plan : la conversion d'unités n'emploie pas pint.** Le §3 prévoyait
+une égalité de grandeurs par pint ; le code emploie des facteurs décimaux
+exacts (`mm`, `cm`, `m`) et compare en `Decimal`. Une conversion en flottants
+peut rendre `6000.000000000001` : comparer au plus près exigerait une
+tolérance, c'est-à-dire un arrondi — ce que l'interdiction 9 exclut. Les
+trois unités de longueur sont les seules que le report connaît ; une autre
+unité n'est pas convertie, elle est déclarée non reportable.
+
+**Une observation du parcours, sans effet sur le produit.** Chromium ne rend
+pas toujours au harnais le corps de la réponse à un dépôt de fichier
+(« Request content was evicted from inspector cache »). Le parcours établit
+donc ses faits sur la liste que l'écran relit **depuis la base** après le
+dépôt, et compare la réponse au dépôt quand elle est lisible ; il écrit
+dans son bilan quand elle ne l'est pas.
+
+**Non mesuré, et à ne pas annoncer :** la construction réelle de l'image
+(aucun démon Docker dans cet environnement) ; la composition de démonstration
+avec cette fonction ; Supabase (`SUPABASE_UNVERIFIED`) ; le rappel sur des
+plans réels de bureau d'études — tous les plans éprouvés sont fabriqués par
+les tests.

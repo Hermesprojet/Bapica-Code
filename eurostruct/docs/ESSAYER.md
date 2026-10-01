@@ -127,6 +127,7 @@ Tout est sur **ce poste**, dans Docker ; rien ne part ailleurs.
 |---|---|---|---|
 | projets, études, verdicts, journaux, lignes de livrables | volume `eurostruct-demo_db` (PostgreSQL) | **oui** | non |
 | octets des notes PDF et des plans DXF | volume `eurostruct-demo_livrables` | **oui** | non |
+| octets des pièces déposées (plans, cahiers des charges), sous `pieces/` | le même volume `eurostruct-demo_livrables` | **oui** | non |
 | clé de signature de l'émetteur de démonstration | volume `eurostruct-demo_demo-cles` | **oui** | non |
 | comptes d'essai, mots de passe, ports | `deploy/demo.env` (0600, ignoré par Git) | oui | **oui** — le supprimer regénère des comptes |
 | la session du navigateur | nulle part | **non** : aucun jeton n'est persisté, on se reconnecte | — |
@@ -185,6 +186,31 @@ Les valeurs des pas 5 et 10 sont celles du moteur pour ces entrées sous
 l'Annexe belge transcrite (paramètres **non confirmés** : mode exploratoire).
 Elles ne changent qu'avec les entrées, le moteur ou le référentiel — et alors
 l'empreinte de calcul change avec elles.
+
+### 3.1 Partir d'un plan plutôt que d'une saisie
+
+Au-dessus des sept étapes, **Documents du projet** reçoit un plan PDF ou DXF,
+ou un cahier des charges PDF. Un DWG est conservé mais **pas lu** (aucune
+licence ODA ou RealDWG) : exportez-le en DXF. Rien n'est obligatoire — la
+saisie manuelle reste entière.
+
+| # | geste | attendu |
+|---|---|---|
+| 1 | choisir la nature, le fichier, **Déposer et analyser** | la pièce apparaît avec son statut de lecture (« analysé », « partiellement lu : … », « DWG conservé, non lu ») et ses décomptes « N à revoir · 0 confirmée(s) » ; la revue s'ouvre |
+| 2 | dans la revue, lire une ligne | la valeur **proposée**, le texte cité tel qu'il a été lu, la page, la méthode (couche texte, OCR, entité DXF), la confiance, et d'où vient l'unité ; « Vous décidez en tant que *votre nom* » |
+| 3 | **Confirmer**, **Corriger** (valeur, unité, motif) ou **Rejeter** (motif) | la ligne revient décidée, à votre nom, datée par le serveur, et n'offre plus de geste : une décision est définitive |
+| 4 | **Reporter dans l'étude** (repère en cours, ex. « P1 ») | les champs correspondants se remplissent **dans l'unité du champ** (30 cm → 300 mm), chacun avec son origine (pièce, page, texte, décision) ; une valeur rejetée ou seulement proposée n'est jamais reportée |
+| 5 | modifier un champ reporté | son origine disparaît : la valeur redevient une saisie |
+| 6 | lancer l'étude | la note PDF gagne une section « Origine des données d'entrée » qui cite la pièce, la page et la décision de chaque champ reporté |
+
+Un fichier qui n'est ni PDF, ni DXF, ni DWG est refusé **sur ses octets**,
+quelle que soit son extension. Une charge lue (« Q = 2,5 kN/m² ») se confirme
+mais ne devient jamais une sollicitation : `M_Ed` et `V_Ed` restent saisis.
+
+Ce parcours est mesuré au clavier par `db/test/parcours_livrable.sh` (pile
+dressée sur l'hôte : PostgreSQL, API, build de production de l'interface,
+Chromium), **pas encore** par `deploy/demo_persistance.sh` sur la composition
+Docker (§8).
 
 ## 4. La même chose, au clavier, mesurée
 
@@ -276,6 +302,8 @@ environnement-là, qui ne sont pas les vôtres :
 | LibreCAD | **ouvert et imprimé sans écran** (2.2.0.2, `dxf2pdf`, A3, **couleur et monochrome**) sur le DXF livré par le parcours : géométrie, deux cotes avec valeur et flèches, barres, textes, unités, cartouche et « PROJET - NON SIGNABLE » lisibles. Six défauts trouvés et corrigés les 16 et 17/09 — cotes sans valeur, tiret cadratin en « ◊ », mention absente du cartouche, dossier imprimé « — », textes jaunes et cotes cyan sur blanc en impression couleur, cartouche de la flexion seule portant un identifiant technique au lieu du nom du dossier. Ce qui est établi et ce qui ne l'est pas : [`DESSIN_DXF.md`](DESSIN_DXF.md) §5.5 |
 | note PDF | **rasterisée et relue** (poppler 24.02, 150 dpi, 12 pages) : cinq chapitres dans l'ordre, données d'entrée avec unités, verdicts, références de clause, mention en tête et en pied. Un défaut trouvé et corrigé : un symbole long recouvrait la colonne voisine. Le tiret cadratin y est rendu « -- » (police standard, substitution déclarée) |
 | AutoCAD, BricsCAD | **aucun n'a été ouvert.** |
+| lecture des plans sur la composition Docker | **non suivie.** L'environnement de ce lot n'avait pas de démon Docker : l'image de l'API (paquet de lecture, `tesseract-ocr` fra/eng) n'y a pas été construite. Son étage d'installation a été rejoué hors conteneur, en une seule résolution ; le parcours du §3.1 l'a été sur l'hôte |
+| plans réels | **aucun.** Les plans éprouvés sont fabriqués par les tests ; le rappel sur un plan de bureau d'études n'est pas mesuré, et l'OCR est borné (`docs/LECTURE_DES_PLANS.md` §6) |
 | validation d'un projet calculé | distincte de la validation des paramètres, et non acquise |
 
 ## 9. Sans Docker : le moteur seul
