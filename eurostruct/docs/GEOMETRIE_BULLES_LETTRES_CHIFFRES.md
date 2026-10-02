@@ -84,7 +84,8 @@ mêmes résultats avant et après.
   (≈ 1 000 unités) y finit. Mais ces traits sont plus courts que le seuil d'un
   axe nommé par son calque — 10 % de la diagonale du dessin, ici 1 763 unités,
   parce qu'une légende éloignée agrandit l'emprise : ils ne sont pas des axes
-  du modèle. Défaut de détection d'axes, antérieur, non traité ici.
+  du modèle. Défaut de détection d'axes, antérieur, non traité ici — traité
+  depuis par [`GEOMETRIE_SEUIL_DES_AXES.md`](GEOMETRIE_SEUIL_DES_AXES.md).
 * **« L9 »** cède à « 10 » sur la ligne que les deux grilles partagent : le
   modèle ne porte qu'une étiquette par axe ; l'autre est citée.
 * Une bulle en lettres et chiffres sur un calque nommé `…TITRE…` **hors** de

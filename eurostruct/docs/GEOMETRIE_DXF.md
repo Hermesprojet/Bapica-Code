@@ -165,9 +165,15 @@ résultat ne dépend d'aucun hasard.
 
 ### 5.1 Axes (files)
 
-1. **Candidats** : segments de rôle `axe`, ou de type de ligne d'axe sur un
-   calque non classé, d'une longueur ≥ 30 % de l'emprise dans leur direction.
-   Les segments colinéaires qui se recouvrent sont fusionnés.
+1. **Candidats** : segments de rôle `axe`. Seuil de longueur : nommés par
+   leur calque ou leur bloc, 10 % de la diagonale de l'emprise (au moins
+   10 tolérances) ; type de ligne
+   d'axe sur un calque qui ne dit rien, 30 % ; feuille PDF (style appris),
+   10 tolérances. Un trait nommé plus court n'est gardé que s'il finit sur sa
+   bulle étiquetée, mesure au moins dix rayons de cette bulle et partage sa
+   direction avec un autre axe
+   ([`GEOMETRIE_SEUIL_DES_AXES.md`](GEOMETRIE_SEUIL_DES_AXES.md)). Les
+   morceaux colinéaires (même direction, même décalage) sont fusionnés.
 2. **Étiquette** : à chaque extrémité, un cercle (bulle) centré sur le
    prolongement de l'axe et contenant un texte court (`A`, `AA`, `A'`, `1`, `12`),
    ou un bloc de bulle avec attribut, ou un texte court posé dans le
