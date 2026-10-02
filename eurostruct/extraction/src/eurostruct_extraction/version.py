@@ -10,4 +10,4 @@ from __future__ import annotations
 
 from typing import Final
 
-VERSION_EXTRACTEUR: Final[str] = "eurostruct-extraction/0.6.0"
+VERSION_EXTRACTEUR: Final[str] = "eurostruct-extraction/0.7.0"

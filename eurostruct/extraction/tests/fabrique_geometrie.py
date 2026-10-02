@@ -52,7 +52,14 @@ Chaque fabrique suit une convention de dessin courante, et la nomme :
   à attribut, ``MINSERT``, blocs imbriqués mis à l'échelle, bloc anonyme,
   références externes (liée et superposée), calque dépendant d'une xréf ;
   couleurs ACI, vraies, ``BYLAYER``, ``BYBLOCK``, calque absent de la table —
-  autour d'une petite grille à bulles et de poteaux pleins aux nœuds.
+  autour d'une petite grille à bulles et de poteaux pleins aux nœuds ;
+* ``dxf_grille_signatures``, ``dxf_pieux_signatures`` : les axes (G2) et les
+  pieux (G3) par leur signature, sous des noms qui ne disent rien ;
+* ``dxf_poteaux_signatures`` : les poteaux par leur signature (G4) — chaque
+  confusion posée sur un nœud (annotations, pieux, semelle, bout de voile,
+  sections irrégulières, blocs répétés, repères, socles, un détail hors zone) ;
+* ``dxf_grille_implicite`` : des poteaux sans aucun axe dessiné (G4, C2), et
+  un carrelage.
 
 Tous les textes disent FICTIF là où un plan réel porterait un nom.
 """
@@ -1141,4 +1148,179 @@ def dxf_pieux_signatures(*, noms: bool = False, calque_pieux: str | None = None,
         for k in range(12):
             msp.add_circle((300.0 + 100.0 * k, 250.0), 7.5,
                            dxfattribs={"layer": calques["regards"]})
+    return _ecrire(doc)
+
+
+# ---------------------------------------------- POTEAUX PAR LA SIGNATURE (G4)
+def dxf_poteaux_signatures(*, noms: bool = False, hachures_texte: bool = False) -> bytes:
+    """Un plan en cm où chaque confusion du § 2 de ``docs/GEOMETRIE_D_ABORD_G4.md``
+    est posée sur un nœud (G4).
+
+    Grille A–F (x = 0, 600… 3000) × 1–4 (y = 0, 500, 1000, 1500), bulles Ø 80 en
+    haut et à gauche. Aux nœuds :
+
+    * A2, C2, F3, F4 : un poteau 40 × 40, contour et hachure ; C2 au bout d'un
+      voile rempli de 20 cm ; F4 dans un socle vide de 80 × 80 ;
+    * A1, B1 : un cercle d'annotation Ø 50, vide ;
+    * C1, D1 : un pieu Ø 60, sa hachure sur un calque ``TEXTES`` ; dix autres en
+      paroi sous la grille (y = -400), et deux sous le massif plein de E4 ;
+    * E1 : un poteau rond Ø 50 dessiné par sa seule hachure ;
+    * F1 : un massif plein 150 × 150 sur un calque ``SEMELLES``, sans contenu ;
+    * B2 : un morceau plein 25 × 20 au bout d'un voile rempli de 20 cm ;
+    * D2, E2, F2 : un triangle, un chevron, une barre biaise, pleins ;
+    * A3, B3, C3 : un poteau vide, bloc ``B010`` inséré trois fois à l'échelle 1 ;
+      D3 : un bloc à attribut (trois insertions) ; E3 : un bloc à l'échelle 5 ;
+    * A4 : un poteau vide repéré « C3 » ; B4 : repéré « POT12 » à côté ; C4 :
+      vide sans repère ; D4 : vide, repéré « P1 » (un repère de poutre) ;
+    * E4 : un massif plein 150 × 150 sur deux pieux.
+
+    Hors de la grille, un détail : deux axes nommés ``AXES`` qui se croisent en
+    (5000, 3000), et un carré plein à leur nœud, hors de la zone structurelle.
+
+    ``noms`` : calques ``AXES``, ``POTEAUX``, ``HACH_POTEAUX``, ``VOILES`` ; sinon
+    ``C001``… ``hachures_texte`` : les hachures des poteaux A2, C2, F3, F4 sur
+    le calque ``TEXTES``."""
+    import ezdxf
+    from ezdxf.enums import TextEntityAlignment as A
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 5
+    neutres = {"axes": "C001", "poteaux": "C002", "hachures": "C003", "divers": "C004",
+               "pieux": "C005", "voiles": "C006"}
+    nommes = {"axes": "AXES", "poteaux": "POTEAUX", "hachures": "HACH_POTEAUX",
+              "divers": "C004", "pieux": "C005", "voiles": "VOILES"}
+    calques = dict(nommes if noms else neutres)
+    for nom in (*calques.values(), "TEXTES", "SEMELLES", "AXES"):
+        if nom not in doc.layers:
+            doc.layers.add(nom)
+    msp = doc.modelspace()
+
+    def texte(t: str, x: float, y: float, h: float, calque: str) -> None:
+        msp.add_text(t, height=h, dxfattribs={"layer": calque}).set_placement(
+            (x, y), align=A.MIDDLE_CENTER)
+
+    def carre(cx: float, cy: float, lx: float, ly: float) -> list[Point]:
+        return [(cx - lx / 2, cy - ly / 2), (cx + lx / 2, cy - ly / 2),
+                (cx + lx / 2, cy + ly / 2), (cx - lx / 2, cy + ly / 2)]
+
+    def contour(points: list[Point], calque: str) -> None:
+        msp.add_lwpolyline(points, close=True, dxfattribs={"layer": calque})
+
+    def plein(points: list[Point], calque: str) -> None:
+        msp.add_hatch(dxfattribs={"layer": calque}).paths.add_polyline_path(points,
+                                                                            is_closed=True)
+
+    def disque(cx: float, cy: float, r: float, calque: str) -> None:
+        msp.add_hatch(dxfattribs={"layer": calque}).paths.add_edge_path().add_arc(
+            (cx, cy), r, 0, 360)
+
+    def poteau(cx: float, cy: float) -> None:
+        coins = carre(cx, cy, 40, 40)
+        contour(coins, calques["poteaux"])
+        plein(coins, "TEXTES" if hachures_texte else calques["hachures"])
+
+    def pieu(cx: float, cy: float) -> None:
+        msp.add_circle((cx, cy), 30, dxfattribs={"layer": calques["pieux"]})
+        disque(cx, cy, 30, "TEXTES")
+
+    xs, ys = (0.0, 600.0, 1200.0, 1800.0, 2400.0, 3000.0), (0.0, 500.0, 1000.0, 1500.0)
+    for nom, x in zip("ABCDEF", xs, strict=True):
+        msp.add_line((x, -150), (x, 1650), dxfattribs={"layer": calques["axes"]})
+        msp.add_circle((x, 1690), 40, dxfattribs={"layer": calques["axes"]})
+        texte(nom, x, 1690, 30, calques["axes"])
+    for nom, y in zip("1234", ys, strict=True):
+        msp.add_line((-150, y), (3150, y), dxfattribs={"layer": calques["axes"]})
+        msp.add_circle((-190, y), 40, dxfattribs={"layer": calques["axes"]})
+        texte(nom, -190, y, 30, calques["axes"])
+
+    # Ligne 1 : annotations, pieux, poteau rond par sa hachure, semelle.
+    for x in (0.0, 600.0):
+        msp.add_circle((x, 0.0), 25, dxfattribs={"layer": calques["divers"]})
+    for x in (1200.0, 1800.0):
+        pieu(x, 0.0)
+    for k in range(10):
+        pieu(200.0 + 50.0 * k, -400.0)
+    disque(2400.0, 0.0, 25, calques["hachures"])
+    plein(carre(3000.0, 0.0, 150, 150), "SEMELLES")
+
+    # Ligne 2 : un poteau, un bout de voile, un poteau au bout d'un voile, des
+    # contours pleins qui ne sont pas des sections.
+    poteau(0.0, 500.0)
+    plein(carre(600.0, 500.0, 25, 20), calques["voiles"])
+    plein([(612.5, 490.0), (912.5, 490.0), (912.5, 510.0), (612.5, 510.0)], calques["voiles"])
+    poteau(1200.0, 500.0)
+    plein([(1220.0, 490.0), (1520.0, 490.0), (1520.0, 510.0), (1220.0, 510.0)],
+          calques["voiles"])
+    plein([(1780.0, 480.0), (1820.0, 480.0), (1800.0, 525.0)], calques["divers"])
+    plein([(2370.0, 525.0), (2400.0, 475.0), (2430.0, 525.0), (2424.0, 525.0),
+           (2400.0, 485.0), (2376.0, 525.0)], calques["divers"])
+    plein([(2980.0, 480.0), (3020.0, 480.0), (3030.0, 520.0), (2990.0, 520.0)],
+          calques["divers"])
+
+    # Ligne 3 : des poteaux vides en bloc répété ; un bloc à attribut ; un bloc
+    # à l'échelle 5 ; un poteau.
+    repete = doc.blocks.new("B010")
+    repete.add_lwpolyline(carre(0, 0, 40, 40), close=True)
+    for x in (0.0, 600.0, 1200.0):
+        msp.add_blockref("B010", (x, 1000.0), dxfattribs={"layer": calques["divers"]})
+    attribut = doc.blocks.new("B011")
+    attribut.add_lwpolyline(carre(0, 0, 40, 40), close=True)
+    attribut.add_attdef("N", (0, 30), dxfattribs={"height": 10})
+    for p in ((1800.0, 1000.0), (1800.0, 750.0), (2100.0, 1250.0)):
+        msp.add_blockref("B011", p, dxfattribs={"layer": calques["divers"]}
+                         ).add_auto_attribs({"N": "FICTIF"})
+    echelle = doc.blocks.new("B012")
+    echelle.add_lwpolyline(carre(0, 0, 8, 8), close=True)
+    for p in ((2400.0, 1000.0), (2400.0, 750.0), (2700.0, 1250.0)):
+        msp.add_blockref("B012", p, dxfattribs={"layer": calques["divers"], "xscale": 5,
+                                                "yscale": 5})
+    poteau(3000.0, 1000.0)
+
+    # Ligne 4 : des poteaux vides et leurs repères ; un massif plein sur deux
+    # pieux ; un poteau dans un socle vide.
+    for x in (0.0, 600.0, 1200.0, 1800.0):
+        contour(carre(x, 1500.0, 40, 40), calques["divers"])
+    texte("C3", 0.0, 1500.0, 10, calques["divers"])
+    texte("POT12", 600.0 + 30.0, 1500.0 + 10.0, 10, calques["divers"])
+    texte("P1", 1800.0, 1500.0, 10, calques["divers"])
+    plein(carre(2400.0, 1500.0, 150, 150), calques["divers"])
+    for dx in (-40.0, 40.0):
+        msp.add_circle((2400.0 + dx, 1500.0), 30, dxfattribs={"layer": calques["pieux"]})
+    poteau(3000.0, 1500.0)
+    contour(carre(3000.0, 1500.0, 80, 80), calques["divers"])
+
+    # Le détail, hors de la zone structurelle.
+    msp.add_line((5000, 2400), (5000, 3600), dxfattribs={"layer": "AXES"})
+    msp.add_line((4400, 3000), (5600, 3000), dxfattribs={"layer": "AXES"})
+    contour(carre(5000.0, 3000.0, 40, 40), calques["divers"])
+    plein(carre(5000.0, 3000.0, 40, 40), calques["divers"])
+    return _ecrire(doc)
+
+
+def dxf_grille_implicite(*, carrelage: bool = False, unite: bool = True) -> bytes:
+    """Aucun axe dessiné, en cm (G4, signature C2) : 3 × 4 poteaux 40 × 40,
+    contour et hachure, tous les 600 cm. ``carrelage`` : vingt-cinq carreaux
+    pleins de 30 × 30, jointifs, à côté. ``unite=False`` : ``$INSUNITS = 0``."""
+    import ezdxf
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 5 if unite else 0
+    doc.layers.add("C001")
+    msp = doc.modelspace()
+
+    def carre(cx: float, cy: float, c: float) -> list[Point]:
+        return [(cx - c / 2, cy - c / 2), (cx + c / 2, cy - c / 2),
+                (cx + c / 2, cy + c / 2), (cx - c / 2, cy + c / 2)]
+
+    for i in range(4):
+        for j in range(3):
+            coins = carre(600.0 * i, 600.0 * j, 40)
+            msp.add_lwpolyline(coins, close=True, dxfattribs={"layer": "C001"})
+            msp.add_hatch(dxfattribs={"layer": "C001"}).paths.add_polyline_path(
+                coins, is_closed=True)
+    if carrelage:
+        for i in range(5):
+            for j in range(5):
+                msp.add_hatch(dxfattribs={"layer": "C001"}).paths.add_polyline_path(
+                    carre(2500.0 + 30.0 * i, 30.0 * j, 30), is_closed=True)
     return _ecrire(doc)

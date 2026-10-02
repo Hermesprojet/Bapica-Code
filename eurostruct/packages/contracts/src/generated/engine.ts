@@ -1110,7 +1110,7 @@ export interface Preremplissage {
 
 export interface PreuveGeometrique {
   blocks?: string[] | null;
-  /** style : un style de trait APPRIS d'une feuille PDF (axes, cotes) ; geometrie : une signature géométrique complète a décidé (axe : bulle et famille, ou trait-point parallèle à une famille ; pieu : classe de diamètre), quel que soit le nom du calque ou du bloc. */
+  /** style : un style de trait APPRIS d'une feuille PDF (axes, cotes) ; geometrie : une signature géométrique complète a décidé (axe : bulle et famille, ou trait-point parallèle à une famille ; pieu : classe de diamètre ; poteau : section coupée au nœud de la grille, ou grille implicite sans axes, ou section vide d'un bloc répété), quel que soit le nom du calque ou du bloc. */
   classified_by: "bloc" | "calque" | "style" | "type_de_ligne" | "forme" | "geometrie";
   entity_types: string[];
   /** Poignées DXF des entités citées (rang de l'objet sur une feuille PDF). */
@@ -1122,7 +1122,7 @@ export interface PreuveGeometrique {
   layers: string[];
   /** Le nom (calque, bloc, type de ligne) qui a décidé ; pour une décision geometrie, le nom qui la confirme. */
   matched_name?: string | null;
-  /** Les critères géométriques vus — axe : bulle, famille, motif_mixte, parallele_a_une_famille, zone ; pieu : classe_de_diametre, motif_tirets, rempli. */
+  /** Les critères géométriques vus — axe : bulle, famille, motif_mixte, parallele_a_une_famille, zone ; pieu : classe_de_diametre, motif_tirets, rempli ; poteau : section, coupe, au_noeud, zone, section_repetee, bloc_repete, repere, grille_implicite. */
   signature?: string[] | null;
 }
 

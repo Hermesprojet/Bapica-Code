@@ -21,7 +21,8 @@ Variantes : sans échelle écrite ; « 1/50 » écrit mais dessiné au 1/100 ; m
 de tirets par ATTRIBUT et bulles en courbes de Bézier, texte en ``1 Tf`` mis à
 l'échelle par ``Tm`` (la convention d'un autre exporteur) ; deux pages ; une
 page de texte sans dessin ; une cage d'ascenseur au nœud B2 (contour, cabine,
-chevron plein) et la lettre géante d'un noyau au bout de l'axe 2.
+chevron plein) et la lettre géante d'un noyau au bout de l'axe 2 ; une barre
+pleine aux bouts biais et un L plein à deux nœuds (G4 : pas des sections).
 
 Tous les textes disent FICTIF là où un plan réel porterait un nom.
 """
@@ -253,7 +254,8 @@ def _rectangle(cx: float, cy: float, lx: float, ly: float) -> list[tuple[float, 
 
 
 def _plan(*, echelle: int = 50, ecrite: str | None = "1/50", tirets_par_attribut: bool = False,
-          corps_dans_tm: bool = False, gaine: bool = False) -> _Feuille:
+          corps_dans_tm: bool = False, gaine: bool = False,
+          formes_non_poteau: bool = False) -> _Feuille:
     f = _Feuille(echelle=echelle, angle_deg=10.0, origine=(260.0, 150.0),
                  tirets_par_attribut=tirets_par_attribut, corps_dans_tm=corps_dans_tm)
     x_min, x_max = AXES_X[0][1], AXES_X[-1][1]
@@ -267,6 +269,8 @@ def _plan(*, echelle: int = 50, ecrite: str | None = "1/50", tirets_par_attribut
         for _, y in AXES_Y:
             if gaine and (x, y) == (6000.0, 5000.0):
                 continue
+            if formes_non_poteau and (x, y) in ((12000.0, 0.0), (0.0, 5000.0)):
+                continue
             d = POTEAU_MM / 2.0
             f.plein([(x - d, y - d), (x + d, y - d), (x + d, y + d), (x - d, y + d)], 0.2)
     if gaine:
@@ -274,6 +278,11 @@ def _plan(*, echelle: int = 50, ecrite: str | None = "1/50", tirets_par_attribut
         f.contour(_rectangle(6000.0, 5000.0, 1900.0, 1800.0))
         f.contour(_rectangle(6000.0, 4900.0, 1200.0, 1000.0))
         f.plein([(5200.0, 5750.0), (6700.0, 5750.0), (5400.0, 5550.0), (5200.0, 4300.0)], 0.13)
+    if formes_non_poteau:
+        # C1 : une barre pleine de 1,20 × 0,11 m aux bouts biais ; A2 : un L plein.
+        f.plein([(11400.0, -55.0), (12560.0, -55.0), (12600.0, 55.0), (11440.0, 55.0)], 0.2)
+        f.plein([(-300.0, 4700.0), (300.0, 4700.0), (300.0, 4900.0), (-100.0, 4900.0),
+                 (-100.0, 5300.0), (-300.0, 5300.0)], 0.2)
     e = VOILE_MM / 2.0
     f.plein([(6000 + 150, 5000 - e), (12000 - 150, 5000 - e), (12000 - 150, 5000 + e),
              (6000 + 150, 5000 + e)], 0.35)

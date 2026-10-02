@@ -29,7 +29,7 @@ from dataclasses import replace
 from typing import Any
 
 from ..extracteurs.unites import Declaration, unite_declaree
-from .axes import detecter_axes
+from .axes import detecter_axes_et_zone
 from .classification import classer
 from .cotes import Rattachements, lire_cotes, rattacher_cotes
 from .dalles import detecter_dalles
@@ -148,12 +148,13 @@ def _refus(prims: PrimitivesDxf) -> list[NonResolu]:
 def _construire(prims: PrimitivesDxf, declarations: list[Declaration], unites: UnitesDessin
                 ) -> ModeleStructurel:
     tol = unites.tolerances
-    grille, etiquettes, doutes_axes = detecter_axes(prims, tol)
+    grille, etiquettes, doutes_axes, zone = detecter_axes_et_zone(prims, tol)
     lignes = _segments_pour_rectangles(prims, list(grille.noeuds), grille.entraxe_median(), tol)
     formes = formes_fermees(prims, tol, lignes)
     pieux = detecter_pieux(prims, tol, grille, formes)
-    poteaux, formes_poteaux, doutes_poteaux, rejets = detecter_poteaux(
-        prims, tol, grille, formes, pieux.formes_prises, pieux.germes)
+    poteaux, formes_poteaux, doutes_poteaux, rejets, rapport_poteaux = detecter_poteaux(
+        prims, tol, grille, formes, pieux.formes_prises, pieux.germes, zone=zone,
+        pieux_lus=pieux.pieux)
     voiles, formes_voiles, segments_voiles = detecter_voiles(
         prims, tol, grille, formes, formes_poteaux | pieux.formes_prises)
     prises = formes_poteaux | formes_voiles | pieux.formes_prises
@@ -191,6 +192,7 @@ def _construire(prims: PrimitivesDxf, declarations: list[Declaration], unites: U
         "dimension_chains": rattachements.chaines,
         "piles": pieux.compte_rendu,
         "column_candidates_rejected": dict(sorted(rejets.items())),
+        **({"columns": rapport_poteaux} if rapport_poteaux else {}),
         **compte,
     }
     modele = ModeleStructurel(

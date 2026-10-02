@@ -48,7 +48,6 @@ from .noyau import (
     Point,
     Tolerances,
     boite_de,
-    centroide,
     compacite,
     distance,
     distance_point_droite,
@@ -59,6 +58,7 @@ from .noyau import (
     rectangle_de,
 )
 from .poteaux import Forme, _index_des_noeuds, _noeud_proche
+from .poteaux import centre_et_taille as _centre_et_taille
 from .primitives import Cercle, Contour, PrimitivesDxf, Texte
 
 __all__ = ["DetectionPieux", "detecter_pieux"]
@@ -123,15 +123,6 @@ class _SignatureP:
     germes: dict[int, float]
     #: Chaque classe d'au moins 10 cercles distincts, et son verdict.
     classes: list[dict[str, Any]]
-
-
-def _centre_et_taille(forme: Forme) -> tuple[Point, float]:
-    if forme.genre == "cercle" and forme.rayon is not None:
-        pts = forme.points
-        return ((sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)),
-                2.0 * forme.rayon)
-    x0, y0, x1, y1 = boite_de(forme.points)
-    return centroide(forme.points), max(x1 - x0, y1 - y0)
 
 
 def _hachure(forme: Forme) -> bool:

@@ -66,7 +66,8 @@ from .noyau import (
 )
 from .primitives import Cercle, Insertion, PrimitivesDxf, Segment, Texte
 
-__all__ = ["ETIQUETTE_AXE", "ETIQUETTE_LETTRES_CHIFFRES", "detecter_axes"]
+__all__ = ["ETIQUETTE_AXE", "ETIQUETTE_LETTRES_CHIFFRES", "detecter_axes",
+           "detecter_axes_et_zone"]
 
 #: « A », « AA », « A' », « 1 », « 12 », « 1' » — et rien de plus long.
 ETIQUETTE_AXE: Final[re.Pattern[str]] = re.compile(r"[A-Z]{1,2}'?|\d{1,3}'?")
@@ -331,10 +332,21 @@ def _etiquettes_possibles(ligne: _Ligne, cercles: list[Cercle], courts: list[Tex
 def detecter_axes(prims: PrimitivesDxf, tolerances: Tolerances
                   ) -> tuple[Grille, set[str], list[NonResolu]]:
     """La grille du dessin, les poignées d'étiquettes absorbées, et les doutes."""
+    grille, etiquettes, doutes, _zone = detecter_axes_et_zone(prims, tolerances)
+    return grille, etiquettes, doutes
+
+
+def detecter_axes_et_zone(prims: PrimitivesDxf, tolerances: Tolerances
+                          ) -> tuple[Grille, set[str], list[NonResolu],
+                                     tuple[float, float, float, float] | None]:
+    """``detecter_axes``, et la ZONE STRUCTURELLE de G2 — l'enveloppe des axes à
+    bulle et famille, élargie d'un entraxe médian —, que les poteaux lisent (G4,
+    critère C1.5). ``None`` sans signature A, et sur une feuille PDF."""
     # UNE FEUILLE PDF reconnaît déjà ses axes par le style appris de ses bulles
     # (GEOMETRIE_D_ABORD_G2.md, J3) : les signatures ne regardent qu'un DXF.
     geo = signatures_d_axes(prims, tolerances) if prims.cadre is None else None
-    return _detecter(prims, tolerances, frozenset(), geo)
+    grille, etiquettes, doutes = _detecter(prims, tolerances, frozenset(), geo)
+    return grille, etiquettes, doutes, (geo.zone if geo is not None else None)
 
 
 def _cle(ligne: _Ligne) -> tuple[float, float, float, float]:

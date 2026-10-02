@@ -240,7 +240,9 @@ def test_les_poteaux_en_blocs_et_le_bloc_tourne(charpente):
     assert (poteaux["column:C3"]["width"], poteaux["column:C3"]["depth"]) == (500, 300)
     assert (poteaux["column:A1"]["width"], poteaux["column:A1"]["depth"]) == (400, 400)
     preuve = poteaux["column:A1"]["evidence"]
-    assert preuve["classified_by"] == "bloc" and preuve["blocks"] == ["COL-400x400"]
+    # G4 : une section coupée au nœud, que le nom du bloc confirme (+ 0,05).
+    assert preuve["classified_by"] == "geometrie" and preuve["matched_name"] == "COL-400x400"
+    assert preuve["blocks"] == ["COL-400x400"] and poteaux["column:A1"]["confidence"] == 0.9
     assert preuve["inserts"]
     assert {r for r in _geometrie(resultat, "column_width")} == {"C1", None}
 
@@ -332,7 +334,10 @@ def test_sans_calques_la_forme_et_le_type_de_ligne_suffisent():
     poteaux = modele["columns"]
     assert len(poteaux) == 6
     assert {(p["width"], p["depth"], p["filled"]) for p in poteaux} == {(0.3, 0.3, True)}
-    assert {p["evidence"]["classified_by"] for p in poteaux} == {"forme"}
+    # G4 : la signature C1 ; sans axe étiqueté, la zone structurelle ne s'applique pas (dit).
+    assert {(p["evidence"]["classified_by"], p["confidence"]) for p in poteaux} == {
+        ("geometrie", 0.85)}
+    assert modele["report"]["columns"]["structural_zone"] == "non_applicable"
     portees = [c for c in resultat.candidats if c.categorie == "beam_span"]
     assert len(portees) == 4
     assert {(c.valeur, c.unite) for c in portees} == {(6, "m")}

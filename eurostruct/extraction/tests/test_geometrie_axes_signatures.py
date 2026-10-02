@@ -98,7 +98,12 @@ def test_reperes_de_locaux_et_pieux_numerotes_ne_sont_pas_des_bulles():
 
 def test_sans_bulle_ni_nom_aucun_axe_n_est_devine():
     modele = _modele(dxf_grille_signatures(bulles=False))
-    assert modele["grid"] == [] and modele["counts"]["columns"] == 0
+    assert modele["grid"] == [] and modele["grid_nodes"] == []
+    # G4 : les douze poteaux pleins alignés font une grille IMPLICITE (C2) —
+    # des poteaux, sans nœud, jamais des axes.
+    assert modele["counts"]["columns"] == 12
+    assert all(c["grid_node"] is None and "grille_implicite" in c["evidence"]["signature"]
+               for c in modele["columns"])
 
 
 # ================================================================ conflit
