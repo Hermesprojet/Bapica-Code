@@ -39,7 +39,11 @@ Chaque fabrique suit une convention de dessin courante, et la nomme :
   des traits d'axe plus courts que le seuil — un axe court à bulle, deux qui
   se soutiennent, et ceux qui ne sont pas des axes (sans bulle, trait de
   rappel, direction isolée, bulle d'un autre axe, deux bulles qui se
-  contredisent, pieu, type de ligne).
+  contredisent, pieu, type de ligne) ;
+* ``dxf_cotes_de_tous_types`` : chaque type de cote, valeur connue par
+  construction, les cotes alignées écrites comme AutoCAD les écrit (type 1,
+  sans code 50) — linéaires, alignées, rayon, diamètre, angles, ordonnées,
+  longueur d'arc, ``DIMLFAC``, textes forcés, un détail en mm inséré au 1/10.
 
 Tous les textes disent FICTIF là où un plan réel porterait un nom.
 """
@@ -689,4 +693,98 @@ def dxf_axes_courts_a_bulle(*, appui_a_45: bool = False) -> bytes:
     bulle("12", 10500, 6400, "PIEUX")
     trait((7500, 1000), (7500, 6000), "0", linetype="CENTER")
     bulle("8", 7500, 6400, "0")
+    return _ecrire(doc)
+
+
+# ------------------------------------------------- COTES DE TOUS TYPES
+def _cote_alignee_comme_autocad(dimension) -> None:  # noqa: ANN001 — une entité ezdxf
+    """UNE COTE ALIGNÉE TELLE QU'AUTOCAD L'ÉCRIT : type 1 (drapeaux gardés), sans
+    code 50 — l'angle n'appartient qu'aux cotes tournées. ezdxf écrit une cote
+    « alignée » comme une cote tournée (type 0, code 50 = sa direction), ce qui
+    masque le défaut de sa mesure (``docs/GEOMETRIE_COTES_DXF.md``)."""
+    dimension.dxf.dimtype = (dimension.dxf.dimtype & ~15) | 1
+    dimension.dxf.discard("angle")
+
+
+def dxf_cotes_de_tous_types(*, mesure_autocad_contredite: bool = False) -> bytes:
+    """Chaque type de cote d'un plan en cm, valeur connue par construction :
+
+    * linéaires : horizontale 3 000, verticale 2 500, tournée de 30° (1 366,025) ;
+    * alignées, écrites comme AutoCAD : 3-4-5 (500, avec le code 42 d'AutoCAD),
+      verticale (700), à 45° (1 414,214), horizontale (1 000) ;
+    * rayon 40, diamètre 63 ;
+    * angles de 90° (deux lignes) et de 60° (trois points), ordonnées X (1 200)
+      et Y (300), une longueur d'arc ;
+    * une alignée à ``DIMLFAC`` 0,1 (5 000 tracés, 500 affichés) ;
+    * une alignée de 450 au texte forcé « 450 » (concordant), une linéaire de
+      600 au texte forcé « 580 » (discordant) ;
+    * un détail en mm (``DIMLFAC`` 0,1 : il affiche des cm) inséré au 1/10 : une
+      linéaire et une alignée de 6 000 mm, qui affichent 600.
+
+    ``mesure_autocad_contredite`` : la linéaire de 3 000 porte un code 42 de
+    2 900, que ses points de définition contredisent."""
+    import ezdxf
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 5
+    msp = doc.modelspace()
+    doc.layers.add("COTES")
+    style = doc.dimstyles.duplicate_entry("EZDXF", "COTES_CM")
+    style.dxf.dimlfac = 1.0
+    detail = doc.dimstyles.duplicate_entry("EZDXF", "DETAIL_MM")
+    detail.dxf.dimlfac = 0.1
+    attributs = {"layer": "COTES"}
+
+    def poser(cote, *, alignee: bool = False, autocad: float | None = None) -> None:  # noqa: ANN001
+        cote.render()
+        if alignee:
+            _cote_alignee_comme_autocad(cote.dimension)
+        if autocad is not None:
+            cote.dimension.dxf.actual_measurement = autocad
+
+    poser(msp.add_linear_dim(base=(0, -500), p1=(0, 0), p2=(3000, 0), angle=0,
+                             dimstyle="COTES_CM", dxfattribs=attributs),
+          autocad=2900.0 if mesure_autocad_contredite else None)
+    poser(msp.add_linear_dim(base=(-500, 0), p1=(0, 0), p2=(0, 2500), angle=90,
+                             dimstyle="COTES_CM", dxfattribs=attributs))
+    poser(msp.add_linear_dim(base=(5000, 800), p1=(5000, 0), p2=(6000, 1000), angle=30,
+                             dimstyle="COTES_CM", dxfattribs=attributs))
+    poser(msp.add_aligned_dim(p1=(10000, 0), p2=(10300, 400), distance=200,
+                              dimstyle="COTES_CM", dxfattribs=attributs),
+          alignee=True, autocad=500.0)
+    poser(msp.add_aligned_dim(p1=(12000, 0), p2=(12000, 700), distance=200,
+                              dimstyle="COTES_CM", dxfattribs=attributs), alignee=True)
+    poser(msp.add_aligned_dim(p1=(14000, 0), p2=(15000, 1000), distance=200,
+                              dimstyle="COTES_CM", dxfattribs=attributs), alignee=True)
+    poser(msp.add_aligned_dim(p1=(16000, 0), p2=(17000, 0), distance=200,
+                              dimstyle="COTES_CM", dxfattribs=attributs), alignee=True)
+    poser(msp.add_radius_dim(center=(20000, 0), radius=40, angle=45, dimstyle="COTES_CM",
+                             dxfattribs=attributs))
+    poser(msp.add_diameter_dim(center=(21000, 0), radius=31.5, angle=30, dimstyle="COTES_CM",
+                               dxfattribs=attributs))
+    poser(msp.add_angular_dim_2l(base=(23500, 500), line1=((23000, 0), (24000, 0)),
+                                 line2=((23000, 0), (23000, 1000)), dimstyle="COTES_CM",
+                                 dxfattribs=attributs))
+    sommet = (26000 + 1000 * math.cos(math.radians(60)), 1000 * math.sin(math.radians(60)))
+    poser(msp.add_angular_dim_3p(base=(26300, 300), center=(26000, 0), p1=(27000, 0), p2=sommet,
+                                 dimstyle="COTES_CM", dxfattribs=attributs))
+    poser(msp.add_ordinate_x_dim(feature_location=(1200, 300), offset=(0, 600), origin=(0, 0),
+                                 dimstyle="COTES_CM", dxfattribs=attributs))
+    poser(msp.add_ordinate_y_dim(feature_location=(1200, 300), offset=(600, 0), origin=(0, 0),
+                                 dimstyle="COTES_CM", dxfattribs=attributs))
+    poser(msp.add_arc_dim_cra(center=(30000, 0), radius=100, start_angle=0, end_angle=90,
+                              distance=50, dimstyle="COTES_CM", dxfattribs=attributs))
+    poser(msp.add_aligned_dim(p1=(0, 5000), p2=(3000, 9000), distance=200, dimstyle="COTES_CM",
+                              override={"dimlfac": 0.1}, dxfattribs=attributs), alignee=True)
+    poser(msp.add_aligned_dim(p1=(5000, 5000), p2=(5270, 5360), distance=200, text="450",
+                              dimstyle="COTES_CM", dxfattribs=attributs), alignee=True)
+    poser(msp.add_linear_dim(base=(8000, 4500), p1=(8000, 5000), p2=(8600, 5000), angle=0,
+                             text="580", dimstyle="COTES_CM", dxfattribs=attributs))
+    bloc = doc.blocks.new("DETAIL_MM")
+    poser(bloc.add_linear_dim(base=(0, -300), p1=(0, 0), p2=(6000, 0), angle=0,
+                              dimstyle="DETAIL_MM", dxfattribs=attributs))
+    poser(bloc.add_aligned_dim(p1=(0, 1000), p2=(3600, 5800), distance=300, dimstyle="DETAIL_MM",
+                               dxfattribs=attributs), alignee=True)
+    msp.add_blockref("DETAIL_MM", (40000, 0), dxfattribs={
+        "xscale": 0.1, "yscale": 0.1, "zscale": 0.1, "layer": "COTES"})
     return _ecrire(doc)

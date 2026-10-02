@@ -104,6 +104,11 @@ class EntiteDxf:
     #: Pour une cote : ``DIMLFAC`` effectif — la valeur affichée est
     #: ``mesure × facteur`` (un détail au 1/20 sur un plan au 1/50).
     facteur: float | None = None
+    #: Pour une cote : sa nature (``lineaire``, ``alignee``, ``rayon``,
+    #: ``diametre``, ``angulaire``, ``ordonnee``, ``autre``) et la mesure
+    #: qu'AutoCAD a enregistrée (code 42), si le fichier en porte une.
+    genre: str | None = None
+    mesure_autocad: float | None = None
 
 
 @dataclass(frozen=True)

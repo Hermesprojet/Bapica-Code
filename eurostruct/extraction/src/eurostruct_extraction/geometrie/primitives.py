@@ -152,6 +152,10 @@ class CoteDxf(Primitive):
     texte: str
     #: ``lineaire`` (tournée), ``alignee``, ``autre`` (angulaire, rayon…).
     genre: str
+    #: Pour la copie d'une cote de bloc : la mesure placée sur la mesure dans
+    #: le bloc (l'échelle de l'insertion, 1 hors bloc). Le texte d'une cote de
+    #: bloc est sa mesure DANS LE BLOC × ``DIMLFAC`` : l'insertion ne le change pas.
+    echelle: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -471,32 +475,41 @@ class _Lecteur:
                                                      plus_longue)))
 
     def _cote(self, entite: Any, calque: str, ligne: str, source: Source) -> None:
-        genre_dxf = int(entite.dimtype) & 7
+        from ..lecteurs.dxf_cotes import mesure_de_cote
+
+        # LA MESURE PAR TYPE, la même que celle des propositions : une cote
+        # alignée mesure la distance de ses deux points (docs/GEOMETRIE_COTES_DXF.md).
+        mesuree = mesure_de_cote(entite)
         p1, p2 = _xy(entite.dxf.defpoint2), _xy(entite.dxf.defpoint3)
         point_ligne = _xy(entite.dxf.defpoint)
-        if genre_dxf == 0:
+        if mesuree.nature == "lineaire":
             angle = math.radians(float(entite.dxf.get("angle", 0.0) or 0.0))
             direction: Point | None = (math.cos(angle), math.sin(angle))
             genre = "lineaire"
-        elif genre_dxf == 1:
+        elif mesuree.nature == "alignee":
             direction = unitaire(p1, p2)
             genre = "alignee"
         else:
             direction, genre = None, "autre"
-        try:
-            mesure_brute = entite.get_measurement()
-            mesure = float(mesure_brute) if not hasattr(mesure_brute, "x") else math.nan
-        except Exception:  # noqa: BLE001 — une cote illisible n'arrete rien
-            mesure = math.nan
+        mesure = mesuree.valeur if mesuree.valeur is not None else math.nan
         try:
             facteur = float(entite.override().get("dimlfac", 1.0) or 1.0)
         except Exception:  # noqa: BLE001
             facteur = 1.0
         if direction is None:
             direction, genre = (1.0, 0.0), "autre"
+        # UNE COTE DE BLOC AFFICHE SA MESURE DANS LE BLOC : la copie placée par
+        # une insertion mise à l'échelle mesure autrement que ce qu'elle affiche.
+        echelle = 1.0
+        origine = getattr(entite, "source_of_copy", None)
+        if origine is not None and genre != "autre" and mesure > 0.0:
+            dans_le_bloc = mesure_de_cote(origine).valeur
+            if dans_le_bloc is not None and dans_le_bloc > 0.0:
+                rapport = mesure / dans_le_bloc
+                echelle = 1.0 if abs(rapport - 1.0) <= 1e-9 else rapport
         self.p.cotes.append(CoteDxf(calque, ligne, source, p1, p2, point_ligne, direction,
                                     mesure, facteur, str(entite.dxf.get("text", "") or ""),
-                                    genre))
+                                    genre, echelle))
 
     def _insertion(self, entite: Any, calque: str, ligne: str, source: Source,
                    insertions: tuple[str, ...], blocs: tuple[str, ...],

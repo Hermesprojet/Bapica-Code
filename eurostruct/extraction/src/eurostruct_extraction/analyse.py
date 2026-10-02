@@ -158,6 +158,7 @@ def _analyser_dxf(octets: bytes, fmt: str, *,
         "drawing_units": lecture.unites, "entities_read": len(lecture.entites),
         "texts": textes, "dimensions": cotes, "truncated": lecture.tronquee,
         "repairs": lecture.erreurs_corrigees,
+        "dimension_types": dict(sorted(lecture.cotes_par_type.items())),
     }
     primitives = lecture.primitives
     if primitives is not None:

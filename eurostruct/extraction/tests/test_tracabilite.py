@@ -26,6 +26,7 @@ from fabrique_geometrie import (
     dxf_bulles_lettres_chiffres,
     dxf_charpente_mm,
     dxf_coffrage_s101,
+    dxf_cotes_de_tous_types,
     dxf_etiquettes_d_axes,
     dxf_fondations_pieux,
     dxf_sans_calques_m,
@@ -54,6 +55,8 @@ _DOCUMENTS = {
     "bulles_lettres_chiffres": dxf_bulles_lettres_chiffres,
     # AXES COURTS GARDES PAR LEUR BULLE.
     "axes_courts_a_bulle": dxf_axes_courts_a_bulle,
+    # COTES DE TOUS TYPES, DONT UNE MESURE QU'AUTOCAD CONTREDIT.
+    "cotes_de_tous_types": lambda: dxf_cotes_de_tous_types(mesure_autocad_contredite=True),
 }
 
 

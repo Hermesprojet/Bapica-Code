@@ -77,7 +77,8 @@ def lire_cotes(cotes: list[CoteDxf]) -> list[CoteLue]:
                                                           x.p1, x.p2)), start=1):
         if c.genre == "autre" or math.isnan(c.mesure):
             continue
-        affichable = c.mesure * c.facteur
+        # LA VALEUR AFFICHÉE D'UNE COTE DE BLOC est sa mesure dans le bloc × DIMLFAC.
+        affichable = c.mesure / c.echelle * c.facteur
         texte = _texte_brut(c.texte)
         forcee = discordante = False
         valeur: float | None = affichable

@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 from ..modele import EntiteDxf
+from .dxf_cotes import mesure_de_cote
 
 __all__ = ["LectureDxf", "UNITES_INSUNITS", "lire_dxf"]
 
@@ -28,6 +29,10 @@ UNITES_INSUNITS: Final[dict[int, str]] = {1: "in", 2: "ft", 4: "mm", 5: "cm", 6:
 
 #: Au-delà, les entités restantes ne sont pas lues — et le compte rendu le dit.
 ENTITES_MAX: Final[int] = 50_000
+
+#: Des cotes que ce lecteur ne mesure pas : comptées, jamais proposées.
+_COTES_NON_LUES: Final[dict[str, str]] = {"ARC_DIMENSION": "longueur_arc",
+                                          "LARGE_RADIAL_DIMENSION": "rayon_raccourci"}
 
 
 @dataclass
@@ -42,6 +47,9 @@ class LectureDxf:
     primitives: Any = None
     #: Si la lecture géométrique a échoué : pourquoi. Les textes restent lus.
     erreur_geometrie: str | None = None
+    #: Les cotes de l'espace objet, par nature — celles qui ne proposent rien
+    #: (angles, ordonnées, longueurs d'arc) comprises : comptées et nommées.
+    cotes_par_type: dict[str, int] = field(default_factory=dict)
 
 
 def _point(valeur: Any) -> tuple[float, float] | None:
@@ -82,7 +90,13 @@ def lire_dxf(octets: bytes) -> LectureDxf:
         if len(lecture.entites) >= ENTITES_MAX:
             lecture.tronquee = True
             break
+        nature = _COTES_NON_LUES.get(entite.dxftype())
+        if nature is not None:
+            lecture.cotes_par_type[nature] = lecture.cotes_par_type.get(nature, 0) + 1
         lecture.entites.extend(_lire_entite(entite))
+    for lue in lecture.entites:
+        if lue.type == "DIMENSION" and lue.genre:
+            lecture.cotes_par_type[lue.genre] = lecture.cotes_par_type.get(lue.genre, 0) + 1
 
     # LA GEOMETRIE, DANS LA MEME OUVERTURE DU FICHIER. Son echec ne fait pas
     # echouer la lecture des textes: il est dit, et rien n'en est propose.
@@ -114,11 +128,9 @@ def _lire_entite(entite: Any, calque_parent: str | None = None) -> list[EntiteDx
                           hauteur_texte=entite.dxf.get("char_height"))]
 
     if type_ == "DIMENSION":
-        try:
-            mesure = entite.get_measurement()
-            mesure = float(mesure) if not hasattr(mesure, "x") else None
-        except Exception:  # noqa: BLE001 — une cote illisible n'arrete rien
-            mesure = None
+        # LA MESURE PAR TYPE, la même que celle de la géométrie (dxf_cotes.py) :
+        # une cote alignée mesure la distance de ses deux points.
+        mesuree = mesure_de_cote(entite)
         texte = str(entite.dxf.get("text", "") or "")
         points = tuple(p for p in (_point(entite.dxf.get("defpoint")),
                                    _point(entite.dxf.get("defpoint2")),
@@ -129,7 +141,8 @@ def _lire_entite(entite: Any, calque_parent: str | None = None) -> list[EntiteDx
             facteur = 1.0
         return [EntiteDxf(type_, calque, poignee, texte=texte,
                           point=_point(entite.dxf.get("text_midpoint")),
-                          mesure=mesure, points_de_definition=points, facteur=facteur)]
+                          mesure=mesuree.valeur, points_de_definition=points, facteur=facteur,
+                          genre=mesuree.nature, mesure_autocad=mesuree.autocad)]
 
     if type_ == "LINE":
         debut, fin = _point(entite.dxf.start), _point(entite.dxf.end)
