@@ -22,6 +22,7 @@ from eurostruct_extraction import (
 from eurostruct_extraction.modele import Boite
 from fabrique import LIGNES_DU_PLAN, dxf_de_plan, pdf_de_texte
 from fabrique_geometrie import (
+    dxf_axes_courts_a_bulle,
     dxf_bulles_lettres_chiffres,
     dxf_charpente_mm,
     dxf_coffrage_s101,
@@ -51,6 +52,8 @@ _DOCUMENTS = {
     "feuille_pdf_gaine": pdf_plan_gaine,
     # ETIQUETTES EN LETTRES ET CHIFFRES, LUES EN BULLE.
     "bulles_lettres_chiffres": dxf_bulles_lettres_chiffres,
+    # AXES COURTS GARDES PAR LEUR BULLE.
+    "axes_courts_a_bulle": dxf_axes_courts_a_bulle,
 }
 
 

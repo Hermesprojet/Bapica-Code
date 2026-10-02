@@ -34,7 +34,12 @@ Chaque fabrique suit une convention de dessin courante, et la nomme :
   (lettres et chiffres), dessinée dans un bloc de référence externe liée dont
   le calque des bulles se nomme ``…C_AXES_TITRE`` — une bulle seule, une ligne
   partagée avec une bulle courante, deux bulles qui se contredisent, un texte
-  « L6 » sans bulle, un cercle et un texte « L7 » de cartouche.
+  « L6 » sans bulle, un cercle et un texte « L7 » de cartouche ;
+* ``dxf_axes_courts_a_bulle`` : une légende éloignée qui agrandit l'emprise, et
+  des traits d'axe plus courts que le seuil — un axe court à bulle, deux qui
+  se soutiennent, et ceux qui ne sont pas des axes (sans bulle, trait de
+  rappel, direction isolée, bulle d'un autre axe, deux bulles qui se
+  contredisent, pieu, type de ligne).
 
 Tous les textes disent FICTIF là où un plan réel porterait un nom.
 """
@@ -611,4 +616,77 @@ def dxf_bulles_lettres_chiffres() -> bytes:
     msp.add_blockref("AXES_GRILLE2", (0, 0))
     # Le cartouche : son cercle et son texte, hors du bloc d'axes.
     bulle(msp, "L7", -1400, 13000, "CARTOUCHE")
+    return _ecrire(doc)
+
+
+# ------------------------------------------------- AXES COURTS À BULLE
+def dxf_axes_courts_a_bulle(*, appui_a_45: bool = False) -> bytes:
+    """Une grille en mm (« 1 »… « 3 » verticaux, « A »… « C » horizontaux, bulles
+    de 400), et une LÉGENDE FICTIVE éloignée qui agrandit l'emprise : le seuil
+    d'un axe nommé par son calque (0,1 × diagonale) passe à 9 140 mm, au-dessus
+    des traits ci-dessous — la forme du plan réel qui a montré le défaut
+    (``docs/GEOMETRIE_SEUIL_DES_AXES.md``). Des traits du calque ``AXES`` :
+
+    * x = 3 000 : bulle « 1' » au bout, 12,5 rayons — un axe court ;
+    * à 80°, deux traits parallèles, bulles « R1 » et « R2 » : ils se soutiennent ;
+    * x = 9 000 : aucune bulle — un morceau, pas un axe ;
+    * x = 4 500 : bulle « 4 » au bout d'un trait de 3 rayons — un rappel ;
+    * à 45° : bulle « Q » au bout, une direction qu'aucun axe ne partage
+      (``appui_a_45`` : un axe à 45°, admis par le seuil, la partage) ;
+    * y = 10 050 : pointé vers la bulle « C », plus loin que l'axe « C » ;
+    * x = 12 050 : entre la bulle « 3 », qu'il touche avant l'axe « 3 » (qui
+      s'arrête à deux rayons de sa bulle), et une bulle « 7 » : deux bulles qui
+      se contredisent ;
+    * x = 10 500 : un pieu numéroté « 12 » au bout (calque ``PIEUX``) ;
+    * x = 7 500, calque ``0``, type de ligne d'axe : bulle « 8 » au bout."""
+    import ezdxf
+    from ezdxf.enums import TextEntityAlignment as A
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 4
+    msp = doc.modelspace()
+    for nom in ("AXES", "PIEUX", "LEGENDE"):
+        doc.layers.add(nom)
+
+    def bulle(t: str, x: float, y: float, calque: str = "AXES") -> None:
+        msp.add_circle((x, y), 400, dxfattribs={"layer": calque})
+        msp.add_text(t, height=300, dxfattribs={"layer": calque}).set_placement(
+            (x, y), align=A.MIDDLE_CENTER)
+
+    def trait(a: Point, b: Point, calque: str = "AXES", **attributs: str) -> None:
+        msp.add_line(a, b, dxfattribs={"layer": calque, **attributs})
+
+    # LA GRILLE, admise par le seuil (12 000 et 14 000 mm).
+    for nom, x, haut in (("1", 0.0, 11000.0), ("2", 6000.0, 11000.0), ("3", 12000.0, 10600.0)):
+        trait((x, -1000), (x, haut))
+        bulle(nom, x, 11400)
+    for nom, y in (("A", 0.0), ("B", 5000.0), ("C", 10000.0)):
+        trait((-1000, y), (13000, y))
+        bulle(nom, -1400, y)
+    msp.add_lwpolyline([(60000, 50000), (66000, 50000), (66000, 54000), (60000, 54000)],
+                       close=True, dxfattribs={"layer": "LEGENDE"})
+    msp.add_text("LEGENDE FICTIVE", height=300, dxfattribs={"layer": "LEGENDE"}).set_placement(
+        (63000, 52000), align=A.MIDDLE_CENTER)
+
+    trait((3000, 1000), (3000, 6000))
+    bulle("1'", 3000, 6400)
+    c80, s80 = math.cos(math.radians(80)), math.sin(math.radians(80))
+    for nom, x in (("R1", 15000.0), ("R2", 16500.0)):
+        fin = (x + 5000 * c80, 5000 * s80)
+        trait((x, 0), fin)
+        bulle(nom, fin[0] + 400 * c80, fin[1] + 400 * s80)
+    trait((9000, 1000), (9000, 6000))
+    trait((4500, 6800), (4500, 8000))
+    bulle("4", 4500, 8400)
+    trait((7000, 6000), (10500, 9500))
+    bulle("Q", 10500 + 400 / math.sqrt(2), 9500 + 400 / math.sqrt(2))
+    if appui_a_45:
+        trait((20000, 20000), (30000, 30000))
+    trait((-7000, 10050), (-1800, 10050))
+    trait((12050, 11800), (12050, 16800))
+    bulle("7", 12050, 17200)
+    trait((10500, 1000), (10500, 6000))
+    bulle("12", 10500, 6400, "PIEUX")
+    trait((7500, 1000), (7500, 6000), "0", linetype="CENTER")
+    bulle("8", 7500, 6400, "0")
     return _ecrire(doc)

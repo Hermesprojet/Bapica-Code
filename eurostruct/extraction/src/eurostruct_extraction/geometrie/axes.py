@@ -19,6 +19,13 @@ aucune étiquette de forme courante n'est candidate : elle complète, elle ne
 remplace ni ne contredit jamais une étiquette courante — écartée, elle est
 citée. Voir ``docs/GEOMETRIE_BULLES_LETTRES_CHIFFRES.md``.
 
+UN TRAIT PLUS COURT QUE LE SEUIL (un dixième de la diagonale du dessin, pour un
+trait nommé axe par son calque ou son bloc) n'est un axe que sur une preuve
+qui n'est pas une longueur : il finit sur une bulle étiquetée, mesure au moins
+dix rayons de cette bulle, partage sa direction avec un autre axe — et cette
+bulle l'étiquette. Sinon il est retiré, et tout est relu sans lui. Il le dit
+dans ``label_source.admitted``. Voir ``docs/GEOMETRIE_SEUIL_DES_AXES.md``.
+
 GRILLE POLAIRE OU COURBE : non prise en charge. Seules les droites sont des
 axes ; trois directions ou plus portant chacune UN axe, concourants en un même
 point, sont une grille rayonnante : elle est nommée dans ``unresolved`` et ses
@@ -58,6 +65,13 @@ ETIQUETTE_LETTRES_CHIFFRES: Final[re.Pattern[str]] = re.compile(r"[A-Z]{1,2}\d{1
 
 #: Ecart angulaire minimal entre deux familles pour qu'elles se croisent.
 _ANGLE_FAMILLES_MIN: Final[float] = 10.0
+#: UN TRAIT D'AXE PLUS COURT QUE LE SEUIL reste un axe s'il finit sur une bulle
+#: étiquetée et mesure au moins ce nombre de rayons de cette bulle : un trait de
+#: rappel vers une bulle déportée (quelques rayons) n'en est pas un.
+#: Voir ``docs/GEOMETRIE_SEUIL_DES_AXES.md``.
+RAYONS_MIN_AXE_COURT: Final[float] = 10.0
+#: Ni une bulle, ni la preuve d'un axe court : un pieu, un massif, un cartouche.
+_JAMAIS_BULLE: Final[frozenset[str]] = frozenset({"pieu", "fondation", "cadre"})
 
 
 @dataclass
@@ -70,6 +84,9 @@ class _Ligne:
     segments: list[Segment] = field(default_factory=list)
     regle: str = "calque"
     motif: str | None = None
+    #: Pour une ligne faite SEULEMENT de traits courts gardés par leur bulle :
+    #: la règle, leurs longueurs, le seuil. ``None`` si un trait a passé le seuil.
+    admise: dict[str, Any] | None = None
 
 
 def _direction_canonique(a: Point, b: Point, tolerances: Tolerances) -> tuple[float, Point] | None:
@@ -85,9 +102,19 @@ def _direction_canonique(a: Point, b: Point, tolerances: Tolerances) -> tuple[fl
     return theta, (math.cos(rad), math.sin(rad))
 
 
+def _ligne_de(s: Segment, theta: float, u: Point, regle: str, motif: str | None,
+              admise: dict[str, Any] | None = None) -> _Ligne:
+    n = normale(u)
+    decalage = s.a[0] * n[0] + s.a[1] * n[1]
+    ta, tb = s.a[0] * u[0] + s.a[1] * u[1], s.b[0] * u[0] + s.b[1] * u[1]
+    return _Ligne(theta, u, decalage, min(ta, tb), max(ta, tb), [s], regle, motif, admise)
+
+
 def _lignes_candidates(prims: PrimitivesDxf, tolerances: Tolerances,
                        diagonale: float) -> list[_Ligne]:
     lignes: list[_Ligne] = []
+    seuil_nomme = max(10.0 * tolerances.longueur, 0.1 * diagonale)
+    courts: list[tuple[Segment, float, Point, str, str | None]] = []
     for s in prims.segments:
         if s.courbe:
             continue
@@ -99,18 +126,18 @@ def _lignes_candidates(prims: PrimitivesDxf, tolerances: Tolerances,
         # l'emprise, et un dixième de la feuille écarterait les axes courts.
         seuil = (0.3 * diagonale if classement.regle == "type_de_ligne"
                  else 10.0 * tolerances.longueur if classement.regle == "style"
-                 else max(10.0 * tolerances.longueur, 0.1 * diagonale))
-        if s.longueur < seuil:
-            continue
+                 else seuil_nomme)
         canon = _direction_canonique(s.a, s.b, tolerances)
         if canon is None:
             continue
         theta, u = canon
-        n = normale(u)
-        decalage = s.a[0] * n[0] + s.a[1] * n[1]
-        ta, tb = s.a[0] * u[0] + s.a[1] * u[1], s.b[0] * u[0] + s.b[1] * u[1]
-        lignes.append(_Ligne(theta, u, decalage, min(ta, tb), max(ta, tb), [s],
-                             classement.regle, classement.motif))
+        if s.longueur < seuil:
+            if classement.regle in ("calque", "bloc"):
+                courts.append((s, theta, u, classement.regle, classement.motif))
+            continue
+        lignes.append(_ligne_de(s, theta, u, classement.regle, classement.motif))
+    lignes.extend(_courtes_a_bulle(courts, prims, tolerances, [x.theta for x in lignes],
+                                   seuil_nomme))
     # FUSION DES MORCEAUX COLINEAIRES: même direction, même décalage.
     lignes.sort(key=lambda x: (round(x.theta, 3), x.decalage, x.debut))
     fusionnees: list[_Ligne] = []
@@ -121,10 +148,67 @@ def _lignes_candidates(prims: PrimitivesDxf, tolerances: Tolerances,
                 cible.debut = min(cible.debut, ligne.debut)
                 cible.fin = max(cible.fin, ligne.fin)
                 cible.segments.extend(ligne.segments)
+                if ligne.admise is None or cible.admise is None:
+                    # Un morceau admis par le seuil suffit à faire la ligne.
+                    cible.admise = None
+                else:
+                    cible.admise = {**cible.admise, "lengths": sorted(
+                        cible.admise["lengths"] + ligne.admise["lengths"], reverse=True)}
                 break
         else:
             fusionnees.append(ligne)
     return fusionnees
+
+
+def _courtes_a_bulle(courts: list[tuple[Segment, float, Point, str, str | None]],
+                     prims: PrimitivesDxf, tolerances: Tolerances,
+                     thetas_admis: list[float], seuil: float) -> list[_Ligne]:
+    """Les traits nommés axe, plus courts que le seuil, gardés par leur bulle.
+
+    Trois conditions, toutes : le trait finit sur une BULLE ÉTIQUETÉE (cercle
+    centré sur son prolongement, à son bout, texte d'étiquette dedans ; ni pieu,
+    ni massif, ni cartouche) ; il mesure au moins ``RAYONS_MIN_AXE_COURT`` rayons
+    de cette bulle ; sa DIRECTION est partagée par un axe admis par le seuil ou
+    par un autre trait gardé ainsi. ``detecter_axes`` retire ensuite la ligne si
+    elle n'est pas étiquetée par une bulle."""
+    if not courts:
+        return []
+    etiquettes = [t for t in prims.textes
+                  if (ETIQUETTE_AXE.fullmatch(t.texte.strip())
+                      or ETIQUETTE_LETTRES_CHIFFRES.fullmatch(t.texte.strip()))
+                  and classer(t.calque, t.source.blocs, t.type_ligne).role not in _JAMAIS_BULLE]
+    if not etiquettes:
+        return []
+    bulles = [c for c in prims.cercles
+              if classer(c.calque, c.source.blocs, c.type_ligne).role not in _JAMAIS_BULLE]
+
+    def rayon_de_bulle(s: Segment, u: Point) -> float | None:
+        t_a, t_b = projeter(s.a, s.a, u), projeter(s.b, s.a, u)
+        for t_bout, sens in ((min(t_a, t_b), -1.0), (max(t_a, t_b), 1.0)):
+            for c in bulles:
+                r = c.rayon
+                if distance_point_droite(c.centre, s.a, u) > max(0.25 * r, 1e-9):
+                    continue
+                if not -r <= (projeter(c.centre, s.a, u) - t_bout) * sens <= 4.0 * r:
+                    continue
+                if any(distance(t.centre, c.centre) <= r for t in etiquettes):
+                    return r
+        return None
+
+    gardes: list[tuple[Segment, float, Point, str, str | None]] = []
+    for s, theta, u, regle, motif in courts:
+        r = rayon_de_bulle(s, u)
+        if r is not None and s.longueur >= RAYONS_MIN_AXE_COURT * r:
+            gardes.append((s, theta, u, regle, motif))
+    lignes: list[_Ligne] = []
+    for s, theta, u, regle, motif in gardes:
+        appuis = thetas_admis + [g[1] for g in gardes if g[0] is not s]
+        if not any(ecart_angulaire(theta, t) <= tolerances.parallele_deg for t in appuis):
+            continue
+        lignes.append(_ligne_de(s, theta, u, regle, motif, {
+            "rule": "trait d'axe plus court que le seuil, termine par sa bulle etiquetee",
+            "lengths": [round(s.longueur, 4)], "threshold": round(seuil, 4)}))
+    return lignes
 
 
 @dataclass(frozen=True)
@@ -205,11 +289,21 @@ def _etiquettes_possibles(ligne: _Ligne, cercles: list[Cercle], courts: list[Tex
 def detecter_axes(prims: PrimitivesDxf, tolerances: Tolerances
                   ) -> tuple[Grille, set[str], list[NonResolu]]:
     """La grille du dessin, les poignées d'étiquettes absorbées, et les doutes."""
+    return _detecter(prims, tolerances, frozenset())
+
+
+def _cle(ligne: _Ligne) -> tuple[float, float, float, float]:
+    return (ligne.theta, ligne.decalage, ligne.debut, ligne.fin)
+
+
+def _detecter(prims: PrimitivesDxf, tolerances: Tolerances,
+              sans: frozenset[tuple[float, float, float, float]]
+              ) -> tuple[Grille, set[str], list[NonResolu]]:
     emprise = prims.emprise()
     if emprise is None:
         return Grille(), set(), []
     diagonale = math.hypot(emprise[2] - emprise[0], emprise[3] - emprise[1])
-    lignes = _lignes_candidates(prims, tolerances, diagonale)
+    lignes = [x for x in _lignes_candidates(prims, tolerances, diagonale) if _cle(x) not in sans]
     if not lignes:
         return Grille(), set(), []
 
@@ -317,7 +411,19 @@ def detecter_axes(prims: PrimitivesDxf, tolerances: Tolerances
                                if ecarte.alphanumerique else
                                f"« {ecarte.texte} » ({ecarte.via}) a l'autre extremite: une "
                                f"{choisi.via} l'emporte sur un texte libre")}
+            if lignes[rang].admise is not None:
+                source["admitted"] = lignes[rang].admise
         etiquettes.append((choisi.texte, source) if choisi else (None, None))
+
+    # UN TRAIT COURT GARDÉ PAR SA BULLE N'EST UN AXE QUE S'IL EN PORTE L'ÉTIQUETTE :
+    # une bulle prise par un autre axe, deux bulles qui se contredisent, ou une
+    # étiquette venue d'ailleurs ne font pas un axe d'un trait sous le seuil. Il
+    # est retiré, et tout est relu sans lui : ce qu'il avait pris revient aux autres.
+    retirees = frozenset(_cle(ligne) for rang, ligne in enumerate(lignes)
+                         if ligne.admise is not None
+                         and (etiquettes[rang][1] or {}).get("via") != "bulle")
+    if retirees:
+        return _detecter(prims, tolerances, sans | retirees)
 
     # FAMILLES: directions egales a la tolerance pres.
     ordre = sorted(range(len(lignes)), key=lambda i: lignes[i].theta)
