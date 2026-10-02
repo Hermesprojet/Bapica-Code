@@ -155,3 +155,88 @@ longueur égale sa valeur de construction ; aucun angle proposé.
 Validation, avant tout commit du code : l'audit rejoué (avant, après) sur le
 plan réel et le plan synthétique ; les 63 plans du balayage habituel ; les
 suites d'extraction et d'API ; le harnais des documents.
+
+## 6. Mesure, après
+
+**Plan de fondations**, chaîne complète du produit ; avant = `ff2f886`.
+
+| | avant | après |
+|---|---|---|
+| cotes alignées lues, hors arrondi d'affichage | 82 sur 106 | **0** sur 106 |
+| linéaires, rayons, diamètres hors arrondi | 0 | 0 — mêmes valeurs |
+| propositions | 354 | 335 |
+| — tirées de cotes alignées | 36, toutes de la mauvaise mesure (29 fausses de plus d'une demi-unité) | 36 justes : 18 sous leur poignée, 18 fusionnées avec une proposition de même valeur (doublons : 633 → 651) |
+| — tirées d'un angle | 1 (« dimension 504 ») | 0 ; l'angle est compté |
+| rayon, diamètre | « cote 710 », « cote 63 » | « cote R710 », « cote ∅63 » |
+| cotes du modèle | 1 041 | 1 041 ; 111 alignées changent de mesure et d'affichage |
+| cotes rattachées : concordantes / discordantes | 93 / 65 | **155 / 3** |
+| entraxes corroborés par une cote concordante | — | 4, confiance + 0,05 |
+| axes, poteaux, pieux, voiles, unité | — | identiques |
+| compte rendu | « 1 016 cote(s) » | et par type : 902 linéaires, 110 alignées, 2 rayons, 1 diamètre, 1 angle, 1 longueur d'arc |
+
+Les 3 cotes rattachées qui restent discordantes sont des linéaires (5, 15,
+15) accrochées à un côté de poteau dont elles mesurent un décalage : un
+défaut de rattachement, antérieur, que la mesure ne touche pas.
+
+**Ailleurs** : les 62 autres plans du balayage (24 plans fabriqués, 36 DXF
+d'exemple d'ezdxf, deux feuilles PDF) donnent les mêmes modèles et les mêmes
+propositions, textes compris ; l'audit des cotes des 55 DXF du corpus lit
+chaque cote à l'identique. **Plan synthétique** : chaque longueur égale sa
+valeur de construction (alignées 500, 700, 1 414,214, 1 000 ; `DIMLFAC`
+500 ; bloc au 1/10 : 600 et 600) ; « 450 » sur une alignée de 450 n'est plus
+discordant ; aucun angle n'est proposé ; ordonnées et longueur d'arc sont
+comptées.
+
+## 7. Ce qui reste
+
+* **Ordonnées** : non mesurées — aucun plan d'AutoCAD n'en porte pour
+  valider la mesure ; comptées (`dimension_types`), jamais proposées.
+* **`ARC_DIMENSION`, `LARGE_RADIAL_DIMENSION`** : non lues ; comptées
+  (`longueur_arc`, `rayon_raccourci`). Le plan réel porte une longueur d'arc
+  (258), que le produit ne propose pas.
+* **Angles** : jamais proposés (aucune catégorie d'angle). La mesure d'ezdxf
+  d'une cote angulaire peut être l'angle rentrant (270° pour 90°) : elle ne
+  sert à rien ici.
+* **Cotes de blocs** : jamais proposées (le chemin des propositions ne lit que
+  l'espace objet) ; dans le modèle, elles corroborent. **Espace papier** : non
+  lu (aucune cote dans le plan réel).
+* **L'arrondi d'affichage** : la proposition porte la mesure (2 538,563), le
+  plan l'arrondi (« 2538.5 », `DIMRND` 0,5) — voulu : la mesure est la
+  géométrie.
+* **Cote miroir** (extrusion −Z) : la direction d'une cote linéaire, dans le
+  modèle, ignore le repère de l'objet ; aucune dans le corpus, non éprouvé.
+* **Code 42 et `DIMLFAC` ≠ 1** : aucun cas dans les plans d'AutoCAD lus ; la
+  garde accepte la mesure brute ou mise à l'échelle. La garde ne porte que
+  sur les propositions, pas sur le modèle.
+* **Lecture de réparation** : sur un fichier aux poignées en double
+  (`duplicate_handles.dxf` d'ezdxf), la réparation perd les 7 cotes avant
+  toute mesure — défaut de lecture, pas des cotes.
+
+## 8. Tests
+
+`test_cotes_dxf.py` (15), sur `dxf_cotes_de_tous_types`, dont les alignées
+sont écrites comme AutoCAD les écrit : la mesure (alignée sans code 50 : 500,
+700, 1 000, 1 000 ; code 42 rendu, −1 ignoré) ; les propositions (alignées
+justes, linéaires inchangées, « R » et « ∅ », aucun angle, ordonnées et arc
+comptés, code 42 cité, mesure contredite signalée et plafonnée) ; le modèle
+(alignées justes, texte forcé jugé contre la vraie mesure, cote de bloc au
+1/10). Sur le code d'avant, 13 des 15 échouent ; les deux autres sont l'alignée
+horizontale (qu'ezdxf mesurait juste) et les linéaires inchangées — vrais
+avant comme après. Le plan rejoint les tests de traçabilité.
+
+## 9. Risques en production
+
+* **Les analyses déjà enregistrées** gardent leurs valeurs fausses, sous
+  `eurostruct-extraction/0.3.0` ou avant ; une valeur confirmée l'est pour
+  toujours (décision immuable). Une proposition d'avant ne dit pas le type de
+  sa cote : seule une nouvelle analyse (0.4.0) les distingue. À faire avant
+  tout usage : relancer l'analyse des DXF déposés, et revoir chaque
+  `dimension` ou `grid_spacing` « dxf » confirmée dont la position (points de
+  définition, enregistrés) n'est ni horizontale ni verticale.
+* **Moins de propositions** : les angles ne sont plus proposés ; des valeurs
+  corrigées rejoignent des propositions identiques.
+* **La garde du code 42** plafonne la confiance d'une cote dont le fichier se
+  contredit (code 42 périmé, écrit par un autre logiciel) : voulu — signalé,
+  pas caché.
+* **ezdxf** : la mesure d'une alignée ne passe plus par `get_measurement()` ;
+  une correction en amont ne changera rien ici.

@@ -250,9 +250,12 @@ une bande se calcule — mais aucune épaisseur n'en est proposée.
 
 ### 5.6 Cotes
 
-* **Mesure** : `get_measurement()` (distance projetée sur la direction de la
-  cote) ; **valeur affichée** = mesure × `DIMLFAC` (style et surcharges), sauf
-  texte forcé.
+* **Mesure** : par type (`lecteurs/dxf_cotes.py`) — linéaire : projection sur
+  l'angle de la cote ; alignée : distance de ses deux points ; rayon,
+  diamètre : distance au centre ; un angle n'est pas une longueur
+  ([`GEOMETRIE_COTES_DXF.md`](GEOMETRIE_COTES_DXF.md)) ; **valeur affichée** =
+  mesure × `DIMLFAC` (style et surcharges) — pour une cote de bloc, sa mesure
+  dans le bloc —, sauf texte forcé.
 * **Cote forcée discordante** : un texte numérique qui diffère de la valeur
   affichable (au demi-dernier chiffre près) est signalé — c'est le piège
   classique d'un plan « hors échelle ». La mesure est citée à côté.

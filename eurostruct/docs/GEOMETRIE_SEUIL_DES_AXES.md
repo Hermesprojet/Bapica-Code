@@ -177,7 +177,9 @@ propositions, avant et après.
   horizontale (564 lu 551,675 ; 100 lu 0). Jusqu'à 37 des 202 propositions
   de cote du plan portaient une telle valeur avant (36 après : la cote 25,05
   se rattache désormais à L6–L5 au lieu d'être proposée seule). C'est la
-  lecture des cotes, pas celle des axes : à traiter à part.
+  lecture des cotes, pas celle des axes : à traiter à part — corrigé depuis
+  ([`GEOMETRIE_COTES_DXF.md`](GEOMETRIE_COTES_DXF.md)) ; la cote 25,05 se lit
+  180 et concorde avec L6–L5.
 * **Un entraxe de 17 cm, « N–LP »**, est proposé : une droite de chaque grille,
   parallèles, dans une même famille. Même nature que les entraxes de 10 à
   44 cm déjà proposés avant, entre droites presque confondues (une au moins
