@@ -1,11 +1,11 @@
 # Géométrie d'abord — G3 : les pieux par leur signature
 
-> **Statut : conception (avant le code).** Phase G3 de `GEOMETRIE_D_ABORD.md`
+> **Statut : réalisé (`473b6b6`), mesuré au § 8.** Phase G3 de `GEOMETRIE_D_ABORD.md`
 > (§ 11 : « Pieux P » ; sortie mesurée : « v01/v04/v14 : 475 pieux, 0 faux
 > poteau de pieu »), selon les règles du § 4 (pieux) et de l'échelle de
 > preuves du § 1.4. Elle s'appuie sur l'information N1 lue par G1 (motif des
 > types de ligne, remplissages) et sur les bulles et la grille de G2. Chaque
-> changement de sortie sera mesuré et cité (§ 8).
+> changement de sortie est mesuré et cité (§ 8).
 
 ## 0. Ce que G3 fait, et ce qu'il garantit
 
@@ -352,4 +352,172 @@ exclusions de G4.
 
 ## 8. Résultats
 
-À écrire après l'implémentation.
+Mesuré sur le commit du code `473b6b6` (version `0.6.0`), contre les sorties
+de `0.5.0` (`52dc3af`, celles de la campagne G2). L'arbre de travail est resté
+gelé pendant toutes les exécutions (empreinte identique avant et après) ; les
+sorties du commit sont celles qui ont été analysées : balayage refait sur le
+commit, **94 / 94 identiques octet pour octet** ; variantes refaites,
+**17 / 17 identiques** (hors durée mesurée).
+
+**En bref.** Sur le plan réel, rien n'est ajouté ni retiré : 477 pieux,
+précision et rappel 1,000, les mêmes identifiants, centres, diamètres, nœuds
+et repères ; 475 sont désormais décidés par leur signature (0,85 → 0,90, le
+nom confirme). Quand **tous les noms disparaissent**, les pieux reviennent :
+**0 → 475**, précision **1,000**, rappel **0,996** ; et les dessins de pieux ne
+sont plus des poteaux : **168 → 66 poteaux** (v01), **132 → 59** (v04, tous aux
+positions de référence). Aucun pieu n'est retiré nulle part ; aucune
+proposition ne change sur le plan réel ni sur ses variantes nommées.
+
+### 8.1 Suites, contrat, harnais, balayage
+
+| Validation | Résultat |
+|---|---|
+| Suite d'extraction | **465 tests, 0 échec** (446 en G2 + 19 nouveaux) |
+| Suite de l'API | **599 tests, 0 échec**, 340 ignorés — les mêmes 599 / 340 qu'en G1 et G2 |
+| `export_contracts.py --check` | 0 : le contrat commité (descriptions de `classified_by` et `signature`) est celui que le schéma régénère |
+| Harnais des documents (`db/test/documents_extractions.sh`, base jetable) | 0 : 34 tests réussis, comme en G1 et G2 |
+| Balayage des 94 fichiers | 94 / 94 analysés sans exception ; **73 identiques à `0.5.0`** hors numéro de version, **21 changés** (§ 8.6) |
+| Variantes du plan réel (17) | 17 / 17 analysées sans exception |
+| `VERSION_EXTRACTEUR` | `0.6.0` |
+
+Tests : `test_geometrie_pieux_signatures.py` (nouveau, 19 tests : chaque
+fixture du § 4, et K1 sur six plans aux pieux nommés — sans la signature P
+puis avec : mêmes pieux, identifiants, centres, diamètres, nœuds, repères,
+mêmes poteaux). **Aucun test existant n'a été modifié** ; la suite existante a
+trouvé le défaut de la première lecture du § 2.5 (bulles d'axes courts), corrigé
+avant le commit et dit dans ce document.
+
+### 8.2 Plan réel
+
+| | `0.5.0` | `0.6.0` |
+|---|---|---|
+| Pieux | 477, tous par le nom de calque (0,85) | **477 : 0 ajouté, 0 retiré** ; 475 `geometrie` à **0,90** (le nom cité confirme), 2 hachures orphelines par le nom (0,85) |
+| Identifiants, centres, diamètres, nœuds, repères | | **identiques** (477 sur 477) |
+| Critères cités | | `classe_de_diametre` et `motif_tirets` sur les 475 (la copie de xréf est en tirets), `rempli` sur 297 ; `rempli` sur les 2 hachures |
+| Classes de diamètre | | Ø 60 (40 cercles, 20 distincts) : pieux ; Ø 63 (910, 455) : pieux ; Ø 80 (62, 62) : **bulles** |
+| Poteaux | 64 | 64, mêmes identifiants |
+| Propositions | 335 | **335, identiques** (catégories, valeurs, repères, confiances) : un pieu ne propose rien, et aucun poteau ne change |
+| `unresolved` | 0 | 0 : aucun conflit |
+
+**Précision 477 / 477 = 1,000 ; rappel 477 / 477 = 1,000.** Par la seule
+géométrie : **475 / 477** (les 2 hachures orphelines ne sont trouvées que par
+leur nom).
+
+### 8.3 Variantes : calques renommés, blocs renommés, tous les noms retirés
+
+Précision et rappel des pieux contre les 477 pieux de référence (§ 5) ; v10
+contre la référence tournée de 30°.
+
+| Variante | Pieux | Précision | Rappel | Par la géométrie | Poteaux (aux positions de référence + autres) | Propositions poteau / poutre / toutes |
+|---|---|---|---|---|---|---|
+| plan réel, v00 | 477 → 477 | 1,000 → 1,000 | 1,000 → 1,000 | 475 | 64 (64 + 0) → 64 (64 + 0) | 12 / 0 / 335, inchangées |
+| **Tous les noms retirés** | | | | | | |
+| v04 aucune convention (calques, blocs neutres, tout en continu) | **0 → 475** | — → **1,000** | 0 → **0,996** | 475 | 132 (59 + 73) → **59 (59 + 0)** | 11 → 10 / **69 → 0** / 409 → 339 |
+| v14 tout renommé (calques, blocs, types de ligne) | **0 → 475** | — → **1,000** | 0 → **0,996** | 475 | 158 (59 + 99) → **63 (59 + 4)** | 15 → 13 / **69 → 0** / 418 → 347 |
+| **Calques renommés** | | | | | | |
+| v01 calques neutres | **0 → 475** | — → 1,000 | 0 → 0,996 | 475 | 168 (64 + 104) → **66 (64 + 2)** | 16 → 14 / 0 / 352 → 350 |
+| v13 calques et blocs neutres, types de ligne gardés | **0 → 475** | — → 1,000 | 0 → 0,996 | 475 | 164 (64 + 100) → **68 (64 + 4)** | 17 → 15 / 0 / 352 → 350 |
+| v15 tout sur le calque `0` | **0 → 475** | — → 1,000 | 0 → 0,996 | 475 | 168 (64 + 104) → **66 (64 + 2)** | 16 → 14 / 0 / 345 → 343 |
+| v05 espagnol / v06 allemand / v07 AIA | 477 → 477 | 1,000 | 1,000 | 475 | 73 / 71 / 64, inchangés | inchangées |
+| **Blocs renommés** | | | | | | |
+| v02 blocs neutres | 477 → 477 | 1,000 | 1,000 | 475 | 65, inchangés | inchangées |
+| v11 blocs explosés | 477 → 477 | 1,000 | 1,000 | 475 | 91, inchangés | inchangées |
+| **Autres** | | | | | | |
+| v03 sans types de ligne ; v10 rotation de 30° ; v12 minuscules | 477 → 477 | 1,000 | 1,000 | 475 | inchangés | inchangées |
+| v08 / v09 `$INSUNITS` mm / m (faux) | 477 → 477 | 1,000 | 1,000 | **0** (diamètres hors bornes : Ø 63 « mm », Ø 63 « m ») | inchangés | inchangées |
+
+**Sur toutes les variantes où le nom des pieux reste lisible** (v02, v03,
+v05–v07, v10–v12), les 477 pieux sont identiques un à un (identifiant, centre,
+diamètre, nœud, repère) ; 475 passent à `geometrie` (0,85 → 0,90), les 2
+hachures orphelines restent au nom ; poteaux et propositions inchangés.
+
+**Calques renommés, tous les noms retirés.** Les 475 pieux dessinés par un
+cercle reviennent sur chacune des cinq variantes, **sans aucun pieu hors
+référence**, à 0,85 (aucun nom ne confirme). Les 2 pieux manquants sont les
+hachures orphelines, que seul leur nom désigne.
+
+**Blocs renommés.** Les pieux du plan réel ne sont pas des blocs : v02 et v11
+ne changent que par la confiance.
+
+### 8.4 L'effet sur les poteaux
+
+**Aucun poteau n'est tiré du dessin d'un pieu** sur les variantes sans nom
+(cible du § 11 du plan) : sur v01, les **102** faux poteaux qui étaient des
+dessins de pieux — 58 remplissages et lentilles, 44 cercles Ø 63 — sont
+écartés (raisons `pieu` 54, `dessin_de_pieu` 59 au compte rendu). Restent, hors
+référence :
+
+| Variante | Autres poteaux | Ce que c'est (rôle du calque dans le plan nommé) |
+|---|---|---|
+| v01, v15 | 2 | 2 cercles d'annotation Ø 50 posés sur des pieux (`cadre`) |
+| v13, v14 | 4 | les mêmes 2, un cercle Ø 90,3 d'un calque d'axes (`axe`), un contour d'un calque sans rôle |
+| v04 | 0 | — |
+
+Ce ne sont pas des dessins de pieu (un contour plus petit posé dans un pieu,
+sans sommet sur son bord : § 2.11) ; ils relèvent des exclusions de G4.
+v05 et v06, dont les pieux sont nommés, gardent leurs 9 et 7 poteaux en trop
+(7 cercles d'annotation sur des pieux ; sur v05, en plus, le cercle Ø 90,3 et
+le contour) : G3 ne les touche pas.
+
+Le prototype du § 6 attendait 71, 62, 73, 68, 71 poteaux ; la mesure donne
+66, 59, 68, 63, 66 : le prototype donnait aux pieux le rôle de pieu, ce qui
+désarmait la règle de l'enceinte des poteaux (un contour vide dans un contour
+vide de rôle inconnu) ; sans nom, les pieux sont de rôle inconnu, et cette
+règle — inchangée, déjà active avant G3 (5 rejets sur v01 avant comme après) —
+écarte la plupart des cercles d'annotation posés dans un pieu.
+
+### 8.5 L'effet sur les propositions
+
+* **Plan réel et variantes nommées : aucune proposition ne change** (valeurs
+  et confiances) — un pieu ne propose rien.
+* **v04, v14 : 69 propositions de poutre disparaissent** (24 `beam_width`,
+  21 `beam_span`, 21 `beam_clear_span`, 3 `cantilever_length`) : des « poutres »
+  portées par des dessins de pieux pris pour des poteaux ; le plan nommé n'en a
+  aucune.
+* **`column_diameter` 63** (le diamètre des pieux) disparaît partout : 3
+  propositions sur v01, v13, v14, v15, 1 sur v04.
+* **Une proposition `column_diameter` 50 apparaît** sur v01, v13, v14, v15 :
+  le même cercle d'annotation qu'avant, qui reçoit désormais le repère « VP2 »
+  qu'un cercle de pieu pris pour un poteau prenait ; elle est fausse, comme
+  avant, et relève de G4.
+
+### 8.6 Balayage du corpus (94 fichiers)
+
+* **73 inchangés** hors numéro de version : les 36 DXF d'exemple, les 9
+  feuilles PDF (K3), les sondes, le plan synthétique des cotes, les plans
+  fabriqués sans pieu, les 5 DXF riches en N1.
+* **18 changés sans pieu ajouté ni retiré**, mêmes poteaux, **propositions
+  identiques** : les 5 plans fabriqués aux pieux nommés (1 pieu, et 11 sur les
+  quatre plans de fondations ; hors de toute classe P : seuls les critères
+  cités et `report.piles.by_rule` s'ajoutent), le plan réel et sa copie, et ses variantes v00, v02, v03, v05 à
+  v12 (475 pieux passent à `geometrie`, 0,90 ; v08 et v09 restent au nom).
+* **3 changés avec des pieux ajoutés** : v01, v04, v13 (0 → 475), et leurs
+  poteaux, poutres et propositions (§ 8.4, 8.5).
+
+### 8.7 Ce que G3 ne résout pas
+
+1. **Les pieux qui ne sont pas des cercles** (les 2 hachures orphelines du
+   plan réel) ne sont trouvés que par leur nom : rappel 475 / 477 sans noms.
+2. **Les cercles d'annotation posés sur des pieux** restent des poteaux sur
+   les variantes sans nom (2 ; 9 sur v05, dont les pieux sont nommés) : G4.
+3. **Une unité fausse** désarme la signature (v08, v09) : les diamètres sortent
+   des bornes ; seuls les pieux nommés restent. Le recoupement de `$INSUNITS`
+   (D1) le corrigerait.
+4. **Les repères de pieu** ne sont lus que par un texte qui nomme un pieu
+   (« PIEU 12 ») ou un calque de pieux (§ 2.10) ; sans nom de calque, un numéro
+   seul n'est pas rattaché.
+5. **Les risques du § 7**, non rencontrés dans le corpus : pieux uniques pleins
+   à chaque nœud (remis aux poteaux), poteaux ronds non pleins d'un diamètre
+   répété (pris pour des pieux), pieu-colonne nommé (un pieu en conflit),
+   regards et massifs ronds répétés de diamètre plausible.
+6. **Les feuilles PDF** n'ont pas de signature P (K3).
+
+### 8.8 Coût
+
+Plan réel, lecture et extraction complètes, cinq mesures alternées sur la
+même machine : `0.5.0` 18,17 / 18,41 / 18,81 / 18,78 / 20,42 s (moyenne
+18,92 s), `0.6.0` 18,26 / 20,06 / 20,54 / 19,26 / 19,56 s (moyenne 19,54 s) —
+**+ 3,3 %** en moyenne, + 4,2 % en médiane, dans la cible du plan (moins de
+10 %). La signature P seule : 0,1 à 0,2 s par construction (le plan réel est
+construit deux fois, la seconde avec l'unité de sa présentation), bulles de G2
+comprises.
