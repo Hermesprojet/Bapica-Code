@@ -6,7 +6,8 @@
 > mesurés, quatre règles. Le plan réel n'est pas commité ; il est désigné ici
 > « plan de fondations » (DXF R2013, 16 Mio, sous-sol d'un bâtiment sur pieux).
 > Les § 8 à 10, écrits après, disent ce que l'implémentation a ajouté, ce que
-> les plans réels ont donné, et ce qui reste.
+> les plans réels ont donné, et ce qui reste. Une vérification depuis un
+> dépôt propre a ensuite corrigé ce document ; chaque correction le dit.
 
 ## 0. Point de départ mesuré
 
@@ -29,8 +30,12 @@
 | chevron plein (`Ombre`) | 1 | symbole de gaine d'ascenseur |
 | cercle Ø 28 sur un calque d'annotation (`T_COTEX`) | 1 | annotation |
 
-Sur les feuilles PDF : la cage d'ascenseur (rectangle 1,9 × 1,8 m) et quatre
-chevrons pleins (`TB1`, `TB3`…) étaient des « poteaux ». Quatre axes restaient
+Sur les feuilles PDF étaient des « poteaux » : feuille B, la cage d'ascenseur
+(rectangle de 1,96 × 1,87 m hors tout), le chevron d'ombre de la gaine, deux
+chevrons de gaines techniques (`TB1`, `TB3`) et un polygone de masquage blanc
+en L ; feuille A, le chevron d'ombre de la gaine, un chevron de gaine
+technique et un nuage de révision. *(Précisé à la vérification : la première
+rédaction disait « quatre chevrons pleins ».)* Quatre axes restaient
 sans étiquette, chacun entre une **bulle** à un bout et une **lettre de 54 pt**
 (l'identifiant d'un noyau, « A », « B », « C ») à l'autre — 3,4 fois la hauteur
 des étiquettes de bulle (15,8 pt).
@@ -136,9 +141,19 @@ de bureau d'études.
 
 ## 3. Étiquettes d'axes
 
-Les dix-sept axes sans étiquette du plan de fondations n'en ont pas : axes de
-files de pieux (`D_AXE_*`, terminés sur un pieu) et axes communs terminés par
-une bulle **vide**. Ils restent sans étiquette.
+Des dix-sept axes du plan de fondations restés sans étiquette, dix n'en ont
+pas de dessinée : neuf finissent sur des pieux (files de pieux `D_AXE_*`), le
+dixième n'a aucun texte à moins de 120 unités de ses bouts. Ils restent sans
+étiquette.
+
+*Corrigé à la vérification* (la première rédaction disait que les dix-sept
+n'avaient pas d'étiquette) : les **sept autres** (calque `…C_AXES` d'une autre
+référence externe liée) finissent exactement sur une bulle de rayon 40 dont le
+texte, « L1 » à « L10 », est au centre. L'étiquette existe ; mais le calque de
+la bulle (`…_TITRE_COMMUN-SSOL`) est lu `cadre` (cartouche) à cause du mot
+« TITRE », et ni la bulle ni son texte ne sont lus. Ce défaut est antérieur à
+ce lot (la base lit ces axes de la même façon) ; il n'est pas corrigé ici
+(§ 10).
 
 Les quatre conflits des feuilles PDF opposent une bulle à une lettre libre de
 54 pt. Deux règles, sûres parce qu'elles comparent des preuves de force
@@ -249,17 +264,32 @@ dans le dépôt.
 | poteaux | 175, dont 62 vrais | **63** : les 62 poteaux préfabriqués — 50 × 50 (30), 30 × 30 (18), 60 × 30 (7), 30 × 50 (2), 30 × 90 (2), 30 × 65, 40 × 40, 35 × 50 — et le cercle d'annotation (§ 10) |
 | faux poteaux | 113 | **1** |
 | pieux | — | **477** : 455 × Ø 63, 20 × Ø 60, et 2 dessinés par leur seule hachure ; 1 660 contours absorbés comme dessin de pieu, 1 fragment |
-| voiles | 22 | **4**, de 25 cm : les 18 autres étaient les échantillons d'épaisseur de trait d'une légende, que l'unité connue rend implausibles (1,9 à 10,2 mm) |
+| voiles | 22 | **4**, de 25 cm : les 18 autres étaient les échantillons d'épaisseur de trait d'une légende, que l'unité connue rend implausibles (1,9 à 10,2 mm). C'est l'unité qui les écarte, pas une règle : l'échelle écrite retirée, l'unité n'est plus établie et ils redeviennent des voiles (mesuré à la vérification) |
 | unité | non déclarée | **cm** : « 1/100 » écrit au cartouche, fenêtre de 8 400 unités sur 840 mm de papier, soit 10 mm par unité ; écart 0 % |
-| axes (étiquetés) | 60 (43) | 60 (43) — les 17 autres n'ont pas d'étiquette dessinée (§ 3) |
+| axes (étiquetés) | 60 (43) | 60 (43), les mêmes étiquettes — des 17 autres, 10 n'ont pas d'étiquette dessinée et 7 ont une bulle qui n'est pas lue (§ 3, corrigé à la vérification) |
 | entraxes | 47 mesurés, sans unité | 47 mesurés, **en cm**, dont 28 entre deux axes étiquetés (880, 500, 400, 800, 800 · 617,5, 540, 617,5 · 622,5 · 4 × 810 · 750, 500, 750, 750, 750, 850 · 629, 190, 209 · 757,5, 760, 810 · 617,5, 540, 617,5) ; 45 propositions distinctes |
-| propositions géométriques | 146 | **109** : largeurs et profondeurs de poteaux 39 → 11, diamètres 4 → 1, épaisseurs de voile 10 → 4 |
+| propositions géométriques | 146 | **109** : largeurs et profondeurs de poteaux 39 → 11 (2 pour le socle 170 × 170, 26 par le regroupement des repères décrit plus bas), diamètres 4 → 1, épaisseurs de voile 10 → 4 |
 
 Candidats écartés, comptés par contour (166) : 98 de rôle `pieu` aux nœuds —
 les cercles de 50 pieux, chacun dessiné sur son calque et dans la xréf, et 48
 hachures du calque des pieux ; 54 dessins de pieux (les remplissages des pieux
 sécants, sur un calque de béton caché de la xréf) ; 13 contenants (les
 socles) ; 1 non compact (le chevron de la gaine).
+
+**Deux effets que le premier relevé ne disait pas** (mesurés à la
+vérification) :
+
+* **Repères de poteaux.** Dans la base, chaque socle 170 × 170 (faux poteau)
+  prenait le texte « C03-xx » posé dessus, et le poteau préfabriqué qu'il
+  entoure prenait le texte « S## » du socle, à 189 unités. Sans les socles,
+  chaque poteau prend son propre texte « C03-xx », à 49 unités ; le lecteur de
+  repères, inchangé, lit « C03-50 » comme « C03 ». Les 62 poteaux préfabriqués
+  portent donc tous le repère « C03 » (49 l'avaient déjà dans la base), et les
+  13 groupes « S## » rejoignent les groupes « C03 » : ce regroupement retire 26
+  des 28 propositions de section ; les valeurs proposées ne changent pas.
+* **Confiance.** L'unité établie lève la pénalité « unité non déclarée »
+  (0,2) : chaque proposition géométrique du plan gagne 0,2 (poteaux 0,45 →
+  0,65), 0,15 pour les 34 lignes d'axe qui atteignent le plafond de 0,9.
 
 **Feuilles PDF d'architecte**
 
@@ -270,12 +300,14 @@ socles) ; 1 non compact (le chevron de la gaine).
 | conflits d'étiquettes | 2 → **0** | 2 → **0** |
 
 Écartés. Feuille B : la cage d'ascenseur, 1,96 × 1,87 m hors tout
-(contenant : elle contient la cabine) ; son chevron d'ombre, un masque en
-chevron et deux chevrons de gaines techniques (non compacts, 0,28 à 0,34).
-Feuille A : le chevron d'ombre de la gaine d'ascenseur et un chevron de gaine
-technique (non compacts) ; un
-**nuage de révision** rouge de 1,92 × 1,42 m (contenant). Chaque chevron est
-dessiné deux fois (remplissage et trait) : 9 et 5 contours écartés.
+(contenant : elle contient la cabine) ; son chevron d'ombre, un polygone de
+masquage blanc en L le long du mur de la gaine (*corrigé à la vérification* :
+la première rédaction disait « un masque en chevron ») et deux chevrons de
+gaines techniques, `TB1` et `TB3` (non compacts, 0,28 à 0,34). Feuille A : le
+chevron d'ombre de la gaine d'ascenseur et un chevron de gaine technique (non
+compacts) ; un **nuage de révision** rouge de 1,92 × 1,42 m (contenant).
+Chaque forme est dessinée deux fois (remplissage et trait) : 9 et 5 contours
+écartés.
 
 Les quatre axes sont étiquetés par leur bulle ; la lettre de 54 pt n'est plus
 candidate : feuille B, « 6 » (contre « C ») et « 2 » (contre « B ») ;
@@ -299,18 +331,47 @@ des documents, relancé seul : 34 réussis, dont le plan de fondations fabriqué
 (11 pieux, 4 poteaux, unité cm lue dans la présentation, aucun diamètre de
 poteau proposé). Résultat local : rien n'en est affirmé pour Supabase.
 
+**Vérification.** Tous les chiffres de ce § ont été reproduits depuis des
+extractions propres de la base (4615291) et de la branche (74e245a), sans
+cache, en relisant les fichiers bruts par la chaîne du produit. Chaque poteau
+disparu correspond à un rejet enregistré ; aucun poteau n'apparaît qui
+manquait à la base. Les 18 plans fabriqués antérieurs donnent les mêmes
+résultats avant et après (seule la clé `counts.piles` s'ajoute), comme 35 des
+36 DXF d'exemple (le dernier gagne la raison du refus d'unité). La suite
+canonique, relancée depuis un clone propre du dépôt distant au commit
+74e245a : **COMPLET**, mêmes comptes.
+
 ## 10. Ce qui reste, et pourquoi
 
 * le cercle Ø 28 sur un calque d'annotation, au bord de la paroi de pieux :
   rond, vide, seul à son nœud — rien de mesurable ne le distingue d'un poteau
   rond ; il garde la confiance 0,6 et son diamètre est proposé ;
-* feuille B : deux contours de 30 × 22 cm, extrémités de murs en béton au
-  droit de l'axe Q — peut-être de vrais poteaux, non vérifiés ;
-* feuille A : une barre pleine de 1,20 × 0,36 m à un nœud (élancement 3,3,
-  sous la borne de 4) — sans doute pas un poteau ;
+* feuille B : deux contours non remplis de 32,4 × 17,6 cm, autour de tronçons
+  de mur en béton au droit de l'axe Q — peut-être de vrais poteaux, non
+  vérifiés (*corrigé à la vérification* : 30 × 22 cm était leur boîte alignée
+  sur la feuille, 29,6 × 22 cm ; 32,4 × 17,6 cm est leur rectangle minimal) ;
+* feuille A : une barre rouge pleine de 1,20 × 0,11 m à un nœud (élancement
+  10,6) — sans doute pas un poteau. Elle passe la borne d'élancement de 4
+  parce qu'un contour qui n'est pas reconnu comme rectangle est mesuré par sa
+  boîte alignée sur la feuille (1,20 × 0,36 m, rapport 3,3) : logique
+  antérieure à ce lot (*corrigé à la vérification* : la première rédaction
+  donnait ces dimensions de boîte pour celles de la barre) ;
 * deux pieux dessinés par leur seule hachure n'ont pas de diamètre (contour en
   croissant) ;
 * le nuage de révision de la feuille A n'est écarté que parce qu'il contient
-  d'autres contours : un nuage vide, à un nœud, serait encore un candidat ;
+  d'autres contours : un nuage vide, à un nœud, serait encore un candidat
+  (vérifié : vidé en mémoire de ce qu'il contient, il redevient un poteau) ;
+* la cabine d'ascenseur n'est écartée (« dans une enceinte ») que si la cage a
+  elle-même la taille d'un poteau plausible : 2,0 m au plus quand l'unité est
+  connue, 0,3 fois l'entraxe médian sinon. Sans unité (plan fabriqué sans
+  présentation, ou échelle refusée), ou avec une cage de 2,3 × 2,2 m (essai à
+  la vérification), la cabine de 1,2 × 1,0 m reste un poteau ;
+* sept axes du plan de fondations restent sans étiquette alors que leur bulle
+  (« L1 » à « L10 ») est lisible : le calque de la bulle est lu `cadre`
+  (§ 3) — défaut antérieur à ce lot ;
+* six entraxes de 10 à 44 cm (cinq valeurs proposées) séparent un axe de file
+  de pieux (`D_AXE_*`) d'un axe du bâtiment, ou deux files de pieux : ce ne
+  sont pas des entraxes de grille, et ils sont proposés — comportement
+  antérieur à ce lot ;
 * une unité ne se déduit que d'une présentation qui écrit son échelle : un DXF
   sans présentation, ou sans échelle écrite, reste sans unité — et le dit.
