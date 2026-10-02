@@ -1,6 +1,6 @@
 # Géométrie d'abord — G1 : l'information DXF standard, lue sans rien décider
 
-> **Statut : conception (avant le code).** Phase G1 de `GEOMETRIE_D_ABORD.md`
+> **Statut : réalisé (`068fc3b`), mesuré au § 6.** Phase G1 de `GEOMETRIE_D_ABORD.md`
 > (§ 11) : lire et exposer, dans les primitives, l'information DXF standard
 > (niveau N1, § 1.1) dont les phases G2 à G6 auront besoin — **sans changer
 > une seule décision**. Le résultat de G1 est invisible dans les sorties : il
@@ -229,4 +229,72 @@ Dans `extraction/tests/test_geometrie_n1.py`, sur des DXF fabriqués
 
 ## 6. Résultats
 
-À écrire après l'implémentation.
+Mesuré sur le commit du code `068fc3b`, contre l'arbre de référence `c8f1db1`
+(commit de cette conception, code d'extraction identique à `5bfb90b`), copié
+hors du dépôt par `git archive` et vérifié identique au commit. L'arbre de
+travail est resté gelé pendant toutes les exécutions (empreinte identique
+avant et après) ; les fichiers commités sont ceux qui ont été mesurés
+(empreintes SHA-256 relevées avant la campagne, revérifiées au commit).
+
+### 6.1 Balayage octet par octet — aucune sortie ne change
+
+| Corpus (94 fichiers, hors dépôt) | Nombre |
+|---|---|
+| plans fabriqués des campagnes précédentes (DXF et feuilles PDF) | 24 |
+| DXF d'exemple d'ezdxf (format, versions, fichiers à réparer) | 36 |
+| fichiers réels (un DXF, deux feuilles PDF) | 3 |
+| variantes du DXF réel de l'audit (noms neutres, langues, `$INSUNITS`, rotation, blocs explosés…) | 15 |
+| sondes de texte et de déclarations d'unité | 10 |
+| plan synthétique de tous les types de cote | 1 |
+| DXF riches en N1 (multilignes, types de ligne complexes et renommés, hachures, xréfs, couleurs ; dont le plan fabriqué des tests) | 5 |
+
+| Mesure | Résultat |
+|---|---|
+| Fichiers analysés sans exception, avant / après | 94 / 94 et 94 / 94 |
+| **Sorties canoniques identiques octet pour octet** (`DocumentAnalyse` hors `octets` et `primitives_dxf`, `ResultatExtraction` entier, ordre des clés compris) | **94 / 94 — 0 différente** |
+| Durée du balayage (4 processus) | 2 min 14 s avant, 2 min 10 s après |
+
+### 6.2 Suites, contrat, harnais
+
+| Validation | Résultat |
+|---|---|
+| Suite d'extraction | **417 tests, 0 échec** (374 existants + 43 nouveaux, `test_geometrie_n1.py`) |
+| Suite de l'API | 599 tests, 0 échec, 340 ignorés — les mêmes 599 / 340 sur l'arbre de référence (tests conditionnés par l'environnement, indépendants de G1) |
+| `export_contracts.py --check` | 0 : contrat régénéré identique, aucun fichier de contrat modifié |
+| Harnais des documents (`db/test/documents_extractions.sh`, base jetable) | 0 : dépôt, analyse, propositions, décisions, calcul — inchangés |
+| `VERSION_EXTRACTEUR` | inchangée (`0.4.0`) : aucune proposition ne peut changer |
+
+### 6.3 Ce que G1 lit désormais (relevé sur le corpus)
+
+| Champ | Sur les 94 fichiers |
+|---|---|
+| Types de ligne classés (F1) | 1 432 : 703 `mixte`, 313 `tirets`, 145 `points`, 271 `continu` ; 54 complexes |
+| Primitives DXF par classe de motif | 155 655 `continu`, 16 659 `tirets`, 1 982 `mixte`, 75 `points` |
+| Contours par remplissage (F2) | 11 924 `plein`, 20 005 `motif`, 11 809 sans (polylignes fermées, bandes, contours des feuilles PDF) |
+| Multilignes (F3) | 12, dont 2 sans épaisseur (insertion non uniforme, voulue) |
+| Définitions de blocs (F4) | 406 : 5 références externes (liées ou superposées), 31 anonymes, 18 à un seul `ATTDEF` |
+| Insertions hors échelle 1 (F5) | 455 |
+| Calques dépendant d'une xréf (F6) | 2 |
+| Primitives DXF sans couleur (F7) | **0** (les 107 382 primitives sans couleur sont celles des feuilles PDF, qui n'ont pas d'information N1) |
+| Incidents N1 | **1** : un `ACAD_TABLE` d'un DXF d'exemple d'ezdxf, dont ezdxf ne donne pas la couleur — entité que la géométrie ne lit pas (« entité non lue ») ; sans effet |
+
+**Sur le plan réel** : 46 types de ligne — 24 `mixte`, 14 `tirets`, 4
+`points`, 4 `continu` (la mesure de faisabilité de `GEOMETRIE_D_ABORD.md`
+§ 1.1 comptait un motif sans blanc en `tirets` ; la règle du produit le dit
+`continu`, il ne découpe pas le trait). Parmi les traits longs (≥ 5 % de la
+diagonale), **67 des 71 axes de référence ont la classe `mixte`, et un seul
+trait `mixte` n'est pas un axe** — la mesure de faisabilité est retrouvée par
+le produit. Contours : 708 `plein`, 1 246 `motif`, 278 sans ; aucune
+multiligne ; 8 définitions placées, dont 1 à un seul attribut ; aucun
+incident.
+
+**Coût** (plan réel, trois mesures alternées, machine au repos) : lecture
+9,37 s → 9,65 s en moyenne, lecture et extraction 18,67 s → 19,19 s :
+environ **+3 %**.
+
+### 6.4 Ce qui reste hors de G1
+
+Tout ce que dit le § 2. Les champs N1 ne sont lus par aucun détecteur :
+G2 (bulles par structure, axes A et B) sera la première phase à changer des
+sorties, avec sa propre conception, sa mesure avant/après et le changement
+de version.

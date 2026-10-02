@@ -58,7 +58,8 @@ bibliothèque standard, pas du bureau ; seul le drapeau « plein » est un
 critère, le nom du motif est cité.
 
 **Mesuré sur le plan réel** : 46 types de ligne, classés par motif en 24
-`mixte`, 15 `tirets`, 4 `points`, 3 `continu`. Parmi les traits longs (≥ 5 %
+`mixte`, 14 `tirets`, 4 `points`, 4 `continu` (règle du produit, G1 ; la
+mesure de faisabilité comptait un motif sans blanc en `tirets`). Parmi les traits longs (≥ 5 %
 de la diagonale), **67 traits d'axe sur 71 ont un motif `mixte`, et un seul
 trait `mixte` n'est pas un axe**. Hachures : 177 `AR-SAND`, 166 pleines,
 17 `ANSI32`.
@@ -522,7 +523,7 @@ est dit illisible par la géométrie, pas deviné.
 
 | Phase | Contenu | Sortie mesurée |
 |---|---|---|
-| G1 | N1 dans les primitives : motif de ligne, remplissage plein/motif, `MLINE`, compte d'insertions, drapeaux xréf ; **aucun changement de détection** — conception détaillée : `GEOMETRIE_D_ABORD_G1.md` | modèle identique sur tout le corpus |
+| G1 | N1 dans les primitives : motif de ligne, remplissage plein/motif, `MLINE`, compte d'insertions, drapeaux xréf ; **aucun changement de détection** — conception détaillée : `GEOMETRIE_D_ABORD_G1.md` | **fait** (`068fc3b`) : 94 / 94 sorties identiques octet pour octet ; suites, contrat et harnais verts |
 | G2 | Classes de cercles, bulles par structure, axes A et B, zone structurelle | v04/v14/v15 vs référence ; fixtures axes |
 | G3 | Pieux P | v01/v04/v14 : 475 pieux, 0 faux poteau de pieu |
 | G4 | Poteaux C1 (exclusions géométriques), C2 | v01/v04/v14 : 64 ± 2 |
