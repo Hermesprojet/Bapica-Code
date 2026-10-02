@@ -11,6 +11,12 @@
 > temps d'une extraction complète (voiles, poutres, travées, dalles, repères,
 > propositions mesurés de bout en bout). Le prototype n'est pas le code de
 > production ; il valide la conception.
+>
+> **Contre-mesure avant le code (§ 10) : la vérification échoue.** Telle que
+> conçue, G5 retire de vrais voiles parce qu'ils ne sont pas sur un axe
+> (V1.6) ou pas butés à un bout (V1.7) : 7 voiles (14 contours) sur chaque
+> variante sans noms, 1 voile en béton armé sur la feuille B. La conception
+> est à revoir avant toute implémentation.
 
 ## 0. Ce que G5 fait, et ce qu'il garantit
 
@@ -32,7 +38,7 @@ d'architecte et les poteaux allongés ne soient plus des voiles ; et qu'aucune
 | L3 | Un nom ne fait que **compléter** ou **confirmer** (+ 0,05) ; une V1 complète sur un contour nommé d'un autre rôle est un **conflit dit** (0,4). | § 3.5 |
 | L4 | Sur le plan réel et ses variantes nommées, **aucune proposition ne change** ; sur les variantes sans noms, **seules disparaissent les 19 épaisseurs** tirées des bandes hachurées. | Mesuré (§ 5). |
 | L5 | Rien n'est inventé : une épaisseur est LUE (bande, paire de traits, multiligne) ; aucun voile n'est déduit d'un repère, d'une cote ou d'une légende. | Interdictions 2 et 5 |
-| L6 | Tout changement de sortie est cité : voiles ajoutés, retirés, confiances, propositions, poutres, sur le plan réel, ses variantes et tout le corpus. | § 5 ; résultats au § 10 (à venir) |
+| L6 | Tout changement de sortie est cité : voiles ajoutés, retirés, confiances, propositions, poutres, sur le plan réel, ses variantes et tout le corpus. | § 5 ; nature de chaque voile retiré au § 10 ; résultats au § 11 (à venir) |
 | L7 | **Chaque dépendance aux noms qui reste est écrite**, avec ce qui la lèverait. | § 3.6 |
 
 **Hors de G5.** Les partitions apprises, les candidats exportés et
@@ -611,3 +617,175 @@ sur l'arbre gelé, résultats écrits ici (§ 10).
   d'attache de cote ; mesuré : aucun effet hors de v11 (65 travées au lieu de
   67 ; 14 propositions de poutre retirées, 8 ajoutées) et des variantes sans
   noms (une bande candidate de poutre de plus écartée).
+
+## 10. Contre-mesure avant le code : ce que G5 retire, voile par voile
+
+> Demandée avant l'implémentation : classer chaque voile `0.7.0` que G5
+> retire — certainement faux, probablement faux, incertain, probablement
+> réel —, dire pourquoi il est retiré, par quel critère, et si un ingénieur
+> structure y verrait un voile ; vérifier que G5 ne retire pas de vrais voiles
+> seulement parce qu'ils ne sont pas sur un axe ou ne touchent pas un poteau.
+> **Résultat : la vérification échoue** (§ 10.6).
+
+### 10.1 Méthode
+
+* **Voile par voile** : les sorties `0.7.0` (export gelé) contre celles du
+  prototype final (celles du § 5) ; chaque voile retiré est rapproché de son
+  entrée d'audit, où les neuf critères sont évalués indépendamment. Le critère
+  cité est le premier qui manque ; tous ceux qui manquent sont donnés.
+* **Chaque voile retiré est regardé dans son contexte**, sur un rendu fidèle
+  du DXF (hachures, couleurs, textes, cotes) ou de la feuille PDF, fait hors
+  du dépôt. Sa nature est lue sur le dessin lui-même : repère de voile, cote
+  d'épaisseur, flèche de repère d'élévation, hachure identique à celle des
+  voiles voisins, légende des matériaux des feuilles. C'est le relevé d'un
+  lecteur du dessin, pas celui de l'ingénieur du projet ; les catégories le
+  disent.
+* **Catégories.** *Certainement faux* : ce n'est pas un mur (baie, vantail,
+  lame de platelage, échantillon de légende, mobilier). *Probablement faux* :
+  un élément réel qui n'est pas un voile structurel (cloison non porteuse selon
+  la légende, poteau repéré comme tel). *Incertain* : le dessin seul ne permet
+  pas de trancher. *Probablement réel* : le dessin le donne pour un voile
+  (repère de voile, épaisseur cotée, hachure de coupe des voiles voisins, ou
+  « béton armé » de la légende).
+* **Plan réel nommé** : G5 n'y retire rien ; ses 4 voiles restent identiques.
+
+### 10.2 Variantes sans noms — 25 voiles retirés sur chacune
+
+Les mêmes 25 sur v01, v04, v05, v13, v14 et v15 (identifiants, contours et
+critères identiques).
+
+| Catégorie | Contours (voiles) | Ce que c'est | Retiré par | Un ingénieur y verrait un voile ? |
+|---|---|---|---|---|
+| probablement réel | 6 (3) | les **voiles intérieurs de trois noyaux d'ascenseur** (VA2a, VB2a, VC3a) : bande de 20 cm (épaisseur cotée), hachurée comme les voiles du noyau, d'un voile du noyau à l'autre, repérée et munie de sa flèche d'élévation ; chacun dessiné deux fois (remplissage et motif) | **V1.6 seul** (hors axe) ; butés aux deux bouts | oui |
+| probablement réel | 4 (2) | les **trumeaux** des voiles VA5 et VB5 entre deux baies (20 × 100 et 20 × 112,5) : des morceaux du voile du noyau, même hachure | V1.6 et V1.7 (les bouts donnent sur des baies) | oui : le voile du noyau, interrompu par les portes |
+| probablement réel | 2 (1) | le **voile VO1** (30 × 238, épaisseur et longueur cotées), dans le prolongement d'un poteau préfabriqué que G4 ne voit pas | V1.6 et V1.7 | oui |
+| probablement réel | 2 (1) | le **tronçon droit de 290 cm du voile de rampe VL1** (30 cm coté), qui continue droit puis courbe (le reste n'est pas une bande) | **V1.7 seul** : il est sur un axe ; ses bouts sont son propre prolongement | oui, mais l'objet n'en est qu'un morceau |
+| incertain | 7 | des **secondes hachures de 30 cm** (une pièce, ou deux ou quatre morceaux de 15 cm) superposées aux trois voiles intérieurs, décalées de 10 cm : le voile à un autre niveau, ou un doublon de dessin | V1.6 seul | la zone est un voile ; ces objets, non : ils doubleraient trois voiles avec une épaisseur fausse |
+| probablement faux | 4 (2) | les **poteaux préfabriqués** repérés C03…, de 130 × 30 (élancement 4,33), seuls dans un massif, à un nœud | **V1.7 seul** | non : des poteaux de section allongée (au-delà de la limite poteau de l'EN 1992-1-1, § 5.3.1(7)) ; ils ne sont ni poteaux (G4) ni voiles |
+| certainement faux | 0 | — | — | — |
+
+**14 des 25 sont probablement réels (7 voiles)**, 7 incertains, 4 probablement
+faux, aucun certainement faux ; tous ne doivent leur retrait qu'à V1.6 et à
+V1.7. Sur le plan réel et ses variantes nommées, les mêmes bandes sont
+candidates et rejetées pour les mêmes raisons (elles n'y étaient pas des
+voiles en `0.7.0` non plus : leurs calques disent « hachure »).
+
+### 10.3 v11 — 33 voiles retirés
+
+| Catégorie | Contours | Ce que c'est | Retiré par | Un ingénieur y verrait un voile ? |
+|---|---|---|---|---|
+| certainement faux | 27 | 25 **vantaux de porte** (4 × 98 cm, arc d'ouverture, porte de 98 cm) ; un élément de 7,7 cm dans une baie de porte ; un élément de 4,5 cm le long d'un escalier | la plausibilité des voiles nommés (80–600 mm, N3) : mis en doute | non |
+| probablement faux | 6 | les deux **poteaux préfabriqués** de 130 × 30, trois contours chacun, nommés poteau | « poteau allongé » : V1 partielle, **V1.7** manque ; mis en doute, « ni poteau ni voile » | non : des poteaux |
+
+Aucun incertain, aucun probablement réel.
+
+### 10.4 Feuille A — 66 voiles retirés
+
+| Catégorie | Contours | Ce que c'est | Retiré par | Un ingénieur y verrait un voile ? |
+|---|---|---|---|---|
+| certainement faux | 33 | hors de la zone : 10 échantillons de la légende des matériaux, 21 lames d'une toiture-terrasse, une case du cartouche, un cadre d'annotation de surface | V1.4 (et V1.3 pour les blancs) | non |
+| certainement faux | 13 | **baies de fenêtre** (remplissage blanc, menuiserie repérée, allège et hauteur) | V1.3 (fond de feuille) ; V1.7 aussi pour 12, V1.6 pour 2 | non : l'absence de mur |
+| certainement faux | 10 | **lames de platelage** d'un balcon (brun) | **V1.6 seul** | non |
+| certainement faux | 1 | une **bande d'isolant** (motif de la légende) devant un trumeau | **V1.6 seul** | non |
+| certainement faux | 1 | un îlot de cuisine (blanc) | V1.3, V1.6, V1.7 | non |
+| probablement faux | 8 | **cloisons et doublages** de 10 à 15 cm en blocs de plâtre (le blanc de la légende), non porteurs | V1.3 ; V1.6 et/ou V1.7 en plus pour 7 | non : des cloisons |
+
+Aucun incertain, aucun probablement réel.
+
+### 10.5 Feuille B — 82 voiles retirés
+
+| Catégorie | Contours | Ce que c'est | Retiré par | Un ingénieur y verrait un voile ? |
+|---|---|---|---|---|
+| certainement faux | 11 | hors de la zone : 10 échantillons de la légende, une case du cartouche | V1.4 (et V1.3 pour les 2 blancs) | non |
+| certainement faux | 37 | **baies de fenêtre** | V1.3 ; V1.7 aussi (et V1.6 pour 3) | non |
+| certainement faux | 14 | **lames de platelage** de balcons et de terrasses | **V1.6 seul** pour 8 ; V1.6 et V1.7 pour 6 | non |
+| certainement faux | 6 | petits **barreaux rouges isolés** dans les pièces, non légendés (radiateurs ?) | V1.6 et V1.7 | non |
+| certainement faux | 2 | îlots de cuisine | V1.3, V1.6, V1.7 | non |
+| certainement faux | 1 | une bande d'isolant devant un trumeau | **V1.6 seul** | non |
+| probablement faux | 10 | cloisons et doublages en blocs de plâtre, non porteurs | V1.3 ; V1.6 et/ou V1.7 en plus pour 9 | non |
+| **probablement réel** | **1** | un **voile en béton armé** (gris foncé de la légende), 20 cm coté, 7,29 m d'une façade à l'autre, entre deux logements, doublé d'un isolant et d'une cloison | **V1.6 et V1.7** : hors axe ; ses bouts touchent la maçonnerie des façades, pas un élément plein qui le croise | oui |
+
+Des trois voiles « béton armé » en bande de la feuille, G5 en garde deux (dont
+un dessiné deux fois : 3 contours) et perd celui-ci.
+
+### 10.6 La vérification : elle échoue
+
+* **Probablement réels retirés seulement par V1.6 et/ou V1.7** : 14 contours
+  (7 voiles) sur chacune des six variantes sans noms ; 1 voile sur la
+  feuille B ; aucun sur v11 ni sur la feuille A. Sur une variante et la
+  feuille B : V1.6 seul en retire 6 (les trois voiles intérieurs de noyaux,
+  pourtant butés aux deux bouts), V1.7 seul 2 (VL1, pourtant sur un axe),
+  les deux 7 (les deux trumeaux, VO1, le voile de la feuille B).
+* **Ce que V1.6 et V1.7 sont seuls à écarter** : 24 lames de platelage,
+  6 barreaux rouges, 2 bandes d'isolant, les 4 contours de poteaux allongés
+  (et, sur v11, les 6 contours nommés poteau). Tout le reste — les blancs, le
+  hors zone, les éléments minces — l'est par V1.3, V1.4 ou la plausibilité.
+  Bilan sur une variante sans noms et les deux feuilles : **15 contours
+  probablement réels (8 voiles) perdus pour 36 contours faux écartés**.
+* **Pourquoi.** Un voile n'est pas toujours sur un axe (voiles intérieurs de
+  noyau, voile entre logements) ni toujours buté contre un élément plein qui
+  le croise (trumeau entre deux baies, voile hachuré en plusieurs contours,
+  voile qui finit contre un poteau dans son prolongement ou contre une façade
+  en maçonnerie). Le § 3.2 justifiait V1.6 et V1.7 par les négatifs mesurés en
+  tenant les 14 bandes pour « hors référence, de nature non vérifiée » ;
+  vérifiées, la moitié sont de vrais voiles.
+* **Énoncés de ce document que la contre-mesure contredit.** § 1.2 : « 25
+  bandes hachurées […] ne sont pas des voiles » — 14 en sont. § 1.6 : « faux
+  voiles après G4 : 25 » et « 19 épaisseurs hors référence » — des 19
+  épaisseurs que G5 retire sur chaque variante sans noms, **11 viennent
+  seulement de voiles probablement réels et ont la bonne valeur** (20 ou
+  30 cm cotés), sous le bon repère pour 4 et sous un repère faux pour 7
+  (étiquette d'ascenseur, voile voisin, aucun) ; 5 viennent des hachures
+  incertaines (15 ou 30 cm, valeur fausse pour le voile) ; 2 mêlent un poteau
+  allongé et un voile ; 1 vient d'un poteau seul. § 3.2 : « hors référence :
+  0 des 14 bandes » et la précision de V1.6 et V1.7. § 5.1 et L4 : le
+  « 25 → 0 » des variantes retire 14 vrais contours de voile. § 8, risque 5 :
+  avéré.
+
+### 10.7 Variantes mesurées, sans code de production
+
+Calculées sur les entrées d'audit (critères indépendants) et sur une sonde
+des bouts et des rangées, hors du dépôt. « Rendus » : contours probablement
+réels qui redeviendraient des voiles.
+
+| Variante de V1 | Rendus : variante sans noms ; feuille B | Incertains rendus (doublons) | Faux réadmis |
+|---|---|---|---|
+| G5 tel que conçu | 0 / 14 ; 0 / 1 | 0 | 0 |
+| sans V1.6 | 6 / 14 ; 0 / 1 | 7 | A : 11 (10 lames, 1 isolant) ; B : 9 (8 lames, 1 isolant) |
+| sans V1.7 | 2 / 14 ; 0 / 1 | 0 | variantes : 4 (poteaux allongés) ; v11 : 6 (poteaux nommés, conflit 0,4) |
+| sans V1.6 ni V1.7 | 14 / 14 ; 1 / 1 | 7 | variantes : 4 ; v11 : 6 ; A : 11 ; B : 21 (14 lames, 6 barreaux, 1 isolant) |
+| sans V1.6 ; V1.7 réduite à « quelque chose touche un bout » | 10 / 14 ; 1 / 1 | 7 | A : 11 ; B : 20 — les trumeaux, sans rien à leurs bouts, restent perdus |
+| feuilles : même remplissage qu'un voile V1 de la feuille (style appris, N1) | 0 / 14 ; 1 / 1 | 0 | 0 |
+
+* **Filtres essayés pour écarter les faux sans V1.6 ni V1.7 (premier jet).**
+  « Rien à aucun bout » prend les 4 contours de poteaux allongés, mais aussi
+  les 4 des deux trumeaux, et 1 barreau rouge sur 6. « Rangée de lames »
+  (bandes de même largeur côte à côte, quelle que soit leur forme) prend 12
+  des 24 lames de platelage et aucun voile. Aucun ne sépare encore les classes.
+* **Le repère de voile** les séparerait sur le DXF mesuré (aucun poteau
+  allongé n'en porte), mais c'est une convention du projet — les séries VA,
+  VB, VC… ne sont pas dans le vocabulaire des repères — et l'affectation des
+  repères est bruitée (7 des 11 bonnes épaisseurs perdues portent un repère
+  faux) : ce serait une dépendance nommée de plus, à écrire.
+* **Toute variante qui rend les voiles de noyau les ajoute aussi au plan réel
+  nommé** et à ses variantes nommées (mêmes bandes candidates) : L1 (« aucun
+  voile ajouté ») tomberait — à juste titre, mais c'est un changement à
+  décider.
+
+### 10.8 Conséquence
+
+* **G5 ne doit pas être implémenté tel que conçu** : V1.6 (sur un axe) et
+  V1.7 (butée à un bout) ne peuvent pas être des conditions nécessaires d'un
+  voile.
+* **Pistes, à décider avant le code** (aucune n'est retenue ici) :
+  (a) V1.6 et V1.7 deviennent des indices de confiance et non des filtres,
+  avec des exclusions propres aux faux mesurés (rangées de lames, éléments
+  isolés, couches d'isolant) — à concevoir et à mesurer ; (b) les bandes
+  coupées à qui seuls V1.6 ou V1.7 manquent deviennent des **candidats montrés
+  à la revue** — ni voiles, ni silence ; les 15 vrais et les 36 faux y
+  passeraient ; (c) le style appris (même remplissage qu'un voile V1) sur les
+  feuilles : 1 / 1 sans faux, sans effet sur les DXF (aucun voile V1 dont
+  apprendre) ; (d) le repère de voile comme corroboration nommée (N3) : il
+  sépare les classes du DXF mesuré, au prix d'une dépendance écrite à une
+  convention de repérage.
+* Les relevés (rendus, tables par contour) restent hors du dépôt.
