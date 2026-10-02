@@ -1,6 +1,6 @@
 # Extraction « géométrie d'abord » — conception
 
-> **Statut : conception ; phases G1 à G3 réalisées (§ 11), G4 à G6 à
+> **Statut : conception ; phases G1 à G4 réalisées (§ 11), G5 et G6 à
 > faire.** Ce document décrit comment
 > reconnaître les axes, les poteaux, les pieux et les voiles d'un DXF sans
 > dépendre des noms de calques et de blocs, dans l'ordre de preuve demandé :
@@ -527,7 +527,7 @@ est dit illisible par la géométrie, pas deviné.
 | G1 | N1 dans les primitives : motif de ligne, remplissage plein/motif, `MLINE`, compte d'insertions, drapeaux xréf ; **aucun changement de détection** — conception détaillée : `GEOMETRIE_D_ABORD_G1.md` | **fait** (`068fc3b`) : 94 / 94 sorties identiques octet pour octet ; suites, contrat et harnais verts |
 | G2 | Classes de cercles, bulles par structure, axes A et B, zone structurelle — conception détaillée : `GEOMETRIE_D_ABORD_G2.md` (première phase qui change des sorties : `classified_by = geometrie`, version 0.5.0) | **fait** (`5b86e2c`) : plan réel 71 / 71 (0 ajouté, 0 retiré, 66 axes décidés par la signature) ; tout renommé 0 → 66 axes, précision 1,000, rappel 0,930 ; blocs explosés : 9 axes hors référence ; suites, contrat et harnais verts |
 | G3 | Pieux P — conception détaillée : `GEOMETRIE_D_ABORD_G3.md` (signature P, échelle de preuves des pieux, poteaux écartés du dessin des pieux, version 0.6.0) | **fait** (`473b6b6`) : plan réel 477 / 477, inchangés (475 décidés par la signature) ; v01/v04/v13/v14/v15 : 0 → 475 pieux, précision 1,000, rappel 0,996, 0 faux poteau tiré d'un pieu (v01 : 168 → 66 poteaux) ; suites, contrat et harnais verts |
-| G4 | Poteaux C1 (exclusions géométriques), C2 — conception détaillée : `GEOMETRIE_D_ABORD_G4.md` (section coupée au nœud, jumeau rempli sans nom, zone, bouts de voile, complétions, version 0.7.0) | v01/v04/v14 : 64 ± 2 |
+| G4 | Poteaux C1 (exclusions géométriques), C2 — conception détaillée : `GEOMETRIE_D_ABORD_G4.md` (section coupée au nœud, jumeau rempli sans nom, zone, bouts de voile, complétions, version 0.7.0) | **fait** (`e3c1804`, `2a1856c`) : plan réel 63 / 63 vrais poteaux identiques, le Ø 28 retiré (précision 0,984 → 1,000) ; v01/v13/v15 : 63, précision 1,000 ; v04/v14 : 58 — cible « 64 ± 2 » non atteinte (les cinq poteaux de l'axe P, sans nœud) ; `column_diameter` faux : 32 → 0 ; aucune autre proposition ne change ; suites, contrat et harnais verts |
 | G5 | Voiles V1/V2, `MLINE` | feuilles PDF, fixtures |
 | G6 | Partitions apprises, désaccords, candidats ; contrat (`appris`, `dxf`, candidats), écran, version suivante | tests d'invariance, suites, harnais |
 

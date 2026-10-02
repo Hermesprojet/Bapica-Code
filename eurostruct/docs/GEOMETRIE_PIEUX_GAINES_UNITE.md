@@ -358,17 +358,22 @@ canonique, relancée depuis un clone propre du dépôt distant au commit
 
 * le cercle Ø 28 sur un calque d'annotation, au bord de la paroi de pieux :
   rond, vide, seul à son nœud — rien de mesurable ne le distingue d'un poteau
-  rond ; il garde la confiance 0,6 et son diamètre est proposé ;
+  rond ; il garde la confiance 0,6 et son diamètre est proposé (*G4,
+  `GEOMETRIE_D_ABORD_G4.md` § 10* : vide, donc pas coupé, il n'est plus un
+  poteau, et son diamètre n'est plus proposé) ;
 * feuille B : deux contours non remplis de 32,4 × 17,6 cm, autour de tronçons
   de mur en béton au droit de l'axe Q — peut-être de vrais poteaux, non
   vérifiés (*corrigé à la vérification* : 30 × 22 cm était leur boîte alignée
   sur la feuille, 29,6 × 22 cm ; 32,4 × 17,6 cm est leur rectangle minimal) ;
+  *G4* : ce ne sont pas des sections (quatre sommets sans angles droits), ce
+  ne sont plus des poteaux ;
 * feuille A : une barre rouge pleine de 1,20 × 0,11 m à un nœud (élancement
   10,6) — sans doute pas un poteau. Elle passe la borne d'élancement de 4
   parce qu'un contour qui n'est pas reconnu comme rectangle est mesuré par sa
   boîte alignée sur la feuille (1,20 × 0,36 m, rapport 3,3) : logique
   antérieure à ce lot (*corrigé à la vérification* : la première rédaction
-  donnait ces dimensions de boîte pour celles de la barre) ;
+  donnait ces dimensions de boîte pour celles de la barre) ; *G4* : elle n'est
+  pas une section, ce n'est plus un poteau ;
 * deux pieux dessinés par leur seule hachure n'ont pas de diamètre (contour en
   croissant) ;
 * le nuage de révision de la feuille A n'est écarté que parce qu'il contient

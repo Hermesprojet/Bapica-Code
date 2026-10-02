@@ -1,13 +1,13 @@
 # Géométrie d'abord — G4 : les poteaux par leur signature
 
-> **Statut : conception (avant le code).** Phase G4 de `GEOMETRIE_D_ABORD.md`
+> **Statut : réalisé (`e3c1804`, `2a1856c`), mesuré au § 10.** Phase G4 de `GEOMETRIE_D_ABORD.md`
 > (§ 11 : « Poteaux C1 (exclusions géométriques), C2 » ; sortie mesurée :
 > « v01/v04/v14 : 64 ± 2 »), selon les règles du § 5 (poteaux) et de l'échelle
 > de preuves du § 1.4. Elle s'appuie sur G1 (remplissages, définitions de
 > blocs), G2 (grille, bulles, zone structurelle) et G3 (pieux). Les mesures
-> citées ont été faites hors du dépôt, sur `0.6.0` (`60f4b4a`) et sur un
-> prototype de mesure (§ 5) ; aucune ligne du produit n'est écrite avant la
-> validation de ce document.
+> de la conception (§ 1 à 5) ont été faites hors du dépôt, sur `0.6.0`
+> (`60f4b4a`) et sur un prototype de mesure ; celles de l'implémentation,
+> sur l'arbre gelé de `2a1856c`, sont au § 10.
 
 ## 0. Ce que G4 fait, et ce qu'il garantit
 
@@ -453,4 +453,240 @@ résultats écrits ici (§ 10).
 
 ## 10. Résultats
 
-À écrire après l'implémentation.
+> **Réalisé** : `e3c1804` (implémentation), `2a1856c` (le coût ramené à celui
+> de `0.6.0`, sans changer une sortie) ; version `0.7.0`. Campagne sur
+> l'arbre gelé de `2a1856c` (empreinte vérifiée avant et après), contre la
+> base `0.6.0` : l'export gelé de `2ff6dbc`, dont les sorties sont celles de
+> la campagne G3 (94 / 94 octet pour octet ; 17 / 17 variantes, durée mise à
+> part). Les sorties de `e3c1804` et de `2a1856c` sont identiques octet pour
+> octet (balayage) et hors durée (variantes).
+
+### 10.1 Ce qui a été fait
+
+* `poteaux.py` : la signature C1 et ses dix critères (§ 3.2), C2 sans grille
+  (§ 3.3), les complétions d'une section vide (§ 3.4), le nom du contour et
+  le cas 5 (§ 3.5–3.6). Les raisons d'aujourd'hui d'abord, puis
+  `section_irreguliere`, `hors_zone`, `bout_de_voile`, `partielle_vide` ; le
+  compte rendu `report.columns` : `by_rule` et `structural_zone`
+  (`signature_a`, `axes_etiquetes`, `non_applicable`).
+* `axes.py` rend la zone de G2 (`detecter_axes_et_zone`) ; `construction.py`
+  la passe aux poteaux, avec les pieux de G3 ; `pieux.py` partage
+  `centre_et_taille` avec `poteaux.py` (pieux identiques partout).
+* Contrat : descriptions de `classified_by` et de `signature`, régénéré ;
+  écran : l'étiquette de la règle ; version `0.7.0`.
+* Fixtures : `dxf_poteaux_signatures` (chaque confusion du § 2 posée sur un
+  nœud, en trois versions : sans nom, nommée, hachures sur un calque
+  « texte »), `dxf_grille_implicite` (C2, carrelage, sans unité), la feuille
+  PDF `formes_non_poteau` ; `test_geometrie_poteaux_signatures.py` : 20 tests,
+  dont l'invariance des poteaux nommés sur quatre plans (K1 de G4).
+* Trois tests existants mis à jour pour des sorties que G4 change par
+  conception : les poteaux en blocs de `charpente_mm` sont confirmés
+  (`geometrie`, 0,90, le nom du bloc cité) ; ceux de `sans_calques_m` sont C1
+  (`geometrie`, zone non applicable) ; la grille sans bulles de G2 donne ses
+  douze poteaux par C2 (aucun axe). Les tests d'invariance de G1–G3 (J1, K1)
+  passent sans modification.
+
+### 10.2 Le plan réel et ses variantes
+
+Précision et rappel contre R63 (§ 1.4). Propositions de poteau fausses :
+valeurs distinctes / propositions.
+
+| Variante | Poteaux `0.6.0` → G4 | Vrais | Faux | Précision | Rappel | Propositions de poteau fausses |
+|---|---|---|---|---|---|---|
+| **plan réel** | 64 → **63** | 63 | 1 → **0** | 0,984 → **1,000** | 1,000 | 1 / 1 → **0** |
+| v00 réenregistré | 64 → 63 | 63 | 1 → 0 | 0,984 → 1,000 | 1,000 | 1 / 1 → 0 |
+| **v01** calques neutres | 66 → **63** | 63 | 3 → **0** | 0,955 → **1,000** | 1,000 | 2 / 3 → **0** |
+| v02 blocs neutres | 65 → 63 | 63 | 2 → 0 | 0,969 → 1,000 | 1,000 | 1 / 1 → 0 |
+| v03 sans types de ligne | 64 → 63 | 63 | 1 → 0 | 0,984 → 1,000 | 1,000 | 1 / 1 → 0 |
+| **v04** aucune convention | 59 → **58** | 58 | 1 → **0** | 0,983 → **1,000** | 0,921 | 1 / 1 → **0** |
+| v05 calques espagnols | 73 → 63 | 63 | 10 → 0 | 0,863 → 1,000 | 1,000 | 4 / 5 → 0 |
+| v06 calques allemands | 71 → 63 | 63 | 8 → 0 | 0,887 → 1,000 | 1,000 | 3 / 4 → 0 |
+| v07 calques AIA | 64 → 63 | 63 | 1 → 0 | 0,984 → 1,000 | 1,000 | 1 / 1 → 0 |
+| v08 unité mm, fausse | 3 → 1 | 0 | 3 → 1 | 0 → 0 | 0 | 2 / 2 → 2 / 2 |
+| v09 unité m, fausse | 0 → 0 | 0 | 0 | — | 0 | 0 |
+| v10 tourné de 30° | 64 → 63 | 63 | 1 → 0 | 0,984 → 1,000 | 1,000 | 1 / 1 → 0 |
+| v11 blocs explosés | 91 → 89 | 63 | 28 → 26 | 0,692 → 0,708 | 1,000 | 7 / 7 → 6 / 6 |
+| v12 étiquettes minuscules | 64 → 63 | 63 | 1 → 0 | 0,984 → 1,000 | 1,000 | 1 / 1 → 0 |
+| **v13** noms neutres, types gardés | 68 → **63** | 63 | 5 → **0** | 0,926 → **1,000** | 1,000 | 3 / 4 → **0** |
+| **v14** tout renommé | 63 → **58** | 58 | 5 → **0** | 0,921 → **1,000** | 0,921 | 3 / 4 → **0** |
+| **v15** tout sur `0` | 66 → **63** | 63 | 3 → **0** | 0,955 → **1,000** | 1,000 | 2 / 3 → **0** |
+
+**Chaque ligne est celle que le § 5 prévoyait.** Sur v04 et v14, les cinq
+poteaux manquants sont ceux de l'axe P (H/P, I/P, J/P, K/P, N/P). Aucun
+conflit de poteau (cas 5) sur le plan réel et ses 16 variantes.
+
+**Les 63 poteaux du plan réel** sont identiques à `0.6.0`, champ par champ :
+identifiant, forme, contour, centre, largeur, profondeur, angle, nœud,
+repère, rempli — et leur preuve (poignées, calques, types, insertions,
+blocs) ; seules la règle (`forme` → `geometrie`), la confiance (0,65 → 0,85)
+et les critères cités changent (`section`, `coupe`, `au_noeud`, `zone` ;
+`section_repetee` pour 60 d'entre eux). Il en va de même sur toutes les
+variantes où ils sont trouvés (v00–v06, v10, v12–v15). Sur v07, les 63 sont
+aussi identiques, mais deviennent `filled` et citent leur hachure, posée sur
+un calque `…-ANNO-PATT…` (le jumeau sans nom, § 3.1) ; sur v11, deux d'entre
+eux, sans nœud, changent d'identifiant (§ 10.6).
+
+Le plan réel garde ses axes (71), ses pieux (477), ses voiles, poutres,
+travées, dalles, ouvertures, niveaux et repères : seul le graphe structurel
+change (le nœud du faux poteau retiré). Ses rejets d'aujourd'hui gardent
+leurs comptes (`contenant` 13, `dessin_de_pieu` 59, `non_compact` 1, `pieu`
+107) ; le Ø 28 est compté `partielle_vide`.
+
+### 10.3 Les propositions
+
+* **Plan réel nommé** : 335 → **334**. La seule retirée est `column_diameter`
+  28,3945. Les 11 propositions de section gardent leurs valeurs, unités,
+  repères et groupes ; leur confiance passe de 0,65 à **0,85** et leur
+  fondement dit `geometrie` au lieu de `forme`. **Toutes les autres
+  propositions sont identiques**, valeur, unité, repère, confiance et texte
+  — sur le plan réel et sur ses 16 variantes.
+* **`column_diameter`** : **32 → 0** (plan réel et 14 variantes ; toutes
+  fausses : le plan réel n'a aucun poteau rond).
+* Propositions de poteau fausses restantes : v08, 235 × 310 (un massif lu à
+  l'unité fausse — sa confiance passe de 0,65 à 0,85, § 10.6) ; v11, six
+  valeurs (100, 37,0924, 45, 70, 41,1494, 90), dont les confiances passent à
+  0,85 ou 0,90.
+* v07 : les 11 propositions de section passent de 0,6 à 0,85 (ses poteaux
+  étaient vides en `0.6.0`, leur hachure écartée par son nom).
+
+### 10.4 Le corpus (94 fichiers)
+
+* **54 fichiers identiques** à `0.6.0` (la version de l'extracteur mise à
+  part) : aucun poteau, ou aucun changement.
+* **21 ne changent que de règle et de confiance** — mêmes poteaux, mêmes
+  valeurs proposées : les plans fabriqués dont les poteaux pleins deviennent
+  C1 à 0,85 (fondations avec présentation ou `$INSUNITS`, étiquettes d'axes,
+  S-101 ×4, `sans_calques_m`, les cinq feuilles PDF fabriquées, les cinq plans
+  N1), `charpente_mm` (8 poteaux en blocs nommés, confirmés à 0,90) ; v09 et
+  `grande_grille` (400 poteaux nommés, vides, à 0,85 comme aujourd'hui)
+  n'ont que le compte rendu `report.columns` de plus.
+* **18 voient des poteaux ou des valeurs proposées changer**, tous prévus
+  (§ 5) : les deux plans de fondations sans unité perdent la cabine
+  d'ascenseur 120 × 100 et ses deux propositions fausses ; la feuille PDF
+  réelle A perd la barre rouge, la feuille B ses deux contours irréguliers
+  (aucune proposition ne change : un polygone ne propose rien ; la cage
+  d'ascenseur de B reste écartée, contenant) ; le plan réel (deux copies) et
+  v00–v08, v10, v12, v13 changent comme au § 10.2.
+* **1 change aussi ailleurs** : v11 (§ 10.6).
+
+Ailleurs, rien ne bouge : aucune exception, la lecture (`parse_document`)
+identique partout, les axes, pieux, voiles, dalles, ouvertures et niveaux
+identiques partout ; poutres, travées et chaînes de cotes ne changent que sur
+v11 (des identifiants). Le graphe structurel change dans 19 fichiers (les
+nœuds des poteaux retirés), les repères dans 6 (un repère n'est plus affecté
+quand son faux poteau disparaît, « VP2 » sur v01). Les raisons de rejet
+d'aujourd'hui gardent leurs comptes dans les 94 fichiers ; s'ajoutent
+`partielle_vide` (36 en tout) et `section_irreguliere` (9) ; `hors_zone` et
+`bout_de_voile` n'apparaissent nulle part (0 cas, comme mesuré au § 3.2).
+Aucune grille implicite (C2) dans le corpus, comme prévu.
+
+### 10.5 Critères d'acceptation (§ 6)
+
+| # | Mesure | Verdict |
+|---|---|---|
+| A1 | les 63 vrais poteaux du plan réel identiques champ par champ, preuve comprise ; le Ø 28 retiré ; axes (71), pieux (477), voiles, poutres, travées, dalles identiques ; aucun conflit | **atteint** |
+| A2 | 334 propositions = les 335 de `0.6.0` moins `column_diameter` 28,3945 ; valeurs, repères, unités identiques ; seules les confiances des 11 propositions de section changent (0,65 → 0,85) — et leur fondement dit `geometrie` | **atteint** |
+| A3 | v00–v03, v05–v07, v10, v12, v13, v15 : 63 poteaux, précision 1,000, rappel 1,000, 0 proposition de poteau fausse, aucun conflit | **atteint** |
+| A4 | v04, v14 : 58 poteaux, précision 1,000 ; les cinq manquants sont ceux de l'axe P | **atteint** |
+| A5 | v08 : 3 → 1 faux ; v09 : 0 → 0 ; v11 : 28 → 26 | **atteint** |
+| A6 | corpus : seuls changent les poteaux du § 5 et les confiances ; aucune proposition autre que de poteau ne change (valeur, unité, repère, confiance) ; les raisons de rejet d'aujourd'hui gardent leurs comptes dans les 94 fichiers | **atteint** (v11 : § 10.6) |
+| A7 | les fixtures du § 7 donnent l'issue écrite | **atteint** (deux adaptées, § 10.7) |
+| A8 | suites, harnais, contrat verts ; J1, K1 inchangés | **atteint** (§ 10.9) |
+| A9 | coût sur le plan réel ≤ + 5 % : + 0,8 % de bout en bout (§ 10.9) | **atteint par `2a1856c`** ; manqué par `e3c1804` (+ 5,1 %, § 10.6) |
+
+### 10.6 Ce qui n'était pas prévu
+
+1. **Le coût (A9)** : `e3c1804` détectait les poteaux du plan réel en
+   environ une seconde de plus (médianes de cinq lectures en processus :
+   4,81 et 5,07 s contre 3,99 et 3,92 s ; de bout en bout, + 5,1 % en
+   moyenne de quatre lectures alternées), surtout pour indexer les plages de
+   voile (C1.10 : `rectangle_de` sur chaque hachure, jusqu'aux polygones de
+   64 sommets des pieux). `2a1856c` lit le genre déjà établi des formes,
+   évalue les critères les moins coûteux d'abord, écarte un contour d'un
+   autre rôle sans section coupée avant de chercher son nœud, et lit
+   l'emprise une fois : la détection des poteaux revient au coût de `0.6.0`
+   (4,08 et 4,19 s contre 4,11 et 4,08 s). Sorties identiques octet pour
+   octet.
+2. **v11 : des identifiants par rang qui glissent.** Un poteau sans nœud est
+   nommé par son rang (`column:77`) : quand deux faux poteaux disparaissent,
+   les rangs suivants glissent (`column:77` → `column:75`, `column:88` →
+   `column:86` pour deux vrais poteaux). Leur géométrie et leur preuve sont
+   inchangées ; les poutres, travées et chaînes de cotes qui les citent
+   changent de référence, et trois portées, trois portées libres et trois
+   consoles proposées citent le nouvel appui dans leur fondement (valeurs,
+   unités, repères, confiances et textes inchangés). Propriété antérieure du
+   schéma d'identifiants, mise à nu par G4.
+3. **v08 : le dernier faux poteau monte.** Le massif 235 × 310 lu à l'unité
+   fausse a la signature C1 complète : ses deux propositions fausses passent
+   de 0,65 à 0,85. Une unité fausse reste le risque D1 (recoupement de
+   `$INSUNITS`, hors G4).
+4. **Le compte rendu des bandes** : sur les deux plans de fondations sans
+   unité, `candidate_bands_rejected` passe de 2 à 6 — quatre bandes
+   provisoires de plus sont écartées faute de deux appuis, la cabine retirée
+   en étant un ; poutres et travées identiques.
+5. **Les repères orphelins** : « VP2 » (v01) et « VA1 » (v08), repères de
+   faux poteaux retirés, ne sont plus affectés (6 fichiers ; aucune
+   proposition n'en dépend).
+6. **v07 : la preuve cite la hachure.** Les 63 poteaux deviennent `filled`
+   et leur preuve cite leur hachure (calque `…-ANNO-PATT…`) — la règle du
+   jumeau (§ 3.1), que la conception ne disait pas citée.
+
+### 10.7 Écarts à la conception
+
+1. **Le repère « P1 »** : le § 3.4 et le § 7 le donnent pour un repère de
+   poteau, mais la règle du § 3.4 renvoie aux préfixes de poteau du lecteur
+   de repères, où P est un préfixe de POUTRE. La règle l'emporte : « P1 » ne
+   complète pas (testé) ; « C3 », « POT12 », « poteau P3 » complètent.
+2. **La preuve et le jumeau** : le jumeau rempli qui coupe un contour vide
+   est cité dans la preuve, et le poteau dit `filled`, quand la décision a
+   lu « coupé » (C1, C2, cas 5) ; une décision par le nom seul, ou par une
+   complétion, garde la preuve et le `filled` d'aujourd'hui.
+3. **Le nom du contour se juge au niveau du poteau** : les contours vides du
+   groupe (contour et copies) donnent le nom qui compte, la hachure ne le
+   donne que si elle est seule. Aucun groupe du corpus ne mêle un contour
+   sans nom et une hachure nommée : sans effet mesuré.
+4. **C1.6 sans nom** s'applique aussi aux contours sans rôle (comptés
+   `dessin_de_pieu`) : sans effet mesuré, G3 les absorbe déjà.
+5. **C1.3** : la boîte alignée d'un polygone reste la mesure du critère de
+   taille (règle inchangée) ; la barre rouge est écartée par C1.1.
+6. **C2** : une classe de sections identiques est de même forme, côtés triés
+   à 1 % et, pour un rectangle, de même orientation à 1° ; une section n'y
+   reste que si elle est dans une file de trois dans chaque direction (au
+   moins neuf sections, donc) ; files : même ordonnée à 5 % du grand côté,
+   voisines alignées à 1°.
+7. **Les fixtures** : le détail hors zone est un petit carroyage nommé à
+   l'écart de la grille (deux axes `AXES` qui se croisent, un carré plein à
+   leur nœud), non un cartouche traversé par le prolongement d'un axe — un
+   nœud hors de la zone est ce que C1.5 doit écarter ; le repère de niveau
+   est remplacé par deux blocs (un à attribut, un à l'échelle 5), pour
+   éprouver chaque condition seule.
+8. **Le compte rendu** : `report.columns` (`by_rule`, `structural_zone`) est
+   présent dès que le dessin a des nœuds ou des poteaux.
+
+### 10.8 Ce qui reste
+
+* **Cible du § 11 du plan non atteinte sur v04 et v14** (« 64 ± 2 ») : 58,
+  les cinq poteaux de l'axe P, sans nœud quand G2 ne trouve pas l'axe —
+  comme prévu (§ 5) ; aux candidats (G6).
+* v11 : 26 faux poteaux restent (21 par le nom d'un bloc imbriqué, règle du
+  nom inchangée ; 5 par C1 sur les nœuds de faux axes) et leurs six valeurs
+  proposées ; v08 : un massif à l'unité fausse (§ 10.6).
+* Les feuilles PDF réelles A et B n'ont plus de poteau : les deux contours de
+  B, peut-être de vrais poteaux, ne sont pas des sections (risque 6).
+* Non mesurés faute de cas : C2, les bouts de voile, le bloc répété, le
+  repère voisin, le cas 5 — éprouvés par les seules fixtures.
+* La confiance reste non calibrée (0,85 sur les poteaux C1 du plan réel).
+
+### 10.9 Validation
+
+* **Campagne sur l'arbre gelé de `2a1856c`** (empreinte identique avant et
+  après, aucun fichier modifié) : balayage des 94 fichiers, 94 / 94 lus,
+  identiques octet pour octet à ceux de `e3c1804` ; variantes 17 / 17,
+  identiques hors durée ; suite d'extraction : 485 tests, 0 échec ; suite
+  d'API : 599 tests, 0 échec (340 ignorés sans base, comme avant) ;
+  `export_contracts.py --check` vert ; harnais des documents (PostgreSQL 16
+  jetable) : 34 réussis, sortie 0. La même campagne sur `e3c1804` : mêmes
+  résultats.
+* **Coût (A9)**, de bout en bout sur le plan réel, quatre lectures
+  alternées `0.6.0` / G4, seules sur la machine : 19,45 s contre 19,60 s en
+  moyenne (+ 0,8 % ; médianes + 1,3 %).
