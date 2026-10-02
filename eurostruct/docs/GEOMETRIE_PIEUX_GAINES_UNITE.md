@@ -87,6 +87,16 @@ sont pas des niveaux de plancher ; `Pr_Pieux_axe` n'est **pas** un axe de grille
    « pile P3 »), rattaché au pieu le plus proche ; **jamais** à un poteau, un
    voile ou une poutre.
 
+**Géométrie d'abord (G3, `GEOMETRIE_D_ABORD_G3.md`).** Sur un DXF, les cercles
+d'un même diamètre (1 %) forment des classes ; une classe d'au moins 10 cercles
+distincts, de diamètre plausible, qui n'est ni une classe de bulles ni une
+classe de poteaux ronds, a la **signature P** : ses cercles sont des germes
+quel que soit leur nom (`classified_by = "geometrie"`, 0,85 ; 0,90 quand un
+nom de pieu confirme ; 0,4 et un doute dit quand un nom d'un autre rôle la
+contredit). Les germes nommés restent regroupés d'abord : un pieu reconnu par
+son nom garde son centre, son diamètre, son nœud et son repère. Un germe
+nommé hors de toute classe reste un pieu par son nom (étape 1 ci-dessus).
+
 Un pieu porte : centre, diamètre (ou côtés), nœud de grille éventuel, repère,
 preuve. **Aucune valeur n'en est proposée** : le dimensionnement des
 fondations profondes est hors du domaine validé du moteur (interdiction 6) ;

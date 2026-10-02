@@ -300,7 +300,7 @@ export function deriveeDuDessin(x: Extraction): string | null {
   const regle = { bloc: "bloc", calque: "calque", type_de_ligne: "type de ligne",
                   style: "style de trait appris de la feuille",
                   forme: "forme et position",
-                  geometrie: "signature géométrique (bulle, famille, trait-point)" }[
+                  geometrie: "signature géométrique (axe : bulle, famille, trait-point ; pieu : classe de diamètre)" }[
     String(f.classified_by ?? "")];
   if (regle) morceaux.push(`reconnu par ${regle}`);
   for (const c of (Array.isArray(f.dimensions) ? f.dimensions : []) as Fondement[]) {

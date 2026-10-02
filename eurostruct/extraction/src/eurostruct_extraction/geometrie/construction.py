@@ -153,7 +153,7 @@ def _construire(prims: PrimitivesDxf, declarations: list[Declaration], unites: U
     formes = formes_fermees(prims, tol, lignes)
     pieux = detecter_pieux(prims, tol, grille, formes)
     poteaux, formes_poteaux, doutes_poteaux, rejets = detecter_poteaux(
-        prims, tol, grille, formes, pieux.formes_prises)
+        prims, tol, grille, formes, pieux.formes_prises, pieux.germes)
     voiles, formes_voiles, segments_voiles = detecter_voiles(
         prims, tol, grille, formes, formes_poteaux | pieux.formes_prises)
     prises = formes_poteaux | formes_voiles | pieux.formes_prises
@@ -197,8 +197,8 @@ def _construire(prims: PrimitivesDxf, declarations: list[Declaration], unites: U
         unites=unites, grille=grille, poteaux=poteaux, pieux=pieux.pieux, voiles=voiles,
         poutres=poutres,
         dalles=dalles, tremies=tremies, cotes=cotes, niveaux=niveaux, libelles=libelles,
-        non_resolus=(doutes_axes + doutes_poteaux + doutes_graphe + refus_feuille
-                     + _refus(prims)),
+        non_resolus=(doutes_axes + pieux.doutes + doutes_poteaux + doutes_graphe
+                     + refus_feuille + _refus(prims)),
         compte_rendu=compte_rendu, absorbees=set(etiquettes) | rattachements.absorbees,
         rattachements=rattachements)
     return modele

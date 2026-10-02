@@ -1033,3 +1033,112 @@ def dxf_grille_signatures(*, noms: bool = False, forme: str = "cercles", motif: 
         msp.add_line((24000, -1500), (24000, 13500), dxfattribs={"layer": "COTES"})
         bulle("E", 24000, 13900, "COTES")
     return _ecrire(doc)
+
+
+# ------------------------------------------------- PIEUX PAR LA SIGNATURE (G3)
+def dxf_pieux_signatures(*, noms: bool = False, calque_pieux: str | None = None,
+                         poteaux_ronds: bool = False, numerotes: bool = False,
+                         regards: bool = False, peu: bool = False, unite: bool = True,
+                         grille: bool = True) -> bytes:
+    """Un plan de fondations sur pieux, en cm (G3, ``docs/GEOMETRIE_D_ABORD_G3.md``).
+
+    Grille A–D (x = 0, 600, 1200, 1800) × 1–3 (y = 0, 500, 1000), bulles Ø 80 en
+    haut et à gauche. File 1 : à chaque nœud, un pieu Ø 60 seul, centré, sans
+    poteau. Files 2 et 3 : à chaque nœud, un poteau 40 × 40 hachuré sur un
+    massif 220 × 100 et deux pieux Ø 60 à ± 60 cm. Sous la grille (y = -400) :
+    une paroi de dix pieux sécants Ø 60 tous les 50 cm, remplis, chacun dessiné
+    deux fois (continu, et une copie en tirets). 30 pieux, 8 poteaux.
+
+    ``noms`` : calques ``AXES``, ``PIEUX``, ``XREF$0$PIEUX``, ``HACH_PIEUX``,
+    ``MASSIFS``, ``POTEAUX``, ``HACH_POTEAUX`` ; sinon ``C001``… ``C009``. ``calque_pieux`` :
+    le calque des pieux (``POTEAUX`` : un autre rôle). ``poteaux_ronds`` : à
+    chacun des 12 nœuds, un poteau rond Ø 50 hachuré sur un massif à deux
+    pieux. ``numerotes`` : un numéro dans chaque pieu, et un pieu numéroté au
+    pied de l'axe A. ``regards`` : douze regards Ø 15 hors des nœuds. ``peu`` :
+    six pieux (la file 1 et un massif). ``unite=False`` : ``$INSUNITS = 0`` ;
+    ``grille=False`` : aucun axe."""
+    import ezdxf
+    from ezdxf.enums import TextEntityAlignment as A
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 5 if unite else 0
+    neutres = {"axes": "C001", "pieux": "C002", "copie": "C003", "massifs": "C004",
+               "poteaux": "C005", "hachures": "C006", "textes": "C007", "regards": "C008",
+               "remplis": "C009"}
+    nommes = {"axes": "AXES", "pieux": "PIEUX", "copie": "XREF$0$PIEUX", "massifs": "MASSIFS",
+              "poteaux": "POTEAUX", "hachures": "HACH_POTEAUX", "textes": "TEXTES",
+              "regards": "REGARDS", "remplis": "HACH_PIEUX"}
+    calques = dict(nommes if noms else neutres)
+    if calque_pieux is not None:
+        calques["pieux"] = calque_pieux
+    for role, nom in calques.items():
+        doc.layers.add(nom, linetype="DASHED" if role == "copie" else "CONTINUOUS")
+    msp = doc.modelspace()
+
+    def texte(t: str, x: float, y: float, h: float, calque: str) -> None:
+        msp.add_text(t, height=h, dxfattribs={"layer": calque}).set_placement(
+            (x, y), align=A.MIDDLE_CENTER)
+
+    def disque(cx: float, cy: float, r: float, calque: str) -> None:
+        hachure = msp.add_hatch(color=8, dxfattribs={"layer": calque})
+        hachure.paths.add_edge_path().add_arc((cx, cy), r, 0, 360)
+
+    def rect(cx: float, cy: float, lx: float, ly: float, calque: str) -> list[Point]:
+        pts = [(cx - lx / 2, cy - ly / 2), (cx + lx / 2, cy - ly / 2),
+               (cx + lx / 2, cy + ly / 2), (cx - lx / 2, cy + ly / 2)]
+        msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": calque})
+        return pts
+
+    numero = iter(range(1, 100))
+
+    def pieu(cx: float, cy: float, *, rempli: bool = False, copie: bool = False) -> None:
+        msp.add_circle((cx, cy), 30, dxfattribs={"layer": calques["pieux"]})
+        if copie:
+            msp.add_circle((cx, cy), 30, dxfattribs={"layer": calques["copie"]})
+        if rempli:
+            disque(cx, cy, 30, calques["remplis"])
+        if numerotes:
+            texte(str(next(numero)), cx, cy, 15, calques["textes"])
+
+    xs, ys = (0.0, 600.0, 1200.0, 1800.0), (0.0, 500.0, 1000.0)
+    if grille:
+        for nom, x in zip("ABCD", xs, strict=True):
+            msp.add_line((x, -150), (x, 1150), dxfattribs={"layer": calques["axes"]})
+            msp.add_circle((x, 1190), 40, dxfattribs={"layer": calques["axes"]})
+            texte(nom, x, 1190, 30, calques["axes"])
+        for nom, y in zip("123", ys, strict=True):
+            msp.add_line((-150, y), (1950, y), dxfattribs={"layer": calques["axes"]})
+            msp.add_circle((-190, y), 40, dxfattribs={"layer": calques["axes"]})
+            texte(nom, -190, y, 30, calques["axes"])
+
+    for x in xs:
+        for y in ys:
+            if y == 0.0 and not poteaux_ronds:
+                pieu(x, y)
+                continue
+            if peu and (x, y) != (600.0, 500.0):
+                if not poteaux_ronds:
+                    plein_ = rect(x, y, 40, 40, calques["poteaux"])
+                    msp.add_hatch(dxfattribs={"layer": calques["hachures"]}).paths \
+                        .add_polyline_path(plein_, is_closed=True)
+                continue
+            rect(x, y, 220, 100, calques["massifs"])
+            for dx in (-60.0, 60.0):
+                pieu(x + dx, y)
+            if poteaux_ronds:
+                msp.add_circle((x, y), 25, dxfattribs={"layer": calques["poteaux"]})
+                disque(x, y, 25, calques["hachures"])
+            else:
+                plein_ = rect(x, y, 40, 40, calques["poteaux"])
+                msp.add_hatch(dxfattribs={"layer": calques["hachures"]}).paths \
+                    .add_polyline_path(plein_, is_closed=True)
+    if not peu:
+        for k in range(10):
+            pieu(200.0 + 50.0 * k, -400.0, rempli=True, copie=True)
+    if numerotes:
+        pieu(0.0, -185.0)
+    if regards:
+        for k in range(12):
+            msp.add_circle((300.0 + 100.0 * k, 250.0), 7.5,
+                           dxfattribs={"layer": calques["regards"]})
+    return _ecrire(doc)

@@ -76,8 +76,8 @@ class PreuveGeometrique(_Lecture):
                            "geometrie"] = Field(
         description="style : un style de trait APPRIS d'une feuille PDF (axes, cotes) ; "
                     "geometrie : une signature géométrique complète a décidé (axe : bulle "
-                    "et famille, ou trait-point parallèle à une famille), quel que soit "
-                    "le nom du calque ou du bloc.")
+                    "et famille, ou trait-point parallèle à une famille ; pieu : classe "
+                    "de diamètre), quel que soit le nom du calque ou du bloc.")
     handles_not_listed: int | None = None
     inserts: list[str] | None = Field(
         default=None, description="Poignées des INSERT qui ont placé les entités.")
@@ -86,8 +86,9 @@ class PreuveGeometrique(_Lecture):
         default=None, description="Le nom (calque, bloc, type de ligne) qui a décidé ; pour "
                                   "une décision geometrie, le nom qui la confirme.")
     signature: list[str] | None = Field(
-        default=None, description="Les critères géométriques vus : bulle, famille, "
-                                  "motif_mixte, parallele_a_une_famille, zone.")
+        default=None, description="Les critères géométriques vus — axe : bulle, famille, "
+                                  "motif_mixte, parallele_a_une_famille, zone ; pieu : "
+                                  "classe_de_diametre, motif_tirets, rempli.")
 
 
 class UnitesDuDessin(_Lecture):

@@ -328,10 +328,12 @@ class _Controle:
 
 
 def detecter_poteaux(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grille,
-                     formes: list[Forme], exclues: Collection[int] = frozenset()
+                     formes: list[Forme], exclues: Collection[int] = frozenset(),
+                     pieux: Collection[int] = frozenset()
                      ) -> tuple[list[Poteau], set[int], list[NonResolu], Counter[str]]:
     """Les poteaux, les rangs des formes utilisées, les doutes, et les candidats
-    écartés par raison. ``exclues`` : les formes qui sont le dessin d'un pieu."""
+    écartés par raison. ``exclues`` : les formes qui sont le dessin d'un pieu ;
+    ``pieux`` : celles qui SONT un pieu (germes nommés ou géométriques, G3)."""
     entraxe = grille.entraxe_median()
     index_noeuds = _index_des_noeuds(grille, tolerances)
     retenus: list[tuple[Forme, int, float, str, str | None]] = []
@@ -354,6 +356,10 @@ def detecter_poteaux(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grill
             sum(p[1] for p in forme.points) / len(forme.points))
         noeud = _noeud_proche(centre, 0.5 * max(cotes), grille, forme.points, tolerances,
                               index_noeuds)
+        if role == "poteau" and rang in pieux:
+            # UN GERME DE PIEU N'EST JAMAIS UN POTEAU, même sur un calque de poteaux :
+            # la signature P décide, le conflit est dit par pieux.py.
+            continue
         if role == "poteau":
             if not _plausible(cotes, tolerances, entraxe):
                 if max(cotes) / max(min(cotes), 1e-12) > ELANCEMENT_MAX:
@@ -369,6 +375,8 @@ def detecter_poteaux(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grill
             # si la forme est celle d'une section.
             if role in ("pieu", "fondation"):
                 raison: str | None = role
+            elif rang in pieux:
+                raison = "pieu"
             elif rang in exclues:
                 raison = "dessin_de_pieu"
             else:

@@ -114,17 +114,27 @@ nommés restent (§ 5).
 
 ### 2.5 Pas une classe de bulles
 
-Une classe dont **un membre au moins est une bulle de G2** — un cercle qui
-contient exactement un texte court et appartient à une classe de bulles
-validée (la moitié au moins de ses membres au bout d'une droite de 20 rayons,
-`GEOMETRIE_D_ABORD_G2.md` § 2.1) — est une classe de bulles : aucun germe.
+Un membre est une **bulle** s'il est une bulle d'une classe de bulles de G2
+(la moitié au moins de ses membres au bout d'une droite de 20 rayons,
+`GEOMETRIE_D_ABORD_G2.md` § 2.1), **ou** s'il a la forme d'une bulle (un seul
+texte court dedans) et qu'**un axe de la grille finit sur lui** — dans la
+fenêtre de G2 (centre sur le prolongement à 0,25 rayon près, entre un rayon
+avant le bout et quatre au-delà), quelle que soit la règle qui a reconnu
+l'axe. Une classe dont **la moitié au moins** des membres distincts sont des
+bulles est une classe de bulles : aucun germe.
 
 **Choix G3** (lecture de « aucun membre avec une étiquette dedans au bout
-d'une droite ») : la bulle est celle de G2, jugée par classe. Le § 4.4 du plan
-le veut — « la classe est décidée par la position, pas par l'étiquette » — et
-la fixture de G2 le montre : treize pieux numérotés dans leur cercle, dont un
+d'une droite ») : la position décide, par classe, comme le veut le § 4.4 du
+plan — « la classe est décidée par la position, pas par l'étiquette » ; la
+fixture de G2 le montre : treize pieux numérotés dans leur cercle, dont un
 touche le bout d'un axe, restent une classe de pieux. Plan réel : la classe
 Ø 80 (62 bulles) est écartée.
+
+*(Corrigé à l'implémentation : la première rédaction ne comptait que les
+bulles de G2. La suite de tests l'a montré : les douze bulles de Ø 800 mm du
+plan fabriqué « axes courts à bulle » finissent des axes nommés plus courts
+que 20 rayons ; G2 ne les valide pas, et elles devenaient des pieux en
+conflit. Une bulle au bout d'un axe trouvé, même court, est une bulle.)*
 
 ### 2.6 Pas une classe de poteaux ronds
 
