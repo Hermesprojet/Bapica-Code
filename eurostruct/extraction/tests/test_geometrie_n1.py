@@ -1,10 +1,12 @@
-"""L'information DXF standard (N1) lue par la phase G1 — et rien de plus.
+"""L'information DXF standard (N1) lue par la phase G1.
 
 Voir ``docs/GEOMETRIE_D_ABORD_G1.md``. Chaque champ nouveau des primitives
-est lu tel que le DXF le porte (F1 à F7) ; AUCUNE sortie ne change : les
-champs sont hors égalité, une multiligne reste comptée « entité non lue », et
-neutraliser la lecture N1 — ou la rendre illisible — donne exactement les
-mêmes sorties.
+est lu tel que le DXF le porte (F1 à F7). Depuis G2, le MOTIF des types de
+ligne (signature B) et la STRUCTURE des définitions de blocs (bulles-blocs)
+décident des axes (``docs/GEOMETRIE_D_ABORD_G2.md``) ; les autres champs —
+couleur, multilignes, échelle d'insertion, remplissage — ne sont encore lus par
+aucun détecteur : les neutraliser, ou les rendre illisibles, ne change aucune
+sortie.
 """
 
 from __future__ import annotations
@@ -276,25 +278,42 @@ def _sorties(octets: bytes) -> str:
                       ensure_ascii=False)
 
 
-def _sans_n1(monkeypatch: pytest.MonkeyPatch) -> None:
+def _sans_n1_non_lu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Neutralise ce qu'aucun détecteur ne lit encore (G2) : couleur,
+    multilignes, échelle d'insertion."""
     lecteur = module_primitives._Lecteur
-    monkeypatch.setattr(module_primitives, "_motifs_de_ligne", lambda document, incident: {})
     monkeypatch.setattr(lecteur, "_couleur", lambda self, *args: None)
     monkeypatch.setattr(lecteur, "_multiligne", lambda self, *args: None)
     monkeypatch.setattr(lecteur, "_echelle", lambda self, entite: None)
-    monkeypatch.setattr(lecteur, "_definition", lambda self, nom, definition: DefinitionDeBloc(
-        nom, False, False, False, {}, 0, 0))
 
 
 @pytest.mark.parametrize("fabrique", [dxf_information_n1, dxf_fondations_pieux])
-def test_neutraliser_la_lecture_n1_ne_change_aucune_sortie(monkeypatch, fabrique):
+def test_neutraliser_le_n1_que_rien_ne_lit_ne_change_aucune_sortie(monkeypatch, fabrique):
     octets = fabrique()
     avec = _sorties(octets)
-    _sans_n1(monkeypatch)
+    _sans_n1_non_lu(monkeypatch)
     sans = _sorties(octets)
     prims = parse_document(octets).primitives_dxf
-    assert prims.types_de_ligne == {} and prims.multilignes == []
+    assert prims.multilignes == [] and {s.couleur for s in prims.segments} == {None}
     assert avec == sans
+
+
+def test_sans_motifs_ni_definitions_la_grille_reste_reconnue_par_ses_bulles(monkeypatch):
+    """G2 lit le motif (signature B, critère « motif_mixte ») et la structure des
+    blocs (bulles-blocs) : sans eux, la grille à bulles du plan N1 reste la
+    même — seul le critère « motif_mixte » disparaît des preuves."""
+    octets = dxf_information_n1()
+    avant = extract_engineering_data(parse_document(octets)).structure["grid"]
+    monkeypatch.setattr(module_primitives, "_motifs_de_ligne", lambda document, incident: {})
+    monkeypatch.setattr(module_primitives._Lecteur, "_definition",
+                        lambda self, nom, definition: DefinitionDeBloc(nom, False, False, False,
+                                                                       {}, 0, 0))
+    apres = extract_engineering_data(parse_document(octets)).structure["grid"]
+    assert [(a["id"], a["label"], a["line"]) for a in avant] == [
+        (a["id"], a["label"], a["line"]) for a in apres]
+    assert {a["evidence"]["classified_by"] for a in apres} == {"geometrie"}
+    assert all("motif_mixte" in a["evidence"]["signature"] for a in avant)
+    assert not any("motif_mixte" in a["evidence"]["signature"] for a in apres)
 
 
 def test_une_information_n1_illisible_est_comptee_et_ne_change_rien(monkeypatch):
@@ -304,16 +323,26 @@ def test_une_information_n1_illisible_est_comptee_et_ne_change_rien(monkeypatch)
     def illisible(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
         raise ValueError("FICTIF")
 
-    monkeypatch.setattr(module_primitives, "classe_de_motif", illisible)
     monkeypatch.setattr(module_primitives, "Multiligne", illisible)
     monkeypatch.setattr(module_primitives, "_code_couleur", illisible)
     prims = parse_document(octets).primitives_dxf
-    assert prims.types_de_ligne == {} and prims.multilignes == []
-    assert prims.n1_incidents["type de ligne illisible"] == 28
+    assert prims.multilignes == []
     assert prims.n1_incidents["multiligne illisible"] == 6
     assert prims.n1_incidents["couleur ou drapeaux de calque illisibles"] == len(prims.calques)
     assert "entite illisible: MLINE" not in prims.ecartees
     assert _sorties(octets) == avant
+
+
+def test_un_motif_illisible_est_compte_et_ne_fait_rien_lever(monkeypatch):
+    def illisible(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise ValueError("FICTIF")
+
+    monkeypatch.setattr(module_primitives, "classe_de_motif", illisible)
+    analyse = parse_document(dxf_information_n1())
+    assert analyse.primitives_dxf.types_de_ligne == {}
+    assert analyse.primitives_dxf.n1_incidents["type de ligne illisible"] == 28
+    grille = extract_engineering_data(analyse).structure["grid"]
+    assert sorted(a["label"] for a in grille) == ["1", "2", "3", "A", "B", "C"]
 
 
 def test_une_feuille_pdf_n_a_pas_d_information_n1():

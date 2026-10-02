@@ -63,10 +63,14 @@ class Preuve:
     insertions: tuple[str, ...]
     blocs: tuple[str, ...]
     types: tuple[str, ...]
-    #: ``calque``, ``bloc``, ``type_de_ligne``, ``forme``.
+    #: ``calque``, ``bloc``, ``type_de_ligne``, ``forme``, ``style`` ; ``geometrie``
+    #: quand une signature complète a décidé (``docs/GEOMETRIE_D_ABORD_G2.md``).
     regle: str
-    #: Le nom qui a décidé (calque, bloc, type de ligne), s'il y en a un.
+    #: Le nom qui a décidé (calque, bloc, type de ligne), s'il y en a un — ou,
+    #: pour une décision ``geometrie``, le nom qui la confirme.
     motif: str | None = None
+    #: Les critères géométriques vus (``bulle``, ``famille``, ``motif_mixte``…).
+    signature: tuple[str, ...] = ()
 
     def fusion(self, autre: Preuve) -> Preuve:
         def union(a: tuple[str, ...], b: tuple[str, ...]) -> tuple[str, ...]:
@@ -75,7 +79,8 @@ class Preuve:
         motif = self.motif if regle == self.regle else autre.motif
         return Preuve(union(self.poignees, autre.poignees), union(self.calques, autre.calques),
                       union(self.insertions, autre.insertions), union(self.blocs, autre.blocs),
-                      union(self.types, autre.types), regle, motif)
+                      union(self.types, autre.types), regle, motif,
+                      union(self.signature, autre.signature))
 
     def en_json(self) -> dict[str, Any]:
         sortie: dict[str, Any] = {
@@ -92,16 +97,19 @@ class Preuve:
             sortie["blocks"] = list(self.blocs)
         if self.motif:
             sortie["matched_name"] = self.motif
+        if self.signature:
+            sortie["signature"] = list(self.signature)
         return sortie
 
 
-#: Plus le rang est petit, plus la règle est forte.
-_RANG_REGLE: Final[dict[str, int]] = {"bloc": 0, "calque": 1, "style": 1,
+#: Plus le rang est petit, plus la règle est forte : une signature géométrique
+#: complète l'emporte sur un nom (géométrie d'abord).
+_RANG_REGLE: Final[dict[str, int]] = {"geometrie": -1, "bloc": 0, "calque": 1, "style": 1,
                                       "type_de_ligne": 2, "forme": 3}
 
 
 def preuve_de(primitives: Iterable[Primitive], regle: str,
-              motif: str | None = None) -> Preuve:
+              motif: str | None = None, signature: Iterable[str] = ()) -> Preuve:
     poignees: set[str] = set()
     calques: set[str] = set()
     insertions: set[str] = set()
@@ -115,7 +123,8 @@ def preuve_de(primitives: Iterable[Primitive], regle: str,
         blocs.update(p.source.blocs)
         types.add(p.source.type)
     return Preuve(tuple(sorted(poignees)), tuple(sorted(calques)), tuple(sorted(insertions)),
-                  tuple(sorted(blocs)), tuple(sorted(types)), regle, motif)
+                  tuple(sorted(blocs)), tuple(sorted(types)), regle, motif,
+                  tuple(sorted(set(signature))))
 
 
 # ------------------------------------------------------------------ unités

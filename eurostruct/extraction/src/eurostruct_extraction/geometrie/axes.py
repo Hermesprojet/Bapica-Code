@@ -30,15 +30,26 @@ GRILLE POLAIRE OU COURBE : non prise en charge. Seules les droites sont des
 axes ; trois directions ou plus portant chacune UN axe, concourants en un même
 point, sont une grille rayonnante : elle est nommée dans ``unresolved`` et ses
 axes sont écartés — ni files, ni nœuds, ni étiquettes absorbées.
+
+LA GÉOMÉTRIE D'ABORD (``docs/GEOMETRIE_D_ABORD_G2.md``). Sur un DXF, les droites
+de SIGNATURE complète (``axes_geometriques.py`` : A, une bulle au bout et une
+famille ; B, un trait-point parallèle à une famille, dans la zone) sont des
+axes même sans aucun nom. Un axe reconnu par son nom le reste, avec ses traits
+et son étendue ; si une signature complète le confirme, la décision devient
+``geometrie`` (le nom cité, + 0,05). Une droite de signature complète que rien
+ne nomme est ajoutée ; nommée d'un AUTRE rôle, elle l'est aussi, le conflit dit
+et la confiance plafonnée à 0,4. Une feuille PDF garde ses styles appris.
 """
 
 from __future__ import annotations
 
 import math
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Final
 
+from .axes_geometriques import TEXTE_COURT, Bulle, Droite, SignaturesAxes, signatures_d_axes
 from .classification import classer, role_du_nom
 from .modele import Axe, Famille, Grille, Noeud, NonResolu, preuve_de
 from .noyau import (
@@ -72,6 +83,14 @@ _ANGLE_FAMILLES_MIN: Final[float] = 10.0
 RAYONS_MIN_AXE_COURT: Final[float] = 10.0
 #: Ni une bulle, ni la preuve d'un axe court : un pieu, un massif, un cartouche.
 _JAMAIS_BULLE: Final[frozenset[str]] = frozenset({"pieu", "fondation", "cadre"})
+#: Confiance d'un axe de signature complète (``GEOMETRIE_D_ABORD_G2.md`` § 2.8) :
+#: étiqueté par une bulle ou un bloc, par un texte libre, sans étiquette ; un nom
+#: concordant ajoute 0,05 (plafond 0,90) ; un nom d'un autre rôle plafonne à 0,4.
+_CONFIANCE_SIGNATURE: Final[dict[str | None, float]] = {"bulle": 0.85, "bloc": 0.85,
+                                                        "texte": 0.75, None: 0.6}
+_NOM_CONCORDANT: Final[float] = 0.05
+_PLAFOND_AXE: Final[float] = 0.90
+_PLAFOND_CONFLIT: Final[float] = 0.4
 
 
 @dataclass
@@ -87,6 +106,12 @@ class _Ligne:
     #: Pour une ligne faite SEULEMENT de traits courts gardés par leur bulle :
     #: la règle, leurs longueurs, le seuil. ``None`` si un trait a passé le seuil.
     admise: dict[str, Any] | None = None
+    #: G2 : les critères géométriques vus ; ``complete`` si une signature A ou B
+    #: a décidé ; le nom qui concorde (motif) ; le rôle d'un nom qui contredit.
+    signature: set[str] = field(default_factory=set)
+    complete: bool = False
+    concordant: str | None = None
+    conflit: str | None = None
 
 
 def _direction_canonique(a: Point, b: Point, tolerances: Tolerances) -> tuple[float, Point] | None:
@@ -221,6 +246,8 @@ class _Candidat:
     hauteur: float | None = None
     #: « L1 »… : lettres et chiffres, lue en complément (rang toujours inférieur).
     alphanumerique: bool = False
+    #: Un texte court hors format (« a », « A.1 ») dans une bulle : en complément.
+    hors_format: bool = False
 
 
 #: UNE BULLE OU UN BLOC EST UNE PREUVE PLUS FORTE QU'UN TEXTE LIBRE : un cercle
@@ -237,15 +264,19 @@ _HAUTEUR_LIBRE: Final[tuple[float, float]] = (0.5, 2.0)
 
 def _rang(candidat: _Candidat) -> tuple[int, int]:
     """Une étiquette de forme courante l'emporte toujours sur une étiquette en
-    lettres et chiffres ; à forme égale, une bulle ou un bloc sur un texte libre."""
-    return (0 if candidat.alphanumerique else 1, _FORCE[candidat.via])
+    lettres et chiffres ou hors format ; à forme égale, une bulle ou un bloc sur
+    un texte libre."""
+    return (0 if candidat.alphanumerique or candidat.hors_format else 1, _FORCE[candidat.via])
 
 
 def _etiquettes_possibles(ligne: _Ligne, cercles: list[Cercle], courts: list[Texte],
                           bulles_bloc: list[tuple[Insertion, str]],
-                          hauteur_type: float, *, textes_libres: bool = True
-                          ) -> list[tuple[int, _Candidat]]:
-    """Les étiquettes candidates, pour chaque extrémité (0 : début, 1 : fin)."""
+                          hauteur_type: float, *, textes_libres: bool = True,
+                          formes: Sequence[Bulle] = ()) -> list[tuple[int, _Candidat]]:
+    """Les étiquettes candidates, pour chaque extrémité (0 : début, 1 : fin).
+
+    ``formes`` : des bulles par leur structure (G2) dont le texte est déjà lu —
+    polygones réguliers, bulles-blocs —, posées comme un cercle."""
     origine = (ligne.decalage * normale(ligne.u)[0], ligne.decalage * normale(ligne.u)[1])
     trouves: list[tuple[int, _Candidat]] = []
     for bout, t_bout, sens in ((0, ligne.debut, -1.0), (1, ligne.fin, 1.0)):
@@ -273,6 +304,17 @@ def _etiquettes_possibles(ligne: _Ligne, cercles: list[Cercle], courts: list[Tex
                 continue
             trouves.append((bout, _Candidat(valeur, insertion.source.poignee, "bloc",
                                             distance(extremite, insertion.point))))
+        # (b') une bulle par sa structure : polygone régulier, bulle-bloc.
+        for bulle in formes:
+            r = bulle.rayon
+            if distance_point_droite(bulle.centre, origine, ligne.u) > max(0.25 * r, 1e-9):
+                continue
+            au_dela = (projeter(bulle.centre, origine, ligne.u) - t_bout) * sens
+            if not -r <= au_dela <= 4.0 * r:
+                continue
+            trouves.append((bout, _Candidat(bulle.texte, bulle.poignee,
+                                            "bloc" if bulle.forme == "bloc" else "bulle",
+                                            distance(extremite, bulle.centre), bulle.hauteur)))
         # (c) un texte court posé dans le prolongement.
         for texte in (courts if textes_libres else ()):
             h = texte.hauteur
@@ -289,21 +331,69 @@ def _etiquettes_possibles(ligne: _Ligne, cercles: list[Cercle], courts: list[Tex
 def detecter_axes(prims: PrimitivesDxf, tolerances: Tolerances
                   ) -> tuple[Grille, set[str], list[NonResolu]]:
     """La grille du dessin, les poignées d'étiquettes absorbées, et les doutes."""
-    return _detecter(prims, tolerances, frozenset())
+    # UNE FEUILLE PDF reconnaît déjà ses axes par le style appris de ses bulles
+    # (GEOMETRIE_D_ABORD_G2.md, J3) : les signatures ne regardent qu'un DXF.
+    geo = signatures_d_axes(prims, tolerances) if prims.cadre is None else None
+    return _detecter(prims, tolerances, frozenset(), geo)
 
 
 def _cle(ligne: _Ligne) -> tuple[float, float, float, float]:
     return (ligne.theta, ligne.decalage, ligne.debut, ligne.fin)
 
 
+def _coincide(ligne: _Ligne, droite: Droite, tolerances: Tolerances) -> bool:
+    """La même droite infinie : un axe est une droite, pas un trait."""
+    return (ecart_angulaire(ligne.theta, droite.theta) <= tolerances.parallele_deg
+            and abs(ligne.decalage - droite.decalage) <= 2.0 * tolerances.longueur)
+
+
+def _avec_signatures(lignes: list[_Ligne], geo: SignaturesAxes, prims: PrimitivesDxf,
+                     tolerances: Tolerances) -> list[_Ligne]:
+    """L'ÉCHELLE DE PREUVES, pour les axes (GEOMETRIE_D_ABORD_G2.md § 2.6).
+
+    Une droite de signature complète qui coïncide avec un axe nommé le confirme :
+    l'axe nommé garde ses traits et son étendue, la décision devient géométrique,
+    son nom concorde. Une droite de signature complète que rien ne nomme est
+    ajoutée ; nommée d'un autre rôle, elle l'est aussi, et le conflit sera dit.
+    Un axe nommé sans signature complète cite les critères qu'il a seuls."""
+    sortie = list(lignes)
+    for droite in geo.droites:
+        cible = next((x for x in lignes if _coincide(x, droite, tolerances)), None)
+        if cible is not None:
+            cible.complete = True
+            cible.signature |= droite.signature
+            cible.concordant = cible.motif or ""
+            continue
+        ajoutee = _Ligne(droite.theta, droite.u, droite.decalage, droite.debut, droite.fin,
+                         list(droite.segments), "geometrie", None, None,
+                         set(droite.signature), True)
+        for s in droite.segments:
+            classement = classer(s.calque, s.source.blocs, s.type_ligne)
+            if classement.role == "axe":
+                ajoutee.concordant = classement.motif or ""
+                ajoutee.conflit = None
+                break
+            if classement.role != "inconnu" and ajoutee.conflit is None:
+                ajoutee.conflit = f"{classement.role} ({classement.motif})"
+        sortie.append(ajoutee)
+    for ligne in lignes:
+        if not ligne.complete:
+            ligne.signature = geo.criteres(ligne.theta, ligne.u, ligne.decalage, ligne.debut,
+                                           ligne.fin, ligne.segments, prims)
+    return sortie
+
+
 def _detecter(prims: PrimitivesDxf, tolerances: Tolerances,
-              sans: frozenset[tuple[float, float, float, float]]
+              sans: frozenset[tuple[float, float, float, float]],
+              geo: SignaturesAxes | None = None
               ) -> tuple[Grille, set[str], list[NonResolu]]:
     emprise = prims.emprise()
     if emprise is None:
         return Grille(), set(), []
     diagonale = math.hypot(emprise[2] - emprise[0], emprise[3] - emprise[1])
     lignes = [x for x in _lignes_candidates(prims, tolerances, diagonale) if _cle(x) not in sans]
+    if geo is not None:
+        lignes = _avec_signatures(lignes, geo, prims, tolerances)
     if not lignes:
         return Grille(), set(), []
 
@@ -323,12 +413,30 @@ def _detecter(prims: PrimitivesDxf, tolerances: Tolerances,
     cercles = [c for c in prims.cercles
                if classer(c.calque, c.source.blocs, c.type_ligne).role not in ("pieu",
                                                                               "fondation")]
+    # G2 : UN CERCLE D'UNE CLASSE ÉCARTÉE (pieux numérotés, repères de locaux :
+    # nombreux, loin des bouts de droites) n'étiquette pas un axe — sauf si son
+    # nom dit « axe » : le nom complète, comme avant G2.
+    if geo is not None and geo.ecartees:
+        ecartes = {id(b.contour) for b in geo.ecartees}
+        cercles = [c for c in cercles if id(c) not in ecartes
+                   or classer(c.calque, c.source.blocs, c.type_ligne).role == "axe"]
+
+    # G2 : LES BULLES PAR LEUR STRUCTURE — polygones réguliers et bulles-blocs,
+    # quel que soit leur nom — étiquettent comme un cercle ; un pieu n'en est
+    # jamais une.
+    def pas_un_pieu(bulle: Bulle) -> bool:
+        c = bulle.contour
+        return classer(c.calque, c.source.blocs, c.type_ligne).role not in ("pieu", "fondation")
+
+    structurelles = [b for b in (geo.bulles if geo is not None else ()) if pas_un_pieu(b)]
+    formes = [b for b in structurelles
+              if b.forme != "cercle" and ETIQUETTE_AXE.fullmatch(b.texte)]
     # L'AFFECTATION DES ETIQUETTES EST GLOBALE: un texte sert un seul axe, le
     # plus proche.
     propositions: list[tuple[float, int, int, _Candidat]] = []
     for rang, ligne in enumerate(lignes):
         for bout, candidat in _etiquettes_possibles(ligne, cercles, courts, bulles_bloc,
-                                                    hauteur_type):
+                                                    hauteur_type, formes=formes):
             propositions.append((candidat.distance, rang, bout, candidat))
     hauteurs_bulles = sorted(c.hauteur for *_, c in propositions
                              if c.via == "bulle" and c.hauteur)
@@ -365,16 +473,43 @@ def _detecter(prims: PrimitivesDxf, tolerances: Tolerances,
                    if ETIQUETTE_LETTRES_CHIFFRES.fullmatch(v.strip())]
         if valeurs:
             blocs_mixtes.append((insertion, valeurs[0]))
-    if mixtes or blocs_mixtes:
+    formes_mixtes = [b for b in structurelles
+                     if b.forme != "cercle" and ETIQUETTE_LETTRES_CHIFFRES.fullmatch(b.texte)
+                     and hors_cartouche(b.contour)]
+    if mixtes or blocs_mixtes or formes_mixtes:
         bulles = [c for c in cercles if hors_cartouche(c)]
         complements: list[tuple[float, int, int, _Candidat]] = []
         for rang, ligne in enumerate(lignes):
             for bout, candidat in _etiquettes_possibles(ligne, bulles, mixtes, blocs_mixtes,
-                                                        hauteur_type, textes_libres=False):
+                                                        hauteur_type, textes_libres=False,
+                                                        formes=formes_mixtes):
                 complements.append((candidat.distance, rang, bout,
                                     replace(candidat, alphanumerique=True)))
         complements.sort(key=lambda x: (x[0], x[1], x[2], x[3].poignee))
         for _, rang, bout, candidat in complements:
+            if (rang, bout) in par_bout or (candidat.poignee and candidat.poignee in utilisees):
+                continue
+            par_bout[(rang, bout)] = candidat
+            if candidat.poignee:
+                utilisees.add(candidat.poignee)
+
+    # G2 : UN TEXTE COURT HORS FORMAT DANS UNE BULLE (« a », « A.1 », « 1a ») est
+    # lu tel quel, EN COMPLÉMENT comme « L1 » : jamais contre une étiquette de
+    # forme courante, jamais hors d'une bulle, jamais dans un cartouche.
+    hors_format = [b for b in structurelles
+                   if not ETIQUETTE_AXE.fullmatch(b.texte)
+                   and not ETIQUETTE_LETTRES_CHIFFRES.fullmatch(b.texte)
+                   and TEXTE_COURT.fullmatch(b.texte) and hors_cartouche(b.contour)]
+    if hors_format:
+        complements_hf: list[tuple[float, int, int, _Candidat]] = []
+        for rang, ligne in enumerate(lignes):
+            for bout, candidat in _etiquettes_possibles(ligne, [], [], [], hauteur_type,
+                                                        textes_libres=False,
+                                                        formes=hors_format):
+                complements_hf.append((candidat.distance, rang, bout,
+                                       replace(candidat, hors_format=True)))
+        complements_hf.sort(key=lambda x: (x[0], x[1], x[2], x[3].poignee))
+        for _, rang, bout, candidat in complements_hf:
             if (rang, bout) in par_bout or (candidat.poignee and candidat.poignee in utilisees):
                 continue
             par_bout[(rang, bout)] = candidat
@@ -403,12 +538,17 @@ def _detecter(prims: PrimitivesDxf, tolerances: Tolerances,
             source = {"via": choisi.via, "handle": choisi.poignee}
             if choisi.alphanumerique:
                 source["form"] = "lettres_et_chiffres"
+            elif choisi.hors_format:
+                source["form"] = "texte_court"
             if ecarte is not None:
                 source["discarded"] = {
                     "text": ecarte.texte, "via": ecarte.via, "handle": ecarte.poignee,
                     "reason": (f"« {ecarte.texte} » ({ecarte.via}, lettres et chiffres) a "
                                "l'autre extremite: une etiquette de forme courante l'emporte"
                                if ecarte.alphanumerique else
+                               f"« {ecarte.texte} » ({ecarte.via}, texte court hors format) a "
+                               "l'autre extremite: une etiquette de forme courante l'emporte"
+                               if ecarte.hors_format else
                                f"« {ecarte.texte} » ({ecarte.via}) a l'autre extremite: une "
                                f"{choisi.via} l'emporte sur un texte libre")}
             if lignes[rang].admise is not None:
@@ -420,10 +560,10 @@ def _detecter(prims: PrimitivesDxf, tolerances: Tolerances,
     # étiquette venue d'ailleurs ne font pas un axe d'un trait sous le seuil. Il
     # est retiré, et tout est relu sans lui : ce qu'il avait pris revient aux autres.
     retirees = frozenset(_cle(ligne) for rang, ligne in enumerate(lignes)
-                         if ligne.admise is not None
+                         if ligne.admise is not None and not ligne.complete
                          and (etiquettes[rang][1] or {}).get("via") != "bulle")
     if retirees:
-        return _detecter(prims, tolerances, sans | retirees)
+        return _detecter(prims, tolerances, sans | retirees, geo)
 
     # FAMILLES: directions egales a la tolerance pres.
     ordre = sorted(range(len(lignes)), key=lambda i: lignes[i].theta)
@@ -478,14 +618,29 @@ def _detecter(prims: PrimitivesDxf, tolerances: Tolerances,
                 ident = f"{ident}#{vues[ident] + 1}"
             vues[ident] = vues.get(ident, 0) + 1
             n = normale(ligne.u)
-            confiance = (0.85 if etiquette and ligne.regle != "type_de_ligne"
-                         else 0.75 if etiquette else 0.6)
+            if ligne.complete:
+                # LA SIGNATURE A DÉCIDÉ (GEOMETRIE_D_ABORD_G2.md § 2.8).
+                via = (origine_etiquette or {}).get("via") if etiquette else None
+                confiance = _CONFIANCE_SIGNATURE.get(via, _CONFIANCE_SIGNATURE["texte"])
+                if ligne.concordant is not None:
+                    confiance = min(round(confiance + _NOM_CONCORDANT, 2), _PLAFOND_AXE)
+                if ligne.conflit is not None:
+                    confiance = min(confiance, _PLAFOND_CONFLIT)
+                    doutes.append(NonResolu(ident, (
+                        f"signature geometrique complete ({', '.join(sorted(ligne.signature))}) "
+                        f"sur un trait nomme d'un autre role: {ligne.conflit}; l'axe est garde, "
+                        "sa confiance plafonnee a 0,4")))
+                preuve = preuve_de(ligne.segments, "geometrie", ligne.concordant or None,
+                                   ligne.signature)
+            else:
+                confiance = (0.85 if etiquette and ligne.regle != "type_de_ligne"
+                             else 0.75 if etiquette else 0.6)
+                preuve = preuve_de(ligne.segments, ligne.regle, ligne.motif, ligne.signature)
             axes.append(Axe(
                 id=ident, etiquette=etiquette, famille=index_famille,
                 origine=(ligne.decalage * n[0], ligne.decalage * n[1]), direction=ligne.u,
                 decalage=ligne.decalage, debut=ligne.debut, fin=ligne.fin,
-                preuve=preuve_de(ligne.segments, ligne.regle, ligne.motif),
-                confiance=confiance, etiquette_source=origine_etiquette))
+                preuve=preuve, confiance=confiance, etiquette_source=origine_etiquette))
             ids.append(ident)
         angle = lignes[membres[0]].theta % 180.0
         familles.append(Famille(index_famille, angle, tuple(ids)))

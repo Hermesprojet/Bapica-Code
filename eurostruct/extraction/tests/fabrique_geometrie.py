@@ -939,3 +939,97 @@ def dxf_information_n1() -> bytes:
     msp.add_line((0, -12000), (1000, -12000), dxfattribs={"layer": "C004"})
     msp.add_text("FICTIF", height=200, dxfattribs={"layer": "C001"}).set_placement((0, -13000))
     return _ecrire(doc)
+
+
+# --------------------------------------------------------- axes par signature
+def dxf_grille_signatures(*, noms: bool = False, forme: str = "cercles", motif: bool = True,
+                          intermediaire: bool = False, coupe: bool = False,
+                          reperes: bool = False, pieux_numerotes: bool = False,
+                          conflit: bool = False, minuscules: bool = False,
+                          bas_minuscules: bool = False, bulles: bool = True) -> bytes:
+    """Une grille A–D × 1–3 en mm (G2, ``docs/GEOMETRIE_D_ABORD_G2.md``).
+
+    ``noms`` : calque ``AXES``, bloc ``GRID_BUBBLE``, type de ligne ``CENTER`` ;
+    sinon ``C001``, ``B001`` et ``LT07`` — le MOTIF de ``CENTER`` sous un nom qui
+    ne dit rien (``motif=False`` : tout en continu). ``forme`` : bulles
+    ``cercles``, ``hexagones``, ``blocs`` (cercle et attribut au centre) ou
+    ``blocs_attribut_dehors`` (l'attribut hors du cercle). Options : un axe
+    intermédiaire en trait-point sans bulle (x = 9000, signature B) ; un repère
+    de coupe hors de la zone (deux petits cercles « 1 ») ; des repères de locaux
+    dans des cercles ; treize pieux numérotés dans des cercles, dont un au bout
+    de l'axe A ; un axe E (x = 24000) sur un calque nommé ``COTES`` ; des
+    étiquettes en minuscules ; ``bas_minuscules`` : une seconde bulle, en
+    minuscule, au pied des axes A–D ; ``bulles=False`` : aucune bulle."""
+    import ezdxf
+    from ezdxf.enums import TextEntityAlignment as A
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 4
+    doc.linetypes.add("LT07", pattern=MOTIFS_N1["LT07"])
+    calque = "AXES" if noms else "C001"
+    trait = ("CENTER" if noms else "LT07") if motif else "CONTINUOUS"
+    doc.layers.add(calque, linetype=trait)
+    doc.layers.add("C002")
+    doc.layers.add("COTES")
+    msp = doc.modelspace()
+    nom_bloc = "GRID_BUBBLE" if noms else "B001"
+    if forme.startswith("blocs"):
+        bloc = doc.blocks.new(nom_bloc)
+        bloc.add_circle((0, 0), 400)
+        dehors = forme == "blocs_attribut_dehors"
+        bloc.add_attdef("N", (0, 600) if dehors else (0, 0), dxfattribs={"height": 300})
+
+    def bulle(texte: str, x: float, y: float, cible: str = calque) -> None:
+        if not bulles:
+            return
+        if forme.startswith("blocs"):
+            ref = msp.add_blockref(nom_bloc, (x, y), dxfattribs={"layer": cible})
+            ref.add_auto_attribs({"N": texte})
+            return
+        if forme == "hexagones":
+            msp.add_lwpolyline([(x + 400 * math.cos(math.radians(60 * k)),
+                                 y + 400 * math.sin(math.radians(60 * k))) for k in range(6)],
+                               close=True, dxfattribs={"layer": cible})
+        else:
+            msp.add_circle((x, y), 400, dxfattribs={"layer": cible})
+        msp.add_text(texte, height=300, dxfattribs={"layer": cible}).set_placement(
+            (x, y), align=A.MIDDLE_CENTER)
+
+    lettres = "abcd" if minuscules else "ABCD"
+    for i, x in enumerate((0.0, 6000.0, 12000.0, 18000.0)):
+        msp.add_line((x, -1500), (x, 13500), dxfattribs={"layer": calque})
+        bulle(lettres[i], x, 13900)
+        if bas_minuscules:
+            bulle("abcd"[i], x, -1900)
+    for j, y in enumerate((0.0, 6000.0, 12000.0)):
+        msp.add_line((-1500, y), (19500, y), dxfattribs={"layer": calque})
+        bulle(str(j + 1), -1900, y)
+    for x in (0.0, 6000.0, 12000.0, 18000.0):
+        for y in (0.0, 6000.0, 12000.0):
+            coins = [(x - 200, y - 200), (x + 200, y - 200), (x + 200, y + 200), (x - 200, y + 200)]
+            msp.add_hatch(dxfattribs={"layer": "C002"}).paths.add_polyline_path(coins,
+                                                                                 is_closed=True)
+    if intermediaire:
+        msp.add_line((9000, -1500), (9000, 13500), dxfattribs={"layer": calque})
+    if coupe:
+        msp.add_line((40000, 0), (40000, 10000), dxfattribs={"layer": calque})
+        for y in (-300.0, 10300.0):
+            msp.add_circle((40000, y), 250, dxfattribs={"layer": calque})
+            msp.add_text("1", height=200, dxfattribs={"layer": calque}).set_placement(
+                (40000, y), align=A.MIDDLE_CENTER)
+    if reperes:
+        for k, (x, y) in enumerate(((3000.0, 3000.0), (9000.0, 3000.0), (15000.0, 9000.0))):
+            msp.add_circle((x, y), 350, dxfattribs={"layer": "C002"})
+            msp.add_text(str(101 + k), height=250, dxfattribs={"layer": "C002"}).set_placement(
+                (x, y), align=A.MIDDLE_CENTER)
+    if pieux_numerotes:
+        places = [(x + 900.0, y + 900.0) for x in (0.0, 6000.0, 12000.0, 18000.0)
+                  for y in (0.0, 6000.0, 12000.0)] + [(0.0, -1700.0)]
+        for k, (x, y) in enumerate(places):
+            msp.add_circle((x, y), 200, dxfattribs={"layer": "C002"})
+            msp.add_text(str(k + 1), height=150, dxfattribs={"layer": "C002"}).set_placement(
+                (x, y), align=A.MIDDLE_CENTER)
+    if conflit:
+        msp.add_line((24000, -1500), (24000, 13500), dxfattribs={"layer": "COTES"})
+        bulle("E", 24000, 13900, "COTES")
+    return _ecrire(doc)

@@ -175,6 +175,20 @@ résultat ne dépend d'aucun hasard.
 
 ### 5.1 Axes (files)
 
+**Géométrie d'abord (G2, `GEOMETRIE_D_ABORD_G2.md`).** Sur un DXF, une droite
+de signature complète — **A** : elle finit sur une bulle (cercle, polygone
+régulier ou bloc à un attribut, un texte court dedans, d'une classe de rayons
+dont la moitié au moins des membres sont au bout d'une droite), mesure 20
+rayons, et a une parallèle de même rayon de bulle ; **B** : trait-point lu sur
+le MOTIF, parallèle à une famille A, long de 10 % de la zone structurelle et la
+traversant — est un axe quels que soient ses noms (`classified_by =
+"geometrie"`, critères dans `signature`). Un axe reconnu par son nom (règles
+ci-dessous) le reste, avec ses traits et son étendue ; confirmé par une
+signature complète, il devient `geometrie`, le nom cité, confiance + 0,05
+(plafond 0,90). Une signature complète sur un calque d'un autre rôle est un
+axe, le conflit dit (`unresolved`), confiance ≤ 0,4. Une feuille PDF garde ses
+styles appris.
+
 1. **Candidats** : segments de rôle `axe`. Seuil de longueur : nommés par
    leur calque ou leur bloc, 10 % de la diagonale de l'emprise (au moins
    10 tolérances) ; type de ligne

@@ -9,7 +9,9 @@ une distance entre appuis (``axis_length``) ou entre leurs nus
 (``clear_length``) — jamais la portée utile l_eff, qui reste à l'ingénieur.
 
 CHAQUE ÉLÉMENT CITE CE QUI L'A FAIT RECONNAÎTRE (``evidence``) : poignées des
-entités, calques, blocs, et la règle — bloc, calque, type de ligne ou forme.
+entités, calques, blocs, et la règle — bloc, calque, type de ligne, forme, ou
+signature géométrique (``geometrie`` : la forme et le motif ont décidé, un nom
+qui concorde est cité).
 Ce qui n'a pas permis de conclure est dans ``unresolved``, avec sa raison.
 
 LE CONTRAT EST FERMÉ (``Strict``) : une clé ajoutée par l'extracteur sans être
@@ -70,14 +72,22 @@ class PreuveGeometrique(_Lecture):
     layers: list[str] = Field(
         description="Calques DXF ; sur une feuille PDF, style du trait (pdf:#RRGGBB:épaisseur).")
     entity_types: list[str]
-    classified_by: Literal["bloc", "calque", "style", "type_de_ligne", "forme"] = Field(
-        description="style : un style de trait APPRIS d'une feuille PDF (axes, cotes).")
+    classified_by: Literal["bloc", "calque", "style", "type_de_ligne", "forme",
+                           "geometrie"] = Field(
+        description="style : un style de trait APPRIS d'une feuille PDF (axes, cotes) ; "
+                    "geometrie : une signature géométrique complète a décidé (axe : bulle "
+                    "et famille, ou trait-point parallèle à une famille), quel que soit "
+                    "le nom du calque ou du bloc.")
     handles_not_listed: int | None = None
     inserts: list[str] | None = Field(
         default=None, description="Poignées des INSERT qui ont placé les entités.")
     blocks: list[str] | None = None
     matched_name: str | None = Field(
-        default=None, description="Le nom (calque, bloc, type de ligne) qui a décidé.")
+        default=None, description="Le nom (calque, bloc, type de ligne) qui a décidé ; pour "
+                                  "une décision geometrie, le nom qui la confirme.")
+    signature: list[str] | None = Field(
+        default=None, description="Les critères géométriques vus : bulle, famille, "
+                                  "motif_mixte, parallele_a_une_famille, zone.")
 
 
 class UnitesDuDessin(_Lecture):

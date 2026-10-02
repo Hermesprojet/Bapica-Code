@@ -1110,8 +1110,8 @@ export interface Preremplissage {
 
 export interface PreuveGeometrique {
   blocks?: string[] | null;
-  /** style : un style de trait APPRIS d'une feuille PDF (axes, cotes). */
-  classified_by: "bloc" | "calque" | "style" | "type_de_ligne" | "forme";
+  /** style : un style de trait APPRIS d'une feuille PDF (axes, cotes) ; geometrie : une signature géométrique complète a décidé (axe : bulle et famille, ou trait-point parallèle à une famille), quel que soit le nom du calque ou du bloc. */
+  classified_by: "bloc" | "calque" | "style" | "type_de_ligne" | "forme" | "geometrie";
   entity_types: string[];
   /** Poignées DXF des entités citées (rang de l'objet sur une feuille PDF). */
   handles: string[];
@@ -1120,8 +1120,10 @@ export interface PreuveGeometrique {
   inserts?: string[] | null;
   /** Calques DXF ; sur une feuille PDF, style du trait (pdf:#RRGGBB:épaisseur). */
   layers: string[];
-  /** Le nom (calque, bloc, type de ligne) qui a décidé. */
+  /** Le nom (calque, bloc, type de ligne) qui a décidé ; pour une décision geometrie, le nom qui la confirme. */
   matched_name?: string | null;
+  /** Les critères géométriques vus : bulle, famille, motif_mixte, parallele_a_une_famille, zone. */
+  signature?: string[] | null;
 }
 
 /** Un projet, tel que l'atelier le montre. ``organization_name`` accompagne ``organization_id`` : un identifiant seul obligerait l'écran à un second appel pour afficher « Bureau A », et c'est ce genre de second appel qui finit par ne jamais être fait. */

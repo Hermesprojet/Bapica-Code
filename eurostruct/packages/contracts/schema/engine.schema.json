@@ -5832,13 +5832,14 @@
           "title": "Blocks"
         },
         "classified_by": {
-          "description": "style : un style de trait APPRIS d'une feuille PDF (axes, cotes).",
+          "description": "style : un style de trait APPRIS d'une feuille PDF (axes, cotes) ; geometrie : une signature géométrique complète a décidé (axe : bulle et famille, ou trait-point parallèle à une famille), quel que soit le nom du calque ou du bloc.",
           "enum": [
             "bloc",
             "calque",
             "style",
             "type_de_ligne",
-            "forme"
+            "forme",
+            "geometrie"
           ],
           "title": "Classified By",
           "type": "string"
@@ -5904,8 +5905,24 @@
             }
           ],
           "default": null,
-          "description": "Le nom (calque, bloc, type de ligne) qui a décidé.",
+          "description": "Le nom (calque, bloc, type de ligne) qui a décidé ; pour une décision geometrie, le nom qui la confirme.",
           "title": "Matched Name"
+        },
+        "signature": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Les critères géométriques vus : bulle, famille, motif_mixte, parallele_a_une_famille, zone.",
+          "title": "Signature"
         }
       },
       "required": [
