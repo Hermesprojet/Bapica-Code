@@ -149,11 +149,14 @@ dixième n'a aucun texte à moins de 120 unités de ses bouts. Ils restent sans
 *Corrigé à la vérification* (la première rédaction disait que les dix-sept
 n'avaient pas d'étiquette) : les **sept autres** (calque `…C_AXES` d'une autre
 référence externe liée) finissent exactement sur une bulle de rayon 40 dont le
-texte, « L1 » à « L10 », est au centre. L'étiquette existe ; mais le calque de
-la bulle (`…_TITRE_COMMUN-SSOL`) est lu `cadre` (cartouche) à cause du mot
-« TITRE », et ni la bulle ni son texte ne sont lus. Ce défaut est antérieur à
-ce lot (la base lit ces axes de la même façon) ; il n'est pas corrigé ici
-(§ 10).
+texte, « L1 » à « L10 », est au centre. L'étiquette existe ; elle n'est pas
+lue. Ce défaut est antérieur à ce lot (la base lit ces axes de la même façon) ;
+il n'est pas corrigé ici (§ 10). *Corrigé ensuite*, avec sa vraie cause, dans
+[`GEOMETRIE_BULLES_LETTRES_CHIFFRES.md`](GEOMETRIE_BULLES_LETTRES_CHIFFRES.md) :
+le calque de la bulle (`…_TITRE_COMMUN-SSOL`) est bien lu `cadre` par son nom,
+comme on l'avait écrit, mais la bulle est classée `axe` par son bloc, et ce
+classement n'empêchait rien ; c'est le motif des étiquettes qui refusait des
+lettres suivies de chiffres.
 
 Les quatre conflits des feuilles PDF opposent une bulle à une lettre libre de
 54 pt. Deux règles, sûres parce qu'elles comparent des preuves de force
@@ -266,7 +269,7 @@ dans le dépôt.
 | pieux | — | **477** : 455 × Ø 63, 20 × Ø 60, et 2 dessinés par leur seule hachure ; 1 660 contours absorbés comme dessin de pieu, 1 fragment |
 | voiles | 22 | **4**, de 25 cm : les 18 autres étaient les échantillons d'épaisseur de trait d'une légende, que l'unité connue rend implausibles (1,9 à 10,2 mm). C'est l'unité qui les écarte, pas une règle : l'échelle écrite retirée, l'unité n'est plus établie et ils redeviennent des voiles (mesuré à la vérification) |
 | unité | non déclarée | **cm** : « 1/100 » écrit au cartouche, fenêtre de 8 400 unités sur 840 mm de papier, soit 10 mm par unité ; écart 0 % |
-| axes (étiquetés) | 60 (43) | 60 (43), les mêmes étiquettes — des 17 autres, 10 n'ont pas d'étiquette dessinée et 7 ont une bulle qui n'est pas lue (§ 3, corrigé à la vérification) |
+| axes (étiquetés) | 60 (43) | 60 (43), les mêmes étiquettes — des 17 autres, 10 n'ont pas d'étiquette dessinée et 7 ont une bulle qui n'est pas lue (§ 3, corrigé à la vérification ; lues depuis : 50 étiquetés, voir `GEOMETRIE_BULLES_LETTRES_CHIFFRES.md`) |
 | entraxes | 47 mesurés, sans unité | 47 mesurés, **en cm**, dont 28 entre deux axes étiquetés (880, 500, 400, 800, 800 · 617,5, 540, 617,5 · 622,5 · 4 × 810 · 750, 500, 750, 750, 750, 850 · 629, 190, 209 · 757,5, 760, 810 · 617,5, 540, 617,5) ; 45 propositions distinctes |
 | propositions géométriques | 146 | **109** : largeurs et profondeurs de poteaux 39 → 11 (2 pour le socle 170 × 170, 26 par le regroupement des repères décrit plus bas), diamètres 4 → 1, épaisseurs de voile 10 → 4 |
 
@@ -366,9 +369,9 @@ canonique, relancée depuis un clone propre du dépôt distant au commit
   connue, 0,3 fois l'entraxe médian sinon. Sans unité (plan fabriqué sans
   présentation, ou échelle refusée), ou avec une cage de 2,3 × 2,2 m (essai à
   la vérification), la cabine de 1,2 × 1,0 m reste un poteau ;
-* sept axes du plan de fondations restent sans étiquette alors que leur bulle
-  (« L1 » à « L10 ») est lisible : le calque de la bulle est lu `cadre`
-  (§ 3) — défaut antérieur à ce lot ;
+* sept axes du plan de fondations restaient sans étiquette alors que leur
+  bulle (« L1 » à « L10 ») est lisible — défaut antérieur à ce lot, corrigé
+  depuis (§ 3) : la cause était le motif des étiquettes, pas le cartouche ;
 * six entraxes de 10 à 44 cm (cinq valeurs proposées) séparent un axe de file
   de pieux (`D_AXE_*`) d'un axe du bâtiment, ou deux files de pieux : ce ne
   sont pas des entraxes de grille, et ils sont proposés — comportement

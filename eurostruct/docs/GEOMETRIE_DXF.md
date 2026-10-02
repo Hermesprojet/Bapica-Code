@@ -172,12 +172,16 @@ résultat ne dépend d'aucun hasard.
    prolongement de l'axe et contenant un texte court (`A`, `AA`, `A'`, `1`, `12`),
    ou un bloc de bulle avec attribut, ou un texte court posé dans le
    prolongement à moins de trois hauteurs de texte. Une étiquette sert une fois.
+   Une étiquette en lettres et chiffres (`L1`, `L10`) n'est lue que dans une
+   bulle ou un bloc de bulle, en complément
+   ([`GEOMETRIE_BULLES_LETTRES_CHIFFRES.md`](GEOMETRIE_BULLES_LETTRES_CHIFFRES.md)).
 3. **Familles** : directions égales à 0,2° près (modulo 180°). Une grille
    tournée de 30° est traitée comme une grille droite.
 4. **Entraxes** : dans une famille, les axes triés par décalage ; l'entraxe de
    deux axes voisins est la **distance entre droites parallèles** — exacte.
-5. **Nœuds** : intersection d'un axe de chaque famille (`A1`). Grille polaire
-   ou courbe : non prise en charge, signalée.
+5. **Nœuds** : intersection d'un axe de chaque famille (`A1` ; `L1/1` quand
+   une étiquette mêle lettres et chiffres). Grille polaire ou courbe : non
+   prise en charge, signalée.
 
 ### 5.2 Poteaux
 
