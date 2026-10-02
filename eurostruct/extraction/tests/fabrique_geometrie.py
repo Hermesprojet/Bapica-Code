@@ -29,7 +29,12 @@ Chaque fabrique suit une convention de dessin courante, et la nomme :
   trémie barrée, une gaine nommée, une semelle ;
 * ``dxf_etiquettes_d_axes`` : une lettre géante et une lettre égarée au bout
   d'axes à bulle, deux bulles qui se contredisent, un pieu numéroté au bout
-  d'un axe.
+  d'un axe ;
+* ``dxf_bulles_lettres_chiffres`` : une seconde grille étiquetée « L1 »…
+  (lettres et chiffres), dessinée dans un bloc de référence externe liée dont
+  le calque des bulles se nomme ``…C_AXES_TITRE`` — une bulle seule, une ligne
+  partagée avec une bulle courante, deux bulles qui se contredisent, un texte
+  « L6 » sans bulle, un cercle et un texte « L7 » de cartouche.
 
 Tous les textes disent FICTIF là où un plan réel porterait un nom.
 """
@@ -550,4 +555,60 @@ def dxf_etiquettes_d_axes() -> bytes:
     texte("8", 13400, 10000, 300, "AXES")
     msp.add_circle((12000, -1400), 400, dxfattribs={"layer": "PIEUX"})
     texte("12", 12000, -1400, 300, "PIEUX")
+    return _ecrire(doc)
+
+
+# --------------------------------------------- BULLES EN LETTRES ET CHIFFRES
+def dxf_bulles_lettres_chiffres() -> bytes:
+    """Deux grilles sur un plan en mm : la première, courante (« 1 »… « 3 »
+    verticaux, « B » horizontal) ; la seconde, étiquetée « L1 »… comme sur le
+    plan réel qui a montré le défaut, dessinée dans le bloc d'une référence
+    externe liée (``AXES_GRILLE2``) dont les bulles sont sur un calque nommé
+    ``AXES_GRILLE2$0$C_AXES_TITRE`` — lu « cadre » par son nom, « axe » par son
+    bloc. Horizontaux, de bas en haut :
+
+    * y = 0 : une bulle « L1 » à gauche, seule ;
+    * y = 3 500 : une ligne partagée — bulle courante « B » à gauche, bulle
+      « L9 » à droite ;
+    * y = 7 000 : « L4 » à gauche, « L5 » à droite : deux bulles qui se
+      contredisent ;
+    * y = 10 000 : un texte « L6 » au bout, sans bulle ;
+    * y = 13 000 : un cercle et un texte « L7 » au bout, sur le calque
+      ``CARTOUCHE``, hors de tout bloc d'axes."""
+    import ezdxf
+    from ezdxf.enums import TextEntityAlignment as A
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 4
+    msp = doc.modelspace()
+    bulles2, lignes2 = "AXES_GRILLE2$0$C_AXES_TITRE", "AXES_GRILLE2$0$C_AXES"
+    for nom in ("AXES", "TEXTES", "CARTOUCHE", bulles2, lignes2):
+        doc.layers.add(nom)
+    grille2 = doc.blocks.new("AXES_GRILLE2")
+
+    def texte(cible, t: str, x: float, y: float, calque: str) -> None:  # noqa: ANN001
+        cible.add_text(t, height=300, dxfattribs={"layer": calque}).set_placement(
+            (x, y), align=A.MIDDLE_CENTER)
+
+    def bulle(cible, t: str, x: float, y: float, calque: str) -> None:  # noqa: ANN001
+        cible.add_circle((x, y), 400, dxfattribs={"layer": calque})
+        texte(cible, t, x, y, calque)
+
+    for nom, x in (("1", 0.0), ("2", 6000.0), ("3", 12000.0)):
+        msp.add_line((x, -1000), (x, 14000), dxfattribs={"layer": "AXES"})
+        bulle(msp, nom, x, 14400, "AXES")
+    # La ligne partagée : dessinée par la première grille, bulle « B » à gauche.
+    msp.add_line((-1000, 3500), (13000, 3500), dxfattribs={"layer": "AXES"})
+    bulle(msp, "B", -1400, 3500, "AXES")
+    # La seconde grille, dans son bloc.
+    for y in (0.0, 7000.0, 10000.0, 13000.0):
+        grille2.add_line((-1000, y), (13000, y), dxfattribs={"layer": lignes2})
+    bulle(grille2, "L1", -1400, 0, bulles2)
+    bulle(grille2, "L9", 13400, 3500, bulles2)
+    bulle(grille2, "L4", -1400, 7000, bulles2)
+    bulle(grille2, "L5", 13400, 7000, bulles2)
+    texte(grille2, "L6", -1400, 10000, bulles2)
+    msp.add_blockref("AXES_GRILLE2", (0, 0))
+    # Le cartouche : son cercle et son texte, hors du bloc d'axes.
+    bulle(msp, "L7", -1400, 13000, "CARTOUCHE")
     return _ecrire(doc)

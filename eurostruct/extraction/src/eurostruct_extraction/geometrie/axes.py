@@ -12,6 +12,13 @@ que les étiquettes en bulle du dessin n'est pas une étiquette. Deux extrémit�
 qui portent deux étiquettes différentes de MÊME force ne sont pas départagées :
 l'axe reste sans étiquette, et c'est signalé. Un pieu n'est jamais une bulle.
 
+UNE ÉTIQUETTE EN LETTRES ET CHIFFRES (« L1 »… « L10 », une seconde grille sur
+le même dessin) n'est lue que dans une bulle ou un bloc de bulle, jamais comme
+texte libre, ni dans un cercle ou un texte de cartouche ; et seulement là où
+aucune étiquette de forme courante n'est candidate : elle complète, elle ne
+remplace ni ne contredit jamais une étiquette courante — écartée, elle est
+citée. Voir ``docs/GEOMETRIE_BULLES_LETTRES_CHIFFRES.md``.
+
 GRILLE POLAIRE OU COURBE : non prise en charge. Seules les droites sont des
 axes ; trois directions ou plus portant chacune UN axe, concourants en un même
 point, sont une grille rayonnante : elle est nommée dans ``unresolved`` et ses
@@ -22,7 +29,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Final
 
 from .classification import classer, role_du_nom
@@ -41,10 +48,13 @@ from .noyau import (
 )
 from .primitives import Cercle, Insertion, PrimitivesDxf, Segment, Texte
 
-__all__ = ["ETIQUETTE_AXE", "detecter_axes"]
+__all__ = ["ETIQUETTE_AXE", "ETIQUETTE_LETTRES_CHIFFRES", "detecter_axes"]
 
 #: « A », « AA », « A' », « 1 », « 12 », « 1' » — et rien de plus long.
 ETIQUETTE_AXE: Final[re.Pattern[str]] = re.compile(r"[A-Z]{1,2}'?|\d{1,3}'?")
+#: « L1 », « L10 », « AB12 », « L1' » : des lettres puis des chiffres. Lue
+#: seulement dans une bulle ou un bloc de bulle, en complément (voir plus haut).
+ETIQUETTE_LETTRES_CHIFFRES: Final[re.Pattern[str]] = re.compile(r"[A-Z]{1,2}\d{1,3}'?")
 
 #: Ecart angulaire minimal entre deux familles pour qu'elles se croisent.
 _ANGLE_FAMILLES_MIN: Final[float] = 10.0
@@ -125,6 +135,8 @@ class _Candidat:
     distance: float
     #: La hauteur du texte, quand l'étiquette est un texte (bulle ou libre).
     hauteur: float | None = None
+    #: « L1 »… : lettres et chiffres, lue en complément (rang toujours inférieur).
+    alphanumerique: bool = False
 
 
 #: UNE BULLE OU UN BLOC EST UNE PREUVE PLUS FORTE QU'UN TEXTE LIBRE : un cercle
@@ -139,9 +151,16 @@ _FORCE: Final[dict[str, int]] = {"bulle": 2, "bloc": 2, "texte": 1}
 _HAUTEUR_LIBRE: Final[tuple[float, float]] = (0.5, 2.0)
 
 
+def _rang(candidat: _Candidat) -> tuple[int, int]:
+    """Une étiquette de forme courante l'emporte toujours sur une étiquette en
+    lettres et chiffres ; à forme égale, une bulle ou un bloc sur un texte libre."""
+    return (0 if candidat.alphanumerique else 1, _FORCE[candidat.via])
+
+
 def _etiquettes_possibles(ligne: _Ligne, cercles: list[Cercle], courts: list[Texte],
                           bulles_bloc: list[tuple[Insertion, str]],
-                          hauteur_type: float) -> list[tuple[int, _Candidat]]:
+                          hauteur_type: float, *, textes_libres: bool = True
+                          ) -> list[tuple[int, _Candidat]]:
     """Les étiquettes candidates, pour chaque extrémité (0 : début, 1 : fin)."""
     origine = (ligne.decalage * normale(ligne.u)[0], ligne.decalage * normale(ligne.u)[1])
     trouves: list[tuple[int, _Candidat]] = []
@@ -171,7 +190,7 @@ def _etiquettes_possibles(ligne: _Ligne, cercles: list[Cercle], courts: list[Tex
             trouves.append((bout, _Candidat(valeur, insertion.source.poignee, "bloc",
                                             distance(extremite, insertion.point))))
         # (c) un texte court posé dans le prolongement.
-        for texte in courts:
+        for texte in (courts if textes_libres else ()):
             h = texte.hauteur
             if distance_point_droite(texte.centre, origine, ligne.u) > 1.5 * h:
                 continue
@@ -234,30 +253,69 @@ def detecter_axes(prims: PrimitivesDxf, tolerances: Tolerances
         if candidat.poignee:
             utilisees.add(candidat.poignee)
 
+    # LES ÉTIQUETTES EN LETTRES ET CHIFFRES COMPLÈTENT, ELLES NE REMPLACENT RIEN :
+    # lues seulement dans une bulle ou un bloc de bulle (jamais en texte libre),
+    # jamais dans un cercle ou un texte de cartouche, et seulement à une
+    # extrémité qui n'a aucune étiquette de forme courante.
+    def hors_cartouche(p: Cercle | Texte) -> bool:
+        return classer(p.calque, p.source.blocs, p.type_ligne).role != "cadre"
+
+    mixtes = [t for t in prims.textes
+              if ETIQUETTE_LETTRES_CHIFFRES.fullmatch(t.texte.strip()) and hors_cartouche(t)]
+    blocs_mixtes: list[tuple[Insertion, str]] = []
+    for insertion in prims.insertions:
+        if role_du_nom(insertion.nom_bloc) != "axe" or any(
+                ETIQUETTE_AXE.fullmatch(v.strip()) for _, v in insertion.attributs):
+            continue
+        valeurs = [v.strip() for _, v in insertion.attributs
+                   if ETIQUETTE_LETTRES_CHIFFRES.fullmatch(v.strip())]
+        if valeurs:
+            blocs_mixtes.append((insertion, valeurs[0]))
+    if mixtes or blocs_mixtes:
+        bulles = [c for c in cercles if hors_cartouche(c)]
+        complements: list[tuple[float, int, int, _Candidat]] = []
+        for rang, ligne in enumerate(lignes):
+            for bout, candidat in _etiquettes_possibles(ligne, bulles, mixtes, blocs_mixtes,
+                                                        hauteur_type, textes_libres=False):
+                complements.append((candidat.distance, rang, bout,
+                                    replace(candidat, alphanumerique=True)))
+        complements.sort(key=lambda x: (x[0], x[1], x[2], x[3].poignee))
+        for _, rang, bout, candidat in complements:
+            if (rang, bout) in par_bout or (candidat.poignee and candidat.poignee in utilisees):
+                continue
+            par_bout[(rang, bout)] = candidat
+            if candidat.poignee:
+                utilisees.add(candidat.poignee)
+
     doutes: list[NonResolu] = []
     etiquettes: list[tuple[str | None, dict[str, Any] | None]] = []
     for rang in range(len(lignes)):
         a, b = par_bout.get((rang, 0)), par_bout.get((rang, 1))
         ecarte: _Candidat | None = None
         if a and b and a.texte != b.texte:
-            if _FORCE[a.via] == _FORCE[b.via]:
+            if _rang(a) == _rang(b):
                 doutes.append(NonResolu(f"axe {rang + 1}", (
                     f"etiquettes contradictoires aux deux extremites: « {a.texte} » "
                     f"({a.via}) et « {b.texte} » ({b.via}), preuves de meme force; "
                     "l'axe reste sans etiquette")))
                 etiquettes.append((None, None))
                 continue
-            if _FORCE[a.via] < _FORCE[b.via]:
+            if _rang(a) < _rang(b):
                 a, b = b, a
             ecarte, b = b, None
         choisi = a or b
         source: dict[str, Any] | None = None
         if choisi:
             source = {"via": choisi.via, "handle": choisi.poignee}
+            if choisi.alphanumerique:
+                source["form"] = "lettres_et_chiffres"
             if ecarte is not None:
                 source["discarded"] = {
                     "text": ecarte.texte, "via": ecarte.via, "handle": ecarte.poignee,
-                    "reason": (f"« {ecarte.texte} » ({ecarte.via}) a l'autre extremite: une "
+                    "reason": (f"« {ecarte.texte} » ({ecarte.via}, lettres et chiffres) a "
+                               "l'autre extremite: une etiquette de forme courante l'emporte"
+                               if ecarte.alphanumerique else
+                               f"« {ecarte.texte} » ({ecarte.via}) a l'autre extremite: une "
                                f"{choisi.via} l'emporte sur un texte libre")}
         etiquettes.append((choisi.texte, source) if choisi else (None, None))
 
@@ -371,9 +429,13 @@ def _sens_de_lecture(u: Point) -> float:
 
 
 def _nom_de_noeud(a: str | None, b: str | None) -> str | None:
-    """« A » et « 1 » donnent « A1 » ; deux lettres ou deux chiffres, « A/B »."""
+    """« A » et « 1 » donnent « A1 » ; deux lettres ou deux chiffres, « A/B ».
+    Une étiquette en lettres et chiffres garde le séparateur : « L10/3 », pas
+    « L103 »."""
     if not a or not b:
         return None
+    if ETIQUETTE_LETTRES_CHIFFRES.fullmatch(a) or ETIQUETTE_LETTRES_CHIFFRES.fullmatch(b):
+        return f"{a}/{b}"
     if a[0].isalpha() and b[0].isdigit():
         return f"{a}{b}"
     if b[0].isalpha() and a[0].isdigit():
