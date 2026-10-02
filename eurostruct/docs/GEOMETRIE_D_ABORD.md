@@ -1,6 +1,7 @@
 # Extraction « géométrie d'abord » — conception
 
-> **Statut : conception, rien n'est implémenté.** Ce document décrit comment
+> **Statut : conception ; phases G1 et G2 réalisées (§ 11), G3 à G6 à
+> faire.** Ce document décrit comment
 > reconnaître les axes, les poteaux, les pieux et les voiles d'un DXF sans
 > dépendre des noms de calques et de blocs, dans l'ordre de preuve demandé :
 > **1. information DXF standard, 2. géométrie, 3. noms**. Il fait suite à
@@ -524,7 +525,7 @@ est dit illisible par la géométrie, pas deviné.
 | Phase | Contenu | Sortie mesurée |
 |---|---|---|
 | G1 | N1 dans les primitives : motif de ligne, remplissage plein/motif, `MLINE`, compte d'insertions, drapeaux xréf ; **aucun changement de détection** — conception détaillée : `GEOMETRIE_D_ABORD_G1.md` | **fait** (`068fc3b`) : 94 / 94 sorties identiques octet pour octet ; suites, contrat et harnais verts |
-| G2 | Classes de cercles, bulles par structure, axes A et B, zone structurelle — conception détaillée : `GEOMETRIE_D_ABORD_G2.md` (première phase qui change des sorties : `classified_by = geometrie`, version 0.5.0) | v04/v14/v15 vs référence ; fixtures axes |
+| G2 | Classes de cercles, bulles par structure, axes A et B, zone structurelle — conception détaillée : `GEOMETRIE_D_ABORD_G2.md` (première phase qui change des sorties : `classified_by = geometrie`, version 0.5.0) | **fait** (`5b86e2c`) : plan réel 71 / 71 (0 ajouté, 0 retiré, 66 axes décidés par la signature) ; tout renommé 0 → 66 axes, précision 1,000, rappel 0,930 ; blocs explosés : 9 axes hors référence ; suites, contrat et harnais verts |
 | G3 | Pieux P | v01/v04/v14 : 475 pieux, 0 faux poteau de pieu |
 | G4 | Poteaux C1 (exclusions géométriques), C2 | v01/v04/v14 : 64 ± 2 |
 | G5 | Voiles V1/V2, `MLINE` | feuilles PDF, fixtures |

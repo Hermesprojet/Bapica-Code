@@ -1,11 +1,11 @@
 # Géométrie d'abord — G2 : les axes par leur signature
 
-> **Statut : conception (avant le code).** Phase G2 de `GEOMETRIE_D_ABORD.md`
+> **Statut : réalisé (`5b86e2c`), mesuré au § 7.** Phase G2 de `GEOMETRIE_D_ABORD.md`
 > (§ 11 : « classes de cercles, bulles par structure, axes A et B, zone
 > structurelle »), selon les règles du § 3 (axes) et de l'échelle de preuves
 > du § 1.4. Elle s'appuie sur l'information N1 lue par G1
 > (`GEOMETRIE_D_ABORD_G1.md`). C'est la **première phase qui change des
-> sorties** : chaque changement sera mesuré et cité (§ 7).
+> sorties** : chaque changement est mesuré et cité (§ 7).
 
 ## 0. Ce que G2 fait, et ce qu'il garantit
 
@@ -240,4 +240,217 @@ sans bulle ni trait-point (aucune signature : N3 seul).
 
 ## 7. Résultats
 
-À écrire après l'implémentation.
+Mesuré sur le commit du code `5b86e2c` (version `0.5.0`), contre les sorties
+de `0.4.0` (`f7e8793`, celles de la campagne G1). L'arbre de travail est resté
+gelé pendant toutes les exécutions (empreinte identique avant et après). Les
+sorties du commit sont celles qui ont été analysées pendant le
+développement : balayage refait sur le commit, **94 / 94 identiques octet
+pour octet** ; variantes refaites, **17 / 17 identiques** (hors durée
+mesurée).
+
+« Apparié », précision et rappel : § 5. La référence est la sortie actuelle
+(`0.4.0`) du plan réel : 71 axes, dont 61 étiquetés.
+
+**En bref.** Sur le plan réel, rien n'est ajouté ni retiré (précision et
+rappel 71 / 71) ; 66 axes sur 71 sont désormais décidés par leur signature, et
+leur confiance gagne 0,05 parce que le nom concorde. Quand les noms
+disparaissent, la grille revient : **0 → 66 axes** sur le plan tout renommé,
+précision 1,000, rappel 0,930, 59 étiquettes justes. Aucun axe n'est retiré
+nulle part. Une seule variante produit des axes hors référence : les blocs
+explosés (9, dont une étiquette déplacée, § 7.6).
+
+### 7.1 Suites, contrat, harnais, balayage
+
+| Validation | Résultat |
+|---|---|
+| Suite d'extraction | **446 tests, 0 échec** (417 en G1 ; 29 de plus, ci-dessous) |
+| Suite de l'API | **599 tests, 0 échec**, 340 ignorés — les mêmes 599 / 340 qu'en G1 |
+| `export_contracts.py --check` | 0 : le contrat commité (`classified_by` = `geometrie`, `signature`) est celui que le schéma régénère |
+| Harnais des documents (`db/test/documents_extractions.sh`, base jetable) | 0 : 34 tests réussis, comme en G1 (dépôt, analyse, propositions, décisions, calcul) |
+| Balayage des 94 fichiers de G1 | 94 / 94 analysés sans exception ; **62 identiques à `0.4.0`** hors numéro de version, **32 changés** (§ 7.5) |
+| Variantes du plan réel (17) | 17 / 17 analysées sans exception |
+| `VERSION_EXTRACTEUR` | `0.5.0` : des propositions changent (confiances, et propositions nouvelles sur les variantes sans nom) |
+
+Tests : `test_geometrie_axes_signatures.py` (nouveau, 27 tests : chaque
+fixture du § 4, et J1 sur dix plans nommés — sans les signatures puis avec :
+mêmes axes, étiquettes, droites, nœuds). Un seul fichier de tests existant
+change, `test_geometrie_n1.py` : son invariance « neutraliser toute
+l'information N1 ne change rien » était vraie en G1 et ne l'est plus, puisque
+G2 lit le motif et les définitions de blocs ; elle est restreinte (sous un
+nouveau nom, mêmes deux plans) à l'information N1 que rien ne lit encore
+(couleurs, multilignes, échelle d'insertion), et deux tests sont ajoutés (une
+grille à bulles reste reconnue sans motif ni définition ; un motif illisible
+est compté et ne fait rien lever) : 417 − 2 + 31 = 446. Aucun autre test
+existant n'a été modifié. Le surcroît de durée de la suite (13 s → 32 s) est
+celui de `test_ocr` (1,6 s → 15,7 s, machine chargée) ; les 414 autres tests
+communs durent le même temps.
+
+### 7.2 Plan réel
+
+| | `0.4.0` | `0.5.0` |
+|---|---|---|
+| Axes | 71 | **71 : 0 ajouté, 0 retiré** ; mêmes identifiants, étiquettes, droites (traits et étendue) |
+| Étiquetés | 61 | 61 |
+| Nœuds, poteaux, pieux, voiles | 299, 64, 477, 4 | identiques |
+| Propositions | 335 | 335 : mêmes catégories, valeurs, unités, repères |
+| `unresolved` | | aucune entrée nouvelle |
+
+**Précision 71 / 71 = 1,000 ; rappel 71 / 71 = 1,000** ; étiquettes justes
+71 / 71. La géométrie décide seule **66 des 71 axes** (rappel géométrique
+0,930) :
+
+| Axes | Signature vue | Règle `0.4.0` → `0.5.0` | Confiance |
+|---|---|---|---|
+| 59 étiquetés | **A** : bulle, famille, trait-point | `bloc` → `geometrie` (nom concordant cité) | 0,85 → **0,90** |
+| 7 sans étiquette | **B** : trait-point, parallèle à une famille, zone | `calque` (5), `bloc` (2) → `geometrie` | 0,60 → **0,65** |
+| 2 étiquetés | partielle : bulle, trait-point — chacun est le seul axe à bulle de sa direction (deux obliques uniques) : pas de famille | `bloc`, inchangée | 0,85 |
+| 3 sans étiquette | aucune : tracés en **tirets** (pas en trait-point), sans bulle | `calque`, inchangée | 0,60 |
+
+Propositions : seules des confiances changent, 52 sur 335 — la règle
+inchangée de `propositions.py` répercute celle des axes.
+
+| Catégorie | Avant → après | Nombre |
+|---|---|---|
+| `grid_line` | 0,85 → 0,90 | 18 |
+| `grid_spacing` | 0,85 → 0,90 | 15 |
+| `grid_spacing` | 0,60 → 0,65 | 9 |
+| `grid_spacing` | 0,65 → 0,70 | 1 |
+| `building_dimension` | 0,80 → 0,85 | 9 |
+
+### 7.3 Variantes : calques renommés, blocs renommés
+
+| Variante du plan réel | Axes | Étiquetés | Précision | Rappel | Décidés par la géométrie |
+|---|---|---|---|---|---|
+| v00 réenregistré | 71 → 71 | 61 → 61 | 1,000 → 1,000 | 1,000 → 1,000 | 66 |
+| **Calques renommés** | | | | | |
+| v01 calques neutres | 65 → 68 | 61 → 61 | 1,000 → 1,000 | 0,915 → **0,958** | 66 |
+| v05 calques et blocs en espagnol | 19 → 67 | 16 → 60 | 1,000 → 1,000 | 0,268 → **0,944** | 66 |
+| v06 allemand / v07 AIA | 71 → 71 | 61 → 61 | 1,000 → 1,000 | 1,000 → 1,000 | 66 |
+| v13 calques et blocs neutres, types de ligne gardés | 19 → 67 | 16 → 60 | 1,000 → 1,000 | 0,268 → **0,944** | 66 |
+| v14 **tout renommé** (calques, blocs, types de ligne ; motifs gardés) | **0 → 66** | 0 → 59 | — → 1,000 | 0,000 → **0,930** | 66 |
+| v15 tout sur le calque `0` | 65 → 68 | 61 → 61 | 1,000 → 1,000 | 0,915 → **0,958** | 66 |
+| v04 aucune convention (calques et blocs neutres, tout en continu) | **0 → 59** | 0 → 59 | — → 1,000 | 0,000 → **0,831** | 59 |
+| **Blocs renommés** | | | | | |
+| v02 blocs neutres | 60 → 71 | 43 → 52 | 1,000 → 1,000 | 0,845 → **1,000** | 66 |
+| v11 blocs explosés | 23 → 76 | 23 → 50 | 1,000 → **0,882** | 0,324 → **0,944** | 75 |
+| **Autres** | | | | | |
+| v03 sans types de ligne | 71 → 71 | 61 → 61 | 1,000 → 1,000 | 1,000 → 1,000 | 59 |
+| v12 étiquettes en minuscules | 62 → 71 | 23 → 61 | 1,000 → 1,000 | 0,873 → **1,000** | 66 |
+| v08 / v09 `$INSUNITS` mm / m | 71 → 71 / 72 → 72 | 61 / 62 | 1,000 / 0,986 (inchangées) | 1,000 | 66 / 67 |
+| v10 rotation de 30° | 71 → 71 | 61 → 61 | (pas de référence tournée) | | 66 |
+
+**Calques renommés.** Quels que soient les noms de calques — neutres,
+espagnols, tous sur `0`, ou tout renommé jusqu'aux types de ligne —, la
+grille revient à **66 à 68 axes sur 71** (71 quand les noms restent
+reconnus : allemand, AIA), **sans aucun axe hors référence**, et toutes ses
+étiquettes justes. Ce qui manque est dit par la signature : les 3 axes en
+tirets sans bulle (aucun critère : ils ne tiennent qu'à leur nom de calque)
+et, quand aucun nom ne les porte plus, les 2 axes obliques à bulle isolée
+(tous deux sur v14 et v04, l'un des deux sur v05 et v13). Sans motif de ligne
+du tout (v04), la signature B est impossible : les 59 axes A restent, les
+7 axes B et les 5 autres manquent.
+
+**Blocs renommés.** v02 retrouve les 71 axes (11 ajoutés, tous de la
+référence) ; 9 étiquettes de la série « L » chiffrée y manquent toujours :
+leurs textes sont sur un calque que son nom classe cartouche, et le veto du
+cartouche dans le complément « L1 » est inchangé (§ 2.9, test
+`test_le_cartouche_n_etiquette_pas_un_axe`) — absentes, pas fausses. v11
+(blocs explosés, l'arrière-plan architectural mis à nu) : rappel 0,324 →
+0,944, mais 9 axes hors référence (§ 7.6).
+
+**Unités** (v09) : l'axe hors référence existait en `0.4.0` — un trait
+étiqueté de la série « L » chiffrée qui double, à 0,01 unité près,
+l'extrémité d'un axe de la grille ; sous l'hypothèse « mètre », la tolérance
+est cent fois plus fine et les deux droites ne coïncident plus. G2 ne fait que
+le confirmer (signature complète) : 0,85 → 0,90.
+
+**Étiquettes en minuscules** (v12) : 71 axes, 61 étiquetés, **71 / 71
+justes à la casse près** — la casse est lue telle quelle : 38 étiquettes en
+minuscules par le complément « texte court » (`label_source.form =
+"texte_court"`), contre 23 étiquettes en tout en `0.4.0` ; aucune étiquette
+lue en `0.4.0` ne change ni ne disparaît.
+
+### 7.4 Chaque axe ajouté, chaque axe retiré
+
+**Retirés : 0** — sur le plan réel, les 17 variantes et les 94 fichiers du
+balayage (appariement par la droite). Le classement du balayage par
+identifiant affiche des « retraits » sur v01, v02, v05, v12, v13 et v15 :
+l'identifiant d'un axe sans étiquette est son rang dans sa famille, et un axe
+ajouté avant lui le renumérote ; **chaque identifiant disparu a sa droite
+retrouvée sous un autre** (2, 10, 2, 33, 2 et 2). Aucune droite d'un axe déjà
+trouvé n'a changé, aucune de ses étiquettes n'a changé ni disparu ; v12 seul
+en gagne (29, en minuscules).
+
+**Ajoutés** (aucun sur le plan réel) :
+
+| Fichier | Ajoutés | Lesquels |
+|---|---|---|
+| v01, v15 | 3 | 3 axes B sans étiquette de la référence (0,65) |
+| v02 | 11 | 9 axes A étiquetés de la série « L » lettrée, étiquettes justes (0,90) ; 2 axes A sans étiquette de la série « L » chiffrée (0,65) — tous de la référence |
+| v04 | 59 | les 59 axes A de la référence, étiquettes justes (0,85) |
+| v05, v13 | 48 | 44 axes A étiquetés justes (0,90) et 4 axes B sans étiquette (0,65), de la référence |
+| v11 | 53 | 44 de la référence (26 A étiquetés justes à 0,90, 11 A sans étiquette à 0,65, 7 B à 0,65) ; **9 hors référence** (§ 7.6) |
+| v12 | 9 | 9 axes A de la série « L » lettrée, étiquettes en minuscules lues telles quelles (0,90), de la référence |
+| v14 | 66 | les 59 axes A (étiquettes justes, 0,85) et les 7 axes B (0,60) de la référence |
+| `n1_types_de_ligne` (fixture de G1) | 6 | les 6 axes de sa grille (A à C, 1 à 3 ; calque neutre, type de ligne au nom inconnu), 0,85 |
+
+### 7.5 Balayage du corpus (94 fichiers)
+
+* **62 inchangés** hors numéro de version : les 36 DXF d'exemple d'ezdxf,
+  les 9 feuilles PDF (fabriquées et réelles : J3), les 10 sondes de texte et
+  d'unité, le plan synthétique des cotes, et 6 DXF fabriqués où aucun critère
+  n'est vu (une grille sans bulle ni trait-point, la grille rayonnante
+  refusée, un cercle sans unité, deux plans de texte, le refus).
+* **24 changés sans axe ajouté ni retiré** : 11 plans fabriqués nommés des
+  tests, le plan réel et sa copie de l'audit, ses variantes v00, v03, v06 à
+  v10, et 4 DXF riches en N1. Mêmes axes, étiquettes, droites, nœuds,
+  propositions ; seuls changent `classified_by` (→ `geometrie`), les
+  confiances (+ 0,05 sur l'axe et ses propositions, plafond 0,90) et
+  `evidence.signature`. Deux fichiers
+  (`sans_calques_m`, `n1_hachures_couleurs`) ne gagnent que
+  `evidence.signature` (signature partielle citée, règle et confiance
+  inchangées).
+* **8 changés avec des axes ajoutés** : v01, v02, v04, v05, v11, v12, v13 et
+  `n1_types_de_ligne` (§ 7.4).
+
+### 7.6 Ce que G2 ne résout pas, ou dégrade
+
+1. **v11, blocs explosés : 9 axes hors référence**, aucun avant G2. Sept
+   traits-points de l'arrière-plan architectural, parallèles à la grille et
+   traversant la zone (B, sans étiquette, 0,60) ; un trait à bulle et famille
+   sans étiquette (0,60) ; et **une étiquette déplacée** : un trait continu
+   qui traverse la bulle « LF » reçoit l'étiquette (A, 0,85), tandis que le
+   vrai axe « LF », en trait-point et finissant sur la même bulle, est trouvé
+   sans étiquette. C'est la règle d'affectation d'aujourd'hui (§ 2.7 : un
+   texte sert l'axe le plus proche), appliquée telle que conçue. Remède
+   proposé, hors G2 : deux droites qui réclament la même bulle ne reçoivent
+   l'étiquette ni l'une ni l'autre, et un doute est dit — à concevoir avec
+   les candidats de G6.
+2. **Poteaux sur les variantes sans nom.** La grille retrouvée porte les
+   poteaux « forme au nœud » ; sans nom de pieu, les cercles des pieux aux
+   nœuds deviennent des poteaux ronds. v04 : 0 → 132 poteaux, dont 59 aux
+   positions de référence ; v14 : 0 → 158 (59) ; v13 : 52 → 164 (64) ;
+   v05 : 27 → 73 (64). Les propositions de section rectangulaire retrouvent
+   des valeurs du plan réel ; de nouveaux `column_diameter` faux apparaissent
+   à 0,6 (63 — le diamètre des pieux —, 50, 40, 90,3012), absents du plan
+   réel. Risque 3 de l'audit, déjà présent avant G2 sur v01 (103 poteaux en
+   trop) : c'est l'objet de G3 (pieux par la géométrie) et G4 (poteaux).
+3. **Cibles du § 5 non atteintes.** v14 : 66 axes (cible ≥ 66, atteinte),
+   0 hors référence (atteinte), mais **59 étiquettes** au lieu de 61 : les
+   deux axes à bulle isolée n'ont qu'une signature partielle, qui sans nom ne
+   donne rien (J2). v04 : **59 axes** au lieu de ≥ 61 : sans aucun motif de
+   ligne, B est impossible ; la cible contredisait la mesure de faisabilité du
+   § 1 (bulles et famille seules : 59 / 71). v15 : 68 (cible ≥ 61, atteinte).
+4. **Axes sans aucune signature** : les 3 axes en tirets sans bulle du plan
+   réel ne tiennent qu'à leur nom de calque (N3) ; perdus dès que le calque est
+   renommé, comme avant G2.
+5. **Identifiants ordinaux** des axes sans étiquette : renumérotés quand un axe
+   s'insère dans leur famille (variantes seulement ; 0 sur le plan réel). Règle
+   de nommage inchangée (§ 2.9).
+
+### 7.7 Coût
+
+Plan réel, lecture et extraction complètes, trois mesures alternées sur la
+même machine : `0.4.0` 17,49 / 18,28 / 18,57 s (moyenne 18,11 s), `0.5.0`
+18,66 / 17,76 / 18,22 s (moyenne 18,21 s) — **+ 0,6 %**, dans l'écart entre
+deux mesures. Les signatures seules : moins de 0,5 s.
