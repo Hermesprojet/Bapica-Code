@@ -203,7 +203,7 @@ def _noeud_proche(centre: Point, rayon: float, grille: Grille, points: tuple[Poi
 
 
 class _Controle:
-    """Les quatre règles d'une section, sur des index construits à la demande."""
+    """Les cinq règles d'une section, sur des index construits à la demande."""
 
     def __init__(self, prims: PrimitivesDxf, formes: list[Forme],
                  tolerances: Tolerances, entraxe: float | None) -> None:
