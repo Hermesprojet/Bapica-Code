@@ -240,8 +240,9 @@ def _section(forme: Forme, tolerances: Tolerances) -> bool:
     """C1.1 — une SECTION : un rectangle, un cercle, ou un polygone inscrit (au
     moins 5 sommets, tous à la même distance de leur centre à 5 % près :
     hexagone, octogone, bord polygonal d'une hachure de cercle). Un triangle, un
-    chevron, une barre biaise, un nuage n'en sont pas."""
-    if forme.genre == "cercle" or rectangle_de(forme.points, tolerances) is not None:
+    chevron, une barre biaise, un nuage n'en sont pas. Le genre d'une forme dit
+    déjà si ``rectangle_de`` la reconnaît (``formes_fermees``)."""
+    if forme.genre in ("cercle", "rectangle"):
         return True
     sommets = _sommets_utiles(forme.points, tolerances.longueur)
     if len(sommets) < SOMMETS_INSCRIT_MIN:
@@ -285,12 +286,16 @@ class _Controle:
         self._formes: IndexSpatial | None = None
         self._segments: IndexSpatial | None = None
         self._textes: IndexSpatial | None = None
+        self._case_lue: float | None = None
 
     def _case(self) -> float:
-        emprise = self.prims.emprise()
-        diagonale = (math.hypot(emprise[2] - emprise[0], emprise[3] - emprise[1])
-                     if emprise else 1.0)
-        return max(10.0 * self.tol.longueur, 0.01 * diagonale)
+        """La case des index : 1 % de la diagonale de l'emprise, lue une fois."""
+        if self._case_lue is None:
+            emprise = self.prims.emprise()
+            diagonale = (math.hypot(emprise[2] - emprise[0], emprise[3] - emprise[1])
+                         if emprise else 1.0)
+            self._case_lue = max(10.0 * self.tol.longueur, 0.01 * diagonale)
+        return self._case_lue
 
     def raison(self, rang: int, forme: Forme, cotes: tuple[float, float]) -> str | None:
         if forme.genre != "cercle" and compacite(forme.points) < COMPACITE_MIN:
@@ -457,17 +462,14 @@ class _Signature:
 
     def __init__(self, prims: PrimitivesDxf, formes: list[Forme], tolerances: Tolerances,
                  entraxe: float | None, zone: tuple[float, float, float, float] | None,
-                 pieux_lus: Sequence[Pieu]) -> None:
+                 pieux_lus: Sequence[Pieu], case: float) -> None:
         self.prims = prims
         self.formes = formes
         self.tol = tolerances
         self.entraxe = entraxe
         self.zone = zone
         self.pieux_lus = pieux_lus
-        emprise = prims.emprise()
-        diagonale = (math.hypot(emprise[2] - emprise[0], emprise[3] - emprise[1])
-                     if emprise else 1.0)
-        self.case = max(10.0 * tolerances.longueur, 0.01 * diagonale)
+        self.case = case
         self._jumeaux: dict[int, int | None] = {}
         self._pleins: tuple[IndexSpatial, list[int]] | None = None
         self._pieux: tuple[IndexSpatial, list[tuple[Point, float]]] | None = None
@@ -560,7 +562,7 @@ class _Signature:
             plages: list[tuple[int, Rectangle]] = []
             index = IndexSpatial(self.case)
             for k, f in enumerate(self.formes):
-                if not f.rempli or f.genre == "cercle" or not f.points:
+                if not f.rempli or f.genre != "rectangle" or not f.points:
                     continue
                 rect = rectangle_de(f.points, self.tol)
                 if (rect is None or rect.elancement < ELANCEMENT_MAX
@@ -812,7 +814,8 @@ def detecter_poteaux(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grill
     pas = max(2.0 * tolerances.longueur, 1e-9)
     controle = _Controle(prims, formes, tolerances, entraxe)
     boite_zone, source_zone = zone_des_poteaux(grille, zone)
-    sig = _Signature(prims, formes, tolerances, entraxe, boite_zone, pieux_lus)
+    sig = _Signature(prims, formes, tolerances, entraxe, boite_zone, pieux_lus,
+                     controle._case())
 
     def rejeter(raison: str, forme: Forme) -> None:
         cle = (raison, tuple(round(v / pas) for v in boite_de(forme.points)))
@@ -821,12 +824,13 @@ def detecter_poteaux(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grill
             rejets[raison] += 1
 
     def complete(rang: int, forme: Forme, cotes: tuple[float, float], centre: Point) -> bool:
-        """C1, le nom mis à part — le nœud et la taille sont déjà vus."""
-        return (rang not in pieux and rang not in exclues and not sig.pieu_sans_nom(forme)
+        """C1, le nom mis à part — le nœud et la taille sont déjà vus. Les
+        critères les moins coûteux d'abord."""
+        return (_section(forme, tolerances) and sig.dans_la_zone(centre)
+                and sig.coupe(rang, forme) and rang not in pieux and rang not in exclues
+                and not sig.pieu_sans_nom(forme)
                 and controle.raison(rang, forme, cotes) is None
-                and _section(forme, tolerances) and sig.dans_la_zone(centre)
-                and not sig.bout_de_voile(rang, forme, cotes, centre)
-                and sig.coupe(rang, forme))
+                and not sig.bout_de_voile(rang, forme, cotes, centre))
 
     candidats: list[_Candidat] = []
     #: Les formes de pieu ou de fondation à C1 complète : comptées comme
@@ -837,6 +841,10 @@ def detecter_poteaux(prims: PrimitivesDxf, tolerances: Tolerances, grille: Grill
         cotes = _cotes_de(forme, tolerances)
         if cotes is None:
             continue
+        if (role not in _SANS_ROLE and role not in ("poteau", "pieu", "fondation")
+                and not (_plausible(cotes, tolerances, entraxe) and _section(forme, tolerances)
+                         and sig.coupe(rang, forme))):
+            continue  # d'un autre rôle, sans section coupée : ignoré, comme aujourd'hui
         centre = _centre_de(forme)
         noeud = _noeud_proche(centre, 0.5 * max(cotes), grille, forme.points, tolerances,
                               index_noeuds)
