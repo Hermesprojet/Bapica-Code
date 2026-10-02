@@ -5,6 +5,8 @@
 > [`GEOMETRIE_PDF.md`](GEOMETRIE_PDF.md) : mêmes modules, quatre défauts
 > mesurés, quatre règles. Le plan réel n'est pas commité ; il est désigné ici
 > « plan de fondations » (DXF R2013, 16 Mio, sous-sol d'un bâtiment sur pieux).
+> Les § 8 à 10, écrits après, disent ce que l'implémentation a ajouté, ce que
+> les plans réels ont donné, et ce qui reste.
 
 ## 0. Point de départ mesuré
 
@@ -43,8 +45,8 @@ Le rôle **`pieu`** reconnaît, dans un nom de calque ou de bloc :
 |---|---|
 | FR | `PIEU`, `PIEUX`, `MICROPIEU(X)` |
 | EN | `PILE`, `PILES`, `PILING` |
-| NL | `PAAL`, `PALEN`, et les composés courants `HEIPAAL`, `BOORPAAL`, `SCHROEFPAAL`, `PREFABPAAL`, `FUNDERINGSPALEN` |
-| DE | `PFAHL`, `PFÄHLE`, et `BOHRPFAHL`, `RAMMPFAHL`, `MIKROPFAHL`, `GRÜNDUNGSPFAHL` |
+| NL | `PAAL`, `PALEN`, et les composés courants `HEIPAAL`, `BOORPAAL`, `SCHROEFPAAL`, `PREFABPAAL`, `VIBROPAAL`, `FUNDERINGSPALEN` ; la tête `PAALKOP(PEN)` |
+| DE | `PFAHL`, `PFÄHLE`, et `BOHRPFAHL`, `RAMMPFAHL`, `MIKROPFAHL`, `GRÜNDUNGSPFAHL` ; la tête `PFAHLKOPF`, `PFAHLKÖPFE` |
 | ES | `PILOTE(S)` — jamais `PILOTIS`, qui en français désigne des poteaux |
 
 Les composés sont **listés**, pas devinés : « paal » est une sous-chaîne de
@@ -52,9 +54,11 @@ Les composés sont **listés**, pas devinés : « paal » est une sous-chaîne d
 
 Le rôle **`fondation`** reconnaît les éléments de fondation qui ne sont pas des
 pieux : `SEMELLE(S)`, `MASSIF(S)`, `PILE CAP`, `PILECAP`, `FOOTING(S)`,
-`POER(EN)`, `PAALKOP(PEN)`, `PFAHLKOPF`, `EINZEL-` / `STREIFENFUNDAMENT`. Il est
-lu **avant** `pieu` (« PILE_CAP » est un massif, pas un pieu) ; un massif n'est
-jamais un poteau ni un pieu, et n'est pas compté.
+`POER(EN)`, `EINZEL-` / `STREIFENFUNDAMENT(E)`, `PFAHLKOPFPLATTE(N)`,
+`PFAHLROST`. Il est lu **avant** `pieu` (« PILE_CAP » est un massif, pas un
+pieu) ; un massif n'est jamais un poteau ni un pieu, et n'est pas compté.
+*(Corrigé à l'implémentation : cette liste rangeait d'abord ici `PAALKOP` et
+`PFAHLKOPF`, qui désignent la tête du pieu — § 8.)*
 
 Ordre de priorité : `cote`, `fondation`, `pieu`, puis les rôles existants
 (`texte`, `niveau`… `axe`, `hachure`). Conséquences voulues : les textes de
@@ -100,8 +104,9 @@ Mesuré sur les candidats « par la forme » (aucun calque ni bloc ne dit
 | cage d'ascenseur (PDF) | 25 (cabine, machinerie) | 1,00 |
 | chevrons de gaine (DXF, PDF) | — | **0,25 à 0,34** |
 
-Quatre règles, pour les seuls candidats reconnus **par la forme** (un poteau
-nommé par son calque ou son bloc garde la règle existante) :
+Quatre règles — une cinquième est venue à l'implémentation (§ 8) — pour les
+seuls candidats reconnus **par la forme** (un poteau nommé par son calque ou
+son bloc garde la règle existante) :
 
 * **contenant** — une forme qui contient strictement un autre contour fermé
   (ou un cercle) plus petit que 90 % de son petit côté n'est pas une section :
@@ -114,10 +119,15 @@ nommé par son calque ou son bloc garde la règle existante) :
 * **nom** — un texte posé dans la forme qui la nomme (`GAINE`, `ASC.`,
   `ASCENSEUR`, `MONTE-CHARGE`, `TRÉMIE`, `VIDE`, `RÉSERVATION`, `SHAFT`,
   `LIFT`, `VOID`, `OPENING`, `KOKER`, `SCHACHT`, `AUFZUG`, `SPARING`,
-  `AUSSPARUNG`, `DURCHBRUCH`).
+  `AUSSPARUNG`, `DURCHBRUCH`) ;
+* **enceinte** *(ajoutée à l'implémentation, § 8)* — un contour **vide** posé
+  dans une enceinte continue, vide, de la taille d'un poteau n'est pas une
+  section : c'est la cabine dans sa cage.
 
 Chaque candidat écarté est compté par raison dans le compte rendu du modèle
-(`column_candidates_rejected`).
+(`column_candidates_rejected`) : `non_compact`, `contenant`,
+`ouverture_barree`, `ouverture_nommee`, `dans_une_enceinte`, et, avant ces
+règles, `pieu`, `fondation`, `dessin_de_pieu`.
 
 **Ce qui reste, et pourquoi** : le cercle Ø 28 sur `T_COTEX` est seul à son
 nœud, compact, vide ; rien de mesurable ne le distingue d'un poteau rond. Il
@@ -208,3 +218,99 @@ prime). Le vocabulaire : chaque forme reconnue, `PILOTIS` et `BEPAALD` refusés.
 Sur le plan de fondations et les deux feuilles PDF, avant / après : poteaux
 (vrais, faux par catégorie), pieux, axes et axes étiquetés, entraxes et leur
 unité, propositions ; ce qui reste faux, et pourquoi.
+
+## 8. Ce que l'implémentation a ajouté à la conception
+
+* **Têtes de pieux.** `PAALKOP` et `PFAHLKOPF` désignent la tête du pieu, pas
+  un massif : elles sont lues `pieu`. Le massif de tête est `POER` en
+  néerlandais, `PFAHLKOPFPLATTE` en allemand (`fondation`).
+* **Une cinquième règle de section, « dans une enceinte ».** Une cage
+  d'ascenseur fabriquée, dessinée avec une cabine fermée, a rendu la cabine
+  « poteau » : un contour VIDE posé dans une enceinte CONTINUE, vide, de la
+  taille d'un poteau n'est pas une section. Une enceinte CACHÉE (un socle, sous
+  la coupe) ne compte pas : le poteau qu'elle porte reste un poteau ; et le
+  contour d'un poteau hachuré, qui a un jumeau plein (sa hachure), reste sa
+  preuve.
+* **Les candidats écartés sont comptés par contour**, une fois, même dessinés
+  deux fois (la polyligne et ses traits, le calque et la copie de la xréf).
+* **L'échelle citée est le champ du cartouche** (« 1/100 » seul, ou précédé
+  de « Éch. », « Schaal », « Scale ») plutôt qu'un modèle de titre qui la
+  répète.
+
+## 9. Ce que les plans réels ont donné, avant et après
+
+Mesuré sur le code commité, en local ; ni les plans ni leurs sorties ne sont
+dans le dépôt.
+
+**Plan de fondations (DXF)**
+
+| | avant | après |
+|---|---|---|
+| poteaux | 175, dont 62 vrais | **63** : les 62 poteaux préfabriqués — 50 × 50 (30), 30 × 30 (18), 60 × 30 (7), 30 × 50 (2), 30 × 90 (2), 30 × 65, 40 × 40, 35 × 50 — et le cercle d'annotation (§ 10) |
+| faux poteaux | 113 | **1** |
+| pieux | — | **477** : 455 × Ø 63, 20 × Ø 60, et 2 dessinés par leur seule hachure ; 1 660 contours absorbés comme dessin de pieu, 1 fragment |
+| voiles | 22 | **4**, de 25 cm : les 18 autres étaient les échantillons d'épaisseur de trait d'une légende, que l'unité connue rend implausibles (1,9 à 10,2 mm) |
+| unité | non déclarée | **cm** : « 1/100 » écrit au cartouche, fenêtre de 8 400 unités sur 840 mm de papier, soit 10 mm par unité ; écart 0 % |
+| axes (étiquetés) | 60 (43) | 60 (43) — les 17 autres n'ont pas d'étiquette dessinée (§ 3) |
+| entraxes | 47 mesurés, sans unité | 47 mesurés, **en cm**, dont 28 entre deux axes étiquetés (880, 500, 400, 800, 800 · 617,5, 540, 617,5 · 622,5 · 4 × 810 · 750, 500, 750, 750, 750, 850 · 629, 190, 209 · 757,5, 760, 810 · 617,5, 540, 617,5) ; 45 propositions distinctes |
+| propositions géométriques | 146 | **109** : largeurs et profondeurs de poteaux 39 → 11, diamètres 4 → 1, épaisseurs de voile 10 → 4 |
+
+Candidats écartés, comptés par contour (166) : 98 de rôle `pieu` aux nœuds —
+les cercles de 50 pieux, chacun dessiné sur son calque et dans la xréf, et 48
+hachures du calque des pieux ; 54 dessins de pieux (les remplissages des pieux
+sécants, sur un calque de béton caché de la xréf) ; 13 contenants (les
+socles) ; 1 non compact (le chevron de la gaine).
+
+**Feuilles PDF d'architecte**
+
+| | feuille B (avant → après) | feuille A (avant → après) |
+|---|---|---|
+| poteaux | 7 → **2** | 4 → **1** |
+| axes étiquetés | 18 / 20 → **20 / 20** | 8 / 10 → **10 / 10** |
+| conflits d'étiquettes | 2 → **0** | 2 → **0** |
+
+Écartés. Feuille B : la cage d'ascenseur, 1,96 × 1,87 m hors tout
+(contenant : elle contient la cabine) ; son chevron d'ombre, un masque en
+chevron et deux chevrons de gaines techniques (non compacts, 0,28 à 0,34).
+Feuille A : le chevron d'ombre de la gaine d'ascenseur et un chevron de gaine
+technique (non compacts) ; un
+**nuage de révision** rouge de 1,92 × 1,42 m (contenant). Chaque chevron est
+dessiné deux fois (remplissage et trait) : 9 et 5 contours écartés.
+
+Les quatre axes sont étiquetés par leur bulle ; la lettre de 54 pt n'est plus
+candidate : feuille B, « 6 » (contre « C ») et « 2 » (contre « B ») ;
+feuille A, « D » (contre « A ») et « 2 » (contre « B »). Aucune autre
+étiquette n'a changé. Les nœuds de ces axes portent désormais leur nom
+(« Q6 » au lieu de « 0.3xQ »).
+
+**Unité, sur un corpus.** Le code commité, sur les 36 DXF d'exemple d'ezdxf
+lus comme le produit les lit (lecteur de réparation) : 35 n'ont aucune
+présentation qui parle d'échelle, 1 a trois fenêtres et aucune échelle écrite
+— refus. Aucune unité n'est déduite, à tort ou à raison : le corpus ne contient
+aucun exemple positif ; la règle n'est validée positivement que sur le plan de
+fondations et les plans fabriqués.
+
+**Suites.** Sur le commit de l'implémentation, la suite canonique
+(`./run_tests.sh --require-db`, PostgreSQL 16 jetable) : **COMPLET**, sept
+surfaces vertes — moteur 1 138, importeur 113, extraction 313 réussis ; API
+259 réussis, 340 ignorés, aucun échec ; 30 barrières de harnais, toutes
+refusées ; 15 groupes de garanties SQL ; cohérence des artefacts. Le harnais
+des documents, relancé seul : 34 réussis, dont le plan de fondations fabriqué
+(11 pieux, 4 poteaux, unité cm lue dans la présentation, aucun diamètre de
+poteau proposé). Résultat local : rien n'en est affirmé pour Supabase.
+
+## 10. Ce qui reste, et pourquoi
+
+* le cercle Ø 28 sur un calque d'annotation, au bord de la paroi de pieux :
+  rond, vide, seul à son nœud — rien de mesurable ne le distingue d'un poteau
+  rond ; il garde la confiance 0,6 et son diamètre est proposé ;
+* feuille B : deux contours de 30 × 22 cm, extrémités de murs en béton au
+  droit de l'axe Q — peut-être de vrais poteaux, non vérifiés ;
+* feuille A : une barre pleine de 1,20 × 0,36 m à un nœud (élancement 3,3,
+  sous la borne de 4) — sans doute pas un poteau ;
+* deux pieux dessinés par leur seule hachure n'ont pas de diamètre (contour en
+  croissant) ;
+* le nuage de révision de la feuille A n'est écarté que parce qu'il contient
+  d'autres contours : un nuage vide, à un nœud, serait encore un candidat ;
+* une unité ne se déduit que d'une présentation qui écrit son échelle : un DXF
+  sans présentation, ou sans échelle écrite, reste sans unité — et le dit.
