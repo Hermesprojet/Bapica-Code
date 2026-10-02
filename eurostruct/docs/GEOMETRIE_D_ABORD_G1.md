@@ -67,9 +67,12 @@ appris (`GEOMETRIE_PDF.md`).
 
 * **Champs** : `Contour.remplissage : "plein" | "motif" | None` et
   `Contour.motif_hachure : str | None`.
-* **Source** : `HATCH` et `MPOLYGON` — drapeau plein (code 70) et nom du motif
-  (code 2, bibliothèque standard : `SOLID`, `ANSI31`, `AR-CONC`…) ; `SOLID`
-  et `TRACE` → `plein`, sans nom de motif. Les autres contours (polylignes
+* **Source** : `HATCH` et `MPOLYGON` — drapeau plein (code 70 ; 71 pour une
+  `MPOLYGON`) → `plein` ; sinon lignes de motif présentes (codes 53 et
+  suivants) → `motif` ; ni l'un ni l'autre (une `MPOLYGON` non remplie) →
+  `None`. Le nom du motif (code 2, bibliothèque standard : `SOLID`, `ANSI31`,
+  `AR-CONC`…) est lu tel quel : une `MPOLYGON` non remplie porte souvent le
+  nom `SOLID`. `SOLID` et `TRACE` → `plein`, sans nom de motif. Les autres contours (polylignes
   fermées, bandes de polyligne épaisse, rectangles de traits) : `None`.
   `Contour.rempli` garde son sens actuel (le contour est rempli d'une façon
   ou d'une autre).
@@ -146,7 +149,9 @@ appris (`GEOMETRIE_PDF.md`).
   l'`INSERT` qui place l'entité ; hors bloc, `BYBLOCK` → `aci:7` (AutoCAD
   dessine ainsi un objet `BYBLOCK` hors bloc, comme le type de ligne
   `BYBLOCK` hors bloc est déjà lu `CONTINUOUS`) ; couleur d'un calque éteint
-  (négative) → sa valeur absolue ; calque absent de la table → `None`.
+  (négative) → sa valeur absolue ; calque absent de la table → `aci:7` (il
+  est créé à la lecture avec ses valeurs par défaut, comme son type de ligne
+  est déjà lu `CONTINUOUS`) ; information illisible → `None`.
 * **Servira à** : partitions anonymes (§ 1.5) — la couleur est une clé de
   regroupement, jamais un sens.
 

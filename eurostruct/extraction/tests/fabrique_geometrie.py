@@ -43,7 +43,16 @@ Chaque fabrique suit une convention de dessin courante, et la nomme :
 * ``dxf_cotes_de_tous_types`` : chaque type de cote, valeur connue par
   construction, les cotes alignées écrites comme AutoCAD les écrit (type 1,
   sans code 50) — linéaires, alignées, rayon, diamètre, angles, ordonnées,
-  longueur d'arc, ``DIMLFAC``, textes forcés, un détail en mm inséré au 1/10.
+  longueur d'arc, ``DIMLFAC``, textes forcés, un détail en mm inséré au 1/10 ;
+* ``dxf_information_n1`` : l'information DXF standard que lit la phase G1
+  (``docs/GEOMETRIE_D_ABORD_G1.md``) — types de ligne de la bibliothèque, ISO,
+  RENOMMÉS et complexes ; hachures pleines, à motif, ``SOLID``, ``MPOLYGON``
+  remplie et vide ; multilignes (justifications, fermée, dans un bloc tourné
+  et mis à l'échelle, à échelle non uniforme, sur calque gelé) ; bulles-blocs
+  à attribut, ``MINSERT``, blocs imbriqués mis à l'échelle, bloc anonyme,
+  références externes (liée et superposée), calque dépendant d'une xréf ;
+  couleurs ACI, vraies, ``BYLAYER``, ``BYBLOCK``, calque absent de la table —
+  autour d'une petite grille à bulles et de poteaux pleins aux nœuds.
 
 Tous les textes disent FICTIF là où un plan réel porterait un nom.
 """
@@ -787,4 +796,146 @@ def dxf_cotes_de_tous_types(*, mesure_autocad_contredite: bool = False) -> bytes
                                dxfattribs=attributs), alignee=True)
     msp.add_blockref("DETAIL_MM", (40000, 0), dxfattribs={
         "xscale": 0.1, "yscale": 0.1, "zscale": 0.1, "layer": "COTES"})
+    return _ecrire(doc)
+
+
+# ------------------------------------------------------------- information N1
+#: Les motifs ISO d'``acadiso.lin`` (longueur totale, éléments), et le motif de
+#: ``CENTER`` sous un nom qui ne dit rien.
+MOTIFS_N1: dict[str, list[float]] = {
+    "ACAD_ISO02W100": [15.0, 12.0, -3.0],
+    "ACAD_ISO03W100": [30.0, 12.0, -18.0],
+    "ACAD_ISO04W100": [30.5, 24.0, -3.0, 0.5, -3.0],
+    "ACAD_ISO07W100": [3.5, 0.5, -3.0],
+    "ACAD_ISO08W100": [36.0, 24.0, -3.0, 6.0, -3.0],
+    "LT07": [5.08, 3.175, -0.635, 0.635, -0.635],
+}
+
+
+def dxf_information_n1() -> bytes:
+    """Un plan en mm, riche en information N1 (voir la liste du module).
+
+    Repères pour les tests : grille A–C × 1–3 au pas de 6000 sur le calque
+    ``AXES`` en type ``LT07`` (le motif de ``CENTER``) ; poteaux 400 × 400
+    hachurés pleins aux nœuds (calque ``C001``) ; multilignes en y = 20000 à
+    24000 ; blocs et références externes en x ≥ 30000."""
+    import ezdxf
+    from ezdxf import const
+    from ezdxf.enums import TextEntityAlignment as A
+
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = 4
+    for nom, motif in MOTIFS_N1.items():
+        doc.linetypes.add(nom, pattern=motif)
+    doc.linetypes.add("GAZ_FICTIF",
+                      pattern='A,.5,-.2,["GAS",STANDARD,S=.1,U=0.0,X=-0.1,Y=-.05],-.25',
+                      description="FICTIF ----GAS----", length=1)
+    doc.layers.add("AXES", color=1, linetype="LT07")
+    doc.layers.add("C001", color=3)
+    doc.layers.add("C002", color=4).rgb = (10, 20, 30)
+    doc.layers.add("C003", color=5, linetype="ACAD_ISO02W100")
+    eteint = doc.layers.add("C004", color=6)
+    eteint.off()
+    gele = doc.layers.add("C005")
+    gele.freeze()
+    dependant = doc.layers.add("FOND_FICTIF|C006")
+    dependant.dxf.flags |= 16
+    msp = doc.modelspace()
+
+    # LA GRILLE ET LES POTEAUX : la détection a de quoi travailler.
+    xs, ys = (0.0, 6000.0, 12000.0), (0.0, 6000.0, 12000.0)
+    for i, x in enumerate(xs):
+        msp.add_line((x, -1500), (x, 13500), dxfattribs={"layer": "AXES"})
+        msp.add_circle((x, 13900), 400, dxfattribs={"layer": "AXES"})
+        msp.add_text("ABC"[i], height=350, dxfattribs={"layer": "AXES"}).set_placement(
+            (x, 13900), align=A.MIDDLE_CENTER)
+    for j, y in enumerate(ys):
+        msp.add_line((-1500, y), (13500, y), dxfattribs={"layer": "AXES"})
+        msp.add_circle((-1900, y), 400, dxfattribs={"layer": "AXES"})
+        msp.add_text(str(j + 1), height=350, dxfattribs={"layer": "AXES"}).set_placement(
+            (-1900, y), align=A.MIDDLE_CENTER)
+    for x in xs:
+        for y in ys:
+            coins = [(x - 200, y - 200), (x + 200, y - 200), (x + 200, y + 200),
+                     (x - 200, y + 200)]
+            msp.add_lwpolyline(coins, close=True, dxfattribs={"layer": "C001"})
+            msp.add_hatch(dxfattribs={"layer": "C001"}).paths.add_polyline_path(
+                coins, is_closed=True)
+
+    # LES TYPES DE LIGNE : par le calque, par l'entité, complexe, BYBLOCK.
+    msp.add_line((0, -4000), (12000, -4000), dxfattribs={"layer": "C003"})
+    msp.add_line((0, -4500), (12000, -4500), dxfattribs={"layer": "C001",
+                                                          "linetype": "GAZ_FICTIF"})
+    msp.add_line((0, -5000), (12000, -5000), dxfattribs={"layer": "C001",
+                                                          "linetype": "ACAD_ISO07W100"})
+    trait = doc.blocks.new("B_TRAIT")
+    trait.add_line((0, 0), (1000, 0), dxfattribs={"linetype": "BYBLOCK"})
+    msp.add_blockref("B_TRAIT", (0, -5500), dxfattribs={"layer": "C001",
+                                                         "linetype": "DASHDOT"})
+
+    # LES REMPLISSAGES (hors de la grille, à y = -8000).
+    ansi = msp.add_hatch(dxfattribs={"layer": "C002"})
+    ansi.set_pattern_fill("ANSI31", scale=10)
+    ansi.paths.add_polyline_path([(0, -8000), (300, -8000), (300, -7700)], is_closed=True)
+    msp.add_solid([(1000, -8000), (1300, -8000), (1000, -7700), (1300, -7700)],
+                  dxfattribs={"layer": "C002"})
+    pleine = msp.add_mpolygon(fill_color=2, dxfattribs={"layer": "C002"})
+    pleine.paths.add_polyline_path([(2000, -8000), (2300, -8000), (2300, -7700)],
+                                   is_closed=True)
+    vide = msp.add_mpolygon(dxfattribs={"layer": "C002"})
+    vide.paths.add_polyline_path([(3000, -8000), (3300, -8000), (3300, -7700)],
+                                 is_closed=True)
+
+    # LES MULTILIGNES (style « Standard » : décalages +0,5 et -0,5).
+    for k, justification in enumerate((const.MLINE_TOP, const.MLINE_ZERO, const.MLINE_BOTTOM)):
+        ml = msp.add_mline([(0, 20000 + 1000 * k), (5000, 20000 + 1000 * k)],
+                           dxfattribs={"layer": "C001", "scale_factor": 200})
+        ml.set_justification(justification)
+    msp.add_mline([(7000, 20000), (11000, 20000), (11000, 24000), (7000, 24000)], close=True,
+                  dxfattribs={"layer": "C001", "scale_factor": 250})
+    msp.add_mline([(0, 26000), (5000, 26000)], dxfattribs={"layer": "C005"})
+    mur = doc.blocks.new("B_MUR")
+    mur.add_mline([(0, 0), (1000, 0)], dxfattribs={"scale_factor": 100})
+    msp.add_blockref("B_MUR", (14000, 20000), dxfattribs={"rotation": 90, "xscale": 2,
+                                                          "yscale": 2, "zscale": 2})
+    msp.add_blockref("B_MUR", (16000, 20000), dxfattribs={"xscale": 2, "yscale": 3})
+
+    # LES BLOCS ET LES RÉFÉRENCES EXTERNES (x ≥ 30000).
+    bulle = doc.blocks.new("B_BULLE")
+    bulle.add_circle((0, 0), 400)
+    bulle.add_attdef("N", (0, 0), dxfattribs={"height": 350})
+    for k, x in enumerate((30000, 32000, 34000)):
+        ref = msp.add_blockref("B_BULLE", (x, 0))
+        ref.add_auto_attribs({"N": "XYZ"[k]})
+    section = doc.blocks.new("B_SECTION")
+    section.add_lwpolyline([(-150, -150), (150, -150), (150, 150), (-150, 150)], close=True)
+    reseau = msp.add_blockref("B_SECTION", (30000, 5000))
+    reseau.grid(size=(2, 3), spacing=(1000, 1000))
+    exterieur = doc.blocks.new("B_EXTERIEUR")
+    exterieur.add_blockref("B_SECTION", (0, 0), dxfattribs={"xscale": 1.5, "yscale": 1.5})
+    msp.add_blockref("B_EXTERIEUR", (36000, 5000), dxfattribs={"xscale": 2, "yscale": 2})
+    msp.add_blockref("B_SECTION", (38000, 5000), dxfattribs={"xscale": 2, "yscale": -1})
+    anonyme = doc.blocks.new_anonymous_block("U")
+    anonyme.add_circle((0, 0), 100)
+    msp.add_blockref(anonyme.name, (40000, 5000))
+    doc.add_xref_def("FICTIF-fond.dwg", "XREF_FOND")
+    doc.add_xref_def("FICTIF-fond2.dwg", "XREF_SUPERPOSEE",
+                     flags=const.BLK_XREF_OVERLAY | const.BLK_EXTERNAL)
+    msp.add_blockref("XREF_FOND", (0, 0))
+    msp.add_blockref("XREF_SUPERPOSEE", (0, 0))
+
+    # LES COULEURS (à y = -10000).
+    msp.add_line((0, -10000), (1000, -10000), dxfattribs={"layer": "C001", "color": 2})
+    msp.add_line((0, -10100), (1000, -10100), dxfattribs={
+        "layer": "C001", "true_color": ezdxf.rgb2int((255, 0, 0))})
+    msp.add_line((0, -10200), (1000, -10200), dxfattribs={"layer": "C002"})
+    msp.add_line((0, -10300), (1000, -10300), dxfattribs={"layer": "C001", "color": 0})
+    msp.add_line((0, -10400), (1000, -10400), dxfattribs={"layer": "CALQUE_ABSENT"})
+    couleurs = doc.blocks.new("B_COULEURS")
+    couleurs.add_line((0, 0), (100, 0), dxfattribs={"layer": "0", "color": 0})
+    couleurs.add_line((0, 10), (100, 10), dxfattribs={"layer": "0"})
+    couleurs.add_line((0, 20), (100, 20), dxfattribs={"layer": "C001"})
+    msp.add_blockref("B_COULEURS", (0, -11000), dxfattribs={"layer": "C002", "color": 6})
+    msp.add_line((0, -12000), (1000, -12000), dxfattribs={"layer": "C004"})
+    msp.add_text("FICTIF", height=200, dxfattribs={"layer": "C001"}).set_placement((0, -13000))
     return _ecrire(doc)

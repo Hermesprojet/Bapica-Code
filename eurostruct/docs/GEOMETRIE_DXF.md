@@ -85,11 +85,12 @@ pas un plan.
 | `LINE` | un segment |
 | `LWPOLYLINE`, `POLYLINE` 2D | des segments ; si fermée, un **contour** ; un arrondi (bulge) devient un arc, jamais une corde |
 | `CIRCLE`, `ARC` | cercle (poteau rond, bulle d'axe), arc (non porteur) |
-| `SOLID`, `TRACE` | contour rempli (poteau dessiné plein) |
-| `HATCH` | contours des chemins polylignes ; un chemin d'arêtes est rendu en segments |
+| `SOLID`, `TRACE` | contour rempli (poteau dessiné plein) ; N1 : remplissage `plein` |
+| `HATCH`, `MPOLYGON` | contours des chemins polylignes ; un chemin d'arêtes est rendu en segments ; N1 : remplissage `plein` (drapeau), `motif` (lignes de motif) ou rien, nom du motif cité |
+| `MLINE` | N1 seulement (G1) : sommets, justification, échelle effective, décalages et tracé de chaque élément — **comptée « entité non lue »** tant qu'aucun détecteur ne l'interprète (G5) |
 | `TEXT`, `MTEXT`, `ATTRIB` | texte, point d'ancrage, rotation, hauteur, **boîte réelle** (`ezdxf.bbox`, métrique des polices) |
 | `DIMENSION` | points de définition, direction, mesure, `DIMLFAC`, texte affiché, texte forcé |
-| `INSERT` | nom du bloc, transformation, attributs ; son contenu est **explosé** dans le repère du dessin |
+| `INSERT` | nom du bloc, transformation, attributs ; son contenu est **explosé** dans le repère du dessin ; N1 : échelle (x, y), fiche de la définition (drapeaux anonyme / xréf / superposée, contenu, `ATTDEF`, insertions et copies) |
 
 **Les règles du DAO, appliquées.**
 
@@ -102,6 +103,15 @@ pas un plan.
   inséré cinquante fois se retrouve cinquante fois ;
 * profondeur d'imbrication bornée (8), nombre de primitives borné (200 000) ;
   au-delà, la lecture s'arrête et le statut est `partiel`.
+
+**L'information DXF standard (N1, phase G1 de `GEOMETRIE_D_ABORD.md`)** est
+lue en plus, et **aucun détecteur ne la lit encore** : motif de chaque type
+de ligne (classe `continu` / `tirets` / `mixte` / `points` tirée des éléments
+du motif, jamais du nom), couleur résolue de chaque primitive (`BYLAYER` par
+le calque effectif, `BYBLOCK` par l'`INSERT`), calques dépendant d'une
+référence externe, et les champs ci-dessus. Les champs nouveaux sont hors
+égalité ; les sorties n'en changent pas d'un octet. Détail, raisons et
+mesures : `GEOMETRIE_D_ABORD_G1.md`.
 
 **Refus explicites** (interdiction 6) : une référence externe (`XREF`) n'est
 pas dans le fichier — elle est nommée, pas devinée ; les solides 3D, régions
