@@ -522,7 +522,7 @@ est dit illisible par la géométrie, pas deviné.
 
 | Phase | Contenu | Sortie mesurée |
 |---|---|---|
-| G1 | N1 dans les primitives : motif de ligne, remplissage plein/motif, `MLINE`, compte d'insertions, drapeaux xréf ; **aucun changement de détection** | modèle identique sur tout le corpus |
+| G1 | N1 dans les primitives : motif de ligne, remplissage plein/motif, `MLINE`, compte d'insertions, drapeaux xréf ; **aucun changement de détection** — conception détaillée : `GEOMETRIE_D_ABORD_G1.md` | modèle identique sur tout le corpus |
 | G2 | Classes de cercles, bulles par structure, axes A et B, zone structurelle | v04/v14/v15 vs référence ; fixtures axes |
 | G3 | Pieux P | v01/v04/v14 : 475 pieux, 0 faux poteau de pieu |
 | G4 | Poteaux C1 (exclusions géométriques), C2 | v01/v04/v14 : 64 ± 2 |
