@@ -524,11 +524,11 @@ est dit illisible par la géométrie, pas deviné.
 | Phase | Contenu | Sortie mesurée |
 |---|---|---|
 | G1 | N1 dans les primitives : motif de ligne, remplissage plein/motif, `MLINE`, compte d'insertions, drapeaux xréf ; **aucun changement de détection** — conception détaillée : `GEOMETRIE_D_ABORD_G1.md` | **fait** (`068fc3b`) : 94 / 94 sorties identiques octet pour octet ; suites, contrat et harnais verts |
-| G2 | Classes de cercles, bulles par structure, axes A et B, zone structurelle | v04/v14/v15 vs référence ; fixtures axes |
+| G2 | Classes de cercles, bulles par structure, axes A et B, zone structurelle — conception détaillée : `GEOMETRIE_D_ABORD_G2.md` (première phase qui change des sorties : `classified_by = geometrie`, version 0.5.0) | v04/v14/v15 vs référence ; fixtures axes |
 | G3 | Pieux P | v01/v04/v14 : 475 pieux, 0 faux poteau de pieu |
 | G4 | Poteaux C1 (exclusions géométriques), C2 | v01/v04/v14 : 64 ± 2 |
 | G5 | Voiles V1/V2, `MLINE` | feuilles PDF, fixtures |
-| G6 | Partitions apprises, désaccords, candidats ; contrat, écran, version 0.5.0 | tests d'invariance, suites, harnais |
+| G6 | Partitions apprises, désaccords, candidats ; contrat (`appris`, `dxf`, candidats), écran, version suivante | tests d'invariance, suites, harnais |
 
 Chaque phase : conception déjà écrite ici, tests de régression, mesure
 avant/après sur le plan réel, ses variantes, les feuilles PDF et le corpus,
